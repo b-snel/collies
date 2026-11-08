@@ -90,6 +90,10 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0c1511;color:var(--in
 .finds b{color:var(--ink);font-weight:700}
 .finds .wide{grid-column:1/-1}
 
+#bubble{position:fixed;left:0;top:0;z-index:2;pointer-events:none;background:var(--wool);color:#1d1609;font-family:var(--display);font-size:18px;line-height:1.1;padding:7px 13px 8px;border-radius:14px;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35);opacity:0;transition:opacity .2s}
+#bubble::after{content:"";position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:var(--wool)}
+#bubble.on{opacity:1}
+
 /* touch controls */
 #touch{position:fixed;inset:auto 0 0 0;height:210px;pointer-events:none}
 #stickZone{position:absolute;left:0;bottom:0;width:55%;height:100%;pointer-events:auto;touch-action:none}
@@ -108,7 +112,7 @@ body.touch #command{top:calc(214px + env(safe-area-inset-top,0px))}
 body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 
 /* overlay sign */
-#overlay{position:fixed;inset:0;display:grid;place-items:center;padding-block:24px;padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));background:radial-gradient(ellipse at center, rgba(8,12,10,.25), rgba(8,12,10,.7));overflow-y:auto}
+#overlay{position:fixed;inset:0;z-index:3;display:grid;place-items:center;padding-block:24px;padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));background:radial-gradient(ellipse at center, rgba(8,12,10,.25), rgba(8,12,10,.7));overflow-y:auto}
 .sign{max-width:520px;width:100%;background:rgba(20,28,22,.88);border:1px solid var(--edge);border-radius:14px;padding:28px 28px 24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 .sign h1{font-family:var(--display);font-weight:400;font-size:clamp(38px,8vw,58px);line-height:.95;margin:0;color:var(--wool);text-wrap:balance;letter-spacing:.01em}
 .sign h1 em{font-style:normal;color:var(--lantern)}
@@ -151,6 +155,7 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 <div id="game"></div>
 
 <div id="pops"></div>
+<div id="bubble"></div>
 
 <div id="hud" hidden>
   <div id="clockCard" class="card">
@@ -189,7 +194,7 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 <div id="overlay">
   <div class="sign" id="sign">
     <h1>Collie at <em>Dusk</em></h1>
-    <p>Pen the whole flock before the sun goes down. Miss any, and the coyotes come out to grab them. Chase them down, rescue every sheep, and get them home.</p>
+    <p>Pen the whole flock before the sun goes down. Miss any, and the coyotes come out to grab them. Chase them down, rescue every sheep, and get them home. Old Tam the shepherd ambles along behind you, shouting the commands.</p>
     <div class="nameRow"><label for="dogName">Your collie's name</label><input id="dogName" maxlength="14" autocomplete="off" spellcheck="false" value="Bramble"></div>
     <div class="controls">
       <kbd>WASD / Arrows</kbd><span>Move. Sheep run away from you, so get behind them.</span>
@@ -788,6 +793,7 @@ function setupDay(){
   spawnFlock(flockSize(G.day));
   resetDog();
   spawnPower('bone'); G.powerT=12;
+  resetShepherd();
 }
 
 // ---------------- input ----------------
@@ -802,7 +808,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space') bark();
   if(e.code==='KeyE') pounce();
   if(e.code==='KeyF') shoot();
-  if(e.code==='KeyM') muted=!muted;
+  if(e.code==='KeyM'){ muted=!muted; try{ if(muted) speechSynthesis.cancel(); }catch(err){} }
   if(e.code==='KeyP'||e.code==='Escape') togglePause();
   if(e.code==='Enter' && G.phase!=='day' && G.phase!=='night'){ const b=document.querySelector('#sign .btn'); if(b) b.click(); }
 });
@@ -862,6 +868,7 @@ function startGame(fresh){
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
   toast('Day '+G.day+'. Bring in all '+G.sheep.length+' sheep, '+G.name+'!','',3.2);
+  setTimeout(()=>shepSay('Away out, '+G.name+'! Bring them in!',true),900);
 }
 $('startBtn').addEventListener('click',()=>startGame(true));
 
@@ -913,6 +920,9 @@ function onPenned(s){
   else if(s.ram) toast('The big ram is in! +30','warn',2.2);
   else if(G.combo>=3) toast(G.combo+'x combo!','warn',1.4);
   else if(left>0 && left<=3) toast(left===1?'One more, '+G.name+'!':left+' to go.','',1.6);
+  if(s.golden) shepSay('The golden one! Well done!',true);
+  else if(s.ram) shepSay('Ha! Got the old ram!',true);
+  else if(left>0 && Math.random()<.35) shepSay(['Good dog!',"That's it!",'Nice and steady!','In ye go!'][(Math.random()*4)|0]);
 }
 function killSheep(s){
   if(s.dead) return;
@@ -952,6 +962,7 @@ function startNight(){
   G.toSpawn=n-now; G.spawnT=10;
   spawnPower('lantern');
   sHowl(0,1); sHowl(.6,1.12); sHowl(1.4,.92);
+  setTimeout(()=>shepSay('Here they come! Guard the flock!',true),1800);
   const out=G.sheep.filter(s=>!s.dead&&!s.penned).length;
   toast('Nightfall! '+out+' still out'+(G.day>=2?', and a big red-eyed coyote leads the pack.':'. Here come the coyotes!'),'bad',3.8);
 }
@@ -970,6 +981,7 @@ function endDay(reason){
   if(G.total>best){ best=G.total; try{ localStorage.setItem('collieDuskBest',String(best)); }catch(e){} }
   const stars = reason==='before'?3 : reason==='wiped'?0 : (G.lost===0?2:1);
   if(stars>0){ G.celebrate = stars>=2 ? 4 : 2; sFanfare(); }
+  shepSay({before:"That'll do, "+N+". That'll do.",nightsafe:"Good dog. They're all safe now.",dawn:'Morning! You did well, '+N+'.',wiped:'Ach. We will try again.'}[reason],true);
   const N=G.name;
   const T={
     before:["That'll do, "+N+".","Every sheep is in the fold with daylight to spare. The gate swings shut."],
@@ -1083,6 +1095,7 @@ function updateSheep(dt){
         const ex=s.x-c.x, ez=s.z-c.z, e=Math.hypot(ex,ez)+1e-6;
         if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); }
       }
+      { const ex=s.x-shep.x, ez=s.z-shep.z, e=Math.hypot(ex,ez)+1e-6; if(e<6){ const k=1-e/6; fx+=ex/e*k*14; fz+=ez/e*k*14; fear=Math.max(fear,k*.5); } }
       const m=FIELD-3;
       if(s.x>m) fx-=(s.x-m)*6; if(s.x<-m) fx+=(-m-s.x)*6;
       if(s.z>m) fz-=(s.z-m)*6; if(s.z<-m) fz+=(-m-s.z)*6;
@@ -1130,7 +1143,7 @@ function ramUpdate(s,dt){
     s.rcd-=dt;
     if(s.rcd<=0){
       const t=ramTarget(s);
-      if(t){ s.rs='windup'; s.rt=.9; s.rtar=t; sSnort(); popText(s.x,2.8,s.z,'!','red'); }
+      if(t){ s.rs='windup'; s.rt=.9; s.rtar=t; sSnort(); popText(s.x,2.8,s.z,'!','red'); if(t===dog) shepSay('Watch the ram!',true); }
       else s.rcd=1.2;
     }
     return false;
@@ -1152,7 +1165,7 @@ function ramUpdate(s,dt){
       if(t===dog){
         dog.vx=s.cdx*20; dog.vz=s.cdz*20; dog.stunT=1.1; dog.pounceT=0;
         G.shake=Math.max(G.shake,.8); sThud(); sYelp();
-        popText(dog.x,2.6,dog.z,'BONK!','red'); burst(dog.x,1.4,dog.z,22,PC.spark,5,4);
+        popText(dog.x,2.6,dog.z,'BONK!','red'); shepSay('Mind the ram, '+G.name+'!',true); burst(dog.x,1.4,dog.z,22,PC.spark,5,4);
       } else if(G.phase==='night') hitCoyote(t,2,26,s,'RAM BONK!');
       s.rs='idle'; s.rcd=9+Math.random()*5; s.vx*=.2; s.vz*=.2;
     } else { s.rt-=dt; if(s.rt<=0){ s.rs='dazed'; s.rt=1.8; popText(s.x,2.8,s.z,'Dazed','gold'); } }
@@ -1189,7 +1202,7 @@ function updateCoyotes(dt){
       dirx=(dx*cs-dz*sn)/d; dirz=(dx*sn+dz*cs)/d;
       spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0);
       if(dd<5){ dirx+=ddx/dd*.6; dirz+=ddz/dd*.6; }
-      if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); }
+      if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
     } else if(c.state==='grab'){
       const s=c.carry;
       if(!s||s.dead){ c.carry=null; c.state='stalk'; }
@@ -1247,7 +1260,7 @@ function updateGun(dt,time){
     G.hasGun=true; groundGun.visible=false;
     sPickup(); sFanfare(); burst(G.gunSpot[0],1,G.gunSpot[1],60,PC.gold,6,7);
     toast('Secret found! The farmer\'s old gun. Press F to shoot.','warn',4);
-    popText(G.gunSpot[0],2,G.gunSpot[1],'SECRET!','gold');
+    popText(G.gunSpot[0],2,G.gunSpot[1],'SECRET!','gold'); shepSay('Ha! My old gun! Go on then!',true);
   }
 }
 function shoot(){
@@ -1278,6 +1291,104 @@ function updateBullets(dt){
     }
     if(hit){ scene.remove(b.m); bullets.splice(i,1); }
   }
+}
+
+// ---------------- Old Tam, the shepherd ----------------
+function makeShepherd(){
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  const tweed=mat(0x5f5a3a), trou=mat(0x4a3f33), boot=mat(0x2a211b), skin=mat(0xe0b08e), white=mat(0xf2efe8), hatM=mat(0x4a3b2c), wood=mat(0x8a6a42);
+  const legs=[-1,1].map(sd=>{ const p=new THREE.Group(); p.position.set(.18*sd,1.25,0); body.add(p); box(.24,1,.26,trou,0,-.5,0,p); box(.27,.25,.42,boot,0,-1.12,.06,p); return p; });
+  const torso=new THREE.Group(); torso.position.y=1.25; torso.rotation.x=.14; body.add(torso);
+  box(.72,1,.44,tweed,0,.5,0,torso);
+  box(.74,.1,.46,mat(0x3a3326),0,.14,0,torso);
+  const head=new THREE.Group(); head.position.set(0,1.28,.06); torso.add(head);
+  box(.42,.44,.42,skin,0,0,0,head);
+  box(.44,.2,.12,white,0,-.16,.2,head);          // short white beard
+  box(.34,.12,.1,white,0,-.29,.17,head);
+  box(.28,.06,.06,white,0,-.04,.23,head);        // moustache
+  box(.08,.1,.08,mat(0xd49a7a),0,.04,.25,head);  // nose
+  for(const sd of [-1,1]){ box(.11,.035,.04,white,.11*sd,.13,.22,head); box(.05,.05,.03,mat(0x2a2020),.1*sd,.07,.215,head); }
+  const brim=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,.04,14),hatM); brim.position.y=.24; brim.castShadow=true; head.add(brim);
+  const crown=new THREE.Mesh(new THREE.CylinderGeometry(.22,.25,.24,12),hatM); crown.position.y=.37; crown.castShadow=true; head.add(crown);
+  const arms=[-1,1].map(sd=>{ const p=new THREE.Group(); p.position.set(.45*sd,.92,0); torso.add(p); box(.2,.8,.24,tweed,0,-.4,0,p); box(.16,.16,.16,skin,0,-.86,0,p); return p; });
+  const crook=new THREE.Group(); crook.position.set(0,-.86,.12); arms[1].add(crook);
+  const staff=new THREE.Mesh(new THREE.CylinderGeometry(.035,.04,2.6,6),wood); staff.position.y=.25; staff.castShadow=true; crook.add(staff);
+  const hook=new THREE.Mesh(new THREE.TorusGeometry(.16,.035,6,12,Math.PI*1.25),wood); hook.position.set(.16,1.55,0); hook.rotation.z=-Math.PI/4; hook.castShadow=true; crook.add(hook);
+  const lamp=new THREE.Mesh(new THREE.BoxGeometry(.18,.24,.18),lanternMat); lamp.position.set(0,-1.02,0); arms[0].add(lamp);
+  scene.add(g);
+  return {g,body,torso,head,legs,arms};
+}
+const shepLight=new THREE.PointLight(0xffc27a,0,16,1.5); scene.add(shepLight);
+const shep={x:PEN.gx+3,z:PEN.z1+4,vx:0,vz:0,yaw:0,phase:0,sayT:0,lastSay:-99,m:makeShepherd()};
+function resetShepherd(){ shep.x=PEN.gx+3; shep.z=PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; }
+function updateShepherd(dt){
+  let dirx=0,dirz=0,spd=0;
+  if(G.phase==='day'||G.phase==='night'){
+    const dx=dog.x-shep.x, dz=dog.z-shep.z, d=Math.hypot(dx,dz)+1e-6;
+    if(d>7.5){ spd=d>22?7:Math.min(4,(d-6)*1.3); dirx=dx/d; dirz=dz/d; }
+  }
+  const a=1-Math.exp(-dt*4);
+  shep.vx+=(dirx*spd-shep.vx)*a; shep.vz+=(dirz*spd-shep.vz)*a;
+  shep.x+=shep.vx*dt; shep.z+=shep.vz*dt;
+  collide(shep,.55,{gate:false,perim:true});
+}
+function syncShepherd(dt,time){
+  const m=shep.m, sp=Math.hypot(shep.vx,shep.vz);
+  if(sp>.25) shep.yaw=lerpAngle(shep.yaw,Math.atan2(shep.vx,shep.vz),1-Math.exp(-dt*5));
+  else if(G.phase!=='title') shep.yaw=lerpAngle(shep.yaw,Math.atan2(dog.x-shep.x,dog.z-shep.z),1-Math.exp(-dt*1.5));
+  m.g.position.set(shep.x,groundH(shep.x,shep.z),shep.z); m.g.rotation.y=shep.yaw;
+  shep.phase+=dt*sp*2.2;
+  const k=Math.min(1,sp/2), sw=Math.sin(shep.phase);
+  m.legs[0].rotation.x=sw*.5*k; m.legs[1].rotation.x=-sw*.5*k;
+  m.arms[0].rotation.x=-sw*.3*k;
+  m.body.position.y=Math.abs(sw)*.05*k;
+  let crookX=-.35+sw*.12*k, crookZ=0;
+  if(shep.sayT>1.4) crookX=-1.5;                                  // points the crook while shouting
+  if(G.celebrate>0 && G.phase==='result'){ crookX=-2.7; crookZ=Math.sin(time*8)*.35; }
+  m.arms[1].rotation.x=lerp(m.arms[1].rotation.x,crookX,1-Math.exp(-dt*10));
+  m.arms[1].rotation.z=crookZ;
+  m.head.rotation.x=shep.sayT>1.4?-.15:0;
+  shepLight.position.set(shep.x-Math.cos(shep.yaw)*.5,1.3,shep.z+Math.sin(shep.yaw)*.5);
+}
+// his voice: a shepherd's whistle, then the words out loud
+let tamVoice=null;
+function pickVoice(){
+  try{
+    const vs=speechSynthesis.getVoices(); if(!vs.length) return null;
+    tamVoice=vs.find(v=>/en-GB/i.test(v.lang)&&/male|daniel|arthur|george|oliver|rishi/i.test(v.name))||vs.find(v=>/en-GB/i.test(v.lang))||vs.find(v=>/^en/i.test(v.lang))||vs[0];
+  }catch(e){}
+  return tamVoice;
+}
+try{ speechSynthesis.onvoiceschanged=pickVoice; }catch(e){}
+function speak(text){
+  if(muted || !('speechSynthesis' in window)) return;
+  try{
+    const u=new SpeechSynthesisUtterance(text);
+    if(!tamVoice) pickVoice(); if(tamVoice) u.voice=tamVoice;
+    u.pitch=.5; u.rate=.95; u.volume=1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
+}
+function sWhistle(cmd){
+  if(!ok()) return; let t=AC.currentTime;
+  const seq = cmd==='Come bye'?[[1700,2600,.32]] : cmd==='Away to me'?[[2600,1600,.32]] : cmd==='Walk up'?[[2300,2300,.09],[2300,2300,.09]] : [[2100,1900,.55]];
+  for(const [f0,f1,d] of seq){ const o=AC.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f0,t); o.frequency.linearRampToValueAtTime(f1,t+d); o.connect(envG(t,.02,.13,d)); o.start(t); o.stop(t+d+.03); t+=d+.08; }
+}
+function shepSay(text,force,cmd){
+  if(G.phase==='title') return;
+  if(!force && G.elapsed-shep.lastSay<2.2) return;
+  shep.lastSay=G.elapsed; shep.sayT=2.2;
+  const b=$('bubble'); b.textContent=text; b.classList.add('on');
+  if(cmd){ sWhistle(cmd); setTimeout(()=>speak(text),320); } else speak(text);
+}
+function updateBubble(dt){
+  const b=$('bubble');
+  if(shep.sayT>0){ shep.sayT-=dt; if(shep.sayT<=0) b.classList.remove('on'); }
+  if(shep.sayT<=0) return;
+  _pv.set(shep.x,3.7,shep.z).project(camera);
+  const w=window.innerWidth, h=window.innerHeight;
+  const sx=clamp((_pv.x*.5+.5)*w,80,w-80), sy=clamp((-_pv.y*.5+.5)*h,70,h-30);
+  b.style.transform=`translate(${sx}px,${sy}px) translate(-50%,-100%)`;
 }
 
 // ---------------- power-ups ----------------
@@ -1435,7 +1546,7 @@ function applySky(time){
   const n=1-s;
   moonLight.intensity=n*.38;
   dogLight.intensity=n*(G.lanternT>0?3:1.7); dogLight.distance=G.lanternT>0?46:26; dogLight.position.set(dog.x,5.5,dog.z+1);
-  lantern.intensity=n*2.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.4;
+  lantern.intensity=n*2.4; shepLight.intensity=n*1.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.4;
   stars.position.copy(camera.position); stars.material.opacity=clamp(n*1.3-.3,0,1);
   moon.position.set(camera.position.x-120, camera.position.y+170, camera.position.z-360); moon.material.opacity=clamp(n*1.4-.4,0,1);
   const fb=flies.userData.base, fp=flies.geometry.attributes.position;
@@ -1484,6 +1595,7 @@ function drawMinimap(time){
     mx.fillStyle='#e2643f'; mx.beginPath(); const k=c.alpha?1.6:1; mx.moveTo(cx,cy-5*k); mx.lineTo(cx+4.5*k,cy+4*k); mx.lineTo(cx-4.5*k,cy+4*k); mx.closePath(); mx.fill();
   }
   for(const p of powerups){ mx.fillStyle=p.type==='apple'?'#ff6b6b':p.type==='bone'?'#fff2c8':'#ffc061'; const px=X(p.x),py=Y(p.z),r=5+Math.sin(time*6)*1.2; mx.beginPath(); mx.moveTo(px,py-r); mx.lineTo(px+r,py); mx.lineTo(px,py+r); mx.lineTo(px-r,py); mx.closePath(); mx.fill(); }
+  mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   const dx=X(dog.x), dy=Y(dog.z);
   mx.fillStyle='#f2b544'; mx.beginPath(); mx.arc(dx,dy,5.5,0,TAU); mx.fill();
   mx.strokeStyle='#111'; mx.lineWidth=2; mx.beginPath(); mx.moveTo(dx,dy); mx.lineTo(dx+Math.sin(dog.yaw)*9,dy+Math.cos(dog.yaw)*9); mx.stroke();
@@ -1507,7 +1619,7 @@ function updateCommand(dt){
       }
     }
   }
-  if(txt!==cmdText){ cmdText=txt; const el=$('command'); if(txt){ el.textContent=txt; el.classList.add('on'); } else el.classList.remove('on'); }
+  if(txt!==cmdText){ cmdText=txt; if(txt) shepSay(txt+'!',false,txt); const el=$('command'); if(txt){ el.textContent=txt; el.classList.add('on'); } else el.classList.remove('on'); }
 }
 function setChip(id,t,max){ const el=$(id); el.hidden=!(t>0); if(t>0) el.querySelector('i').style.width=Math.round(t/max*44)+'px'; }
 function updateHUD(dt,time){
@@ -1557,6 +1669,7 @@ function step(dt){
   updateSheep(dt);
   updateCoyotes(dt);
   updateBullets(dt);
+  updateShepherd(dt);
   if(G.phase==='day'){
     const alive=G.sheep.filter(s=>!s.dead);
     const f=G.t/dayLen(G.day);
@@ -1587,6 +1700,8 @@ function frame(now){
   }
   updatePowers(dt,time);
   updateGun(dt,time);
+  syncShepherd(dt,time);
+  updateBubble(dt);
   syncAll(dt,time);
   applySky(time);
   updateCamera(dt,time);
