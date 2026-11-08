@@ -1,5 +1,5 @@
 // Offline support: the game shell is cached on install; fonts are cached as they load.
-const CACHE = 'collies-v30';
+const CACHE = 'collies-v32';
 const SHELL = ['/', '/index.html', '/vendor/three.min.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
