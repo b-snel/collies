@@ -71,6 +71,15 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0c1511;color:var(--in
 #keysHint .k{display:flex;align-items:center;gap:6px;padding:0 7px;font-size:14px;font-weight:600;color:var(--ink)}
 #keysHint kbd{font-family:var(--ui);font-weight:700;font-size:12px;letter-spacing:.04em;color:#1d1609;background:var(--wool);border-radius:5px;padding:2px 7px;box-shadow:0 2px 0 rgba(0,0,0,.4)}
 #keysHint .k.gun kbd{background:var(--lantern)}
+#keysHint .gp{display:none}
+body.pad #keysHint .kb{display:none}
+body.pad #keysHint .gp{display:flex}
+#keysHint .gp kbd{border-radius:50%;width:20px;height:20px;padding:0;display:inline-grid;place-items:center;color:#fff;font-size:11px;line-height:1}
+#keysHint .gp kbd.a{background:#3fa34d}
+#keysHint .gp kbd.b{background:#d9443b}
+#keysHint .gp kbd.x{background:#2f74d0}
+#keysHint .gp kbd.y{background:#e2b11f;color:#1d1609}
+#keysHint .gp kbd.pill{border-radius:5px;width:auto;padding:2px 7px;background:var(--wool);color:#1d1609}
 @media (max-width:1180px){#keysHint .opt{display:none}}
 @media (max-width:920px){#keysHint{display:none}}
 
@@ -113,6 +122,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0c1511;color:var(--in
 body.touch #minimap{top:calc(84px + env(safe-area-inset-top,0px));bottom:auto;width:104px;height:104px}
 body.touch #dogCard{top:calc(98px + env(safe-area-inset-top,0px));bottom:auto;width:150px;padding:8px 10px}
 body.touch #keysHint{display:none}
+body.touch.pad #keysHint{display:flex}
 body.touch #command{top:calc(214px + env(safe-area-inset-top,0px))}
 body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 
@@ -185,14 +195,21 @@ button,input{touch-action:manipulation}</style>
   <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div></div>
   <div id="toast"></div>
   <div id="keysHint">
-    <span class="k"><kbd>WASD</kbd>Move</span>
-    <span class="k"><kbd>Shift</kbd>Run</span>
-    <span class="k"><kbd>Space</kbd>Bark</span>
-    <span class="k"><kbd>E</kbd>Pounce</span>
-    <span class="k"><kbd>C</kbd>Lie down</span>
-    <span class="k gun" id="keyShoot" hidden><kbd>F</kbd>Shoot</span>
-    <span class="k opt"><kbd>P</kbd>Pause</span>
-    <span class="k opt"><kbd>M</kbd>Sound</span>
+    <span class="k kb"><kbd>WASD</kbd>Move</span>
+    <span class="k kb"><kbd>Shift</kbd>Run</span>
+    <span class="k kb"><kbd>Space</kbd>Bark</span>
+    <span class="k kb"><kbd>E</kbd>Pounce</span>
+    <span class="k kb"><kbd>C</kbd>Lie down</span>
+    <span class="k kb gun" id="keyShoot" hidden><kbd>F</kbd>Shoot</span>
+    <span class="k kb opt"><kbd>P</kbd>Pause</span>
+    <span class="k kb opt"><kbd>M</kbd>Sound</span>
+    <span class="k gp"><kbd class="pill">L stick</kbd>Move</span>
+    <span class="k gp"><kbd class="a">A</kbd>Bark</span>
+    <span class="k gp"><kbd class="b">B</kbd>Pounce</span>
+    <span class="k gp"><kbd class="x">X</kbd>Lie down</span>
+    <span class="k gp"><kbd class="pill">RT</kbd>Run</span>
+    <span class="k gp gun" id="keyShootPad" hidden><kbd class="y">Y</kbd>Shoot</span>
+    <span class="k gp opt"><kbd class="pill">Menu</kbd>Pause</span>
   </div>
 </div>
 
@@ -227,6 +244,7 @@ button,input{touch-action:manipulation}</style>
       <span class="wide"><b>Big ram</b> sometimes charges you. Bark when it paws the ground, or dodge. At night it charges coyotes too.</span>
     </div>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button></div>
+    <p class="small">Got a controller? Plug it in: left stick moves, A barks, B pounces, X lies down, RT runs, A starts the day.</p>
     <p class="small" id="bestLine"></p>
   </div>
 </div>
@@ -851,6 +869,47 @@ function unzoom(){
 }
 if(window.visualViewport){ visualViewport.addEventListener('resize',unzoom); visualViewport.addEventListener('scroll',unzoom); }
 
+// ---- game controllers (Xbox layout, browser "standard" mapping) ----
+const pad={on:false,prev:[],x:0,y:0,run:false,down:false};
+function rumble(strong,weak,ms){
+  try{
+    const list=navigator.getGamepads?navigator.getGamepads():[];
+    for(const g of list){ const a=g&&g.vibrationActuator; if(a&&a.playEffect){ a.playEffect('dual-rumble',{duration:ms,strongMagnitude:strong,weakMagnitude:weak}).catch(()=>{}); return; } }
+  }catch(e){}
+}
+function clickPrimary(){ if($('overlay').hidden) return; const bt=document.querySelector('#sign .btn'); if(bt) bt.click(); }
+function pollPad(){
+  let gp=null;
+  try{ const list=navigator.getGamepads?navigator.getGamepads():[]; for(const g of list){ if(g&&g.connected){ gp=g; break; } } }catch(e){}
+  if(!gp){
+    pad.x=pad.y=0; pad.run=pad.down=false;
+    if(pad.on){ pad.on=false; document.body.classList.remove('pad'); }
+    return;
+  }
+  if(!pad.on){ pad.on=true; pad.prev=gp.buttons.map(()=>true); document.body.classList.add('pad'); toast('Controller connected','',1.8); }
+  const b=i=>!!(gp.buttons[i]&&(gp.buttons[i].pressed||gp.buttons[i].value>.5));
+  const hit=i=>b(i)&&!pad.prev[i];
+  let ax=gp.axes[0]||0, ay=gp.axes[1]||0;
+  const m=Math.hypot(ax,ay);
+  if(m<.2){ ax=0; ay=0; } else { const k=Math.min(1,(m-.2)/.8)/m; ax*=k; ay*=k; }   // radial dead zone
+  if(b(14)) ax=-1; if(b(15)) ax=1; if(b(12)) ay=-1; if(b(13)) ay=1;                 // D-pad
+  pad.x=ax; pad.y=ay;
+  pad.run=b(7)||b(5)||b(10);          // RT, RB, or click the stick
+  pad.down=b(2)||b(6);                 // X or LT
+  const playing=G.phase==='day'||G.phase==='night';
+  if(hit(9)){ if(playing) togglePause(); else clickPrimary(); }                     // Menu
+  else if(hit(0) && (!playing || G.paused)){ initAudio(); clickPrimary(); }         // A on a menu
+  else if(playing && !G.paused){
+    if(hit(0)) bark();
+    if(hit(1)) pounce();
+    if(hit(3)) shoot();
+  }
+  if(hit(8)){ muted=!muted; try{ if(muted) speechSynthesis.cancel(); }catch(e){} }  // View
+  const rz=gp.axes[3]||0; if(Math.abs(rz)>.3) G.zoom=clamp(G.zoom+rz*.02,.6,1.6);  // right stick zoom
+  pad.prev=gp.buttons.map((_,i)=>b(i));
+}
+window.addEventListener('gamepadconnected',()=>pollPad());
+
 const keys=new Set();
 const joy={x:0,y:0,id:null};
 let touchRun=false, touchDown=false;
@@ -1002,6 +1061,7 @@ function scareCoyote(c,t){
 function hitCoyote(c,dmg,kb,src,label){
   src=src||dog;
   c.hp-=dmg; c.hitCD=.6; c.spin=1; sYelp(); sThud();
+  if(src===dog && !label) rumble(dmg>1?.8:.4,.5,dmg>1?220:120);
   G.shake=Math.max(G.shake,dmg>1?.8:.4);
   const dx=c.x-src.x, dz=c.z-src.z, d=Math.hypot(dx,dz)+1e-6; c.vx+=dx/d*kb; c.vz+=dz/d*kb;
   burst(c.x,1.2,c.z,dmg>1?28:14,PC.spark,5,5);
@@ -1071,14 +1131,15 @@ function updateDog(dt){
     if(keys.has('KeyA')||keys.has('ArrowLeft')) ix-=1;
     if(keys.has('KeyD')||keys.has('ArrowRight')) ix+=1;
     ix+=joy.x; iz+=joy.y;
+    ix+=pad.x; iz+=pad.y;
   }
   if(dog.stunT>0){ dog.stunT-=dt; ix=0; iz=0; }
   const il=Math.hypot(ix,iz); if(il>1){ ix/=il; iz/=il; }
   dog.inX=ix; dog.inZ=iz;
-  dog.lying = G.phase==='title' || (playing && (keys.has('KeyC')||touchDown) && dog.pounceT<=0);
+  dog.lying = G.phase==='title' || (playing && (keys.has('KeyC')||touchDown||pad.down) && dog.pounceT<=0);
   dog.zoomT=Math.max(0,dog.zoomT-dt);
   const zoom=dog.zoomT>0;
-  const wantRun = playing && (keys.has('ShiftLeft')||keys.has('ShiftRight')||touchRun) && il>.1 && !dog.lying;
+  const wantRun = playing && (keys.has('ShiftLeft')||keys.has('ShiftRight')||touchRun||pad.run) && il>.1 && !dog.lying;
   let running=false;
   if(zoom){ dog.stamina=100; dog.tired=false; running=wantRun; }
   else {
@@ -1220,7 +1281,7 @@ function ramUpdate(s,dt){
       if(t===dog){
         dog.vx=s.cdx*20; dog.vz=s.cdz*20; dog.stunT=1.1; dog.pounceT=0;
         G.shake=Math.max(G.shake,.8); sThud(); sYelp();
-        popText(dog.x,2.6,dog.z,'BONK!','red'); shepSay('Mind the ram, '+G.name+'!',true); burst(dog.x,1.4,dog.z,22,PC.spark,5,4);
+        popText(dog.x,2.6,dog.z,'BONK!','red'); rumble(1,.7,380); shepSay('Mind the ram, '+G.name+'!',true); burst(dog.x,1.4,dog.z,22,PC.spark,5,4);
       } else hitCoyote(t,2,26,s,'RAM BONK!');
       s.rs='idle'; s.rcd=9+Math.random()*5; s.vx*=.2; s.vz*=.2;
     } else { s.rt-=dt; if(s.rt<=0){ s.rs='dazed'; s.rt=1.8; popText(s.x,2.8,s.z,'Dazed','gold'); } }
@@ -1308,6 +1369,7 @@ function updateGun(dt,time){
   dogGun.visible=G.hasGun;
   $('bShoot').hidden=!G.hasGun;
   $('keyShoot').hidden=!G.hasGun;
+  $('keyShootPad').hidden=!G.hasGun;
   if(G.hasGun || !G.gunSpot) return;
   if(G.gunDropT>0){ G.gunDropT=Math.max(0,G.gunDropT-dt); const k=1-G.gunDropT/.7; groundGun.position.y=.16+Math.sin(k*Math.PI)*1.4; groundGun.rotation.y+=dt*9; }
   if(Math.random()<dt*1.5) burst(G.gunSpot[0],.5,G.gunSpot[1],2,PC.spark,.6,1.5,2);   // a glint so you can spot it
@@ -1332,7 +1394,7 @@ function shoot(){
   const m=new THREE.Mesh(bulletGeo,bulletMat); scene.add(m);
   bullets.push({x:dog.x+ax*1.4,z:dog.z+az*1.4,vx:ax*48,vz:az*48,t:0,m});
   burst(dog.x+ax*1.6,1.3,dog.z+az*1.6,12,[0xffe27a,0xffb347,0xffffff],3,2,4);
-  G.shake=Math.max(G.shake,.3); sBang();
+  G.shake=Math.max(G.shake,.3); sBang(); rumble(.5,.9,140);
 }
 function updateBullets(dt){
   dog.gunCD=Math.max(0,dog.gunCD-dt); dog.bangT=Math.max(0,dog.bangT-dt);
@@ -1791,6 +1853,7 @@ let last=performance.now(), time=0;
 function frame(now){
   requestAnimationFrame(frame);
   let dt=Math.min(.05,(now-last)/1000); last=now;
+  pollPad();
   if(G.paused) dt=0;
   time+=dt;
   if(dt>0){
