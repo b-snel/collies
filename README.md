@@ -24,10 +24,11 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 It's a static site with no build step:
 
-- `index.html`: the whole game (three.js r128, plain JavaScript, sounds generated in the browser with Web Audio)
+- `index.html`: the whole game (three.js r128, plain JavaScript, recorded audio plus a few sounds synthesized with Web Audio)
 - `vendor/three.min.js`: a local copy of three.js so the game works offline
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
 - `vercel.json`: caching headers
+- `audio/`: recorded barks and bleats, Hank's voice clips and the 1915 pipe-band music (see [CREDITS.md](CREDITS.md) for sources and licenses)
 
 To run it locally:
 

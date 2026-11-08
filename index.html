@@ -298,6 +298,7 @@ button,input{touch-action:manipulation}</style>
     <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button></div>
     <p class="small" id="bestLine"></p>
+    <p class="small"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener" style="color:var(--muted)">Audio credits</a></p>
   </div>
 </div>
 
@@ -796,6 +797,31 @@ let AC=null, master=null, muted=false;
 function initAudio(){
   if(AC) { if(AC.state==='suspended') AC.resume(); return; }
   try{ AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=.42; master.connect(AC.destination); }catch(e){ AC=null; }
+  if(AC) loadAudioAssets();
+}
+// ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy"};
+const SFX={bark:[],bleat:[],voice:{}};
+let assetsAsked=false, voiceSrc=null;
+function loadBuf(url){
+  return fetch(url).then(r=>r.ok?r.arrayBuffer():Promise.reject(r.status)).then(b=>new Promise((res,rej)=>AC.decodeAudioData(b,res,rej)));
+}
+function loadAudioAssets(){
+  if(assetsAsked || !AC) return; assetsAsked=true;
+  ['bark1','bark2','bark3','bark4','bark5'].forEach(n=>loadBuf('audio/sfx/'+n+'.mp3').then(b=>SFX.bark.push(b)).catch(()=>{}));
+  ['bleat1','bleat2','bleat3'].forEach(n=>loadBuf('audio/sfx/'+n+'.mp3').then(b=>SFX.bleat.push(b)).catch(()=>{}));
+  [...new Set(Object.values(VOICE_MAP))].forEach(id=>loadBuf('audio/voice/'+id+'.mp3').then(b=>{ SFX.voice[id]=b; }).catch(()=>{}));
+}
+function playBuf(buf,rate,vol,when){
+  const s=AC.createBufferSource(), g=AC.createGain();
+  s.buffer=buf; s.playbackRate.value=rate; g.gain.value=vol;
+  s.connect(g).connect(master); s.start(when||0); return s;
+}
+function voiceClip(text){
+  let k=text;
+  if(G.name2) k=k.split(G.name+' and '+G.name2).join('NAME');
+  k=k.split(G.name).join('NAME'); if(G.name2) k=k.split(G.name2).join('NAME');
+  const id=VOICE_MAP[k]; return id ? SFX.voice[id] : null;
 }
 // ---- music: a bouncy farm tune by day, a gentle one at night, a driving one for the wolf ----
 const MUS={gain:null,next:0,step:0,mode:null};
@@ -834,11 +860,36 @@ function playStep(song,i,t){
   if(song.kick.includes(st)) mkick(t,.22);
   if(song.shaker && st%2===1) mnoise(t,.05,.05,6000);
 }
+const PIPES={tracks:{},failed:false,started:false};
+function pipeTrack(n){
+  if(PIPES.tracks[n]) return PIPES.tracks[n];
+  const el=new Audio('audio/music/'+n+'.mp3'); el.loop=true; el.preload='auto'; el.crossOrigin='anonymous';
+  const t={el,gain:null,vol:0};
+  try{ const src=AC.createMediaElementSource(el); t.gain=AC.createGain(); t.gain.gain.value=0; src.connect(t.gain).connect(master); }catch(e){ PIPES.failed=true; }
+  el.addEventListener('error',()=>{ PIPES.failed=true; });
+  PIPES.tracks[n]=t; return t;
+}
+// both tracks start inside the Start click (so phones allow it) and keep looping; the game crossfades between them
+function startPipes(){
+  if(!AC || PIPES.started) return; PIPES.started=true;
+  for(const n of ['pipes1','pipes2']){ const t=pipeTrack(n); const pr=t.el.play(); if(pr&&pr.catch) pr.catch(()=>{ PIPES.failed=true; }); }
+}
+function updatePipes(mode){
+  const want={day:'pipes1',night:'pipes2',boss:'pipes1'}[mode];
+  for(const n of ['pipes1','pipes2']){
+    const t=PIPES.tracks[n]; if(!t||!t.gain) continue;
+    const target=(muted||G.paused||n!==want)?0:(mode==='night'?.55:.7);
+    t.vol+= (target-t.vol)*.04;
+    t.gain.gain.value=t.vol;
+    if(n==='pipes1'){ const r=mode==='boss'?1.12:1; if(Math.abs(t.el.playbackRate-r)>.01) t.el.playbackRate=r; }
+  }
+}
 function updateMusic(){
   if(!AC || !master) return;
   if(!MUS.gain){ MUS.gain=AC.createGain(); MUS.gain.gain.value=.5; MUS.gain.connect(master); }
   const want = G.rageT>0 ? 'boss' : G.phase==='night' ? (G.coyotes.some(c=>c.boss&&!c.gone&&c.state!=='retreat')?'boss':'night') : 'day';
   if(want!==MUS.mode){ MUS.mode=want; MUS.step=0; MUS.next=AC.currentTime+.08; }
+  if(PIPES.started && !PIPES.failed){ updatePipes(want); return; }   // the real pipe band; the synth tune is only a fallback
   if(muted || G.paused || AC.state!=='running'){ MUS.next=AC.currentTime+.08; return; }
   const song=SONGS[MUS.mode], e=60/song.bpm/2;
   if(MUS.next<AC.currentTime) MUS.next=AC.currentTime+.02;
@@ -846,8 +897,14 @@ function updateMusic(){
 }
 function envG(t0,a,peak,dur){ const g=AC.createGain(); g.gain.setValueAtTime(.0001,t0); g.gain.exponentialRampToValueAtTime(peak,t0+a); g.gain.exponentialRampToValueAtTime(.0001,t0+dur); g.connect(master); return g; }
 const ok=()=>AC && !muted;
-function sBark(){
+function sBark(pitch){
   if(!ok()) return; const t=AC.currentTime;
+  if(SFX.bark.length){
+    const r=(pitch||1)*(.94+Math.random()*.12);
+    playBuf(SFX.bark[(Math.random()*SFX.bark.length)|0],r,.9);
+    if(Math.random()<.55) playBuf(SFX.bark[(Math.random()*SFX.bark.length)|0],r*(.97+Math.random()*.06),.75,t+.17+Math.random()*.06);
+    return;
+  }
   for(let i=0;i<2;i++){
     const t0=t+i*.14, o=AC.createOscillator(), f=AC.createBiquadFilter();
     o.type='sawtooth'; o.frequency.setValueAtTime(560-i*60,t0); o.frequency.exponentialRampToValueAtTime(190,t0+.1);
@@ -859,6 +916,7 @@ let lastBleat=0;
 function sBleat(p){
   if(!ok()) return; const now=performance.now(); if(now-lastBleat<180) return; lastBleat=now;
   p=p||(.85+Math.random()*.4); const t=AC.currentTime;
+  if(SFX.bleat.length){ playBuf(SFX.bleat[(Math.random()*SFX.bleat.length)|0],clamp(p*.92,.6,1.6)*(.96+Math.random()*.08),.55); return; }
   const o=AC.createOscillator(), lfo=AC.createOscillator(), lg=AC.createGain(), f=AC.createBiquadFilter();
   o.type='sawtooth'; o.frequency.value=300*p; lfo.frequency.value=8.5; lg.gain.value=24*p;
   lfo.connect(lg).connect(o.frequency); f.type='lowpass'; f.frequency.value=1500;
@@ -1198,7 +1256,7 @@ function showOverlay(html){ $('sign').innerHTML=html; $('overlay').hidden=false;
 function hideOverlay(){ $('overlay').hidden=true; }
 
 function startGame(fresh){
-  initAudio();
+  initAudio(); startPipes();
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   const ni=$('dogName'); if(ni){ G.name=(ni.value.trim()||'Bramble').slice(0,14); try{ localStorage.setItem('collieDuskName',G.name); }catch(e){} }
   const n2=$('dogName2'); if(n2){ G.name2=(n2.value.trim()||'Moss').slice(0,14); try{ localStorage.setItem('collieDuskName2',G.name2); }catch(e){} }
@@ -1239,7 +1297,7 @@ function bark(D){
   if(G.phase!=='day' && G.phase!=='night') return;
   if(G.paused || D.barkCD>0) return;
   D.barkCD=1.1; D.barkT=.5;
-  spawnRing(D.x,D.z); sBark();
+  spawnRing(D.x,D.z); sBark(D===dog2?.86:1);
   const other=D===dog?dog2:dog;
   if(G.coop && G.elapsed-(other.lastBark||-9)<.6 && Math.hypot(D.x-other.x,D.z-other.z)<16){
     // both dogs barked together: a TEAM BARK sends every coyote nearby running
@@ -2024,7 +2082,13 @@ function shepSay(text,force,cmd){
   if(!force && G.elapsed-shep.lastSay<2.2) return;
   shep.lastSay=G.elapsed; shep.sayT=2.2;
   const b=$('bubble'); b.textContent=text; b.classList.add('on');
-  if(cmd){ sWhistle(cmd); setTimeout(()=>speak(text),320); } else speak(text);
+  const clip=voiceClip(text);
+  if(clip && ok()){
+    try{ if(voiceSrc) voiceSrc.stop(); }catch(e){}
+    try{ speechSynthesis.cancel(); }catch(e){}
+    if(cmd) sWhistle(cmd);
+    voiceSrc=playBuf(clip,1,1.15,AC.currentTime+(cmd?.32:0));
+  } else if(cmd){ sWhistle(cmd); setTimeout(()=>speak(text),320); } else speak(text);
 }
 function updateBubble(dt){
   const b=$('bubble');

@@ -1,5 +1,5 @@
 // Offline support: the game shell is cached on install; fonts are cached as they load.
-const CACHE = 'collies-v22';
+const CACHE = 'collies-v23';
 const SHELL = ['/', '/index.html', '/vendor/three.min.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,10 +17,12 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(req).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put('/index.html', copy)); return res; }).catch(() => caches.match('/index.html')));
     return;
   }
+  // The pipe-band music streams with range requests; let the browser handle it directly.
+  if (url.origin === location.origin && url.pathname.startsWith('/audio/music/')) return;
   // Everything else (three.js, icons, Google Fonts): cache first.
   if (url.origin === location.origin || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+      if ((res.ok && res.status !== 206) || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;
     })));
   }
