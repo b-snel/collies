@@ -1786,6 +1786,8 @@ function voiceClip(text){
   for(const n of (G.names||[G.name])) k=k.split(n).join('NAME');
   const id=VOICE_MAP[k]; return id ? SFX.voice[id] : null;
 }
+// which recording a line uses, loaded or not
+function voiceId(text){ let k=text; if(dogs.length>1) k=k.split(crewNames()).join('NAME'); for(const n of (G.names||[G.name])) k=k.split(n).join('NAME'); return VOICE_MAP[k]||null; }
 // ---- music: a bouncy farm tune by day, a gentle one at night, a driving one for the wolf ----
 const MUS={gain:null,next:0,step:0,mode:null};
 const midi=n=>440*Math.pow(2,(n-69)/12);
@@ -3943,13 +3945,15 @@ function shepSay(text,force,cmd){
   if(!force && G.elapsed-shep.lastSay<2.2) return;
   shep.lastSay=G.elapsed; shep.sayT=2.2;
   const b=$('bubble'); b.textContent=text; b.classList.add('on');
-  const clip=voiceClip(text);
-  if(clip && ok()){
+  if(cmd) sWhistle(cmd);
+  // Hank only ever speaks in his own recorded voice. If the clip is still downloading (the first lines of a game),
+  // wait a moment for it rather than falling back to the browser's robot voice; a line with no recording just shows the bubble.
+  const id=voiceId(text), stamp=shep.lastSay;
+  const play=delay=>{ const clip=SFX.voice[id]; if(!clip || !ok()) return false;
     try{ if(voiceSrc) voiceSrc.stop(); }catch(e){}
-    try{ speechSynthesis.cancel(); }catch(e){}
-    if(cmd) sWhistle(cmd);
-    voiceSrc=playBuf(clip,1,1.15,AC.currentTime+(cmd?.32:0),voiceBus);
-  } else if(cmd){ sWhistle(cmd); setTimeout(()=>speak(text),320); } else speak(text);
+    voiceSrc=playBuf(clip,1,1.15,AC.currentTime+delay,voiceBus); return true; };
+  if(!id || play(cmd?.32:0)) return;
+  let tries=0; const wait=setInterval(()=>{ tries++; if(shep.lastSay!==stamp || tries>16){ clearInterval(wait); return; } if(play(0)) clearInterval(wait); },150);
 }
 function updateBubble(dt){
   const b=$('bubble');
@@ -4291,7 +4295,7 @@ function applySkyInner(time){
   // shadows go lavender at dusk and navy at night; the low sun stays strong and golden right through the evening
   if(s<.45){ hemi.color.copy(H_NIGHT).lerp(H_DUSK,s/.45); SKY_ZEN.copy(Z_NIGHT).lerp(Z_DUSK,s/.45); } else { hemi.color.copy(H_DUSK).lerp(H_DAY,(s-.45)/.55); SKY_ZEN.copy(Z_DUSK).lerp(Z_DAY,(s-.45)/.55); }
   hemi.groundColor.copy(HG_NIGHT).lerp(HG_DAY,s);
-  hemi.intensity=.26+.36*s;
+  hemi.intensity=.42+.22*s;          // nights stay readable: dim and blue, not black
   sun.intensity=.5*smooth01(.04,.42,s)+.28*Math.max(0,1-Math.abs(s-.5)/.32);
   sun.color.copy(SUN_DUSK).lerp(SUN_DAY,clamp((s-.45)/.4,0,1));
   const a=f*Math.PI*.92+.12;
@@ -4299,10 +4303,10 @@ function applySkyInner(time){
   let cxs=0,czs=0; for(const D of dogs){ cxs+=D.x; czs+=D.z; } cxs/=dogs.length; czs/=dogs.length;
   sun.position.set(cxs+sd.x*90, sd.y*90, czs+sd.z*90); sun.target.position.set(cxs,0,czs);
   const n=1-s;
-  moonLight.intensity=n*.42;
+  moonLight.intensity=n*.7;
   // lamps come up as the light goes, so dusk stays golden instead of spotlit
   const lamp=smooth01(.4,.95,n), glowK=SEASON.frozen||LEVEL.theme==='moon'?.62:1;   // snow and moondust would blow out white
-  dogLight.intensity=lamp*glowK*(G.lanternT>0?3:1.7); dogLight.distance=G.lanternT>0?46:26; dogLight.position.set(dog.x,5.5,dog.z+1);
+  dogLight.intensity=lamp*glowK*(G.lanternT>0?2.4:1.15); dogLight.distance=G.lanternT>0?50:34;   // a soft wide glow, not a moving spotlight dogLight.position.set(dog.x,5.5,dog.z+1);
   for(let i=1;i<dogLights.length;i++){ const L=dogLights[i], D=ALLDOGS[i]; L.intensity=i<dogs.length?dogLight.intensity:0; L.distance=dogLight.distance; L.position.set(D.x,5.5,D.z+1); }
   lantern.intensity=lamp*1.25; shepLight.intensity=lamp*1.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.6;
   stars.position.copy(camera.position); stars.material.opacity=LEVEL.theme==='moon'?1:clamp(n*1.3-.3,0,1);
@@ -4320,6 +4324,8 @@ function applySkyInner(time){
   if(LEVEL.theme==='volcano'){ scene.background.lerp(VOLC_SKY,.4); SKY_ZEN.lerp(VOLC_SKY,.6); scene.fog.color.copy(scene.background); scene.fog.near=36; scene.fog.far=150; sun.color.setHex(0xffb27a); }
   if(G.ev && G.ev.kind==='golden'){ scene.background.lerp(GOLD_SKY,.35); SKY_ZEN.lerp(GOLD_SKY,.3); scene.fog.color.copy(scene.background); sun.color.setHex(0xffd27a); }
   if(G.ev && G.ev.kind==='disco'){ hemi.color.setHSL((time*.6)%1,.7,.6); }
+  // fog starts beyond the camera however far it has zoomed out, so night fog never swallows the action
+  { const cd=(camera.userData.h||20)/Math.sin(CAM_PITCH); scene.fog.near=Math.max(scene.fog.near,cd*.95); scene.fog.far=Math.max(scene.fog.far,cd+75); }
   if(G.twist==='foggy'){ const cd=(camera.userData.h||20)/Math.sin(CAM_PITCH); scene.fog.near=cd*.8; scene.fog.far=cd+22; }   // fog that thickens past the action, however far the camera has zoomed out
   updateClouds(time,LEVEL.theme==='farm'||LEVEL.theme==='desert');
   const fb=flies.userData.base, fp=flies.geometry.attributes.position;
