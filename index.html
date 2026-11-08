@@ -1119,7 +1119,7 @@ function initAudio(){
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
 const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it", "Load them up, NAME!": "load_up", "It's moving! After it!": "its_moving", "Over here now!": "over_here", "Mind the lava, NAME!": "mind_lava", "Ach! That one's toasted!": "toasted", "Ach! Over the edge!": "over_edge", "Falcon! Run, NAME!": "falcon", "Oi! Bring back me dog!": "bring_back", "Ha! Missed!": "missed_him", "All aboard! Grand!": "all_aboard", "That's no sheep! It's a coyote!": "no_sheep", "Twister! Hold on to yer sheep!": "twister", "Sheep from the sky?!": "from_sky", "A rainbow sheep! Catch it!": "rainbow", "The rainbow one! Ye beauty!": "rainbow_got", "What've they been eating?!": "sugar", "Is that... a disco?!": "disco", "Hay bales! Look out!": "bales", "Golden hour! Quick, get them in!": "golden_hour", "What a shot!": "what_shot", "Through the gates first, NAME!": "gates_first", "That's one!": "thats_one", "That's the gate open! Bring them in!": "gate_open", "Mind ye don't lose them in the corn!": "corn_maze", "Get them on the scales, NAME!": "on_scales", "Ach, they're a heavy lot!": "heavy_lot"};
-const SFX={bark:[],bleat:[],voice:{}};
+const SFX={bark:[],bleat:[],voice:{},coyote:[]};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
   return fetch(url).then(r=>r.ok?r.arrayBuffer():Promise.reject(r.status)).then(b=>new Promise((res,rej)=>AC.decodeAudioData(b,res,rej)));
@@ -1127,6 +1127,7 @@ function loadBuf(url){
 function loadAudioAssets(){
   if(assetsAsked || !AC) return; assetsAsked=true;
   loadBuf('audio/sfx/bark1.mp3').then(b=>SFX.bark.push(b)).catch(()=>{});   // one dog, one voice
+  [1,2,3,4].forEach(i=>loadBuf('audio/sfx/coyote'+i+'.mp3').then(b=>{ SFX.coyote[i-1]=b; }).catch(()=>{}));   // the coyotes: two short yips (1, 4), two long howls (2, 3)
   [...new Set(Object.values(VOICE_MAP))].forEach(id=>loadBuf('audio/voice/'+id+'.mp3').then(b=>{ SFX.voice[id]=b; }).catch(()=>{}));
 }
 function playBuf(buf,rate,vol,when,bus){
@@ -1220,7 +1221,17 @@ function sBleat(p){
   o.connect(f1).connect(g); o.connect(f2).connect(g);
   o.start(t); lfo.start(t); o.stop(t+.38); lfo.stop(t+.38);
 }
+// the coyotes' own voice: a recorded howl or yip, pitched a bit differently each time so a pack sounds like a pack
+let lastYip=0;
+function sCoyote(kind,p,delay){
+  if(!ok()) return false;
+  const pool=(kind==='howl'?[1,2]:[0,3]).map(i=>SFX.coyote[i]).filter(Boolean); if(!pool.length) return false;
+  if(kind==='yip'){ const now=performance.now(); if(now-lastYip<160) return true; lastYip=now; }
+  playBuf(pool[(Math.random()*pool.length)|0],(p||1)*(.95+Math.random()*.1),kind==='howl'?.95:.8,AC.currentTime+(delay||0));
+  return true;
+}
 function sHowl(delay,p){
+  if(sCoyote('howl',p,delay)) return;
   // a short, cartoony "a-woo!" rather than a long eerie howl
   if(!ok()) return; p=p||1; const t=AC.currentTime+(delay||0);
   const o=AC.createOscillator(), lfo=AC.createOscillator(), lg=AC.createGain();
@@ -1916,7 +1927,7 @@ function scareCoyote(c,t){
 function hitCoyote(c,dmg,kb,src,label){
   src=src||dog;
   if(c.boss){ if(c.state==='tired' && dmg>1) dmg*=2; if(src.rs) dmg+=1; }   // pounces and shots land double while it pants; ram bonks hurt more
-  c.hp-=dmg; c.hitCD=.6; c.spin=c.boss?.35:1; sYelp(); sThud();
+  c.hp-=dmg; c.hitCD=.6; c.spin=c.boss?.35:1; if(!sCoyote('yip',c.boss?.8:1.25)) sYelp(); sThud();
   if(src.isDog && !label) rumble(dmg>1?.8:.4,.5,dmg>1?220:120);
   G.shake=Math.max(G.shake,dmg>1?.8:.4);
   const dx=c.x-src.x, dz=c.z-src.z, d=Math.hypot(dx,dz)+1e-6; c.vx+=dx/d*kb; c.vz+=dz/d*kb;
@@ -2449,7 +2460,7 @@ function updateCoyotes(dt){
       dirx=(dx*cs-dz*sn)/d; dirz=(dx*sn+dz*cs)/d;
       spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0)+coyoteBoost(G.day);
       if(dd<5){ dirx+=ddx/dd*.6; dirz+=ddz/dd*.6; }
-      if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
+      if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; if(!sCoyote('yip',1.1)) sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
     } else if(c.state==='grab'){
       const s=c.carry;
       if(!s||s.dead){ c.carry=null; c.state='stalk'; }
