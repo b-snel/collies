@@ -280,6 +280,7 @@ button,input{touch-action:manipulation}</style>
     <span class="k kb"><kbd>Space</kbd>Bark</span>
     <span class="k kb"><kbd>E</kbd>Pounce</span>
     <span class="k kb"><kbd>C</kbd>Lie down</span>
+    <span class="k kb"><kbd>R</kbd>Grab</span>
     <span class="k kb" id="keyWhistle" hidden><kbd>Q</kbd>Whistle</span>
     <span class="k kb gun" id="keyShoot" hidden><kbd>F</kbd>Shoot</span>
     <span class="k kb opt"><kbd>P</kbd>Pause</span>
@@ -288,6 +289,7 @@ button,input{touch-action:manipulation}</style>
     <span class="k gp"><kbd class="a">A</kbd>Bark</span>
     <span class="k gp"><kbd class="b">B</kbd>Pounce</span>
     <span class="k gp"><kbd class="x">X</kbd>Lie down</span>
+    <span class="k gp"><kbd class="pill">LT</kbd>Grab</span>
     <span class="k gp"><kbd class="pill">RT</kbd>Run</span>
     <span class="k gp" id="keyWhistlePad" hidden><kbd class="pill">LB</kbd>Whistle</span>
     <span class="k gp gun" id="keyShootPad" hidden><kbd class="y">Y</kbd>Shoot</span>
@@ -299,6 +301,7 @@ button,input{touch-action:manipulation}</style>
   <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
   <div id="btns">
     <button id="bDown" type="button">Down</button>
+    <button id="bGrab" type="button">Grab</button>
     <button id="bRun" type="button">Run</button>
     <button id="bPounce" type="button">Pounce</button>
     <button id="bBark" type="button">Bark</button>
@@ -318,10 +321,10 @@ button,input{touch-action:manipulation}</style>
     <div class="nameRow" id="name2Row" hidden><label for="dogName2">Player 2</label><input id="dogName2" maxlength="14" autocomplete="off" spellcheck="false" value="Moss"></div>
     <div class="hatRow"><label>Hat</label><button class="hatBtn" id="hatPrev" type="button" aria-label="Previous hat">‹</button><span id="hatName">No hat</span><button class="hatBtn" id="hatNextBtn" type="button" aria-label="Next hat">›</button><span id="hatHint"></span></div>
     <div class="keyline">
-      <span class="kb"><kbd>WASD</kbd>Move</span><span class="kb"><kbd>Shift</kbd>Run</span><span class="kb"><kbd>Space</kbd>Bark</span><span class="kb"><kbd>E</kbd>Pounce</span><span class="kb"><kbd>C</kbd>Lie down</span>
-      <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Pounce</span><span class="gp"><kbd class="x">X</kbd>Lie down</span>
+      <span class="kb"><kbd>WASD</kbd>Move</span><span class="kb"><kbd>Shift</kbd>Run</span><span class="kb"><kbd>Space</kbd>Bark</span><span class="kb"><kbd>E</kbd>Pounce</span><span class="kb"><kbd>C</kbd>Lie down</span><span class="kb"><kbd>R</kbd>Hold to grab</span>
+      <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Pounce</span><span class="gp"><kbd class="x">X</kbd>Lie down</span><span class="gp"><kbd class="pill">LT</kbd>Hold to grab</span>
     </div>
-    <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down. Or a second controller.</p>
+    <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down, , grab. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button><button class="btn ghost" id="shedBtn" type="button">Shearing shed</button></div>
     <p class="small" id="bestLine"></p>
     <p class="small"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener" style="color:var(--muted)">Audio credits</a></p>
@@ -1066,6 +1069,15 @@ function sFlap(){
   if(!ok()) return; const t=AC.currentTime;
   for(let i=0;i<6;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='lowpass'; f.frequency.value=900; n.connect(f).connect(envG(t+i*.07,.005,.12,.06)); n.start(t+i*.07); n.stop(t+i*.07+.08); }
 }
+function sGrowl(){
+  if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator(), lfo=AC.createOscillator(), lg=AC.createGain(), f=AC.createBiquadFilter();
+  o.type='sawtooth'; o.frequency.value=150; lfo.frequency.value=28; lg.gain.value=30; lfo.connect(lg).connect(o.frequency);
+  f.type='lowpass'; f.frequency.value=700; o.connect(f).connect(envG(t,.02,.3,.28)); o.start(t); lfo.start(t); o.stop(t+.3); lfo.stop(t+.3);
+}
+function sShake(){
+  if(!ok()) return; const t=AC.currentTime;
+  for(let i=0;i<4;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='bandpass'; f.frequency.value=700+i*150; f.Q.value=1.5; n.connect(f).connect(envG(t+i*.05,.004,.25,.05)); n.start(t+i*.05); n.stop(t+i*.05+.06); }
+}
 function sThud(){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
   o.type='sine'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(50,t+.18);
@@ -1254,7 +1266,7 @@ function pollPad(){
     if(m<.2){ ax=0; ay=0; } else { const k=Math.min(1,(m-.2)/.8)/m; ax*=k; ay*=k; }   // radial dead zone
     if(b(14)) ax=-1; if(b(15)) ax=1; if(b(12)) ay=-1; if(b(13)) ay=1;                 // D-pad
     const D=owners[i]||null;
-    if(D) D.padCtl={x:ax,y:ay,run:b(7)||b(5)||b(10),down:b(2)||b(6)};
+    if(D) D.padCtl={x:ax,y:ay,run:b(7)||b(5)||b(10),down:b(2),grab:b(6)};   // LT = grab
     if(hit(9)){ if(playing) togglePause(); else clickPrimary(); }                     // Menu
     else if(hit(0) && (!playing || G.paused)){ initAudio(); clickPrimary(); }         // A on a menu
     else if(D && playing && !G.paused){
@@ -1272,11 +1284,11 @@ window.addEventListener('gamepadconnected',()=>pollPad());
 
 const keys=new Set();
 const joy={x:0,y:0,id:null};
-let touchRun=false, touchDown=false;
+let touchRun=false, touchDown=false, touchGrab=false;
 window.addEventListener('keydown',e=>{
   if(e.target && e.target.tagName==='INPUT'){ if(e.code==='Enter'){ e.preventDefault(); $('startBtn').click(); } return; }
   if(e.target && e.target.closest && e.target.closest('#shopOverlay') && (e.code==='Enter'||e.code==='Space')) return;   // let buttons in the shed work normally
-  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Slash','Quote','Period'].includes(e.code)) e.preventDefault();
+  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Slash','Quote','Period','Comma'].includes(e.code)) e.preventDefault();
   if(e.repeat) { keys.add(e.code); return; }
   keys.add(e.code);
   if(e.code==='Space') bark(dog);
@@ -1323,6 +1335,7 @@ function holdBtn(el,on){
 }
 holdBtn($('bRun'),v=>touchRun=v);
 holdBtn($('bDown'),v=>touchDown=v);
+holdBtn($('bGrab'),v=>touchGrab=v);
 $('bBark').addEventListener('pointerdown',e=>{ e.preventDefault(); bark(dog); });
 $('bPounce').addEventListener('pointerdown',e=>{ e.preventDefault(); pounce(dog); });
 $('bShoot').addEventListener('pointerdown',e=>{ e.preventDefault(); shoot(dog); });
@@ -1425,6 +1438,82 @@ function bark(D){
   }
   for(const s of G.sheep){ if(!s.dead && !s.carried && s.hop<=0 && Math.hypot(s.x-D.x,s.z-D.z)<10) s.hop=.45; }
 }
+// ---- grab, drag, shake and fling ----
+// how fast the dog can move while holding each thing, how hard it pulls back, and how quickly it tires the dog
+const GRAB={
+  sheep:{speed:.75,pull:2.5,grip:7}, lamb:{speed:.9,pull:1.5,grip:5}, ram:{speed:.5,pull:4.5,grip:12},
+  coyote:{speed:.6,pull:5.5,grip:12}, rascal:{speed:.7,pull:4,grip:9}, wolf:{speed:.4,pull:11,grip:18}
+};
+function grabKind(T){ return T.isRascal?'rascal':T.boss?'wolf':T.hp!==undefined&&T.alpha!==undefined?'coyote':T.ram?'ram':T.lamb?'lamb':'sheep'; }
+function tryGrab(D){
+  const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*1.1, mz=D.z+fz*1.1;
+  let best=null, bd=1.9;
+  const consider=(T,extra)=>{ if(T.grabbedBy) return; const d=Math.hypot(T.x-mx,T.z-mz)-(extra||0); if(d<bd){ bd=d; best=T; } };
+  for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried) consider(s);
+  for(const c of G.coyotes) if(!c.gone && c.state!=='retreat') consider(c, c.boss?1:0);
+  if(rascal.active && rascal.state==='run') consider(rascal);
+  if(!best) return;
+  const kind=grabKind(best);
+  D.grab={t:best,kind,hold:0,shakeCD:0,lastShake:9,wob:Math.random()*TAU};
+  best.grabbedBy=D;
+  if(kind==='coyote'||kind==='wolf'){ if(best.carry) dropSheep(best,true); best.state=best.boss?'stalk':'flee'; best.target=null; popText(best.x,2.4,best.z,'GOTCHA!','gold'); }
+  if(kind==='sheep'||kind==='lamb'||kind==='ram') sBleat(kind==='lamb'?1.7:1.05);
+  sGrowl(); rumble(.3,.5,120);
+}
+function releaseGrab(D,fling){
+  const g=D.grab; D.grab=null; if(!g||!g.t) return;
+  const T=g.t; T.grabbedBy=null;
+  const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), sp=Math.hypot(D.vx,D.vz);
+  if(fling && sp>2 && g.kind!=='wolf'){
+    // thrown with the dog's momentum
+    T.vx=D.vx*1.35+fx*4; T.vz=D.vz*1.35+fz*4; T.thrownT=.7; T.thrower=D;
+    sWhoosh();
+    if(g.kind==='sheep'||g.kind==='lamb'||g.kind==='ram'){ T.flip=.6; T.fear=1; T.stress=Math.min(1,(T.stress||0)+.15); sBleat(g.kind==='lamb'?1.8:1.2); }
+    else { T.spin=1; }
+    if(g.kind==='rascal') rascalLeave(true,D);
+  }
+  if(g.kind==='coyote' && T.state!=='retreat'){ T.state='flee'; T.fleeT=2; T.target=null; }
+}
+function shakeGrab(D){
+  const g=D.grab; if(!g || g.shakeCD>0) return;
+  g.shakeCD=.28; g.lastShake=0; D.shakeT=.3; sShake();
+  const T=g.t;
+  if(g.kind==='coyote'||g.kind==='wolf'){ T.hitCD=0; hitCoyote(T,1,2,D,'SHAKE!'); if(T.state==='retreat'){ releaseGrab(D,false); } else T.state=g.kind==='wolf'?'stalk':'flee'; }
+  else if(g.kind==='rascal'){ releaseGrab(D,false); rascalLeave(true,D); }
+  else if(g.kind==='ram'){ releaseGrab(D,false); T.rs='windup'; T.rt=.5; T.rtar=D; popText(T.x,2.8,T.z,'!','red'); }
+  else { T.stress=Math.min(1,(T.stress||0)+.35); T.munch=0; sBleat(g.kind==='lamb'?1.8:1.1); }
+}
+function updateGrab(D,dt){
+  const g=D.grab, T=g.t;
+  if(!T || T.dead || T.gone || T.penned || T.carried || (g.kind==='rascal'&&(!T.active||T.state!=='run')) || ((g.kind==='coyote'||g.kind==='wolf')&&T.state==='retreat')){ releaseGrab(D,false); return; }
+  const P=GRAB[g.kind];
+  g.hold+=dt; g.shakeCD=Math.max(0,g.shakeCD-dt); g.lastShake+=dt;
+  // it struggles: pulls against the way you're going, wobbling side to side
+  g.wob+=(Math.random()-.5)*dt*6;
+  const sp=Math.hypot(D.vx,D.vz)+1e-6;
+  let px=Math.cos(g.wob), pz=Math.sin(g.wob);
+  if(sp>1){ px-=D.vx/sp*.8; pz-=D.vz/sp*.8; }
+  const pl=Math.hypot(px,pz)+1e-6;
+  D.vx+=px/pl*P.pull*dt*3; D.vz+=pz/pl*P.pull*dt*3;
+  // hold it at the dog's mouth (the wolf is big, so it hangs further out)
+  const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), reach=g.kind==='wolf'?1.9:g.kind==='lamb'?.9:1.15;
+  const jig=D.shakeT>0?Math.sin(D.shakeT*60)*.35:0;
+  T.x=D.x+fx*reach+fz*jig; T.z=D.z+fz*reach-fx*jig; T.vx=D.vx; T.vz=D.vz;
+  const ox=T.x, oz=T.z;
+  collide(T,g.kind==='lamb'?.45:g.kind==='wolf'?1:.6,{gate:true,perim:true});
+  D.x+=T.x-ox; D.z+=T.z-oz;              // if what you're holding hits a fence, you stop too
+  // holding on is tiring, and wild things wriggle free unless you keep shaking them
+  D.stamina=Math.max(0,D.stamina-P.grip*dt);
+  if(D.stamina<=0){ releaseGrab(D,false); popText(D.x,2.4,D.z,'SLIP!','red'); return; }
+  if(g.kind==='sheep'||g.kind==='lamb'){ T.stress=Math.min(1,(T.stress||0)+.22*dt); T.attacked=.2; }
+  if((g.kind==='coyote'||g.kind==='wolf'||g.kind==='rascal') && g.lastShake>1.2 && Math.random()<dt*(g.kind==='wolf'?.7:.35)){ releaseGrab(D,false); sYelp(); return; }
+  if(g.kind==='ram' && g.hold>1.3){
+    // the ram won't stand for it: bucks the dog off and squares up
+    releaseGrab(D,false); D.stunT=.6*stunMul(); D.vx=-fx*12; D.vz=-fz*12; sThud();
+    popText(D.x,2.6,D.z,'BUCKED!','red'); T.rs='windup'; T.rt=.6; T.rtar=D;
+  }
+}
+
 function whistle(D){
   D=D||dog;
   if(!lv('whistle') || (G.phase!=='day' && G.phase!=='night') || G.paused || (D.whistleCD||0)>0) return;
@@ -1441,6 +1530,7 @@ function whistle(D){
 function pounce(D){
   D=D||dog;
   if(G.phase!=='day' && G.phase!=='night') return;
+  if(D.grab){ shakeGrab(D); return; }        // pounce while holding on = shake
   if(G.paused || D.pounceCD>0 || D.lying || D.stunT>0) return;
   const il=Math.hypot(D.inX,D.inZ);
   if(il>.1){ D.pdx=D.inX/il; D.pdz=D.inZ/il; } else { D.pdx=Math.sin(D.yaw); D.pdz=Math.cos(D.yaw); }
@@ -1570,7 +1660,7 @@ function endDay(reason){
 // ---------------- updates ----------------
 function updateDog(D,dt){
   const playing = G.phase==='day'||G.phase==='night';
-  let ix=0,iz=0, run=false, down=false;
+  let ix=0,iz=0, run=false, down=false, grabHeld=false;
   if(playing){
     if(D===dog){
       if(keys.has('KeyW')||(!G.coop&&keys.has('ArrowUp'))) iz-=1;
@@ -1579,13 +1669,14 @@ function updateDog(D,dt){
       if(keys.has('KeyD')||(!G.coop&&keys.has('ArrowRight'))) ix+=1;
       ix+=joy.x; iz+=joy.y;
       run=keys.has('ShiftLeft')||(!G.coop&&keys.has('ShiftRight'))||touchRun;
+      grabHeld=keys.has('KeyR')||touchGrab;
       down=keys.has('KeyC')||touchDown;
     } else {
       if(keys.has('ArrowUp')) iz-=1; if(keys.has('ArrowDown')) iz+=1;
       if(keys.has('ArrowLeft')) ix-=1; if(keys.has('ArrowRight')) ix+=1;
-      run=keys.has('ShiftRight'); down=keys.has('Period');
+      run=keys.has('ShiftRight'); down=keys.has('Period'); grabHeld=keys.has('Comma');
     }
-    if(D.padCtl){ ix+=D.padCtl.x; iz+=D.padCtl.y; run=run||D.padCtl.run; down=down||D.padCtl.down; }
+    if(D.padCtl){ ix+=D.padCtl.x; iz+=D.padCtl.y; run=run||D.padCtl.run; down=down||D.padCtl.down; grabHeld=grabHeld||D.padCtl.grab; }
   }
   if(D.stunT>0){ D.stunT-=dt; ix=0; iz=0; }
   const il=Math.hypot(ix,iz); if(il>1){ ix/=il; iz/=il; }
@@ -1606,12 +1697,17 @@ function updateDog(D,dt){
   if(D.pounceT>0){
     D.pounceT-=dt; D.vx=D.pdx*27; D.vz=D.pdz*27;
   } else {
-    const top = (D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'))*(D.swim?.55:1);
+    const top = (D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'))*(D.swim?.55:1)*(D.grab?GRAB[D.grab.kind].speed:1);
     const a=1-Math.exp(-dt*(D.lying?14:9));
     D.vx+=(ix*top-D.vx)*a; D.vz+=(iz*top-D.vz)*a;
   }
   D.x+=D.vx*dt; D.z+=D.vz*dt;
   collide(D,.55,{gate:false,perim:true,swim:true});
+  // grab: hold to latch on, let go to fling
+  if(playing && grabHeld && !D.grab && !D.lying && D.stunT<=0) tryGrab(D);
+  else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
+  if(D.grab) updateGrab(D,dt);
+  D.shakeT=Math.max(0,(D.shakeT||0)-dt);
   const wasSwim=D.swim; D.swim=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4;
   if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
@@ -1632,6 +1728,12 @@ function updateSheep(dt){
       continue;
     }
     if(s.carried){ s.attacked=.3; s.fear=1; continue; }
+    if(s.grabbedBy){ s.penned=false; continue; }            // dangling from a dog's mouth
+    if(s.thrownT>0){
+      s.thrownT-=dt;
+      // a flung sheep bowls over any coyote it hits
+      for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.hitCD>0||c.grabbedBy) continue; if(Math.hypot(c.x-s.x,c.z-s.z)<1.7){ hitCoyote(c,1,18,s,'BONK!'); s.vx*=.4; s.vz*=.4; } }
+    }
     if(s.ram && !s.penned && G.phase!=='title' && ramUpdate(s,dt)) continue;
     let fx=0,fz=0,fear=0;
     s.boingCD=Math.max(0,s.boingCD-dt);
@@ -1862,7 +1964,7 @@ function ramUpdate(s,dt){
 }
 function nearestSheep(c){
   let best=null, bd=1e9;
-  for(const s of G.sheep){ if(s.dead||s.penned||s.carried||s.ram) continue; const d=Math.hypot(s.x-c.x,s.z-c.z); if(d<bd){ bd=d; best=s; } }
+  for(const s of G.sheep){ if(s.dead||s.penned||s.carried||s.ram||s.grabbedBy) continue; const d=Math.hypot(s.x-c.x,s.z-c.z); if(d<bd){ bd=d; best=s; } }
   return best;
 }
 // the wolf: stalks like a coyote, but every few seconds crouches and lunges at the nearest dog
@@ -1915,8 +2017,20 @@ function updateCoyotes(dt){
   for(const c of G.coyotes){
     if(c.gone) continue;
     c.hitCD-=dt; c.spin=Math.max(0,c.spin-dt*2);
+    if(c.grabbedBy){ if(c.carry) dropSheep(c,true); continue; }     // held in a dog's jaws
+    if(c.thrownT>0){
+      c.thrownT-=dt; c.x+=c.vx*dt; c.z+=c.vz*dt; const k=Math.exp(-dt*2.2); c.vx*=k; c.vz*=k;
+      if(Math.hypot(c.x-POND.x,c.z-POND.z)<POND.r-.3){
+        // flung into the pond: soaked, and off home it goes
+        c.thrownT=0; c.state='retreat'; c.target=null; G.drivenOff++; G.score+=20; pop('tScore');
+        sSplash(); burst(c.x,.4,c.z,40,[0xcfe9ff,0x8fc7ec,0xffffff],4,6,10); popText(c.x,2.4,c.z,'SPLOSH! +20','gold');
+      }
+      for(const o of G.coyotes){ if(o===c||o.gone||o.state==='retreat'||o.hitCD>0||o.grabbedBy) continue; if(Math.hypot(o.x-c.x,o.z-c.z)<1.9){ hitCoyote(o,1,16,c,'BOWLED!'); c.vx*=.5; c.vz*=.5; } }
+      collide(c,.6,{gate:true,perim:false,swim:true});
+      continue;
+    }
     if(c.boss && wolfUpdate(c,dt)) continue;
-    if(c.state==='stalk' && (!c.target||c.target.dead||c.target.penned||c.target.carried)){
+    if(c.state==='stalk' && (!c.target||c.target.dead||c.target.penned||c.target.carried||c.target.grabbedBy)){
       c.target=nearestSheep(c); if(!c.target) c.state='retreat';
     }
     const ND=nearestDog(c.x,c.z), ddx=c.x-ND.x, ddz=c.z-ND.z, dd=Math.hypot(ddx,ddz)+1e-6;
@@ -2215,7 +2329,7 @@ function makeTerrier(){
   const tail=new THREE.Group(); tail.position.set(0,.7,-.4); body.add(tail); box(.07,.24,.07,T,0,.12,0,tail); tail.rotation.x=-.4;
   scene.add(g); return {g,body,head,legs,tail};
 }
-const rascal={active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
+const rascal={isRascal:true,active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
 rascal.m.g.visible=false;
 function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<2; G.rascalAt=.25+Math.random()*.3; }
 function rascalLeave(shooed,D){
@@ -2232,6 +2346,7 @@ function updateRascal(dt){
     }
     return;
   }
+  if(rascal.grabbedBy) return;
   rascal.t+=dt;
   let dirx=0,dirz=0,spd=0;
   if(rascal.state==='run'){
@@ -2240,7 +2355,7 @@ function updateRascal(dt){
     if(!rascal.target) rascalLeave(false);
     else { const dx=rascal.target.x-rascal.x, dz=rascal.target.z-rascal.z, d=Math.hypot(dx,dz)+1e-6, w=Math.sin(rascal.t*3)*.6; dirx=(dx*Math.cos(w)-dz*Math.sin(w))/d; dirz=(dx*Math.sin(w)+dz*Math.cos(w))/d; spd=11; }
     if(Math.random()<dt*1.5) sYip(1+Math.random()*.3);
-    for(const D of dogs){ const d=Math.hypot(D.x-rascal.x,D.z-rascal.z); if((D.barkT>0&&d<12)||(D.pounceT>0&&d<3)||d<1.6){ rascalLeave(true,D); break; } }
+    for(const D of dogs){ const d=Math.hypot(D.x-rascal.x,D.z-rascal.z); if((D.barkT>0&&d<12)||(D.pounceT>0&&d<3&&!D.grab)){ rascalLeave(true,D); break; } }
     if(rascal.t>28 || G.phase!=='day') rascalLeave(false);
   }
   if(rascal.state==='leave'){
@@ -2601,6 +2716,7 @@ function syncDog(D,dt,time,party){
   const sp=syncAnimal(D,dt,2.1);
   const dm=D.m;
   dm.body.rotation.x=0;
+  if(D.shakeT>0){ dm.head.rotation.y=Math.sin(time*60)*.7; } else dm.head.rotation.y=0;
   if(D.stunT>0){ dm.body.rotation.z=Math.sin(time*18)*.25; if(Math.random()<.3) burst(D.x,2.2,D.z,1,PC.gold,.8,.3,0); } else dm.body.rotation.z=0;
   if(D.pounceT>0){
     const k=1-D.pounceT/.3;
@@ -2629,7 +2745,7 @@ function syncAll(dt,time){
   for(const s of G.sheep){
     if(s.dead){ s.m.g.position.x=s.x; s.m.g.position.z=s.z; continue; }
     const v=syncAnimal(s,dt,2.6);
-    if(s.carried){
+    if(s.carried || s.grabbedBy){
       s.m.g.position.y+=.35; s.m.g.rotation.z=Math.sin(time*14)*.3;
       const f=Math.sin(time*22)*.8; s.m.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f);
     } else s.m.g.rotation.z=0;
@@ -2654,6 +2770,7 @@ function syncAll(dt,time){
     c.m.head.rotation.x = c.carry?.35:(c.state==='stalk'?.2:-.1);
     c.m.tail.rotation.x = c.state==='flee'||c.state==='retreat' ? -1.25 : -.75;
     c.m.body.rotation.z = c.spin*TAU;
+    if(c.grabbedBy){ c.m.body.rotation.z=Math.sin(time*18)*.35; const f=Math.sin(time*24)*.9; c.m.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f); }
     if(c.boss){
       c.m.body.position.y = c.state==='windup'?-.25:(c.state==='tired'?-.1:c.m.body.position.y);
       c.m.head.rotation.x = c.state==='windup'?.5:c.state==='lunge'?-.3:c.state==='tired'?.6+Math.sin(time*16)*.08:c.m.head.rotation.x;

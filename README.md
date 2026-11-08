@@ -13,10 +13,13 @@ Live at **https://collies.bsnel.com**
 | Space | Bark: scatters sheep, scares coyotes |
 | E | Pounce: a flying leap that knocks coyotes over and makes them drop sheep |
 | C | Lie down: calms the flock |
+| R (hold) | Grab the nearest sheep, coyote or Rascal. Drag it, press E to shake it, let go while moving to fling it |
 | P / Esc | Pause |
 | M | Sound on/off |
 
 On phones and tablets you get an on-screen joystick and buttons. You can add it to your home screen, and it works offline after the first visit.
+
+**Grab, shake, fling:** hold R (LT on a controller) to latch on. Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
 
 **Around the farm:** a duck pond (dogs can swim, sheep go around it) with a mother duck and ducklings you can herd into the pen for a bonus; Rascal, the neighbour's terrier, who sneaks in from day 2 to chase the flock until you bark or pounce him home; crows that scatter when you run through them; and Hank's cat asleep on a hay bale.
 
