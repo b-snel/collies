@@ -2818,7 +2818,7 @@ function updateSheep(dt){
       // pounce straight into a sheep and it goes BOING
       const bx=s.x-D.x, bz=s.z-D.z, bd=Math.hypot(bx,bz)+1e-6;
       if(bd<1.7){
-        s.boingCD=.8; s.munch=0; s.fear=1; s.flip=.6;
+        s.boingCD=.8; s.munch=0; s.munchImmune=8; s.fear=1; s.flip=.6;
         // PUNT: the sheep goes flying the way you pounced, and bowls over anything it hits
         s.vx=D.pdx*20+bx/bd*3; s.vz=D.pdz*20+bz/bd*3; s.thrownT=.75; s.punted=G.elapsed; s.chain=0;
         D.pounceT=0; D.vx*=.15; D.vz*=.15;      // the dog stops dead; all the energy goes into the sheep
@@ -2851,11 +2851,12 @@ function updateSheep(dt){
     }
     if(!s.penned){
       if(s.munch>0){
-        // head down in the grass: only a close dog, a bark, a pounce or a bang snaps it out
+        // head down in the clover: it tunes out the dog. Only a bark close by, a punt, a bang, or a dog right on top of it snaps it out,
+        // and then it won't stop again for a while, so you can drive it off the patch
         s.munch-=dt;
         for(const D of dogs){
           const d=Math.hypot(s.x-D.x,s.z-D.z);
-          if((D.barkT>0 && d<22) || (D.bangT>0 && d<18) || (D.pounceT>0 && d<14) || d<5){ s.munch=0; s.hop=.45; s.fear=Math.max(s.fear,.8); break; }
+          if((D.barkT>0 && d<14) || (D.bangT>0 && d<18) || (D.pounceT>0 && d<4) || d<2.2){ s.munch=0; s.munchImmune=8; s.hop=.45; s.fear=Math.max(s.fear,.8); break; }
         }
       }
       const ND=nearestDog(s.x,s.z), ndx=s.x-ND.x, ndz=s.z-ND.z, nd=Math.hypot(ndx,ndz)+1e-6;
@@ -2990,6 +2991,12 @@ function updateSheep(dt){
     if(G.ev && G.ev.kind==='sugar' && !s.penned){ fx+=Math.cos(s.wa+G.elapsed)*7; fz+=Math.sin(s.wa+G.elapsed)*7; }
     if(s.rainbow && !s.penned){ const ND2=nearestDog(s.x,s.z), rx=s.x-ND2.x, rz=s.z-ND2.z, rd=Math.hypot(rx,rz)+1e-6; if(rd<16){ fx+=rx/rd*(16-rd)*2.2; fz+=rz/rd*(16-rd)*2.2; } }
     if(G.gust>0 && !s.penned){ fx+=G.windX*.9; fz+=G.windZ*.9; }
+    // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking)
+    s.munchImmune=Math.max(0,(s.munchImmune||0)-dt);
+    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && (G.phase==='day'||G.phase==='night')){
+      const cl=nearestClover(s.x,s.z);
+      if(cl && cl.d<cl.r-.3){ s.munch=5+Math.random()*3; s.munchCD=5; s.vx*=.3; s.vz*=.3; onMunch(s); if(Math.random()<.3) popText(s.x,2,s.z,'nom','green'); }
+    }
     const ml=munchLevel(G.day);
     if(ml>0 && !s.penned && !s.ram && !eating && (G.phase==='day'||G.phase==='night') && s.fear<.12){
       // hungry sheep drift off toward clover and stop to eat
