@@ -2023,6 +2023,8 @@ function dogName(D){ return (G.names&&G.names[dogIdx(D)])||G.name; }
 function crewNames(){ const n=dogs.map(dogName); return n.length<2?n[0]:n.slice(0,-1).join(', ')+' and '+n[n.length-1]; }
 function crewMid(){ let x=0,z=0; for(const D of dogs){ x+=D.x; z+=D.z; } return {x:x/dogs.length,z:z/dogs.length}; }
 let dogs=[dog];
+// the nearest dog carrying an apple basket that this sheep can smell (and that isn't barking)
+function appleDog(s){ let b=null, bd=24; for(const D of dogs){ if(!(D.appleT>0) || D.barkT>0) continue; const d=Math.hypot(D.x-s.x,D.z-s.z); if(d<bd){ bd=d; b=D; } } return b; }
 function nearestDog(x,z){ let b=dog, bd=1e9; for(const D of dogs){ const d=Math.hypot(D.x-x,D.z-z); if(d<bd){ bd=d; b=D; } } return b; }
 let best=0; try{ best=+localStorage.getItem('collieDuskBest')||0; }catch(e){}
 function updateBestLine(){ $('bestLine').textContent = best>0 ? 'Best: '+best : ''; }
@@ -2152,7 +2154,7 @@ function setupDay(){
   applySeason(seasonOf(G.day));
   buildLevel(levelOf(G.day));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
-  G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
+  G.score=0; G.combo=0; G.lastPen=-99; for(const D of ALLDOGS){ D.appleT=0; D.lanternT=0; } G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
   clearClover(); spawnClover(cloverCount(G.day));
   if(G.day>=UNLOCK.bones) spawnGoldBones(); else clearGoldBones();
@@ -2664,7 +2666,7 @@ function endDay(reason){
   for(const c of G.coyotes) if(!c.gone){ dropSheep(c,false); c.state='retreat'; c.target=null; }
   if(rascal.active) rascalLeave(false);
   closeGates();
-  G.appleT=0; G.lanternT=0; for(const D of ALLDOGS) D.zoomT=0;
+  for(const D of ALLDOGS){ D.zoomT=0; D.appleT=0; D.lanternT=0; }
   const alive=G.sheep.filter(s=>!s.dead), penned=alive.filter(s=>s.penned).length, outside=alive.length-penned;
   const flock=G.sheep.length;
   const timeBonus = reason==='before' ? Math.round(dayLen(G.day)-G.t)*2 : 0;
@@ -2898,11 +2900,13 @@ function updateSheep(dt){
       if(rascal.active && rascal.state==='run' && !rascal.grabbedBy){ const e=Math.hypot(s.x-rascal.x,s.z-rascal.z); if(e<13) threat=Math.max(threat,(1-e/13)*.7); }
       s.threat=threat; s.hard=0; let stressIn=0, calmNear=false;
       if(s.munch>0){ calmNear=true; /* too busy eating to notice the dog */ }
-      else if(G.appleT>0 && ND.barkT<=0 && nd<24){
+      else if(appleDog(s)){
         calmNear=true;
-        // apple basket: the flock trots after the nearest dog
-        if(nd>3.4){ const k=Math.min(1,(nd-3.4)/5); fx-=ndx/nd*k*14; fz-=ndz/nd*k*14; }
-        else { fx+=ndx/nd*(3.4-nd)*9; fz+=ndz/nd*(3.4-nd)*9; }
+        // apple basket: the flock trots after the dog carrying it (not the other dogs)
+        const AD=appleDog(s), ax=s.x-AD.x, az=s.z-AD.z, ad=Math.hypot(ax,az)+1e-6;
+        if(ad>3.4){ const k=Math.min(1,(ad-3.4)/5); fx-=ax/ad*k*14; fz-=az/ad*k*14; }
+        else { fx+=ax/ad*(3.4-ad)*9; fz+=az/ad*(3.4-ad)*9; }
+        for(const D of dogs){ if(D===AD || D.flying) continue; const ox=s.x-D.x, oz=s.z-D.z, od=Math.hypot(ox,oz)+1e-6; if(od<10){ const k=1-od/10; fx+=ox/od*k*22; fz+=oz/od*k*22; } }   // the other dogs still push
         fear=Math.max(fear,.5);
         if(Math.random()<dt*.5) burst(s.x,1.9,s.z,1,PC.heart,.3,1.2,1);
       } else if(G.phase==='title'){ /* the dog is resting at the gate */ }
@@ -3177,7 +3181,7 @@ function updateCoyotes(dt){
       c.target=nearestSheep(c); if(!c.target) c.state='retreat';
     }
     const ND=nearestDog(c.x,c.z), ddx=c.x-ND.x, ddz=c.z-ND.z, dd=Math.hypot(ddx,ddz)+1e-6;
-    if(G.lanternT>0 && dd<13 && (c.state==='stalk'||c.state==='grab')) scareCoyote(c,1.6);
+    if((c.state==='stalk'||c.state==='grab') && dogs.some(D=>D.lanternT>0 && Math.hypot(c.x-D.x,c.z-D.z)<13)) scareCoyote(c,1.6);   // only the lantern dog keeps them back
     let dirx=0,dirz=0,spd=0;
     if(c.state==='stalk'){
       const t=c.target, dx=t.x-c.x, dz=t.z-c.z, d=Math.hypot(dx,dz)+1e-6;
@@ -4145,8 +4149,8 @@ function updatePowers(dt,time){
     if((G.phase==='day'||G.phase==='night') && !G.paused && taker){
       scene.remove(p.m.g); powerups.splice(i,1);
       if(p.type==='bone'){ taker.zoomT=10; taker.stamina=100; }
-      if(p.type==='apple') G.appleT=10;
-      if(p.type==='lantern') G.lanternT=12;
+      if(p.type==='apple') taker.appleT=10;
+      if(p.type==='lantern') taker.lanternT=12;
       burst(p.x,1.2,p.z,40,PC.confetti,6,6); sPickup();
       popText(p.x,2.2,p.z,POWER_MSG[p.type][1],'gold');
     }
@@ -4306,8 +4310,9 @@ function applySkyInner(time){
   moonLight.intensity=n*.7;
   // lamps come up as the light goes, so dusk stays golden instead of spotlit
   const lamp=smooth01(.4,.95,n), glowK=SEASON.frozen||LEVEL.theme==='moon'?.62:1;   // snow and moondust would blow out white
-  dogLight.intensity=lamp*glowK*(G.lanternT>0?2.4:1.15); dogLight.distance=G.lanternT>0?50:34;   // a soft wide glow, not a moving spotlight dogLight.position.set(dog.x,5.5,dog.z+1);
-  for(let i=1;i<dogLights.length;i++){ const L=dogLights[i], D=ALLDOGS[i]; L.intensity=i<dogs.length?dogLight.intensity:0; L.distance=dogLight.distance; L.position.set(D.x,5.5,D.z+1); }
+  // a soft wide glow, not a moving spotlight; brighter and wider for a dog carrying the lantern
+  dogLight.intensity=lamp*glowK*(dog.lanternT>0?2.4:1.15); dogLight.distance=dog.lanternT>0?50:34; dogLight.position.set(dog.x,5.5,dog.z+1);
+  for(let i=1;i<dogLights.length;i++){ const L=dogLights[i], D=ALLDOGS[i]; L.intensity=i<dogs.length?lamp*glowK*(D.lanternT>0?2.4:1.15):0; L.distance=D.lanternT>0?50:34; L.position.set(D.x,5.5,D.z+1); }
   lantern.intensity=lamp*1.25; shepLight.intensity=lamp*1.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.6;
   stars.position.copy(camera.position); stars.material.opacity=LEVEL.theme==='moon'?1:clamp(n*1.3-.3,0,1);
   moon.position.set(camera.position.x-120, camera.position.y+170, camera.position.z-360); moon.material.opacity=clamp(n*1.4-.4,0,1);
@@ -5727,7 +5732,7 @@ function updateHUD(dt,time){
   $('keysHint').classList.toggle('faded', G.elapsed>40 && !G.paused);
   { const w=G.coyotes.find(c=>c.boss&&!c.gone&&c.state!=='retreat'&&(G.phase==='night'));
     $('bossBar').hidden=!w; if(w) $('bossFill').style.width=Math.max(0,w.hp/w.maxHp*100)+'%'; }
-  setChip('pwZoom',Math.max(...dogs.map(D=>D.zoomT)),10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12); setChip('pwRage',G.rageT||0,15); $('pwFlank').hidden=!G.flanked;
+  setChip('pwZoom',Math.max(...dogs.map(D=>D.zoomT)),10); setChip('pwApple',Math.max(...dogs.map(D=>D.appleT||0)),10); setChip('pwLamp',Math.max(...dogs.map(D=>D.lanternT||0)),12); setChip('pwRage',G.rageT||0,15); $('pwFlank').hidden=!G.flanked;
   $('dayLabel').textContent='Day '+G.day+' · '+({sky:'Sky',sea:'Undersea',desert:'Desert',moon:'Moon',volcano:'Volcano'}[LEVEL.theme]||SEASON.label);
   const tf=$('timeFill');
   if(G.phase==='night'||(G.phase==='result'&&G.endReason!=='before')){
@@ -5757,7 +5762,7 @@ function step(dt){
     if(Math.random()<dt*6) burst(lerp(PEN.x0+2,PEN.x1-2,Math.random()),3+Math.random()*2,lerp(PEN.z0+2,PEN.z1-2,Math.random()),30,PC.confetti,6,8);
   }
   if(playing){
-    G.appleT=Math.max(0,G.appleT-dt); G.lanternT=Math.max(0,G.lanternT-dt);
+    for(const D of dogs){ D.appleT=Math.max(0,(D.appleT||0)-dt); D.lanternT=Math.max(0,(D.lanternT||0)-dt); }
     if(G.rageT>0){ G.rageT-=dt; if(G.rageT<=0){ G.rageT=0; if(SEASON.name==='autumn') setTimeout(placeShroom,3000);   // autumn: mushrooms regrow
       for(const s of G.sheep) if(!s.dead){ s.fear=.6; s.stress=.5; } shepSay("Phew. They've calmed down.",true); } }
     G.powerT-=dt;
