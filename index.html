@@ -179,6 +179,7 @@ body.pad .keyline .gp{display:flex}
 
 .pArrow{position:fixed;left:0;top:0;width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:22px solid #8fd3ff;pointer-events:none;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
 .pArrow.p2{border-bottom-color:var(--lantern)}
+.pArrow.coy{border-bottom-color:#ff4a3a}
 .pArrow.goal{border-bottom-color:#ffd84a;border-left-width:16px;border-right-width:16px;border-bottom-width:26px}
 
 .coopT{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
@@ -259,7 +260,7 @@ button,input{touch-action:manipulation}</style>
 <div id="game"></div>
 
 <div id="splitLine" hidden></div>
-<div class="pArrow goal" id="goalArrow" hidden></div><div class="pArrow" id="arrow1" hidden></div><div class="pArrow p2" id="arrow2" hidden></div>
+<div class="pArrow goal" id="goalArrow" hidden></div><div class="pArrow coy" hidden></div><div class="pArrow coy" hidden></div><div class="pArrow coy" hidden></div><div class="pArrow coy" hidden></div><div class="pArrow" id="arrow1" hidden></div><div class="pArrow p2" id="arrow2" hidden></div>
 <div id="pops"></div>
 <div id="bubble"></div>
 
@@ -829,9 +830,13 @@ function makeTree(x,z,s,collide){
   return g;
 }
 // one obstacle of a level's style: tree, cactus, coral, crystal or rock
+const fadeTrees=[];
 function makeObstacle(kind,x,z,s){
   let g, r=.6*s+.2;
-  if(kind==='tree') g=makeTree(x,z,s,false);
+  if(kind==='tree'){ g=makeTree(x,z,s,false);
+    // its own materials, so it can fade out when it's hiding an animal from the camera
+    const mats=[]; g.traverse(o=>{ if(o.isMesh){ o.material=o.material.clone(); o.material.transparent=true; mats.push(o.material); } }); fadeTrees.push({x,z,s,mats,op:1});
+  }
   else {
     g=new THREE.Group(); g.position.set(x,groundH(x,z),z); g.rotation.y=Math.random()*TAU; scene.add(g);
     if(kind==='cactus'){ const M=mat(0x4f8a3a); const b=new THREE.Mesh(new THREE.CylinderGeometry(.35*s,.4*s,3*s,7),M); b.position.y=1.5*s; g.add(b);
@@ -1651,7 +1656,7 @@ function startGame(fresh){
   camera2.position.copy(camera.position);
   const hasW=!!lv('whistle'); $('whistleRow').hidden=!hasW; $('bWhistle').hidden=!hasW; $('keyWhistle').hidden=!hasW; $('keyWhistlePad').hidden=!hasW;
   dog.whistleCD=0; dog2.whistleCD=0;
-  G.phase='day'; G.paused=false;
+  G.phase='day'; G.paused=false; camera.userData.reset=true; if(typeof camera2!=='undefined') camera2.userData.reset=true;
   hideOverlay();
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
@@ -3384,6 +3389,7 @@ const levelObjs=[];
 const hedgeMat=new THREE.MeshStandardMaterial({color:0x2f6a2a,roughness:1,flatShading:true});
 const _zero=new THREE.Matrix4().makeScale(0,0,0);
 function clearLevel(){
+  for(const f of fadeTrees) f.mats.forEach(m=>m.dispose()); fadeTrees.length=0;
   for(const o of levelObjs) scene.remove(o); levelObjs.length=0;
   for(let i=segs.length-1;i>=0;i--) if(segs[i].level) segs.splice(i,1);
   for(let i=circles.length-1;i>=0;i--) if(circles[i].level) circles.splice(i,1);
@@ -3691,6 +3697,23 @@ function updateGoalArrow(time){
   const w=window.innerWidth, h=window.innerHeight, m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.86, ey=ny/m*.82;
   const sx=(ex*.5+.5)*w, sy=(-ey*.5+.5)*h, ang=Math.atan2(ex,ey), bob=Math.sin(time*7)*3;
   el.hidden=false; el.style.transform=`translate(${sx-16+Math.sin(ang)*bob}px,${sy-13-Math.cos(ang)*bob}px) rotate(${ang}rad)`;
+}
+// red arrows at the screen edge for coyotes you can't see (they pulse when one's carrying a sheep off)
+const coyArrows=[...document.querySelectorAll('.pArrow.coy')], _tp=new THREE.Vector3();
+function updateThreatArrows(time){
+  const list=(G.phase==='day'||G.phase==='night') && !coopView ? G.coyotes.filter(c=>!c.gone && c.state!=='retreat').sort((a,b)=>Math.hypot(a.x-dog.x,a.z-dog.z)-Math.hypot(b.x-dog.x,b.z-dog.z)) : [];
+  const w=window.innerWidth, h=window.innerHeight;
+  let n=0;
+  for(const c of list){
+    if(n>=coyArrows.length) break;
+    _tp.set(c.x,groundH(c.x,c.z)+1,c.z).project(camera);
+    const behind=_tp.z>1; let nx=_tp.x, ny=_tp.y; if(behind){ nx=-nx; ny=-ny; }
+    if(!behind && Math.abs(nx)<.95 && Math.abs(ny)<.95) continue;
+    const m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.9, ey=ny/m*.86, sx=(ex*.5+.5)*w, sy=(-ey*.5+.5)*h, ang=Math.atan2(ex,ey);
+    const sc=c.carry?1.25+.25*Math.sin(time*14):c.boss?1.3:1;
+    const el=coyArrows[n++]; el.hidden=false; el.style.transform=`translate(${sx-13}px,${sy-11}px) rotate(${ang}rad) scale(${sc})`;
+  }
+  for(;n<coyArrows.length;n++) coyArrows[n].hidden=true;
 }
 function objectiveText(){
   if(PZ.type==='gates' && PZ.locked){ const g=PZ.gates[PZ.cur]; return 'Gate '+(PZ.cur+1)+' of '+PZ.gates.length+(g?' · '+g.passed.size+'/'+PZ.need:''); }
@@ -4108,7 +4131,20 @@ const bubbles=(function(){
   const p=new THREE.Points(g,new THREE.PointsMaterial({color:0xdffaff,size:.22,transparent:true,opacity:.7,depthWrite:false}));
   p.frustumCulled=false; p.visible=false; scene.add(p); return p;
 })();
+// trees between the camera and an animal you need to see turn see-through
+function updateTreeFade(dt){
+  if(!fadeTrees.length) return;
+  const subj=[...dogs.filter(D=>D===dog||G.coop)], k=1-Math.exp(-dt*8);
+  for(const s of G.sheep) if(!s.dead && !s.penned && Math.hypot(s.x-dog.x,s.z-dog.z)<34) subj.push(s);
+  for(const c of G.coyotes) if(!c.gone) subj.push(c);
+  for(const f of fadeTrees){
+    const hide=subj.some(p=>Math.abs(p.x-f.x)<3.1*f.s && f.z-p.z>-1.2 && f.z-p.z<5.5*f.s);
+    f.op=lerp(f.op,hide?.25:1,k);
+    for(const m of f.mats){ m.opacity=f.op; m.depthWrite=f.op>.95; }
+  }
+}
 function updateLevelFx(dt,time){
+  updateTreeFade(dt);
   lavaMat.emissiveIntensity=.85+.25*Math.sin(time*2.3);
   if(LEVEL.lava && LEVEL.lava.length && Math.random()<dt*4){ const lp=LEVEL.lava[(Math.random()*LEVEL.lava.length)|0], a=Math.random()*TAU, rr=Math.random()*lp.r*.8; burst(lp.x+Math.cos(a)*rr,groundH(lp.x,lp.z)+.3,lp.z+Math.sin(a)*rr,3,[0xff7a2a,0xffb14a,0x3a3330],1.4,3.4,5); }
   bubbles.visible=LEVEL.theme==='sea';
@@ -4128,14 +4164,40 @@ function updateLevelFx(dt,time){
 
 // ---------------- camera ----------------
 const camLook=new THREE.Vector3(0,0,-30), camLook2=new THREE.Vector3(0,0,-30);
-function followCam(cam,look,D,dt){
-  const z=G.zoom*(coopView?1.15:1);
-  const k=1-Math.exp(-dt*5);
-  look.x=lerp(look.x,D.x,k); look.z=lerp(look.z,D.z-4,k); look.y=0;
-  const gh=groundH(look.x,look.z);
-  cam.position.x=lerp(cam.position.x,look.x,k); cam.position.y=lerp(cam.position.y,19*z+gh,k); cam.position.z=lerp(cam.position.z,look.z+22*z,k);
-  cam.lookAt(look.x,gh+.5,look.z);
+// The camera frames the action: it looks fairly steeply down (north always up, so the controls never flip),
+// and zooms and slides to keep the dog, the sheep it's working and any coyotes near them all on screen,
+// whichever way you're driving the flock.
+const CAM_PITCH=58*Math.PI/180, CAM_FOV=50*Math.PI/180;
+// fit everything into the middle ~3/4 of the view, clear of the HUD panels at the edges
+const CAM_FIT=CAM_FOV*.78, CAM_S=1/Math.tan(CAM_PITCH+CAM_FIT/2), CAM_C=1/Math.tan(CAM_PITCH), CAM_N=1/Math.tan(CAM_PITCH-CAM_FIT/2);
+function frameCam(cam,look,D,dt,aspect,first){
+  const pts=[[D.x,D.z]], near=(x,z,r)=>Math.hypot(x-D.x,z-D.z)<r;
+  if(G.phase==='day'||G.phase==='night'||G.phase==='result'){
+    const reach=coopView?18:23;
+    for(const s of G.sheep) if(!s.dead && !s.penned && near(s.x,s.z,reach)) pts.push([s.x,s.z]);
+    for(const c of G.coyotes){ if(c.gone || c.state==='retreat') continue; if(near(c.x,c.z,20) || pts.some(p=>Math.hypot(c.x-p[0],c.z-p[1])<10)) pts.push([c.x,c.z]); }
+    if(COUG.on && COUG.prey) pts.push([COUG.x,COUG.z]);
+  }
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  for(const [x,z] of pts){ const cx=clamp(x,D.x-34,D.x+34), cz=clamp(z,D.z-34,D.z+34); x0=Math.min(x0,cx); x1=Math.max(x1,cx); z0=Math.min(z0,cz); z1=Math.max(z1,cz); }
+  const pad=4.5; x0-=pad; x1+=pad; z0-=pad; z1+=pad+1;
+  // how high the camera has to be to fit that box (depth and width), within limits
+  const hz=(z1-z0)/(CAM_N-CAM_S), hx=(x1-x0)*Math.sin(CAM_PITCH)/(2*Math.tan(CAM_FIT/2)*aspect*.92);
+  const h=clamp(Math.max(hz,hx,17),17,52)*G.zoom;
+  // aim so the box sits in the middle of the view
+  const az=(z0+z1+(CAM_S+CAM_N)*h)/2-CAM_C*h, ax=(x0+x1)/2;     // camera z is az+C*h; this splits the spare room evenly top and bottom
+  const k=first?1:1-Math.exp(-dt*3), kh=first?1:1-Math.exp(-dt*1.8);
+  look.x=lerp(look.x,ax,k); look.z=lerp(look.z,az,k); look.y=0;
+  cam.userData.h=lerp(cam.userData.h||h,h,kh);
+  const H=cam.userData.h, gh=groundH(look.x,look.z);
+  cam.position.set(look.x,gh+H,look.z+H*CAM_C);
+  cam.lookAt(look.x,gh,look.z);
   if(G.shake>0){ cam.position.x+=(Math.random()-.5)*G.shake; cam.position.y+=(Math.random()-.5)*G.shake; }
+}
+function followCam(cam,look,D,dt){
+  const w=window.innerWidth, hh=window.innerHeight;
+  frameCam(cam,look,D,dt,(coopView?w/2:w)/Math.max(1,hh),cam.userData.reset);
+  cam.userData.reset=false;
 }
 function updateCamera(dt,time){
   if(G.phase==='title'){
@@ -4359,7 +4421,7 @@ function frame(now){
   updateLevelFx(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
-  updatePartnerArrows(); updateGoalArrow(time);
+  updatePartnerArrows(); updateGoalArrow(time); updateThreatArrows(time);
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
   if(coopView && G.phase!=='title'){
     const w=window.innerWidth, h=window.innerHeight, hw=Math.floor(w/2);
