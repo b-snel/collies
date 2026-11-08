@@ -102,6 +102,12 @@ body.pad #keysHint .gp{display:flex}
 .nameRow input:focus-visible{outline:3px solid var(--lantern);outline-offset:1px}
 .finds{border-top:1px solid var(--edge);padding-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;font-size:14px;color:var(--muted)}
 .finds b{color:var(--ink);font-weight:700}
+.hatRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hatRow label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.hatBtn{font-family:var(--display);font-size:20px;line-height:1;width:36px;height:36px;border-radius:8px;border:1px solid var(--edge);background:rgba(244,234,210,.08);color:var(--wool);cursor:pointer}
+.hatBtn:focus-visible{outline:3px solid var(--lantern);outline-offset:1px}
+#hatName{font-family:var(--display);font-size:18px;color:var(--wool);min-width:110px;text-align:center}
+#hatHint{font-size:13px;color:var(--muted)}
 .keyline{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:15px;color:var(--muted)}
 .keyline span{display:flex;align-items:center;gap:7px}
 .keyline kbd{font-family:var(--ui);font-weight:700;font-size:13px;color:#1d1609;background:var(--wool);border-radius:5px;padding:2px 7px;box-shadow:0 2px 0 rgba(0,0,0,.4)}
@@ -240,6 +246,7 @@ button,input{touch-action:manipulation}</style>
     <h1>Collie at <em>Dusk</em></h1>
     <p>Pen the flock before dark. Then guard it from coyotes.</p>
     <div class="nameRow"><label for="dogName">Your collie</label><input id="dogName" maxlength="14" autocomplete="off" spellcheck="false" value="Bramble"></div>
+    <div class="hatRow"><label>Hat</label><button class="hatBtn" id="hatPrev" type="button" aria-label="Previous hat">‹</button><span id="hatName">No hat</span><button class="hatBtn" id="hatNextBtn" type="button" aria-label="Next hat">›</button><span id="hatHint"></span></div>
     <div class="keyline">
       <span class="kb"><kbd>WASD</kbd>Move</span><span class="kb"><kbd>Shift</kbd>Run</span><span class="kb"><kbd>Space</kbd>Bark</span><span class="kb"><kbd>E</kbd>Pounce</span><span class="kb"><kbd>C</kbd>Lie down</span>
       <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Pounce</span><span class="gp"><kbd class="x">X</kbd>Lie down</span>
@@ -274,6 +281,9 @@ const scoutAt = d => Math.max(.55, .85 - .06*(d-3));                   // fracti
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
 const munchLevel = d => d<2 ? 0 : Math.min(1, .25 + (d-2)*.19);       // how easily sheep get distracted by grass
 const cloverCount = d => Math.min(5, Math.max(0, d-1));
+const lambCount = d => Math.min(5, 2 + Math.floor((d-1)/2));
+const stormChance = d => d<2 ? 0 : .35;
+const HATS=[{id:'none',name:'No hat',need:0},{id:'bandana',name:'Bandana',need:3},{id:'straw',name:'Straw hat',need:6},{id:'cowboy',name:'Cowboy hat',need:10},{id:'party',name:'Party hat',need:15},{id:'crown',name:'Crown',need:21}];
 function dayNews(d){
   return ({2:'Big coyote tonight. Clover too.', 3:'Two rams. Early scouts.', 4:'Two big coyotes.', 5:'Three rams.', 6:'Three big coyotes.'})[d] || (d>6?'Bolder every night.':'');
 }
@@ -573,7 +583,7 @@ function makeDog(){
 const woolGeo=new THREE.IcosahedronGeometry(.5,1);
 const FACE=mat(0x1f1b19);
 function makeSheep(black,golden,ram){
-  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body); g.rotation.order='YXZ';
   const base=new THREE.Color(golden?0xf2c94c:black?0x3a3532:ram?0xe4dac4:0xf6f1e3);
   const wool=new THREE.MeshStandardMaterial({color:base.clone(),roughness:golden?.5:1,metalness:golden?.25:0,flatShading:true,emissive:golden?0x6a4800:0x000000,emissiveIntensity:golden?.7:0});
   for(const [x,y,z,s] of [[0,1,0,1.05],[0,1.04,.42,.92],[0,1,-.42,.98],[.27,.96,0,.82],[-.27,.96,0,.82],[0,1.28,0,.78]]){
@@ -786,6 +796,22 @@ function sSnort(){
   if(!ok()) return; const t=AC.currentTime;
   for(let i=0;i<2;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='lowpass'; f.frequency.value=700; n.connect(f).connect(envG(t+i*.18,.01,.5,.14)); n.start(t+i*.18); n.stop(t+i*.18+.16); }
 }
+function sBoing(){
+  if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
+  o.type='sine'; o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(880,t+.12); o.frequency.exponentialRampToValueAtTime(520,t+.3);
+  const lfo=AC.createOscillator(), lg=AC.createGain(); lfo.frequency.value=22; lg.gain.value=40; lfo.connect(lg).connect(o.frequency);
+  o.connect(envG(t,.005,.35,.34)); o.start(t); lfo.start(t); o.stop(t+.36); lfo.stop(t+.36);
+}
+function sThunder(){
+  if(!ok()) return; const t=AC.currentTime;
+  for(let i=0;i<4;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='lowpass'; f.frequency.value=160+Math.random()*140; n.connect(f).connect(envG(t+i*.32,.04,.95-i*.18,.55)); n.start(t+i*.32); n.stop(t+i*.32+.52); }
+}
+let rainSrc=null;
+function startRain(){
+  if(!ok() || rainSrc) return;
+  try{ rainSrc=AC.createBufferSource(); rainSrc.buffer=getNoise(); rainSrc.loop=true; const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=1400; const g=AC.createGain(); g.gain.value=.06; rainSrc.connect(f).connect(g).connect(master); rainSrc.start(); }catch(e){ rainSrc=null; }
+}
+function stopRain(){ if(rainSrc){ try{ rainSrc.stop(); }catch(e){} rainSrc=null; } }
 function sThud(){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
   o.type='sine'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(50,t+.18);
@@ -859,8 +885,18 @@ function spawnFlock(n){
     const black = (!golden && i===n-1 && Math.random()<.6);
     const ram = (i>=1 && i<=ramCount(G.day) && n>=8);
     const m=makeSheep(black&&!ram,golden,ram); const s=.9+Math.random()*.2; m.g.scale.setScalar(ram?1.4:s);
-    G.sheep.push({x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,golden:golden,hop:0,ram:ram,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6});
+    G.sheep.push(newSheep(x,z,m,{golden,ram}));
   }
+  // lambs trot along beside a few of the ewes
+  const moms=G.sheep.filter(o=>!o.ram && !o.golden).slice(0,lambCount(G.day));
+  for(const mom of moms){
+    const m=makeSheep(false,false,false); m.g.scale.setScalar(.55);
+    const l=newSheep(mom.x+1.3,mom.z+.9,m,{lamb:true}); l.mom=mom; G.sheep.push(l);
+  }
+}
+function newSheep(x,z,m,o){
+  return {x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,
+    golden:!!o.golden,hop:0,ram:!!o.ram,lamb:!!o.lamb,mom:null,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6,flip:0,boingCD:0};
 }
 function resetDog(){
   dog.x=0; dog.z=PEN.z1+10; dog.vx=dog.vz=0; dog.yaw=Math.PI; dog.stamina=100; dog.tired=false; dog.barkCD=0; dog.barkT=0; dog.zoomT=0; dog.pounceT=0; dog.pounceCD=0; dog.stunT=0;
@@ -876,6 +912,7 @@ function setupDay(){
   spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
+  G.storm=false; G.flash=0; stopRain();
   resetGun();
 }
 
@@ -1054,7 +1091,7 @@ function onPenned(s){
   G.penned++; sChime(); sBleat(1.15); pop('tPen');
   if(G.elapsed-G.lastPen<6) G.combo++; else G.combo=1;
   G.lastPen=G.elapsed;
-  let pts=10*G.combo; if(s.golden) pts+=50; if(s.ram) pts+=30;
+  let pts=10*G.combo; if(s.golden) pts+=50; if(s.ram) pts+=30; if(s.lamb) pts+=5;
   G.score+=pts; pop('tScore');
   popText(s.x,2.2,s.z,'+'+pts+(G.combo>1?'  x'+G.combo:''),(s.golden||G.combo>2)?'gold':'');
   burst(s.x,1.5,s.z,s.golden?70:24,s.golden?PC.gold:PC.confetti,5,7);
@@ -1098,6 +1135,7 @@ function hitCoyote(c,dmg,kb,src,label){
 }
 function startNight(){
   G.phase='night'; G.t=0;
+  G.storm=Math.random()<stormChance(G.day); G.boltT=3;
   const n=coyoteCount(G.day), now=Math.ceil(n*.6);
   for(let i=0;i<now;i++) spawnCoyote(i<alphaCount(G.day));
   G.toSpawn=n-now; G.spawnT=10;
@@ -1105,11 +1143,12 @@ function startNight(){
   sHowl(0,1); sHowl(.6,1.12); sHowl(1.4,.92);
   setTimeout(()=>shepSay('Here they come! Guard the flock!',true),1800);
   const out=G.sheep.filter(s=>!s.dead&&!s.penned).length;
-  toast('Nightfall!','bad',2.2);
+  toast(G.storm?'Stormy night!':'Nightfall!','bad',2.2);
+  if(G.storm){ startRain(); setTimeout(()=>shepSay("Ach, it's a wild night!",true),4200); }
 }
 function closeGates(){ for(const l of leaves){ l.target=l.closedA; l.seg.on=false; } }
 function endDay(reason){
-  G.phase='result'; G.endReason=reason;
+  G.phase='result'; G.endReason=reason; stopRain();
   for(const c of G.coyotes) if(!c.gone){ dropSheep(c,false); c.state='retreat'; c.target=null; }
   closeGates();
   G.appleT=0; G.lanternT=0; dog.zoomT=0;
@@ -1121,6 +1160,9 @@ function endDay(reason){
   G.total += dayScore; G.score=0;
   if(G.total>best){ best=G.total; try{ localStorage.setItem('collieDuskBest',String(best)); }catch(e){} }
   const stars = reason==='before'?3 : reason==='wiped'?0 : (G.lost===0?2:1);
+  const oldStars=starsTotal; starsTotal+=stars; try{ localStorage.setItem('collieDuskStars',String(starsTotal)); }catch(e){}
+  const newHat=HATS.filter(h=>h.need>oldStars && h.need<=starsTotal).pop();
+  if(newHat){ setHat(newHat.id); setTimeout(()=>toast('New hat!','warn',2.4),400); }
   if(stars>0){ G.celebrate = stars>=2 ? 4 : 2; sFanfare(); }
   const N=G.name;
   shepSay({before:"That'll do, "+N+". That'll do.",nightsafe:"Good dog. They're all safe now.",dawn:'Morning! You did well, '+N+'.',wiped:'Ach. We will try again.'}[reason],true);
@@ -1139,6 +1181,7 @@ function endDay(reason){
   setTimeout(()=>{
     showOverlay(`<span class="eyebrow">Day ${G.day}</span>${starsHtml}<h2>${T[0]}</h2>
       <div class="stats">${stat(penned,'Penned')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(dayScore,'Score')}${stat(G.total,'Total','gold')}</div>
+      ${newHat?`<p class="small" style="color:var(--lantern)">New hat: ${newHat.name}</p>`:''}
       ${reason!=='wiped'?`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`:''}
       <div class="btnrow">${next}</div>`);
     $('nextBtn').onclick=()=>{ if(reason==='wiped') startGame(true); else { G.day++; startGame(false); } };
@@ -1204,6 +1247,18 @@ function updateSheep(dt){
     if(s.carried){ s.attacked=.3; s.fear=1; continue; }
     if(s.ram && !s.penned && G.phase!=='title' && ramUpdate(s,dt)) continue;
     let fx=0,fz=0,fear=0;
+    s.boingCD=Math.max(0,s.boingCD-dt);
+    if(!s.penned && G.phase!=='title' && dog.pounceT>0 && s.boingCD<=0){
+      // pounce straight into a sheep and it goes BOING
+      const bx=s.x-dog.x, bz=s.z-dog.z, bd=Math.hypot(bx,bz)+1e-6;
+      if(bd<1.7){
+        s.boingCD=.8; s.munch=0; s.fear=1; s.flip=.6;
+        s.vx=dog.pdx*12+bx/bd*3; s.vz=dog.pdz*12+bz/bd*3;
+        sBoing(); sBleat(s.lamb?1.7:1.3); popText(s.x,2.4,s.z,'BOING','gold');
+        burst(s.x,1,s.z,12,s.golden?PC.gold:PC.confetti,3,4);
+        if(s.ram){ s.rs='windup'; s.rt=.6; s.rtar=dog; }
+      }
+    }
     if(!s.penned){
       const dx=s.x-dog.x, dz=s.z-dog.z, d=Math.hypot(dx,dz)+1e-6;
       if(s.munch>0){
@@ -1244,6 +1299,17 @@ function updateSheep(dt){
         if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); s.munch=0; }
       }
       { const ex=s.x-shep.x, ez=s.z-shep.z, e=Math.hypot(ex,ez)+1e-6; if(e<6){ const k=1-e/6; fx+=ex/e*k*14; fz+=ez/e*k*14; fear=Math.max(fear,k*.5); } }
+      if(s.lamb){
+        // stay close to mum; if she's penned, find the gate; if she's gone, tag along with the dog
+        const mom=s.mom; let tx, tz;
+        if(mom && !mom.dead && !mom.carried){
+          if(mom.penned){ const gz=PEN.z1+2.5, dg=Math.hypot(s.x,s.z-gz); if(dg>2.5){ tx=0; tz=gz; } else { tx=0; tz=PEN.z1-3; } }
+          else { tx=mom.x; tz=mom.z; }
+        } else { tx=dog.x; tz=dog.z; }
+        const lx=tx-s.x, lz=tz-s.z, ld=Math.hypot(lx,lz)+1e-6;
+        if(ld>1.8){ const k=Math.min(1,(ld-1.8)/4); fx+=lx/ld*k*16; fz+=lz/ld*k*16; fear=Math.max(fear,.25*k); }
+        if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
+      }
       const m=FIELD-3;
       if(s.x>m) fx-=(s.x-m)*6; if(s.x<-m) fx+=(-m-s.x)*6;
       if(s.z>m) fz-=(s.z-m)*6; if(s.z<-m) fz+=(-m-s.z)*6;
@@ -1275,11 +1341,11 @@ function updateSheep(dt){
     }
     s.vx+=fx*dt; s.vz+=fz*dt;
     const damp=eating?7:(s.fear>.1?1.1:2.8); const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
-    let maxV=1.4+s.fear*7.4; if(s.golden) maxV+=1.5; if(s.penned) maxV=1.3;
-    const v=Math.hypot(s.vx,s.vz); if(v>maxV){ s.vx*=maxV/v; s.vz*=maxV/v; }
+    let maxV=1.4+s.fear*7.4; if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.penned) maxV=1.3;
+    const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
     // a sheep dropped just outside the boundary slips back through the wire
-    collide(s,.7,{gate:s.penned,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
+    collide(s,s.lamb?.45:.7,{gate:s.penned,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
     if(!s.penned && G.phase!=='title' && insidePen(s.x,s.z)){ s.penned=true; onPenned(s); }
     s.attacked=Math.max(0,s.attacked-dt);
   }
@@ -1450,6 +1516,67 @@ function updateBullets(dt){
     if(hit){ scene.remove(b.m); bullets.splice(i,1); }
   }
 }
+
+// ---------------- dog hats, unlocked with stars ----------------
+let starsTotal=0, hatSel='none';
+try{ starsTotal=+localStorage.getItem('collieDuskStars')||0; hatSel=localStorage.getItem('collieDuskHat')||'none'; }catch(e){}
+let hatObj=null;
+function buildHat(id){
+  const g=new THREE.Group(), V=(x,y)=>new THREE.Vector2(x,y), ds=c=>new THREE.MeshStandardMaterial({color:c,roughness:.9,flatShading:true,side:THREE.DoubleSide});
+  if(id==='bandana'){
+    const red=ds(0xc8322a);
+    const band=new THREE.Mesh(new THREE.BoxGeometry(.6,.12,.46),red); band.position.set(0,1.18,.62); g.add(band);
+    const tri=new THREE.Mesh(new THREE.ConeGeometry(.26,.36,3),red); tri.rotation.set(Math.PI,0,0); tri.scale.z=.35; tri.position.set(0,1.0,.86); g.add(tri);
+    return {g,onBody:true};
+  }
+  if(id==='straw'){
+    const st=ds(0xe3c065);
+    g.add(new THREE.Mesh(new THREE.LatheGeometry([V(.15,.0),V(.44,-.03),V(.46,-.05),V(.15,-.02)],16),st));
+    const c=new THREE.Mesh(new THREE.CylinderGeometry(.17,.2,.16,12),st); c.position.y=.08; g.add(c);
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(.205,.205,.05,12,1,true),ds(0xc8322a)); b.position.y=.03; g.add(b);
+  } else if(id==='cowboy'){
+    const br=ds(0x7a4e2a);
+    g.add(new THREE.Mesh(new THREE.LatheGeometry([V(.16,0),V(.34,0),V(.44,.07),V(.47,.13),V(.42,.08),V(.32,.03),V(.16,.03)],16),br));
+    const c=new THREE.Mesh(new THREE.LatheGeometry([V(0,.2),V(.1,.24),V(.17,.22),V(.2,.1),V(.2,0)],12),br); g.add(c);
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(.205,.205,.05,12,1,true),ds(0x2b2219)); b.position.y=.04; g.add(b);
+  } else if(id==='party'){
+    const c=new THREE.Mesh(new THREE.ConeGeometry(.17,.46,12),ds(0xff6fae)); c.position.y=.23; g.add(c);
+    const pom=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),ds(0xffd84a)); pom.position.y=.48; g.add(pom);
+    for(let k=0;k<3;k++){ const r=new THREE.Mesh(new THREE.TorusGeometry(.15-k*.045,.018,4,14),ds(0x7fd0ff)); r.rotation.x=Math.PI/2; r.position.y=.07+k*.13; g.add(r); }
+    g.rotation.z=-.2;
+  } else if(id==='crown'){
+    const gold=new THREE.MeshStandardMaterial({color:0xffd34d,metalness:.15,roughness:.4,emissive:0x6a4a00,emissiveIntensity:.6,flatShading:true,side:THREE.DoubleSide});
+    const ring=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.13,10,1,true),gold); ring.position.y=.06; g.add(ring);
+    for(let k=0;k<5;k++){ const a=k/5*TAU, sp=new THREE.Mesh(new THREE.ConeGeometry(.05,.14,4),gold); sp.position.set(Math.cos(a)*.19,.19,Math.sin(a)*.19); g.add(sp);
+      const gem=new THREE.Mesh(new THREE.SphereGeometry(.03,6,4),new THREE.MeshStandardMaterial({color:[0xd9443b,0x2f74d0,0x3fa34d][k%3],roughness:.3})); gem.position.set(Math.cos(a)*.205,.07,Math.sin(a)*.205); g.add(gem); }
+  } else return null;
+  g.position.set(0,.24,-.02); g.rotation.x+= -.08;
+  return {g,onBody:false};
+}
+function hatUnlocked(h){ return starsTotal>=h.need; }
+function setHat(id){
+  if(hatObj){ hatObj.g.parent && hatObj.g.parent.remove(hatObj.g); hatObj=null; }
+  hatSel=id; try{ localStorage.setItem('collieDuskHat',id); }catch(e){}
+  const h=buildHat(id);
+  if(h){ h.g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); (h.onBody?dog.m.body:dog.m.head).add(h.g); hatObj=h; }
+  refreshHatUI();
+}
+function refreshHatUI(){
+  const nameEl=$('hatName'), hintEl=$('hatHint');
+  if(!nameEl || !hintEl) return;                     // the picker only lives on the title screen
+  const h=HATS.find(x=>x.id===hatSel)||HATS[0];
+  nameEl.textContent=h.name;
+  const next=HATS.find(x=>!hatUnlocked(x));
+  hintEl.textContent=next?'Next at '+next.need+'★':'';
+}
+function cycleHat(dir){
+  const open=HATS.filter(hatUnlocked); let i=open.findIndex(x=>x.id===hatSel); if(i<0) i=0;
+  setHat(open[(i+dir+open.length)%open.length].id);
+}
+$('hatPrev').addEventListener('click',()=>cycleHat(-1));
+$('hatNextBtn').addEventListener('click',()=>cycleHat(1));
+if(!hatUnlocked(HATS.find(x=>x.id===hatSel)||HATS[0])) hatSel='none';
+setHat(hatSel);
 
 // ---------------- Old Hank, the shepherd ----------------
 function makeShepherd(){
@@ -1683,6 +1810,7 @@ function syncAll(dt,time){
     } else s.m.g.rotation.z=0;
     if(G.celebrate>0 && s.penned && s.hop<=0 && Math.random()<dt*2.5) s.hop=.45;
     if(s.hop>0){ s.hop=Math.max(0,s.hop-dt); s.m.g.position.y+=Math.sin((1-s.hop/.45)*Math.PI)*.7; }
+    if(s.flip>0){ s.flip=Math.max(0,s.flip-dt); const k=1-s.flip/.6; s.m.g.rotation.x=-k*TAU; s.m.g.position.y+=Math.sin(k*Math.PI)*1.6; } else s.m.g.rotation.x=0;
     const grazing=v<.35 && !s.walking && s.fear<.1;
     s.m.head.rotation.x=lerp(s.m.head.rotation.x, s.munch>0?.95+Math.sin(time*14)*.1:(grazing?.75:0), s.munch>0?.3:.08);
     if(s.munch>0 && Math.random()<dt*5) burst(s.x+Math.sin(s.yaw)*1.1,.35,s.z+Math.cos(s.yaw)*1.1,2,PC.grass,.9,1.8,9);
@@ -1750,6 +1878,48 @@ function applySky(time){
   fp.needsUpdate=true; flies.material.opacity=clamp(n*1.2-.3,0,1)*(.6+.4*Math.sin(time*3));
 }
 
+// ---------------- weather: rain and lightning on stormy nights ----------------
+const RAIN_N=1400;
+const rain=(function(){
+  const pos=new Float32Array(RAIN_N*3);
+  for(let i=0;i<RAIN_N;i++){ pos[i*3]=(Math.random()*2-1)*32; pos[i*3+1]=Math.random()*26; pos[i*3+2]=(Math.random()*2-1)*32; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const pts=new THREE.Points(g,new THREE.PointsMaterial({color:0xb8c8e8,size:.13,transparent:true,opacity:.65,depthWrite:false}));
+  pts.frustumCulled=false; pts.visible=false; scene.add(pts); return pts;
+})();
+const _white=new THREE.Color(0xdfe8ff);
+function scareFlock(){
+  for(const s of G.sheep){
+    if(s.dead||s.penned||s.carried) continue;
+    s.fear=Math.max(s.fear,.7); s.munch=0; s.hop=.45;
+    const a=Math.random()*TAU; s.vx+=Math.cos(a)*4; s.vz+=Math.sin(a)*4;
+  }
+}
+function updateWeather(dt,time){
+  const on=G.storm && (G.phase==='night' || (G.phase==='result' && G.endReason!=='before'));
+  rain.visible=on;
+  if(!on){ G.flash=0; return; }
+  const P=rain.geometry.attributes.position;
+  for(let i=0;i<RAIN_N;i++){
+    let y=P.getY(i)-34*dt, x=P.getX(i)-5*dt;
+    if(y<0){ y+=26; x=(Math.random()*2-1)*32; P.setZ(i,(Math.random()*2-1)*32); }
+    if(x<-32) x+=64;
+    P.setY(i,y); P.setX(i,x);
+  }
+  P.needsUpdate=true;
+  rain.position.set(camLook.x,0,camLook.z);
+  scene.fog.far*=.75; scene.fog.near*=.8; hemi.intensity*=.8;
+  if(G.phase==='night' && !G.paused){
+    G.boltT-=dt;
+    if(G.boltT<=0){ G.boltT=4+Math.random()*6; G.flash=1; setTimeout(sThunder,250+Math.random()*700); scareFlock(); G.shake=Math.max(G.shake,.25); }
+  }
+  if(G.flash>0){
+    G.flash=Math.max(0,G.flash-dt*3.2);
+    const f=G.flash*(.55+.45*Math.sin(time*55));
+    scene.background.lerp(_white,f*.6); scene.fog.color.copy(scene.background); hemi.intensity+=f*1.8;
+  }
+}
+
 // ---------------- camera ----------------
 const camLook=new THREE.Vector3(0,0,-30);
 function updateCamera(dt,time){
@@ -1784,7 +1954,7 @@ function drawMinimap(time){
   for(const s of G.sheep){
     if(s.dead) continue;
     mx.fillStyle = s.attacked>0 ? '#ff6b5a' : s.munch>0 ? '#9ccf5a' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
-    mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.penned?3:4,0,TAU); mx.fill();
+    mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.lamb?2.5:s.penned?3:4,0,TAU); mx.fill();
   }
   for(const c of G.coyotes){
     if(c.gone) continue;
@@ -1908,6 +2078,7 @@ function frame(now){
   updateBubble(dt);
   syncAll(dt,time);
   applySky(time);
+  updateWeather(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
