@@ -245,10 +245,26 @@ function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d
 const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:4.5};
 const BARN = {bx:-23, bz:-38};
-const NIGHT_LEN = 50;
+let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 const dayLen = d => Math.max(55, 90 - (d-1)*7);
 const flockSize = d => Math.min(24, 10 + (d-1)*2);
 const coyoteCount = d => Math.min(9, 2 + d);
+const ramCount = d => Math.min(4, 1 + Math.floor((d-1)/2));          // 1,1,2,2,3,3,4
+const alphaCount = d => d<2 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
+const scoutCount = d => d<3 ? 0 : Math.min(3, d-2);                    // early coyotes at dusk
+const scoutAt = d => Math.max(.55, .85 - .06*(d-3));                   // fraction of the day they show up
+const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
+function dayNews(d){
+  return ({2:'A big red-eyed coyote leads the pack tonight.',
+           3:'Two rams in the flock, and coyote scouts sneak in at dusk.',
+           4:'Two big coyotes now, and the scouts come earlier.',
+           5:'Three rams. Mind your tail.',
+           6:'Three big coyotes. The pack is hungry.'})[d] || (d>6?'The pack gets bolder every night.':'');
+}
+function dayPlan(d){
+  const c=coyoteCount(d)+scoutCount(d), r=ramCount(d);
+  return flockSize(d)+' sheep, '+r+(r>1?' rams':' ram')+', '+c+' coyotes';
+}
 
 // ---------------- noise ----------------
 const fract = x => x - Math.floor(x);
@@ -765,7 +781,7 @@ const G = {
   phase:'title', day:1, t:0, paused:false,
   sheep:[], coyotes:[], penned:0, lost:0, drivenOff:0, total:0,
   toSpawn:0, spawnT:0, warned:{}, endReason:'', zoom:1,
-  score:0, combo:0, lastPen:-99, hasGun:false, gunSpot:null, elapsed:0, appleT:0, lanternT:0, powerT:0, celebrate:0, shake:0, name:'Bramble'
+  score:0, combo:0, lastPen:-99, hasGun:false, gunSpot:null, gunDropT:0, elapsed:0, appleT:0, lanternT:0, powerT:0, celebrate:0, shake:0, name:'Bramble'
 };
 const dog = {x:0,z:PEN.z1+10,vx:0,vz:0,yaw:Math.PI,phase:0,speed:0,stamina:100,tired:false,barkCD:0,barkT:0,bangT:0,gunCD:0,stunT:0,lying:false,zoomT:0,pounceT:0,pounceCD:0,pdx:0,pdz:1,inX:0,inZ:0,m:makeDog()};
 let best=0; try{ best=+localStorage.getItem('collieDuskBest')||0; }catch(e){}
@@ -793,7 +809,7 @@ function spawnFlock(n){
     let x,z,k=0; do{ x=c[0]+(Math.random()*2-1)*6; z=c[1]+(Math.random()*2-1)*6; k++; }while(!clearOf(x,z,1.5) && k<30);
     const golden = (i===0 && n>=8);
     const black = (!golden && i===n-1 && Math.random()<.6);
-    const ram = (i===1 && n>=8);
+    const ram = (i>=1 && i<=ramCount(G.day) && n>=8);
     const m=makeSheep(black&&!ram,golden,ram); const s=.9+Math.random()*.2; m.g.scale.setScalar(ram?1.4:s);
     G.sheep.push({x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,golden:golden,hop:0,ram:ram,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1});
   }
@@ -810,6 +826,8 @@ function setupDay(){
   resetDog();
   spawnPower('bone'); G.powerT=12;
   resetShepherd();
+  NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
+  resetGun();
 }
 
 // ---------------- input ----------------
@@ -897,13 +915,13 @@ function startGame(fresh){
   initAudio();
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   const ni=$('dogName'); if(ni){ G.name=(ni.value.trim()||'Bramble').slice(0,14); try{ localStorage.setItem('collieDuskName',G.name); }catch(e){} }
-  if(fresh){ G.day=1; G.total=0; G.hasGun=false; hideGun(); }
+  if(fresh){ G.day=1; G.total=0; }
   setupDay();
   G.phase='day'; G.paused=false;
   hideOverlay();
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
-  toast('Day '+G.day+'. Bring in all '+G.sheep.length+' sheep, '+G.name+'!','',3.2);
+  toast(G.day===1 ? 'Day 1. Bring in all '+G.sheep.length+' sheep, '+G.name+'!' : 'Day '+G.day+'. '+dayNews(G.day),'',3.6);
   setTimeout(()=>shepSay('Away out, '+G.name+'! Bring them in!',true),900);
 }
 $('startBtn').addEventListener('click',()=>startGame(true));
@@ -994,7 +1012,7 @@ function hitCoyote(c,dmg,kb,src,label){
 function startNight(){
   G.phase='night'; G.t=0;
   const n=coyoteCount(G.day), now=Math.ceil(n*.6);
-  for(let i=0;i<now;i++) spawnCoyote(G.day>=2 && i===0);
+  for(let i=0;i<now;i++) spawnCoyote(i<alphaCount(G.day));
   G.toSpawn=n-now; G.spawnT=10;
   spawnPower('lantern');
   sHowl(0,1); sHowl(.6,1.12); sHowl(1.4,.92);
@@ -1035,6 +1053,7 @@ function endDay(reason){
     showOverlay(`<span class="eyebrow">Day ${G.day} · ${flock} sheep</span>${starsHtml}<h2>${T[0]}</h2><p>${T[1]}</p>
       <div class="stats">${stat(penned,'Penned')}${stat(outside,'Survived outside')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(G.drivenOff,'Coyotes driven off')}${stat(dayScore,'Day score')}${stat(G.total,'Total','gold')}</div>
       ${notes.length?`<p class="small">Bonus: ${notes.join(', ')}.</p>`:''}
+      ${reason!=='wiped'?`<p class="small"><b>Tomorrow:</b> ${dayPlan(G.day+1)}. ${dayNews(G.day+1)}</p>`:''}
       <div class="btnrow">${next}</div>`);
     $('nextBtn').onclick=()=>{ if(reason==='wiped') startGame(true); else { G.day++; startGame(false); } };
     const a=$('againBtn'); if(a) a.onclick=()=>startGame(true);
@@ -1166,7 +1185,7 @@ function updateSheep(dt){
 
 // ---- the big ram: now and then it squares up and charges ----
 function ramTarget(s){
-  if(G.phase==='night'){
+  if(G.coyotes.length){
     let best=null, bd=10;
     for(const c of G.coyotes){ if(c.gone||c.state==='retreat') continue; const d=Math.hypot(c.x-s.x,c.z-s.z); if(d<bd){ bd=d; best=c; } }
     if(best) return best;
@@ -1202,7 +1221,7 @@ function ramUpdate(s,dt){
         dog.vx=s.cdx*20; dog.vz=s.cdz*20; dog.stunT=1.1; dog.pounceT=0;
         G.shake=Math.max(G.shake,.8); sThud(); sYelp();
         popText(dog.x,2.6,dog.z,'BONK!','red'); shepSay('Mind the ram, '+G.name+'!',true); burst(dog.x,1.4,dog.z,22,PC.spark,5,4);
-      } else if(G.phase==='night') hitCoyote(t,2,26,s,'RAM BONK!');
+      } else hitCoyote(t,2,26,s,'RAM BONK!');
       s.rs='idle'; s.rcd=9+Math.random()*5; s.vx*=.2; s.vz*=.2;
     } else { s.rt-=dt; if(s.rt<=0){ s.rs='dazed'; s.rt=1.8; popText(s.x,2.8,s.z,'Dazed','gold'); } }
   } else if(s.rs==='dazed'){
@@ -1236,7 +1255,7 @@ function updateCoyotes(dt){
       const t=c.target, dx=t.x-c.x, dz=t.z-c.z, d=Math.hypot(dx,dz)+1e-6;
       const w=Math.sin(G.t*1.4+c.wob)*.7*Math.min(1,d/14), cs=Math.cos(w), sn=Math.sin(w);
       dirx=(dx*cs-dz*sn)/d; dirz=(dx*sn+dz*cs)/d;
-      spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0);
+      spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0)+coyoteBoost(G.day);
       if(dd<5){ dirx+=ddx/dd*.6; dirz+=ddz/dd*.6; }
       if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
     } else if(c.state==='grab'){
@@ -1246,14 +1265,14 @@ function updateCoyotes(dt){
         // drag it away from the pen, toward the hills
         const dx=c.x, dz=c.z-PCZ, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d;
         if(dd<6){ dirx+=ddx/dd*.5; dirz+=ddz/dd*.5; }
-        spd=c.alpha?6.6:5.8;
+        spd=(c.alpha?6.6:5.8)+coyoteBoost(G.day)*.5;
         if(Math.max(Math.abs(c.x),Math.abs(c.z))>FIELD+3){
           killSheep(s); scene.remove(s.m.g); c.carry=null; c.gone=true; scene.remove(c.m.g); continue;
         }
       }
     } else if(c.state==='flee'){
       dirx=ddx/dd; dirz=ddz/dd; spd=11.5; c.fleeT-=dt;
-      if(c.fleeT<=0) c.state=G.phase==='night'?'stalk':'retreat';
+      if(c.fleeT<=0) c.state=(G.phase==='night'||G.phase==='day')?'stalk':'retreat';
     } else if(c.state==='retreat'){
       const d=Math.hypot(c.x,c.z)+1e-6; dirx=c.x/d; dirz=c.z/d; spd=11;
       if(d>FIELD+50){ c.gone=true; scene.remove(c.m.g); continue; }
@@ -1264,7 +1283,7 @@ function updateCoyotes(dt){
     c.x+=c.vx*dt; c.z+=c.vz*dt;
     collide(c,.6,{gate:true,perim:false});
     if(c.carry){ const s=c.carry; s.x=c.x+Math.sin(c.yaw)*1.25; s.z=c.z+Math.cos(c.yaw)*1.25; s.vx=c.vx; s.vz=c.vz; }
-    if(G.phase==='night' && c.state!=='retreat' && c.hitCD<=0){
+    if((G.phase==='night'||G.phase==='day') && c.state!=='retreat' && c.hitCD<=0){
       if(dog.pounceT>0 && dd<2.7) hitCoyote(c,2,24);
       else if(dd<1.95) hitCoyote(c,1,16);
     }
@@ -1281,23 +1300,22 @@ function makeGun(){
   box(.04,.12,.06,mat(0x2b2b2e),0,-.1,.36,g);
   return g;
 }
-const GUN_SPOTS=[[BARN.bx,-FIELD+2.2],[FIELD-2.4,-FIELD+2.4],[-FIELD+2.4,FIELD-2.4],[FIELD-2.4,FIELD-2.4]];
 const groundGun=makeGun(); groundGun.scale.setScalar(1.3); groundGun.rotation.set(0,.7,1.45); groundGun.visible=false; scene.add(groundGun);
 const dogGun=makeGun(); dogGun.scale.setScalar(.75); dogGun.position.set(.16,-.14,.42); dogGun.visible=false; dog.m.head.add(dogGun);
 const bullets=[];
 const bulletGeo=new THREE.SphereGeometry(.14,8,6), bulletMat=new THREE.MeshBasicMaterial({color:0xffe27a});
-function hideGun(){ G.gunSpot=GUN_SPOTS[(Math.random()*GUN_SPOTS.length)|0]; groundGun.position.set(G.gunSpot[0],.16,G.gunSpot[1]); groundGun.visible=true; }
 function updateGun(dt,time){
   dogGun.visible=G.hasGun;
   $('bShoot').hidden=!G.hasGun;
   $('keyShoot').hidden=!G.hasGun;
   if(G.hasGun || !G.gunSpot) return;
-  if(Math.random()<dt*.35) burst(G.gunSpot[0],.5,G.gunSpot[1],3,PC.spark,.6,1.5,2);   // a faint glint
-  if((G.phase==='day'||G.phase==='night') && !G.paused && Math.hypot(G.gunSpot[0]-dog.x,G.gunSpot[1]-dog.z)<1.8){
+  if(G.gunDropT>0){ G.gunDropT=Math.max(0,G.gunDropT-dt); const k=1-G.gunDropT/.7; groundGun.position.y=.16+Math.sin(k*Math.PI)*1.4; groundGun.rotation.y+=dt*9; }
+  if(Math.random()<dt*1.5) burst(G.gunSpot[0],.5,G.gunSpot[1],2,PC.spark,.6,1.5,2);   // a glint so you can spot it
+  if((G.phase==='day'||G.phase==='night') && !G.paused && G.gunDropT<=0 && Math.hypot(G.gunSpot[0]-dog.x,G.gunSpot[1]-dog.z)<1.8){
     G.hasGun=true; groundGun.visible=false;
     sPickup(); sFanfare(); burst(G.gunSpot[0],1,G.gunSpot[1],60,PC.gold,6,7);
-    toast('Secret found! The farmer\'s old gun. Press F to shoot.','warn',4);
-    popText(G.gunSpot[0],2,G.gunSpot[1],'SECRET!','gold'); shepSay('Ha! My old gun! Go on then!',true);
+    toast(document.body.classList.contains('touch')?'Got Hank\'s old gun! Tap Shoot.':'Got Hank\'s old gun! Press F to shoot.','warn',3.5);
+    popText(G.gunSpot[0],2,G.gunSpot[1],'GOT IT!','gold'); shepSay('Ach, go on then! Just for today!',true); G.gunSpot=null;
   }
 }
 function shoot(){
@@ -1365,7 +1383,34 @@ function makeShepherd(){
   return {g,body,torso,head,legs,arms};
 }
 const shepLight=new THREE.PointLight(0xffc27a,0,16,1.5); scene.add(shepLight);
-const shep={x:PEN.gx+3,z:PEN.z1+4,vx:0,vz:0,yaw:0,phase:0,sayT:0,lastSay:-99,m:makeShepherd()};
+const shep={x:PEN.gx+3,z:PEN.z1+4,vx:0,vz:0,yaw:0,phase:0,sayT:0,lastSay:-99,stumble:0,bumpCD:0,m:makeShepherd()};
+// Hank's old gun, slung across his back. Pounce into him from behind and it falls off.
+const hankGunSling=new THREE.Group(); hankGunSling.position.set(0,.5,-.3); hankGunSling.rotation.z=.75; shep.m.torso.add(hankGunSling);
+const hankGun=makeGun(); hankGun.rotation.x=-Math.PI/2; hankGun.position.y=-.5; hankGun.scale.setScalar(.95); hankGunSling.add(hankGun);
+function resetGun(){
+  G.hasGun=false; G.gunSpot=null; G.gunDropT=0;
+  groundGun.visible=false; hankGunSling.visible=true;
+  for(const b of bullets) scene.remove(b.m); bullets.length=0;
+}
+function bumpHank(){
+  const fx=Math.sin(shep.yaw), fz=Math.cos(shep.yaw);
+  const behind=((dog.x-shep.x)*fx+(dog.z-shep.z)*fz)<0;
+  shep.stumble=.6; shep.bumpCD=1.5; sThud(); G.shake=Math.max(G.shake,.3);
+  dog.pounceT=0; dog.vx*=-.3; dog.vz*=-.3;
+  if(behind && hankGunSling.visible){
+    hankGunSling.visible=false;
+    let gx=clamp(shep.x-fx*2,-FIELD+2,FIELD-2), gz=clamp(shep.z-fz*2,-FIELD+2,FIELD-2);
+    if(insidePen(gx,gz)) gz=PEN.z1+2;
+    G.gunSpot=[gx,gz]; G.gunDropT=.7;
+    groundGun.position.set(gx,.16,gz); groundGun.visible=true;
+    burst(shep.x,2.2,shep.z,24,PC.spark,4,5);
+    popText(shep.x,3.4,shep.z,'OOF!','red');
+    shepSay('Oof! Me gun!',true);
+  } else {
+    popText(shep.x,3.4,shep.z,'OI!','red');
+    shepSay(['Oi! Watch it!','Mind yer manners!','Not me, the sheep!'][(Math.random()*3)|0],true);
+  }
+}
 function resetShepherd(){ shep.x=PEN.gx+3; shep.z=PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; }
 function updateShepherd(dt){
   let dirx=0,dirz=0,spd=0;
@@ -1377,6 +1422,8 @@ function updateShepherd(dt){
   shep.vx+=(dirx*spd-shep.vx)*a; shep.vz+=(dirz*spd-shep.vz)*a;
   shep.x+=shep.vx*dt; shep.z+=shep.vz*dt;
   collide(shep,.55,{gate:false,perim:true});
+  shep.stumble=Math.max(0,shep.stumble-dt); shep.bumpCD=Math.max(0,shep.bumpCD-dt);
+  if((G.phase==='day'||G.phase==='night') && dog.pounceT>0 && shep.bumpCD<=0 && Math.hypot(dog.x-shep.x,dog.z-shep.z)<1.7) bumpHank();
 }
 function syncShepherd(dt,time){
   const m=shep.m, sp=Math.hypot(shep.vx,shep.vz);
@@ -1386,6 +1433,7 @@ function syncShepherd(dt,time){
   shep.phase+=dt*sp*2.2;
   const k=Math.min(1,sp/2), sw=Math.sin(shep.phase);
   m.legs[0].rotation.x=sw*.5*k; m.legs[1].rotation.x=-sw*.5*k;
+  m.torso.rotation.x=.14+Math.sin(Math.min(1,shep.stumble/.6)*Math.PI)*.7;
   m.arms[0].rotation.x=-sw*.3*k;
   m.body.position.y=Math.abs(sw)*.05*k;
   let crookX=-.35+sw*.12*k, crookZ=0;
@@ -1723,6 +1771,12 @@ function step(dt){
     else if(f>=1) startNight();
     else if(f>.7 && !G.warned.low){ G.warned.low=1; toast('The sun is getting low.','warn',2.6); }
     else if(f>.88 && !G.warned.dusk){ G.warned.dusk=1; toast('Dusk. Coyotes will be out soon.','warn',2.8); sHowl(0,.8); }
+    if(scoutCount(G.day) && f>scoutAt(G.day) && !G.warned.scouts){
+      G.warned.scouts=1;
+      for(let i=0;i<scoutCount(G.day);i++) spawnCoyote(false);
+      sHowl(0,1.1); toast('Coyote scouts! They are early tonight.','bad',2.8);
+      setTimeout(()=>shepSay('Coyotes already?! Get after them!',true),700);
+    }
   } else if(G.phase==='night'){
     G.spawnT-=dt;
     if(G.toSpawn>0 && G.spawnT<=0){ spawnCoyote(false); G.toSpawn--; G.spawnT=9; if(Math.random()<.7) sHowl(0,.9+Math.random()*.3); }
