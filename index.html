@@ -428,10 +428,13 @@ function generateLevel(d){
   const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
   // theme: day 1 is always the farm; never the same special theme twice running
   let theme='farm';
-  if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>t==='farm'||t!==prev); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
+  const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
+  if(d===UNLOCK.hazards) theme=chance(.5)?'volcano':'sky';      // the day lava and cliffs arrive, make sure you see them
+  else if(d===UNLOCK.worlds) theme=pick(['desert','sea','moon']);
+  else if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
   const L={theme,season:THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null};
   // where the sheep go: the barn pen, or a pickup that turns up somewhere new (and keeps moving)
-  L.goal = d===1 ? 'pen' : (theme==='farm'||theme==='desert') ? (chance(.65)?'pickup':'pen') : 'pickup';
+  L.goal = d<UNLOCK.pickup ? 'pen' : d===UNLOCK.pickup ? 'pickup' : d===UNLOCK.pickup+1 ? 'pen' : (theme==='farm'||theme==='desert') ? (chance(.65)?'pickup':'pen') : 'pickup';
   L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8),volcano:r(.8,1.5)}[theme]};
   const taken=[];   // circles already used, so features don't pile on each other
   const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
@@ -439,7 +442,7 @@ function generateLevel(d){
     || (L.river && Math.abs(z-riverZ(L.river,x))<L.river.w/2+2.5+pad)
     || L.walls.some(w=>{ const [ax,az,bx,bz]=w.seg, abx=bx-ax, abz=bz-az, t=clamp(((x-ax)*abx+(z-az)*abz)/(abx*abx+abz*abz),0,1); return Math.hypot(x-ax-abx*t,z-az-abz*t)<1.5+pad; });
   // a winding river with 1-3 bridges
-  if(d>1 && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
+  if(d>2 && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
     const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[],lava:theme==='volcano'};
     const nb=1+((R()*3)|0); let tries=0;
     while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
@@ -490,7 +493,7 @@ function generateLevel(d){
   for(let k=0,t=0;k<nr && t<40;t++){ const cx=r(-38,38), cz=r(-4,42); if(blockedAt(cx,cz,4)) continue; const n=3+((R()*4)|0);
     for(let q=0;q<n;q++){ const a=R()*TAU, rr=r(0,4); L.rocks.push({x:cx+Math.cos(a)*rr,z:cz+Math.sin(a)*rr,s:r(.6,1.4)}); }
     taken.push({x:cx,z:cz,r:6}); k++; }
-  if(d>1 && chance(.75)) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy')));   // fog underwater was unplayable
+  if(d>=UNLOCK.twist && chance(Math.min(.8,.3+.06*d))) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy')));   // fog underwater was unplayable
   // a name for the place
   const adj=pick(['Windy','Mossy','Crooked','Sunny','Misty','Old','Lonely','Bonny','Wild','Muddy','Bramble','Thistle','Heather','Golden']);
   const noun=theme==='sky'?pick(['Skies','Clouds','Heights']):theme==='sea'?pick(['Deep','Reef','Shallows']):theme==='desert'?pick(['Dunes','Gulch','Flats']):theme==='moon'?pick(['Craters','Moon','Basin']):theme==='volcano'?pick(['Caldera','Cinders','Ashlands'])
@@ -511,18 +514,21 @@ const seasonOf = d => levelOf(d).season || ['spring','summer','autumn','winter']
 let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
+// the game starts simple and adds one new thing a day, then gets crazier
+const UNLOCK={pickup:2,ram:2,power:2,surprise:3,raid:3,bones:3,worlds:4,twist:4,munch:4,storm:4,falcon:5,rascal:5,hazards:6,shroom:6,boss:6,wild:7};
+const NEW_ON={2:'Moving pickups',3:'Surprises',4:'New worlds',5:'Falcons',6:'Lava & cliffs',7:'Wild surprises'};
 const coyoteCount = d => Math.min(9, 2 + d);
-const ramCount = d => Math.min(4, 1 + Math.floor((d-1)/2));          // 1,1,2,2,3,3,4
-const alphaCount = d => d<2 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
+const ramCount = d => d<UNLOCK.ram ? 0 : Math.min(4, 1 + Math.floor((d-2)/2));   // 0,1,1,2,2,3,3,4
+const alphaCount = d => d<3 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
 // daytime coyote raids, every day: [fraction of the day, how many]
-const raidPlan = d => { const w=seasonOf(d)==='winter'?1:0; return [[.3, Math.min(3, 1+Math.floor((d-1)/2))+w], [.62, Math.min(4, 1+Math.floor(d/2))+w]]; };   // hungrier in winter
+const raidPlan = d => { if(d<UNLOCK.raid) return []; const w=seasonOf(d)==='winter'?1:0; if(d<5) return [[.4,1]]; return [[.3, Math.min(3, 1+Math.floor((d-3)/2))+w], [.62, Math.min(4, Math.floor(d/2))+w]]; };   // hungrier in winter
 const raidTotal = d => raidPlan(d).reduce((a,r)=>a+r[1],0);
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
-const munchLevel = d => d<2 ? 0 : Math.min(1, .25 + (d-2)*.19);       // how easily sheep get distracted by grass
+const munchLevel = d => d<UNLOCK.munch ? 0 : Math.min(1, .25 + (d-UNLOCK.munch)*.19);       // how easily sheep get distracted by grass
 const cloverCount = d => seasonOf(d)==='winter' ? 0 : Math.min(5, Math.max(0, d-1)) + (seasonOf(d)==='spring'?1:0);
 const lambCount = d => Math.min(7, 2 + Math.floor((d-1)/2) + (seasonOf(d)==='spring'?2:0));
-const stormChance = d => d<2 ? 0 : .35;
-const bossNight = d => d>=3 && d%3===0;                 // the wolf comes on days 3, 6, 9...
+const stormChance = d => d<UNLOCK.storm ? 0 : .35;
+const bossNight = d => d>=UNLOCK.boss && d%3===0;       // the wolf comes on days 6, 9, 12...
 const wolfHp = d => 16 + Math.floor(d/3-1)*4;
 const HATS=[{id:'none',name:'No hat',need:0},{id:'bandana',name:'Bandana',need:3},{id:'straw',name:'Straw hat',need:6},{id:'cowboy',name:'Cowboy hat',need:10},{id:'party',name:'Party hat',need:15},{id:'crown',name:'Crown',need:21}];
 function dayNews(d){
@@ -532,7 +538,7 @@ function dayNews(d){
 function dayPlan(d){
   const c=coyoteCount(d)+raidTotal(d), r=ramCount(d);
   const Lv=levelOf(d);
-  return Lv.name+(Lv.theme==='farm'?' · '+SEASONS[seasonOf(d)].label:'')+(Lv.twist?' · '+TWISTS[Lv.twist]:'')+' · '+flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
+  return (NEW_ON[d]?'New: '+NEW_ON[d]+' · ':'')+Lv.name+(Lv.theme==='farm'?' · '+SEASONS[seasonOf(d)].label:'')+(Lv.twist?' · '+TWISTS[Lv.twist]:'')+' · '+flockSize(d)+' sheep · '+(r?r+(r>1?' rams':' ram')+' · ':'')+c+' coyotes';
 }
 
 // ---------------- noise ----------------
@@ -1440,12 +1446,12 @@ function setupDay(){
   G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
   clearClover(); spawnClover(cloverCount(G.day));
-  spawnGoldBones();
+  if(G.day>=UNLOCK.bones) spawnGoldBones(); else clearGoldBones();
   placeShroom();
   setupPickup();
   spawnFlock(flockSize(G.day)+(G.twist==='tiny'?4:0));
   resetDog();
-  spawnPower('bone'); G.powerT=12;
+  if(G.day>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
   // lose this many and the farm is done (tighter every day)
@@ -1613,6 +1619,7 @@ function startGame(fresh){
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
   toast('Day '+G.day+' · '+LEVEL.name+(LEVEL.theme==='farm'?' · '+SEASON.label:'')+(G.twist?' · '+TWISTS[G.twist]:''),'',3.2);
+  if(NEW_ON[G.day]){ const d0=G.day; setTimeout(()=>{ if(G.day===d0 && G.phase==='day') toast('NEW: '+NEW_ON[d0].toUpperCase(),'gold',2.6); },3500); }
   setTimeout(()=>shepSay(PK?'Load them up, '+(G.coop?G.name+' and '+G.name2:G.name)+'!':'Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
@@ -2720,7 +2727,7 @@ function makeTerrier(){
 }
 const rascal={isRascal:true,active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
 rascal.m.g.visible=false;
-function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<2; G.rascalAt=.25+Math.random()*.3; }
+function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<UNLOCK.rascal; G.rascalAt=.25+Math.random()*.3; }
 function rascalLeave(shooed,D){
   if(rascal.state==='leave') return;
   rascal.state='leave'; rascal.target=null;
@@ -3014,6 +3021,7 @@ const shroom=(function(){
 let shroomSpot=null;
 function placeShroom(){
   shroomSpot=null; shroom.visible=false; G.rageT=0;
+  if(G.day<UNLOCK.shroom) return;
   for(let tries=0;tries<300;tries++){
     const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-14);
     if(!clearOf(x,z,2) || Math.hypot(x-dog.x,z-dog.z)<15) continue;
@@ -3661,7 +3669,7 @@ const falcon=(function(){
 function resetFalcon(){
   falcon.state='idle'; falcon.release=false; falcon.g.visible=falcon.shadow.visible=falcon.ring.visible=false;
   for(const D of dogs){ D.flying=false; D.fy=0; }
-  falcon.next=(G.day>=2 && LEVEL.theme!=='sea' && LEVEL.theme!=='moon') ? 12+Math.random()*10 : 1e9;
+  falcon.next=(G.day>=UNLOCK.falcon && LEVEL.theme!=='sea' && LEVEL.theme!=='moon') ? (G.day===UNLOCK.falcon?16:12)+Math.random()*10 : 1e9;
 }
 function sScreech(){
   if(!ok()) return; let t=AC.currentTime;
@@ -3672,6 +3680,7 @@ function updateFalcon(dt){
   if(F.state==='idle'){
     if(G.phase!=='day') return;
     F.next-=dt; if(F.next>0) return;
+    if(busy()){ F.next=4; return; }
     const pool=dogs.filter(D=>(D===dog||G.coop) && !D.flying && D.stunT<=0); if(!pool.length){ F.next=3; return; }
     const D=pool[(Math.random()*pool.length)|0];
     F.D=D; F.state='shadow'; F.t=0; F.x=D.x-D.vx*.3; F.z=D.z-D.vz*.3; F.release=false;
@@ -3715,7 +3724,7 @@ function updateFalcon(dt){
     return;
   }
   if(F.state==='leave'){
-    F.t+=dt; if(F.t>1.6){ F.state='idle'; F.g.visible=F.shadow.visible=F.ring.visible=false; F.next=24+Math.random()*16; }
+    F.t+=dt; if(F.t>1.6){ F.state='idle'; F.g.visible=F.shadow.visible=F.ring.visible=false; F.next=G.day<UNLOCK.wild?38+Math.random()*16:24+Math.random()*16; }
   }
 }
 function syncFalcon(dt,time){
@@ -3748,7 +3757,7 @@ const SURPRISE_INFO={
   golden:['GOLDEN HOUR! x3','Golden hour! Quick, get them in!']
 };
 const SX={objs:[],last:null};
-function resetSurprise(){ endSurprise(); G.evT=G.day===1?28+Math.random()*8:13+Math.random()*7; SX.last=null; }
+function resetSurprise(){ endSurprise(); G.evT=G.day<UNLOCK.surprise?1e9:G.day<5?26+Math.random()*8:G.day<UNLOCK.wild?20+Math.random()*8:13+Math.random()*7; SX.last=null; }
 function endSurprise(){
   if(G.ev && G.ev.drops) for(const dr of G.ev.drops) if(!dr.done) scene.remove(dr.m.g);
   for(const o of SX.objs) scene.remove(o); SX.objs.length=0;
@@ -3815,13 +3824,16 @@ function startSurprise(kind){
     ev.old=G.combo;
   }
 }
+// is something big already going on? (a surprise, the falcon, coyotes in daylight, sheep rage)
+const busy=()=> !!G.ev || falcon.state!=='idle' || G.rageT>0 || G.coyotes.some(c=>!c.gone && c.state!=='retreat');
 function updateSurprise(dt){
   if(G.phase!=='day' && G.phase!=='night'){ if(G.ev) endSurprise(); return; }
   if(!G.ev){
     if(G.phase!=='day') return;
     G.evT-=dt; if(G.evT>0) return;
-    G.evT=17+Math.random()*10;
-    let pool=(G.day===1?FRIENDLY:SURPRISES).filter(k=>k!==SX.last);
+    if(busy()){ G.evT=4; return; }
+    G.evT=G.day<5?40+Math.random()*15:G.day<UNLOCK.wild?28+Math.random()*12:18+Math.random()*10;
+    let pool=(G.day<UNLOCK.wild?FRIENDLY:SURPRISES).filter(k=>k!==SX.last);
     if(LEVEL.theme==='sea') pool=pool.filter(k=>k!=='twister');
     if(!G.sheep.some(s=>!s.dead&&!s.penned)) return;
     startSurprise(pool[(Math.random()*pool.length)|0]); return;
@@ -4067,7 +4079,7 @@ function step(dt){
     G.powerT-=dt;
     if(G.powerT<=0){
       G.powerT=14+Math.random()*6;
-      if(powerups.length<2){ const r=Math.random(); spawnPower(G.phase==='night'?(r<.4?'lantern':r<.7?'bone':'apple'):(r<.55?'bone':'apple')); }
+      if(powerups.length<2 && G.day>=UNLOCK.power){ const r=Math.random(); spawnPower(G.phase==='night'?(r<.4?'lantern':r<.7?'bone':'apple'):(r<.55?'bone':'apple')); }
     }
   }
   for(const D of dogs) updateDog(D,dt);
@@ -4101,7 +4113,7 @@ function step(dt){
     else if(f>=1) startNight();
     else if(f>.88 && !G.warned.dusk){ G.warned.dusk=1; toast('Dusk','warn',1.8); sHowl(0,.8); }
     raidPlan(G.day).forEach(([at,n],k)=>{
-      if(f>at && !G.warned['raid'+k]){
+      if(f>at && !G.warned['raid'+k] && !G.ev && falcon.state==='idle'){
         G.warned['raid'+k]=1;
         for(let r=0;r<n;r++) spawnCoyote(false);
         sHowl(0,1.1); if(n>1) sHowl(.4,1.2);
