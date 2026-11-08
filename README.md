@@ -23,7 +23,7 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Grab, shake, fling:** hold R (LT on a controller) to latch on. Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
 
-**How it ramps up:** day 1 is just you, the flock and the barn pen. Each day after adds one new thing, flagged with a gold NEW card: trial gates, the ram and power-ups (day 2); surprises and a daytime coyote raid (3); new worlds, twists and grass-snacking sheep (4); the corn maze (5); falcons, Rascal and the boss wolf (6); the weigh-in (7); lava, cliffs and the mad mushroom (8); wild surprises (9). After that the puzzles mix and everything gets more frequent. Only one big disruption (surprise, falcon or raid) happens at a time.
+**How it ramps up:** day 1 is just you, the flock and the barn pen. Each day after adds one new thing, flagged with a gold NEW card: trial gates, the ram and power-ups (day 2); surprises and a daytime coyote raid (3); new worlds, twists and grass-snacking sheep (4); the corn maze (5); the cougar and the boss wolf (6); falcons and Rascal (7); the weigh-in (8); lava, cliffs and the mad mushroom (9); wild surprises (10). After that the puzzles mix and everything gets more frequent. Only one big disruption (surprise, falcon or raid) happens at a time.
 
 **Levels:** every day is generated from the run's seed: hills, a pond that moves, rivers with bridges, hedges with gaps, paddocks, copses and boulders. Day 1 is always Home Farm; after that you might get the farm, the desert, Sky Islands, an underwater meadow, the Moon or a Volcano, plus a daily twist (bouncy, giant, tiny or speedy sheep, fog, a gold rush, stampedes).
 
@@ -35,7 +35,9 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Surprises:** every 20 seconds or so something happens: a sheep turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, a disco breaks out and everyone dances, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Day 1 only gets the friendly ones.
 
-**Falcons:** from day 2, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
+**The cougar:** on some farm and Sky Island days a cougar lies on a branch of a tree near the flock's route, tail swishing. A faint red ring on the ground shows how close is too close. If a sheep wanders inside, the cougar leaps out, grabs it and drags it up the tree, and that sheep is lost. Bark near the tree and it hisses and holds off for a few seconds (but barking scatters the flock); punt into it while it's dragging a sheep back and it drops the sheep and bolts up the tree, dazed.
+
+**Falcons:** from day 7, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
 **Seasons:** each day is the next season. Spring has blossom, extra lambs and extra clover. Summer has longer, hot days that tire the dog faster. Autumn has red and orange trees, falling leaves, wind gusts that push the flock, and mad mushrooms that regrow. Winter brings snow, a frozen and slippery pond everyone can cross, ducks gone south, shorter days, a huddling flock and hungrier coyotes.
 
