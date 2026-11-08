@@ -177,6 +177,19 @@ body.pad .keyline .gp{display:flex}
 @keyframes dangerPulse{from{transform:scale(1)}to{transform:scale(1.18);color:#ff8a6a}}
 @media (prefers-reduced-motion: reduce){ .stat.lost.danger b{animation:none} }
 
+.pArrow{position:fixed;left:0;top:0;width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:22px solid #8fd3ff;pointer-events:none;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+.pArrow.p2{border-bottom-color:var(--lantern)}
+
+.coopT{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+.coopT th{font-family:var(--display);font-weight:400;font-size:16px;color:var(--wool);text-align:right;padding:4px 6px}
+.coopT th:first-child,.coopT td:first-child{text-align:left;color:var(--muted)}
+.coopT td{text-align:right;padding:3px 6px;border-top:1px solid var(--edge);color:var(--ink)}
+
+#clockCard{width:auto;min-width:210px}
+#clockCard .row{flex-wrap:nowrap}
+#dayLabel,.clock{white-space:nowrap}
+@media (max-width:520px){ #clockCard{min-width:150px} }
+
 /* touch controls */
 #touch{position:fixed;inset:auto 0 0 0;height:210px;pointer-events:none}
 #stickZone{position:absolute;left:0;bottom:0;width:55%;height:100%;pointer-events:auto;touch-action:none}
@@ -242,6 +255,7 @@ button,input{touch-action:manipulation}</style>
 <div id="game"></div>
 
 <div id="splitLine" hidden></div>
+<div class="pArrow" id="arrow1" hidden></div><div class="pArrow p2" id="arrow2" hidden></div>
 <div id="pops"></div>
 <div id="bubble"></div>
 
@@ -276,7 +290,7 @@ button,input{touch-action:manipulation}</style>
   </div>
   <div id="bossBar" class="card" hidden><span>WOLF</span><div class="bar"><i id="bossFill"></i></div></div>
   <div id="command"></div>
-  <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div><div class="chip rage" id="pwRage" hidden>Sheep rage<i></i></div></div>
+  <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div><div class="chip rage" id="pwRage" hidden>Sheep rage<i></i></div><div class="chip" id="pwFlank" hidden>Flanked</div></div>
   <div id="toast"></div>
   <div id="keysHint">
     <span class="k kb"><kbd>WASD</kbd>Move</span>
@@ -838,6 +852,21 @@ function projectWorld(x,y,z){
   const off=useB?w/2:0;
   return {x:off+(_pv.x*.5+.5)*w/2, y:(-_pv.y*.5+.5)*h, left:off, right:off+w/2};
 }
+const _ap=new THREE.Vector3();
+function updatePartnerArrows(){
+  for(const [el,cam,who,half] of [[$('arrow1'),camera,dog2,0],[$('arrow2'),camera2,dog,1]]){
+    if(!coopView || G.phase==='title'){ el.hidden=true; continue; }
+    const w=window.innerWidth/2, h=window.innerHeight;
+    _ap.set(who.x,1,who.z).project(cam);
+    const behind=_ap.z>1;
+    let nx=_ap.x, ny=_ap.y; if(behind){ nx=-nx; ny=-ny; }
+    if(!behind && Math.abs(nx)<.95 && Math.abs(ny)<.95){ el.hidden=true; continue; }
+    // pin it to the edge of this half, pointing at the partner
+    const m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.9, ey=ny/m*.9;
+    const sx=half*w+(ex*.5+.5)*w, sy=(-ey*.5+.5)*h, ang=Math.atan2(ex,ey);
+    el.hidden=false; el.style.transform=`translate(${sx-13}px,${sy-11}px) rotate(${ang}rad)`;
+  }
+}
 function updatePops(dt){
   const w=window.innerWidth, h=window.innerHeight;
   for(let i=pops.length-1;i>=0;i--){
@@ -887,7 +916,7 @@ function initAudio(){
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
-const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over"};
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it"};
 const SFX={bark:[],bleat:[],voice:{}};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
@@ -1221,7 +1250,9 @@ function resetDog(){
   for(const D of [dog,dog2]){
     D.x=G.coop?(D===dog?-2.5:2.5):0; D.z=PEN.z1+10; D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
     D.barkCD=0; D.barkT=0; D.bangT=0; D.gunCD=0; D.zoomT=0; D.pounceT=0; D.pounceCD=0; D.stunT=0;
+    D.stats={pens:0,drives:0,saves:0,catches:0,helps:0}; D.grab=null;
   }
+  G.flanked=false; G.saidTeam=false;
 }
 function setupDay(){
   clearAnimals();
@@ -1476,12 +1507,24 @@ function grabKind(T){ return T.isRascal?'rascal':T.boss?'wolf':T.hp!==undefined&
 function tryGrab(D){
   const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*1.1, mz=D.z+fz*1.1;
   let best=null, bd=1.9;
-  const consider=(T,extra)=>{ if(T.grabbedBy) return; const d=Math.hypot(T.x-mx,T.z-mz)-(extra||0); if(d<bd){ bd=d; best=T; } };
+  const consider=(T,extra)=>{ if(T.grabbedBy && (!G.coop || T.grabbedBy===D || T.grabbedBy2)) return; const d=Math.hypot(T.x-mx,T.z-mz)-(extra||0); if(d<bd){ bd=d; best=T; } };
   for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried) consider(s);
   for(const c of G.coyotes) if(!c.gone && c.state!=='retreat') consider(c, c.boss?1:0);
   if(rascal.active && rascal.state==='run') consider(rascal);
   if(!best) return;
   const kind=grabKind(best);
+  if(best.grabbedBy){
+    // co-op: the partner already has hold of it. Both dogs together pin it down.
+    D.grab={t:best,kind,hold:0,shakeCD:0,lastShake:9,wob:0,second:true};
+    best.grabbedBy2=D; sGrowl(); rumble(.3,.5,120);
+    popText(best.x,2.8,best.z,'PINNED!','gold'); shepSay('Hold it! Hold it, both of ye!');
+    return;
+  }
+  if(best.thrownT>0 && best.thrower && best.thrower!==D){
+    // caught a pass from your partner
+    best.thrownT=0; G.score+=10; pop('tScore'); if(D.stats) D.stats.catches++;
+    popText(best.x,2.6,best.z,'CATCH! +10','gold'); burst(best.x,1.4,best.z,24,PC.confetti,4,4); shepSay('What a catch!');
+  }
   D.grab={t:best,kind,hold:0,shakeCD:0,lastShake:9,wob:Math.random()*TAU};
   best.grabbedBy=D;
   if(kind==='coyote'||kind==='wolf'){ if(best.carry) dropSheep(best,true); best.state=best.boss?'stalk':'flee'; best.target=null; popText(best.x,2.4,best.z,'GOTCHA!','gold'); }
@@ -1490,7 +1533,10 @@ function tryGrab(D){
 }
 function releaseGrab(D,fling){
   const g=D.grab; D.grab=null; if(!g||!g.t) return;
-  const T=g.t; T.grabbedBy=null;
+  const T=g.t;
+  if(g.second){ if(T.grabbedBy2===D) T.grabbedBy2=null; return; }
+  if(T.grabbedBy2){ const D2=T.grabbedBy2; T.grabbedBy=D2; T.grabbedBy2=null; if(D2.grab){ D2.grab.second=false; D2.grab.wob=Math.random()*TAU; } return; }   // the partner takes over
+  T.grabbedBy=null;
   const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), sp=Math.hypot(D.vx,D.vz);
   if(fling && sp>2 && g.kind!=='wolf'){
     // thrown with the dog's momentum
@@ -1506,12 +1552,25 @@ function shakeGrab(D){
   const g=D.grab; if(!g || g.shakeCD>0) return;
   g.shakeCD=.28; g.lastShake=0; D.shakeT=.3; sShake();
   const T=g.t;
-  if(g.kind==='coyote'||g.kind==='wolf'){ T.hitCD=0; hitCoyote(T,1,2,D,'SHAKE!'); if(T.state==='retreat'){ releaseGrab(D,false); } else T.state=g.kind==='wolf'?'stalk':'flee'; }
+  const pinned=!!(g.second||T.grabbedBy2);
+  if(g.kind==='coyote'||g.kind==='wolf'){ T.hitCD=0; hitCoyote(T,pinned?2:1,2,D,pinned?'DOUBLE SHAKE!':'SHAKE!'); if(T.state==='retreat'){ releaseGrab(D,false); } else T.state=g.kind==='wolf'?'stalk':'flee'; }
   else if(g.kind==='rascal'){ releaseGrab(D,false); rascalLeave(true,D); }
   else if(g.kind==='ram'){ releaseGrab(D,false); T.rs='windup'; T.rt=.5; T.rtar=D; popText(T.x,2.8,T.z,'!','red'); }
   else { T.stress=Math.min(1,(T.stress||0)+.35); T.munch=0; sBleat(g.kind==='lamb'?1.8:1.1); }
 }
 function updateGrab(D,dt){
+  const g0=D.grab;
+  if(g0.second){
+    const T=g0.t;
+    if(!T || T.dead || T.gone || T.penned || T.grabbedBy2!==D || !T.grabbedBy){ releaseGrab(D,false); return; }
+    g0.hold+=dt; g0.shakeCD=Math.max(0,g0.shakeCD-dt); g0.lastShake+=dt;
+    D.yaw=Math.atan2(T.x-D.x,T.z-D.z);
+    const dx=T.x-D.x, dz=T.z-D.z, d=Math.hypot(dx,dz)+1e-6;
+    if(d>1.5){ D.x+=dx/d*(d-1.5); D.z+=dz/d*(d-1.5); }
+    D.stamina=Math.max(0,D.stamina-GRAB[g0.kind].grip*.5*dt);
+    if(D.stamina<=0) releaseGrab(D,false);
+    return;
+  }
   const g=D.grab, T=g.t;
   if(!T || T.dead || T.gone || T.penned || T.carried || (g.kind==='rascal'&&(!T.active||T.state!=='run')) || ((g.kind==='coyote'||g.kind==='wolf')&&T.state==='retreat')){ releaseGrab(D,false); return; }
   const P=GRAB[g.kind];
@@ -1522,7 +1581,8 @@ function updateGrab(D,dt){
   let px=Math.cos(g.wob), pz=Math.sin(g.wob);
   if(sp>1){ px-=D.vx/sp*.8; pz-=D.vz/sp*.8; }
   const pl=Math.hypot(px,pz)+1e-6;
-  D.vx+=px/pl*P.pull*dt*3; D.vz+=pz/pl*P.pull*dt*3;
+  const pinF=T.grabbedBy2?.3:1;
+  D.vx+=px/pl*P.pull*pinF*dt*3; D.vz+=pz/pl*P.pull*pinF*dt*3;
   // hold it at the dog's mouth (the wolf is big, so it hangs further out)
   const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), reach=g.kind==='wolf'?1.9:g.kind==='lamb'?.9:1.15;
   const jig=D.shakeT>0?Math.sin(D.shakeT*60)*.35:0;
@@ -1534,7 +1594,7 @@ function updateGrab(D,dt){
   D.stamina=Math.max(0,D.stamina-P.grip*dt);
   if(D.stamina<=0){ releaseGrab(D,false); popText(D.x,2.4,D.z,'SLIP!','red'); return; }
   if(g.kind==='sheep'||g.kind==='lamb'){ T.stress=Math.min(1,(T.stress||0)+.22*dt); T.attacked=.2; }
-  if((g.kind==='coyote'||g.kind==='wolf'||g.kind==='rascal') && g.lastShake>1.2 && Math.random()<dt*(g.kind==='wolf'?.7:.35)){ releaseGrab(D,false); sYelp(); return; }
+  if(!T.grabbedBy2 && (g.kind==='coyote'||g.kind==='wolf'||g.kind==='rascal') && g.lastShake>1.2 && Math.random()<dt*(g.kind==='wolf'?.7:.35)){ releaseGrab(D,false); sYelp(); return; }
   if(g.kind==='ram' && g.hold>1.3){
     // the ram won't stand for it: bucks the dog off and squares up
     releaseGrab(D,false); D.stunT=.6*stunMul(); D.vx=-fx*12; D.vz=-fz*12; sThud();
@@ -1567,6 +1627,7 @@ function pounce(D){
 }
 function onPenned(s){
   G.penned++; sChime(); sBleat(1.15); pop('tPen');
+  if(G.coop){ const cr=nearestDog(s.x,s.z); if(cr.stats) cr.stats.pens++; }
   if(G.elapsed-G.lastPen<6) G.combo++; else G.combo=1;
   G.lastPen=G.elapsed;
   let pts=10*G.combo; if(s.golden) pts+=50; if(s.ram) pts+=30; if(s.lamb) pts+=5;
@@ -1597,6 +1658,7 @@ function dropSheep(c,saved){
   const s=c.carry; if(!s) return;
   s.carried=null; c.carry=null; s.fear=1; s.hop=.45; s.stress=1; s.jumpy=true;   // a sheep that's been grabbed stays jumpy all day
   const dx=s.x-c.x, dz=s.z-c.z, d=Math.hypot(dx,dz)+1e-6; s.vx=dx/d*6; s.vz=dz/d*6;
+  if(saved && G.coop){ const cr=nearestDog(s.x,s.z); if(cr.stats) cr.stats.saves++; }
   if(saved){ G.score+=5; popText(s.x,2,s.z,'+5','green'); burst(s.x,1.4,s.z,16,PC.heart,3,4); sBleat(1.25); }
 }
 function scareCoyote(c,t){
@@ -1614,6 +1676,7 @@ function hitCoyote(c,dmg,kb,src,label){
   burst(c.x,1.2,c.z,dmg>1?28:14,PC.spark,5,5);
   dropSheep(c,true);
   if(c.hp<=0){
+    { const cr=src.isDog?src:src.thrower; if(cr&&cr.stats) cr.stats.drives++; }
     c.state='retreat'; c.target=null; G.drivenOff++; const pts=c.boss?150:c.alpha?40:15; G.score+=pts; pop('tScore'); popText(c.x,2.6,c.z,'+'+pts,'gold');
     if(c.boss){ sHowl(0,.7); sFanfare(); burst(c.x,2,c.z,90,PC.confetti,7,8); toast('Wolf beaten!','warn',2.6); shepSay('Ha! Away with ye, wolf!',true); G.shake=1; }
   }
@@ -1638,6 +1701,12 @@ function startNight(){
   if(G.storm){ startRain(); setTimeout(()=>shepSay("Ach, it's a wild night!",true),4200); }
 }
 function closeGates(){ for(const l of leaves){ l.target=l.closedA; l.seg.on=false; } }
+function coopTable(){
+  const sc=D=>D.stats.pens+D.stats.drives*2+D.stats.saves+D.stats.catches+D.stats.helps;
+  const a=dog.stats, b=dog2.stats, mvp=sc(dog)===sc(dog2)?null:(sc(dog)>sc(dog2)?dog:dog2);
+  const row=(l,k)=>`<tr><td>${l}</td><td>${a[k]}</td><td>${b[k]}</td></tr>`;
+  return `<table class="coopT"><tr><th></th><th>${mvp===dog?'★ ':''}${G.name}</th><th>${mvp===dog2?'★ ':''}${G.name2}</th></tr>${row('Penned','pens')}${row('Coyotes','drives')}${row('Rescues','saves')}${row('Catches','catches')}${row('Help-ups','helps')}</table>`;
+}
 function endDay(reason){
   G.phase='result'; G.endReason=reason; stopRain(); $('bossBar').hidden=true;
   const over = reason==='wiped' || reason==='failed';
@@ -1679,6 +1748,7 @@ function endDay(reason){
   setTimeout(()=>{
     showOverlay(`<span class="eyebrow">${over?"Game over · reached day "+G.day:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
       <div class="stats">${stat(penned,'Penned')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(dayScore,'Score')}${stat(G.total,'Total','gold')}</div>
+      ${G.coop?coopTable():''}
       <p class="woolLine">+${woolEarned} wool <span>· ${WOOL} to spend</span></p>
       ${newHat?`<p class="small" style="color:var(--lantern)">New hat: ${newHat.name}</p>`:''}
       ${!over?`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`:''}
@@ -1710,7 +1780,12 @@ function updateDog(D,dt){
     }
     if(D.padCtl){ ix+=D.padCtl.x; iz+=D.padCtl.y; run=run||D.padCtl.run; down=down||D.padCtl.down; grabHeld=grabHeld||D.padCtl.grab; }
   }
-  if(D.stunT>0){ D.stunT-=dt; ix=0; iz=0; }
+  if(D.stunT>0){
+    D.stunT-=dt; ix=0; iz=0;
+    // co-op: your partner can run over and help you up
+    const P2=D===dog?dog2:dog;
+    if(G.coop && playing && P2.stunT<=0 && Math.hypot(P2.x-D.x,P2.z-D.z)<1.9){ D.stunT=0; P2.stats.helps++; sChime(); popText(D.x,2.4,D.z,'HELPED UP!','green'); burst(D.x,1.4,D.z,16,PC.heart,3,3); shepSay('On yer feet!'); }
+  }
   const il=Math.hypot(ix,iz); if(il>1){ ix/=il; iz/=il; }
   D.inX=ix; D.inZ=iz;
   D.lying = G.phase==='title' || (playing && down && D.pounceT<=0);
@@ -1867,6 +1942,7 @@ function updateSheep(dt){
       if(threat>.12 && nd>3){ fx-=ndx/nd*threat*14; fz-=ndz/nd*threat*14; }
       if(!SEASON.frozen){ const px=s.x-POND.x, pz=s.z-POND.z, pd=Math.hypot(px,pz)+1e-6; if(pd<POND.r+3){ const k=(POND.r+3-pd)/3; fx+=px/pd*k*10; fz+=pz/pd*k*10; } }
       // stress: rises with pressure, fades when left alone (faster when the dog lies down)
+      if(G.flanked){ calmNear=true; stressIn*=.6; }
       const tg=(1-.15*lv('calm'))*(s.trait==='skittish'?1.6:s.trait==='stubborn'?.55:1)*(s.jumpy?1.5:1)*(s.leader?.8:1);
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
       // balking: a stressed sheep won't go through the gate. It shies away at the last moment.
@@ -1915,7 +1991,7 @@ function updateSheep(dt){
     const steady=s.steady>0; s.steady=0;
     const eating=s.munch>0;
     // calm, pressured sheep pack tight; panicking sheep stop caring about the flock
-    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
     if(na && !eating){ const al=(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     // the bell ewe: followers drift after her and match her heading
     if(lead && !s.penned && !eating && ld>2.5){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
@@ -3061,7 +3137,7 @@ function updateHUD(dt,time){
   $('keysHint').classList.toggle('faded', G.elapsed>40 && !G.paused);
   { const w=G.coyotes.find(c=>c.boss&&!c.gone&&c.state!=='retreat'&&(G.phase==='night'));
     $('bossBar').hidden=!w; if(w) $('bossFill').style.width=Math.max(0,w.hp/w.maxHp*100)+'%'; }
-  setChip('pwZoom',Math.max(dog.zoomT,G.coop?dog2.zoomT:0),10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12); setChip('pwRage',G.rageT||0,15);
+  setChip('pwZoom',Math.max(dog.zoomT,G.coop?dog2.zoomT:0),10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12); setChip('pwRage',G.rageT||0,15); $('pwFlank').hidden=!G.flanked;
   $('dayLabel').textContent='Day '+G.day+' · '+SEASON.label;
   const tf=$('timeFill');
   if(G.phase==='night'||(G.phase==='result'&&G.endReason!=='before')){
@@ -3101,6 +3177,17 @@ function step(dt){
     }
   }
   for(const D of dogs) updateDog(D,dt);
+  if(G.coop && (G.phase==='day'||G.phase==='night')){
+    const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried);
+    let fl=false;
+    if(out.length>2){
+      const cx=out.reduce((a,s)=>a+s.x,0)/out.length, cz=out.reduce((a,s)=>a+s.z,0)/out.length;
+      const ax=dog.x-cx, az=dog.z-cz, bx=dog2.x-cx, bz=dog2.z-cz, da=Math.hypot(ax,az), db=Math.hypot(bx,bz);
+      if(da<20 && db<20 && da>3 && db>3 && (ax*bx+az*bz)/(da*db)<-.35) fl=true;     // more than ~110 degrees apart
+    }
+    if(fl && !G.flanked && !G.saidTeam){ G.saidTeam=true; shepSay('Grand teamwork, the pair of ye!',true); }
+    G.flanked=fl;
+  } else G.flanked=false;
   updateSheep(dt);
   updateCoyotes(dt);
   updateBullets(dt);
@@ -3162,6 +3249,7 @@ function frame(now){
   updateSeasonFx(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
+  updatePartnerArrows();
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
   if(coopView && G.phase!=='title'){
     const w=window.innerWidth, h=window.innerHeight, hw=Math.floor(w/2);
