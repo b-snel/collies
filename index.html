@@ -241,6 +241,7 @@ button,input{touch-action:manipulation}</style>
       <span><b>Apple basket</b> sheep follow you</span>
       <span><b>Lantern</b> coyotes keep back</span>
       <span><b>Golden sheep</b> worth 50</span>
+      <span class="wide"><b>Clover patches</b> (from day 2) distract hungry sheep. Get close or bark to snap them out of it.</span>
       <span class="wide"><b>Big ram</b> sometimes charges you. Bark when it paws the ground, or dodge. At night it charges coyotes too.</span>
     </div>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button></div>
@@ -272,10 +273,12 @@ const alphaCount = d => d<2 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1
 const scoutCount = d => d<3 ? 0 : Math.min(3, d-2);                    // early coyotes at dusk
 const scoutAt = d => Math.max(.55, .85 - .06*(d-3));                   // fraction of the day they show up
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
+const munchLevel = d => d<2 ? 0 : Math.min(1, .25 + (d-2)*.19);       // how easily sheep get distracted by grass
+const cloverCount = d => Math.min(5, Math.max(0, d-1));
 function dayNews(d){
-  return ({2:'A big red-eyed coyote leads the pack tonight.',
+  return ({2:'A big red-eyed coyote leads the pack tonight, and hungry sheep stop to munch clover.',
            3:'Two rams in the flock, and coyote scouts sneak in at dusk.',
-           4:'Two big coyotes now, and the scouts come earlier.',
+           4:'Two big coyotes now, the scouts come earlier, and the sheep are greedier.',
            5:'Three rams. Mind your tail.',
            6:'Three big coyotes. The pack is hungry.'})[d] || (d>6?'The pack gets bolder every night.':'');
 }
@@ -643,7 +646,7 @@ partGeo.setAttribute('position',new THREE.BufferAttribute(parts.pos,3));
 partGeo.setAttribute('color',new THREE.BufferAttribute(parts.col,3));
 const partPts=new THREE.Points(partGeo,new THREE.PointsMaterial({size:.4,vertexColors:true,transparent:true,depthWrite:false}));
 partPts.frustumCulled=false; scene.add(partPts);
-const PC={confetti:[0xf2b544,0xe2643f,0x8fb85a,0x7fb4ff,0xfbf6e9,0xff8fc8],gold:[0xffd84a,0xfff1a8,0xf2b544],heart:[0xff7aa8,0xff4f7f,0xffb3cc],spark:[0xfff2c8,0xbfe8ff,0xffffff],dust:[0xb59a72,0x8c7350]};
+const PC={confetti:[0xf2b544,0xe2643f,0x8fb85a,0x7fb4ff,0xfbf6e9,0xff8fc8],gold:[0xffd84a,0xfff1a8,0xf2b544],heart:[0xff7aa8,0xff4f7f,0xffb3cc],spark:[0xfff2c8,0xbfe8ff,0xffffff],dust:[0xb59a72,0x8c7350],grass:[0x6fa53a,0x9ccf5a,0x4d7d2a,0xb8e07a]};
 const _pc=new THREE.Color();
 function burst(x,y,z,n,pal,speed,up,grav){
   speed=speed==null?6:speed; up=up==null?6:up; grav=grav==null?12:grav;
@@ -807,6 +810,39 @@ function updateBestLine(){ $('bestLine').textContent = best>0 ? 'Best score on t
 updateBestLine();
 try{ const nm=localStorage.getItem('collieDuskName'); if(nm) $('dogName').value=nm; }catch(e){}
 
+// ---- clover patches: the tastiest grass in the field ----
+const clovers=[];
+const cloverMat=new THREE.MeshStandardMaterial({color:0x3f7f27,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+const flowerGeo=new THREE.SphereGeometry(.11,5,4), flowerMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8});
+const leafGeo=new THREE.ConeGeometry(.16,.32,3);
+function clearClover(){ for(const c of clovers) scene.remove(c.g); clovers.length=0; }
+function spawnClover(n){
+  for(let i=0,tries=0;i<n && tries<300;tries++){
+    const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-14);
+    if(!clearOf(x,z,5) || clovers.some(c=>Math.hypot(c.x-x,c.z-z)<12)) continue;
+    const r=2.4+Math.random()*1.2, g=new THREE.Group(); g.position.set(x,0,z);
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(r,22),cloverMat); disc.rotation.x=-Math.PI/2; disc.position.y=.03; disc.receiveShadow=true; g.add(disc);
+    const leaves=new THREE.InstancedMesh(leafGeo,new THREE.MeshStandardMaterial({color:0x5aa336,roughness:1,flatShading:true}),40);
+    const fl=new THREE.InstancedMesh(flowerGeo,flowerMat,26), o=new THREE.Object3D(), col=new THREE.Color();
+    for(let k=0;k<40;k++){ const a=Math.random()*TAU, rr=Math.sqrt(Math.random())*r*.95; o.position.set(Math.cos(a)*rr,.15,Math.sin(a)*rr); o.rotation.set(0,Math.random()*TAU,0); o.scale.setScalar(.8+Math.random()*.6); o.updateMatrix(); leaves.setMatrixAt(k,o.matrix); }
+    for(let k=0;k<26;k++){ const a=Math.random()*TAU, rr=Math.sqrt(Math.random())*r*.9; o.position.set(Math.cos(a)*rr,.3,Math.sin(a)*rr); o.scale.setScalar(.8+Math.random()*.5); o.updateMatrix(); fl.setMatrixAt(k,o.matrix); col.setHex([0xffffff,0xf7c6e0,0xd9a6f0,0xfff1a8][k%4]); fl.setColorAt(k,col); }
+    g.add(leaves); g.add(fl); scene.add(g);
+    clovers.push({x,z,r,g}); i++;
+  }
+}
+function nearestClover(x,z){
+  let best=null, bd=1e9;
+  for(const c of clovers){ const d=Math.hypot(c.x-x,c.z-z); if(d<bd){ bd=d; best=c; } }
+  return best ? {x:best.x,z:best.z,r:best.r,d:bd} : null;
+}
+function onMunch(s){
+  if(G.elapsed-(G.lastMunchSay||-99)>12){
+    G.lastMunchSay=G.elapsed;
+    popText(s.x,2.2,s.z,'munch munch','green');
+    shepSay(["That one's eatin' grass!","Quit yer munchin'!","Get that greedy one movin'!","Oi! No snackin'!"][(Math.random()*4)|0],true);
+  }
+}
+
 function clearAnimals(){
   for(const s of G.sheep) scene.remove(s.m.g);
   for(const c of G.coyotes) scene.remove(c.m.g);
@@ -829,7 +865,7 @@ function spawnFlock(n){
     const black = (!golden && i===n-1 && Math.random()<.6);
     const ram = (i>=1 && i<=ramCount(G.day) && n>=8);
     const m=makeSheep(black&&!ram,golden,ram); const s=.9+Math.random()*.2; m.g.scale.setScalar(ram?1.4:s);
-    G.sheep.push({x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,golden:golden,hop:0,ram:ram,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1});
+    G.sheep.push({x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,golden:golden,hop:0,ram:ram,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6});
   }
 }
 function resetDog(){
@@ -840,6 +876,7 @@ function setupDay(){
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=true; l.apply(); }
+  clearClover(); spawnClover(cloverCount(G.day));
   spawnFlock(flockSize(G.day));
   resetDog();
   spawnPower('bone'); G.powerT=12;
@@ -1180,7 +1217,13 @@ function updateSheep(dt){
     let fx=0,fz=0,fear=0;
     if(!s.penned){
       const dx=s.x-dog.x, dz=s.z-dog.z, d=Math.hypot(dx,dz)+1e-6;
-      if(G.appleT>0 && dog.barkT<=0 && d<24){
+      if(s.munch>0){
+        // head down in the grass: only a close dog, a bark, a pounce or a bang snaps it out
+        s.munch-=dt;
+        if((dog.barkT>0 && d<22) || (dog.bangT>0 && d<18) || (dog.pounceT>0 && d<14) || d<5){ s.munch=0; s.hop=.45; s.fear=Math.max(s.fear,.8); popText(s.x,2.2,s.z,'!',''); }
+      }
+      if(s.munch>0){ /* too busy eating to notice the dog */ }
+      else if(G.appleT>0 && dog.barkT<=0 && d<24){
         // apple basket: the flock trots after the dog
         if(d>3.4){ const k=Math.min(1,(d-3.4)/5); fx-=dx/d*k*14; fz-=dz/d*k*14; }
         else { fx+=dx/d*(3.4-d)*9; fz+=dz/d*(3.4-d)*9; }
@@ -1209,7 +1252,7 @@ function updateSheep(dt){
       for(const c of G.coyotes){
         if(c.gone) continue;
         const ex=s.x-c.x, ez=s.z-c.z, e=Math.hypot(ex,ez)+1e-6;
-        if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); }
+        if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); s.munch=0; }
       }
       { const ex=s.x-shep.x, ez=s.z-shep.z, e=Math.hypot(ex,ez)+1e-6; if(e<6){ const k=1-e/6; fx+=ex/e*k*14; fz+=ez/e*k*14; fear=Math.max(fear,k*.5); } }
       const m=FIELD-3;
@@ -1227,13 +1270,22 @@ function updateSheep(dt){
       if(d2<150){ cx+=o.x; cz+=o.z; n++; if(d2<49){ ax+=o.vx; az+=o.vz; na++; } }
     }
     const steady=s.steady>0; s.steady=0;
-    if(n && !s.penned){ cx/=n; cz/=n; const coh=.3+s.fear*2.4+(steady?1.6:0); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
-    if(na){ const al=.5+s.fear*1.6+(steady?2:0); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
+    const eating=s.munch>0;
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=.3+s.fear*2.4+(steady?1.6:0); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(na && !eating){ const al=.5+s.fear*1.6+(steady?2:0); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     s.wt-=dt;
     if(s.wt<=0){ s.walking=Math.random()<.45; s.wa=Math.random()*TAU; s.wt=1.5+Math.random()*4; }
-    if(s.fear<.15 && s.walking && !steady){ fx+=Math.cos(s.wa)*2.4; fz+=Math.sin(s.wa)*2.4; }
+    if(s.fear<.15 && s.walking && !steady && !eating){ fx+=Math.cos(s.wa)*2.4; fz+=Math.sin(s.wa)*2.4; }
+    const ml=munchLevel(G.day);
+    if(ml>0 && !s.penned && !s.ram && !eating && (G.phase==='day'||G.phase==='night') && s.fear<.12){
+      // hungry sheep drift off toward clover and stop to eat
+      const cl=nearestClover(s.x,s.z), onPatch=cl && cl.d<cl.r;
+      if(cl && !onPatch && cl.d<16 && !steady){ fx+=(cl.x-s.x)/cl.d*2.2*ml; fz+=(cl.z-s.z)/cl.d*2.2*ml; }
+      s.munchCD-=dt;
+      if(s.munchCD<=0 && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; onMunch(s); }
+    }
     s.vx+=fx*dt; s.vz+=fz*dt;
-    const damp=s.fear>.1?1.1:2.8; const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
+    const damp=eating?7:(s.fear>.1?1.1:2.8); const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
     let maxV=1.4+s.fear*7.4; if(s.golden) maxV+=1.5; if(s.penned) maxV=1.3;
     const v=Math.hypot(s.vx,s.vz); if(v>maxV){ s.vx*=maxV/v; s.vz*=maxV/v; }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
@@ -1645,7 +1697,8 @@ function syncAll(dt,time){
     if(G.celebrate>0 && s.penned && s.hop<=0 && Math.random()<dt*2.5) s.hop=.45;
     if(s.hop>0){ s.hop=Math.max(0,s.hop-dt); s.m.g.position.y+=Math.sin((1-s.hop/.45)*Math.PI)*.7; }
     const grazing=v<.35 && !s.walking && s.fear<.1;
-    s.m.head.rotation.x=lerp(s.m.head.rotation.x, grazing?.75:0, .08);
+    s.m.head.rotation.x=lerp(s.m.head.rotation.x, s.munch>0?.95+Math.sin(time*14)*.1:(grazing?.75:0), s.munch>0?.3:.08);
+    if(s.munch>0 && Math.random()<dt*5) burst(s.x+Math.sin(s.yaw)*1.1,.35,s.z+Math.cos(s.yaw)*1.1,2,PC.grass,.9,1.8,9);
     if(s.ram && s.rs!=='idle') s.m.head.rotation.x = s.rs==='dazed' ? Math.sin(time*10)*.3 : .55;
     if(s.m.sack){ const sw=Math.min(1,v/4); s.m.sack.rotation.x=Math.sin(s.phase*1.1)*.45*sw - sw*.25; s.m.sack.rotation.z=Math.sin(s.phase*.55+1)*.3*sw; }
     s.flash = s.attacked>0 ? .55+.45*Math.sin(time*22) : Math.max(0,s.flash-dt*2);
@@ -1739,10 +1792,11 @@ function drawMinimap(time){
   mx.strokeStyle='rgba(242,181,68,.9)'; mx.lineWidth=2;
   mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke();
   mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(BARN.bx-7.2),Y(BARN.bz-6.2),14.4*S,12.4*S);
+  for(const c of clovers){ mx.fillStyle='rgba(90,163,54,.55)'; mx.beginPath(); mx.arc(X(c.x),Y(c.z),c.r*S,0,TAU); mx.fill(); }
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
   for(const s of G.sheep){
     if(s.dead) continue;
-    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
+    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : s.munch>0 ? '#9ccf5a' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
     mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.penned?3:4,0,TAU); mx.fill();
   }
   for(const c of G.coyotes){
