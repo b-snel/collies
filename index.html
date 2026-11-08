@@ -278,7 +278,7 @@ button,input{touch-action:manipulation}</style>
 <div id="overlay">
   <div class="sign" id="sign">
     <h1>Collie at <em>Dusk</em></h1>
-    <p>Pen the flock before dark. Then guard it from coyotes.</p>
+    <p>Pen the flock before dark. Fight off the coyotes.</p>
     <div class="modeRow" role="group" aria-label="Players"><button class="seg on" id="mode1" type="button">1 player</button><button class="seg" id="mode2" type="button">2 players</button></div>
     <div class="nameRow"><label for="dogName">Your collie</label><input id="dogName" maxlength="14" autocomplete="off" spellcheck="false" value="Bramble"></div>
     <div class="nameRow" id="name2Row" hidden><label for="dogName2">Player 2</label><input id="dogName2" maxlength="14" autocomplete="off" spellcheck="false" value="Moss"></div>
@@ -308,13 +308,14 @@ const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:4.5};
 const BARN = {bx:-23, bz:-38};
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
-const dayLen = d => Math.max(55, 90 - (d-1)*7);
-const flockSize = d => Math.min(24, 10 + (d-1)*2);
+const dayLen = d => Math.max(50, 80 - (d-1)*6);
+const flockSize = d => Math.min(24, 11 + (d-1)*2);
 const coyoteCount = d => Math.min(9, 2 + d);
 const ramCount = d => Math.min(4, 1 + Math.floor((d-1)/2));          // 1,1,2,2,3,3,4
 const alphaCount = d => d<2 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
-const scoutCount = d => d<3 ? 0 : Math.min(3, d-2);                    // early coyotes at dusk
-const scoutAt = d => Math.max(.55, .85 - .06*(d-3));                   // fraction of the day they show up
+// daytime coyote raids, every day: [fraction of the day, how many]
+const raidPlan = d => [[.3, Math.min(3, 1+Math.floor((d-1)/2))], [.62, Math.min(4, 1+Math.floor(d/2))]];
+const raidTotal = d => raidPlan(d).reduce((a,r)=>a+r[1],0);
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
 const munchLevel = d => d<2 ? 0 : Math.min(1, .25 + (d-2)*.19);       // how easily sheep get distracted by grass
 const cloverCount = d => Math.min(5, Math.max(0, d-1));
@@ -325,10 +326,10 @@ const wolfHp = d => 16 + Math.floor(d/3-1)*4;
 const HATS=[{id:'none',name:'No hat',need:0},{id:'bandana',name:'Bandana',need:3},{id:'straw',name:'Straw hat',need:6},{id:'cowboy',name:'Cowboy hat',need:10},{id:'party',name:'Party hat',need:15},{id:'crown',name:'Crown',need:21}];
 function dayNews(d){
   if(bossNight(d)) return 'A wolf comes tonight!';
-  return ({2:'Big coyote tonight. Clover too.', 3:'Two rams. Early scouts.', 4:'Two big coyotes.', 5:'Three rams.', 6:'Three big coyotes.'})[d] || (d>6?'Bolder every night.':'');
+  return ({2:'Big coyote tonight. Clover too.', 3:'Two rams. Bigger raids.', 4:'Two big coyotes.', 5:'Three rams.', 6:'Three big coyotes.'})[d] || (d>6?'Bolder every night.':'');
 }
 function dayPlan(d){
-  const c=coyoteCount(d)+scoutCount(d), r=ramCount(d);
+  const c=coyoteCount(d)+raidTotal(d), r=ramCount(d);
   return flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
 }
 
@@ -2330,12 +2331,15 @@ function step(dt){
     if(alive.length && alive.every(s=>s.penned)) endDay('before');
     else if(f>=1) startNight();
     else if(f>.88 && !G.warned.dusk){ G.warned.dusk=1; toast('Dusk','warn',1.8); sHowl(0,.8); }
-    if(scoutCount(G.day) && f>scoutAt(G.day) && !G.warned.scouts){
-      G.warned.scouts=1;
-      for(let i=0;i<scoutCount(G.day);i++) spawnCoyote(false);
-      sHowl(0,1.1); toast('Coyote scouts!','bad',2);
-      setTimeout(()=>shepSay('Coyotes already?! Get after them!',true),700);
-    }
+    raidPlan(G.day).forEach(([at,n],k)=>{
+      if(f>at && !G.warned['raid'+k]){
+        G.warned['raid'+k]=1;
+        for(let r=0;r<n;r++) spawnCoyote(false);
+        sHowl(0,1.1); if(n>1) sHowl(.4,1.2);
+        toast(k===0?'Coyotes!':'More coyotes!','bad',2);
+        setTimeout(()=>shepSay(k===0?'Coyotes! In broad daylight!':'More of them! Get after them!',true),700);
+      }
+    });
   } else if(G.phase==='night'){
     G.spawnT-=dt;
     if(G.toSpawn>0 && G.spawnT<=0){ spawnCoyote(false); G.toSpawn--; G.spawnT=9; if(Math.random()<.7) sHowl(0,.9+Math.random()*.3); }
