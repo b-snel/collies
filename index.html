@@ -345,7 +345,8 @@ function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d
 const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:6};
 const BARN = {bx:-23, bz:-38};
-const POND = {x:-26, z:16, r:7};     // sheep walk around it; dogs and ducks can swim
+const POND = {x:-26, z:16, r:7};
+let groundMesh=null, groundBase=null, grassMesh=null, grassBase=null, pondWater=null, pondBank=null; const pondPads=[];     // sheep walk around it; dogs and ducks can swim
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 let WOOL=0, UP={};
 try{ WOOL=+localStorage.getItem('collieDuskWool')||0; UP=JSON.parse(localStorage.getItem('collieDuskUp')||'{}')||{}; }catch(e){}
@@ -365,18 +366,31 @@ const UPGRADES=[
 ];
 const stunMul=()=>1-.3*lv('collar');
 const barkMul=()=>1+.15*lv('bark');
-const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8;
+// four seasons, one per day: spring, summer, autumn, winter, round again
+const SEASONS={
+  spring:{name:'spring',label:'Spring',ground:0x8fd06a,groundMix:.12,grass:0x9be070,grassMix:.2,leaves:[0x3f8f3a,0x5aa547,0xf2b8d0],sky:0xa8d4ea,hemi:0xd8efff,hemiGround:0x5c7a35,
+          fx:{colors:[0xffc6dd,0xffffff,0xffd9e8],count:240,fall:1.1,sway:1.6,size:.26},flies:.7},
+  summer:{name:'summer',label:'Summer',ground:0xc8c860,groundMix:.25,grass:0xc2c35a,grassMix:.3,leaves:[0x2f6b2a,0x3d7a2f,0x2a5a26],sky:0x7fc3ef,hemi:0xfff6dd,hemiGround:0x6b7a35,
+          fx:{colors:[0xfff6b0,0xffffff],count:70,fall:.25,sway:1,size:.16},flies:1,hot:true},
+  autumn:{name:'autumn',label:'Autumn',ground:0xb08a3e,groundMix:.42,grass:0xc29a45,grassMix:.5,leaves:[0xd9762c,0xc0392b,0xe8b13a],sky:0xb9cad6,hemi:0xffe2c4,hemiGround:0x7a5a2a,
+          fx:{colors:[0xd9762c,0xe8b13a,0xa0522d,0xc0392b],count:220,fall:1.7,sway:2.4,size:.3},flies:.3,windy:true},
+  winter:{name:'winter',label:'Winter',ground:0xdde6ee,groundMix:.78,grass:0xf2f6f9,grassMix:.82,leaves:[0xdfe9ee,0xc9dbe2,0xeef4f6],sky:0xc6d4e0,hemi:0xeaf2ff,hemiGround:0xb8c4cc,
+          fx:{colors:[0xffffff,0xeef6ff],count:700,fall:2.2,sway:1,size:.2},flies:0,frozen:true},
+};
+const seasonOf = d => ['spring','summer','autumn','winter'][(d-1)%4];
+let SEASON=SEASONS.spring;
+const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 const coyoteCount = d => Math.min(9, 2 + d);
 const ramCount = d => Math.min(4, 1 + Math.floor((d-1)/2));          // 1,1,2,2,3,3,4
 const alphaCount = d => d<2 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
 // daytime coyote raids, every day: [fraction of the day, how many]
-const raidPlan = d => [[.3, Math.min(3, 1+Math.floor((d-1)/2))], [.62, Math.min(4, 1+Math.floor(d/2))]];
+const raidPlan = d => { const w=seasonOf(d)==='winter'?1:0; return [[.3, Math.min(3, 1+Math.floor((d-1)/2))+w], [.62, Math.min(4, 1+Math.floor(d/2))+w]]; };   // hungrier in winter
 const raidTotal = d => raidPlan(d).reduce((a,r)=>a+r[1],0);
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
 const munchLevel = d => d<2 ? 0 : Math.min(1, .25 + (d-2)*.19);       // how easily sheep get distracted by grass
-const cloverCount = d => Math.min(5, Math.max(0, d-1));
-const lambCount = d => Math.min(5, 2 + Math.floor((d-1)/2));
+const cloverCount = d => seasonOf(d)==='winter' ? 0 : Math.min(5, Math.max(0, d-1)) + (seasonOf(d)==='spring'?1:0);
+const lambCount = d => Math.min(7, 2 + Math.floor((d-1)/2) + (seasonOf(d)==='spring'?2:0));
 const stormChance = d => d<2 ? 0 : .35;
 const bossNight = d => d>=3 && d%3===0;                 // the wolf comes on days 3, 6, 9...
 const wolfHp = d => 16 + Math.floor(d/3-1)*4;
@@ -387,7 +401,7 @@ function dayNews(d){
 }
 function dayPlan(d){
   const c=coyoteCount(d)+raidTotal(d), r=ramCount(d);
-  return flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
+  return SEASONS[seasonOf(d)].label+' · '+flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
 }
 
 // ---------------- noise ----------------
@@ -486,6 +500,7 @@ const treeDots = [];
   g.setAttribute('color', new THREE.BufferAttribute(cols,3));
   g.computeVertexNormals();
   const m=new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0}));
+  groundMesh=m; groundBase=cols.slice();
   m.receiveShadow=true; scene.add(m);
 })();
 
@@ -505,6 +520,7 @@ const treeDots = [];
     c.setHSL(.24+Math.random()*.06,.45+Math.random()*.2,.3+Math.random()*.14); im.setColorAt(i,c);
     i++;
   }
+  grassMesh=im; grassBase=[]; for(let k=0;k<N;k++){ const cc=new THREE.Color(); im.getColorAt(k,cc); grassBase.push(cc); }
   scene.add(im);
 })();
 
@@ -607,12 +623,12 @@ const barnWin = new THREE.MeshStandardMaterial({color:0x2a2010, emissive:0xffc06
 // pond: water, a reedy bank, lily pads and slow ripples
 const pondRipples=[];
 (function(){
-  const bank=new THREE.Mesh(new THREE.CircleGeometry(POND.r+1.4,40),new THREE.MeshStandardMaterial({color:0x6d6a3e,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  const bank=pondBank=new THREE.Mesh(new THREE.CircleGeometry(POND.r+1.4,40),new THREE.MeshStandardMaterial({color:0x6d6a3e,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
   bank.rotation.x=-Math.PI/2; bank.position.set(POND.x,.035,POND.z); bank.receiveShadow=true; scene.add(bank);
-  const water=new THREE.Mesh(new THREE.CircleGeometry(POND.r,40),new THREE.MeshStandardMaterial({color:0x3f86b5,roughness:.15,metalness:.1,transparent:true,opacity:.88,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+  const water=pondWater=new THREE.Mesh(new THREE.CircleGeometry(POND.r,40),new THREE.MeshStandardMaterial({color:0x3f86b5,roughness:.15,metalness:.1,transparent:true,opacity:.88,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
   water.rotation.x=-Math.PI/2; water.position.set(POND.x,.06,POND.z); water.receiveShadow=true; scene.add(water);
   const padMat=mat(0x4f9a3a), reedMat=mat(0x5d7f2f), cat=mat(0x6b4224);
-  for(let i=0;i<9;i++){ const a=Math.random()*TAU, r=Math.random()*(POND.r-1.5); const pd=new THREE.Mesh(new THREE.CircleGeometry(.35+Math.random()*.25,10),padMat); pd.rotation.x=-Math.PI/2; pd.position.set(POND.x+Math.cos(a)*r,.08,POND.z+Math.sin(a)*r); scene.add(pd); }
+  for(let i=0;i<9;i++){ const a=Math.random()*TAU, r=Math.random()*(POND.r-1.5); const pd=new THREE.Mesh(new THREE.CircleGeometry(.35+Math.random()*.25,10),padMat); pd.rotation.x=-Math.PI/2; pd.position.set(POND.x+Math.cos(a)*r,.08,POND.z+Math.sin(a)*r); scene.add(pd); pondPads.push(pd); }
   for(let i=0;i<34;i++){ const a=Math.random()*TAU, r=POND.r+.2+Math.random()*1; const h=.8+Math.random()*.9;
     const rd=new THREE.Mesh(new THREE.CylinderGeometry(.03,.05,h,4),reedMat); rd.position.set(POND.x+Math.cos(a)*r,h/2,POND.z+Math.sin(a)*r); rd.rotation.z=(Math.random()-.5)*.3; scene.add(rd);
     if(i%3===0){ const tip=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.28,6),cat); tip.position.set(rd.position.x,h-.05,rd.position.z); scene.add(tip); } }
@@ -832,7 +848,7 @@ function updatePops(dt){
 
 // ---------------- collision ----------------
 function collide(e,r,o){
-  if(!o.swim){ const dx=e.x-POND.x, dz=e.z-POND.z, d=Math.hypot(dx,dz), m=POND.r+r*.6;
+  if(!o.swim && !SEASON.frozen){ const dx=e.x-POND.x, dz=e.z-POND.z, d=Math.hypot(dx,dz), m=POND.r+r*.6;
     if(d<m && d>1e-6){ const nx=dx/d, nz=dz/d; e.x=POND.x+nx*m; e.z=POND.z+nz*m; const vn=e.vx*nx+e.vz*nz; if(vn<0){ e.vx-=vn*nx; e.vz-=vn*nz; } } }
   for(const c of circles){
     const dx=e.x-c.x, dz=e.z-c.z, d=Math.hypot(dx,dz), m=r+c.r;
@@ -1078,6 +1094,11 @@ function sShake(){
   if(!ok()) return; const t=AC.currentTime;
   for(let i=0;i<4;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='bandpass'; f.frequency.value=700+i*150; f.Q.value=1.5; n.connect(f).connect(envG(t+i*.05,.004,.25,.05)); n.start(t+i*.05); n.stop(t+i*.05+.06); }
 }
+function sGust(){
+  if(!ok()) return; const t=AC.currentTime, n=AC.createBufferSource(), f=AC.createBiquadFilter();
+  n.buffer=getNoise(); n.loop=true; f.type='bandpass'; f.Q.value=.7; f.frequency.setValueAtTime(300,t); f.frequency.linearRampToValueAtTime(900,t+1); f.frequency.linearRampToValueAtTime(350,t+2.2);
+  n.connect(f).connect(envG(t,.6,.16,2.2)); n.start(t); n.stop(t+2.3);
+}
 function sThud(){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
   o.type='sine'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(50,t+.18);
@@ -1200,6 +1221,7 @@ function resetDog(){
 }
 function setupDay(){
   clearAnimals();
+  applySeason(seasonOf(G.day));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
@@ -1372,7 +1394,7 @@ function startGame(fresh){
   hideOverlay();
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
-  toast(G.day===1 ? 'Day 1' : 'Day '+G.day+' · '+dayNews(G.day),'',2.6);
+  { const nw=G.day===1?'':dayNews(G.day); toast('Day '+G.day+' · '+SEASON.label+(nw?' · '+nw:''),'',2.8); }
   setTimeout(()=>shepSay('Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
@@ -1690,7 +1712,7 @@ function updateDog(D,dt){
   else {
     if(D.stamina<=0) D.tired=true;
     if(D.tired && D.stamina>30) D.tired=false;
-    if(wantRun && !D.tired){ D.stamina=Math.max(0,D.stamina-30/(1+.25*lv('stamina'))*dt); running=true; }
+    if(wantRun && !D.tired){ D.stamina=Math.max(0,D.stamina-30/(1+.25*lv('stamina'))*(SEASON.hot?1.25:1)*dt); running=true; }
     else D.stamina=Math.min(100,D.stamina+(il>.1?13:24)*(1+.15*lv('stamina'))*dt);
   }
   D.pounceCD=Math.max(0,D.pounceCD-dt); D.whistleCD=Math.max(0,(D.whistleCD||0)-dt);
@@ -1698,7 +1720,7 @@ function updateDog(D,dt){
     D.pounceT-=dt; D.vx=D.pdx*27; D.vz=D.pdz*27;
   } else {
     const top = (D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'))*(D.swim?.55:1)*(D.grab?GRAB[D.grab.kind].speed:1);
-    const a=1-Math.exp(-dt*(D.lying?14:9));
+    const a=1-Math.exp(-dt*(D.lying?14:(D.onIce?1.5:9)));      // slippery on the frozen pond
     D.vx+=(ix*top-D.vx)*a; D.vz+=(iz*top-D.vz)*a;
   }
   D.x+=D.vx*dt; D.z+=D.vz*dt;
@@ -1708,7 +1730,7 @@ function updateDog(D,dt){
   else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
   if(D.grab) updateGrab(D,dt);
   D.shakeT=Math.max(0,(D.shakeT||0)-dt);
-  const wasSwim=D.swim; D.swim=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4;
+  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4; D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
   if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
   D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt);
@@ -1813,8 +1835,8 @@ function updateSheep(dt){
             const k=1-d/R; fx+=dx/d*k*str; fz+=dz/d*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
-            stressIn += inner*.5 + k*Math.max(0,D.speed-7)/7*.9;
-            if(D.barkT>0) stressIn += 1.2*(1-d/22);
+            stressIn += inner*.35 + k*Math.max(0,D.speed-7)/7*.7;
+            if(D.barkT>0) stressIn += .7*(1-d/22);
             if(D.pounceT>0) stressIn += 1.6;
             if(D.bangT>0) stressIn += 2;
           }
@@ -1826,7 +1848,7 @@ function updateSheep(dt){
         if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); s.munch=0; stressIn+=1.2*k; }
       }
       if(rascal.active && rascal.state==='run'){ const ex=s.x-rascal.x, ez=s.z-rascal.z, e=Math.hypot(ex,ez)+1e-6; if(e<10){ const k=1-e/10; fx+=ex/e*k*26; fz+=ez/e*k*26; fear=Math.max(fear,k*.9); s.munch=0; stressIn+=1.3*k; } }
-      { const px=s.x-POND.x, pz=s.z-POND.z, pd=Math.hypot(px,pz)+1e-6; if(pd<POND.r+3){ const k=(POND.r+3-pd)/3; fx+=px/pd*k*10; fz+=pz/pd*k*10; } }
+      if(!SEASON.frozen){ const px=s.x-POND.x, pz=s.z-POND.z, pd=Math.hypot(px,pz)+1e-6; if(pd<POND.r+3){ const k=(POND.r+3-pd)/3; fx+=px/pd*k*10; fz+=pz/pd*k*10; } }
       // stress: rises with pressure, fades when left alone (faster when the dog lies down)
       const tg=(1-.15*lv('calm'))*(s.trait==='skittish'?1.6:s.trait==='stubborn'?.55:1)*(s.jumpy?1.5:1)*(s.leader?.8:1);
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
@@ -1860,35 +1882,39 @@ function updateSheep(dt){
       s.stress=Math.max(0,s.stress-dt*.3);
     }
     s.fear=Math.max(fear, s.fear-dt*.45);
-    let cx=0,cz=0,n=0,ax=0,az=0,na=0, ns=0, nsn=0, lead=null, ld=25;
+    let cx=0,cz=0,n=0,ax=0,az=0,na=0, ns=0, nsn=0, lead=null, ld=25, nb=null, nbd=1e9;
     for(const o of L){
       if(o===s||o.dead||o.carried||o.penned!==s.penned) continue;
       const dx=s.x-o.x, dz=s.z-o.z, d2=dx*dx+dz*dz;
       if(d2<3.6 && d2>1e-6){ const d=Math.sqrt(d2); fx+=dx/d*(1.9-d)*14; fz+=dz/d*(1.9-d)*14; }
-      if(d2<150){ cx+=o.x; cz+=o.z; n++; if(d2<49){ ax+=o.vx; az+=o.vz; na++; ns+=o.stress; nsn++; } }
+      if(d2<260){ cx+=o.x; cz+=o.z; n++; if(d2<49){ ax+=o.vx; az+=o.vz; na++; ns+=o.stress; nsn++; } }
+      if(d2<nbd){ nbd=d2; nb=o; }
       if(o.leader && !s.leader){ const d=Math.sqrt(d2); if(d<ld){ ld=d; lead=o; } }
     }
     // stress is contagious: panic spreads fast between neighbours, calm spreads slowly
-    if(nsn && !s.penned){ const avg=ns/nsn; s.stress=clamp(s.stress+(avg-s.stress)*(avg>s.stress?.7:.12)*dt,0,1); }
-    const panic=s.penned?0:clamp((s.stress-.6)/.4,0,1);
+    if(nsn && !s.penned){ const avg=ns/nsn; s.stress=clamp(s.stress+(avg-s.stress)*(avg>s.stress?.4:.15)*dt,0,1); }
+    const panic=s.penned?0:clamp((s.stress-.75)/.25,0,1);
     if(!s.penned) s.fear=Math.max(s.fear,s.stress*.7);
     const steady=s.steady>0; s.steady=0;
     const eating=s.munch>0;
     // calm, pressured sheep pack tight; panicking sheep stop caring about the flock
-    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(.3+s.fear*2.4+(steady?1.6:0)+(1-s.stress)*.6*Math.min(1,s.fear*2))*(1-panic*.85); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
-    if(na && !eating){ const al=(.5+s.fear*1.6+(steady?2:0))*(1-panic*.8); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(na && !eating){ const al=(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     // the bell ewe: followers drift after her and match her heading
     if(lead && !s.penned && !eating && ld>2.5){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
     // panic: bolt off in a random direction, mostly away from the dog
     s.boltT=Math.max(0,s.boltT-dt);
-    if(panic>0 && s.boltT<=0 && G.phase!=='title' && Math.random()<dt*1.4*panic){
+    if(panic>0 && s.boltT<=0 && G.phase!=='title' && Math.random()<dt*.9*panic){
       const ND3=nearestDog(s.x,s.z); s.boltA=Math.atan2(s.z-ND3.z,s.x-ND3.x)+(Math.random()-.5)*2.6; s.boltT=.6+Math.random()*.8;
       if(Math.random()<.5) sBleat(.9+Math.random()*.4);
     }
-    if(s.boltT>0){ fx+=Math.cos(s.boltA)*20; fz+=Math.sin(s.boltA)*20; }
+    if(s.boltT>0){ fx+=Math.cos(s.boltA)*15; fz+=Math.sin(s.boltA)*15; }
+    // a sheep on its own heads back to the nearest flockmate
+    if(!n && nb && !s.penned && !eating){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
     s.wt-=dt;
     if(s.wt<=0){ s.walking=Math.random()<.45; s.wa=Math.random()*TAU; s.wt=1.5+Math.random()*4; }
-    if(s.fear<.15 && s.walking && !steady && !eating){ fx+=Math.cos(s.wa)*2.4; fz+=Math.sin(s.wa)*2.4; }
+    if(s.fear<.15 && s.walking && !steady && !eating){ fx+=Math.cos(s.wa)*1.3; fz+=Math.sin(s.wa)*1.3; }
+    if(G.gust>0 && !s.penned){ fx+=G.windX*.9; fz+=G.windZ*.9; }
     const ml=munchLevel(G.day);
     if(ml>0 && !s.penned && !s.ram && !eating && (G.phase==='day'||G.phase==='night') && s.fear<.12){
       // hungry sheep drift off toward clover and stop to eat
@@ -1898,7 +1924,7 @@ function updateSheep(dt){
       if(s.munchCD<=0 && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; onMunch(s); }
     }
     s.vx+=fx*dt; s.vz+=fz*dt;
-    const damp=eating?7:(s.fear>.1?1.1:2.8); const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
+    const damp=(eating?7:(s.fear>.1?1.1:2.8))*(SEASON.frozen&&Math.hypot(s.x-POND.x,s.z-POND.z)<POND.r?.2:1);   // sheep slide on ice const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
     let maxV=1.4+s.fear*6.4+panic*3+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.penned) maxV=1.3;
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
@@ -2266,6 +2292,7 @@ function makeDuck(baby){
 const ducks=[];
 function spawnDucks(){
   for(const d of ducks) scene.remove(d.m.g); ducks.length=0; G.ducksPenned=false;
+  if(SEASON.frozen) return;          // the ducks fly south for the winter
   for(let i=0;i<5;i++){ const a=1.2+i*.12; ducks.push({x:POND.x+Math.cos(a)*(POND.r+1.5+i*.8),z:POND.z+Math.sin(a)*(POND.r+1.5+i*.8),vx:0,vz:0,yaw:0,phase:Math.random()*6,baby:i>0,m:makeDuck(i>0),wa:Math.random()*TAU,wt:0,alarm:0}); }
 }
 function updateDucks(dt){
@@ -2307,7 +2334,7 @@ function syncDucks(dt,time){
   for(const d of ducks){
     const sp=Math.hypot(d.vx,d.vz);
     if(sp>.15) d.yaw=lerpAngle(d.yaw,Math.atan2(d.vx,d.vz),1-Math.exp(-dt*10));
-    const wet=Math.hypot(d.x-POND.x,d.z-POND.z)<POND.r-.2;
+    const wet=!SEASON.frozen && Math.hypot(d.x-POND.x,d.z-POND.z)<POND.r-.2;
     d.phase+=dt*(4+sp*5);
     d.m.g.position.set(d.x,wet?-.08:0,d.z); d.m.g.rotation.y=d.yaw;
     d.m.body.rotation.z=wet?0:Math.sin(d.phase)*.18*Math.min(1,sp*1.5+.2);     // waddle
@@ -2826,7 +2853,7 @@ function applySky(time){
   moon.position.set(camera.position.x-120, camera.position.y+170, camera.position.z-360); moon.material.opacity=clamp(n*1.4-.4,0,1);
   const fb=flies.userData.base, fp=flies.geometry.attributes.position;
   for(let i=0;i<fb.length;i++){ const b=fb[i]; fp.setXYZ(i,b[0]+Math.sin(time*.4+b[3])*1.5,b[1]+Math.sin(time*1.3+b[3]*2)*.4,b[2]+Math.cos(time*.35+b[3])*1.5); }
-  fp.needsUpdate=true; flies.material.opacity=clamp(n*1.2-.3,0,1)*(.6+.4*Math.sin(time*3));
+  fp.needsUpdate=true; flies.material.opacity=clamp(n*1.2-.3,0,1)*(.6+.4*Math.sin(time*3))*SEASON.flies;
 }
 
 // ---------------- weather: rain and lightning on stormy nights ----------------
@@ -2869,6 +2896,57 @@ function updateWeather(dt,time){
     const f=G.flash*(.55+.45*Math.sin(time*55));
     scene.background.lerp(_white,f*.6); scene.fog.color.copy(scene.background); hemi.intensity+=f*1.8;
   }
+}
+
+// ---------------- seasons: repaint the farm and set the weather ----------------
+const SFX_N=700;
+const seasonFx=(function(){
+  const pos=new Float32Array(SFX_N*3), col=new Float32Array(SFX_N*3), ph=new Float32Array(SFX_N);
+  for(let i=0;i<SFX_N;i++){ pos[i*3]=(Math.random()*2-1)*34; pos[i*3+1]=Math.random()*22; pos[i*3+2]=(Math.random()*2-1)*34; ph[i]=Math.random()*TAU; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const pts=new THREE.Points(g,new THREE.PointsMaterial({size:.26,vertexColors:true,transparent:true,opacity:.9,depthWrite:false}));
+  pts.frustumCulled=false; pts.userData.ph=ph; scene.add(pts); return pts;
+})();
+function applySeason(name){
+  SEASON=SEASONS[name];
+  const S=SEASON, c=new THREE.Color(), tgt=new THREE.Color(S.ground);
+  if(groundMesh){
+    const col=groundMesh.geometry.attributes.color;
+    for(let i=0;i<col.count;i++){ c.setRGB(groundBase[i*3],groundBase[i*3+1],groundBase[i*3+2]); c.lerp(tgt,Math.min(1,S.groundMix*(.88+((i*7919)%97)/97*.24))); col.setXYZ(i,c.r,c.g,c.b); }
+    col.needsUpdate=true;
+  }
+  if(grassMesh){ const gt=new THREE.Color(S.grass); for(let k=0;k<grassBase.length;k++){ c.copy(grassBase[k]).lerp(gt,S.grassMix); grassMesh.setColorAt(k,c); } grassMesh.instanceColor.needsUpdate=true; }
+  leafMs.forEach((m,i)=>m.color.setHex(S.leaves[i%S.leaves.length]));
+  C_DAY.setHex(S.sky); H_DAY.setHex(S.hemi); HG_DAY.setHex(S.hemiGround);
+  if(pondWater){
+    pondWater.material.color.setHex(S.frozen?0x9fd0ea:0x3f86b5);
+    if(pondBank) pondBank.material.color.setHex(S.frozen?0xc9d6de:0x6d6a3e); pondWater.material.opacity=S.frozen?1:.88; pondWater.material.roughness=S.frozen?.25:.15;
+    pondPads.forEach(pd=>pd.visible=!S.frozen); pondRipples.forEach(r=>r.m.visible=!S.frozen);
+  }
+  // particles
+  const fx=S.fx, colA=seasonFx.geometry.attributes.color;
+  for(let i=0;i<SFX_N;i++){ c.setHex(fx.colors[i%fx.colors.length]); colA.setXYZ(i,c.r,c.g,c.b); }
+  colA.needsUpdate=true; seasonFx.geometry.setDrawRange(0,fx.count); seasonFx.material.size=fx.size;
+  G.gust=0; G.gustT=6+Math.random()*6; G.windX=0; G.windZ=0;
+}
+function updateSeasonFx(dt,time){
+  const fx=SEASON.fx, P=seasonFx.geometry.attributes.position, ph=seasonFx.userData.ph;
+  // autumn wind: every so often a gust shoves the flock and the leaves
+  if(SEASON.windy && (G.phase==='day'||G.phase==='night') && !G.paused){
+    if(G.gust>0){ G.gust-=dt; if(G.gust<=0){ G.windX=G.windZ=0; G.gustT=9+Math.random()*7; } }
+    else { G.gustT-=dt; if(G.gustT<=0){ const a=Math.random()*TAU; G.windX=Math.cos(a)*7; G.windZ=Math.sin(a)*7; G.gust=2.2; sGust(); } }
+  }
+  const wx=(G.gust>0?G.windX:0)*1.4+ (SEASON.windy?1.2:0), wz=(G.gust>0?G.windZ:0)*1.4;
+  for(let i=0;i<fx.count;i++){
+    let x=P.getX(i)+(Math.sin(time*1.3+ph[i])*fx.sway+wx)*dt, y=P.getY(i)-fx.fall*(.6+(ph[i]%1))*dt, z=P.getZ(i)+(Math.cos(time*1.1+ph[i])*fx.sway*.6+wz)*dt;
+    if(y<0){ y+=22; x=(Math.random()*2-1)*34; z=(Math.random()*2-1)*34; }
+    if(x>34) x-=68; if(x<-34) x+=68; if(z>34) z-=68; if(z<-34) z+=68;
+    P.setXYZ(i,x,y,z);
+  }
+  P.needsUpdate=true;
+  const cx=G.coop?(dog.x+dog2.x)/2:camLook.x, cz=G.coop?(dog.z+dog2.z)/2:camLook.z;
+  seasonFx.position.set(cx,0,cz);
+  seasonFx.material.opacity=G.storm?0:.9;
 }
 
 // ---------------- camera ----------------
@@ -2966,7 +3044,7 @@ function updateHUD(dt,time){
   { const w=G.coyotes.find(c=>c.boss&&!c.gone&&c.state!=='retreat'&&(G.phase==='night'));
     $('bossBar').hidden=!w; if(w) $('bossFill').style.width=Math.max(0,w.hp/w.maxHp*100)+'%'; }
   setChip('pwZoom',Math.max(dog.zoomT,G.coop?dog2.zoomT:0),10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12); setChip('pwRage',G.rageT||0,15);
-  $('dayLabel').textContent='Day '+G.day;
+  $('dayLabel').textContent='Day '+G.day+' · '+SEASON.label;
   const tf=$('timeFill');
   if(G.phase==='night'||(G.phase==='result'&&G.endReason!=='before')){
     const g=Math.min(1,G.t/NIGHT_LEN);
@@ -2996,7 +3074,8 @@ function step(dt){
   }
   if(playing){
     G.appleT=Math.max(0,G.appleT-dt); G.lanternT=Math.max(0,G.lanternT-dt);
-    if(G.rageT>0){ G.rageT-=dt; if(G.rageT<=0){ G.rageT=0; for(const s of G.sheep) if(!s.dead){ s.fear=.6; s.stress=.5; } shepSay("Phew. They've calmed down.",true); } }
+    if(G.rageT>0){ G.rageT-=dt; if(G.rageT<=0){ G.rageT=0; if(SEASON.name==='autumn') setTimeout(placeShroom,3000);   // autumn: mushrooms regrow
+      for(const s of G.sheep) if(!s.dead){ s.fear=.6; s.stress=.5; } shepSay("Phew. They've calmed down.",true); } }
     G.powerT-=dt;
     if(G.powerT<=0){
       G.powerT=14+Math.random()*6;
@@ -3060,6 +3139,7 @@ function frame(now){
   syncAll(dt,time);
   applySky(time);
   updateWeather(dt,time);
+  updateSeasonFx(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
