@@ -11,7 +11,7 @@ Live at **https://collies.bsnel.com**
 | WASD / arrows | Move (sheep move away from you, so get behind them) |
 | Shift | Run |
 | Space | Bark: scatters sheep, scares coyotes |
-| E | Pounce: a flying leap that knocks coyotes over and makes them drop sheep |
+| E | Pounce: punts a sheep flying (it bowls over other sheep and coyotes), knocks coyotes over |
 | C | Lie down: calms the flock |
 | R (hold) | Grab the nearest sheep, coyote or Rascal. Drag it, press E to shake it, let go while moving to fling it |
 | P / Esc | Pause |
@@ -26,6 +26,10 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 **Where the sheep go:** some days it's the barn pen. Most days a pickup turns up somewhere on the field instead: a livestock trailer on the farm, a covered wagon in the desert, a hot-air balloon in the sky and on the volcano, a submarine underwater, a UFO on the Moon (sheep float up its beam). Follow the gold beam or the arrow at the edge of the screen. Once it's taken a load it takes off and lands somewhere new, so you keep re-planning.
 
 **Lava and cliffs:** volcano days have lava pools and lava rivers; Sky Islands have holes straight down to the clouds. Sheep stop at the edge on their own, but run at them, bark or pounce near the edge and they'll go over. Lost sheep count against the day's limit. Dogs just get singed and bounce off. Fling a coyote in for 40 points.
+
+**Punting:** pounce into a sheep and it goes flying the way you pounced. A flying sheep knocks into others like billiard balls (CAROM, CHAIN x3), bowls over coyotes, and a punt straight into the pen or pickup is a HOLE IN ONE (+25). Careful near lava.
+
+**Surprises:** every 20 seconds or so something happens: a sheep turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, a disco breaks out and everyone dances, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Day 1 only gets the friendly ones.
 
 **Falcons:** from day 2, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
