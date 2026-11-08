@@ -380,7 +380,7 @@ const UPGRADES=[
   {id:'days',   name:'Longer days',       max:2, cost:[30,60],    desc:'8 more seconds of daylight'},
   {id:'nose',   name:'Keen nose',         max:2, cost:[15,35],    desc:'Golden bones on the minimap, then +3 wool each'},
   {id:'whistle',name:"Shepherd's whistle",max:1, cost:[60],       desc:'Q / LB: calm every sheep nearby', ability:true},
-  {id:'llama',  name:'Guard llama',       max:1, cost:[90],       desc:'Patrols with the flock and spits at coyotes', ability:true},
+  {id:'llama',  name:'Guard llamas',      max:3, cost:[90,110,140], desc:'Each level adds a llama that patrols and spits at coyotes', ability:true},
 ];
 const stunMul=()=>1-.3*lv('collar');
 const barkMul=()=>1+.15*lv('bark');
@@ -2365,9 +2365,9 @@ if(!hatUnlocked(HATS.find(x=>x.id===hatSel)||HATS[0])) hatSel='none';
 setHat(hatSel);
 
 // ---------------- the guard llama (bought at the shed) ----------------
-function makeLlama(){
+function makeLlama(coat){
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  const F=mat(0xeadfc8), D=mat(0x6b5a48), P=mat(0x2a2420);
+  const F=mat(coat||0xeadfc8), D=mat(0x6b5a48), P=mat(0x2a2420);
   const woolGeo2=new THREE.IcosahedronGeometry(.5,1);
   for(const [x,y,z,s2] of [[0,1.45,0,1.1],[0,1.45,.45,.95],[0,1.45,-.45,1],[0,1.7,0,.8]]){ const m=new THREE.Mesh(woolGeo2,F); m.position.set(x,y,z); m.scale.setScalar(s2); m.castShadow=true; body.add(m); }
   const neck=new THREE.Group(); neck.position.set(0,1.75,.65); body.add(neck);
@@ -2381,33 +2381,46 @@ function makeLlama(){
   scene.add(g);
   return {g,body,head,legs};
 }
-const llama={x:-6,z:PEN.z1+12,vx:0,vz:0,yaw:0,phase:0,spitCD:0,active:false,m:makeLlama()};
-llama.m.g.visible=false;
-function resetLlama(){ llama.active=!!lv('llama'); llama.m.g.visible=llama.active; llama.x=-6; llama.z=PEN.z1+12; llama.vx=llama.vz=0; llama.spitCD=0; }
-function updateLlama(dt){
-  if(!llama.active || (G.phase!=='day'&&G.phase!=='night')) return;
-  const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried);
-  let tx=llama.x, tz=llama.z;
-  if(out.length){ tx=out.reduce((a,s)=>a+s.x,0)/out.length; tz=out.reduce((a,s)=>a+s.z,0)/out.length; }
-  let target=null, td=16;
-  for(const c of G.coyotes){ if(c.gone||c.state==='retreat') continue; const e=Math.hypot(c.x-llama.x,c.z-llama.z); if(e<td){ td=e; target=c; } }
-  let dx=tx-llama.x, dz=tz-llama.z, d=Math.hypot(dx,dz)+1e-6, spd=d>5?Math.min(4.5,(d-4)*.8):0;
-  if(target){ dx=target.x-llama.x; dz=target.z-llama.z; d=td+1e-6; spd=d>5?7:0; }
-  const a=1-Math.exp(-dt*3);
-  llama.vx+=((spd?dx/d*spd:0)-llama.vx)*a; llama.vz+=((spd?dz/d*spd:0)-llama.vz)*a;
-  llama.x+=llama.vx*dt; llama.z+=llama.vz*dt;
-  collide(llama,.75,{gate:false,perim:true});
-  llama.spitCD-=dt;
-  if(target && td<8.5 && llama.spitCD<=0){
-    // PTOO: a gob of spit sends the coyote packing (the wolf just flinches)
-    llama.spitCD=3.5; sSpit();
-    const n=8; for(let k=1;k<=n;k++){ const f=k/n; burst(lerp(llama.x,target.x,f),2.2-f*1.2,lerp(llama.z,target.z,f),2,[0xc9f29b,0xe9ffd0],.6,.8,4); }
-    llama.yaw=Math.atan2(target.x-llama.x,target.z-llama.z);
-    if(target.boss) target.flinch=1.2; else scareCoyote(target,3.5);
-    popText(target.x,2.4,target.z,'PTOO!','green');
-  }
+// a little herd of guard llamas, one per level of the upgrade, each with its own coat
+const LLAMA_COATS=[0xeadfc8,0x9a6a44,0x4a3a30];
+const llamas=LLAMA_COATS.map((c,i)=>{ const L={i,x:-6,z:PEN.z1+12,vx:0,vz:0,yaw:0,phase:Math.random()*6,spitCD:0,active:false,target:null,m:makeLlama(c)}; L.m.g.visible=false; return L; });
+function resetLlama(){
+  const n=Math.min(llamas.length,lv('llama'));
+  llamas.forEach((L,i)=>{ L.active=i<n; L.m.g.visible=L.active; L.x=-6+i*4; L.z=PEN.z1+12+i*2; L.vx=L.vz=0; L.spitCD=i*.8; L.target=null; });
 }
-function syncLlama(dt){ if(!llama.active) return; syncAnimal(llama,dt,1.6); llama.m.head.rotation.x=llama.spitCD>3.1?-.5:0; }
+function updateLlama(dt){
+  if(G.phase!=='day'&&G.phase!=='night') return;
+  const act=llamas.filter(L=>L.active); if(!act.length) return;
+  const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried);
+  let fx0=act[0].x, fz0=act[0].z;
+  if(out.length){ fx0=out.reduce((a,s)=>a+s.x,0)/out.length; fz0=out.reduce((a,s)=>a+s.z,0)/out.length; }
+  const claimed=new Set();
+  act.forEach((L,k)=>{
+    // each llama keeps to its own side of the flock
+    const ang=k/act.length*TAU+.6, tx=fx0+(act.length>1?Math.cos(ang)*6:0), tz=fz0+(act.length>1?Math.sin(ang)*6:0);
+    // go after the nearest coyote no other llama is already on (or share if there's only one)
+    let target=null, td=16;
+    for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.grabbedBy) continue; const e=Math.hypot(c.x-L.x,c.z-L.z)+(claimed.has(c)?6:0); if(e<td){ td=e; target=c; } }
+    if(target){ claimed.add(target); td=Math.hypot(target.x-L.x,target.z-L.z); }
+    let dx=tx-L.x, dz=tz-L.z, d=Math.hypot(dx,dz)+1e-6, spd=d>3?Math.min(4.5,(d-2)*.8):0;
+    if(target){ dx=target.x-L.x; dz=target.z-L.z; d=td+1e-6; spd=d>5?7:0; }
+    for(const o of act){ if(o===L) continue; const ox=L.x-o.x, oz=L.z-o.z, od=Math.hypot(ox,oz); if(od<2.2&&od>1e-6){ L.x+=ox/od*(2.2-od)*.5; L.z+=oz/od*(2.2-od)*.5; } }
+    const a=1-Math.exp(-dt*3);
+    L.vx+=((spd?dx/d*spd:0)-L.vx)*a; L.vz+=((spd?dz/d*spd:0)-L.vz)*a;
+    L.x+=L.vx*dt; L.z+=L.vz*dt;
+    collide(L,.75,{gate:false,perim:true});
+    L.spitCD-=dt;
+    if(target && td<8.5 && L.spitCD<=0){
+      // PTOO: a gob of spit sends the coyote packing (the wolf just flinches)
+      L.spitCD=3.5; sSpit();
+      const n=8; for(let q=1;q<=n;q++){ const f=q/n; burst(lerp(L.x,target.x,f),2.2-f*1.2,lerp(L.z,target.z,f),2,[0xc9f29b,0xe9ffd0],.6,.8,4); }
+      L.yaw=Math.atan2(target.x-L.x,target.z-L.z);
+      if(target.boss) target.flinch=1.2; else scareCoyote(target,3.5);
+      popText(target.x,2.4,target.z,'PTOO!','green');
+    }
+  });
+}
+function syncLlama(dt){ for(const L of llamas){ if(!L.active) continue; syncAnimal(L,dt,1.6); L.m.head.rotation.x=L.spitCD>3.1?-.5:0; } }
 
 // ---------------- the duck family ----------------
 const duckMat={white:mat(0xf4f1ea), beak:mat(0xf09a2a), yellow:mat(0xffd84a), dark:mat(0x2a2420), wing:mat(0xdcd6ca)};
@@ -3137,7 +3150,7 @@ function drawMinimap(time){
   if(rascal.active){ mx.fillStyle='#d0904f'; mx.beginPath(); mx.arc(X(rascal.x),Y(rascal.z),3.5,0,TAU); mx.fill(); }
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   if(lv('nose')) for(const gb of goldBones){ if(gb.got) continue; mx.fillStyle='#ffd34d'; mx.beginPath(); mx.arc(X(gb.x),Y(gb.z),3.5+Math.sin(time*5)*1,0,TAU); mx.fill(); }
-  if(llama.active){ mx.fillStyle='#eadfc8'; mx.fillRect(X(llama.x)-3,Y(llama.z)-4,6,8); }
+  for(const L of llamas){ if(!L.active) continue; mx.fillStyle='#eadfc8'; mx.fillRect(X(L.x)-3,Y(L.z)-4,6,8); }
   const dx=X(dog.x), dy=Y(dog.z);
   mx.fillStyle='#f2b544'; mx.beginPath(); mx.arc(dx,dy,5.5,0,TAU); mx.fill();
   mx.strokeStyle='#111'; mx.lineWidth=2; mx.beginPath(); mx.moveTo(dx,dy); mx.lineTo(dx+Math.sin(dog.yaw)*9,dy+Math.cos(dog.yaw)*9); mx.stroke();
