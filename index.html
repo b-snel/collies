@@ -97,6 +97,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:#0c1511;color:var(--in
 #btns{position:absolute;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(24px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:auto auto;gap:10px;pointer-events:auto}
 #btns button{font-family:var(--ui);font-weight:700;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);background:rgba(18,26,21,.7);border:2px solid var(--edge);border-radius:999px;width:78px;height:78px;touch-action:none}
 #btns #bBark{background:var(--lantern);color:#1d1609;border-color:transparent}
+#btns #bShoot{grid-column:span 2;width:auto;height:56px;background:#2a2622;border-color:var(--lantern);color:var(--lantern)}
 #btns #bPounce{background:var(--coyote);color:#1d1609;border-color:transparent}
 #btns button.held{background:rgba(244,234,210,.3)}
 body.touch #minimap{top:calc(84px + env(safe-area-inset-top,0px));bottom:auto;width:104px;height:104px}
@@ -168,7 +169,7 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
     <div class="meter"><span>Bark</span><div class="bar"><i id="barkFill"></i></div></div>
   </div>
   <div id="command"></div>
-  <div id="power"><div class="chip" id="pwZoom" hidden>Zoomies<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div></div>
+  <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div></div>
   <div id="toast"></div>
   <div id="keysHint">WASD move · Shift run · Space bark · E pounce · C lie down · P pause · M sound</div>
 </div>
@@ -180,6 +181,7 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
     <button id="bRun" type="button">Run</button>
     <button id="bPounce" type="button">Pounce</button>
     <button id="bBark" type="button">Bark</button>
+    <button id="bShoot" type="button" hidden>Shoot</button>
   </div>
 </div>
 
@@ -193,10 +195,10 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
       <kbd>Shift</kbd><span>Run.</span>
       <kbd>Space</kbd><span>Bark. Scatters sheep and scares coyotes.</span>
       <kbd>E</kbd><span>Pounce. A flying leap that knocks coyotes head over tail and makes them drop a sheep.</span>
-      <kbd>C</kbd><span>Lie down. Calms the flock so you can creep up.</span>
+      <kbd>C</kbd><span>Lie down. The flock bunches up and keeps drifting the way it's going.</span>
     </div>
     <div class="finds">
-      <span><b>Bone</b> zoomies</span>
+      <span><b>Bone</b> super herder</span>
       <span><b>Apple basket</b> sheep follow you</span>
       <span><b>Lantern</b> coyotes keep back</span>
       <span><b>Golden sheep</b> worth 50</span>
@@ -217,10 +219,11 @@ const lerp = (a,b,t) => a+(b-a)*t;
 function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d*t; }
 
 // ---------------- config ----------------
-const FIELD = 80;
-const PEN = {x0:-12, x1:12, z0:-70, z1:-52, gx:5};
-const NIGHT_LEN = 75;
-const dayLen = d => Math.max(85, 135 - (d-1)*10);
+const FIELD = 48;
+const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:4.5};
+const BARN = {bx:-23, bz:-38};
+const NIGHT_LEN = 50;
+const dayLen = d => Math.max(55, 90 - (d-1)*7);
 const flockSize = d => Math.min(24, 10 + (d-1)*2);
 const coyoteCount = d => Math.min(9, 2 + d);
 
@@ -235,8 +238,8 @@ function vnoise(x,z){
 }
 function groundH(x,z){
   const m=Math.max(Math.abs(x),Math.abs(z));
-  if(m<86) return 0;
-  const k=Math.min(1,(m-86)/45);
+  if(m<FIELD+6) return 0;
+  const k=Math.min(1,(m-FIELD-6)/45);
   return k*k*(12*vnoise(x*0.03,z*0.03)+5);
 }
 
@@ -268,7 +271,7 @@ sun.shadow.bias = -0.0006;
 scene.add(sun, sun.target);
 const moonLight = new THREE.DirectionalLight(0x8aa4ff, 0); moonLight.position.set(-30,60,-50); scene.add(moonLight);
 const dogLight = new THREE.PointLight(0xffe6b8, 0, 26, 1.4); scene.add(dogLight);
-const lantern = new THREE.PointLight(0xffb347, 0, 42, 1.3); lantern.position.set(-5, 4.2, -51); scene.add(lantern);
+const lantern = new THREE.PointLight(0xffb347, 0, 42, 1.3); lantern.position.set(-PEN.gx, 4.2, PEN.z1+1); scene.add(lantern);
 
 // ---------------- materials / helpers ----------------
 const MAT = {};
@@ -306,10 +309,10 @@ const treeDots = [];
     pos.setY(i, groundH(x,z));
     const n=vnoise(x*.06,z*.06), n2=vnoise(x*.25+40,z*.25);
     tmp.copy(cA).lerp(cB, n).lerp(cC, Math.max(0,n2-.55)*1.6);
-    if(Math.max(Math.abs(x),Math.abs(z))>86) tmp.lerp(cC,.35);
+    if(Math.max(Math.abs(x),Math.abs(z))>FIELD+6) tmp.lerp(cC,.35);
     if(x>PEN.x0-1 && x<PEN.x1+1 && z>PEN.z0-1 && z<PEN.z1+1) tmp.lerp(dirt,.55+.25*n2);
     // trodden path to gate
-    const pd=Math.abs(x)+Math.max(0,(z+52))*0.0; if(z>-52 && z<-30 && Math.abs(x)<4+ (z+52)*.12) tmp.lerp(dirt,.25*(1-(z+52)/22));
+    const pz=z-PEN.z1; if(pz>0 && pz<22 && Math.abs(x)<4+pz*.12) tmp.lerp(dirt,.25*(1-pz/22));
     cols[i*3]=tmp.r; cols[i*3+1]=tmp.g; cols[i*3+2]=tmp.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(cols,3));
@@ -401,17 +404,17 @@ for(const s of [-1,1]){ box(.34,2.2,.34,mat(0x6a4e34),PEN.gx*s,1.1,PEN.z1,scene)
 box(.4,.5,.4,lanternMat,-PEN.gx,2.5,PEN.z1,scene);
 
 // hay + trough in pen
-for(const [x,z] of [[-9.8,-67.8],[9.8,-67.8]]){
+for(const [x,z] of [[PEN.x0+2.2,PEN.z0+2.2],[PEN.x1-2.2,PEN.z0+2.2]]){
   const hb=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,1.3,12), mat(0xd8b65a)); hb.rotation.z=Math.PI/2; hb.position.set(x,1.1,z); hb.castShadow=true; scene.add(hb);
   circles.push({x,z,r:1.2});
 }
-box(4,.6,1,mat(0x6b6f74,{metalness:.3,roughness:.6}),0,.45,-69,scene);
-box(3.7,.05,.75,mat(0x5b88a8,{roughness:.2}),0,.73,-69,scene);
+box(4,.6,1,mat(0x6b6f74,{metalness:.3,roughness:.6}),0,.45,PEN.z0+1,scene);
+box(3.7,.05,.75,mat(0x5b88a8,{roughness:.2}),0,.73,PEN.z0+1,scene);
 
 // barn
 const barnWin = new THREE.MeshStandardMaterial({color:0x2a2010, emissive:0xffc061, emissiveIntensity:0});
 (function(){
-  const bx=-28, bz=-66;
+  const bx=BARN.bx, bz=BARN.bz;
   const red=mat(0x9b3b2e), white=mat(0xece3cf), roof=mat(0x3e3a38);
   const walls=box(14,8,12,red,bx,4,bz,scene); walls.receiveShadow=true;
   const r1=box(8.8,.4,13,roof,bx-3.5,10.65,bz,scene); r1.rotation.z=.62;
@@ -447,23 +450,23 @@ function makeRock(x,z,s){
   circles.push({x,z,r:s*1.05}); treeDots.push({x,z,rock:true});
 }
 function clearOf(x,z,pad){
-  if(z<-36 && x>-40 && x<24) return false;          // pen + barn area
+  if(z<PEN.z1+10 && x>BARN.bx-11 && x<PEN.x1+10) return false;   // pen + barn area
   if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad) return false;
   for(const c of circles) if(Math.hypot(c.x-x,c.z-z)<c.r+pad) return false;
   return true;
 }
-for(let i=0,tries=0;i<7 && tries<400;tries++){
-  const x=(Math.random()*2-1)*70, z=-30+Math.random()*100;
+for(let i=0,tries=0;i<4 && tries<400;tries++){
+  const x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-16);
   if(clearOf(x,z,9)){ makeTree(x,z,1.1+Math.random()*.6,true); i++; }
 }
-for(let i=0,tries=0;i<6 && tries<400;tries++){
-  const x=(Math.random()*2-1)*70, z=-30+Math.random()*100;
+for(let i=0,tries=0;i<4 && tries<400;tries++){
+  const x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-16);
   if(clearOf(x,z,7)){ makeRock(x,z,.7+Math.random()*.7); i++; }
 }
 for(let i=0;i<190;i++){
-  const a=Math.random()*TAU, r=92+Math.random()*110;
+  const a=Math.random()*TAU, r=FIELD+12+Math.random()*120;
   let x=Math.cos(a)*r, z=Math.sin(a)*r;
-  if(Math.max(Math.abs(x),Math.abs(z))<88) continue;
+  if(Math.max(Math.abs(x),Math.abs(z))<FIELD+8) continue;
   makeTree(x,z,1.2+Math.random()*1.3,false);
 }
 
@@ -482,7 +485,7 @@ const moon=new THREE.Mesh(new THREE.SphereGeometry(12,20,14), new THREE.MeshBasi
 scene.add(moon);
 const flies=(function(){
   const n=90, p=new Float32Array(n*3), base=[];
-  for(let i=0;i<n;i++){ const x=(Math.random()*2-1)*75, z=(Math.random()*2-1)*75, y=.5+Math.random()*2; base.push([x,y,z,Math.random()*TAU]); p[i*3]=x;p[i*3+1]=y;p[i*3+2]=z; }
+  for(let i=0;i<n;i++){ const x=(Math.random()*2-1)*FIELD, z=(Math.random()*2-1)*FIELD, y=.5+Math.random()*2; base.push([x,y,z,Math.random()*TAU]); p[i*3]=x;p[i*3+1]=y;p[i*3+2]=z; }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(p,3));
   const m=new THREE.PointsMaterial({color:0xe2ff86,size:.32,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
   const s=new THREE.Points(g,m); s.userData.base=base; scene.add(s); return s;
@@ -707,6 +710,11 @@ function sFanfare(){
   if(!ok()) return; const t=AC.currentTime;
   [[523,0],[659,.12],[784,.24],[1047,.36],[784,.52],[1047,.64]].forEach(([fr,d],i)=>{ const o=AC.createOscillator(); o.type='triangle'; o.frequency.value=fr; o.connect(envG(t+d,.01,.24,i===5?.8:.25)); o.start(t+d); o.stop(t+d+(i===5?.85:.3)); });
 }
+function sBang(){
+  if(!ok()) return; const t=AC.currentTime, n=AC.createBufferSource(), f=AC.createBiquadFilter();
+  n.buffer=getNoise(); f.type='lowpass'; f.frequency.setValueAtTime(3000,t); f.frequency.exponentialRampToValueAtTime(300,t+.25);
+  n.connect(f).connect(envG(t,.003,.9,.3)); n.start(t); n.stop(t+.32); sThud();
+}
 function sThud(){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
   o.type='sine'; o.frequency.setValueAtTime(160,t); o.frequency.exponentialRampToValueAtTime(50,t+.18);
@@ -718,9 +726,9 @@ const G = {
   phase:'title', day:1, t:0, paused:false,
   sheep:[], coyotes:[], penned:0, lost:0, drivenOff:0, total:0,
   toSpawn:0, spawnT:0, warned:{}, endReason:'', zoom:1,
-  score:0, combo:0, lastPen:-99, elapsed:0, appleT:0, lanternT:0, powerT:0, celebrate:0, shake:0, name:'Bramble'
+  score:0, combo:0, lastPen:-99, hasGun:false, gunSpot:null, elapsed:0, appleT:0, lanternT:0, powerT:0, celebrate:0, shake:0, name:'Bramble'
 };
-const dog = {x:0,z:-44,vx:0,vz:0,yaw:Math.PI,phase:0,speed:0,stamina:100,tired:false,barkCD:0,barkT:0,lying:false,zoomT:0,pounceT:0,pounceCD:0,pdx:0,pdz:1,inX:0,inZ:0,m:makeDog()};
+const dog = {x:0,z:PEN.z1+10,vx:0,vz:0,yaw:Math.PI,phase:0,speed:0,stamina:100,tired:false,barkCD:0,barkT:0,bangT:0,gunCD:0,lying:false,zoomT:0,pounceT:0,pounceCD:0,pdx:0,pdz:1,inX:0,inZ:0,m:makeDog()};
 let best=0; try{ best=+localStorage.getItem('collieDuskBest')||0; }catch(e){}
 function updateBestLine(){ $('bestLine').textContent = best>0 ? 'Best score on this device: '+best : 'Hold Shift to run. Coyotes only come out after dark.'; }
 updateBestLine();
@@ -732,15 +740,15 @@ function clearAnimals(){
   G.sheep.length=0; G.coyotes.length=0;
 }
 function spawnFlock(n){
-  const groups=Math.min(4, 2+Math.floor(n/8));
+  const groups=Math.min(3, 2+Math.floor(n/12));
   const centers=[];
   for(let i=0,tries=0;i<groups && tries<500;tries++){
-    const x=(Math.random()*2-1)*62, z=-22+Math.random()*90;
+    const x=(Math.random()*2-1)*(FIELD-12), z=PEN.z1+16+Math.random()*(FIELD-PEN.z1-26);
     if(!clearOf(x,z,6)) continue;
-    if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<28)) continue;
+    if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<20)) continue;
     centers.push([x,z]); i++;
   }
-  if(!centers.length) centers.push([0,30]);
+  if(!centers.length) centers.push([0,20]);
   for(let i=0;i<n;i++){
     const c=centers[i%centers.length];
     let x,z,k=0; do{ x=c[0]+(Math.random()*2-1)*6; z=c[1]+(Math.random()*2-1)*6; k++; }while(!clearOf(x,z,1.5) && k<30);
@@ -751,7 +759,7 @@ function spawnFlock(n){
   }
 }
 function resetDog(){
-  dog.x=0; dog.z=-44; dog.vx=dog.vz=0; dog.yaw=Math.PI; dog.stamina=100; dog.tired=false; dog.barkCD=0; dog.barkT=0; dog.zoomT=0; dog.pounceT=0; dog.pounceCD=0;
+  dog.x=0; dog.z=PEN.z1+10; dog.vx=dog.vz=0; dog.yaw=Math.PI; dog.stamina=100; dog.tired=false; dog.barkCD=0; dog.barkT=0; dog.zoomT=0; dog.pounceT=0; dog.pounceCD=0;
 }
 function setupDay(){
   clearAnimals();
@@ -760,7 +768,7 @@ function setupDay(){
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=true; l.apply(); }
   spawnFlock(flockSize(G.day));
   resetDog();
-  spawnPower('bone'); G.powerT=16;
+  spawnPower('bone'); G.powerT=12;
 }
 
 // ---------------- input ----------------
@@ -774,6 +782,7 @@ window.addEventListener('keydown',e=>{
   keys.add(e.code);
   if(e.code==='Space') bark();
   if(e.code==='KeyE') pounce();
+  if(e.code==='KeyF') shoot();
   if(e.code==='KeyM') muted=!muted;
   if(e.code==='KeyP'||e.code==='Escape') togglePause();
   if(e.code==='Enter' && G.phase!=='day' && G.phase!=='night'){ const b=document.querySelector('#sign .btn'); if(b) b.click(); }
@@ -810,6 +819,7 @@ holdBtn($('bRun'),v=>touchRun=v);
 holdBtn($('bDown'),v=>touchDown=v);
 $('bBark').addEventListener('pointerdown',e=>{ e.preventDefault(); bark(); });
 $('bPounce').addEventListener('pointerdown',e=>{ e.preventDefault(); pounce(); });
+$('bShoot').addEventListener('pointerdown',e=>{ e.preventDefault(); shoot(); });
 
 // ---------------- UI ----------------
 let toastTimer=0;
@@ -826,7 +836,7 @@ function startGame(fresh){
   initAudio();
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   const ni=$('dogName'); if(ni){ G.name=(ni.value.trim()||'Bramble').slice(0,14); try{ localStorage.setItem('collieDuskName',G.name); }catch(e){} }
-  if(fresh){ G.day=1; G.total=0; }
+  if(fresh){ G.day=1; G.total=0; G.hasGun=false; hideGun(); }
   setupDay();
   G.phase='day'; G.paused=false;
   hideOverlay();
@@ -872,7 +882,7 @@ function pounce(){
 }
 function onPenned(s){
   G.penned++; sChime(); sBleat(1.15); pop('tPen');
-  if(G.elapsed-G.lastPen<5) G.combo++; else G.combo=1;
+  if(G.elapsed-G.lastPen<6) G.combo++; else G.combo=1;
   G.lastPen=G.elapsed;
   let pts=10*G.combo; if(s.golden) pts+=50;
   G.score+=pts; pop('tScore');
@@ -891,7 +901,7 @@ function killSheep(s){
 }
 function spawnCoyote(alpha){
   const a=Math.PI*(.05+Math.random()*.9);
-  const r=108, x=Math.cos(a)*r, z=Math.sin(a)*r*.9+10;
+  const r=FIELD+28, x=Math.cos(a)*r, z=Math.sin(a)*r*.9+6;
   const m=makeCoyote(alpha); if(alpha) m.g.scale.setScalar(1.35);
   G.coyotes.push({x,z,vx:0,vz:0,yaw:0,phase:Math.random()*10,hp:alpha?4:2,alpha:!!alpha,state:'stalk',fleeT:0,hitCD:0,target:null,carry:null,spin:0,wob:Math.random()*10,gone:false,m});
 }
@@ -918,7 +928,7 @@ function startNight(){
   G.phase='night'; G.t=0;
   const n=coyoteCount(G.day), now=Math.ceil(n*.6);
   for(let i=0;i<now;i++) spawnCoyote(G.day>=2 && i===0);
-  G.toSpawn=n-now; G.spawnT=14;
+  G.toSpawn=n-now; G.spawnT=10;
   spawnPower('lantern');
   sHowl(0,1); sHowl(.6,1.12); sHowl(1.4,.92);
   const out=G.sheep.filter(s=>!s.dead&&!s.penned).length;
@@ -981,7 +991,7 @@ function updateDog(dt){
   const zoom=dog.zoomT>0;
   const wantRun = playing && (keys.has('ShiftLeft')||keys.has('ShiftRight')||touchRun) && il>.1 && !dog.lying;
   let running=false;
-  if(zoom){ dog.stamina=100; dog.tired=false; }
+  if(zoom){ dog.stamina=100; dog.tired=false; running=wantRun; }
   else {
     if(dog.stamina<=0) dog.tired=true;
     if(dog.tired && dog.stamina>30) dog.tired=false;
@@ -992,7 +1002,7 @@ function updateDog(dt){
   if(dog.pounceT>0){
     dog.pounceT-=dt; dog.vx=dog.pdx*27; dog.vz=dog.pdz*27;
   } else {
-    const top = dog.lying?0:(zoom?20:(running?15.5:9));
+    const top = dog.lying?0:((zoom||running)&&il>.1?14:10);
     const a=1-Math.exp(-dt*(dog.lying?14:9));
     dog.vx+=(ix*top-dog.vx)*a; dog.vz+=(iz*top-dog.vz)*a;
   }
@@ -1026,11 +1036,23 @@ function updateSheep(dt){
         fear=Math.max(fear,.5);
         if(Math.random()<dt*.5) burst(s.x,1.9,s.z,1,PC.heart,.3,1.2,1);
       } else {
-        let R=dog.lying?5.5:(dog.speed>11?15:12), str=24;
-        if(dog.pounceT>0){ R=14; str=40; }
-        if(dog.barkT>0){ R=22; str=55; }
-        if(s.golden) R*=1.25;
-        if(d<R){ const k=1-d/R; fx+=dx/d*k*str; fz+=dz/d*k*str; fear=Math.max(fear,k*(dog.barkT>0?1:.8)); }
+        if(G.phase==='title'){ /* dog is resting at the gate */ }
+        else if(dog.lying && d<26 && dog.barkT<=0){
+          // "Lie down": the flock bunches up and keeps drifting the way it was heading
+          s.steady=1;
+          const v=Math.hypot(s.vx,s.vz);
+          if(v>.2){ fx+=s.vx/v*4; fz+=s.vz/v*4; }
+          if(d<4){ fx+=dx/d*(4-d)*6; fz+=dz/d*(4-d)*6; }
+          fear=Math.max(fear,.22);
+        } else {
+          let R=dog.speed>11?15:12, str=26;
+          if(dog.zoomT>0){ R*=1.5; str=32; }
+          if(dog.pounceT>0){ R=Math.max(R,14); str=40; }
+          if(dog.bangT>0){ R=18; str=50; }
+          if(dog.barkT>0){ R=22; str=55; }
+          if(s.golden) R*=1.25;
+          if(d<R){ const k=1-d/R; fx+=dx/d*k*str; fz+=dz/d*k*str; fear=Math.max(fear,k*(dog.barkT>0?1:.8)); }
+        }
       }
       for(const c of G.coyotes){
         if(c.gone) continue;
@@ -1051,11 +1073,12 @@ function updateSheep(dt){
       if(d2<3.6 && d2>1e-6){ const d=Math.sqrt(d2); fx+=dx/d*(1.9-d)*14; fz+=dz/d*(1.9-d)*14; }
       if(d2<150){ cx+=o.x; cz+=o.z; n++; if(d2<49){ ax+=o.vx; az+=o.vz; na++; } }
     }
-    if(n && !s.penned){ cx/=n; cz/=n; const coh=.3+s.fear*2.4; fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
-    if(na){ const al=.5+s.fear*1.6; fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
+    const steady=s.steady>0; s.steady=0;
+    if(n && !s.penned){ cx/=n; cz/=n; const coh=.3+s.fear*2.4+(steady?1.6:0); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(na){ const al=.5+s.fear*1.6+(steady?2:0); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     s.wt-=dt;
     if(s.wt<=0){ s.walking=Math.random()<.45; s.wa=Math.random()*TAU; s.wt=1.5+Math.random()*4; }
-    if(s.fear<.15 && s.walking){ fx+=Math.cos(s.wa)*2.4; fz+=Math.sin(s.wa)*2.4; }
+    if(s.fear<.15 && s.walking && !steady){ fx+=Math.cos(s.wa)*2.4; fz+=Math.sin(s.wa)*2.4; }
     s.vx+=fx*dt; s.vz+=fz*dt;
     const damp=s.fear>.1?1.1:2.8; const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
     let maxV=1.4+s.fear*7.4; if(s.golden) maxV+=1.5; if(s.penned) maxV=1.3;
@@ -1108,7 +1131,7 @@ function updateCoyotes(dt){
       if(c.fleeT<=0) c.state=G.phase==='night'?'stalk':'retreat';
     } else if(c.state==='retreat'){
       const d=Math.hypot(c.x,c.z)+1e-6; dirx=c.x/d; dirz=c.z/d; spd=11;
-      if(d>125){ c.gone=true; scene.remove(c.m.g); continue; }
+      if(d>FIELD+50){ c.gone=true; scene.remove(c.m.g); continue; }
     }
     const dl=Math.hypot(dirx,dirz); if(dl>1e-6){ dirx/=dl; dirz/=dl; }
     const a=1-Math.exp(-dt*6);
@@ -1120,6 +1143,64 @@ function updateCoyotes(dt){
       if(dog.pounceT>0 && dd<2.7) hitCoyote(c,2,24);
       else if(dd<1.95) hitCoyote(c,1,16);
     }
+  }
+}
+
+// ---------------- secret: the farmer's old gun ----------------
+function makeGun(){
+  const g=new THREE.Group();
+  box(.12,.17,.5,mat(0x7a4a2a),0,0,0,g);
+  box(.11,.15,.42,mat(0x2b2b2e,{metalness:.5,roughness:.5}),0,.02,.44,g);
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.8,8),mat(0x3a3a3e,{metalness:.6,roughness:.4}));
+  bar.rotation.x=Math.PI/2; bar.position.set(0,.05,1.02); g.add(bar);
+  box(.04,.12,.06,mat(0x2b2b2e),0,-.1,.36,g);
+  return g;
+}
+const GUN_SPOTS=[[BARN.bx,-FIELD+2.2],[FIELD-2.4,-FIELD+2.4],[-FIELD+2.4,FIELD-2.4],[FIELD-2.4,FIELD-2.4]];
+const groundGun=makeGun(); groundGun.scale.setScalar(1.3); groundGun.rotation.set(0,.7,1.45); groundGun.visible=false; scene.add(groundGun);
+const dogGun=makeGun(); dogGun.scale.setScalar(.75); dogGun.position.set(.16,-.14,.42); dogGun.visible=false; dog.m.head.add(dogGun);
+const bullets=[];
+const bulletGeo=new THREE.SphereGeometry(.14,8,6), bulletMat=new THREE.MeshBasicMaterial({color:0xffe27a});
+function hideGun(){ G.gunSpot=GUN_SPOTS[(Math.random()*GUN_SPOTS.length)|0]; groundGun.position.set(G.gunSpot[0],.16,G.gunSpot[1]); groundGun.visible=true; }
+function updateGun(dt,time){
+  dogGun.visible=G.hasGun;
+  $('bShoot').hidden=!G.hasGun;
+  if(G.hasGun || !G.gunSpot) return;
+  if(Math.random()<dt*.35) burst(G.gunSpot[0],.5,G.gunSpot[1],3,PC.spark,.6,1.5,2);   // a faint glint
+  if((G.phase==='day'||G.phase==='night') && !G.paused && Math.hypot(G.gunSpot[0]-dog.x,G.gunSpot[1]-dog.z)<1.8){
+    G.hasGun=true; groundGun.visible=false;
+    sPickup(); sFanfare(); burst(G.gunSpot[0],1,G.gunSpot[1],60,PC.gold,6,7);
+    toast('Secret found! The farmer\'s old gun. Press F to shoot.','warn',4);
+    popText(G.gunSpot[0],2,G.gunSpot[1],'SECRET!','gold');
+  }
+}
+function shoot(){
+  if(!G.hasGun || (G.phase!=='day' && G.phase!=='night') || G.paused || dog.gunCD>0) return;
+  dog.gunCD=.45; dog.bangT=.35;
+  // aim at the nearest coyote roughly ahead, or straight ahead
+  let ax=Math.sin(dog.yaw), az=Math.cos(dog.yaw), best=null, bd=30;
+  for(const c of G.coyotes){
+    if(c.gone||c.state==='retreat') continue;
+    const dx=c.x-dog.x, dz=c.z-dog.z, d=Math.hypot(dx,dz);
+    if(d<bd && (dx*ax+dz*az)/d>-.2){ bd=d; best=c; }
+  }
+  if(best){ const dx=best.x-dog.x, dz=best.z-dog.z, d=Math.hypot(dx,dz); ax=dx/d; az=dz/d; dog.yaw=Math.atan2(ax,az); }
+  const m=new THREE.Mesh(bulletGeo,bulletMat); scene.add(m);
+  bullets.push({x:dog.x+ax*1.4,z:dog.z+az*1.4,vx:ax*48,vz:az*48,t:0,m});
+  burst(dog.x+ax*1.6,1.3,dog.z+az*1.6,12,[0xffe27a,0xffb347,0xffffff],3,2,4);
+  G.shake=Math.max(G.shake,.3); sBang();
+}
+function updateBullets(dt){
+  dog.gunCD=Math.max(0,dog.gunCD-dt); dog.bangT=Math.max(0,dog.bangT-dt);
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i]; b.t+=dt; b.x+=b.vx*dt; b.z+=b.vz*dt;
+    b.m.position.set(b.x,1.2,b.z);
+    let hit=b.t>.8;
+    for(const c of G.coyotes){
+      if(c.gone||c.state==='retreat') continue;
+      if(Math.hypot(c.x-b.x,c.z-b.z)<1.3){ hitCoyote(c,2,22); hit=true; break; }
+    }
+    if(hit){ scene.remove(b.m); bullets.splice(i,1); }
   }
 }
 
@@ -1148,14 +1229,14 @@ function makePowerMesh(type){
 }
 function spawnPower(type){
   for(let k=0;k<80;k++){
-    const x=(Math.random()*2-1)*64, z=-30+Math.random()*94;
+    const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-14);
     if(!clearOf(x,z,3) || Math.hypot(x-dog.x,z-dog.z)<12) continue;
     const m=makePowerMesh(type); m.g.position.set(x,0,z);
     powerups.push({type,x,z,m}); return;
   }
 }
 function clearPowers(){ for(const p of powerups) scene.remove(p.m.g); powerups.length=0; }
-const POWER_MSG={bone:['Zoomies!','ZOOMIES'],apple:['Apples! The sheep will follow you.','APPLES'],lantern:['Lantern! Coyotes keep back.','LANTERN']};
+const POWER_MSG={bone:['Super herder! Endless running, and the flock hears you from farther away.','SUPER HERDER'],apple:['Apples! The sheep will follow you.','APPLES'],lantern:['Lantern! Coyotes keep back.','LANTERN']};
 function updatePowers(dt,time){
   for(let i=powerups.length-1;i>=0;i--){
     const p=powerups[i];
@@ -1163,7 +1244,7 @@ function updatePowers(dt,time){
     p.m.glow.material.opacity=.35+.25*Math.sin(time*4+i);
     if((G.phase==='day'||G.phase==='night') && !G.paused && Math.hypot(p.x-dog.x,p.z-dog.z)<1.9){
       scene.remove(p.m.g); powerups.splice(i,1);
-      if(p.type==='bone'){ dog.zoomT=8; dog.stamina=100; }
+      if(p.type==='bone'){ dog.zoomT=10; dog.stamina=100; }
       if(p.type==='apple') G.appleT=10;
       if(p.type==='lantern') G.lanternT=12;
       burst(p.x,1.2,p.z,40,PC.confetti,6,6); sPickup();
@@ -1287,7 +1368,7 @@ function applySky(time){
 const camLook=new THREE.Vector3(0,0,-30);
 function updateCamera(dt,time){
   if(G.phase==='title'){
-    const a=time*.05; camera.position.set(Math.sin(a)*78, 34, Math.cos(a)*78);
+    const a=time*.05; camera.position.set(Math.sin(a)*60, 30, Math.cos(a)*60);
     camLook.set(0,0,0); camera.lookAt(camLook); return;
   }
   const z=G.zoom;
@@ -1311,7 +1392,7 @@ function drawMinimap(time){
   mx.fillStyle='rgba(242,181,68,.28)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
   mx.strokeStyle='rgba(242,181,68,.9)'; mx.lineWidth=2;
   mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke();
-  mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(-35.2),Y(-72.2),14.4*S,12.4*S);
+  mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(BARN.bx-7.2),Y(BARN.bz-6.2),14.4*S,12.4*S);
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
   for(const s of G.sheep){
     if(s.dead) continue;
@@ -1358,7 +1439,7 @@ function updateHUD(dt,time){
   $('tOut').textContent=alive.filter(s=>!s.penned).length;
   $('tLost').textContent=G.lost;
   $('tScore').textContent=G.total+G.score;
-  setChip('pwZoom',dog.zoomT,8); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12);
+  setChip('pwZoom',dog.zoomT,10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12);
   $('dayLabel').textContent='Day '+G.day;
   const tf=$('timeFill');
   if(G.phase==='night'||(G.phase==='result'&&G.endReason!=='before')){
@@ -1389,13 +1470,14 @@ function step(dt){
     G.appleT=Math.max(0,G.appleT-dt); G.lanternT=Math.max(0,G.lanternT-dt);
     G.powerT-=dt;
     if(G.powerT<=0){
-      G.powerT=18+Math.random()*8;
+      G.powerT=14+Math.random()*6;
       if(powerups.length<2){ const r=Math.random(); spawnPower(G.phase==='night'?(r<.4?'lantern':r<.7?'bone':'apple'):(r<.55?'bone':'apple')); }
     }
   }
   updateDog(dt);
   updateSheep(dt);
   updateCoyotes(dt);
+  updateBullets(dt);
   if(G.phase==='day'){
     const alive=G.sheep.filter(s=>!s.dead);
     const f=G.t/dayLen(G.day);
@@ -1405,7 +1487,7 @@ function step(dt){
     else if(f>.88 && !G.warned.dusk){ G.warned.dusk=1; toast('Dusk. Coyotes will be out soon.','warn',2.8); sHowl(0,.8); }
   } else if(G.phase==='night'){
     G.spawnT-=dt;
-    if(G.toSpawn>0 && G.spawnT<=0){ spawnCoyote(false); G.toSpawn--; G.spawnT=13; if(Math.random()<.7) sHowl(0,.9+Math.random()*.3); }
+    if(G.toSpawn>0 && G.spawnT<=0){ spawnCoyote(false); G.toSpawn--; G.spawnT=9; if(Math.random()<.7) sHowl(0,.9+Math.random()*.3); }
     if(Math.random()<dt*1.4) sCricket();
     const alive=G.sheep.filter(s=>!s.dead);
     if(!alive.length) endDay('wiped');
@@ -1425,6 +1507,7 @@ function frame(now){
     updateParts(dt);
   }
   updatePowers(dt,time);
+  updateGun(dt,time);
   syncAll(dt,time);
   applySky(time);
   updateCamera(dt,time);
