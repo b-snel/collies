@@ -30,7 +30,7 @@ It's a static site with no build step:
 - `vendor/three.min.js`: a local copy of three.js so the game works offline
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
 - `vercel.json`: caching headers
-- `audio/`: recorded barks and bleats, Hank's voice clips and the 1915 pipe-band music (see [CREDITS.md](CREDITS.md) for sources and licenses)
+- `audio/`: recorded dog barks and Hank's voice clips (see [CREDITS.md](CREDITS.md) for sources and licenses)
 
 To run it locally:
 
