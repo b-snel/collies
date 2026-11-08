@@ -173,6 +173,10 @@ body.pad .keyline .gp{display:flex}
 .woolLine span{font-family:var(--ui);font-size:14px;color:var(--muted)}
 @media (max-width:560px){ .shop{grid-template-columns:1fr} }
 
+.stat.lost.danger b{animation:dangerPulse .8s infinite alternate}
+@keyframes dangerPulse{from{transform:scale(1)}to{transform:scale(1.18);color:#ff8a6a}}
+@media (prefers-reduced-motion: reduce){ .stat.lost.danger b{animation:none} }
+
 /* touch controls */
 #touch{position:fixed;inset:auto 0 0 0;height:210px;pointer-events:none}
 #stickZone{position:absolute;left:0;bottom:0;width:55%;height:100%;pointer-events:auto;touch-action:none}
@@ -883,7 +887,7 @@ function initAudio(){
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
-const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel"};
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over"};
 const SFX={bark:[],bleat:[],voice:{}};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
@@ -1233,6 +1237,8 @@ function setupDay(){
   spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
+  // lose this many and the farm is done (tighter every day)
+  G.lossCap=Math.max(2,Math.round(G.sheep.length*Math.max(.18,.38-.03*(G.day-1)))); G.failPending=false;
   G.storm=false; G.flash=0; stopRain();
   resetGun();
   resetLlama();
@@ -1576,6 +1582,8 @@ function onPenned(s){
 function killSheep(s){
   if(s.dead) return;
   s.dead=true; s.deadT=0; s.carried=null; G.lost++; pop('tLost'); sBleat(.7);
+  if(G.lossCap && G.lost>=G.lossCap) G.failPending=true;
+  else if(G.lossCap && G.lost===G.lossCap-1){ setTimeout(()=>shepSay('Careful! We cannae lose any more!',true),900); }
   toast('Sheep lost!','bad',1.8);
 }
 function spawnCoyote(alpha,boss){
@@ -1632,6 +1640,7 @@ function startNight(){
 function closeGates(){ for(const l of leaves){ l.target=l.closedA; l.seg.on=false; } }
 function endDay(reason){
   G.phase='result'; G.endReason=reason; stopRain(); $('bossBar').hidden=true;
+  const over = reason==='wiped' || reason==='failed';
   for(const c of G.coyotes) if(!c.gone){ dropSheep(c,false); c.state='retreat'; c.target=null; }
   if(rascal.active) rascalLeave(false);
   closeGates();
@@ -1639,44 +1648,45 @@ function endDay(reason){
   const alive=G.sheep.filter(s=>!s.dead), penned=alive.filter(s=>s.penned).length, outside=alive.length-penned;
   const flock=G.sheep.length;
   const timeBonus = reason==='before' ? Math.round(dayLen(G.day)-G.t)*2 : 0;
-  const fullBonus = (G.lost===0 && reason!=='wiped') ? 25 : 0;
-  const dayScore = G.score + (reason==='wiped'?0:outside*4 + timeBonus + fullBonus);
+  const fullBonus = (G.lost===0 && !over) ? 25 : 0;
+  const dayScore = G.score + (over?0:outside*4 + timeBonus + fullBonus);
   G.total += dayScore; G.score=0;
   if(G.total>best){ best=G.total; try{ localStorage.setItem('collieDuskBest',String(best)); }catch(e){} }
-  const stars = reason==='before'?3 : reason==='wiped'?0 : (G.lost===0?2:1);
+  const stars = reason==='before'?3 : over?0 : (G.lost===0?2:1);
   const oldStars=starsTotal; starsTotal+=stars; try{ localStorage.setItem('collieDuskStars',String(starsTotal)); }catch(e){}
   const newHat=HATS.filter(h=>h.need>oldStars && h.need<=starsTotal).pop();
   if(newHat){ setHat(newHat.id); setTimeout(()=>toast('New hat!','warn',2.4),400); }
   if(stars>0){ G.celebrate = stars>=2 ? 4 : 2; sFanfare(); }
   const N=G.name;
-  shepSay({before:"That'll do, "+N+". That'll do.",nightsafe:"Good dog. They're all safe now.",dawn:'Morning! You did well, '+N+'.',wiped:'Ach. We will try again.'}[reason],true);
+  shepSay({before:"That'll do, "+N+". That'll do.",nightsafe:"Good dog. They're all safe now.",dawn:'Morning! You did well, '+N+'.',wiped:'Ach. We will try again.',failed:"That's the flock gone. The farm's done for."}[reason],true);
   const T={
     before:["That'll do, "+N+".","Every sheep is in the fold with daylight to spare. The gate swings shut."],
     nightsafe:["Safe in the fold!","You got the last of them in under the moon, and the coyotes slink back to the trees."],
     dawn:["Morning!","You held off the coyotes until sunrise. Good dog, "+N+"."],
+    failed:["The farm's done for.","Too many sheep were lost. Start again from day 1. Your wool and upgrades are kept."],
     wiped:["The flock is gone.","The coyotes carried off every last one. Shake it off, "+N+", and try again."]
   }[reason];
   const stat=(v,l,c)=>`<div class="${c||''}"><b>${v}</b><span>${l}</span></div>`;
   const starsHtml='<div class="starsRow" role="img" aria-label="'+stars+' of 3 stars">'+[0,1,2].map(i=>`<span class="${i<stars?'on':''}" style="animation-delay:${(.25+i*.28).toFixed(2)}s">★</span>`).join('')+'</div>';
-  const notes=[]; if(timeBonus) notes.push(timeBonus+' for daylight left'); if(fullBonus) notes.push('25 for a full flock'); if(outside&&reason!=='wiped') notes.push(outside*4+' for sheep that made it through the night');
+  const notes=[]; if(timeBonus) notes.push(timeBonus+' for daylight left'); if(fullBonus) notes.push('25 for a full flock'); if(outside&&!over) notes.push(outside*4+' for sheep that made it through the night');
   let woolEarned=G.drivenOff;
-  for(const sh of G.sheep){ if(sh.dead) continue; woolEarned += sh.penned ? (sh.golden?10:sh.ram?4:sh.lamb?1:2) : (reason!=='wiped'?1:0); }
+  for(const sh of G.sheep){ if(sh.dead) continue; woolEarned += sh.penned ? (sh.golden?10:sh.ram?4:sh.lamb?1:2) : (!over?1:0); }
   woolEarned += stars*3 + (G.bonusWool||0);
   WOOL+=woolEarned; saveMeta();
-  const next = reason==='wiped'
+  const next = over
     ? `<button class="btn" id="nextBtn" type="button">Shearing shed</button>`
     : `<button class="btn" id="nextBtn" type="button">Shearing shed</button><button class="btn ghost" id="againBtn" type="button">Restart</button>`;
   setTimeout(()=>{
-    showOverlay(`<span class="eyebrow">Day ${G.day}</span>${starsHtml}<h2>${T[0]}</h2>
+    showOverlay(`<span class="eyebrow">${over?"Game over · reached day "+G.day:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
       <div class="stats">${stat(penned,'Penned')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(dayScore,'Score')}${stat(G.total,'Total','gold')}</div>
       <p class="woolLine">+${woolEarned} wool <span>· ${WOOL} to spend</span></p>
       ${newHat?`<p class="small" style="color:var(--lantern)">New hat: ${newHat.name}</p>`:''}
-      ${reason!=='wiped'?`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`:''}
+      ${!over?`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`:''}
       <div class="btnrow">${next}</div>`);
-    $('nextBtn').onclick=()=>openShop(()=>{ if(reason==='wiped') startGame(true); else { G.day++; startGame(false); } }, reason==='wiped'?'Try again from day 1':'Start day '+(G.day+1));
+    $('nextBtn').onclick=()=>openShop(()=>{ if(over) startGame(true); else { G.day++; startGame(false); } }, over?'Try again from day 1':'Start day '+(G.day+1));
     const a=$('againBtn'); if(a) a.onclick=()=>startGame(true);
     $('touch').hidden=true;
-  }, reason==='wiped'?1400:1600);
+  }, over?1400:1600);
 }
 
 // ---------------- updates ----------------
@@ -1803,6 +1813,10 @@ function updateSheep(dt){
         }
       }
       const ND=nearestDog(s.x,s.z), ndx=s.x-ND.x, ndz=s.z-ND.z, nd=Math.hypot(ndx,ndz)+1e-6;
+      // how close the nearest predator is (0 = none, 1 = on top of it)
+      let threat=0;
+      for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.grabbedBy) continue; const R=c.boss?24:17, e=Math.hypot(s.x-c.x,s.z-c.z); if(e<R) threat=Math.max(threat,1-e/R); }
+      if(rascal.active && rascal.state==='run' && !rascal.grabbedBy){ const e=Math.hypot(s.x-rascal.x,s.z-rascal.z); if(e<13) threat=Math.max(threat,(1-e/13)*.7); }
       let stressIn=0, calmNear=false;
       if(s.munch>0){ calmNear=true; /* too busy eating to notice the dog */ }
       else if(G.appleT>0 && ND.barkT<=0 && nd<24){
@@ -1824,7 +1838,8 @@ function updateSheep(dt){
           fear=Math.max(fear,.22);
         } else {
           // flight zone: a sheep only moves once the dog is inside it. Skittish or stressed sheep spook from farther.
-          let R=(s.trait==='skittish'?15:s.trait==='stubborn'?8:12)*(1+s.stress*.4), str=24;
+          // with a predator close by, the dog is the safe one: much less to fear from it
+          let R=(s.trait==='skittish'?15:s.trait==='stubborn'?8:12)*(1+s.stress*.4)*(1-threat*.5), str=24*(1-threat*.7);
           if(D.zoomT>0){ R*=1.4; str=30; }
           if(D.pounceT>0){ R=Math.max(R,14); str=40; }
           if(D.bangT>0){ R=Math.max(R,18); str=50; }
@@ -1835,7 +1850,7 @@ function updateSheep(dt){
             const k=1-d/R; fx+=dx/d*k*str; fz+=dz/d*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
-            stressIn += inner*.35 + k*Math.max(0,D.speed-7)/7*.7;
+            stressIn += (inner*.35 + k*Math.max(0,D.speed-7)/7*.7)*(1-threat*.7);
             if(D.barkT>0) stressIn += .7*(1-d/22);
             if(D.pounceT>0) stressIn += 1.6;
             if(D.bangT>0) stressIn += 2;
@@ -1845,9 +1860,11 @@ function updateSheep(dt){
       for(const c of G.coyotes){
         if(c.gone) continue;
         const ex=s.x-c.x, ez=s.z-c.z, e=Math.hypot(ex,ez)+1e-6;
-        if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); s.munch=0; stressIn+=1.2*k; }
+        const PR=c.boss?24:17; if(e<PR && !c.grabbedBy){ const k=1-e/PR; fx+=ex/e*k*44; fz+=ez/e*k*44; fear=Math.max(fear,k); s.munch=0; stressIn+=2.6*k; }
       }
-      if(rascal.active && rascal.state==='run'){ const ex=s.x-rascal.x, ez=s.z-rascal.z, e=Math.hypot(ex,ez)+1e-6; if(e<10){ const k=1-e/10; fx+=ex/e*k*26; fz+=ez/e*k*26; fear=Math.max(fear,k*.9); s.munch=0; stressIn+=1.3*k; } }
+      if(rascal.active && rascal.state==='run' && !rascal.grabbedBy){ const ex=s.x-rascal.x, ez=s.z-rascal.z, e=Math.hypot(ex,ez)+1e-6; if(e<13){ const k=1-e/13; fx+=ex/e*k*32; fz+=ez/e*k*32; fear=Math.max(fear,k*.9); s.munch=0; stressIn+=1.8*k; } }
+      // danger nearby: huddle in close to the dog for protection
+      if(threat>.12 && nd>3){ fx-=ndx/nd*threat*14; fz-=ndz/nd*threat*14; }
       if(!SEASON.frozen){ const px=s.x-POND.x, pz=s.z-POND.z, pd=Math.hypot(px,pz)+1e-6; if(pd<POND.r+3){ const k=(POND.r+3-pd)/3; fx+=px/pd*k*10; fz+=pz/pd*k*10; } }
       // stress: rises with pressure, fades when left alone (faster when the dog lies down)
       const tg=(1-.15*lv('calm'))*(s.trait==='skittish'?1.6:s.trait==='stubborn'?.55:1)*(s.jumpy?1.5:1)*(s.leader?.8:1);
@@ -3035,7 +3052,8 @@ function updateHUD(dt,time){
   const alive=G.sheep.filter(s=>!s.dead);
   $('tPen').textContent=alive.filter(s=>s.penned).length;
   $('tOut').textContent=alive.filter(s=>!s.penned).length;
-  $('tLost').textContent=G.lost;
+  $('tLost').textContent=G.lost+'/'+(G.lossCap||0);
+  $('tLost').parentElement.classList.toggle('danger', G.lossCap && G.lost>=G.lossCap-1);
   $('tScore').textContent=G.total+G.score;
   { const out=alive.filter(s=>!s.penned && !s.carried); const avg=out.length?out.reduce((a,s)=>a+s.stress,0)/out.length:0;
     const mf=$('moodFill'); mf.style.width=Math.max(6,avg*100)+'%'; mf.style.background=avg<.35?'var(--grass)':avg<.62?'var(--lantern)':'var(--coyote)';
@@ -3105,12 +3123,14 @@ function step(dt){
         setTimeout(()=>shepSay(k===0?'Coyotes! In broad daylight!':'More of them! Get after them!',true),700);
       }
     });
+    if(G.failPending && G.phase==='day') endDay('failed');
   } else if(G.phase==='night'){
     G.spawnT-=dt;
     if(G.toSpawn>0 && G.spawnT<=0){ spawnCoyote(false); G.toSpawn--; G.spawnT=9; if(Math.random()<.7) sHowl(0,.9+Math.random()*.3); }
     if(Math.random()<dt*1.4) sCricket();
     const alive=G.sheep.filter(s=>!s.dead);
     if(!alive.length) endDay('wiped');
+    else if(G.failPending) endDay('failed');
     else if(alive.every(s=>s.penned)) endDay('nightsafe');
     else if(G.t>=NIGHT_LEN) endDay('dawn');
   }
