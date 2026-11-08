@@ -364,6 +364,7 @@ const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:6};
 const BARN = {bx:-23, bz:-38};
 const POND = {x:-26, z:16, r:7};
+const grassPos=[];
 let groundMesh=null, groundBase=null, grassMesh=null, grassBase=null, pondWater=null, pondBank=null; const pondPads=[];     // sheep walk around it; dogs and ducks can swim
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 let WOOL=0, UP={};
@@ -395,7 +396,18 @@ const SEASONS={
   winter:{name:'winter',label:'Winter',ground:0xdde6ee,groundMix:.78,grass:0xf2f6f9,grassMix:.82,leaves:[0xdfe9ee,0xc9dbe2,0xeef4f6],sky:0xc6d4e0,hemi:0xeaf2ff,hemiGround:0xb8c4cc,
           fx:{colors:[0xffffff,0xeef6ff],count:700,fall:2.2,sway:1,size:.2},flies:0,frozen:true},
 };
-const seasonOf = d => ['spring','summer','autumn','winter'][(d-1)%4];
+// Overcooked-style: a different layout every day
+const LEVELS=[
+  {id:'farm',  name:'The Farm'},
+  {id:'hedges',name:'Hedgerows',    walls:[[-48,2,-14,2],[-2,2,48,2],[-48,28,4,28],[16,28,48,28]]},
+  {id:'river', name:'River Crossing',river:{z0:-2,z1:4,bridges:[[-31,-24],[19,26]]}},
+  {id:'sky',   name:'Sky Islands',  season:'summer', holes:[{x:22,z:8,r:8},{x:-6,z:27,r:7},{x:32,z:36,r:6},{x:-36,z:38,r:5}], theme:'sky'},
+  {id:'sea',   name:'Sunken Meadow',season:'spring', theme:'sea'},
+];
+const levelOf = d => LEVELS[(d-1)%LEVELS.length];
+let LEVEL=LEVELS[0];
+const inRiver=(x,z)=>{ const R=LEVEL.river; if(!R||z<R.z0||z>R.z1) return false; return !R.bridges.some(b=>x>b[0]&&x<b[1]); };
+const seasonOf = d => levelOf(d).season || ['spring','summer','autumn','winter'][(d-1)%4];   // themed levels bring their own weather
 let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
@@ -419,7 +431,7 @@ function dayNews(d){
 }
 function dayPlan(d){
   const c=coyoteCount(d)+raidTotal(d), r=ramCount(d);
-  return SEASONS[seasonOf(d)].label+' · '+flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
+  return levelOf(d).name+' · '+SEASONS[seasonOf(d)].label+' · '+flockSize(d)+' sheep · '+r+(r>1?' rams':' ram')+' · '+c+' coyotes';
 }
 
 // ---------------- noise ----------------
@@ -544,7 +556,7 @@ const treeDots = [];
     if(Math.hypot(x-POND.x,z-POND.z)<POND.r+.6) continue;
     d.position.set(x,groundH(x,z),z); d.rotation.set((Math.random()-.5)*.4,Math.random()*TAU,(Math.random()-.5)*.4);
     const s=.6+Math.random()*1.1; d.scale.set(s,s*(.7+Math.random()*.8),s); d.updateMatrix();
-    im.setMatrixAt(i,d.matrix);
+    im.setMatrixAt(i,d.matrix); grassPos.push([x,z,d.matrix.clone()]);
     c.setHSL(.24+Math.random()*.06,.45+Math.random()*.2,.3+Math.random()*.14); im.setColorAt(i,c);
     i++;
   }
@@ -686,6 +698,8 @@ function clearOf(x,z,pad){
   if(z<PEN.z1+10 && x>BARN.bx-11 && x<PEN.x1+10) return false;   // pen + barn area
   if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad) return false;
   if(Math.hypot(x-POND.x,z-POND.z)<POND.r+2+pad) return false;
+  if(LEVEL.river && z>LEVEL.river.z0-2-pad && z<LEVEL.river.z1+2+pad) return false;
+  for(const sg of segs){ if(!sg.level) continue; const abx=sg.bx-sg.ax, abz=sg.bz-sg.az, t=clamp(((x-sg.ax)*abx+(z-sg.az)*abz)/(abx*abx+abz*abz),0,1); if(Math.hypot(x-sg.ax-abx*t,z-sg.az-abz*t)<1.5+pad) return false; }
   for(const c of circles) if(Math.hypot(c.x-x,c.z-z)<c.r+pad) return false;
   return true;
 }
@@ -934,6 +948,7 @@ function collide(e,r,o){
     if(s.kind==='gate' && !o.gate) continue;
     if(s.kind==='perim' && !o.perim) continue;
     if(s.kind==='leaf' && !s.on) continue;
+    if(s.kind==='river' && (o.swim || o.perim===false)) continue;      // dogs swim it, coyotes slink through (unless hauling a sheep)
     const abx=s.bx-s.ax, abz=s.bz-s.az, L2=abx*abx+abz*abz;
     const t=clamp(((e.x-s.ax)*abx+(e.z-s.az)*abz)/L2,0,1);
     const px=s.ax+abx*t, pz=s.az+abz*t;
@@ -941,7 +956,7 @@ function collide(e,r,o){
     if(d<r && d>1e-6){ const nx=dx/d, nz=dz/d; e.x=px+nx*r; e.z=pz+nz*r; const vn=e.vx*nx+e.vz*nz; if(vn<0){e.vx-=vn*nx; e.vz-=vn*nz;} }
   }
 }
-const insidePen=(x,z)=> x>PEN.x0+.4 && x<PEN.x1-.4 && z>PEN.z0+.4 && z<PEN.z1-.8;
+const insidePen=(x,z)=> x>PEN.x0+.4 && x<PEN.x1-.4 && z>PEN.z0+.4 && z<PEN.z1-.4;
 
 // ---------------- audio ----------------
 let AC=null, master=null, muted=false;
@@ -1295,6 +1310,7 @@ function resetDog(){
 function setupDay(){
   clearAnimals();
   applySeason(seasonOf(G.day));
+  buildLevel(levelOf(G.day));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
@@ -1469,7 +1485,7 @@ function startGame(fresh){
   hideOverlay();
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
-  { const nw=G.day===1?'':dayNews(G.day); toast('Day '+G.day+' · '+SEASON.label+(nw?' · '+nw:''),'',2.8); }
+  { const nw=G.day===1?'':dayNews(G.day); toast('Day '+G.day+' · '+LEVEL.name+(LEVEL.theme?'':' · '+SEASON.label)+(nw?' · '+nw:''),'',3); }
   setTimeout(()=>shepSay('Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
@@ -1844,7 +1860,7 @@ function updateDog(D,dt){
   if(D.pounceT>0){
     D.pounceT-=dt; D.vx=D.pdx*27; D.vz=D.pdz*27;
   } else {
-    const hillF=clamp(1-slopeAlong(D.x,D.z,ix,iz)*1.3,.6,1.3);
+    const hillF=clamp(1-slopeAlong(D.x,D.z,ix,iz)*1.3,.6,1.3)*(LEVEL.theme==='sea'?.82:1);
     const top = hillF*(D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'))*(D.swim?.55:1)*(D.grab?GRAB[D.grab.kind].speed:1);
     const a=1-Math.exp(-dt*(D.lying?14:(D.onIce?1.5:9)));      // slippery on the frozen pond
     D.vx+=(ix*top-D.vx)*a; D.vz+=(iz*top-D.vz)*a;
@@ -1856,7 +1872,7 @@ function updateDog(D,dt){
   else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
   if(D.grab) updateGrab(D,dt);
   D.shakeT=Math.max(0,(D.shakeT||0)-dt);
-  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4; D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
+  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4 || inRiver(D.x,D.z); D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
   if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
   D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt);
@@ -1988,9 +2004,9 @@ function updateSheep(dt){
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
       // balking: a stressed sheep won't go through the gate. It shies away at the last moment.
       { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz);
-        if(gd<6.5 && s.z>PEN.z1-.5 && s.stress>.55){
+        if(gd<6.5 && s.z>PEN.z1-.5 && s.stress>.72){
           if(!s.balkSide) s.balkSide=Math.random()<.5?-1:1;
-          const b=(s.stress-.55)/.45; fz+=20*b; fx+=s.balkSide*12*b;
+          const b=(s.stress-.72)/.28; fz+=20*b; fx+=s.balkSide*12*b;
           if(Math.random()<dt*1.2) sBleat(1.1);
           if(G.elapsed-(G.balkSay||-99)>10){ G.balkSay=G.elapsed; shepSay("Gently! They won't go in scared!",true); }
         } }
@@ -2006,6 +2022,8 @@ function updateSheep(dt){
         if(ld>1.8){ const k=Math.min(1,(ld-1.8)/4); fx+=lx/ld*k*16; fz+=lz/ld*k*16; fear=Math.max(fear,.25*k); }
         if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
       }
+      // calm sheep near the gate flow on in
+      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(gd<10 && s.z>PEN.z1-1 && s.stress<.65){ const k=1-gd/10, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*5*k; fz+=tz/td*5*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
       if(s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       const m=FIELD-3;
@@ -2059,7 +2077,7 @@ function updateSheep(dt){
     }
     s.vx+=fx*dt; s.vz+=fz*dt;
     const damp=(eating?7:(s.fear>.1?1.1:2.8))*(SEASON.frozen&&Math.hypot(s.x-POND.x,s.z-POND.z)<POND.r?.2:1);   // sheep slide on ice const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
-    const sheepHill=clamp(1-slopeAlong(s.x,s.z,s.vx,s.vz)*1.3,.6,1.3);
+    const sheepHill=clamp(1-slopeAlong(s.x,s.z,s.vx,s.vz)*1.3,.6,1.3)*(LEVEL.theme==='sea'?.85:1);
     let maxV=sheepHill*(1.4+s.fear*6.4)+panic*3+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.penned) maxV=1.3;
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
@@ -2926,6 +2944,7 @@ function syncAll(dt,time){
     } else s.m.g.rotation.z=0;
     if(G.celebrate>0 && s.penned && s.hop<=0 && Math.random()<dt*2.5) s.hop=.45;
     if(s.hop>0){ s.hop=Math.max(0,s.hop-dt); s.m.g.position.y+=Math.sin((1-s.hop/.45)*Math.PI)*.7; }
+    if(LEVEL.theme==='sea') s.m.g.position.y+=.25+Math.sin(time*2+s.phase)*.15;      // floating
     if(s.flip>0){ s.flip=Math.max(0,s.flip-dt); const k=1-s.flip/.6; s.m.g.rotation.x=-k*TAU; s.m.g.position.y+=Math.sin(k*Math.PI)*1.6; } else s.m.g.rotation.x=0;
     const grazing=v<.35 && !s.walking && s.fear<.1;
     s.m.head.rotation.x=lerp(s.m.head.rotation.x, s.munch>0?.95+Math.sin(time*14)*.1:(grazing?.75:0), s.munch>0?.3:.08);
@@ -2999,6 +3018,14 @@ function applySky(time){
   lantern.intensity=n*2.4; shepLight.intensity=n*1.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.4;
   stars.position.copy(camera.position); stars.material.opacity=clamp(n*1.3-.3,0,1);
   moon.position.set(camera.position.x-120, camera.position.y+170, camera.position.z-360); moon.material.opacity=clamp(n*1.4-.4,0,1);
+  if(LEVEL.theme==='sky'){
+    // a meadow in the sky: everything beyond the field fades into bright sky
+    scene.background.lerp(new THREE.Color(0xc4e8ff),.65*s+.1); scene.fog.color.copy(scene.background); scene.fog.near=28; scene.fog.far=95;
+  } else if(LEVEL.theme==='sea'){
+    // underwater: deep teal water, short sight, cool light
+    scene.background.setHex(0x1d6d79).lerp(new THREE.Color(0x0a2a35),1-s); scene.fog.color.copy(scene.background); scene.fog.near=8; scene.fog.far=62;
+    hemi.color.setHex(0x9fe8f0); hemi.groundColor.setHex(0x14444c); sun.color.setHex(0xbff4ff); sun.intensity*=.7;
+  }
   const fb=flies.userData.base, fp=flies.geometry.attributes.position;
   for(let i=0;i<fb.length;i++){ const b=fb[i]; fp.setXYZ(i,b[0]+Math.sin(time*.4+b[3])*1.5,b[1]+Math.sin(time*1.3+b[3]*2)*.4,b[2]+Math.cos(time*.35+b[3])*1.5); }
   fp.needsUpdate=true; flies.material.opacity=clamp(n*1.2-.3,0,1)*(.6+.4*Math.sin(time*3))*SEASON.flies;
@@ -3094,7 +3121,95 @@ function updateSeasonFx(dt,time){
   P.needsUpdate=true;
   const cx=G.coop?(dog.x+dog2.x)/2:camLook.x, cz=G.coop?(dog.z+dog2.z)/2:camLook.z;
   seasonFx.position.set(cx,0,cz);
-  seasonFx.material.opacity=G.storm?0:.9;
+  seasonFx.material.opacity=(G.storm||LEVEL.theme)?0:.9;
+}
+
+// ---------------- building each level's layout ----------------
+const levelObjs=[];
+const hedgeMat=new THREE.MeshStandardMaterial({color:0x2f6a2a,roughness:1,flatShading:true});
+const _zero=new THREE.Matrix4().makeScale(0,0,0);
+function clearLevel(){
+  for(const o of levelObjs) scene.remove(o); levelObjs.length=0;
+  for(let i=segs.length-1;i>=0;i--) if(segs[i].level) segs.splice(i,1);
+  for(let i=circles.length-1;i>=0;i--) if(circles[i].level) circles.splice(i,1);
+  if(grassMesh){ grassPos.forEach((g,i)=>grassMesh.setMatrixAt(i,g[2])); grassMesh.instanceMatrix.needsUpdate=true; }
+}
+function addObj(o){ scene.add(o); levelObjs.push(o); return o; }
+function hideGrass(test){ if(!grassMesh) return; grassPos.forEach((g,i)=>{ if(test(g[0],g[1])) grassMesh.setMatrixAt(i,_zero); }); grassMesh.instanceMatrix.needsUpdate=true; }
+function buildLevel(L){
+  clearLevel(); LEVEL=L;
+  // hedges: walls that dogs and sheep must go round (coyotes squeeze through)
+  for(const [ax,az,bx,bz] of (L.walls||[])){
+    segs.push({ax,az,bx,bz,kind:'perim',level:true});
+    const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/3)), ang=Math.atan2(bx-ax,bz-az);
+    for(let i=0;i<n;i++){ const t=(i+.5)/n, x=lerp(ax,bx,t), z=lerp(az,bz,t);
+      const h=addObj(new THREE.Mesh(new THREE.BoxGeometry(1.3,1.7+Math.random()*.3,len/n+.2),hedgeMat)); h.position.set(x,groundH(x,z)+.85,z); h.rotation.y=ang; h.castShadow=true; h.receiveShadow=true; }
+  }
+  // river: water across the field, two bridges
+  if(L.river){
+    const R=L.river;
+    const edge=(z)=>{ let x0=-FIELD; for(const b of [...R.bridges,[FIELD,FIELD]]){ if(b[0]>x0) segs.push({ax:x0,az:z,bx:b[0],bz:z,kind:'river',level:true}); x0=b[1]; } };
+    edge(R.z0); edge(R.z1);
+    for(const b of R.bridges){ segs.push({ax:b[0],az:R.z0,bx:b[0],bz:R.z1,kind:'perim',level:true}); segs.push({ax:b[1],az:R.z0,bx:b[1],bz:R.z1,kind:'perim',level:true}); }
+    const geo=new THREE.PlaneGeometry(FIELD*2,R.z1-R.z0,96,6); geo.rotateX(-Math.PI/2);
+    const pos=geo.attributes.position; for(let i=0;i<pos.count;i++){ const x=pos.getX(i), z=pos.getZ(i)+(R.z0+R.z1)/2; pos.setY(i,groundH(x,z)+.12); }
+    geo.computeVertexNormals();
+    const w=addObj(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x3f86b5,roughness:.15,transparent:true,opacity:.9,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}))); w.position.z=(R.z0+R.z1)/2; w.receiveShadow=true;
+    const plank=mat(0x8a6a42), rail=mat(0x6a4e34);
+    for(const b of R.bridges){ const cx=(b[0]+b[1])/2, w2=b[1]-b[0];
+      for(let z=R.z0-.6;z<=R.z1+.6;z+=.7){ const pk=addObj(new THREE.Mesh(new THREE.BoxGeometry(w2,.18,.6),plank)); pk.position.set(cx,groundH(cx,z)+.35,z); pk.castShadow=true; pk.receiveShadow=true; }
+      for(const x of [b[0]+.2,b[1]-.2]){ const r=addObj(new THREE.Mesh(new THREE.BoxGeometry(.18,.18,R.z1-R.z0+1.4),rail)); r.position.set(x,groundH(x,(R.z0+R.z1)/2)+1.1,(R.z0+R.z1)/2); r.castShadow=true;
+        for(const z of [R.z0-.5,R.z1+.5]){ const po=addObj(new THREE.Mesh(new THREE.BoxGeometry(.22,1.1,.22),rail)); po.position.set(x,groundH(x,z)+.6,z); } } }
+    hideGrass((x,z)=>z>R.z0-.5&&z<R.z1+.5);
+  }
+  // sky holes: gaps in the floating meadow, looking down onto clouds
+  for(const h of (L.holes||[])){
+    circles.push({x:h.x,z:h.z,r:h.r,level:true});
+    const cg=new THREE.CircleGeometry(h.r,40); cg.rotateX(-Math.PI/2); const base=groundH(h.x,h.z), cp=cg.attributes.position;
+    for(let i=0;i<cp.count;i++) cp.setY(i,groundH(h.x+cp.getX(i),h.z+cp.getZ(i))-base+.14);
+    const d=addObj(new THREE.Mesh(cg,new THREE.MeshBasicMaterial({color:0x9fd8ff,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}))); d.position.set(h.x,base,h.z);
+    const puff=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,flatShading:true});
+    for(let k=0;k<Math.round(h.r*2.4);k++){ const a=k/Math.round(h.r*2.4)*TAU, rr=h.r*(.55+Math.random()*.35); const c=addObj(new THREE.Mesh(new THREE.IcosahedronGeometry(.7+Math.random()*.9,0),puff)); c.position.set(h.x+Math.cos(a)*rr,base+.2+Math.random()*.3,h.z+Math.sin(a)*rr); }
+    hideGrass((x,z)=>Math.hypot(x-h.x,z-h.z)<h.r+.3);
+  }
+  if(L.theme==='sky'){
+    // clouds drifting below and around the island
+    const puff=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,flatShading:true,transparent:true,opacity:.95});
+    for(let k=0;k<26;k++){ const a=Math.random()*TAU, r=FIELD+10+Math.random()*40; const c=addObj(new THREE.Mesh(new THREE.IcosahedronGeometry(4+Math.random()*6,1),puff)); c.position.set(Math.cos(a)*r,-6+Math.random()*14,Math.sin(a)*r); c.scale.y=.5; c.userData.drift=.3+Math.random()*.6; }
+  }
+  if(L.theme==='sea'){
+    // kelp, coral and fish
+    const kelpM=new THREE.MeshStandardMaterial({color:0x2f8a4a,roughness:.8,flatShading:true});
+    for(let k=0;k<40;k++){ let x,z,t=0; do{ x=(Math.random()*2-1)*(FIELD-4); z=PEN.z1+6+Math.random()*(FIELD-PEN.z1-10); t++; }while(!clearOf(x,z,1)&&t<20);
+      const h=2+Math.random()*3, kp=addObj(new THREE.Mesh(new THREE.ConeGeometry(.25,h,5),kelpM)); kp.position.set(x,groundH(x,z)+h/2,z); kp.userData.sway=Math.random()*TAU; }
+    const coralCols=[0xff7a8a,0xffa64d,0xc86bff,0xff5fa2];
+    for(let k=0;k<18;k++){ let x,z,t=0; do{ x=(Math.random()*2-1)*(FIELD-4); z=PEN.z1+6+Math.random()*(FIELD-PEN.z1-10); t++; }while(!clearOf(x,z,1)&&t<20);
+      const c=addObj(new THREE.Mesh(new THREE.DodecahedronGeometry(.5+Math.random()*.6,0),mat(coralCols[k%4]))); c.position.set(x,groundH(x,z)+.35,z); c.scale.y=1.4; }
+    const fishCols=[0xffa53a,0xffe14d,0x6fd0ff];
+    for(let k=0;k<14;k++){ const f=new THREE.Group(); const b=new THREE.Mesh(new THREE.BoxGeometry(.3,.35,.7),mat(fishCols[k%3])); f.add(b); const tl=new THREE.Mesh(new THREE.ConeGeometry(.2,.35,4),mat(fishCols[k%3])); tl.rotation.x=Math.PI/2; tl.position.z=-.5; f.add(tl);
+      f.userData.fish={cx:(Math.random()*2-1)*35,cz:Math.random()*40,r:4+Math.random()*8,y:2+Math.random()*4,sp:.3+Math.random()*.5,ph:Math.random()*TAU}; addObj(f); }
+  }
+}
+// bubbles for the underwater level
+const bubbles=(function(){
+  const n=260, pos=new Float32Array(n*3);
+  for(let i=0;i<n;i++){ pos[i*3]=(Math.random()*2-1)*34; pos[i*3+1]=Math.random()*14; pos[i*3+2]=(Math.random()*2-1)*34; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const p=new THREE.Points(g,new THREE.PointsMaterial({color:0xdffaff,size:.22,transparent:true,opacity:.7,depthWrite:false}));
+  p.frustumCulled=false; p.visible=false; scene.add(p); return p;
+})();
+function updateLevelFx(dt,time){
+  bubbles.visible=LEVEL.theme==='sea';
+  if(bubbles.visible){
+    const P=bubbles.geometry.attributes.position;
+    for(let i=0;i<P.count;i++){ let y=P.getY(i)+dt*(1.2+(i%5)*.3); if(y>14) y=0; P.setY(i,y); P.setX(i,P.getX(i)+Math.sin(time*2+i)*dt*.3); }
+    P.needsUpdate=true; bubbles.position.set(camLook.x,groundH(camLook.x,camLook.z),camLook.z);
+  }
+  for(const o of levelObjs){
+    if(o.userData.sway!==undefined){ o.rotation.z=Math.sin(time*1.4+o.userData.sway)*.18; o.rotation.x=Math.cos(time*1.1+o.userData.sway)*.12; }
+    if(o.userData.drift){ o.position.x+=Math.sin(time*.05)*o.userData.drift*dt; }
+    if(o.userData.fish){ const f=o.userData.fish, a=time*f.sp+f.ph; o.position.set(f.cx+Math.cos(a)*f.r,groundH(f.cx,f.cz)+f.y+Math.sin(time*2+f.ph)*.3,f.cz+Math.sin(a)*f.r); o.rotation.y=-a; }
+  }
 }
 
 // ---------------- camera ----------------
@@ -3304,6 +3419,7 @@ function frame(now){
   applySky(time);
   updateWeather(dt,time);
   updateSeasonFx(dt,time);
+  updateLevelFx(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
   updatePartnerArrows();
