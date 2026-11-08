@@ -313,7 +313,7 @@ function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d
 
 // ---------------- config ----------------
 const FIELD = 48;
-const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:4.5};
+const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:6};
 const BARN = {bx:-23, bz:-38};
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 const dayLen = d => Math.max(50, 80 - (d-1)*6);
@@ -488,6 +488,10 @@ fenceLine(PEN.x0,PEN.z0, PEN.x0,PEN.z1, 2,'pen');
 fenceLine(PEN.x1,PEN.z0, PEN.x1,PEN.z1, 2,'pen');
 fenceLine(PEN.x0,PEN.z1, -PEN.gx,PEN.z1, 2,'pen');
 fenceLine(PEN.gx,PEN.z1, PEN.x1,PEN.z1, 2,'pen');
+// a fence along the pen's front line, side to side, seals off the corners behind the barn and the pen
+// ('perim' kind: dogs and sheep can't pass, coyotes slip through like they do the outer fence)
+fenceLine(-FIELD,PEN.z1, PEN.x0,PEN.z1, 4,'perim');
+fenceLine(PEN.x1,PEN.z1, FIELD,PEN.z1, 4,'perim');
 segs.push({ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'gate'}); // invisible: penned sheep & coyotes can't cross
 (function(){
   const geo=new THREE.BoxGeometry(1,1,1);
@@ -506,7 +510,7 @@ function makeLeaf(px, openA, closedA){
   box(LEAF_LEN,.12,.1,W,LEAF_LEN/2,.45,0,g);
   box(.12,.9,.1,W,LEAF_LEN-.1,.8,0,g);
   const br=box(Math.hypot(LEAF_LEN,.7),.1,.08,W,LEAF_LEN/2,.8,0,g); br.rotation.z=Math.atan2(.7,LEAF_LEN);
-  const seg={ax:0,az:0,bx:0,bz:0,kind:'leaf',on:true}; segs.push(seg);
+  const seg={ax:0,az:0,bx:0,bz:0,kind:'leaf',on:false}; segs.push(seg);
   const leaf={g,px,openA,closedA,a:openA,target:openA,seg};
   leaf.apply=function(){
     g.rotation.y=leaf.a;
@@ -1051,7 +1055,7 @@ function setupDay(){
   clearAnimals();
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; G.appleT=0; G.lanternT=0; G.celebrate=0; clearPowers();
-  for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=true; l.apply(); }
+  for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
   clearClover(); spawnClover(cloverCount(G.day));
   spawnGoldBones();
   placeShroom();
@@ -1536,8 +1540,9 @@ function updateSheep(dt){
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
       // balking: a stressed sheep won't go through the gate. It shies away at the last moment.
       { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz);
-        if(gd<6.5 && s.z>PEN.z1-.5 && s.stress>.5){
-          const b=(s.stress-.5)/.5; fz+=26*b; fx+=(gx>=0?1:-1)*14*b;
+        if(gd<6.5 && s.z>PEN.z1-.5 && s.stress>.55){
+          if(!s.balkSide) s.balkSide=Math.random()<.5?-1:1;
+          const b=(s.stress-.55)/.45; fz+=20*b; fx+=s.balkSide*12*b;
           if(Math.random()<dt*1.2) sBleat(1.1);
           if(G.elapsed-(G.balkSay||-99)>10){ G.balkSay=G.elapsed; shepSay("Gently! They won't go in scared!",true); }
         } }
@@ -1553,6 +1558,8 @@ function updateSheep(dt){
         if(ld>1.8){ const k=Math.min(1,(ld-1.8)/4); fx+=lx/ld*k*16; fz+=lz/ld*k*16; fear=Math.max(fear,.25*k); }
         if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
       }
+      // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
+      if(s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       const m=FIELD-3;
       if(s.x>m) fx-=(s.x-m)*6; if(s.x<-m) fx+=(-m-s.x)*6;
       if(s.z>m) fz-=(s.z-m)*6; if(s.z<-m) fz+=(-m-s.z)*6;
@@ -2043,7 +2050,7 @@ function spawnGoldBones(){
   clearGoldBones();
   for(let i=0,tries=0;i<3 && tries<300;tries++){
     // tucked away: near the edges, behind trees and rocks, never by the pen
-    const x=(Math.random()*2-1)*(FIELD-4), z=(Math.random()*2-1)*(FIELD-4);
+    const x=(Math.random()*2-1)*(FIELD-4), z=PEN.z1+4+Math.random()*(FIELD-PEN.z1-8);
     if(!clearOf(x,z,1.5) || Math.hypot(x,z-(PEN.z1+10))<16 || goldBones.some(b=>Math.hypot(b.x-x,b.z-z)<20)) continue;
     if(Math.max(Math.abs(x),Math.abs(z))<FIELD-18 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) continue;
     const g=makeGoldBone(); g.position.set(x,.5,z); scene.add(g);
@@ -2351,6 +2358,8 @@ function drawMinimap(time){
   mx.clearRect(0,0,W,W);
   mx.fillStyle=night?'rgba(14,20,34,.82)':'rgba(24,36,24,.8)'; mx.fillRect(0,0,W,W);
   mx.strokeStyle='rgba(244,234,210,.35)'; mx.lineWidth=2; mx.strokeRect(X(-FIELD),Y(-FIELD),2*FIELD*S,2*FIELD*S);
+  mx.fillStyle='rgba(0,0,0,.28)'; mx.fillRect(X(-FIELD),Y(-FIELD),2*FIELD*S,(PEN.z1+FIELD)*S);
+  mx.strokeStyle='rgba(244,234,210,.35)'; mx.beginPath(); mx.moveTo(X(-FIELD),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.moveTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(FIELD),Y(PEN.z1)); mx.stroke();
   mx.fillStyle='rgba(242,181,68,.28)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
   mx.strokeStyle='rgba(242,181,68,.9)'; mx.lineWidth=2;
   mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke();
