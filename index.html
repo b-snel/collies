@@ -423,6 +423,23 @@ function hazardAt(x,z){
   if(lavaRiver() && inRiver(x,z)) return 'lava';
   return null;
 }
+// a maze across the field between the flock and the pen: corridors wide enough for the flock, a few loops so dead ends aren't hopeless
+function genMaze(R){
+  const C=8, cols=12, rows=5, x0=-FIELD, z0=PEN.z1+8, z1=z0+rows*C;
+  const V=[], H=[]; for(let j=0;j<rows;j++) V.push(new Array(cols+1).fill(true)); for(let j=0;j<=rows;j++) H.push(new Array(cols).fill(true));
+  const seen=new Set(), st=[[(R()*cols)|0,(R()*rows)|0]]; seen.add(st[0].join());
+  while(st.length){ const [i,j]=st[st.length-1], nb=[[1,0],[-1,0],[0,1],[0,-1]].map(([a,b])=>[i+a,j+b,a,b]).filter(([a,b])=>a>=0&&b>=0&&a<cols&&b<rows&&!seen.has(a+','+b));
+    if(!nb.length){ st.pop(); continue; }
+    const [a,b,di,dj]=nb[(R()*nb.length)|0]; if(di) V[j][Math.max(i,a)]=false; else H[Math.max(j,b)][i]=false; seen.add(a+','+b); st.push([a,b]); }
+  for(let j=0;j<rows;j++) for(let i=1;i<cols;i++) if(R()<.16) V[j][i]=false;
+  for(let j=1;j<rows;j++) for(let i=0;i<cols;i++) if(R()<.16) H[j][i]=false;
+  H[0][5]=H[0][6]=false;                                  // out towards the pen gate
+  const e1=(R()*cols)|0; H[rows][e1]=false; H[rows][(e1+4+((R()*4)|0))%cols]=false;   // two ways in from the far side
+  const walls=[];
+  for(let j=0;j<rows;j++) for(let i=1;i<cols;i++) if(V[j][i]) walls.push([x0+i*C,z0+j*C,x0+i*C,z0+(j+1)*C]);
+  for(let j=0;j<=rows;j++) for(let i=0;i<cols;i++) if(H[j][i]) walls.push([x0+i*C,z0+j*C,x0+(i+1)*C,z0+j*C]);
+  return {x0,z0,x1:FIELD,z1,C,walls};
+}
 function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
 function generateLevel(d){
   const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
@@ -431,18 +448,24 @@ function generateLevel(d){
   const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
   if(d===UNLOCK.hazards) theme=chance(.5)?'volcano':'sky';      // the day lava and cliffs arrive, make sure you see them
   else if(d===UNLOCK.worlds) theme=pick(['desert','sea','moon']);
+  else if(d===UNLOCK.maze) theme='farm';                          // the first maze is a proper corn maze
   else if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
   const L={theme,season:THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null};
-  // where the sheep go: the barn pen, or a pickup that turns up somewhere new (and keeps moving)
-  L.goal = d<UNLOCK.pickup ? 'pen' : d===UNLOCK.pickup ? 'pickup' : d===UNLOCK.pickup+1 ? 'pen' : (theme==='farm'||theme==='desert') ? (chance(.65)?'pickup':'pen') : 'pickup';
-  L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8),volcano:r(.8,1.5)}[theme]};
+  // the day's puzzle: trial gates or a weigh-in to unlock the pen, or a maze to get through
+  const mazeOK=theme==='farm'||theme==='desert'||theme==='sea'||theme==='moon';
+  let pz=null;
+  if(d===UNLOCK.gates) pz='gates'; else if(d===UNLOCK.maze) pz='maze'; else if(d===UNLOCK.scale) pz='scale';
+  else if(d>UNLOCK.gates){ const o=[null,'gates']; if(d>UNLOCK.maze && mazeOK) o.push('maze','maze'); if(d>UNLOCK.scale) o.push('scale'); if(d>8) o.shift(); pz=pick(o); }
+  L.puzzle=pz; L.gates=d===UNLOCK.gates?1:2+(d>=8&&chance(.5)?1:0);
+  if(pz==='maze') L.maze=genMaze(R);
+  L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8),volcano:r(.8,1.5)}[theme]*(L.maze?.3:1)};
   const taken=[];   // circles already used, so features don't pile on each other
-  const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
+  const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || (L.maze && z>L.maze.z0-3-pad && z<L.maze.z1+3+pad) || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
     || taken.some(t=>Math.hypot(t.x-x,t.z-z)<t.r+pad)
     || (L.river && Math.abs(z-riverZ(L.river,x))<L.river.w/2+2.5+pad)
     || L.walls.some(w=>{ const [ax,az,bx,bz]=w.seg, abx=bx-ax, abz=bz-az, t=clamp(((x-ax)*abx+(z-az)*abz)/(abx*abx+abz*abz),0,1); return Math.hypot(x-ax-abx*t,z-az-abz*t)<1.5+pad; });
   // a winding river with 1-3 bridges
-  if(d>2 && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
+  if(d>2 && !L.maze && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
     const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[],lava:theme==='volcano'};
     const nb=1+((R()*3)|0); let tries=0;
     while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
@@ -493,7 +516,7 @@ function generateLevel(d){
   for(let k=0,t=0;k<nr && t<40;t++){ const cx=r(-38,38), cz=r(-4,42); if(blockedAt(cx,cz,4)) continue; const n=3+((R()*4)|0);
     for(let q=0;q<n;q++){ const a=R()*TAU, rr=r(0,4); L.rocks.push({x:cx+Math.cos(a)*rr,z:cz+Math.sin(a)*rr,s:r(.6,1.4)}); }
     taken.push({x:cx,z:cz,r:6}); k++; }
-  if(d>=UNLOCK.twist && chance(Math.min(.8,.3+.06*d))) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy')));   // fog underwater was unplayable
+  if(d>=UNLOCK.twist && chance(Math.min(.8,.3+.06*d))) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy') && !(L.maze&&(k==='foggy'||k==='stampede'))));   // fog underwater was unplayable
   // a name for the place
   const adj=pick(['Windy','Mossy','Crooked','Sunny','Misty','Old','Lonely','Bonny','Wild','Muddy','Bramble','Thistle','Heather','Golden']);
   const noun=theme==='sky'?pick(['Skies','Clouds','Heights']):theme==='sea'?pick(['Deep','Reef','Shallows']):theme==='desert'?pick(['Dunes','Gulch','Flats']):theme==='moon'?pick(['Craters','Moon','Basin']):theme==='volcano'?pick(['Caldera','Cinders','Ashlands'])
@@ -515,8 +538,8 @@ let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
-const UNLOCK={pickup:2,ram:2,power:2,surprise:3,raid:3,bones:3,worlds:4,twist:4,munch:4,storm:4,falcon:5,rascal:5,hazards:6,shroom:6,boss:6,wild:7};
-const NEW_ON={2:'Moving pickups',3:'Surprises',4:'New worlds',5:'Falcons',6:'Lava & cliffs',7:'Wild surprises'};
+const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,worlds:4,twist:4,munch:4,storm:4,maze:5,falcon:6,rascal:6,boss:6,scale:7,hazards:8,shroom:8,wild:9};
+const NEW_ON={2:'Trial gates',3:'Surprises',4:'New worlds',5:'Corn maze',6:'Falcons',7:'The weigh-in',8:'Lava & cliffs',9:'Wild surprises'};
 const coyoteCount = d => Math.min(9, 2 + d);
 const ramCount = d => d<UNLOCK.ram ? 0 : Math.min(4, 1 + Math.floor((d-2)/2));   // 0,1,1,2,2,3,3,4
 const alphaCount = d => d<3 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
@@ -1095,7 +1118,7 @@ function initAudio(){
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
-const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it", "Load them up, NAME!": "load_up", "It's moving! After it!": "its_moving", "Over here now!": "over_here", "Mind the lava, NAME!": "mind_lava", "Ach! That one's toasted!": "toasted", "Ach! Over the edge!": "over_edge", "Falcon! Run, NAME!": "falcon", "Oi! Bring back me dog!": "bring_back", "Ha! Missed!": "missed_him", "All aboard! Grand!": "all_aboard", "That's no sheep! It's a coyote!": "no_sheep", "Twister! Hold on to yer sheep!": "twister", "Sheep from the sky?!": "from_sky", "A rainbow sheep! Catch it!": "rainbow", "The rainbow one! Ye beauty!": "rainbow_got", "What've they been eating?!": "sugar", "Is that... a disco?!": "disco", "Hay bales! Look out!": "bales", "Golden hour! Quick, get them in!": "golden_hour", "What a shot!": "what_shot"};
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it", "Load them up, NAME!": "load_up", "It's moving! After it!": "its_moving", "Over here now!": "over_here", "Mind the lava, NAME!": "mind_lava", "Ach! That one's toasted!": "toasted", "Ach! Over the edge!": "over_edge", "Falcon! Run, NAME!": "falcon", "Oi! Bring back me dog!": "bring_back", "Ha! Missed!": "missed_him", "All aboard! Grand!": "all_aboard", "That's no sheep! It's a coyote!": "no_sheep", "Twister! Hold on to yer sheep!": "twister", "Sheep from the sky?!": "from_sky", "A rainbow sheep! Catch it!": "rainbow", "The rainbow one! Ye beauty!": "rainbow_got", "What've they been eating?!": "sugar", "Is that... a disco?!": "disco", "Hay bales! Look out!": "bales", "Golden hour! Quick, get them in!": "golden_hour", "What a shot!": "what_shot", "Through the gates first, NAME!": "gates_first", "That's one!": "thats_one", "That's the gate open! Bring them in!": "gate_open", "Mind ye don't lose them in the corn!": "corn_maze", "Get them on the scales, NAME!": "on_scales", "Ach, they're a heavy lot!": "heavy_lot"};
 const SFX={bark:[],bleat:[],voice:{}};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
@@ -1393,10 +1416,9 @@ function spawnFlock(n){
   const groups=Math.min(3, 2+Math.floor(n/12));
   const centers=[];
   for(let i=0,tries=0;i<groups && tries<500;tries++){
-    const x=(Math.random()*2-1)*(FIELD-12), z=PEN.z1+16+Math.random()*(FIELD-PEN.z1-26);
+    const zLo=LEVEL.maze?LEVEL.maze.z1+5:PEN.z1+16, x=(Math.random()*2-1)*(FIELD-12), z=zLo+Math.random()*Math.max(4,FIELD-10-zLo);
     if(!clearOf(x,z,6)) continue;
     if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<20)) continue;
-    if(PK && Math.hypot(PK.dx-x,PK.dz-z)<20) continue;
     centers.push([x,z]); i++;
   }
   if(!centers.length) centers.push([0,20]);
@@ -1432,7 +1454,7 @@ function newSheep(x,z,m,o){
 }
 function resetDog(){
   for(const D of [dog,dog2]){
-    D.x=G.coop?(D===dog?-2.5:2.5):0; D.z=PEN.z1+10; D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
+    D.x=G.coop?(D===dog?-2.5:2.5):0; D.z=LEVEL.maze?LEVEL.maze.z1+4:PEN.z1+10; D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
     D.barkCD=0; D.barkT=0; D.bangT=0; D.gunCD=0; D.zoomT=0; D.pounceT=0; D.pounceCD=0; D.stunT=0;
     D.stats={pens:0,drives:0,saves:0,catches:0,helps:0}; D.grab=null;
   }
@@ -1448,8 +1470,8 @@ function setupDay(){
   clearClover(); spawnClover(cloverCount(G.day));
   if(G.day>=UNLOCK.bones) spawnGoldBones(); else clearGoldBones();
   placeShroom();
-  setupPickup();
   spawnFlock(flockSize(G.day)+(G.twist==='tiny'?4:0));
+  setupPuzzle();
   resetDog();
   if(G.day>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
@@ -1620,7 +1642,8 @@ function startGame(fresh){
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
   toast('Day '+G.day+' · '+LEVEL.name+(LEVEL.theme==='farm'?' · '+SEASON.label:'')+(G.twist?' · '+TWISTS[G.twist]:''),'',3.2);
   if(NEW_ON[G.day]){ const d0=G.day; setTimeout(()=>{ if(G.day===d0 && G.phase==='day') toast('NEW: '+NEW_ON[d0].toUpperCase(),'gold',2.6); },3500); }
-  setTimeout(()=>shepSay(PK?'Load them up, '+(G.coop?G.name+' and '+G.name2:G.name)+'!':'Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
+  { const nm=G.coop?G.name+' and '+G.name2:G.name, line=PZ.type==='gates'?'Through the gates first, '+nm+'!':PZ.type==='scale'?'Get them on the scales, '+nm+'!':(PZ.type==='maze'&&LEVEL.theme==='farm')?"Mind ye don't lose them in the corn!":'Away out, '+nm+'! Bring them in!';
+    setTimeout(()=>shepSay(line,true),900); }
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
 $('startBtn').addEventListener('click',()=>startGame(true));
@@ -1850,8 +1873,13 @@ function onPenned(s){
   if(s.rainbow) shepSay('The rainbow one! Ye beauty!',true);
   else if(s.golden) shepSay('The golden one! Well done!',true);
   else if(s.ram) shepSay('Ha! Got the old ram!',true);
-  else if(left===0 && PK) shepSay('All aboard! Grand!',true);
   else if(left>0 && Math.random()<.35) shepSay(['Good dog!',"That's it!",'Nice and steady!','In ye go!'][(Math.random()*4)|0]);
+}
+// is this sheep in the pen? (the pen has to be open)
+function checkGoal(s){
+  if(s.penned || PZ.locked) return false;
+  if(insidePen(s.x,s.z)){ s.penned=true; onPenned(s); return true; }
+  return false;
 }
 function hazardKill(s,kind){
   s.deathKind=kind; s.vx=s.vz=0; killSheep(s);
@@ -1904,6 +1932,7 @@ function hitCoyote(c,dmg,kb,src,label){
 }
 function startNight(){
   G.phase='night'; G.t=0;
+  if(PZ.locked){ lockPen(false); burst(0,2.6,PEN.z1,30,PC.gold,4,4); sChime(); }   // no time left for puzzles: the pen opens for the night
   G.storm=(LEVEL.theme==='farm'||LEVEL.theme==='desert') && Math.random()<stormChance(G.day); G.boltT=3;
   const n=coyoteCount(G.day), now=Math.ceil(n*.6);
   for(let i=0;i<now;i++) spawnCoyote(i<alphaCount(G.day));
@@ -2064,7 +2093,6 @@ function updateSheep(dt){
       }
       continue;
     }
-    if(s.loaded){ s.loadT+=dt; continue; }                 // already aboard the pickup
     if(s.dance){ s.vx*=.8; s.vz*=.8; s.x+=s.vx*dt; s.z+=s.vz*dt; continue; }   // disco!
     if(s.carried){ s.attacked=.3; s.fear=1; continue; }
     if(s.grabbedBy){ s.penned=false; continue; }            // dangling from a dog's mouth
@@ -2207,8 +2235,7 @@ function updateSheep(dt){
         // stay close to mum; if she's penned, find the gate; if she's gone, tag along with the dog
         const mom=s.mom; let tx, tz;
         if(mom && !mom.dead && !mom.carried){
-          if(mom.penned && PK){ tx=PK.dx; tz=PK.dz; }
-          else if(mom.penned){ const gz=PEN.z1+2.5, dg=Math.hypot(s.x,s.z-gz); if(dg>2.5){ tx=0; tz=gz; } else { tx=0; tz=PEN.z1-3; } }
+          if(mom.penned){ const gz=PEN.z1+2.5, dg=Math.hypot(s.x,s.z-gz); if(dg>2.5){ tx=0; tz=gz; } else { tx=0; tz=PEN.z1-3; } }
           else { tx=mom.x; tz=mom.z; }
         } else { const nd2=nearestDog(s.x,s.z); tx=nd2.x; tz=nd2.z; }
         const lx=tx-s.x, lz=tz-s.z, ld=Math.hypot(lx,lz)+1e-6;
@@ -2217,12 +2244,10 @@ function updateSheep(dt){
       }
       // sheep shy away from lava and cliff edges, but a dog driving them hard can still push them in
       if(LEVEL.haz) for(const h of LEVEL.haz){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; if(hd<m){ const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } }
-      // the pickup's doorway pulls nearby sheep aboard
-      if(PK && PK.state==='parked'){ const gx=s.x-PK.dx, gz=s.z-PK.dz, gd=Math.hypot(gx,gz)+1e-6; if(gd<9){ const k=1-gd/9; fx-=gx/gd*11*k; fz-=gz/gd*11*k; } }
       // calm sheep near the gate flow on in
-      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PK && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
+      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PZ.locked && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
-      if(!PK && s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
+      if(!PZ.locked && s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       const m=FIELD-3;
       if(s.x>m) fx-=(s.x-m)*6; if(s.x<-m) fx+=(-m-s.x)*6;
       if(s.z>m) fz-=(s.z-m)*6; if(s.z<-m) fz+=(-m-s.z)*6;
@@ -2887,7 +2912,7 @@ function bumpHank(D){
     shepSay(['Oi! Watch it!','Mind yer manners!','Not me, the sheep!'][(Math.random()*3)|0],true);
   }
 }
-function resetShepherd(){ shep.x=PEN.gx+3; shep.z=PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; }
+function resetShepherd(){ shep.x=PEN.gx+3; shep.z=LEVEL.maze?LEVEL.maze.z1+3:PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; }
 function updateShepherd(dt){
   let dirx=0,dirz=0,spd=0;
   if(G.phase==='day'||G.phase==='night'){
@@ -2899,7 +2924,7 @@ function updateShepherd(dt){
   const a=1-Math.exp(-dt*4);
   shep.vx+=(dirx*spd-shep.vx)*a; shep.vz+=(dirz*spd-shep.vz)*a;
   shep.x+=shep.vx*dt; shep.z+=shep.vz*dt;
-  collide(shep,.55,{gate:false,perim:true});
+  collide(shep,.55,{gate:false,perim:!LEVEL.maze});
   shep.stumble=Math.max(0,shep.stumble-dt); shep.bumpCD=Math.max(0,shep.bumpCD-dt);
   if(G.phase==='day'||G.phase==='night') for(const D of dogs){ if(D.pounceT>0 && shep.bumpCD<=0 && Math.hypot(D.x-shep.x,D.z-shep.z)<1.7) bumpHank(D); }
 }
@@ -3142,13 +3167,6 @@ function syncAll(dt,time){
   // sheep
   for(const s of G.sheep){
     if(s.dead){ s.m.g.position.x=s.x; s.m.g.position.z=s.z; continue; }
-    if(s.loaded){
-      // hop up the ramp (or float up the beam) and inside
-      const T=s.beam?.9:.5, k=Math.min(1,s.loadT/T), g=s.m.g;
-      if(k>=1){ g.visible=false; continue; }
-      g.position.set(lerp(s.lx,s.ltx,k), lerp(s.ly,s.lty,k)+(s.beam?0:Math.sin(k*Math.PI)*1.6), lerp(s.lz,s.ltz,k));
-      g.scale.setScalar(s.lsc*(1-k*.7)); g.rotation.y+=dt*(s.beam?6:0); continue;
-    }
     const v=syncAnimal(s,dt,2.6);
     if(s.carried || s.grabbedBy){
       s.m.g.position.y+=.35; s.m.g.rotation.z=Math.sin(time*14)*.3;
@@ -3374,6 +3392,7 @@ function wallPiece(style,x,z,len,ang){
   h.position.set(x,groundH(x,z)+.85,z); h.rotation.y=ang; h.castShadow=true; h.receiveShadow=true; return h;
 }
 const coralWallMat=new THREE.MeshStandardMaterial({color:0xff8a7a,roughness:.9,flatShading:true});
+const MAZE_STYLE={farm:{wall:0x6e9a38,top:0xe0c46a},desert:{wall:0x4f8a3a,top:0xffb3c8},sea:{wall:0xff8a7a,top:0xffc06a},moon:{wall:0x7a6ad8,top:0xbfe8ff,glow:0x5a4ad8}};
 const lavaMat=new THREE.MeshStandardMaterial({color:0xff5a1a,emissive:0xff4a0a,emissiveIntensity:1,roughness:.6,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
 function buildLevel(L){
   clearLevel(); reachGrid=null; LEVEL=L; G.twist=L.twist; G.stampT=undefined;
@@ -3383,6 +3402,18 @@ function buildLevel(L){
     const [ax,az,bx,bz]=w.seg; segs.push({ax,az,bx,bz,kind:'perim',level:true});
     const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/3)), ang=Math.atan2(bx-ax,bz-az);
     for(let i=0;i<n;i++){ const t=(i+.5)/n; wallPiece(w.style,lerp(ax,bx,t),lerp(az,bz,t),len/n,ang); }
+  }
+  // the maze
+  if(L.maze){
+    const S=MAZE_STYLE[L.theme]||MAZE_STYLE.farm, H=2.1, W=L.maze.walls;
+    const box=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:S.wall,roughness:1,flatShading:true,emissive:S.glow||0x000000,emissiveIntensity:S.glow?.35:0}),W.length);
+    let nt=0; for(const w of W) nt+=Math.ceil(Math.hypot(w[2]-w[0],w[3]-w[1])/1.05)+1;
+    const tops=new THREE.InstancedMesh(new THREE.ConeGeometry(.28,.9,5),mat(S.top),nt), o=new THREE.Object3D(); let k=0;
+    W.forEach((w,i)=>{ const [ax,az,bx,bz]=w, len=Math.hypot(bx-ax,bz-az), mx2=(ax+bx)/2, mz2=(az+bz)/2, ang=Math.atan2(bx-ax,bz-az);
+      segs.push({ax,az,bx,bz,kind:'perim',level:true});
+      o.position.set(mx2,groundH(mx2,mz2)+H/2-.1,mz2); o.rotation.set(0,ang,0); o.scale.set(1.15,H,len+1.15); o.updateMatrix(); box.setMatrixAt(i,o.matrix);
+      const n=Math.ceil(len/1.05)+1; for(let q=0;q<n;q++){ const f=q/(n-1), x=lerp(ax,bx,f)+(Math.random()-.5)*.5, z=lerp(az,bz,f)+(Math.random()-.5)*.5; o.position.set(x,groundH(x,z)+H+.25,z); o.rotation.set((Math.random()-.5)*.4,Math.random()*TAU,(Math.random()-.5)*.4); o.scale.setScalar(.8+Math.random()*.5); o.updateMatrix(); tops.setMatrixAt(k++,o.matrix); } });
+    box.castShadow=true; box.receiveShadow=true; tops.castShadow=true; addObj(box); addObj(tops);
   }
   // the winding river
   if(L.river){
@@ -3508,143 +3539,149 @@ function sSizzle(){
   n.buffer=b; const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=2500; n.connect(f).connect(envG(t,.01,.3,.5)); n.start(t);
 }
 
-// ---------------- the pickup: the flock gets loaded into it, and it keeps moving ----------------
-let PK=null;
+// ---------------- the day's puzzle: trial gates, a maze, or the weigh-in ----------------
+// gates and the weigh-in keep the pen padlocked until they're done; the maze is the puzzle itself
+const PZ={type:null,locked:false,gates:[],cur:0,scale:null,objs:[],obj:null};
 const goldGlow=new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide});
 const goalRing=new THREE.Mesh(new THREE.RingGeometry(2.3,2.8,40),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
 goalRing.rotation.x=-Math.PI/2; goalRing.visible=false; scene.add(goalRing);
 const goalBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,40,14,1,true),goldGlow); goalBeam.visible=false; scene.add(goalBeam);
-function makePickup(skin){
-  const g=new THREE.Group(); let fly=false, hover=0, door=4, colR=2.4, beam=null;
-  const box=(w,h,d,c,x,y,z)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof c==='number'?mat(c):c); m.position.set(x,y,z); m.castShadow=true; g.add(m); return m; };
-  const wheel=(x,z,r)=>{ const w=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.35,12),mat(0x222222)); w.rotation.z=Math.PI/2; w.position.set(x,r,z); g.add(w); };
-  if(skin==='trailer'){
-    box(3.2,2.1,5.2,0xb3352a,0,1.55,0); box(3.35,.16,5.35,0xf4ead2,0,2.68,0);
-    for(const sd of [-1,1]) for(let k=0;k<3;k++) box(.06,.16,5.25,0xf4ead2,sd*1.63,1.0+k*.55,0);
-    const ramp=box(2.7,.14,2.8,0x8a6a42,0,.75,-3.75); ramp.rotation.x=-.36;
-    box(.3,.3,2,0x333333,0,.7,3.4); wheel(-1.75,.6,.6); wheel(1.75,.6,.6); wheel(-1.75,-1,.6); wheel(1.75,-1,.6);
-  } else if(skin==='wagon'){
-    box(2.8,1.1,4.6,0x8a5a32,0,1.25,0);
-    const cv=new THREE.Mesh(new THREE.CylinderGeometry(1.55,1.55,4.4,12),mat(0xf4ead2)); cv.rotation.x=Math.PI/2; cv.position.set(0,1.9,0); cv.castShadow=true; g.add(cv);
-    const ramp=box(2.2,.12,2.4,0x6e4a2a,0,.55,-3.4); ramp.rotation.x=-.3;
-    wheel(-1.55,1.4,.75); wheel(1.55,1.4,.75); wheel(-1.55,-1.4,.75); wheel(1.55,-1.4,.75);
-  } else if(skin==='balloon'){
-    fly=true; door=2.6; colR=1.5;
-    box(2.4,1.4,2.4,0x9a6a3a,0,.7,0); box(2.5,.15,2.5,0x6e4a2a,0,1.45,0);
-    for(let i=0;i<6;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(3.4,4,12,i*TAU/6,TAU/6),mat(i%2?0xf4ead2:0xe2463f)); s.position.y=7.6; s.scale.y=1.15; s.castShadow=true; g.add(s); }
-    for(const [x,z] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const r=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,3.6,4),mat(0x5a4130)); r.position.set(x*1.05,3.3,z*1.05); g.add(r); }
-    const fl=new THREE.Mesh(new THREE.SphereGeometry(.35,8,6),new THREE.MeshBasicMaterial({color:0xffb14a})); fl.position.y=3.5; g.add(fl); g.userData.flame=fl;
-  } else if(skin==='sub'){
-    fly=true; hover=.6; colR=2.3;
-    const b=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,4.6,16),mat(0xffcf3f)); b.rotation.x=Math.PI/2; b.position.y=1.5; b.castShadow=true; g.add(b);
-    for(const z of [-2.3,2.3]){ const e=new THREE.Mesh(new THREE.SphereGeometry(1.4,16,10),mat(0xffcf3f)); e.position.set(0,1.5,z); g.add(e); }
-    box(1,1.1,1.8,0xf2b544,0,3.2,.3); box(.14,1.2,.14,0x666666,0,4.2,.8);
-    for(const sd of [-1,1]) for(const z of [-1,.4,1.8]){ const w=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.1,12),new THREE.MeshStandardMaterial({color:0x9fe8ff,emissive:0x3fb8d8,emissiveIntensity:.6})); w.rotation.z=Math.PI/2; w.position.set(sd*1.38,1.7,z); g.add(w); }
-    const pr=box(1.8,.2,.25,0x666666,0,1.5,-3.8); g.userData.prop=pr;
-  } else {   // ufo
-    fly=true; hover=4.6; door=0; colR=0;
-    const disc=new THREE.Mesh(new THREE.CylinderGeometry(3.4,3.9,.8,24),new THREE.MeshStandardMaterial({color:0xc8ccd8,metalness:.6,roughness:.3})); disc.castShadow=true; g.add(disc);
-    const dome=new THREE.Mesh(new THREE.SphereGeometry(1.7,16,8,0,TAU,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x9fe8ff,transparent:true,opacity:.75,roughness:.1})); dome.position.y=.35; g.add(dome);
-    for(let k=0;k<10;k++){ const a=k/10*TAU, l=new THREE.Mesh(new THREE.SphereGeometry(.2,6,5),new THREE.MeshBasicMaterial({color:[0xff6b6b,0xffd84a,0x8fd3ff][k%3]})); l.position.set(Math.cos(a)*3.6,-.1,Math.sin(a)*3.6); g.add(l); }
-    beam=new THREE.Mesh(new THREE.ConeGeometry(2.8,4.6,24,1,true),new THREE.MeshBasicMaterial({color:0xb8f5ff,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide})); beam.position.y=-2.7; g.add(beam);
+const penBlock={ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'perim'};
+const padlock=(function(){
+  const g=new THREE.Group(), gold=new THREE.MeshStandardMaterial({color:0xffcf3f,metalness:.6,roughness:.3,emissive:0x4a3200,emissiveIntensity:.5});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.3,1.1,.5),gold); g.add(body);
+  const sh=new THREE.Mesh(new THREE.TorusGeometry(.42,.12,6,14,Math.PI),mat(0xb8bcc8)); sh.position.y=.55; g.add(sh);
+  const hole=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.52,8),mat(0x3a2a10)); hole.rotation.x=Math.PI/2; hole.position.y=-.05; g.add(hole);
+  g.position.set(0,2.6,PEN.z1+.2); g.visible=false; scene.add(g); return g;
+})();
+function numSprite(n){
+  const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
+  x.fillStyle='#1d1609'; x.beginPath(); x.arc(64,64,58,0,TAU); x.fill(); x.lineWidth=8; x.strokeStyle='#ffd84a'; x.stroke();
+  x.fillStyle='#ffd84a'; x.font='bold 78px sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(String(n),64,70);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false})); s.scale.set(1.6,1.6,1); return s;
+}
+function pzAdd(o){ scene.add(o); PZ.objs.push(o); return o; }
+function lockPen(on){
+  PZ.locked=on; padlock.visible=on;
+  const i=segs.indexOf(penBlock); if(on && i<0) segs.push(penBlock); if(!on && i>=0) segs.splice(i,1);
+  for(const l of leaves){ l.target=on?l.closedA:l.openA; }
+}
+function unlockPen(){
+  if(!PZ.locked) return;
+  lockPen(false); burst(0,2.6,PEN.z1,60,PC.gold,6,6); sChime(); setTimeout(sChime,180); G.shake=Math.max(G.shake,.3);
+  popText(0,3.5,PEN.z1+1,'PEN OPEN!','gold'); setTimeout(()=>shepSay("That's the gate open! Bring them in!",true),500);
+}
+function setupPuzzle(){
+  for(const o of PZ.objs) scene.remove(o); PZ.objs.length=0;
+  PZ.type=LEVEL.puzzle||null; PZ.gates=[]; PZ.cur=0; PZ.scale=null;
+  lockPen(false); for(const l of leaves){ l.a=l.target; l.apply(); }
+  const out=G.sheep.filter(s=>!s.dead); let fx=0,fz=0; for(const s of out){ fx+=s.x; fz+=s.z; } fx/=out.length||1; fz/=out.length||1;
+  const P={x:0,z:PEN.z1+3};
+  if(PZ.type==='gates'){
+    // a slalom of numbered gates between the flock and the pen
+    const n=LEVEL.gates, pts=[];
+    for(let k=0;k<n;k++){
+      const tt=(k+1)/(n+1), bx=lerp(fx,P.x,tt), bz=lerp(fz,P.z,tt), dx=P.x-fx, dz=P.z-fz, dl=Math.hypot(dx,dz)||1, px=-dz/dl, pz=dx/dl;
+      let best=null; for(let q=0;q<80 && !best;q++){ const side=(k%2?1:-1)*(q<40?1:Math.sign(Math.random()-.5)), off=side*(6+Math.random()*12), x=bx+px*off+(Math.random()-.5)*6, z=bz+pz*off+(Math.random()-.5)*6;
+        if(z>PEN.z1+9 && clearOf(x,z,4.5) && !out.some(s=>Math.hypot(s.x-x,s.z-z)<7) && !pts.some(p=>Math.hypot(p.x-x,p.z-z)<14)) best={x,z}; }
+      if(best) pts.push(best);
+    }
+    pts.forEach((g,k)=>{
+      const nx=k<pts.length-1?pts[k+1]:P, ux0=nx.x-g.x, uz0=nx.z-g.z, ul=Math.hypot(ux0,uz0)||1, ux=ux0/ul, uz=uz0/ul, px=-uz, pz=ux, gap=3.6, pl=3.2;
+      const G2={x:g.x,z:g.z,ax:g.x+px*gap,az:g.z+pz*gap,bx:g.x-px*gap,bz:g.z-pz*gap,passed:new Set(),done:false,k};
+      const white=mat(0xf4ead2), red=mat(0xc8402e);
+      for(const sd of [1,-1]){
+        const ix=g.x+px*gap*sd, iz=g.z+pz*gap*sd, ox=g.x+px*(gap+pl)*sd, oz=g.z+pz*(gap+pl)*sd;
+        segs.push({ax:ix,az:iz,bx:ox,bz:oz,kind:'perim',level:true});
+        const grp=pzAdd(new THREE.Group()); grp.position.set((ix+ox)/2,groundH((ix+ox)/2,(iz+oz)/2),(iz+oz)/2); grp.rotation.y=Math.atan2(ox-ix,oz-iz);
+        for(const e of [-.5,.5]){ const post=new THREE.Mesh(new THREE.BoxGeometry(.22,e*sd<0?1.9:1.3,.22),e*sd<0?red:white); post.position.set(0,(e*sd<0?1.9:1.3)/2,e*pl); post.castShadow=true; grp.add(post); }
+        for(const y of [.45,.85,1.2]){ const rl=new THREE.Mesh(new THREE.BoxGeometry(.1,.16,pl),y===.85?red:white); rl.position.y=y; rl.castShadow=true; grp.add(rl); }
+      }
+      const num=pzAdd(numSprite(k+1)); num.position.set(g.x,groundH(g.x,g.z)+3.4,g.z);
+      const bar=pzAdd(new THREE.Group()); bar.position.set(g.x,groundH(g.x,g.z)+2.3,g.z); bar.rotation.y=Math.atan2(G2.bx-G2.ax,G2.bz-G2.az);
+      const bg=new THREE.Mesh(new THREE.BoxGeometry(.18,.22,gap*2),mat(0x2a2218)); bar.add(bg);
+      const fill=new THREE.Mesh(new THREE.BoxGeometry(.24,.26,gap*2),new THREE.MeshBasicMaterial({color:0xffd84a})); fill.scale.z=.001; bar.add(fill);
+      G2.fill=fill; G2.num=num; PZ.gates.push(G2);
+    });
+    if(PZ.gates.length) lockPen(true); else PZ.type=null;
+  } else if(PZ.type==='scale'){
+    let best=null, bd=-1;
+    for(let q=0;q<200;q++){ const x=(Math.random()*2-1)*(FIELD-12), z=PEN.z1+20+Math.random()*(FIELD-PEN.z1-30); if(!clearOf(x,z,7)) continue;
+      const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<16 || dp<22) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
+    if(best){
+      const S2={x:best.x,z:best.z,r:5.5,p:0,tiles:[],done:false}, gy=groundH(best.x,best.z);
+      const plat=pzAdd(new THREE.Mesh(new THREE.CylinderGeometry(S2.r,S2.r+.2,.35,32),mat(0x9a7a52))); plat.position.set(best.x,gy+.12,best.z); plat.receiveShadow=true;
+      const rim=pzAdd(new THREE.Mesh(new THREE.TorusGeometry(S2.r,.14,6,40),mat(0x8a8f9a))); rim.rotation.x=Math.PI/2; rim.position.set(best.x,gy+.32,best.z);
+      for(let i=0;i<24;i++){ const a=i/24*TAU, tl=pzAdd(new THREE.Mesh(new THREE.BoxGeometry(.6,.12,.6),new THREE.MeshBasicMaterial({color:0x4a4030}))); tl.position.set(best.x+Math.cos(a)*(S2.r-.6),gy+.36,best.z+Math.sin(a)*(S2.r-.6)); tl.rotation.y=-a; S2.tiles.push(tl); }
+      // the big dial, facing the camera
+      const dial=pzAdd(new THREE.Group()); dial.position.set(best.x,gy,best.z-S2.r-.6);
+      const post=new THREE.Mesh(new THREE.BoxGeometry(.35,3.2,.35),mat(0x6e5236)); post.position.y=1.6; dial.add(post);
+      const face=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,.2,28),mat(0xf4ead2)); face.rotation.x=Math.PI/2; face.position.set(0,3.6,.1); dial.add(face);
+      const rimD=new THREE.Mesh(new THREE.TorusGeometry(1.5,.12,6,28),mat(0xc8402e)); rimD.position.set(0,3.6,.2); dial.add(rimD);
+      const needle=new THREE.Group(); needle.position.set(0,3.6,.28); const nd=new THREE.Mesh(new THREE.BoxGeometry(.14,1.25,.06),mat(0x1d1609)); nd.position.y=.55; needle.add(nd); dial.add(needle);
+      S2.needle=needle; PZ.scale=S2; circles.push({x:best.x,z:best.z-S2.r-.6,r:.5,level:true});
+      lockPen(true);
+    } else PZ.type=null;
   }
-  return {g,fly,hover,door,colR,beam};
 }
-function pickSpot(avoidX,avoidZ){
-  for(let k=0;k<400;k++){
-    const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+16+Math.random()*(FIELD-PEN.z1-26), yaw=Math.random()*TAU;
-    const dx=x-Math.sin(yaw)*PK.door, dz=z-Math.cos(yaw)*PK.door;
-    if(Math.hypot(x-avoidX,z-avoidZ)<(k<300?24:12)) continue;
-    if(!clearOf(x,z,PK.colR+1.5) || !clearOf(dx,dz,2.5)) continue;
-    return {x,z,yaw,dx,dz};
-  }
-  return {x:0,z:PEN.z1+20,yaw:Math.PI,dx:0,dz:PEN.z1+20+PK.door};
+// the next thing to aim for: the current gate, the scales, or the open pen
+function objective(){
+  if(PZ.type==='gates' && PZ.locked){ const g=PZ.gates[PZ.cur]; return g?{x:g.x,z:g.z,ring:false}:null; }
+  if(PZ.type==='scale' && PZ.locked) return {x:PZ.scale.x,z:PZ.scale.z,ring:false};
+  if(PZ.type) return {x:0,z:PEN.z1+1.5,ring:true};
+  return null;
 }
-function setupPickup(){
-  if(PK){ scene.remove(PK.g); PK=null; }
-  goalRing.visible=goalBeam.visible=false;
-  if(LEVEL.goal!=='pickup') return;
-  const skin={farm:'trailer',desert:'wagon',sky:'balloon',volcano:'balloon',sea:'sub',moon:'ufo'}[LEVEL.theme]||'trailer';
-  const mk=makePickup(skin); scene.add(mk.g);
-  PK={skin,...mk,state:'parked',t:0,here:0,per:Math.max(4,Math.ceil(flockSize(G.day)/3)),col:{x:0,z:0,r:mk.colR,level:true}};
-  circles.push(PK.col);
-  const s=pickSpot(0,PEN.z1); Object.assign(PK,{x:s.x,z:s.z,yaw:s.yaw,dx:s.dx,dz:s.dz});
-  PK.col.x=PK.x; PK.col.z=PK.z;
-  // the barn pen is shut today
-  segs.push({ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'perim',level:true});
-  for(const l of leaves){ l.target=l.closedA; l.a=l.closedA; l.apply(); }
-  placePickupMesh(0);
-}
-function placePickupMesh(time){
-  const y=groundH(PK.x,PK.z)+PK.hover+(PK.fly&&PK.state==='parked'?Math.sin(time*1.6)*(PK.skin==='ufo'?.3:.12):0);
-  PK.g.position.set(PK.x,y,PK.z); PK.g.rotation.y=PK.yaw;
-}
-function loadSheep(s){
-  s.penned=true; s.loaded=true; s.loadT=0; s.vx=s.vz=0; s.beam=PK.skin==='ufo';
-  s.lx=s.x; s.ly=s.m.g.position.y; s.lz=s.z; s.lsc=s.m.g.scale.x;
-  s.ltx=PK.x; s.ltz=PK.z; s.lty=PK.g.position.y+(s.beam?0:1.2);
-  onPenned(s); PK.here++;
-  if(s.beam) sPickup(); else sBoing();
-  const left=G.sheep.filter(o=>!o.dead && !o.penned).length;
-  if(PK.here>=PK.per && left>0){ PK.state='wait'; PK.t=0; }
-}
-// is this sheep at the goal? (pen or pickup)
-function checkGoal(s){
-  if(s.penned) return false;
-  if(PK){ if(PK.state==='parked' && Math.hypot(s.x-PK.dx,s.z-PK.dz)<2.6){ loadSheep(s); return true; } return false; }
-  if(insidePen(s.x,s.z)){ s.penned=true; onPenned(s); return true; }
-  return false;
-}
-function updatePickup(dt){
-  if(!PK) return;
-  PK.t+=dt;
-  if(PK.state==='wait' && PK.t>.7){
-    // full load: off it goes to a new spot
-    PK.state='moving'; PK.t=0; PK.from={x:PK.x,z:PK.z,yaw:PK.yaw}; PK.to=pickSpot(PK.x,PK.z); PK.col.r=0;
-    shepSay("It's moving! After it!",true); sWhoosh(); burst(PK.x,1,PK.z,30,PC.dust,4,3);
-    PK.per=Math.max(4,Math.ceil(flockSize(G.day)/3));
-  }
-  if(PK.state==='moving'){
-    const T=2.4, k=Math.min(1,PK.t/T), e=k*k*(3-2*k);
-    PK.x=lerp(PK.from.x,PK.to.x,e); PK.z=lerp(PK.from.z,PK.to.z,e);
-    PK.yaw=lerpAngle(PK.from.yaw,PK.to.yaw,e);
-    const lift=Math.sin(k*Math.PI)*(PK.fly?9:3.5);
-    PK.g.position.set(PK.x,groundH(PK.x,PK.z)+PK.hover+lift,PK.z); PK.g.rotation.y=PK.yaw;
-    if(!PK.fly && Math.random()<dt*20) burst(PK.x,.5,PK.z,2,PC.dust,2,2);
-    if(k>=1){
-      Object.assign(PK,{x:PK.to.x,z:PK.to.z,yaw:PK.to.yaw,dx:PK.to.dx,dz:PK.to.dz,state:'parked',here:0});
-      PK.col.x=PK.x; PK.col.z=PK.z; PK.col.r=PK.colR;
-      sThud(); G.shake=Math.max(G.shake,.25); burst(PK.dx,.6,PK.dz,40,PC.confetti,5,5);
-      const D=nearestDog(PK.dx,PK.dz); if(Math.hypot(D.x-PK.dx,D.z-PK.dz)>20) setTimeout(()=>shepSay('Over here now!'),600);
+const segHit=(ax,az,bx,bz,cx,cz,dx,dz)=>{ const d1x=bx-ax,d1z=bz-az,d2x=dx-cx,d2z=dz-cz,den=d1x*d2z-d1z*d2x; if(Math.abs(den)<1e-9) return false; const u=((cx-ax)*d2z-(cz-az)*d2x)/den, v=((cx-ax)*d1z-(cz-az)*d1x)/den; return u>=0&&u<=1&&v>=0&&v<=1; };
+function updatePuzzle(dt){
+  const flock=G.sheep.filter(s=>!s.dead && !s.bonus), need=Math.max(1,Math.ceil(flock.length*.6));
+  PZ.need=need;
+  if(PZ.type==='gates' && PZ.locked && (G.phase==='day'||G.phase==='night')){
+    const g=PZ.gates[PZ.cur];
+    if(g){
+      for(const s of flock){ if(s.penned||s.carried) continue; if(s.ox!==undefined && !g.passed.has(s) && segHit(s.ox,s.oz,s.x,s.z,g.ax,g.az,g.bx,g.bz)){ g.passed.add(s); sBell(); } }
+      g.fill.scale.z=Math.max(.001,Math.min(1,g.passed.size/need));
+      if(g.passed.size>=need){
+        g.done=true; g.fill.material.color.setHex(0x7bd65a); burst(g.x,2.4,g.z,50,PC.confetti,5,6); sChime();
+        PZ.cur++;
+        if(PZ.cur>=PZ.gates.length) unlockPen(); else { popText(g.x,3.6,g.z,'GATE '+(g.k+1)+'!','gold'); shepSay("That's one!",true); }
+      }
     }
   }
-}
-function syncPickup(time){
-  const on=!!PK && PK.state==='parked';
-  goalRing.visible=goalBeam.visible=on;
-  if(!PK) return;
-  if(PK.state!=='moving') placePickupMesh(time);
-  if(PK.g.userData.flame) PK.g.userData.flame.scale.setScalar(.8+Math.random()*.5);
-  if(PK.g.userData.prop) PK.g.userData.prop.rotation.z=time*8;
-  if(PK.skin==='ufo') PK.g.rotation.y=PK.yaw+time*.6;
-  if(PK.beam) PK.beam.material.opacity=on?.22+.1*Math.sin(time*5):.06;
-  if(on){
-    const gy=groundH(PK.dx,PK.dz);
-    goalRing.position.set(PK.dx,gy+.1,PK.dz); goalRing.scale.setScalar(1+.08*Math.sin(time*5)); goalRing.material.opacity=.55+.3*Math.sin(time*5);
-    goalBeam.position.set(PK.dx,gy+20,PK.dz); goalBeam.material.opacity=.12+.06*Math.sin(time*3);
+  if(PZ.type==='scale' && PZ.locked && !PZ.scale.done && (G.phase==='day'||G.phase==='night')){
+    const S2=PZ.scale; let on=0; for(const s of flock){ if(!s.penned && !s.carried && Math.hypot(s.x-S2.x,s.z-S2.z)<S2.r) on++; }
+    PZ.on=on;
+    S2.p = on>=need ? Math.min(1,S2.p+dt/4) : Math.max(0,S2.p-dt/10);
+    if(S2.p>=1){ S2.done=true; burst(S2.x,1.5,S2.z,70,PC.confetti,6,7); sChime(); shepSay("Ach, they're a heavy lot!",true); const d0=G.day; setTimeout(()=>{ if(G.day===d0 && PZ.scale===S2) unlockPen(); },1600); }
   }
+  for(const s of G.sheep){ s.ox=s.x; s.oz=s.z; }
 }
-// an arrow at the screen edge pointing at the pickup when it's out of view
+function syncPuzzle(time){
+  const ob=objective(), show=!!ob && (G.phase==='day'||G.phase==='night');
+  goalBeam.visible=show; goalRing.visible=show && ob.ring;
+  if(show){ const gy=groundH(ob.x,ob.z); goalBeam.position.set(ob.x,gy+20,ob.z); goalBeam.material.opacity=.12+.06*Math.sin(time*3);
+    goalRing.position.set(ob.x,gy+.1,ob.z); goalRing.scale.setScalar(1.6+.1*Math.sin(time*5)); goalRing.material.opacity=.55+.3*Math.sin(time*5); }
+  if(padlock.visible){ padlock.rotation.y=Math.sin(time*2)*.4; padlock.position.y=2.6+Math.sin(time*3)*.12; }
+  for(const g of PZ.gates){ const cur=PZ.gates[PZ.cur]===g && PZ.locked; g.num.scale.setScalar(cur?1.6+.25*Math.sin(time*6):g.done?1.1:1.3); g.num.material.opacity=g.done?.45:1; }
+  if(PZ.scale){ const S2=PZ.scale; S2.tiles.forEach((tl,i)=>tl.material.color.setHex(i/24<S2.p?0xffd84a:(i/24<(PZ.on||0)/Math.max(1,PZ.need)?0x8a7a4a:0x4a4030))); S2.needle.rotation.z=2.2-S2.p*4.4; }
+}
+// an arrow at the screen edge pointing at the objective when it's out of view
 const _gp=new THREE.Vector3();
 function updateGoalArrow(time){
-  const el=$('goalArrow');
-  if(!PK || PK.state!=='parked' || coopView || G.phase==='title' || G.phase==='result'){ el.hidden=true; return; }
-  _gp.set(PK.dx,groundH(PK.dx,PK.dz)+1,PK.dz).project(camera);
+  const el=$('goalArrow'), ob=objective();
+  if(!ob || coopView || G.phase==='title' || G.phase==='result'){ el.hidden=true; return; }
+  _gp.set(ob.x,groundH(ob.x,ob.z)+1,ob.z).project(camera);
   const behind=_gp.z>1; let nx=_gp.x, ny=_gp.y; if(behind){ nx=-nx; ny=-ny; }
   if(!behind && Math.abs(nx)<.92 && Math.abs(ny)<.92){ el.hidden=true; return; }
   const w=window.innerWidth, h=window.innerHeight, m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.86, ey=ny/m*.82;
   const sx=(ex*.5+.5)*w, sy=(-ey*.5+.5)*h, ang=Math.atan2(ex,ey), bob=Math.sin(time*7)*3;
   el.hidden=false; el.style.transform=`translate(${sx-16+Math.sin(ang)*bob}px,${sy-13-Math.cos(ang)*bob}px) rotate(${ang}rad)`;
+}
+function objectiveText(){
+  if(PZ.type==='gates' && PZ.locked){ const g=PZ.gates[PZ.cur]; return 'Gate '+(PZ.cur+1)+' of '+PZ.gates.length+(g?' · '+g.passed.size+'/'+PZ.need:''); }
+  if(PZ.type==='scale' && PZ.locked) return 'Weigh-in · '+(PZ.on||0)+'/'+PZ.need+' on';
+  if(PZ.type==='maze') return 'Through the maze';
+  if(PZ.type) return 'Pen open!';
+  return '';
 }
 
 // ---------------- the falcon: now and then it swoops down and carries the dog off ----------------
@@ -3907,7 +3944,7 @@ function updateSurprise(dt){
 function syncSurprise(dt,time){
   const ev=G.ev;
   // big air for sheep thrown by a twister or a bale
-  for(const s of G.sheep){ if(s.air>0){ s.air=Math.max(0,s.air-dt*1.1); if(!s.dead && !s.loaded) s.m.g.position.y+=Math.sin(s.air*Math.PI)*4.5; } if(s.safeT>0) s.safeT-=dt; }
+  for(const s of G.sheep){ if(s.air>0){ s.air=Math.max(0,s.air-dt*1.1); if(!s.dead) s.m.g.position.y+=Math.sin(s.air*Math.PI)*4.5; } if(s.safeT>0) s.safeT-=dt; }
   if(!ev) return;
   if(ev.kind==='twister' && ev.g){ ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z); ev.g.rotation.y+=dt*9; ev.g.children.forEach((c,i)=>{ c.position.x=Math.sin(time*5+i)*.3*i*.3; }); }
   if(ev.kind==='bales') for(const b of ev.b) b.g.position.set(b.x,groundH(b.x,b.z)+1.7,b.z);
@@ -3981,10 +4018,12 @@ function drawMinimap(time){
   mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(BARN.bx-7.2),Y(BARN.bz-6.2),14.4*S,12.4*S);
   for(const c of clovers){ mx.fillStyle='rgba(90,163,54,.55)'; mx.beginPath(); mx.arc(X(c.x),Y(c.z),c.r*S,0,TAU); mx.fill(); }
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
-  if(PK){ const px=X(PK.dx), py=Y(PK.dz), r=7+Math.sin(time*6)*1.5; mx.fillStyle='rgba(0,0,0,.45)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
-    mx.fillStyle=PK.state==='parked'?'#ffd84a':'rgba(255,216,74,.4)'; mx.beginPath(); for(let k=0;k<10;k++){ const a=k/10*TAU-Math.PI/2, rr=k%2?r*.45:r; mx.lineTo(px+Math.cos(a)*rr,py+Math.sin(a)*rr); } mx.closePath(); mx.fill(); }
+  if(LEVEL.maze){ mx.strokeStyle='rgba(160,200,90,.9)'; mx.lineWidth=2.5; mx.beginPath(); for(const w of LEVEL.maze.walls){ mx.moveTo(X(w[0]),Y(w[1])); mx.lineTo(X(w[2]),Y(w[3])); } mx.stroke(); }
+  PZ.gates.forEach((g,k)=>{ mx.strokeStyle=g.done?'#7bd65a':(k===PZ.cur&&PZ.locked?'#ffd84a':'rgba(244,234,210,.6)'); mx.lineWidth=3; mx.beginPath(); mx.moveTo(X(g.ax),Y(g.az)); mx.lineTo(X(g.bx),Y(g.bz)); mx.stroke(); });
+  if(PZ.scale){ mx.strokeStyle=PZ.scale.done?'#7bd65a':'#ffd84a'; mx.lineWidth=2.5; mx.beginPath(); mx.arc(X(PZ.scale.x),Y(PZ.scale.z),PZ.scale.r*S,0,TAU); mx.stroke(); }
+  if(PZ.locked){ mx.strokeStyle='#ff6b5a'; mx.lineWidth=3; mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke(); }
   for(const s of G.sheep){
-    if(s.dead||s.loaded) continue;
+    if(s.dead) continue;
     mx.fillStyle = s.attacked>0 ? '#ff6b5a' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
     mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.lamb?2.5:s.penned?3:4,0,TAU); mx.fill();
   }
@@ -4055,7 +4094,7 @@ function updateHUD(dt,time){
     const f=Math.min(1,G.t/dayLen(G.day));
     $('clock').textContent=fmtClock(6+f*14);
     tf.style.width=((1-f)*100)+'%'; tf.classList.remove('night');
-    $('timeSub').textContent=Math.ceil(dayLen(G.day)*(1-f))+'s of daylight';
+    { const ot=objectiveText(), sec=Math.ceil(dayLen(G.day)*(1-f)); $('timeSub').textContent=ot?ot+' · '+sec+'s':sec+'s of daylight'; }
   }
   $('stamFill').style.width=dog.stamina+'%'; $('stamFill').classList.toggle('tired',dog.tired);
   $('barkFill').style.width=((1-dog.barkCD/1.1)*100)+'%';
@@ -4099,7 +4138,7 @@ function step(dt){
   updateCoyotes(dt);
   hazardSweep();
   updateFalcon(dt);
-  updatePickup(dt);
+  updatePuzzle(dt);
   updateSurprise(dt);
   updateBullets(dt);
   updateShepherd(dt);
@@ -4163,7 +4202,7 @@ function frame(now){
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);
-  syncPickup(time); syncFalcon(dt,time); syncSurprise(dt,time);
+  syncPuzzle(time); syncFalcon(dt,time); syncSurprise(dt,time);
   syncDucks(dt,time); syncRascal(dt,time); updateBirds(dt,time); updateCat(dt,time); updatePond(dt);
   updateBubble(dt);
   syncAll(dt,time);
