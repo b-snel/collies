@@ -179,6 +179,7 @@ body.pad .keyline .gp{display:flex}
 
 .pArrow{position:fixed;left:0;top:0;width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:22px solid #8fd3ff;pointer-events:none;z-index:2;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
 .pArrow.p2{border-bottom-color:var(--lantern)}
+.pArrow.goal{border-bottom-color:#ffd84a;border-left-width:16px;border-right-width:16px;border-bottom-width:26px}
 
 .coopT{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
 .coopT th{font-family:var(--display);font-weight:400;font-size:16px;color:var(--wool);text-align:right;padding:4px 6px}
@@ -255,7 +256,7 @@ button,input{touch-action:manipulation}</style>
 <div id="game"></div>
 
 <div id="splitLine" hidden></div>
-<div class="pArrow" id="arrow1" hidden></div><div class="pArrow p2" id="arrow2" hidden></div>
+<div class="pArrow goal" id="goalArrow" hidden></div><div class="pArrow" id="arrow1" hidden></div><div class="pArrow p2" id="arrow2" hidden></div>
 <div id="pops"></div>
 <div id="bubble"></div>
 
@@ -402,33 +403,48 @@ let RUN_SEED=(Math.random()*1e9)|0;
 const levelCache={};
 let LEVEL={theme:'farm',name:'Home Farm',walls:[],copses:[],rocks:[],holes:[],pond:null,river:null,twist:null};
 const TWISTS={bouncy:'Bouncy sheep',giant:'Giant sheep',tiny:'Tiny sheep',speedy:'Speedy sheep',foggy:'Thick fog',goldrush:'Gold rush',stampede:'Stampedes'};
-const THEMES={farm:{w:4.5},sky:{w:1.3,season:'summer'},sea:{w:1.2,season:'spring'},desert:{w:1.4,season:'desert'},moon:{w:1.2,season:'moon'}};
+const THEMES={farm:{w:4},sky:{w:1.3,season:'summer'},sea:{w:1.2,season:'spring'},desert:{w:1.3,season:'desert'},moon:{w:1.1,season:'moon'},volcano:{w:1.4,season:'volcano'}};
 const riverZ=(R,x)=>R.z0+R.amp*Math.sin(R.k*x+R.ph);
 const inRiver=(x,z)=>{ const R=LEVEL.river; if(!R) return false; if(Math.abs(z-riverZ(R,x))>R.w/2) return false; return !R.bridges.some(b=>x>b[0]&&x<b[1]); };
+// deadly ground: lava pools and lava rivers, and the edges of sky islands
+const lavaRiver=()=>!!(LEVEL.river&&LEVEL.river.lava);
+// outward direction from the hazard a point is in (or null)
+function hazardNormal(x,z){
+  if(LEVEL.haz) for(const h of LEVEL.haz){ const dx=x-h.x, dz=z-h.z, d=Math.hypot(dx,dz); if(d<h.r) return d>1e-6?{x:dx/d,z:dz/d}:{x:1,z:0}; }
+  if(lavaRiver() && inRiver(x,z)){ const s=z>riverZ(LEVEL.river,x)?1:-1; return {x:0,z:s}; }
+  return null;
+}
+function hazardAt(x,z){
+  if(LEVEL.haz) for(const h of LEVEL.haz) if(Math.hypot(x-h.x,z-h.z)<h.r-.35) return h.kind;
+  if(lavaRiver() && inRiver(x,z)) return 'lava';
+  return null;
+}
 function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
 function generateLevel(d){
   const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
   // theme: day 1 is always the farm; never the same special theme twice running
   let theme='farm';
   if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>t==='farm'||t!==prev); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
-  const L={theme,season:THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],pond:null,river:null,twist:null};
-  L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8)}[theme]};
+  const L={theme,season:THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null};
+  // where the sheep go: the barn pen, or a pickup that turns up somewhere new (and keeps moving)
+  L.goal = d===1 ? 'pen' : (theme==='farm'||theme==='desert') ? (chance(.65)?'pickup':'pen') : 'pickup';
+  L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8),volcano:r(.8,1.5)}[theme]};
   const taken=[];   // circles already used, so features don't pile on each other
   const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
     || taken.some(t=>Math.hypot(t.x-x,t.z-z)<t.r+pad)
     || (L.river && Math.abs(z-riverZ(L.river,x))<L.river.w/2+2.5+pad)
     || L.walls.some(w=>{ const [ax,az,bx,bz]=w.seg, abx=bx-ax, abz=bz-az, t=clamp(((x-ax)*abx+(z-az)*abz)/(abx*abx+abz*abz),0,1); return Math.hypot(x-ax-abx*t,z-az-abz*t)<1.5+pad; });
   // a winding river with 1-3 bridges
-  if(d>1 && (theme==='farm'||theme==='desert'||theme==='sea') && chance(.5)){
-    const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[]};
+  if(d>1 && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
+    const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[],lava:theme==='volcano'};
     const nb=1+((R()*3)|0); let tries=0;
     while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
     L.river=Rv;
   }
   // the pond moves about (none on the moon)
-  if(theme!=='moon'){ for(let t=0;t<60;t++){ const rad=r(5,8), x=r(-38,38), z=r(-6,38); if(!blockedAt(x,z,rad+1)){ L.pond={x,z,r:rad}; taken.push({x,z,r:rad+2}); break; } } }
+  if(theme!=='moon' && theme!=='volcano'){ for(let t=0;t<60;t++){ const rad=r(5,8), x=r(-38,38), z=r(-6,38); if(!blockedAt(x,z,rad+1)){ L.pond={x,z,r:rad}; taken.push({x,z,r:rad+2}); break; } } }
   // walls with gaps: hedges on the farm, old fences in the desert, coral reefs underwater
-  if(theme!=='moon' && theme!=='sky' && chance(d===1?.35:.6)){
+  if(theme!=='moon' && theme!=='sky' && theme!=='volcano' && chance(d===1?.35:.6)){
     const style=theme==='desert'?'fence':theme==='sea'?'coral':'hedge';
     const nw=1+((R()*(d===1?1:3))|0);
     for(let k=0,t=0;k<nw && t<40;t++){
@@ -455,8 +471,13 @@ function generateLevel(d){
     const nh=theme==='sky'?3+((R()*3)|0):4+((R()*4)|0);
     for(let k=0,t=0;k<nh && t<80;t++){ const rad=theme==='sky'?r(4,8):r(2.5,5.5), x=r(-40,40), z=r(-6,42); if(blockedAt(x,z,rad+2)) continue; L.holes.push({x,z,r:rad}); taken.push({x,z,r:rad+2.5}); k++; }
   }
+  // lava pools: the flock shies away from them, but drive it hard and they'll go in
+  if(theme==='volcano'){
+    const nl=3+((R()*3)|0);
+    for(let k=0,t=0;k<nl && t<80;t++){ const rad=r(2.6,5.2), x=r(-38,38), z=r(-4,40); if(blockedAt(x,z,rad+2.5)) continue; L.lava.push({x,z,r:rad}); taken.push({x,z,r:rad+3}); k++; }
+  }
   // copses (trees, cacti, coral, crystals) and boulder fields
-  const kind={farm:'tree',sky:'tree',sea:'coral',desert:'cactus',moon:'crystal'}[theme];
+  const kind={farm:'tree',sky:'tree',sea:'coral',desert:'cactus',moon:'crystal',volcano:'basalt'}[theme];
   const nc=(d===1?1:1+((R()*3)|0));
   for(let k=0,t=0;k<nc && t<40;t++){ const cx=r(-38,38), cz=r(-4,42); if(blockedAt(cx,cz,5)) continue; const n=3+((R()*5)|0);
     for(let q=0;q<n;q++){ const a=R()*TAU, rr=r(0,5), x=cx+Math.cos(a)*rr, z=cz+Math.sin(a)*rr; if(L.copses.some(c=>Math.hypot(c.x-x,c.z-z)<2.6)) continue; L.copses.push({x,z,s:r(.9,1.6),kind}); }
@@ -468,13 +489,15 @@ function generateLevel(d){
   if(d>1 && chance(.75)) L.twist=pick(Object.keys(TWISTS));
   // a name for the place
   const adj=pick(['Windy','Mossy','Crooked','Sunny','Misty','Old','Lonely','Bonny','Wild','Muddy','Bramble','Thistle','Heather','Golden']);
-  const noun=theme==='sky'?pick(['Skies','Clouds','Heights']):theme==='sea'?pick(['Deep','Reef','Shallows']):theme==='desert'?pick(['Dunes','Gulch','Flats']):theme==='moon'?pick(['Craters','Moon','Basin'])
+  const noun=theme==='sky'?pick(['Skies','Clouds','Heights']):theme==='sea'?pick(['Deep','Reef','Shallows']):theme==='desert'?pick(['Dunes','Gulch','Flats']):theme==='moon'?pick(['Craters','Moon','Basin']):theme==='volcano'?pick(['Caldera','Cinders','Ashlands'])
     :L.river?pick(['Burn','Brook','Ford']):L.walls.length?pick(['Hedges','Lanes','Steadings']):L.copses.length>5?pick(['Wood','Copse']):pick(['Meadow','Glen','Brae','Fields']);
   L.name=d===1?'Home Farm':adj+' '+noun;
   return L;
 }
 SEASONS.desert={name:'desert',label:'Desert',ground:0xe2c48a,groundMix:.82,grass:0xc9a964,grassMix:.78,leaves:[0x5f8a3a,0x6b9442,0x557a35],sky:0xf3d6a4,hemi:0xfff0d6,hemiGround:0xb08a50,
   fx:{colors:[0xe8d2a0,0xd9bf8a],count:140,fall:.2,sway:3,size:.18},flies:0,hot:true};
+SEASONS.volcano={name:'volcano',label:'Volcano',ground:0x3d3330,groundMix:.9,grass:0x5b4a3c,grassMix:.9,leaves:[0x3a2b24,0x4a3328,0x2e231e],sky:0xd98a5c,hemi:0xffc9a0,hemiGround:0x3a1e14,
+  fx:{colors:[0xff7a2a,0xffb14a,0xffd27a],count:200,fall:-1.4,sway:1.2,size:.22},flies:0,hot:true};
 SEASONS.moon={name:'moon',label:'Moon',ground:0x8e909b,groundMix:.93,grass:0x7d808a,grassMix:.96,leaves:[0x9d8cff,0x7fe0ff,0xc08cff],sky:0x0b0d1a,hemi:0xc8ceff,hemiGround:0x34363f,
   fx:{colors:[0xffffff],count:0,fall:0,sway:0,size:.1},flies:0};
 const seasonOf = d => levelOf(d).season || ['spring','summer','autumn','winter'][(d-1)%4];   // themed levels bring their own weather
@@ -775,6 +798,7 @@ function makeObstacle(kind,x,z,s){
     if(kind==='cactus'){ const M=mat(0x4f8a3a); const b=new THREE.Mesh(new THREE.CylinderGeometry(.35*s,.4*s,3*s,7),M); b.position.y=1.5*s; g.add(b);
       for(const sd of [-1,1]){ const a=new THREE.Mesh(new THREE.CylinderGeometry(.2*s,.22*s,1.2*s,6),M); a.position.set(.55*s*sd,(1.6+sd*.3)*s,0); g.add(a); const e=new THREE.Mesh(new THREE.CylinderGeometry(.2*s,.2*s,.6*s,6),M); e.rotation.z=Math.PI/2; e.position.set(.35*s*sd,(1.1+sd*.3)*s,0); g.add(e); } r=.45*s+.2; }
     else if(kind==='coral'){ const C=[0xff7a8a,0xffa64d,0xc86bff,0xff5fa2][(Math.random()*4)|0]; for(let k=0;k<4;k++){ const c=new THREE.Mesh(new THREE.ConeGeometry(.3*s,(1.4+Math.random())*s,5),mat(C)); c.position.set((Math.random()-.5)*s,.7*s,(Math.random()-.5)*s); c.rotation.set((Math.random()-.5)*.6,0,(Math.random()-.5)*.6); g.add(c); } }
+    else if(kind==='basalt'){ const M=mat(0x2c2624); for(let k=0;k<3;k++){ const h=(1.4+Math.random()*1.8)*s, c=new THREE.Mesh(new THREE.CylinderGeometry(.42*s,.48*s,h,6),M); c.position.set((Math.random()-.5)*s*.9,h/2,(Math.random()-.5)*s*.9); g.add(c); } }
     else if(kind==='crystal'){ const C=[0x9d8cff,0x7fe0ff,0xc08cff][(Math.random()*3)|0]; const M=new THREE.MeshStandardMaterial({color:C,emissive:C,emissiveIntensity:.45,roughness:.3,flatShading:true});
       for(let k=0;k<3;k++){ const c=new THREE.Mesh(new THREE.OctahedronGeometry(.5*s,0),M); c.scale.y=2.2; c.position.set((Math.random()-.5)*s*.8,1.1*s,(Math.random()-.5)*s*.8); c.rotation.z=(Math.random()-.5)*.5; g.add(c); } }
     else { const col={desert:0xc98f5a,moon:0x8a8a92}[LEVEL.theme]||0x8a8c86; const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(1,0),mat(col)); rk.position.y=s*.35; rk.scale.set(s*1.2,s*.75,s); g.add(rk); r=s*1.05; }
@@ -788,6 +812,7 @@ function clearOf(x,z,pad){
   if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad) return false;
   if(Math.hypot(x-POND.x,z-POND.z)<POND.r+2+pad) return false;
   if(LEVEL.river && Math.abs(z-riverZ(LEVEL.river,x))<LEVEL.river.w/2+2+pad) return false;
+  if(LEVEL.haz) for(const h of LEVEL.haz) if(Math.hypot(h.x-x,h.z-z)<h.r+2+pad) return false;
   if(!reachable(x,z)) return false;
   for(const sg of segs){ if(!sg.level) continue; const abx=sg.bx-sg.ax, abz=sg.bz-sg.az, t=clamp(((x-sg.ax)*abx+(z-sg.az)*abz)/(abx*abx+abz*abz),0,1); if(Math.hypot(x-sg.ax-abx*t,z-sg.az-abz*t)<1.5+pad) return false; }
   for(const c of circles) if(Math.hypot(c.x-x,c.z-z)<c.r+pad) return false;
@@ -1048,7 +1073,7 @@ function initAudio(){
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
-const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it"};
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel", "Careful! We cannae lose any more!": "one_more", "That's the flock gone. The farm's done for.": "game_over", "Grand teamwork, the pair of ye!": "teamwork", "What a catch!": "catch", "On yer feet!": "on_yer_feet", "Hold it! Hold it, both of ye!": "hold_it", "Load them up, NAME!": "load_up", "It's moving! After it!": "its_moving", "Over here now!": "over_here", "Mind the lava, NAME!": "mind_lava", "Ach! That one's toasted!": "toasted", "Ach! Over the edge!": "over_edge", "Falcon! Run, NAME!": "falcon", "Oi! Bring back me dog!": "bring_back", "Ha! Missed!": "missed_him", "All aboard! Grand!": "all_aboard"};
 const SFX={bark:[],bleat:[],voice:{}};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
@@ -1348,6 +1373,7 @@ function spawnFlock(n){
     const x=(Math.random()*2-1)*(FIELD-12), z=PEN.z1+16+Math.random()*(FIELD-PEN.z1-26);
     if(!clearOf(x,z,6)) continue;
     if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<20)) continue;
+    if(PK && Math.hypot(PK.dx-x,PK.dz-z)<20) continue;
     centers.push([x,z]); i++;
   }
   if(!centers.length) centers.push([0,20]);
@@ -1399,6 +1425,7 @@ function setupDay(){
   clearClover(); spawnClover(cloverCount(G.day));
   spawnGoldBones();
   placeShroom();
+  setupPickup();
   spawnFlock(flockSize(G.day)+(G.twist==='tiny'?4:0));
   resetDog();
   spawnPower('bone'); G.powerT=12;
@@ -1410,6 +1437,7 @@ function setupDay(){
   resetGun();
   resetLlama();
   spawnDucks(); spawnBirds(); resetRascal(); G.bonusWool=0;
+  resetFalcon(); G.saidLava=false;
 }
 
 // ---------------- input ----------------
@@ -1568,7 +1596,7 @@ function startGame(fresh){
   $('hud').hidden=false;
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
   toast('Day '+G.day+' · '+LEVEL.name+(LEVEL.theme==='farm'?' · '+SEASON.label:'')+(G.twist?' · '+TWISTS[G.twist]:''),'',3.2);
-  setTimeout(()=>shepSay('Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
+  setTimeout(()=>shepSay(PK?'Load them up, '+(G.coop?G.name+' and '+G.name2:G.name)+'!':'Away out, '+(G.coop?G.name+' and '+G.name2:G.name)+'! Bring them in!',true),900);
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
 $('startBtn').addEventListener('click',()=>startGame(true));
@@ -1614,6 +1642,7 @@ function bark(D){
   if(G.phase!=='day' && G.phase!=='night') return;
   if(G.paused || D.barkCD>0) return;
   D.barkCD=1.1*(1-.1*lv('bark')); D.barkT=.5;
+  if(D.flying && falcon.D===D && falcon.state==='carry') falcon.release=true;   // bark and it lets go
   spawnRing(D.x,D.z); sBark(D===dog2?.86:1);
   const other=D===dog?dog2:dog;
   if(G.coop && G.elapsed-(other.lastBark||-9)<.6 && Math.hypot(D.x-other.x,D.z-other.z)<16){
@@ -1757,7 +1786,7 @@ function pounce(D){
   D=D||dog;
   if(G.phase!=='day' && G.phase!=='night') return;
   if(D.grab){ shakeGrab(D); return; }        // pounce while holding on = shake
-  if(G.paused || D.pounceCD>0 || D.lying || D.stunT>0) return;
+  if(G.paused || D.pounceCD>0 || D.lying || D.stunT>0 || D.flying) return;
   const il=Math.hypot(D.inX,D.inZ);
   if(il>.1){ D.pdx=D.inX/il; D.pdz=D.inZ/il; } else { D.pdx=Math.sin(D.yaw); D.pdz=Math.cos(D.yaw); }
   D.pounceT=.3; D.pounceCD=1.2*(lv('nip')>=1?.75:1); sWhoosh();
@@ -1776,7 +1805,14 @@ function onPenned(s){
   const left=G.sheep.filter(o=>!o.dead && !o.penned).length;
   if(s.golden) shepSay('The golden one! Well done!',true);
   else if(s.ram) shepSay('Ha! Got the old ram!',true);
+  else if(left===0 && PK) shepSay('All aboard! Grand!',true);
   else if(left>0 && Math.random()<.35) shepSay(['Good dog!',"That's it!",'Nice and steady!','In ye go!'][(Math.random()*4)|0]);
+}
+function hazardKill(s,kind){
+  s.deathKind=kind; s.vx=s.vz=0; killSheep(s);
+  if(kind==='lava'){ sSizzle(); burst(s.x,groundH(s.x,s.z)+.8,s.z,30,[0xff7a2a,0xffb14a,0x6a625c],3,5,3); popText(s.x,2.4,s.z,'TOASTED','red'); }
+  else { sBleat(.8); popText(s.x,2,s.z,'BAAaaa...','red'); }
+  setTimeout(()=>shepSay(kind==='lava'?"Ach! That one's toasted!":'Ach! Over the edge!',true),500);
 }
 function killSheep(s){
   if(s.dead) return;
@@ -1900,6 +1936,7 @@ function endDay(reason){
 // ---------------- updates ----------------
 function updateDog(D,dt){
   const playing = G.phase==='day'||G.phase==='night';
+  if(D.flying){ D.inX=D.inZ=0; D.vx=D.vz=0; D.lying=false; D.speed=0; D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt); D.pounceCD=Math.max(0,D.pounceCD-dt); return; }   // in the falcon's talons
   let ix=0,iz=0, run=false, down=false, grabHeld=false;
   if(playing){
     if(D===dog){
@@ -1954,7 +1991,7 @@ function updateDog(D,dt){
   else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
   if(D.grab) updateGrab(D,dt);
   D.shakeT=Math.max(0,(D.shakeT||0)-dt);
-  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4 || inRiver(D.x,D.z); D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
+  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4 || (inRiver(D.x,D.z) && !lavaRiver()); D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
   if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
   D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt);
@@ -1966,6 +2003,13 @@ function updateSheep(dt){
   for(const s of L){
     if(s.dead){
       s.deadT+=dt;
+      if(s.deathKind && s.m.g.parent){
+        // into the lava (sizzle) or off the edge of the island
+        if(s.deathKind==='lava'){ s.m.g.position.y=groundH(s.x,s.z)-s.deadT*1.4; s.m.g.rotation.z=Math.sin(s.deadT*20)*.3; if(Math.random()<dt*20) burst(s.x,groundH(s.x,s.z)+.6,s.z,2,[0x6a625c,0x3a3330,0xff7a2a],1,3,2); }
+        else { s.m.g.position.y=groundH(s.x,s.z)-s.deadT*s.deadT*9; s.m.g.rotation.x+=dt*8; }
+        if(s.deadT>1.4) scene.remove(s.m.g);
+        continue;
+      }
       if(s.m.g.parent){
         s.m.g.rotation.z=Math.min(Math.PI/2,s.deadT*5);
         if(s.deadT>2.5) s.m.g.position.y-=dt*.5;
@@ -1973,6 +2017,7 @@ function updateSheep(dt){
       }
       continue;
     }
+    if(s.loaded){ s.loadT+=dt; continue; }                 // already aboard the pickup
     if(s.carried){ s.attacked=.3; s.fear=1; continue; }
     if(s.grabbedBy){ s.penned=false; continue; }            // dangling from a dog's mouth
     if(s.thrownT>0){
@@ -2013,7 +2058,7 @@ function updateSheep(dt){
       s.fear=.9; s.munch=0;
       s.x+=s.vx*dt; s.z+=s.vz*dt;
       collide(s,s.lamb?.45:.7,{gate:false,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
-      if(insidePen(s.x,s.z)){ s.penned=true; onPenned(s); }          // lead them into the pen and they're caught
+      checkGoal(s);          // lead them into the pen (or the pickup) and they're caught
       s.attacked=Math.max(0,s.attacked-dt);
       continue;
     }
@@ -2031,7 +2076,7 @@ function updateSheep(dt){
       let threat=0;
       for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.grabbedBy) continue; const R=c.boss?24:17, e=Math.hypot(s.x-c.x,s.z-c.z); if(e<R) threat=Math.max(threat,1-e/R); }
       if(rascal.active && rascal.state==='run' && !rascal.grabbedBy){ const e=Math.hypot(s.x-rascal.x,s.z-rascal.z); if(e<13) threat=Math.max(threat,(1-e/13)*.7); }
-      let stressIn=0, calmNear=false;
+      s.threat=threat; s.hard=0; let stressIn=0, calmNear=false;
       if(s.munch>0){ calmNear=true; /* too busy eating to notice the dog */ }
       else if(G.appleT>0 && ND.barkT<=0 && nd<24){
         calmNear=true;
@@ -2042,6 +2087,7 @@ function updateSheep(dt){
         if(Math.random()<dt*.5) burst(s.x,1.9,s.z,1,PC.heart,.3,1.2,1);
       } else if(G.phase==='title'){ /* the dog is resting at the gate */ }
       else for(const D of dogs){
+        if(D.flying) continue;
         const dx=s.x-D.x, dz=s.z-D.z, d=Math.hypot(dx,dz)+1e-6;
         if(D.lying && d<26 && D.barkT<=0){
           // "Lie down": the flock bunches up, keeps drifting the way it was heading, and settles
@@ -2053,7 +2099,7 @@ function updateSheep(dt){
         } else {
           // flight zone: a sheep only moves once the dog is inside it. Skittish or stressed sheep spook from farther.
           // with a predator close by, the dog is the safe one: much less to fear from it
-          let R=(s.trait==='skittish'?15:s.trait==='stubborn'?8:12)*(1+s.stress*.4)*(1-threat*.5), str=24*(1-threat*.7);
+          let R=(s.trait==='skittish'?13:s.trait==='stubborn'?10:11.5)*(1+s.stress*.2)*(1-threat*.5), str=26*(1-threat*.7);
           if(D.zoomT>0){ R*=1.4; str=30; }
           if(D.pounceT>0){ R=Math.max(R,14); str=40; }
           if(D.bangT>0){ R=Math.max(R,18); str=50; }
@@ -2061,7 +2107,11 @@ function updateSheep(dt){
           if(s.golden) R*=1.2;
           if(s.ram){ R*=.8; str*=.7; }
           if(d<R){
-            const k=1-d/R; fx+=dx/d*k*str; fz+=dz/d*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
+            const k=1-d/R;
+            // pressure has a direction: a dog walking onto the flock drives it the way it's walking, so you can steer it
+            let ux=dx/d, uz=dz/d; const dv=D.speed; if(dv>1.5 && D.barkT<=0){ const vx=D.vx/dv, vz=D.vz/dv, dot=vx*ux+vz*uz; if(dot>-.2){ const w=.9*Math.min(1,dv/8); ux+=vx*w; uz+=vz*w; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul; } }
+            fx+=ux*k*str; fz+=uz*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
+            if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=1;      // driven hard: could go over the edge
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
             stressIn += (inner*.35 + k*Math.max(0,D.speed-7)/7*.7)*(1-threat*.7);
@@ -2086,7 +2136,7 @@ function updateSheep(dt){
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
       // balking: a stressed sheep won't go through the gate. It shies away at the last moment.
       { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz);
-        if(gd<6.5 && s.z>PEN.z1-.5 && s.stress>.72){
+        if(false){
           if(!s.balkSide) s.balkSide=Math.random()<.5?-1:1;
           const b=(s.stress-.72)/.28; fz+=20*b; fx+=s.balkSide*12*b;
           if(Math.random()<dt*1.2) sBleat(1.1);
@@ -2097,17 +2147,22 @@ function updateSheep(dt){
         // stay close to mum; if she's penned, find the gate; if she's gone, tag along with the dog
         const mom=s.mom; let tx, tz;
         if(mom && !mom.dead && !mom.carried){
-          if(mom.penned){ const gz=PEN.z1+2.5, dg=Math.hypot(s.x,s.z-gz); if(dg>2.5){ tx=0; tz=gz; } else { tx=0; tz=PEN.z1-3; } }
+          if(mom.penned && PK){ tx=PK.dx; tz=PK.dz; }
+          else if(mom.penned){ const gz=PEN.z1+2.5, dg=Math.hypot(s.x,s.z-gz); if(dg>2.5){ tx=0; tz=gz; } else { tx=0; tz=PEN.z1-3; } }
           else { tx=mom.x; tz=mom.z; }
         } else { const nd2=nearestDog(s.x,s.z); tx=nd2.x; tz=nd2.z; }
         const lx=tx-s.x, lz=tz-s.z, ld=Math.hypot(lx,lz)+1e-6;
         if(ld>1.8){ const k=Math.min(1,(ld-1.8)/4); fx+=lx/ld*k*16; fz+=lz/ld*k*16; fear=Math.max(fear,.25*k); }
         if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
       }
+      // sheep shy away from lava and cliff edges, but a dog driving them hard can still push them in
+      if(LEVEL.haz) for(const h of LEVEL.haz){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; if(hd<m){ const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } }
+      // the pickup's doorway pulls nearby sheep aboard
+      if(PK && PK.state==='parked'){ const gx=s.x-PK.dx, gz=s.z-PK.dz, gd=Math.hypot(gx,gz)+1e-6; if(gd<9){ const k=1-gd/9; fx-=gx/gd*11*k; fz-=gz/gd*11*k; } }
       // calm sheep near the gate flow on in
-      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(gd<10 && s.z>PEN.z1-1 && s.stress<.65){ const k=1-gd/10, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*5*k; fz+=tz/td*5*k; } }
+      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PK && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
-      if(s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
+      if(!PK && s.z<PEN.z1+5 && Math.abs(s.x)>PEN.gx-1){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       const m=FIELD-3;
       if(s.x>m) fx-=(s.x-m)*6; if(s.x<-m) fx+=(-m-s.x)*6;
       if(s.z>m) fz-=(s.z-m)*6; if(s.z<-m) fz+=(-m-s.z)*6;
@@ -2138,7 +2193,7 @@ function updateSheep(dt){
     if(lead && !s.penned && !eating && ld>2.5){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
     // panic: bolt off in a random direction, mostly away from the dog
     s.boltT=Math.max(0,s.boltT-dt);
-    if(panic>0 && s.boltT<=0 && G.phase!=='title' && Math.random()<dt*.9*panic){
+    if(panic>0 && s.threat>.2 && s.boltT<=0 && G.phase!=='title' && Math.random()<dt*.9*panic){
       const ND3=nearestDog(s.x,s.z); s.boltA=Math.atan2(s.z-ND3.z,s.x-ND3.x)+(Math.random()-.5)*2.6; s.boltT=.6+Math.random()*.8;
       if(Math.random()<.5) sBleat(.9+Math.random()*.4);
     }
@@ -2158,15 +2213,18 @@ function updateSheep(dt){
       if(s.munchCD<=0 && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; onMunch(s); }
     }
     s.vx+=fx*dt; s.vz+=fz*dt;
-    const damp=(eating?7:(s.fear>.1?1.1:2.8))*(SEASON.frozen&&Math.hypot(s.x-POND.x,s.z-POND.z)<POND.r?.2:1);   // sheep slide on ice const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k;
+    const damp=(eating?7:(s.fear>.1?1.1:2.8))*(SEASON.frozen&&Math.hypot(s.x-POND.x,s.z-POND.z)<POND.r?.2:1);   // sheep slide on ice
+    { const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k; }
     const sheepHill=clamp(1-slopeAlong(s.x,s.z,s.vx,s.vz)*1.3,.6,1.3)*(LEVEL.theme==='sea'?.85:1);
     const twistV={giant:.85,tiny:1.15,speedy:1.3}[G.twist]||1;
-    let maxV=sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*6.4)+panic*3+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.penned) maxV=1.3;
+    let maxV=sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.penned) maxV=1.3;
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
+    // the edge of lava or a cliff: a sheep stops and slides along it, unless a dog is driving it hard (or it's flying)
+    if(!s.penned && !s.hard && !(s.thrownT>0) && s.flip<=0){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
     // a sheep dropped just outside the boundary slips back through the wire
     collide(s,s.lamb?.45:.7,{gate:s.penned,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
-    if(!s.penned && G.phase!=='title' && insidePen(s.x,s.z)){ s.penned=true; onPenned(s); }
+    if(!s.penned && G.phase!=='title'){ const hz=hazardAt(s.x,s.z); if(hz && !s.carried && !s.grabbedBy){ hazardKill(s,hz); continue; } checkGoal(s); }
     s.attacked=Math.max(0,s.attacked-dt);
   }
 }
@@ -2220,7 +2278,7 @@ function ramUpdate(s,dt){
   }
   s.x+=s.vx*dt; s.z+=s.vz*dt;
   collide(s,.9,{gate:false,perim:true});
-  if(insidePen(s.x,s.z)){ s.penned=true; s.rs='idle'; onPenned(s); }
+  if(checkGoal(s)) s.rs='idle';
   s.attacked=Math.max(0,s.attacked-dt);
   return true;
 }
@@ -3013,6 +3071,7 @@ function syncDog(D,dt,time,party){
   dm.tail.rotation.x=party?.2:(sp>5?-1.0:-.7);
   if(D.barkT>.35) dm.head.rotation.x=-.3;
   if(D.zoomT>0 && sp>2) burst(D.x-D.vx*.04,.5,D.z-D.vz*.04,1,PC.spark,.6,1.2,2);
+  if(D.flying){ dm.g.position.y+=D.fy||0; const f=Math.sin(time*26)*1.1; dm.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f); dm.body.rotation.z=Math.sin(time*9)*.25; dm.tail.rotation.y=Math.sin(time*30)*.9; }
 }
 function syncAll(dt,time){
   const party = G.celebrate>0 && G.phase==='result';
@@ -3020,6 +3079,13 @@ function syncAll(dt,time){
   // sheep
   for(const s of G.sheep){
     if(s.dead){ s.m.g.position.x=s.x; s.m.g.position.z=s.z; continue; }
+    if(s.loaded){
+      // hop up the ramp (or float up the beam) and inside
+      const T=s.beam?.9:.5, k=Math.min(1,s.loadT/T), g=s.m.g;
+      if(k>=1){ g.visible=false; continue; }
+      g.position.set(lerp(s.lx,s.ltx,k), lerp(s.ly,s.lty,k)+(s.beam?0:Math.sin(k*Math.PI)*1.6), lerp(s.lz,s.ltz,k));
+      g.scale.setScalar(s.lsc*(1-k*.7)); g.rotation.y+=dt*(s.beam?6:0); continue;
+    }
     const v=syncAnimal(s,dt,2.6);
     if(s.carried || s.grabbedBy){
       s.m.g.position.y+=.35; s.m.g.rotation.z=Math.sin(time*14)*.3;
@@ -3112,6 +3178,7 @@ function applySky(time){
     scene.background.setHex(0x1d6d79).lerp(new THREE.Color(0x0a2a35),1-s); scene.fog.color.copy(scene.background); scene.fog.near=8; scene.fog.far=62;
     hemi.color.setHex(0x9fe8f0); hemi.groundColor.setHex(0x14444c); sun.color.setHex(0xbff4ff); sun.intensity*=.7;
   }
+  if(LEVEL.theme==='volcano'){ scene.background.lerp(new THREE.Color(0x4a1c10),.4); scene.fog.color.copy(scene.background); scene.fog.near=36; scene.fog.far=150; sun.color.setHex(0xffb27a); }
   if(G.twist==='foggy'){ scene.fog.near*=.3; scene.fog.far=Math.max(36,scene.fog.far*.38); }
   const fb=flies.userData.base, fp=flies.geometry.attributes.position;
   for(let i=0;i<fb.length;i++){ const b=fb[i]; fp.setXYZ(i,b[0]+Math.sin(time*.4+b[3])*1.5,b[1]+Math.sin(time*1.3+b[3]*2)*.4,b[2]+Math.cos(time*.35+b[3])*1.5); }
@@ -3201,7 +3268,7 @@ function updateSeasonFx(dt,time){
   const wx=(G.gust>0?G.windX:0)*1.4+ (SEASON.windy?1.2:0), wz=(G.gust>0?G.windZ:0)*1.4;
   for(let i=0;i<fx.count;i++){
     let x=P.getX(i)+(Math.sin(time*1.3+ph[i])*fx.sway+wx)*dt, y=P.getY(i)-fx.fall*(.6+(ph[i]%1))*dt, z=P.getZ(i)+(Math.cos(time*1.1+ph[i])*fx.sway*.6+wz)*dt;
-    if(y<0){ y+=22; x=(Math.random()*2-1)*34; z=(Math.random()*2-1)*34; }
+    if(y<0){ y+=22; x=(Math.random()*2-1)*34; z=(Math.random()*2-1)*34; } else if(y>22){ y-=22; x=(Math.random()*2-1)*34; z=(Math.random()*2-1)*34; }
     if(x>34) x-=68; if(x<-34) x+=68; if(z>34) z-=68; if(z<-34) z+=68;
     P.setXYZ(i,x,y,z);
   }
@@ -3240,6 +3307,7 @@ function wallPiece(style,x,z,len,ang){
   h.position.set(x,groundH(x,z)+.85,z); h.rotation.y=ang; h.castShadow=true; h.receiveShadow=true; return h;
 }
 const coralWallMat=new THREE.MeshStandardMaterial({color:0xff8a7a,roughness:.9,flatShading:true});
+const lavaMat=new THREE.MeshStandardMaterial({color:0xff5a1a,emissive:0xff4a0a,emissiveIntensity:1,roughness:.6,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
 function buildLevel(L){
   clearLevel(); reachGrid=null; LEVEL=L; G.twist=L.twist; G.stampT=undefined;
   Object.assign(HILL,L.hill); movePond(L.pond); regenTerrain();
@@ -3259,8 +3327,8 @@ function buildLevel(L){
     const pos=[], idx=[];
     xs.forEach((x,i)=>{ const zc=riverZ(R,x); for(const sd of [-1,1]){ const z=zc+sd*R.w/2; pos.push(x,Math.max(groundH(x,z),groundH(x,zc))+.12,z); } if(i>0){ const a=(i-1)*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); } });
     const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); geo.setIndex(idx); geo.computeVertexNormals();
-    const wm=addObj(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:L.theme==='desert'?0x4f9ac0:0x3f86b5,roughness:.15,transparent:true,opacity:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}))); wm.receiveShadow=true;
-    const plank=mat(0x8a6a42), rail=mat(0x6a4e34);
+    const wm=addObj(new THREE.Mesh(geo,R.lava?lavaMat:new THREE.MeshStandardMaterial({color:L.theme==='desert'?0x4f9ac0:0x3f86b5,roughness:.15,transparent:true,opacity:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}))); wm.receiveShadow=!R.lava;
+    const plank=mat(R.lava?0x4a4440:0x8a6a42), rail=mat(R.lava?0x2c2624:0x6a4e34);
     for(const b of R.bridges){ const cx=(b[0]+b[1])/2, w2=b[1]-b[0], zc=riverZ(R,cx), ang=Math.atan(R.amp*R.k*Math.cos(R.k*cx+R.ph));
       const bg=addObj(new THREE.Group()); bg.position.set(cx,0,zc); bg.rotation.y=-ang;
       for(let z=-R.w/2-.7;z<=R.w/2+.7;z+=.7){ const pk=new THREE.Mesh(new THREE.BoxGeometry(w2,.18,.6),plank); pk.position.set(0,groundH(cx,zc+z)+.35,z); pk.castShadow=true; pk.receiveShadow=true; bg.add(pk); }
@@ -3269,7 +3337,7 @@ function buildLevel(L){
   }
   // chasms (sky) and craters (moon)
   for(const h of L.holes){
-    circles.push({x:h.x,z:h.z,r:h.r,level:true});
+    if(L.theme!=='sky') circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms don't stop you: you fall in
     const cg=new THREE.CircleGeometry(h.r,40); cg.rotateX(-Math.PI/2); const base=groundH(h.x,h.z), cp=cg.attributes.position;
     for(let i=0;i<cp.count;i++) cp.setY(i,groundH(h.x+cp.getX(i),h.z+cp.getZ(i))-base+.14);
     const moon=L.theme==='moon';
@@ -3279,6 +3347,16 @@ function buildLevel(L){
     for(let k=0;k<nRim;k++){ const a=k/nRim*TAU, rr=moon?h.r+.3:h.r*(.55+Math.random()*.35); const c=addObj(new THREE.Mesh(moon?new THREE.DodecahedronGeometry(.4+Math.random()*.4,0):new THREE.IcosahedronGeometry(.7+Math.random()*.9,0),rimM)); c.position.set(h.x+Math.cos(a)*rr,base+(moon?.1:.2+Math.random()*.3),h.z+Math.sin(a)*rr); if(moon) c.scale.y=.5; }
     hideGrass((x,z)=>Math.hypot(x-h.x,z-h.z)<h.r+.3);
   }
+  // lava pools
+  for(const lp of L.lava||[]){
+    const cg=new THREE.CircleGeometry(lp.r,40); cg.rotateX(-Math.PI/2); const base=groundH(lp.x,lp.z), cp=cg.attributes.position;
+    for(let i=0;i<cp.count;i++) cp.setY(i,groundH(lp.x+cp.getX(i),lp.z+cp.getZ(i))-base+.12);
+    const d=addObj(new THREE.Mesh(cg,lavaMat)); d.position.set(lp.x,base,lp.z);
+    const nRim=Math.round(lp.r*3.2), rimM=mat(0x231d1b);
+    for(let k=0;k<nRim;k++){ const a=k/nRim*TAU, c=addObj(new THREE.Mesh(new THREE.DodecahedronGeometry(.35+Math.random()*.35,0),rimM)); c.position.set(lp.x+Math.cos(a)*(lp.r+.25),groundH(lp.x+Math.cos(a)*lp.r,lp.z+Math.sin(a)*lp.r)+.1,lp.z+Math.sin(a)*(lp.r+.25)); c.scale.y=.6; }
+    hideGrass((x,z)=>Math.hypot(x-lp.x,z-lp.z)<lp.r+.5);
+  }
+  L.haz=[...(L.lava||[]).map(h=>({x:h.x,z:h.z,r:h.r,kind:'lava'})), ...(L.theme==='sky'?L.holes.map(h=>({x:h.x,z:h.z,r:h.r,kind:'chasm'})):[])];
   for(const c of L.copses) makeObstacle(c.kind,c.x,c.z,c.s);
   for(const rk of L.rocks) makeObstacle('rock',rk.x,rk.z,rk.s);
   if(L.pond) hideGrass((x,z)=>Math.hypot(x-L.pond.x,z-L.pond.z)<L.pond.r+.6);
@@ -3299,6 +3377,13 @@ function buildLevel(L){
     const tw=new THREE.MeshStandardMaterial({color:0xa98a5a,roughness:1,flatShading:true,wireframe:true});
     for(let k=0;k<5;k++){ const t=addObj(new THREE.Mesh(new THREE.IcosahedronGeometry(.7+Math.random()*.4,1),tw)); t.userData.tumble={x:(Math.random()*2-1)*FIELD,z:PEN.z1+8+Math.random()*(FIELD-PEN.z1-12),sp:2.5+Math.random()*2.5}; }
   }
+  if(L.theme==='volcano'){
+    // the volcano itself, smoking away beyond the fence
+    const cone=addObj(new THREE.Mesh(new THREE.ConeGeometry(70,80,12,1,true),new THREE.MeshStandardMaterial({color:0x2b211d,roughness:1,flatShading:true}))); cone.position.set(110,20,-240);
+    const glow=addObj(new THREE.Mesh(new THREE.CylinderGeometry(9,12,4,12),new THREE.MeshBasicMaterial({color:0xff7a2a,fog:false}))); glow.position.set(110,58,-240);
+    const smokeM=new THREE.MeshStandardMaterial({color:0x5a514c,roughness:1,flatShading:true,transparent:true,opacity:.8});
+    for(let k=0;k<9;k++){ const sm=addObj(new THREE.Mesh(new THREE.IcosahedronGeometry(6+Math.random()*5,1),smokeM)); sm.userData.smoke={k:k/9,x:110,y:62,z:-240}; }
+  }
   if(L.theme==='moon'){
     const earth=addObj(new THREE.Mesh(new THREE.SphereGeometry(26,24,16),new THREE.MeshBasicMaterial({color:0x3f7fd6,fog:false}))); earth.position.set(-160,150,-380);
     for(let k=0;k<6;k++){ const c=addObj(new THREE.Mesh(new THREE.SphereGeometry(9+Math.random()*6,10,8),new THREE.MeshBasicMaterial({color:k%2?0x6bbf59:0xffffff,fog:false}))); c.position.set(-160+(Math.random()-.5)*30,150+(Math.random()-.5)*30,-354); c.scale.z=.2; }
@@ -3312,7 +3397,7 @@ const RC=2, RN=Math.ceil(FIELD*2/RC);
 function computeReach(){
   const grid=new Uint8Array(RN*RN), blocked=new Uint8Array(RN*RN), cx=x=>Math.floor((x+FIELD)/RC), cz=z=>Math.floor((z+FIELD)/RC);
   for(let j=0;j<RN;j++) for(let i=0;i<RN;i++){ const x=-FIELD+(i+.5)*RC, z=-FIELD+(j+.5)*RC;
-    if(z<PEN.z1+.5 || inRiver(x,z) || (!SEASON.frozen && Math.hypot(x-POND.x,z-POND.z)<POND.r+.4) || circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+.5)) blocked[j*RN+i]=1; }
+    if(z<PEN.z1+.5 || inRiver(x,z) || hazardAt(x,z) || (!SEASON.frozen && Math.hypot(x-POND.x,z-POND.z)<POND.r+.4) || circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+.5)) blocked[j*RN+i]=1; }
   const si=cx(0), sj=cz(PEN.z1+3), q=[[si,sj]]; grid[sj*RN+si]=1;
   while(q.length){ const [i,j]=q.pop(), x=-FIELD+(i+.5)*RC, z=-FIELD+(j+.5)*RC;
     for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ni=i+di, nj=j+dj; if(ni<0||nj<0||ni>=RN||nj>=RN) continue; const k=nj*RN+ni; if(grid[k]||blocked[k]) continue;
@@ -3320,6 +3405,275 @@ function computeReach(){
   reachGrid=grid;
 }
 function reachable(x,z){ if(!reachGrid) return true; const i=Math.floor((x+FIELD)/RC), j=Math.floor((z+FIELD)/RC); if(i<0||j<0||i>=RN||j>=RN) return false; return !!reachGrid[j*RN+i]; }
+
+// ---------------- hazards ----------------
+function hazardBounce(e,kind,isDog){
+  e.x=e.px; e.z=e.pz; const v=Math.hypot(e.vx,e.vz)+1e-6; e.vx=-e.vx/v*8; e.vz=-e.vz/v*8;
+  if(isDog){
+    e.pounceT=0; e.stunT=Math.max(e.stunT,.45); sYelp(); rumble(.4,.3,120);
+    popText(e.x,2.4,e.z,kind==='lava'?'YOWCH!':'WHOA!','red');
+    burst(e.x,1,e.z,kind==='lava'?22:10,kind==='lava'?[0xff7a2a,0xffb14a,0x6a625c]:PC.dust,3,4,4);
+  }
+}
+// anything that walks gets bounced off lava and cliff edges; a flung coyote goes right in
+function hazardSweep(){
+  const on=G.phase!=='title';
+  for(const D of dogs){ if(on && !D.flying && D.px!==undefined && hazardAt(D.x,D.z)) hazardBounce(D,hazardAt(D.x,D.z),true); D.px=D.x; D.pz=D.z; }
+  for(const c of G.coyotes){
+    if(c.gone) continue;
+    const hz=on && c.px!==undefined && !c.grabbedBy ? hazardAt(c.x,c.z) : null;
+    if(hz){
+      if(c.thrownT>0 && !c.boss){
+        if(c.carry) dropSheep(c,true);
+        c.gone=true; scene.remove(c.m.g); G.drivenOff++; G.score+=40; pop('tScore');
+        popText(c.x,2.6,c.z,hz==='lava'?'TOASTED! +40':'BYE! +40','gold'); if(hz==='lava'){ sSizzle(); burst(c.x,1,c.z,40,[0xff7a2a,0xffb14a,0x6a625c],4,6,3); } else sYelp();
+        continue;
+      }
+      hazardBounce(c,hz,false);
+    }
+    c.px=c.x; c.pz=c.z;
+  }
+  for(const e of [shep,...llamas.filter(L=>L.active)]){ if(on && e.px!==undefined && hazardAt(e.x,e.z)){ e.x=e.px; e.z=e.pz; e.vx=e.vz=0; } e.px=e.x; e.pz=e.z; }
+}
+function sSizzle(){
+  if(!ok()) return; const t=AC.currentTime, n=AC.createBufferSource(), b=AC.createBuffer(1,AC.sampleRate*.5|0,AC.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  n.buffer=b; const f=AC.createBiquadFilter(); f.type='highpass'; f.frequency.value=2500; n.connect(f).connect(envG(t,.01,.3,.5)); n.start(t);
+}
+
+// ---------------- the pickup: the flock gets loaded into it, and it keeps moving ----------------
+let PK=null;
+const goldGlow=new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide});
+const goalRing=new THREE.Mesh(new THREE.RingGeometry(2.3,2.8,40),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
+goalRing.rotation.x=-Math.PI/2; goalRing.visible=false; scene.add(goalRing);
+const goalBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,40,14,1,true),goldGlow); goalBeam.visible=false; scene.add(goalBeam);
+function makePickup(skin){
+  const g=new THREE.Group(); let fly=false, hover=0, door=4, colR=2.4, beam=null;
+  const box=(w,h,d,c,x,y,z)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),typeof c==='number'?mat(c):c); m.position.set(x,y,z); m.castShadow=true; g.add(m); return m; };
+  const wheel=(x,z,r)=>{ const w=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.35,12),mat(0x222222)); w.rotation.z=Math.PI/2; w.position.set(x,r,z); g.add(w); };
+  if(skin==='trailer'){
+    box(3.2,2.1,5.2,0xb3352a,0,1.55,0); box(3.35,.16,5.35,0xf4ead2,0,2.68,0);
+    for(const sd of [-1,1]) for(let k=0;k<3;k++) box(.06,.16,5.25,0xf4ead2,sd*1.63,1.0+k*.55,0);
+    const ramp=box(2.7,.14,2.8,0x8a6a42,0,.75,-3.75); ramp.rotation.x=-.36;
+    box(.3,.3,2,0x333333,0,.7,3.4); wheel(-1.75,.6,.6); wheel(1.75,.6,.6); wheel(-1.75,-1,.6); wheel(1.75,-1,.6);
+  } else if(skin==='wagon'){
+    box(2.8,1.1,4.6,0x8a5a32,0,1.25,0);
+    const cv=new THREE.Mesh(new THREE.CylinderGeometry(1.55,1.55,4.4,12),mat(0xf4ead2)); cv.rotation.x=Math.PI/2; cv.position.set(0,1.9,0); cv.castShadow=true; g.add(cv);
+    const ramp=box(2.2,.12,2.4,0x6e4a2a,0,.55,-3.4); ramp.rotation.x=-.3;
+    wheel(-1.55,1.4,.75); wheel(1.55,1.4,.75); wheel(-1.55,-1.4,.75); wheel(1.55,-1.4,.75);
+  } else if(skin==='balloon'){
+    fly=true; door=2.6; colR=1.5;
+    box(2.4,1.4,2.4,0x9a6a3a,0,.7,0); box(2.5,.15,2.5,0x6e4a2a,0,1.45,0);
+    for(let i=0;i<6;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(3.4,4,12,i*TAU/6,TAU/6),mat(i%2?0xf4ead2:0xe2463f)); s.position.y=7.6; s.scale.y=1.15; s.castShadow=true; g.add(s); }
+    for(const [x,z] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ const r=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,3.6,4),mat(0x5a4130)); r.position.set(x*1.05,3.3,z*1.05); g.add(r); }
+    const fl=new THREE.Mesh(new THREE.SphereGeometry(.35,8,6),new THREE.MeshBasicMaterial({color:0xffb14a})); fl.position.y=3.5; g.add(fl); g.userData.flame=fl;
+  } else if(skin==='sub'){
+    fly=true; hover=.6; colR=2.3;
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,4.6,16),mat(0xffcf3f)); b.rotation.x=Math.PI/2; b.position.y=1.5; b.castShadow=true; g.add(b);
+    for(const z of [-2.3,2.3]){ const e=new THREE.Mesh(new THREE.SphereGeometry(1.4,16,10),mat(0xffcf3f)); e.position.set(0,1.5,z); g.add(e); }
+    box(1,1.1,1.8,0xf2b544,0,3.2,.3); box(.14,1.2,.14,0x666666,0,4.2,.8);
+    for(const sd of [-1,1]) for(const z of [-1,.4,1.8]){ const w=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.1,12),new THREE.MeshStandardMaterial({color:0x9fe8ff,emissive:0x3fb8d8,emissiveIntensity:.6})); w.rotation.z=Math.PI/2; w.position.set(sd*1.38,1.7,z); g.add(w); }
+    const pr=box(1.8,.2,.25,0x666666,0,1.5,-3.8); g.userData.prop=pr;
+  } else {   // ufo
+    fly=true; hover=4.6; door=0; colR=0;
+    const disc=new THREE.Mesh(new THREE.CylinderGeometry(3.4,3.9,.8,24),new THREE.MeshStandardMaterial({color:0xc8ccd8,metalness:.6,roughness:.3})); disc.castShadow=true; g.add(disc);
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(1.7,16,8,0,TAU,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x9fe8ff,transparent:true,opacity:.75,roughness:.1})); dome.position.y=.35; g.add(dome);
+    for(let k=0;k<10;k++){ const a=k/10*TAU, l=new THREE.Mesh(new THREE.SphereGeometry(.2,6,5),new THREE.MeshBasicMaterial({color:[0xff6b6b,0xffd84a,0x8fd3ff][k%3]})); l.position.set(Math.cos(a)*3.6,-.1,Math.sin(a)*3.6); g.add(l); }
+    beam=new THREE.Mesh(new THREE.ConeGeometry(2.8,4.6,24,1,true),new THREE.MeshBasicMaterial({color:0xb8f5ff,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide})); beam.position.y=-2.7; g.add(beam);
+  }
+  return {g,fly,hover,door,colR,beam};
+}
+function pickSpot(avoidX,avoidZ){
+  for(let k=0;k<400;k++){
+    const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+16+Math.random()*(FIELD-PEN.z1-26), yaw=Math.random()*TAU;
+    const dx=x-Math.sin(yaw)*PK.door, dz=z-Math.cos(yaw)*PK.door;
+    if(Math.hypot(x-avoidX,z-avoidZ)<(k<300?24:12)) continue;
+    if(!clearOf(x,z,PK.colR+1.5) || !clearOf(dx,dz,2.5)) continue;
+    return {x,z,yaw,dx,dz};
+  }
+  return {x:0,z:PEN.z1+20,yaw:Math.PI,dx:0,dz:PEN.z1+20+PK.door};
+}
+function setupPickup(){
+  if(PK){ scene.remove(PK.g); PK=null; }
+  goalRing.visible=goalBeam.visible=false;
+  if(LEVEL.goal!=='pickup') return;
+  const skin={farm:'trailer',desert:'wagon',sky:'balloon',volcano:'balloon',sea:'sub',moon:'ufo'}[LEVEL.theme]||'trailer';
+  const mk=makePickup(skin); scene.add(mk.g);
+  PK={skin,...mk,state:'parked',t:0,here:0,per:Math.max(4,Math.ceil(flockSize(G.day)/3)),col:{x:0,z:0,r:mk.colR,level:true}};
+  circles.push(PK.col);
+  const s=pickSpot(0,PEN.z1); Object.assign(PK,{x:s.x,z:s.z,yaw:s.yaw,dx:s.dx,dz:s.dz});
+  PK.col.x=PK.x; PK.col.z=PK.z;
+  // the barn pen is shut today
+  segs.push({ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'perim',level:true});
+  for(const l of leaves){ l.target=l.closedA; l.a=l.closedA; l.apply(); }
+  placePickupMesh(0);
+}
+function placePickupMesh(time){
+  const y=groundH(PK.x,PK.z)+PK.hover+(PK.fly&&PK.state==='parked'?Math.sin(time*1.6)*(PK.skin==='ufo'?.3:.12):0);
+  PK.g.position.set(PK.x,y,PK.z); PK.g.rotation.y=PK.yaw;
+}
+function loadSheep(s){
+  s.penned=true; s.loaded=true; s.loadT=0; s.vx=s.vz=0; s.beam=PK.skin==='ufo';
+  s.lx=s.x; s.ly=s.m.g.position.y; s.lz=s.z; s.lsc=s.m.g.scale.x;
+  s.ltx=PK.x; s.ltz=PK.z; s.lty=PK.g.position.y+(s.beam?0:1.2);
+  onPenned(s); PK.here++;
+  if(s.beam) sPickup(); else sBoing();
+  const left=G.sheep.filter(o=>!o.dead && !o.penned).length;
+  if(PK.here>=PK.per && left>0){ PK.state='wait'; PK.t=0; }
+}
+// is this sheep at the goal? (pen or pickup)
+function checkGoal(s){
+  if(s.penned) return false;
+  if(PK){ if(PK.state==='parked' && Math.hypot(s.x-PK.dx,s.z-PK.dz)<2.6){ loadSheep(s); return true; } return false; }
+  if(insidePen(s.x,s.z)){ s.penned=true; onPenned(s); return true; }
+  return false;
+}
+function updatePickup(dt){
+  if(!PK) return;
+  PK.t+=dt;
+  if(PK.state==='wait' && PK.t>.7){
+    // full load: off it goes to a new spot
+    PK.state='moving'; PK.t=0; PK.from={x:PK.x,z:PK.z,yaw:PK.yaw}; PK.to=pickSpot(PK.x,PK.z); PK.col.r=0;
+    shepSay("It's moving! After it!",true); sWhoosh(); burst(PK.x,1,PK.z,30,PC.dust,4,3);
+    PK.per=Math.max(4,Math.ceil(flockSize(G.day)/3));
+  }
+  if(PK.state==='moving'){
+    const T=2.4, k=Math.min(1,PK.t/T), e=k*k*(3-2*k);
+    PK.x=lerp(PK.from.x,PK.to.x,e); PK.z=lerp(PK.from.z,PK.to.z,e);
+    PK.yaw=lerpAngle(PK.from.yaw,PK.to.yaw,e);
+    const lift=Math.sin(k*Math.PI)*(PK.fly?9:3.5);
+    PK.g.position.set(PK.x,groundH(PK.x,PK.z)+PK.hover+lift,PK.z); PK.g.rotation.y=PK.yaw;
+    if(!PK.fly && Math.random()<dt*20) burst(PK.x,.5,PK.z,2,PC.dust,2,2);
+    if(k>=1){
+      Object.assign(PK,{x:PK.to.x,z:PK.to.z,yaw:PK.to.yaw,dx:PK.to.dx,dz:PK.to.dz,state:'parked',here:0});
+      PK.col.x=PK.x; PK.col.z=PK.z; PK.col.r=PK.colR;
+      sThud(); G.shake=Math.max(G.shake,.25); burst(PK.dx,.6,PK.dz,40,PC.confetti,5,5);
+      const D=nearestDog(PK.dx,PK.dz); if(Math.hypot(D.x-PK.dx,D.z-PK.dz)>20) setTimeout(()=>shepSay('Over here now!'),600);
+    }
+  }
+}
+function syncPickup(time){
+  const on=!!PK && PK.state==='parked';
+  goalRing.visible=goalBeam.visible=on;
+  if(!PK) return;
+  if(PK.state!=='moving') placePickupMesh(time);
+  if(PK.g.userData.flame) PK.g.userData.flame.scale.setScalar(.8+Math.random()*.5);
+  if(PK.g.userData.prop) PK.g.userData.prop.rotation.z=time*8;
+  if(PK.skin==='ufo') PK.g.rotation.y=PK.yaw+time*.6;
+  if(PK.beam) PK.beam.material.opacity=on?.22+.1*Math.sin(time*5):.06;
+  if(on){
+    const gy=groundH(PK.dx,PK.dz);
+    goalRing.position.set(PK.dx,gy+.1,PK.dz); goalRing.scale.setScalar(1+.08*Math.sin(time*5)); goalRing.material.opacity=.55+.3*Math.sin(time*5);
+    goalBeam.position.set(PK.dx,gy+20,PK.dz); goalBeam.material.opacity=.12+.06*Math.sin(time*3);
+  }
+}
+// an arrow at the screen edge pointing at the pickup when it's out of view
+const _gp=new THREE.Vector3();
+function updateGoalArrow(time){
+  const el=$('goalArrow');
+  if(!PK || PK.state!=='parked' || coopView || G.phase==='title' || G.phase==='result'){ el.hidden=true; return; }
+  _gp.set(PK.dx,groundH(PK.dx,PK.dz)+1,PK.dz).project(camera);
+  const behind=_gp.z>1; let nx=_gp.x, ny=_gp.y; if(behind){ nx=-nx; ny=-ny; }
+  if(!behind && Math.abs(nx)<.92 && Math.abs(ny)<.92){ el.hidden=true; return; }
+  const w=window.innerWidth, h=window.innerHeight, m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.86, ey=ny/m*.82;
+  const sx=(ex*.5+.5)*w, sy=(-ey*.5+.5)*h, ang=Math.atan2(ex,ey), bob=Math.sin(time*7)*3;
+  el.hidden=false; el.style.transform=`translate(${sx-16+Math.sin(ang)*bob}px,${sy-13-Math.cos(ang)*bob}px) rotate(${ang}rad)`;
+}
+
+// ---------------- the falcon: now and then it swoops down and carries the dog off ----------------
+const falcon=(function(){
+  const g=new THREE.Group(), brown=mat(0x7a5232), cream=mat(0xe8d8b8), yel=mat(0xf2b544);
+  const body=new THREE.Mesh(new THREE.SphereGeometry(.6,10,8),brown); body.scale.set(1,.85,1.7); g.add(body);
+  const belly=new THREE.Mesh(new THREE.SphereGeometry(.5,10,8),cream); belly.scale.set(.9,.7,1.4); belly.position.y=-.15; g.add(belly);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.42,10,8),brown); head.position.set(0,.3,1.05); g.add(head);
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(.14,.4,6),yel); beak.rotation.x=Math.PI/2+.4; beak.position.set(0,.22,1.5); g.add(beak);
+  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(.08,6,5),mat(0x111111)); e.position.set(sd*.22,.42,1.32); g.add(e); }
+  const wings=[];
+  for(const sd of [-1,1]){ const piv=new THREE.Group(); piv.position.set(sd*.4,.15,.1); const w=new THREE.Mesh(new THREE.BoxGeometry(2.8,.08,1.1),brown); w.position.x=sd*1.4; w.castShadow=true; piv.add(w); g.add(piv); wings.push([piv,sd]); }
+  const tail=new THREE.Mesh(new THREE.BoxGeometry(.9,.06,1),brown); tail.position.set(0,0,-1.2); g.add(tail);
+  for(const sd of [-1,1]){ const tl=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.5,5),yel); tl.position.set(sd*.25,-.6,.2); g.add(tl); }
+  g.scale.setScalar(1.4); g.visible=false; scene.add(g);
+  const shadow=new THREE.Mesh(new THREE.CircleGeometry(1,28),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.42,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2; shadow.visible=false; scene.add(shadow);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.92,1.08,32),new THREE.MeshBasicMaterial({color:0xff4a3a,transparent:true,opacity:.9,depthWrite:false,side:THREE.DoubleSide}));
+  ring.rotation.x=-Math.PI/2; ring.visible=false; scene.add(ring);
+  return {g,wings,shadow,ring,state:'idle',t:0,x:0,z:0,D:null,next:1e9,release:false};
+})();
+function resetFalcon(){
+  falcon.state='idle'; falcon.release=false; falcon.g.visible=falcon.shadow.visible=falcon.ring.visible=false;
+  for(const D of dogs){ D.flying=false; D.fy=0; }
+  falcon.next=(G.day>=2 && LEVEL.theme!=='sea' && LEVEL.theme!=='moon') ? 12+Math.random()*10 : 1e9;
+}
+function sScreech(){
+  if(!ok()) return; let t=AC.currentTime;
+  for(const [a,b,d] of [[1900,2700,.16],[2500,1500,.32]]){ const o=AC.createOscillator(), l=AC.createOscillator(), lg=AC.createGain(); o.type='triangle'; o.frequency.setValueAtTime(a,t); o.frequency.exponentialRampToValueAtTime(b,t+d); l.frequency.value=28; lg.gain.value=90; l.connect(lg).connect(o.frequency); o.connect(envG(t,.01,.16,d)); o.start(t); l.start(t); o.stop(t+d+.02); l.stop(t+d+.02); t+=d+.03; }
+}
+function updateFalcon(dt){
+  const F=falcon, playing=G.phase==='day'||G.phase==='night';
+  if(F.state==='idle'){
+    if(G.phase!=='day') return;
+    F.next-=dt; if(F.next>0) return;
+    const pool=dogs.filter(D=>(D===dog||G.coop) && !D.flying && D.stunT<=0); if(!pool.length){ F.next=3; return; }
+    const D=pool[(Math.random()*pool.length)|0];
+    F.D=D; F.state='shadow'; F.t=0; F.x=D.x-D.vx*.3; F.z=D.z-D.vz*.3; F.release=false;
+    sScreech(); shepSay('Falcon! Run, '+(D===dog2?G.name2:G.name)+'!',true);
+    F.g.visible=F.shadow.visible=F.ring.visible=true;
+    return;
+  }
+  const D=F.D;
+  if(F.state==='shadow'){
+    F.t+=dt; const T=2.3, k=Math.min(1,F.t/T);
+    // the shadow creeps after the dog: keep moving and you'll get away
+    const dx=D.x-F.x, dz=D.z-F.z, d=Math.hypot(dx,dz)+1e-6, sp=Math.min(d/dt,7);
+    F.x+=dx/d*sp*dt; F.z+=dz/d*sp*dt;
+    if(k>=1 || !playing){
+      if(playing && !D.flying && Math.hypot(D.x-F.x,D.z-F.z)<1.9){
+        if(D.grab) releaseGrab(D,false);
+        F.state='carry'; F.t=0; D.flying=true; D.fy=0; D.lying=false; F.from={x:D.x,z:D.z};
+        let to=null; for(let i=0;i<300 && !to;i++){ const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+6+Math.random()*(FIELD-PEN.z1-10); if(Math.hypot(x-D.x,z-D.z)>24 && clearOf(x,z,1) && !hazardAt(x,z)) to={x,z}; }
+        F.to=to||{x:0,z:PEN.z1+12};
+        sWhoosh(); sYelp(); rumble(.7,.5,300); G.shake=Math.max(G.shake,.35);
+        popText(D.x,3,D.z,'SNATCHED!','red'); burst(D.x,1.5,D.z,20,[0x7a5232,0xe8d8b8],3,4);
+        setTimeout(()=>shepSay('Oi! Bring back me dog!',true),400);
+      } else {
+        F.state='leave'; F.t=0;
+        if(playing){ G.score+=10; pop('tScore'); popText(D.x,2.6,D.z,'DODGED! +10','gold'); shepSay('Ha! Missed!',true); }
+      }
+    }
+    return;
+  }
+  if(F.state==='carry'){
+    F.t+=dt; const T=2.6, k=Math.min(1,F.t/T), e=k*k*(3-2*k);
+    const x=lerp(F.from.x,F.to.x,e), z=lerp(F.from.z,F.to.z,e);
+    const early=F.release && k>.12 && Math.abs(x)<FIELD-2 && Math.abs(z)<FIELD-2 && z>PEN.z1+2 && !hazardAt(x,z) && clearOf(x,z,.4);
+    D.x=x; D.z=z; D.fy=Math.sin(k*Math.PI)*7; D.yaw+=dt*3;
+    if(k>=1 || early){
+      D.flying=false; D.fy=0; D.vx=D.vz=0; D.stunT=early?.15:.35; D.px=D.x; D.pz=D.z;
+      sThud(); G.shake=Math.max(G.shake,.3); burst(D.x,.4,D.z,24,PC.dust,4,3);
+      if(early) popText(D.x,2.4,D.z,'BREAK FREE!','green');
+      F.state='leave'; F.t=0;
+    }
+    return;
+  }
+  if(F.state==='leave'){
+    F.t+=dt; if(F.t>1.6){ F.state='idle'; F.g.visible=F.shadow.visible=F.ring.visible=false; F.next=24+Math.random()*16; }
+  }
+}
+function syncFalcon(dt,time){
+  const F=falcon; if(F.state==='idle') return;
+  const flap=Math.sin(time*(F.state==='carry'?16:9))*.7;
+  for(const [piv,sd] of F.wings) piv.rotation.z=sd*flap;
+  let x=F.x, z=F.z, y;
+  if(F.state==='shadow'){ const k=Math.min(1,F.t/2.3); y=groundH(x,z)+2.5+34*(1-k)*(1-k); F.g.rotation.set(.5*k,Math.atan2(F.D.x-x,F.D.z-z),0); }
+  else if(F.state==='carry'){ x=F.D.x; z=F.D.z; y=groundH(x,z)+F.D.fy+2.1; F.g.rotation.set(0,Math.atan2(F.to.x-F.from.x,F.to.z-F.from.z),0); }
+  else { const k=F.t/1.6; x=F.x+k*30; z=F.z-k*20; y=groundH(F.x,F.z)+3+k*k*40; F.g.rotation.set(-.4,Math.atan2(30,-20),0); }
+  if(F.state==='carry'){ F.x=x; F.z=z; }
+  F.g.position.set(x,y,z);
+  const sx=F.state==='carry'?F.D.x:F.x, sz=F.state==='carry'?F.D.z:F.z, gy=groundH(sx,sz)+.07;
+  const big=F.state==='shadow'?.6+1.4*Math.min(1,F.t/2.3):1.2;
+  F.shadow.position.set(sx,gy,sz); F.shadow.scale.setScalar(big); F.shadow.visible=F.state!=='leave';
+  F.ring.position.set(sx,gy+.01,sz); F.ring.scale.setScalar(big*(1+.08*Math.sin(time*14))); F.ring.visible=F.state==='shadow';
+}
 // bubbles for the underwater level
 const bubbles=(function(){
   const n=260, pos=new Float32Array(n*3);
@@ -3329,6 +3683,8 @@ const bubbles=(function(){
   p.frustumCulled=false; p.visible=false; scene.add(p); return p;
 })();
 function updateLevelFx(dt,time){
+  lavaMat.emissiveIntensity=.85+.25*Math.sin(time*2.3);
+  if(LEVEL.lava && LEVEL.lava.length && Math.random()<dt*4){ const lp=LEVEL.lava[(Math.random()*LEVEL.lava.length)|0], a=Math.random()*TAU, rr=Math.random()*lp.r*.8; burst(lp.x+Math.cos(a)*rr,groundH(lp.x,lp.z)+.3,lp.z+Math.sin(a)*rr,3,[0xff7a2a,0xffb14a,0x3a3330],1.4,3.4,5); }
   bubbles.visible=LEVEL.theme==='sea';
   if(bubbles.visible){
     const P=bubbles.geometry.attributes.position;
@@ -3339,6 +3695,7 @@ function updateLevelFx(dt,time){
     if(o.userData.sway!==undefined){ o.rotation.z=Math.sin(time*1.4+o.userData.sway)*.18; o.rotation.x=Math.cos(time*1.1+o.userData.sway)*.12; }
     if(o.userData.drift){ o.position.x+=Math.sin(time*.05)*o.userData.drift*dt; }
     if(o.userData.tumble){ const t=o.userData.tumble; t.x+=t.sp*dt; if(t.x>FIELD+4){ t.x=-FIELD-4; t.z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-12); } o.position.set(t.x,groundH(t.x,t.z)+.7+Math.abs(Math.sin(time*4+t.z))*.4,t.z); o.rotation.z-=t.sp*dt*1.4; }
+    if(o.userData.smoke){ const S2=o.userData.smoke, k=(S2.k+time*.04)%1; o.position.set(S2.x+k*40,S2.y+k*90,S2.z+Math.sin(k*6)*8); o.scale.setScalar(.6+k*1.8); }
     if(o.userData.fish){ const f=o.userData.fish, a=time*f.sp+f.ph; o.position.set(f.cx+Math.cos(a)*f.r,groundH(f.cx,f.cz)+f.y+Math.sin(time*2+f.ph)*.3,f.cz+Math.sin(a)*f.r); o.rotation.y=-a; }
   }
 }
@@ -3380,8 +3737,10 @@ function drawMinimap(time){
   mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(BARN.bx-7.2),Y(BARN.bz-6.2),14.4*S,12.4*S);
   for(const c of clovers){ mx.fillStyle='rgba(90,163,54,.55)'; mx.beginPath(); mx.arc(X(c.x),Y(c.z),c.r*S,0,TAU); mx.fill(); }
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
+  if(PK){ const px=X(PK.dx), py=Y(PK.dz), r=7+Math.sin(time*6)*1.5; mx.fillStyle='rgba(0,0,0,.45)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
+    mx.fillStyle=PK.state==='parked'?'#ffd84a':'rgba(255,216,74,.4)'; mx.beginPath(); for(let k=0;k<10;k++){ const a=k/10*TAU-Math.PI/2, rr=k%2?r*.45:r; mx.lineTo(px+Math.cos(a)*rr,py+Math.sin(a)*rr); } mx.closePath(); mx.fill(); }
   for(const s of G.sheep){
-    if(s.dead) continue;
+    if(s.dead||s.loaded) continue;
     mx.fillStyle = s.attacked>0 ? '#ff6b5a' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
     mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.lamb?2.5:s.penned?3:4,0,TAU); mx.fill();
   }
@@ -3397,6 +3756,7 @@ function drawMinimap(time){
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   if(lv('nose')) for(const gb of goldBones){ if(gb.got) continue; mx.fillStyle='#ffd34d'; mx.beginPath(); mx.arc(X(gb.x),Y(gb.z),3.5+Math.sin(time*5)*1,0,TAU); mx.fill(); }
   for(const L of llamas){ if(!L.active) continue; mx.fillStyle='#eadfc8'; mx.fillRect(X(L.x)-3,Y(L.z)-4,6,8); }
+  if(LEVEL.haz) for(const h of LEVEL.haz){ mx.fillStyle=h.kind==='lava'?'rgba(255,106,26,.85)':'rgba(190,230,255,.7)'; mx.beginPath(); mx.arc(X(h.x),Y(h.z),h.r*S,0,TAU); mx.fill(); }
   const dx=X(dog.x), dy=Y(dog.z);
   mx.fillStyle='#f2b544'; mx.beginPath(); mx.arc(dx,dy,5.5,0,TAU); mx.fill();
   mx.strokeStyle='#111'; mx.lineWidth=2; mx.beginPath(); mx.moveTo(dx,dy); mx.lineTo(dx+Math.sin(dog.yaw)*9,dy+Math.cos(dog.yaw)*9); mx.stroke();
@@ -3440,7 +3800,7 @@ function updateHUD(dt,time){
   { const w=G.coyotes.find(c=>c.boss&&!c.gone&&c.state!=='retreat'&&(G.phase==='night'));
     $('bossBar').hidden=!w; if(w) $('bossFill').style.width=Math.max(0,w.hp/w.maxHp*100)+'%'; }
   setChip('pwZoom',Math.max(dog.zoomT,G.coop?dog2.zoomT:0),10); setChip('pwApple',G.appleT,10); setChip('pwLamp',G.lanternT,12); setChip('pwRage',G.rageT||0,15); $('pwFlank').hidden=!G.flanked;
-  $('dayLabel').textContent='Day '+G.day+' · '+({sky:'Sky',sea:'Undersea',desert:'Desert',moon:'Moon'}[LEVEL.theme]||SEASON.label);
+  $('dayLabel').textContent='Day '+G.day+' · '+({sky:'Sky',sea:'Undersea',desert:'Desert',moon:'Moon',volcano:'Volcano'}[LEVEL.theme]||SEASON.label);
   const tf=$('timeFill');
   if(G.phase==='night'||(G.phase==='result'&&G.endReason!=='before')){
     const g=Math.min(1,G.t/NIGHT_LEN);
@@ -3493,6 +3853,9 @@ function step(dt){
   } else G.flanked=false;
   updateSheep(dt);
   updateCoyotes(dt);
+  hazardSweep();
+  updateFalcon(dt);
+  updatePickup(dt);
   updateBullets(dt);
   updateShepherd(dt);
   updateLlama(dt);
@@ -3555,6 +3918,7 @@ function frame(now){
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);
+  syncPickup(time); syncFalcon(dt,time);
   syncDucks(dt,time); syncRascal(dt,time); updateBirds(dt,time); updateCat(dt,time); updatePond(dt);
   updateBubble(dt);
   syncAll(dt,time);
@@ -3564,7 +3928,7 @@ function frame(now){
   updateLevelFx(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
-  updatePartnerArrows();
+  updatePartnerArrows(); updateGoalArrow(time);
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
   if(coopView && G.phase!=='title'){
     const w=window.innerWidth, h=window.innerHeight, hw=Math.floor(w/2);

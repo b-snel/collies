@@ -21,7 +21,13 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Grab, shake, fling:** hold R (LT on a controller) to latch on. Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
 
-**Levels:** every day has a different layout, cycling The Farm, Hedgerows (hedge walls with gaps to snake through), River Crossing (two bridges; dogs can swim, sheep can't), Sky Islands (a floating meadow with holes onto the clouds) and Sunken Meadow (underwater: kelp, coral, fish, floaty and slower). Calm sheep near the gate now walk in on their own.
+**Levels:** every day is generated from the run's seed: hills, a pond that moves, rivers with bridges, hedges with gaps, paddocks, copses and boulders. Day 1 is always Home Farm; after that you might get the farm, the desert, Sky Islands, an underwater meadow, the Moon or a Volcano, plus a daily twist (bouncy, giant, tiny or speedy sheep, fog, a gold rush, stampedes).
+
+**Where the sheep go:** some days it's the barn pen. Most days a pickup turns up somewhere on the field instead: a livestock trailer on the farm, a covered wagon in the desert, a hot-air balloon in the sky and on the volcano, a submarine underwater, a UFO on the Moon (sheep float up its beam). Follow the gold beam or the arrow at the edge of the screen. Once it's taken a load it takes off and lands somewhere new, so you keep re-planning.
+
+**Lava and cliffs:** volcano days have lava pools and lava rivers; Sky Islands have holes straight down to the clouds. Sheep stop at the edge on their own, but run at them, bark or pounce near the edge and they'll go over. Lost sheep count against the day's limit. Dogs just get singed and bounce off. Fling a coyote in for 40 points.
+
+**Falcons:** from day 2, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
 **Seasons:** each day is the next season. Spring has blossom, extra lambs and extra clover. Summer has longer, hot days that tire the dog faster. Autumn has red and orange trees, falling leaves, wind gusts that push the flock, and mad mushrooms that regrow. Winter brings snow, a frozen and slippery pond everyone can cross, ducks gone south, shorter days, a huddling flock and hungrier coyotes.
 
