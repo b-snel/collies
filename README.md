@@ -17,6 +17,8 @@ Live at **https://collies.bsnel.com**
 | P / Esc | Pause |
 | M | Sound on/off |
 
+Volume sliders for Hank's voice (up to 150%), the music and sound effects are on the title screen and the pause menu, and are remembered on the device.
+
 On phones and tablets you get an on-screen joystick and buttons. You can add it to your home screen, and it works offline after the first visit.
 
 **Grab, shake, fling:** hold R (LT on a controller) to latch on. Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.

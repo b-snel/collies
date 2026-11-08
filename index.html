@@ -218,6 +218,9 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 .sign h2{font-family:var(--display);font-weight:400;font-size:clamp(30px,6vw,42px);line-height:1;margin:0;color:var(--wool);text-wrap:balance}
 .sign p{margin:0;font-size:17px;line-height:1.45;color:var(--ink);max-width:62ch}
 .sign .small{font-size:14px;color:var(--muted)}
+.vols{display:grid;grid-template-columns:auto 1fr 3.2em;gap:6px 12px;align-items:center;max-width:340px;margin:14px 0 4px;font-family:var(--ui);font-size:14px;color:var(--muted);text-align:left}
+.vols input[type=range]{width:100%;accent-color:var(--lantern);height:22px;cursor:pointer}
+.vols output{text-align:right;font-variant-numeric:tabular-nums}
 .controls{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15px;align-items:baseline}
 .controls kbd{font-family:var(--ui);font-weight:700;font-size:13px;color:var(--wool);background:rgba(244,234,210,.1);border:1px solid var(--edge);border-radius:5px;padding:2px 7px;white-space:nowrap;justify-self:start}
 .controls span{color:var(--muted)}
@@ -345,6 +348,7 @@ button,input{touch-action:manipulation}</style>
     </div>
     <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down, , grab. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button><button class="btn ghost" id="shedBtn" type="button">Shearing shed</button></div>
+    <div class="vols" id="titleVols"></div>
     <p class="small" id="bestLine"></p>
     <p class="small"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener" style="color:var(--muted)">Audio credits</a></p>
   </div>
@@ -1066,10 +1070,19 @@ function collide(e,r,o){
 const insidePen=(x,z)=> x>PEN.x0+.4 && x<PEN.x1-.4 && z>PEN.z0+.4 && z<PEN.z1-.4;
 
 // ---------------- audio ----------------
-let AC=null, master=null, muted=false;
+let AC=null, master=null, mainOut=null, voiceBus=null, muted=false;
+// volume for Hank, the music and everything else; remembered on this device
+const VOL={voice:1,music:1,sfx:1};
+try{ Object.assign(VOL,JSON.parse(localStorage.getItem('collieDuskVol')||'{}')); }catch(e){}
+function applyVol(){
+  try{ localStorage.setItem('collieDuskVol',JSON.stringify(VOL)); }catch(e){}
+  if(!AC) return;
+  master.gain.value=VOL.sfx; voiceBus.gain.value=VOL.voice; if(MUS.gain) MUS.gain.gain.value=.5*VOL.music;
+}
 function initAudio(){
   if(AC) { if(AC.state==='suspended') AC.resume(); return; }
-  try{ AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=.42; master.connect(AC.destination); }catch(e){ AC=null; }
+  try{ AC=new (window.AudioContext||window.webkitAudioContext)(); mainOut=AC.createGain(); mainOut.gain.value=.42; mainOut.connect(AC.destination);
+    master=AC.createGain(); master.connect(mainOut); voiceBus=AC.createGain(); voiceBus.connect(mainOut); applyVol(); }catch(e){ AC=null; }
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
@@ -1084,10 +1097,10 @@ function loadAudioAssets(){
   loadBuf('audio/sfx/bark1.mp3').then(b=>SFX.bark.push(b)).catch(()=>{});   // one dog, one voice
   [...new Set(Object.values(VOICE_MAP))].forEach(id=>loadBuf('audio/voice/'+id+'.mp3').then(b=>{ SFX.voice[id]=b; }).catch(()=>{}));
 }
-function playBuf(buf,rate,vol,when){
+function playBuf(buf,rate,vol,when,bus){
   const s=AC.createBufferSource(), g=AC.createGain();
   s.buffer=buf; s.playbackRate.value=rate; g.gain.value=vol;
-  s.connect(g).connect(master); s.start(when||0); return s;
+  s.connect(g).connect(bus||master); s.start(when||0); return s;
 }
 function voiceClip(text){
   let k=text;
@@ -1135,7 +1148,7 @@ function playStep(song,i,t){
 }
 function updateMusic(){
   if(!AC || !master) return;
-  if(!MUS.gain){ MUS.gain=AC.createGain(); MUS.gain.gain.value=.5; MUS.gain.connect(master); }
+  if(!MUS.gain){ MUS.gain=AC.createGain(); MUS.gain.gain.value=.5*VOL.music; MUS.gain.connect(mainOut); }
   const want = (G.ev&&G.ev.kind==='disco') ? 'disco' : G.rageT>0 ? 'boss' : G.phase==='night' ? (G.coyotes.some(c=>c.boss&&!c.gone&&c.state!=='retreat')?'boss':'night') : 'day';
   if(want!==MUS.mode){ MUS.mode=want; MUS.step=0; MUS.next=AC.currentTime+.08; }
   if(muted || G.paused || AC.state!=='running'){ MUS.next=AC.currentTime+.08; return; }
@@ -1606,12 +1619,29 @@ function setPause(p){
   if(G.phase!=='day' && G.phase!=='night') return;
   G.paused=p;
   if(p){
-    showOverlay('<h2>Paused</h2><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="quitBtn" type="button">Restart from day 1</button></div>');
+    showOverlay('<h2>Paused</h2><div class="vols" id="pauseVols"></div><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="quitBtn" type="button">Restart from day 1</button></div>');
+    volSliders($('pauseVols'));
     $('resumeBtn').onclick=()=>setPause(false);
     $('quitBtn').onclick=()=>startGame(true);
   } else hideOverlay();
 }
 function togglePause(){ setPause(!G.paused); }
+// volume sliders: Hank's voice, music, sounds (Hank goes up to 150%)
+function volSliders(el){
+  if(!el) return;
+  const rows=[['voice','Hank',150],['music','Music',100],['sfx','Sounds',100]];
+  el.innerHTML=rows.map(([k,l,mx])=>`<label for="vol_${k}_${el.id}">${l}</label><input type="range" id="vol_${k}_${el.id}" min="0" max="${mx}" step="5" value="${Math.round(VOL[k]*100)}"><output>${Math.round(VOL[k]*100)}%</output>`).join('');
+  for(const [k] of rows){
+    const inp=$(`vol_${k}_${el.id}`), out=inp.nextElementSibling;
+    inp.addEventListener('input',()=>{ VOL[k]=inp.value/100; out.textContent=inp.value+'%'; initAudio(); applyVol(); });
+    // let go of the slider and you hear what it sounds like
+    inp.addEventListener('change',()=>{ if(!AC||muted) return;
+      if(k==='voice'){ const c=SFX.voice['good_dog']; if(c){ try{ if(voiceSrc) voiceSrc.stop(); }catch(e){} voiceSrc=playBuf(c,1,1.15,0,voiceBus); } }
+      else if(k==='sfx'){ sBleat(1.1); } });
+    inp.addEventListener('keydown',e=>e.stopPropagation());
+  }
+}
+volSliders($('titleVols'));
 document.addEventListener('visibilitychange',()=>{ if(document.hidden) setPause(true); });
 
 // ---------------- Morag's shearing shed ----------------
@@ -2893,11 +2923,11 @@ function pickVoice(){
 }
 try{ speechSynthesis.onvoiceschanged=pickVoice; }catch(e){}
 function speak(text){
-  if(muted || !('speechSynthesis' in window)) return;
+  if(muted || VOL.voice<=0 || !('speechSynthesis' in window)) return;
   try{
     const u=new SpeechSynthesisUtterance(text);
     if(!hankVoice) pickVoice(); if(hankVoice) u.voice=hankVoice;
-    u.pitch=.5; u.rate=.95; u.volume=1;
+    u.pitch=.5; u.rate=.95; u.volume=Math.min(1,VOL.voice);
     speechSynthesis.cancel(); speechSynthesis.speak(u);
   }catch(e){}
 }
@@ -2916,7 +2946,7 @@ function shepSay(text,force,cmd){
     try{ if(voiceSrc) voiceSrc.stop(); }catch(e){}
     try{ speechSynthesis.cancel(); }catch(e){}
     if(cmd) sWhistle(cmd);
-    voiceSrc=playBuf(clip,1,1.15,AC.currentTime+(cmd?.32:0));
+    voiceSrc=playBuf(clip,1,1.15,AC.currentTime+(cmd?.32:0),voiceBus);
   } else if(cmd){ sWhistle(cmd); setTimeout(()=>speak(text),320); } else speak(text);
 }
 function updateBubble(dt){
