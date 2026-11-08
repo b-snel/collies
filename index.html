@@ -1087,26 +1087,152 @@ function makeSheep(black,golden,ram){
   return {g,body,head,legs,wool,base,sack};
 }
 const eyeMat=new THREE.MeshBasicMaterial({color:0xffd84a}), redEyeMat=new THREE.MeshBasicMaterial({color:0xff3b2a});
-function makeCoyote(alpha,boss){
-  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  const T=mat(boss?0x6c7177:0x8f7350), L=mat(boss?0xb9bcc0:0xc9b28a), D=mat(boss?0x2a2c30:0x3f3226);
-  box(.52,.52,1.45,T,0,.98,0,body);
-  box(.42,.18,1.1,L,0,.72,0,body);
-  box(.5,.5,.4,T,0,1.12,.6,body);
-  const head=new THREE.Group(); head.position.set(0,1.32,.95); body.add(head);
-  box(.42,.4,.44,T,0,0,0,head);
-  box(.22,.2,.48,L,0,-.08,.4,head);
-  box(.1,.08,.06,D,0,-.01,.65,head);
-  const earG=new THREE.ConeGeometry(.1,.4,4);
-  for(const s of [-1,1]){
-    const e=new THREE.Mesh(earG,T); e.position.set(.13*s,.34,-.06); e.rotation.z=-.12*s; head.add(e);
-    const eye=new THREE.Mesh(new THREE.SphereGeometry(.055,6,4), (alpha||boss)?redEyeMat:eyeMat); eye.position.set(.12*s,.07,.225); head.add(eye);
+// ---- critter kit: smooth rounded parts baked into one vertex-coloured mesh per rigid body part ----
+// A whole animal costs a handful of draw calls, and every copy of it shares the same baked geometry.
+const CRIT_GEO={};
+const critMat=mat(0xffffff,{vertexColors:true});
+const critEyeMat=new THREE.MeshBasicMaterial({vertexColors:true});      // flat cartoon eyes that still read at night
+const CRIT_SPH=new THREE.SphereGeometry(1,12,8), CRIT_SPH_S=new THREE.SphereGeometry(1,8,6), CRIT_SPH_XS=new THREE.SphereGeometry(1,6,4);   // big shapes, details, specks
+const CRIT_CAP=new THREE.SphereGeometry(1,8,4,0,TAU,0,Math.PI*.42);    // top cap of a sphere: eyelids
+const _cM=new THREE.Matrix4(), _cQ=new THREE.Quaternion(), _cE=new THREE.Euler(), _cP=new THREE.Vector3(), _cS=new THREE.Vector3(), _cC=new THREE.Color(), _cU=new THREE.Vector3(0,1,0);
+// a tapered capsule hanging down -y from the origin (legs, necks, tails)
+function critCapsule(rTop,rBot,len,seg){
+  const k='cap'+rTop+'_'+rBot+'_'+len+'_'+(seg||8); if(CRIT_GEO[k]) return CRIT_GEO[k];
+  const pts=[];
+  for(let i=0;i<=2;i++){ const a=-Math.PI/2+i/2*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*rBot,-len+Math.sin(a)*rBot)); }
+  for(let i=0;i<=2;i++){ const a=i/2*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*rTop,Math.sin(a)*rTop)); }
+  return CRIT_GEO[k]=new THREE.LatheGeometry(pts,seg||8);
+}
+// a cone with smooth sides (ears, tufts, fangs), point up +y, base at -h/2
+function critCone(r,h,seg){
+  const k='cone'+r+'_'+h+'_'+(seg||7); if(CRIT_GEO[k]) return CRIT_GEO[k];
+  return CRIT_GEO[k]=new THREE.LatheGeometry([new THREE.Vector2(0,-h/2-r*.25),new THREE.Vector2(r*.9,-h/2),new THREE.Vector2(r,-h/2+h*.12),new THREE.Vector2(r*.55,h*.15),new THREE.Vector2(0,h/2)],seg||7);
+}
+// euler angles that turn +y to point along (dx,dy,dz)
+function critDir(dx,dy,dz){ _cP.set(dx,dy,dz).normalize(); _cQ.setFromUnitVectors(_cU,_cP); _cE.setFromQuaternion(_cQ); return [_cE.x,_cE.y,_cE.z]; }
+// bake parts [geometry, colour (hex or fn(x,y,z) of the unscaled shape), [x,y,z], [rx,ry,rz], [sx,sy,sz]] into one geometry
+function critBake(parts){
+  const pos=[], nor=[], col=[], idx=[]; let off=0;
+  for(const [geo,c,p,r,s] of parts){
+    _cM.compose(_cP.set(p?p[0]:0,p?p[1]:0,p?p[2]:0), _cQ.setFromEuler(_cE.set(r?r[0]:0,r?r[1]:0,r?r[2]:0)), _cS.set(s?s[0]:1,s?s[1]:1,s?s[2]:1));
+    const g=geo.clone().applyMatrix4(_cM), P=g.attributes.position, N=g.attributes.normal, S0=geo.attributes.position, fn=typeof c==='function';
+    if(!fn) _cC.setHex(c);
+    for(let i=0;i<P.count;i++){
+      pos.push(P.getX(i),P.getY(i),P.getZ(i)); nor.push(N.getX(i),N.getY(i),N.getZ(i));
+      if(fn) _cC.setHex(c(S0.getX(i),S0.getY(i),S0.getZ(i)));
+      col.push(_cC.r,_cC.g,_cC.b);
+    }
+    const I=g.index; if(I) for(let i=0;i<I.count;i++) idx.push(I.getX(i)+off); else for(let i=0;i<P.count;i++) idx.push(i+off);
+    off+=P.count; g.dispose();
   }
-  const legs=[[-.18,.5],[.18,.5],[-.18,-.5],[.18,-.5]].map(([x,z])=>leg(body,x,z,.8,.8,.13,T,L));
-  const tail=new THREE.Group(); tail.position.set(0,1.05,-.72); body.add(tail);
-  const tm=new THREE.Mesh(new THREE.ConeGeometry(.17,.8,5), T); tm.rotation.x=-Math.PI/2; tm.position.z=-.35; tm.castShadow=true; tail.add(tm);
-  const tip=new THREE.Mesh(new THREE.ConeGeometry(.08,.22,5), D); tip.rotation.x=-Math.PI/2; tip.position.z=-.78; tail.add(tip);
+  const out=new THREE.BufferGeometry();
+  out.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  out.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  out.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  out.setIndex(idx); out.computeBoundingSphere();
+  return out;
+}
+// smooth normals across seams and hard edges, so the outline shell has no cracks
+function critSmooth(g){
+  g.computeVertexNormals();
+  const P=g.attributes.position, N=g.attributes.normal, m=new Map();
+  for(let i=0;i<P.count;i++){ const k=Math.round(P.getX(i)*1e4)+'_'+Math.round(P.getY(i)*1e4)+'_'+Math.round(P.getZ(i)*1e4); let a=m.get(k); if(!a) m.set(k,a=[0,0,0,[]]); a[0]+=N.getX(i); a[1]+=N.getY(i); a[2]+=N.getZ(i); a[3].push(i); }
+  for(const a of m.values()){ const l=Math.hypot(a[0],a[1],a[2])||1; for(const i of a[3]) N.setXYZ(i,a[0]/l,a[1]/l,a[2]/l); }
+  return g;
+}
+// a smooth body along z, lathed from a profile [[radius,z],...] rear to front; sx narrows it, drop(z) deepens the underside
+function critTorso(key,prof,seg,sx,drop){
+  if(CRIT_GEO[key]) return CRIT_GEO[key];
+  const g=new THREE.LatheGeometry(prof.map(([r,z])=>new THREE.Vector2(r,z)),seg).rotateX(Math.PI/2), P=g.attributes.position;
+  for(let i=0;i<P.count;i++){ const y=P.getY(i), z=P.getZ(i); P.setXYZ(i,P.getX(i)*sx,y<0&&drop?y*(1+drop(z)):y,z); }
+  return CRIT_GEO[key]=critSmooth(g);
+}
+function critMesh(parent,geo,x,y,z,eyes){ const m=new THREE.Mesh(geo,eyes?critEyeMat:critMat); m.position.set(x||0,y||0,z||0); m.castShadow=!eyes; parent.add(m); return m; }
+// a big cartoon eye at (x,y,z) facing +z turned ry outward: white, iris, pupil, highlight (goes in the eye list)
+// plus a dark rim and a slanted lid (go in the head list, so they get the head's outline). lid: 0 none .. 1 heavy; tilt>0 = sly
+function critEye(E,H,x,y,z,r,iris,ry,o){
+  o=o||{}; const fx=Math.sin(ry), fz=Math.cos(ry), sd=x<0?-1:1, pw=o.pupil||1, rim=o.rim===undefined?PAL.ink:o.rim;
+  const at=(f,dy,dx)=>[x+fx*f*r+(dx||0)*fz*r, y+(dy||0)*r, z+fz*f*r-(dx||0)*fx*r];
+  E.push([CRIT_SPH_S,0xffffff,[x,y,z],[0,ry,0],[r*.82,r,r*.62]]);
+  E.push([CRIT_SPH_S,iris,at(.4,-.06,-.02*sd),[0,ry,0],[r*.56,r*.64,r*.3]]);
+  E.push([CRIT_SPH_XS,0x17110d,at(.54,-.07,-.02*sd),[0,ry,0],[r*.3*pw,r*.4,r*.16]]);
+  E.push([CRIT_SPH_XS,0xffffff,at(.62,.24,.2*sd),[0,ry,0],[r*.15,r*.15,r*.08]]);
+  if(rim!==null) H.push([CRIT_SPH_S,rim,at(-.08,0),[0,ry,0],[r*.94,r*1.1,r*.62]]);
+  if(o.lid) H.push([CRIT_CAP,o.lidCol,at(.02,-(o.lid-.5)*.5),[.2,ry,(o.tilt||0)*sd],[r*.92,r*1.08,r*.7]]);
+}
+// coyote colours: plain, alpha, and the boss wolf
+const COY_COL={
+  n:{fur:0xc98048, back:0x8a5f4a, cream:0xfff1dc, dark:0x47291f, ear:0xffa38f, paw:0xf6e2c2, iris:0xffc93a},
+  a:{fur:0xb05a38, back:0x5e3226, cream:0xffe2c4, dark:0x341a14, ear:0xff9584, paw:0xf0d0ae, iris:0xff8a2a},
+  b:{fur:0x8492ab, back:0x56607a, cream:0xe9edf3, dark:0x2b3142, ear:0xd99aac, paw:0xcfd6e2, iris:0xffd23a}
+};
+function coyoteGeo(v){
+  if(CRIT_GEO['coy'+v]) return CRIT_GEO['coy'+v];
+  const C=COY_COL[v], boss=v==='b', alpha=v==='a', S=CRIT_SPH, B=[], H=[], E=[];
+  // lanky body: deep chest, slim waist, round haunch, darker saddle, cream belly and bib
+  const k=boss?1.18:1;
+  const torso=critTorso('coyTorso'+k,[[0,-.78],[.13,-.74],[.2,-.65],[.24,-.52],[.245,-.38],[.228,-.22],[.215,-.06],[.225,.08],[.255,.22],[.275,.36],[.27,.48],[.23,.6],[.14,.69],[0,.73]].map(([r,z])=>[r*k,z]),12,.88,z=>z>0?z*.42:0);
+  B.push([torso,(x,y,z)=>{ const up=y/(Math.hypot(x,y)||1); return up>.72&&z>-.64&&z<.4?C.back:up<-.78&&z>-.5&&z<.5?C.cream:C.fur; },[0,1.02,-.03]]);
+  B.push([CRIT_SPH_S,C.cream,[0,.97,.62],[-.5,0,0],[.16,.21,.12]]);
+  B.push([S,C.fur,[0,1.22,.66],[.7,0,0],[.15,.27,.17]]);
+  if(alpha||boss){
+    // a shaggy ruff round the neck and shoulders (a full mane on the wolf)
+    const n=boss?13:8, R=boss?.24:.2;
+    for(let i=0;i<n;i++){
+      const a=-Math.PI*.15+i/(n-1)*Math.PI*1.3, cx=Math.cos(a), cy=Math.sin(a);
+      B.push([critCone(boss?.11:.08,boss?.36:.24,6),i%2?C.back:C.fur,[cx*R,1.18+cy*R*.95,.52-Math.abs(cx)*.06],critDir(cx*.9,cy*.9+.15,-.55)]);
+    }
+    if(boss){
+      B.push([S,C.back,[0,1.28,.24],[.3,0,0],[.2,.17,.28]]);                 // shoulder hump
+      for(const [x,y,z] of [[0,1.3,-.05],[0,1.24,-.32],[0,1.22,.1]]) B.push([critCone(.08,.26,6),C.back,[x,y,z],critDir(0,1,-.9)]);
+      for(const sd of [-1,1]) B.push([critCone(.07,.22,6),C.fur,[.15*sd,.8,.42],critDir(.3*sd,-1,.1)]);   // chest fluff
+    }
+  }
+  // head: round skull, cream cheeks, long snout, big pointed ears, sly eyes
+  H.push([S,C.fur,[0,.02,-.02],0,[.2,.19,.21]]);
+  H.push([S,C.fur,[0,-.02,.25],[-.08,0,0],[.095,.085,.22]]);
+  H.push([S,C.cream,[0,-.085,.24],0,[.085,.055,.2]]);
+  H.push([CRIT_SPH_S,C.dark,[0,.0,.46],0,[.058,.046,.046]]);
+  H.push([CRIT_SPH_XS,C.dark,[0,-.115,.32],[.15,0,0],[.04,.012,.07]]);     // the corner of a grin
+  for(const sd of [-1,1]){
+    H.push([CRIT_SPH_S,C.cream,[.12*sd,-.075,.06],0,[.1,.085,.09]]);
+    H.push([critCone(.035,.16,5),C.cream,[.19*sd,-.07,-.01],critDir(sd,-.25,-.35)]);   // cheek tufts
+    const ex=boss?.14:.12, ey=boss?.22:.27, eh=boss?.26:.36, er=boss?.11:.105;
+    H.push([critCone(er,eh,8),C.fur,[ex*sd,ey,-.05],[-.18,0,-.34*sd],[1,1,.52]]);
+    H.push([critCone(er*.62,eh*.68,8),C.ear,[(ex-.004)*sd,ey-.035,-.01],[-.18,0,-.34*sd],[1,1,.4]]);
+    critEye(E,H,.095*sd,.055,.158,boss?.078:.084,C.iris,.3*sd,{lid:boss?.55:.3,lidCol:C.fur,tilt:boss?.42:.34});
+    if(boss) H.push([CRIT_SPH_S,C.back,[.09*sd,.135,.15],[0,0,.38*sd],[.075,.03,.05]]);          // heavy brows
+  }
+  if(boss){
+    H.push([critCone(.022,.075,5),0xffffff,[.07,-.12,.35],[Math.PI,0,0]]);               // one goofy fang
+    for(const sd of [-1,1]) H.push([critCone(.06,.22,6),C.fur,[.2*sd,-.02,-.08],critDir(sd,.15,-.6)]);
+  }
+  // legs: pivot at the hip, paw on the ground
+  const legLen=.8, F=[], K=[], lk=boss?1.3:1, pk=boss?1.35:1;
+  F.push([critCapsule(.085*lk,.058*lk,.44),C.fur,[0,0,0]]);
+  F.push([critCapsule(.058*lk,.05*lk,.27),C.paw,[0,-.44,0]]);
+  F.push([CRIT_SPH_S,C.paw,[0,-legLen+.052*pk,.035*pk],0,[.072*pk,.055*pk,.092*pk]]);
+  K.push([S,C.fur,[0,-.03,-.01],[.12,0,0],[.12*lk,.23,.16*lk]]);
+  K.push([critCapsule(.07*lk,.05*lk,.42),C.fur,[0,-.26,-.03],[-.06,0,0]]);
+  K.push([critCapsule(.052*lk,.05*lk,.06),C.paw,[0,-.64,-.03]]);
+  K.push([CRIT_SPH_S,C.paw,[0,-legLen+.052*pk,.035*pk],0,[.072*pk,.055*pk,.092*pk]]);
+  // bushy tail along -z with a dark tip
+  const tailPts=[[0,.04],[.06,0],[.11,-.12],[.145,-.34],[.148,-.5],[.13,-.6],[.12,-.64],[.08,-.76],[0,-.88]].map(([r,y])=>new THREE.Vector2(r*(boss?1.2:1),y));
+  const T=[[new THREE.LatheGeometry(tailPts,8),(x,y)=>y<-.62?C.dark:C.fur,[0,0,0],[Math.PI/2,0,0]]];
+  if(boss) for(const [a,zz] of [[.6,-.42],[2.4,-.5],[4.3,-.36],[1.5,-.6],[3.4,-.62],[5.3,-.55]]) T.push([critCone(.06,.2,5),zz<-.58?C.dark:C.fur,[Math.cos(a)*.15,Math.sin(a)*.15,zz],critDir(Math.cos(a),Math.sin(a),-1.1)]);
+  return CRIT_GEO['coy'+v]={body:critBake(B),head:critBake(H),eyes:critBake(E),front:critBake(F),back:critBake(K),tail:critBake(T)};
+}
+function makeCoyote(alpha,boss){
+  const G2=coyoteGeo(boss?'b':alpha?'a':'n');
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  critMesh(body,G2.body);
+  const head=new THREE.Group(); head.position.set(0,1.32,.95); body.add(head);
+  critMesh(head,G2.head); critMesh(head,G2.eyes,0,0,0,true);
+  const lx=boss?.17:.15, legs=[[-lx,.5],[lx,.5],[-lx,-.5],[lx,-.5]].map(([x,z])=>{ const p=new THREE.Group(); p.position.set(x,.8,z); body.add(p); critMesh(p,z>0?G2.front:G2.back); return p; });
+  const tail=new THREE.Group(); tail.position.set(0,1.06,-.7); body.add(tail);
+  critMesh(tail,G2.tail);
   tail.rotation.x=-.75;
+  addOutline(body,.035);
   scene.add(g);
   return {g,body,head,legs,tail};
 }
@@ -2914,19 +3040,62 @@ if(!hatUnlocked(HATS.find(x=>x.id===hatSel)||HATS[0])) hatSel='none';
 setHat(hatSel);
 
 // ---------------- the guard llama (bought at the shed) ----------------
+// ---- llama parts: a fluffy cloud of a body, a long woolly neck, banana ears and bright tassels ----
+// a banana ear: a flattened capsule pointing up, curving in toward the other ear
+function llamaEarGeo(sd){
+  const k='llamaEar'+sd; if(CRIT_GEO[k]) return CRIT_GEO[k];
+  const g=critCapsule(.058,.032,.34,7).clone().rotateX(Math.PI).scale(1,1,.62), P=g.attributes.position;
+  for(let i=0;i<P.count;i++){ const y=Math.max(0,P.getY(i)); P.setX(i,P.getX(i)-sd*.6*y*y); P.setZ(i,P.getZ(i)+.35*y*y); }
+  return CRIT_GEO[k]=critSmooth(g);
+}
+const LLAMA_TRIM={0xeadfc8:[0xff5f8f,0x35c4e0],0x9a6a44:[0x35c4e0,0xffc53a],0x4a3a30:[0xffc53a,0xff5f8f]};
+function llamaGeo(coat){
+  const key='llama'+coat; if(CRIT_GEO[key]) return CRIT_GEO[key];
+  const S=CRIT_SPH, c=new THREE.Color(coat), hsl={}; c.getHSL(hsl); c.setHSL(hsl.h,Math.min(1,hsl.s*1.3),Math.min(.92,hsl.l*1.1));   // a touch more saturated
+  const W=c.getHex(), FACE=c.clone().lerp(new THREE.Color(0xffffff),.2).getHex(), MUZ=c.clone().lerp(new THREE.Color(0xfff4e4),.45).getHex(), DARK=0x3a2a22, INNER=0xffa8a0;
+  const [T1,T2]=LLAMA_TRIM[coat]||LLAMA_TRIM[0xeadfc8];
+  const B=[], N=[], H=[], E=[], L=[];
+  // the body: a woolly core with puffs all over, and a little pom-pom tail
+  B.push([S,W,[0,1.48,0],0,[.47,.43,.76]]);
+  for(const [x,y,z,r] of [[0,1.82,.3,.32],[0,1.84,-.27,.34],[.35,1.58,.28,.3],[.36,1.54,-.36,.31],[0,1.48,.72,.32],[0,1.22,.48,.27],[0,1.52,-.8,.3],[0,1.16,-.08,.3],[0,1.72,-1.0,.17],[0,1.6,-1.07,.12]]){
+    B.push([S,W,[x,y,z],0,[r,r,r]]); if(x) B.push([S,W,[-x,y,z],0,[r,r,r]]);
+  }
+  // the neck: a woolly column with a bright collar and a pom-pom
+  N.push([critCapsule(.15,.2,1.02,8),W,[0,0,0],[Math.PI,0,0]]);
+  for(const [y,z,r] of [[.08,.05,.25],[.36,.04,.21],[.62,.03,.18]]) N.push([CRIT_SPH_S,W,[0,y,z],0,[r,r*.9,r]]);
+  N.push([new THREE.TorusGeometry(.2,.045,5,14),T1,[0,.5,.02],[Math.PI/2+.12,0,0]]);
+  N.push([CRIT_SPH_S,T2,[0,.4,.24],0,[.07,.07,.07]]);
+  // the head: long soft muzzle, smug heavy-lidded eyes with lashes, a woolly fringe, banana ears with tassels
+  if(!CRIT_GEO.llamaHead){
+    // skull and long soft muzzle as one smooth shape, the nose dipping a little
+    const hg=critTorso('llamaHeadBase',[[0,-.17],[.12,-.15],[.17,-.08],[.185,.02],[.17,.1],[.13,.17],[.115,.24],[.11,.3],[.09,.35],[0,.375]],10,1,null).clone(), P=hg.attributes.position;
+    for(let i=0;i<P.count;i++){ const z=P.getZ(i); P.setY(i,P.getY(i)*.92-Math.max(0,z-.05)*.2); }
+    CRIT_GEO.llamaHead=critSmooth(hg);
+  }
+  H.push([CRIT_GEO.llamaHead,(x,y,z)=>z>.2?MUZ:FACE,[0,0,.02]]);
+  H.push([CRIT_SPH_XS,DARK,[0,-.11,.33],[.25,0,0],[.045,.009,.02]]);
+  for(const [x,y,z,r] of [[0,.17,0,.1],[.065,.15,.06,.075],[0,.14,.1,.075]]){ H.push([CRIT_SPH_S,W,[x,y,z],0,[r,r,r]]); if(x) H.push([CRIT_SPH_S,W,[-x,y,z],0,[r,r,r]]); }
+  for(const sd of [-1,1]){
+    H.push([CRIT_SPH_XS,DARK,[.033*sd,-.04,.375],0,[.016,.011,.012]]);                                       // nostrils
+    H.push([llamaEarGeo(sd),(x,y,z)=>z>.012&&y>.05?INNER:FACE,[.095*sd,.12,-.05],[-.1,0,-.32*sd]]);
+    H.push([CRIT_SPH_S,sd<0?T1:T2,[.155*sd,.15,-.04],0,[.055,.055,.055]]);                                  // ear tassels
+    critEye(E,H,.11*sd,.045,.12,.068,0x3b2616,.55*sd,{lid:.58,lidCol:FACE,tilt:-.12});
+    for(const k of [0,1]) H.push([critCone(.012,.065,4),DARK,[(.155+k*.018)*sd,.085-k*.012,.135-k*.03],critDir(sd,.8-k*.5,.2)]);   // lashes
+  }
+  // legs: woolly trousers, slim shins and dark padded feet
+  L.push([S,W,[0,-.1,0],0,[.155,.24,.165]]);
+  L.push([critCapsule(.066,.058,.78),FACE,[0,-.2,0]]);
+  L.push([CRIT_SPH_S,DARK,[0,-1.0,.04],0,[.082,.05,.11]]);
+  return CRIT_GEO[key]={body:critBake(B),neck:critBake(N),head:critBake(H),eyes:critBake(E),leg:critBake(L)};
+}
 function makeLlama(coat){
+  const G2=llamaGeo(coat||0xeadfc8);
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  const F=mat(coat||0xeadfc8), D=mat(0x6b5a48), P=mat(0x2a2420);
-  const woolGeo2=new THREE.IcosahedronGeometry(.5,1);
-  for(const [x,y,z,s2] of [[0,1.45,0,1.1],[0,1.45,.45,.95],[0,1.45,-.45,1],[0,1.7,0,.8]]){ const m=new THREE.Mesh(woolGeo2,F); m.position.set(x,y,z); m.scale.setScalar(s2); m.castShadow=true; body.add(m); }
-  const neck=new THREE.Group(); neck.position.set(0,1.75,.65); body.add(neck);
-  box(.32,1.05,.32,F,0,.5,0,neck);
-  const head=new THREE.Group(); head.position.set(0,1.1,.08); neck.add(head);
-  box(.34,.32,.5,F,0,0,.1,head); box(.24,.2,.22,D,0,-.06,.42,head); box(.08,.06,.04,P,0,-.04,.54,head);
-  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.ConeGeometry(.06,.3,4),F); e.position.set(.11*sd,.28,-.02); e.rotation.z=-.15*sd; head.add(e);
-    const eye=new THREE.Mesh(new THREE.SphereGeometry(.04,6,4),P); eye.position.set(.17*sd,.06,.18); head.add(eye); }
-  const tuft=new THREE.Mesh(woolGeo2,F); tuft.scale.setScalar(.3); tuft.position.set(0,.22,0); head.add(tuft);
-  const legs=[[-.24,.45],[.24,.45],[-.24,-.45],[.24,-.45]].map(([x,z])=>leg(body,x,z,1.05,1.05,.15,F,D));
+  critMesh(body,G2.body);
+  const neck=new THREE.Group(); neck.position.set(0,1.75,.65); body.add(neck); critMesh(neck,G2.neck);
+  const head=new THREE.Group(); head.position.set(0,1.1,.08); head.scale.setScalar(1.12); neck.add(head); critMesh(head,G2.head); critMesh(head,G2.eyes,0,0,0,true);
+  const legs=[[-.24,.45],[.24,.45],[-.24,-.45],[.24,-.45]].map(([x,z])=>{ const p=new THREE.Group(); p.position.set(x,1.05,z); body.add(p); critMesh(p,G2.leg); return p; });
+  addOutline(body,.035);
   scene.add(g);
   return {g,body,head,legs};
 }
@@ -2972,18 +3141,44 @@ function updateLlama(dt){
 function syncLlama(dt){ for(const L of llamas){ if(!L.active) continue; syncAnimal(L,dt,1.6); L.m.head.rotation.x=L.spitCD>3.1?-.5:0; } }
 
 // ---------------- the duck family ----------------
-const duckMat={white:mat(0xf4f1ea), beak:mat(0xf09a2a), yellow:mat(0xffd84a), dark:mat(0x2a2420), wing:mat(0xdcd6ca)};
+// ---- duck parts: a plump round mother duck and fluffy yellow ducklings ----
+const duckMat={beak:mat(0xffa02a)};
+function duckGeo(baby){
+  const key='duck'+(baby?'b':'a'); if(CRIT_GEO[key]) return CRIT_GEO[key];
+  const S=CRIT_SPH, B=[], H=[], E=[], BILL=0xffa02a, BILLD=0xe5781e, CHEEK=0xffa3b8;
+  if(!baby){
+    const BODY=0xfbfaf4, WING=0xe6e0d2;
+    B.push([S,BODY,[0,.3,0],0,[.28,.24,.36]]);                                  // round body
+    B.push([S,BODY,[0,.36,.17],0,[.21,.21,.2]]);                                // puffed chest
+    B.push([CRIT_SPH_S,BODY,[0,.42,-.3],[.7,0,0],[.11,.09,.16]]);               // perky tail
+    B.push([CRIT_SPH_S,BODY,[0,.49,.22],[-.3,0,0],[.1,.15,.1]]);                // neck
+    for(const sd of [-1,1]) B.push([CRIT_SPH_S,WING,[.215*sd,.34,-.05],[.2,0,.12*sd],[.06,.14,.24]]);
+    H.push([S,BODY,[0,0,0],0,[.155,.15,.155]]);
+    H.push([CRIT_SPH_S,BILL,[0,-.03,.15],[-.1,0,0],[.08,.032,.11]]);
+    H.push([CRIT_SPH_S,BILLD,[0,-.05,.14],[-.1,0,0],[.062,.02,.085]]);
+    H.push([new THREE.TorusGeometry(.04,.013,4,8,Math.PI*1.4),BODY,[0,.175,-.01],[0,Math.PI/2,-.4]]);   // a curl on top
+    for(const sd of [-1,1]){ H.push([CRIT_SPH_XS,CHEEK,[.12*sd,-.035,.07],[0,.6*sd,0],[.035,.024,.015]]); critEye(E,H,.075*sd,.035,.105,.046,0x2a1a10,.6*sd); }
+  } else {
+    const BODY=0xffd84a, WING=0xffc229;
+    B.push([S,BODY,[0,.17,0],0,[.17,.155,.2]]);
+    B.push([CRIT_SPH_S,BODY,[0,.23,-.16],[.6,0,0],[.06,.05,.08]]);
+    for(const sd of [-1,1]) B.push([CRIT_SPH_S,WING,[.14*sd,.19,-.02],[.2,0,.25*sd],[.04,.07,.1]]);
+    H.push([S,BODY,[0,0,0],0,[.115,.11,.115]]);
+    H.push([CRIT_SPH_S,BILL,[0,-.03,.11],[-.1,0,0],[.05,.022,.065]]);
+    for(const [a,l] of [[-.5,.07],[0,.09],[.5,.07]]) H.push([critCone(.018,l,5),BODY,[Math.sin(a)*.03,.11,-.01],critDir(Math.sin(a),1,-.3)]);   // a tuft of fluff
+    for(const sd of [-1,1]){ H.push([CRIT_SPH_XS,CHEEK,[.085*sd,-.03,.06],[0,.6*sd,0],[.025,.018,.012]]); critEye(E,H,.055*sd,.025,.08,.036,0x2a1a10,.55*sd); }
+  }
+  const s=baby?.55:1;
+  return CRIT_GEO[key]={body:critBake(B),head:critBake(H),eyes:critBake(E),foot:new THREE.SphereGeometry(1,7,4).scale(.065*s,.022*s,.085*s)};
+}
 function makeDuck(baby){
+  const G2=duckGeo(baby), s2=baby?.55:1;
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  const s2=baby?.55:1, B=baby?duckMat.yellow:duckMat.white;
-  const b=new THREE.Mesh(new THREE.SphereGeometry(.28*s2,10,8),B); b.scale.set(1,.8,1.35); b.position.y=.3*s2; b.castShadow=true; body.add(b);
-  const tail=new THREE.Mesh(new THREE.ConeGeometry(.1*s2,.2*s2,5),B); tail.rotation.x=-Math.PI/2.6; tail.position.set(0,.4*s2,-.36*s2); body.add(tail);
+  critMesh(body,G2.body);
   const head=new THREE.Group(); head.position.set(0,.6*s2,.25*s2); body.add(head);
-  const h=new THREE.Mesh(new THREE.SphereGeometry(.15*s2,10,8),B); head.add(h);
-  const bk=new THREE.Mesh(new THREE.BoxGeometry(.11*s2,.05*s2,.16*s2),duckMat.beak); bk.position.set(0,-.02*s2,.15*s2); head.add(bk);
-  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(.025*s2,5,4),duckMat.dark); e.position.set(.09*s2*sd,.04*s2,.09*s2); head.add(e);
-    if(!baby){ const w=new THREE.Mesh(new THREE.SphereGeometry(.16,8,6),duckMat.wing); w.scale.set(.35,.7,1.1); w.position.set(.2*sd,.33,0); body.add(w); } }
-  const feet=[-1,1].map(sd=>{ const f=new THREE.Mesh(new THREE.BoxGeometry(.08*s2,.04*s2,.12*s2),duckMat.beak); f.position.set(.08*s2*sd,.02,.05*s2); g.add(f); return f; });
+  critMesh(head,G2.head); critMesh(head,G2.eyes,0,0,0,true);
+  addOutline(body,baby?.016:.022);
+  const feet=[-1,1].map(sd=>{ const f=new THREE.Mesh(G2.foot,duckMat.beak); f.position.set(.08*s2*sd,.02,.05*s2); g.add(f); return f; });
   scene.add(g); return {g,body,head,feet};
 }
 const ducks=[];
@@ -3122,10 +3317,26 @@ function syncRascal(dt,time){ if(!rascal.active) return; syncAnimal(rascal,dt,3)
 
 // ---------------- crows, pecking about until something comes near ----------------
 const birds=[];
+// ---- crow parts: a small round crow with big cartoon eyes and wings folded back ----
+function crowGeo(){
+  if(CRIT_GEO.crow) return CRIT_GEO.crow;
+  const S=CRIT_SPH_S, K=0x2b2e40, KD=0x1d1f2c, BEAK=0x8a8fa0, LEG=0x4a4a58, B=[], E=[];
+  B.push([S,K,[0,0,0],[-.15,0,0],[.075,.07,.13]]);
+  B.push([S,K,[0,.065,.115],0,[.064,.062,.064]]);
+  B.push([critCone(.026,.09,6),BEAK,[0,.052,.2],[Math.PI/2+.1,0,0]]);
+  B.push([S,KD,[0,.03,-.16],[.35,0,0],[.048,.012,.088]]);
+  for(const sd of [-1,1]){
+    B.push([critCapsule(.009,.008,.05,4),LEG,[.025*sd,-.045,.01]]);
+    B.push([S,LEG,[.025*sd,-.098,.025],0,[.018,.006,.026]]);
+    critEye(E,B,.038*sd,.085,.148,.028,0x15151c,.45*sd,{rim:null});
+  }
+  const wing=sd=>critBake([[S,K,[.075*sd,0,-.05],[0,.6*sd,0],[.12,.014,.06]],[S,KD,[.15*sd,-.004,-.1],[0,.6*sd,0],[.05,.012,.035]]]);
+  return CRIT_GEO.crow={body:critBake(B),eyes:critBake(E),wl:wing(-1),wr:wing(1)};
+}
 function makeBird(){
-  const g=new THREE.Group(), k=mat(0x1c1c22);
-  box(.14,.12,.28,k,0,0,0,g); box(.1,.1,.1,k,0,.07,.16,g); box(.03,.03,.08,mat(0x3a3530),0,.06,.24,g);
-  const wings=[-1,1].map(sd=>{ const w=new THREE.Group(); w.position.set(.07*sd,.04,0); g.add(w); box(.3,.02,.16,k,.15*sd,0,0,w); return w; });
+  const G2=crowGeo(), g=new THREE.Group();
+  critMesh(g,G2.body); critMesh(g,G2.eyes,0,0,0,true);
+  const wings=[-1,1].map(sd=>{ const w=new THREE.Group(); w.position.set(.06*sd,.035,0); g.add(w); critMesh(w,sd<0?G2.wl:G2.wr); return w; });
   scene.add(g); return {g,wings};
 }
 function spawnBirds(){
@@ -3157,18 +3368,41 @@ function updateBirds(dt,time){
 }
 
 // ---------------- Hank's cat, asleep on a hay bale ----------------
+// ---- Hank's cat parts: a ginger tabby curled up asleep on top of the bale ----
 const cat=(function(){
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  const O=mat(0xd98a3a), S2=mat(0xf3d9b0);
-  const b=new THREE.Mesh(new THREE.SphereGeometry(.3,10,8),O); b.scale.set(1,.7,1.4); body.add(b);
-  const head=new THREE.Group(); head.position.set(0,.12,.38); body.add(head);
-  head.add(new THREE.Mesh(new THREE.SphereGeometry(.17,10,8),O));
-  const muz=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),S2); muz.position.set(0,-.04,.13); head.add(muz);
-  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.ConeGeometry(.06,.12,4),O); e.position.set(.09*sd,.15,0); head.add(e); }
-  const tail=new THREE.Group(); tail.position.set(0,0,-.4); body.add(tail);
-  const tm=new THREE.Mesh(new THREE.CylinderGeometry(.04,.05,.5,6),O); tm.rotation.x=Math.PI/2; tm.position.z=-.25; tail.add(tm);
-  g.position.set(PEN.x0+2.2,1.78,PEN.z0+2.2); g.rotation.y=.8; scene.add(g);
-  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  const S=CRIT_SPH, O=0xf59a3e, STR=0xc9622a, CR=0xfff0dc, NOSE=0xff8f9e, EAR=0xffb0b8, B=[], H=[];
+  // the body's origin is at the belly, so puffing up makes it taller rather than sink into the hay
+  B.push([new THREE.SphereGeometry(1,20,12),(x,y,z)=>y>-.25&&z<.55&&Math.floor((z+1.1)/.24)%2?STR:O,[0,.17,0],0,[.3,.18,.36]]);   // tabby stripes over the back
+  B.push([S,O,[.13,.2,-.14],0,[.15,.14,.19]]);                    // a hind leg tucked up
+  B.push([CRIT_SPH_S,STR,[.13,.25,-.14],0,[.13,.1,.03]]);
+  B.push([S,CR,[0,.13,.27],0,[.18,.12,.12]]);                     // cream chest
+  for(const sd of [-1,1]) B.push([CRIT_SPH_S,CR,[.08*sd,.05,.34],0,[.06,.045,.075]]);   // front paws tucked under the chin
+  critMesh(body,critBake(B));
+  // head: built facing +z, then turned round in a mount, so updateCat's nod reads as chin-down asleep / chin-up awake
+  if(!CRIT_GEO.catHead){
+    H.push([S,O,[0,0,0],0,[.15,.13,.14]]);
+    H.push([CRIT_SPH_S,CR,[0,-.075,.09],0,[.04,.025,.035]]);
+    H.push([CRIT_SPH_XS,NOSE,[0,-.018,.138],0,[.022,.015,.012]]);
+    for(const [x,y] of [[0,.125],[.045,.115],[-.045,.115]]) H.push([CRIT_SPH_XS,STR,[x,y,.01],[-.3,0,0],[.012,.02,.055]]);
+    for(const sd of [-1,1]){
+      H.push([CRIT_SPH_S,CR,[.032*sd,-.045,.11],0,[.045,.035,.04]]);
+      H.push([critCone(.058,.12,6),O,[.085*sd,.115,-.01],[-.1,0,-.35*sd],[1,1,.55]]);
+      H.push([critCone(.036,.08,6),EAR,[.083*sd,.108,.006],[-.1,0,-.35*sd],[1,1,.4]]);
+      H.push([new THREE.TorusGeometry(.028,.008,4,8,Math.PI),PAL.ink,[.06*sd,.025,.124],[0,.45*sd,Math.PI]]);   // closed, contented eyes
+    }
+    CRIT_GEO.catHead=critBake(H).rotateY(Math.PI);
+  }
+  const hm=new THREE.Group(); hm.position.set(.05,.21,.3); hm.rotation.y=Math.PI+.35; body.add(hm);
+  const head=new THREE.Group(); hm.add(head); critMesh(head,CRIT_GEO.catHead);
+  // tail: points backwards from a turned-round mount, so updateCat's raise lifts it up when the cat puffs
+  const tm=new THREE.Group(); tm.position.set(-.05,.12,-.32); tm.rotation.y=Math.PI; body.add(tm);
+  const tail=new THREE.Group(); tm.add(tail);
+  const curve=new THREE.CatmullRomCurve3([[0,0,0],[0,-.02,.15],[.07,-.07,.3],[.21,-.09,.37],[.33,-.09,.29]].map(p=>new THREE.Vector3(...p)));
+  critMesh(tail,critBake([[new THREE.TubeGeometry(curve,14,.042,6),(x,y,z)=>Math.floor(Math.hypot(x,z)/.075)%2?STR:O],[CRIT_SPH_S,O,[0,0,0],0,[.044,.044,.044]],[CRIT_SPH_S,STR,[.33,-.09,.29],0,[.042,.042,.042]]]));
+  addOutline(g,.018);
+  g.position.set(PEN.x0+2.2,2.16,PEN.z0+2.2); g.rotation.y=.8; scene.add(g);
+  g.traverse(o=>{ if(o.isMesh && !o.userData.isOutline) o.castShadow=true; });
   return {g,body,head,tail,hissT:0,puff:0};
 })();
 function updateCat(dt,time){
@@ -4231,17 +4465,46 @@ function objectiveText(){
 }
 
 // ---------------- the falcon: now and then it swoops down and carries the dog off ----------------
+// a long pointed falcon wing along +x (sd=1) or -x (sd=-1): a sphere squashed and swept back, so it stays smooth for the outline
+function falconWing(sd,top,under,tip){
+  const k='falconWing'+sd; if(CRIT_GEO[k]) return CRIT_GEO[k];
+  const g=new THREE.SphereGeometry(1,12,18), P=g.attributes.position, col=[], c=new THREE.Color();
+  for(let i=0;i<P.count;i++){
+    const x=P.getX(i), y=P.getY(i), z=P.getZ(i), t=(y+1)/2;           // t: 0 at the root (inside the body) .. 1 at the tip
+    const half=.7*(1-.82*Math.pow(t,1.25)), sweep=.12-.95*t*t, thick=.13*(1-.6*t);
+    P.setXYZ(i,sd*(t*3.5-.4),x*thick-.06*t*t,sweep+z*half);
+    c.setHex(t>.7?tip:x<-.2?under:top); col.push(c.r,c.g,c.b);
+  }
+  if(sd>0){ const I=g.index; for(let i=0;i<I.count;i+=3){ const a=I.getX(i+1); I.setX(i+1,I.getX(i+2)); I.setX(i+2,a); } }
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.deleteAttribute('uv');
+  return CRIT_GEO[k]=critSmooth(g);
+}
 const falcon=(function(){
-  const g=new THREE.Group(), brown=mat(0x7a5232), cream=mat(0xe8d8b8), yel=mat(0xf2b544);
-  const body=new THREE.Mesh(new THREE.SphereGeometry(.6,10,8),brown); body.scale.set(1,.85,1.7); g.add(body);
-  const belly=new THREE.Mesh(new THREE.SphereGeometry(.5,10,8),cream); belly.scale.set(.9,.7,1.4); belly.position.y=-.15; g.add(belly);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.42,10,8),brown); head.position.set(0,.3,1.05); g.add(head);
-  const beak=new THREE.Mesh(new THREE.ConeGeometry(.14,.4,6),yel); beak.rotation.x=Math.PI/2+.4; beak.position.set(0,.22,1.5); g.add(beak);
-  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(.08,6,5),mat(0x111111)); e.position.set(sd*.22,.42,1.32); g.add(e); }
+  // a peregrine: slate-blue back, cream chest, dark hood and moustache, golden hooked beak, big golden eyes under a stern brow
+  const g=new THREE.Group(), S=CRIT_SPH, SLATE=0x5576aa, HOOD=0x2b3552, CREAM=0xfdf0d8, GOLD=0xffb93a, TIP=0x2a2f45, B=[], E=[];
+  B.push([critTorso('falconBody',[[0,-1.02],[.2,-.92],[.31,-.72],[.43,-.42],[.52,-.08],[.56,.22],[.52,.52],[.4,.78],[0,.95]],12,.95,z=>z>0?z*.12:0),SLATE,[0,0,0]]);
+  B.push([S,CREAM,[0,-.17,.28],[-.08,0,0],[.43,.38,.64]]);                                                                         // cream chest
+  for(const [x,z] of [[0,.45],[-.17,.3],[.17,.3],[0,.12],[-.14,-.05],[.14,-.05]]) B.push([CRIT_SPH_XS,HOOD,[x,-.5+Math.abs(x)*.4,z],[0,0,0],[.06,.03,.045]]);   // chest bars
+  B.push([S,CREAM,[0,.3,1.0],0,[.39,.37,.38]]);
+  B.push([new THREE.SphereGeometry(1,12,6,0,TAU,0,Math.PI*.56),HOOD,[0,.3,.99],[-.72,0,0],[.402,.382,.392]]);                       // dark hood
+  for(const sd of [-1,1]) B.push([CRIT_SPH_S,HOOD,[.25*sd,.15,1.19],[.25,0,-.2*sd],[.07,.16,.08]]);                                            // moustache stripes
+  B.push([CRIT_SPH_S,GOLD,[0,.26,1.33],0,[.14,.11,.11]]);                                                                                         // cere
+  const beak=new THREE.ConeGeometry(.13,.42,8).rotateX(Math.PI/2).translate(0,0,.21), BP=beak.attributes.position;
+  for(let i=0;i<BP.count;i++){ const f=BP.getZ(i); BP.setY(i,BP.getY(i)-1.8*f*f); }                                                   // bend it into a hook
+  critSmooth(beak);
+  B.push([beak,(x,y,z)=>z>.33?TIP:GOLD,[0,.27,1.37]]);
+  // fanned tail with a dark band and a pale tip
+  for(const [a,dx] of [[0,0],[.28,.12],[-.28,-.12]]) B.push([CRIT_SPH_S,(x,y,z)=>z<-.8?CREAM:z<-.5?TIP:SLATE,[dx,.02,-1.22],[.12,a,0],[.2,.05,.55]]);
+  // talons tucked under, ready to grab
+  for(const sd of [-1,1]){
+    B.push([critCapsule(.07,.06,.28),GOLD,[.22*sd,-.38,.25],[-.5,0,0]]);
+    for(const dz of [-.07,0,.07]) B.push([critCone(.03,.12,5),TIP,[.22*sd+dz*.6,-.66,.42+Math.abs(dz)*.3],critDir(dz,-.6,1)]);
+  }
+  for(const sd of [-1,1]) critEye(E,B,.19*sd,.37,1.28,.125,0xffc23a,.4*sd,{lid:.4,lidCol:HOOD,tilt:.45});
+  critMesh(g,critBake(B)); critMesh(g,critBake(E),0,0,0,true);
   const wings=[];
-  for(const sd of [-1,1]){ const piv=new THREE.Group(); piv.position.set(sd*.4,.15,.1); const w=new THREE.Mesh(new THREE.BoxGeometry(2.8,.08,1.1),brown); w.position.x=sd*1.4; w.castShadow=true; piv.add(w); g.add(piv); wings.push([piv,sd]); }
-  const tail=new THREE.Mesh(new THREE.BoxGeometry(.9,.06,1),brown); tail.position.set(0,0,-1.2); g.add(tail);
-  for(const sd of [-1,1]){ const tl=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.5,5),yel); tl.position.set(sd*.25,-.6,.2); g.add(tl); }
+  for(const sd of [-1,1]){ const piv=new THREE.Group(); piv.position.set(sd*.4,.15,.1); critMesh(piv,falconWing(sd,SLATE,0xc9d4e8,TIP)); g.add(piv); wings.push([piv,sd]); }
+  addOutline(g,.035);
   g.scale.setScalar(1.4); g.visible=false; scene.add(g);
   const shadow=new THREE.Mesh(new THREE.CircleGeometry(1,28),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.42,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.visible=false; scene.add(shadow);
@@ -4581,24 +4844,62 @@ function syncSurprise(dt,time){
 
 // ---------------- the cougar: lies in a tree, and grabs any sheep that strays too close ----------------
 const COUG=(function(){
-  const tree=new THREE.Group(), bark=mat(0x5a4130), leaf=mat(0x2f5b2c);
-  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.42,.6,4.6,8),bark); trunk.position.y=2.3; trunk.castShadow=true; tree.add(trunk);
-  const branch=new THREE.Mesh(new THREE.CylinderGeometry(.2,.28,3,6),bark); branch.rotation.z=Math.PI/2-.12; branch.position.set(1.4,3.05,0); branch.castShadow=true; tree.add(branch);
-  for(const [x,y,z,s] of [[0,5.2,0,2.1],[.9,4.7,.8,1.5],[-.9,4.8,-.6,1.6],[-.3,6.1,.2,1.3],[.6,5.9,-.7,1.2],[-1,4.5,.9,1.2]]){ const f=new THREE.Mesh(foliageGeo,leaf); f.position.set(x,y,z); f.scale.setScalar(s); f.castShadow=true; tree.add(f); }
+  const S=CRIT_SPH;
+  // its own tree: a chunky trunk, a round puffy canopy, and one long branch along +x whose top is ~3.25 up where the cat lies
+  const tree=new THREE.Group(), BARK=0x9c6038, BARKD=0x5e3620, TT=[], TL=[];
+  TT.push([new THREE.LatheGeometry([[.84,-.05],[.64,.1],[.5,.38],[.44,.9],[.42,2],[.39,3.2],[.35,4.3],[.28,5],[0,5.15]].map(([r,y])=>new THREE.Vector2(r,y)),10),BARK]);
+  for(let i=0;i<4;i++){ const a=i/4*TAU+.4; TT.push([CRIT_SPH_S,BARK,[Math.cos(a)*.52,.1,Math.sin(a)*.52],[0,-a,0],[.36,.17,.2]]); }      // root flares
+  TT.push([CRIT_SPH_S,BARKD,[.05,1.75,.41],[-.1,0,0],[.1,.15,.06]]);                                                                    // knot hole
+  TT.push([critCapsule(.3,.17,3.4,9),BARK,[.02,2.947,0],[0,0,Math.PI/2+.04]]);                                                 // the cougar's branch
+  TT.push([critCapsule(.09,.06,.75,6),BARK,[1.15,3.0,-.12],critDir(-.3,-.45,1)]);                                               // a side twig
+  TL.push([CRIT_SPH_S,PAL.leaf,[1.4,3.32,-.82],0,[.32,.28,.3]]);
+  for(const [x,y,z,r,c] of [[-.45,5.6,0,1.75,PAL.leaf],[.5,5.5,.6,1.1,PAL.leaf],[-1.35,5.15,-.4,1.15,PAL.leafDark],[-.3,6.75,.1,1.1,PAL.leafLight],[.45,6.25,-.75,1,PAL.leaf],[-1.05,5.4,1,1.05,PAL.leaf],[-.3,4.95,-1.1,1,PAL.leafDark],[.85,6.55,.35,.8,PAL.leafLight]])
+    TL.push([S,(xx,yy)=>yy>.55?PAL.leafLight:c,[x,y,z],0,[r,r*.92,r]]);
+  critMesh(tree,critBake(TT)); critMesh(tree,critBake(TL));
+  addOutline(tree,.06);
   tree.visible=false; scene.add(tree);
-  // the cat
-  const cat=new THREE.Group(), fur=mat(0xdba660), pale=mat(0xead2a8), dark=mat(0x3a2a1c);
-  const body=new THREE.Mesh(new THREE.BoxGeometry(.62,.55,1.7),fur); body.position.y=.35; cat.add(body);
-  const belly=new THREE.Mesh(new THREE.BoxGeometry(.5,.2,1.4),pale); belly.position.y=.12; cat.add(belly);
-  const head=new THREE.Group(); head.position.set(0,.55,1.05); cat.add(head);
-  head.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(.55,.48,.5),fur),{}));
-  const muz=new THREE.Mesh(new THREE.BoxGeometry(.32,.22,.22),pale); muz.position.set(0,-.1,.3); head.add(muz);
-  const nose=new THREE.Mesh(new THREE.BoxGeometry(.1,.07,.05),mat(0x8a4a3a)); nose.position.set(0,-.02,.42); head.add(nose);
-  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.ConeGeometry(.11,.22,4),fur); e.position.set(sd*.19,.33,-.05); head.add(e);
-    const eye=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),new THREE.MeshBasicMaterial({color:0xffe14d})); eye.position.set(sd*.14,.08,.26); head.add(eye); }
-  const legs=[]; for(const [x,z] of [[-.22,.6],[.22,.6],[-.22,-.6],[.22,-.6]]){ const pv=new THREE.Group(); pv.position.set(x,.2,z); const lg=new THREE.Mesh(new THREE.BoxGeometry(.16,.55,.16),fur); lg.position.y=-.27; pv.add(lg); cat.add(pv); legs.push(pv); }
-  const tail=[]; let par=cat; for(let i=0;i<4;i++){ const pv=new THREE.Group(); pv.position.set(0,i?-.38:.4,i?0:-.85); const sg=new THREE.Mesh(new THREE.BoxGeometry(.12,.42,.12),i===3?dark:fur); sg.position.y=-.2; pv.add(sg); par.add(pv); tail.push(pv); par=pv; }
-  cat.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); cat.scale.setScalar(1.6); cat.visible=false; scene.add(cat);
+  // the cat: a sleek tawny cougar with a long dark-tipped tail, sly sleepy eyes and tear-stripe markings.
+  // The body sits a little forward of the cat's origin so the hanging tail clears the trunk.
+  const cat=new THREE.Group(), FUR=0xdf9a50, BACK=0xc8823e, PALE=0xfff0dc, PAW=0xf6d29c, DARK=0x4a2d20, NOSE=0xf27f86, EAR=0xffb2a2, OZ=.12;
+  const K=[], H=[], E=[];
+  K.push([critTorso('cougTorso',[[0,-.8],[.17,-.76],[.27,-.64],[.3,-.48],[.28,-.3],[.235,-.12],[.225,.04],[.25,.2],[.29,.36],[.3,.5],[.26,.63],[.17,.73],[0,.8]],12,.98,z=>z>0?z*.2:0),
+    (x,y,z)=>{ const up=y/(Math.hypot(x,y)||1); return up<-.62&&z>-.58&&z<.58?PALE:up>.75&&z>-.6&&z<.45?BACK:FUR; },[0,.36,OZ]]);
+  for(const sd of [-1,1]){
+    K.push([CRIT_SPH_S,FUR,[.11*sd,.55,.42+OZ],[.2,0,0],[.12,.09,.17]]);          // shoulder blades
+    K.push([S,FUR,[.14*sd,.47,-.46+OZ],0,[.15,.15,.22]]);                // haunches
+  }
+  K.push([CRIT_SPH_S,PALE,[0,.33,.7+OZ],[-.4,0,0],[.17,.18,.12]]);
+  K.push([S,FUR,[0,.5,.84+OZ],[.5,0,0],[.19,.21,.22]]);
+  const head=new THREE.Group(); head.position.set(0,.6,1.08+OZ); cat.add(head);
+  H.push([S,FUR,[0,.04,-.03],0,[.245,.205,.19]]);
+  H.push([S,FUR,[0,.0,.11],[-.2,0,0],[.1,.085,.11]]);
+  H.push([CRIT_SPH_S,PALE,[0,-.115,.13],0,[.07,.05,.07]]);
+  H.push([CRIT_SPH_S,NOSE,[0,-.01,.235],[.3,0,0],[.056,.036,.036]]);
+  for(const sd of [-1,1]){
+    H.push([S,PALE,[.14*sd,-.05,.04],0,[.12,.1,.1]]);
+    H.push([critCone(.045,.16,5),PALE,[.24*sd,-.08,0],critDir(sd,-.35,-.25)]);                         // cheek tufts
+    H.push([CRIT_SPH_S,PALE,[.06*sd,-.06,.17],0,[.085,.07,.08]]);
+    H.push([CRIT_SPH_XS,DARK,[.085*sd,-.02,.17],[0,0,-.35*sd],[.016,.06,.03]]);                                  // tear stripes
+    H.push([CRIT_SPH_S,(x,y,z)=>z<-.2?DARK:FUR,[.15*sd,.22,-.07],[-.1,0,-.42*sd],[.1,.11,.046]]);               // round ears, dark backs
+    H.push([CRIT_SPH_S,EAR,[.148*sd,.215,-.045],[-.1,0,-.42*sd],[.062,.07,.024]]);
+    critEye(E,H,.1*sd,.075,.15,.086,0xffd23a,.3*sd,{lid:.48,lidCol:FUR,tilt:.22,pupil:.5});
+  }
+  critMesh(cat,critBake(K)); critMesh(head,critBake(H)); critMesh(head,critBake(E),0,0,0,true);
+  // legs: a short thigh then a forearm bent so that, draped over the branch (pivot z = +-1.2), the paws hang down
+  const legGeo=(back,sd)=>{ const k='cougLeg'+back+sd; if(CRIT_GEO[k]) return CRIT_GEO[k]; const b=.7*sd, ky=-.17;
+    return CRIT_GEO[k]=critBake([back?[S,FUR,[0,-.03,0],0,[.13,.19,.16]]:[critCapsule(.095,.085,.17),FUR],[critCapsule(.085,.072,.3),FUR,[0,ky,0],[0,0,b]],
+      [CRIT_SPH_S,PAW,[Math.sin(b)*.37,ky-Math.cos(b)*.37,.03],[0,0,b],[.1,.075,.12]]]); };
+  const legs=[]; for(const [x,z] of [[-.2,.56],[.2,.56],[-.2,-.56],[.2,-.56]]){ const pv=new THREE.Group(); pv.position.set(x,.2,z+OZ); critMesh(pv,legGeo(z<0?1:0,x<0?1:-1)); cat.add(pv); legs.push(pv); }
+  // the tail hangs in a lazy J: each link is bent a little further forward than the last
+  const tR=[.085,.077,.07,.066], tA=[0,-.22,-.5,-.85], tail=[]; let par=cat;
+  for(let i=0;i<4;i++){
+    const pv=new THREE.Group();
+    if(i) pv.position.set(0,-.44*Math.cos(tA[i-1]),-.44*Math.sin(tA[i-1])); else pv.position.set(0,.42,-.66+OZ);
+    const geo=CRIT_GEO['cougTail'+i]||(CRIT_GEO['cougTail'+i]=critBake([[critCapsule(tR[i],i<3?tR[i+1]:.08,.44),(x,y)=>i===3&&y<-.14?DARK:FUR,[0,0,0],[tA[i],0,0]]]));
+    critMesh(pv,geo); par.add(pv); tail.push(pv); par=pv;
+  }
+  addOutline(cat,.03);
+  cat.scale.setScalar(1.6); cat.visible=false; scene.add(cat);
   const ring=new THREE.Mesh(new THREE.RingGeometry(5.9,6.5,48),new THREE.MeshBasicMaterial({color:0xff4a3a,transparent:true,opacity:.25,depthWrite:false,side:THREE.DoubleSide}));
   ring.rotation.x=-Math.PI/2; ring.visible=false; scene.add(ring);
   return {tree,cat,head,legs,tail,ring,on:false,R:6.3,state:'watch',t:0,x:0,y:0,z:0,tx:0,tz:0,px:0,pz:0,ang:0,prey:null,hissT:0,warned:false};
