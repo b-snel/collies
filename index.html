@@ -342,6 +342,7 @@ function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d
 const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:6};
 const BARN = {bx:-23, bz:-38};
+const POND = {x:-26, z:16, r:7};     // sheep walk around it; dogs and ducks can swim
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 let WOOL=0, UP={};
 try{ WOOL=+localStorage.getItem('collieDuskWool')||0; UP=JSON.parse(localStorage.getItem('collieDuskUp')||'{}')||{}; }catch(e){}
@@ -494,6 +495,7 @@ const treeDots = [];
   while(i<N){
     const x=(Math.random()*2-1)*150, z=(Math.random()*2-1)*150;
     if(x>PEN.x0-1 && x<PEN.x1+1 && z>PEN.z0-1 && z<PEN.z1+1) continue;
+    if(Math.hypot(x-POND.x,z-POND.z)<POND.r+.6) continue;
     d.position.set(x,groundH(x,z),z); d.rotation.set((Math.random()-.5)*.4,Math.random()*TAU,(Math.random()-.5)*.4);
     const s=.6+Math.random()*1.1; d.scale.set(s,s*(.7+Math.random()*.8),s); d.updateMatrix();
     im.setMatrixAt(i,d.matrix);
@@ -599,6 +601,21 @@ const barnWin = new THREE.MeshStandardMaterial({color:0x2a2010, emissive:0xffc06
   boxes.push({x0:bx-7.2,x1:bx+7.2,z0:bz-6.2,z1:bz+6.2});
 })();
 
+// pond: water, a reedy bank, lily pads and slow ripples
+const pondRipples=[];
+(function(){
+  const bank=new THREE.Mesh(new THREE.CircleGeometry(POND.r+1.4,40),new THREE.MeshStandardMaterial({color:0x6d6a3e,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  bank.rotation.x=-Math.PI/2; bank.position.set(POND.x,.035,POND.z); bank.receiveShadow=true; scene.add(bank);
+  const water=new THREE.Mesh(new THREE.CircleGeometry(POND.r,40),new THREE.MeshStandardMaterial({color:0x3f86b5,roughness:.15,metalness:.1,transparent:true,opacity:.88,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+  water.rotation.x=-Math.PI/2; water.position.set(POND.x,.06,POND.z); water.receiveShadow=true; scene.add(water);
+  const padMat=mat(0x4f9a3a), reedMat=mat(0x5d7f2f), cat=mat(0x6b4224);
+  for(let i=0;i<9;i++){ const a=Math.random()*TAU, r=Math.random()*(POND.r-1.5); const pd=new THREE.Mesh(new THREE.CircleGeometry(.35+Math.random()*.25,10),padMat); pd.rotation.x=-Math.PI/2; pd.position.set(POND.x+Math.cos(a)*r,.08,POND.z+Math.sin(a)*r); scene.add(pd); }
+  for(let i=0;i<34;i++){ const a=Math.random()*TAU, r=POND.r+.2+Math.random()*1; const h=.8+Math.random()*.9;
+    const rd=new THREE.Mesh(new THREE.CylinderGeometry(.03,.05,h,4),reedMat); rd.position.set(POND.x+Math.cos(a)*r,h/2,POND.z+Math.sin(a)*r); rd.rotation.z=(Math.random()-.5)*.3; scene.add(rd);
+    if(i%3===0){ const tip=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.28,6),cat); tip.position.set(rd.position.x,h-.05,rd.position.z); scene.add(tip); } }
+  for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(.9,1,32),new THREE.MeshBasicMaterial({color:0xcfe9ff,transparent:true,opacity:0,depthWrite:false})); rg.rotation.x=-Math.PI/2; rg.position.set(POND.x+(Math.random()-.5)*6,.09,POND.z+(Math.random()-.5)*6); scene.add(rg); pondRipples.push({m:rg,t:i*1.3}); }
+})();
+
 // trees & rocks
 const trunkM=mat(0x5a4130), leafMs=[mat(0x2f5b2c),mat(0x3b6b31),mat(0x274d2a)];
 const foliageGeo=new THREE.IcosahedronGeometry(1,0);
@@ -620,6 +637,7 @@ function makeRock(x,z,s){
 function clearOf(x,z,pad){
   if(z<PEN.z1+10 && x>BARN.bx-11 && x<PEN.x1+10) return false;   // pen + barn area
   if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad) return false;
+  if(Math.hypot(x-POND.x,z-POND.z)<POND.r+2+pad) return false;
   for(const c of circles) if(Math.hypot(c.x-x,c.z-z)<c.r+pad) return false;
   return true;
 }
@@ -811,6 +829,8 @@ function updatePops(dt){
 
 // ---------------- collision ----------------
 function collide(e,r,o){
+  if(!o.swim){ const dx=e.x-POND.x, dz=e.z-POND.z, d=Math.hypot(dx,dz), m=POND.r+r*.6;
+    if(d<m && d>1e-6){ const nx=dx/d, nz=dz/d; e.x=POND.x+nx*m; e.z=POND.z+nz*m; const vn=e.vx*nx+e.vz*nz; if(vn<0){ e.vx-=vn*nx; e.vz-=vn*nz; } } }
   for(const c of circles){
     const dx=e.x-c.x, dz=e.z-c.z, d=Math.hypot(dx,dz), m=r+c.r;
     if(d<m && d>1e-6){ const nx=dx/d, nz=dz/d; e.x=c.x+nx*m; e.z=c.z+nz*m; const vn=e.vx*nx+e.vz*nz; if(vn<0){e.vx-=vn*nx; e.vz-=vn*nz;} }
@@ -844,7 +864,7 @@ function initAudio(){
   if(AC) loadAudioAssets();
 }
 // ---- recorded audio: real barks and bleats, Hank's voice clips, and the pipe band ----
-const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy"};
+const VOICE_MAP={"Come bye!": "come_bye", "Away to me!": "away_to_me", "Walk up!": "walk_up", "Lie down!": "lie_down", "That one's eatin' grass!": "eatin_grass", "Quit yer munchin'!": "quit_munchin", "Get that greedy one movin'!": "greedy_one", "Oi! No snackin'!": "no_snackin", "Away out, NAME! Bring them in!": "away_out", "Mind the bell ewe. The flock follows her!": "bell_ewe", "The golden one! Well done!": "golden_one", "Ha! Got the old ram!": "old_ram", "Good dog!": "good_dog", "That's it!": "thats_it", "Nice and steady!": "nice_steady", "In ye go!": "in_ye_go", "Here they come! Guard the flock!": "here_they_come", "That'll do, NAME. That'll do.": "thatll_do", "Good dog. They're all safe now.": "all_safe", "Morning! You did well, NAME.": "morning", "Ach. We will try again.": "try_again", "Watch the ram!": "watch_ram", "Mind the ram, NAME!": "mind_ram", "Get 'im, NAME!": "get_im", "Oof! Me gun!": "me_gun", "Oi! Watch it!": "watch_it", "Mind yer manners!": "manners", "Not me, the sheep!": "not_me", "Ach, go on then! Just for today!": "go_on_then", "Coyotes! In broad daylight!": "broad_daylight", "More of them! Get after them!": "more_of_them", "Ach, it's a wild night!": "wild_night", "Ha! Away with ye, wolf!": "away_wolf", "Watch yerself! That's a wolf!": "thats_a_wolf", "Ye found them all! Clever dog!": "found_all", "Ach! Ye've trod on the mad mushroom! RUN!": "mad_mushroom", "Phew. They've calmed down.": "calmed_down", "Gently! They won't go in scared!": "gently", "Easy! Ye'll scatter them!": "easy", "Ducks! Herd them in for a bonus!": "ducks_out", "Ha! The ducks are in!": "ducks_in", "That wee rascal's loose again!": "rascal_loose", "Away home, ye wee rascal!": "rascal_home", "Ye'll be wanting a towel!": "towel"};
 const SFX={bark:[],bleat:[],voice:{}};
 let assetsAsked=false, voiceSrc=null;
 function loadBuf(url){
@@ -852,7 +872,7 @@ function loadBuf(url){
 }
 function loadAudioAssets(){
   if(assetsAsked || !AC) return; assetsAsked=true;
-  ['bark1','bark2','bark3','bark4','bark5'].forEach(n=>loadBuf('audio/sfx/'+n+'.mp3').then(b=>SFX.bark.push(b)).catch(()=>{}));
+  loadBuf('audio/sfx/bark1.mp3').then(b=>SFX.bark.push(b)).catch(()=>{});   // one dog, one voice
   [...new Set(Object.values(VOICE_MAP))].forEach(id=>loadBuf('audio/voice/'+id+'.mp3').then(b=>{ SFX.voice[id]=b; }).catch(()=>{}));
 }
 function playBuf(buf,rate,vol,when){
@@ -918,9 +938,9 @@ const ok=()=>AC && !muted;
 function sBark(pitch){
   if(!ok()) return; const t=AC.currentTime;
   if(SFX.bark.length){
-    const r=(pitch||1)*(.94+Math.random()*.12);
-    playBuf(SFX.bark[(Math.random()*SFX.bark.length)|0],r,.9);
-    if(Math.random()<.55) playBuf(SFX.bark[(Math.random()*SFX.bark.length)|0],r*(.97+Math.random()*.06),.75,t+.17+Math.random()*.06);
+    const r=(pitch||1)*(.97+Math.random()*.06);
+    playBuf(SFX.bark[0],r,.9);
+    if(Math.random()<.5) playBuf(SFX.bark[0],r*.97,.75,t+.19);
     return;
   }
   for(let i=0;i<2;i++){
@@ -1022,6 +1042,29 @@ function sSpit(){
   n.buffer=getNoise(); f.type='bandpass'; f.frequency.value=1800; f.Q.value=1.4;
   n.connect(f).connect(envG(t,.005,.5,.16)); n.start(t); n.stop(t+.18);
   const o=AC.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(420,t); o.frequency.exponentialRampToValueAtTime(140,t+.12); o.connect(envG(t,.004,.25,.14)); o.start(t); o.stop(t+.16);
+}
+function sQuack(p){
+  if(!ok()) return; p=p||1; const t=AC.currentTime, o=AC.createOscillator(), f=AC.createBiquadFilter();
+  o.type='sawtooth'; o.frequency.setValueAtTime(520*p,t); o.frequency.exponentialRampToValueAtTime(300*p,t+.13);
+  f.type='bandpass'; f.frequency.value=1200; f.Q.value=3;
+  o.connect(f).connect(envG(t,.005,.22,.16)); o.start(t); o.stop(t+.18);
+}
+function sYip(p){
+  if(!ok()) return; p=p||1; const t=AC.currentTime, o=AC.createOscillator(), f=AC.createBiquadFilter();
+  o.type='square'; o.frequency.setValueAtTime(1300*p,t); o.frequency.exponentialRampToValueAtTime(800*p,t+.08);
+  f.type='lowpass'; f.frequency.value=3200; o.connect(f).connect(envG(t,.004,.14,.1)); o.start(t); o.stop(t+.12);
+}
+function sHiss(){
+  if(!ok()) return; const t=AC.currentTime, n=AC.createBufferSource(), f=AC.createBiquadFilter();
+  n.buffer=getNoise(); f.type='highpass'; f.frequency.value=3500; n.connect(f).connect(envG(t,.03,.18,.45)); n.start(t); n.stop(t+.48);
+}
+function sSplash(){
+  if(!ok()) return; const t=AC.currentTime;
+  for(let i=0;i<3;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='bandpass'; f.frequency.value=900+i*500; f.Q.value=.8; n.connect(f).connect(envG(t+i*.04,.005,.3-i*.07,.25)); n.start(t+i*.04); n.stop(t+i*.04+.27); }
+}
+function sFlap(){
+  if(!ok()) return; const t=AC.currentTime;
+  for(let i=0;i<6;i++){ const n=AC.createBufferSource(), f=AC.createBiquadFilter(); n.buffer=getNoise(); f.type='lowpass'; f.frequency.value=900; n.connect(f).connect(envG(t+i*.07,.005,.12,.06)); n.start(t+i*.07); n.stop(t+i*.07+.08); }
 }
 function sThud(){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
@@ -1159,6 +1202,7 @@ function setupDay(){
   G.storm=false; G.flash=0; stopRain();
   resetGun();
   resetLlama();
+  spawnDucks(); spawnBirds(); resetRascal(); G.bonusWool=0;
 }
 
 // ---------------- input ----------------
@@ -1477,6 +1521,7 @@ function closeGates(){ for(const l of leaves){ l.target=l.closedA; l.seg.on=fals
 function endDay(reason){
   G.phase='result'; G.endReason=reason; stopRain(); $('bossBar').hidden=true;
   for(const c of G.coyotes) if(!c.gone){ dropSheep(c,false); c.state='retreat'; c.target=null; }
+  if(rascal.active) rascalLeave(false);
   closeGates();
   G.appleT=0; G.lanternT=0; dog.zoomT=0; dog2.zoomT=0;
   const alive=G.sheep.filter(s=>!s.dead), penned=alive.filter(s=>s.penned).length, outside=alive.length-penned;
@@ -1504,7 +1549,7 @@ function endDay(reason){
   const notes=[]; if(timeBonus) notes.push(timeBonus+' for daylight left'); if(fullBonus) notes.push('25 for a full flock'); if(outside&&reason!=='wiped') notes.push(outside*4+' for sheep that made it through the night');
   let woolEarned=G.drivenOff;
   for(const sh of G.sheep){ if(sh.dead) continue; woolEarned += sh.penned ? (sh.golden?10:sh.ram?4:sh.lamb?1:2) : (reason!=='wiped'?1:0); }
-  woolEarned += stars*3;
+  woolEarned += stars*3 + (G.bonusWool||0);
   WOOL+=woolEarned; saveMeta();
   const next = reason==='wiped'
     ? `<button class="btn" id="nextBtn" type="button">Shearing shed</button>`
@@ -1561,12 +1606,14 @@ function updateDog(D,dt){
   if(D.pounceT>0){
     D.pounceT-=dt; D.vx=D.pdx*27; D.vz=D.pdz*27;
   } else {
-    const top = (D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'));
+    const top = (D.lying?0:((zoom||running)&&il>.1?14:10))*(1+.06*lv('speed'))*(D.swim?.55:1);
     const a=1-Math.exp(-dt*(D.lying?14:9));
     D.vx+=(ix*top-D.vx)*a; D.vz+=(iz*top-D.vz)*a;
   }
   D.x+=D.vx*dt; D.z+=D.vz*dt;
-  collide(D,.55,{gate:false,perim:true});
+  collide(D,.55,{gate:false,perim:true,swim:true});
+  const wasSwim=D.swim; D.swim=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4;
+  if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
   D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt);
 }
@@ -1676,6 +1723,8 @@ function updateSheep(dt){
         const ex=s.x-c.x, ez=s.z-c.z, e=Math.hypot(ex,ez)+1e-6;
         if(e<11){ const k=1-e/11; fx+=ex/e*k*30; fz+=ez/e*k*30; fear=Math.max(fear,k); s.munch=0; stressIn+=1.2*k; }
       }
+      if(rascal.active && rascal.state==='run'){ const ex=s.x-rascal.x, ez=s.z-rascal.z, e=Math.hypot(ex,ez)+1e-6; if(e<10){ const k=1-e/10; fx+=ex/e*k*26; fz+=ez/e*k*26; fear=Math.max(fear,k*.9); s.munch=0; stressIn+=1.3*k; } }
+      { const px=s.x-POND.x, pz=s.z-POND.z, pd=Math.hypot(px,pz)+1e-6; if(pd<POND.r+3){ const k=(POND.r+3-pd)/3; fx+=px/pd*k*10; fz+=pz/pd*k*10; } }
       // stress: rises with pressure, fades when left alone (faster when the dog lies down)
       const tg=(1-.15*lv('calm'))*(s.trait==='skittish'?1.6:s.trait==='stubborn'?.55:1)*(s.jumpy?1.5:1)*(s.leader?.8:1);
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
@@ -2085,6 +2134,187 @@ function updateLlama(dt){
 }
 function syncLlama(dt){ if(!llama.active) return; syncAnimal(llama,dt,1.6); llama.m.head.rotation.x=llama.spitCD>3.1?-.5:0; }
 
+// ---------------- the duck family ----------------
+const duckMat={white:mat(0xf4f1ea), beak:mat(0xf09a2a), yellow:mat(0xffd84a), dark:mat(0x2a2420), wing:mat(0xdcd6ca)};
+function makeDuck(baby){
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  const s2=baby?.55:1, B=baby?duckMat.yellow:duckMat.white;
+  const b=new THREE.Mesh(new THREE.SphereGeometry(.28*s2,10,8),B); b.scale.set(1,.8,1.35); b.position.y=.3*s2; b.castShadow=true; body.add(b);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(.1*s2,.2*s2,5),B); tail.rotation.x=-Math.PI/2.6; tail.position.set(0,.4*s2,-.36*s2); body.add(tail);
+  const head=new THREE.Group(); head.position.set(0,.6*s2,.25*s2); body.add(head);
+  const h=new THREE.Mesh(new THREE.SphereGeometry(.15*s2,10,8),B); head.add(h);
+  const bk=new THREE.Mesh(new THREE.BoxGeometry(.11*s2,.05*s2,.16*s2),duckMat.beak); bk.position.set(0,-.02*s2,.15*s2); head.add(bk);
+  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.SphereGeometry(.025*s2,5,4),duckMat.dark); e.position.set(.09*s2*sd,.04*s2,.09*s2); head.add(e);
+    if(!baby){ const w=new THREE.Mesh(new THREE.SphereGeometry(.16,8,6),duckMat.wing); w.scale.set(.35,.7,1.1); w.position.set(.2*sd,.33,0); body.add(w); } }
+  const feet=[-1,1].map(sd=>{ const f=new THREE.Mesh(new THREE.BoxGeometry(.08*s2,.04*s2,.12*s2),duckMat.beak); f.position.set(.08*s2*sd,.02,.05*s2); g.add(f); return f; });
+  scene.add(g); return {g,body,head,feet};
+}
+const ducks=[];
+function spawnDucks(){
+  for(const d of ducks) scene.remove(d.m.g); ducks.length=0; G.ducksPenned=false;
+  for(let i=0;i<5;i++){ const a=1.2+i*.12; ducks.push({x:POND.x+Math.cos(a)*(POND.r+1.5+i*.8),z:POND.z+Math.sin(a)*(POND.r+1.5+i*.8),vx:0,vz:0,yaw:0,phase:Math.random()*6,baby:i>0,m:makeDuck(i>0),wa:Math.random()*TAU,wt:0,alarm:0}); }
+}
+function updateDucks(dt){
+  if(!ducks.length) return;
+  const M=ducks[0], playing=G.phase==='day'||G.phase==='night';
+  let fx=0,fz=0,maxV=1.3;
+  if(!G.ducksPenned){
+    const ND=nearestDog(M.x,M.z), dx=M.x-ND.x, dz=M.z-ND.z, d=Math.hypot(dx,dz)+1e-6;
+    M.alarm=Math.max(0,M.alarm-dt);
+    if(playing && d<8){
+      const k=1-d/8; fx+=dx/d*k*20; fz+=dz/d*k*20; maxV=5.2;
+      if(M.alarm<=0){ M.alarm=1.6; sQuack(1); setTimeout(()=>sQuack(1.5),120); }
+      if(!G.saidDucks && G.day===1){ G.saidDucks=true; shepSay('Ducks! Herd them in for a bonus!',true); }
+    } else {
+      // potter about near the pond
+      M.wt-=dt; if(M.wt<=0){ M.wt=2+Math.random()*3; M.wa=Math.random()*TAU; }
+      const hx=POND.x-M.x, hz=POND.z-M.z, hd=Math.hypot(hx,hz)+1e-6;
+      fx+=Math.cos(M.wa)*1.5; fz+=Math.sin(M.wa)*1.5; if(hd>POND.r+5){ fx+=hx/hd*2; fz+=hz/hd*2; }
+    }
+    if(playing && insidePen(M.x,M.z)){
+      G.ducksPenned=true; G.score+=40; G.bonusWool=(G.bonusWool||0)+5; pop('tScore');
+      popText(M.x,2,M.z,'+40','gold'); burst(M.x,1,M.z,40,PC.confetti,5,6);
+      for(let k=0;k<4;k++) setTimeout(()=>sQuack(1+k*.2),k*120);
+      shepSay('Ha! The ducks are in!',true);
+    }
+  } else { const cx=(PEN.x0+PEN.x1)/2+5, cz=PEN.z0+4; fx+=(cx-M.x)*.4; fz+=(cz-M.z)*.4; maxV=1; }
+  M.vx+=fx*dt; M.vz+=fz*dt; const kk=Math.exp(-dt*3); M.vx*=kk; M.vz*=kk;
+  const v=Math.hypot(M.vx,M.vz); if(v>maxV){ M.vx*=maxV/v; M.vz*=maxV/v; }
+  M.x+=M.vx*dt; M.z+=M.vz*dt; collide(M,.35,{gate:G.ducksPenned,perim:true,swim:true});
+  // ducklings: each one follows the duck in front, in a wobbly line
+  for(let i=1;i<ducks.length;i++){
+    const d=ducks[i], f=ducks[i-1], dx=f.x-d.x, dz=f.z-d.z, dd=Math.hypot(dx,dz)+1e-6;
+    const want=dd>.75?Math.min(6.5,(dd-.75)*5):0;
+    d.vx+=((want?dx/dd*want:0)-d.vx)*(1-Math.exp(-dt*8)); d.vz+=((want?dz/dd*want:0)-d.vz)*(1-Math.exp(-dt*8));
+    d.x+=d.vx*dt; d.z+=d.vz*dt; collide(d,.2,{gate:false,perim:true,swim:true});
+  }
+}
+function syncDucks(dt,time){
+  for(const d of ducks){
+    const sp=Math.hypot(d.vx,d.vz);
+    if(sp>.15) d.yaw=lerpAngle(d.yaw,Math.atan2(d.vx,d.vz),1-Math.exp(-dt*10));
+    const wet=Math.hypot(d.x-POND.x,d.z-POND.z)<POND.r-.2;
+    d.phase+=dt*(4+sp*5);
+    d.m.g.position.set(d.x,wet?-.08:0,d.z); d.m.g.rotation.y=d.yaw;
+    d.m.body.rotation.z=wet?0:Math.sin(d.phase)*.18*Math.min(1,sp*1.5+.2);     // waddle
+    d.m.head.rotation.x=sp<.2?Math.max(0,Math.sin(time*2+d.phase))*.6:0;        // pecking
+    d.m.feet.forEach((f,i)=>{ f.visible=!wet; f.position.z=.05+Math.sin(d.phase+i*Math.PI)*.08*Math.min(1,sp); });
+  }
+}
+
+// ---------------- Rascal, the neighbour's terrier ----------------
+function makeTerrier(){
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  const T=mat(0xb07a45), W=mat(0xf1ece0), D=mat(0x3a2a1c);
+  box(.42,.36,.78,W,0,.55,0,body); box(.43,.3,.4,T,0,.6,-.15,body);
+  const head=new THREE.Group(); head.position.set(0,.82,.45); body.add(head);
+  box(.34,.3,.34,T,0,0,0,head); box(.2,.16,.24,W,0,-.06,.24,head); box(.08,.07,.05,D,0,-.01,.37,head);
+  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.ConeGeometry(.07,.16,4),T); e.position.set(.11*sd,.22,-.02); e.rotation.set(.5,0,-.2*sd); head.add(e);
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(.03,6,4),D); eye.position.set(.09*sd,.05,.17); head.add(eye); }
+  const legs=[[-.13,.25],[.13,.25],[-.13,-.25],[.13,-.25]].map(([x,z])=>leg(body,x,z,.4,.4,.1,W,W));
+  const tail=new THREE.Group(); tail.position.set(0,.7,-.4); body.add(tail); box(.07,.24,.07,T,0,.12,0,tail); tail.rotation.x=-.4;
+  scene.add(g); return {g,body,head,legs,tail};
+}
+const rascal={active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
+rascal.m.g.visible=false;
+function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<2; G.rascalAt=.25+Math.random()*.3; }
+function rascalLeave(shooed,D){
+  if(rascal.state==='leave') return;
+  rascal.state='leave'; rascal.target=null;
+  if(shooed){ sYip(1.4); G.score+=15; G.bonusWool=(G.bonusWool||0)+2; pop('tScore'); popText(rascal.x,1.8,rascal.z,'+15','gold'); shepSay('Away home, ye wee rascal!',true); }
+}
+function updateRascal(dt){
+  if(!rascal.active){
+    if(G.phase==='day' && !G.rascalDone && G.t/dayLen(G.day)>G.rascalAt){
+      G.rascalDone=true; rascal.active=true; rascal.state='run'; rascal.t=0; rascal.m.g.visible=true;
+      const a=Math.PI*(.15+Math.random()*.7); rascal.x=Math.cos(a)*(FIELD+4); rascal.z=Math.sin(a)*(FIELD+4)*.9; rascal.vx=rascal.vz=0;
+      sYip(1); setTimeout(()=>sYip(1.1),160); shepSay("That wee rascal's loose again!",true);
+    }
+    return;
+  }
+  rascal.t+=dt;
+  let dirx=0,dirz=0,spd=0;
+  if(rascal.state==='run'){
+    const t=rascal.target;
+    if(!t||t.dead||t.penned||t.carried||Math.random()<dt*.25){ const pool=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried); rascal.target=pool.length?pool[(Math.random()*pool.length)|0]:null; }
+    if(!rascal.target) rascalLeave(false);
+    else { const dx=rascal.target.x-rascal.x, dz=rascal.target.z-rascal.z, d=Math.hypot(dx,dz)+1e-6, w=Math.sin(rascal.t*3)*.6; dirx=(dx*Math.cos(w)-dz*Math.sin(w))/d; dirz=(dx*Math.sin(w)+dz*Math.cos(w))/d; spd=11; }
+    if(Math.random()<dt*1.5) sYip(1+Math.random()*.3);
+    for(const D of dogs){ const d=Math.hypot(D.x-rascal.x,D.z-rascal.z); if((D.barkT>0&&d<12)||(D.pounceT>0&&d<3)||d<1.6){ rascalLeave(true,D); break; } }
+    if(rascal.t>28 || G.phase!=='day') rascalLeave(false);
+  }
+  if(rascal.state==='leave'){
+    const d=Math.hypot(rascal.x,rascal.z)+1e-6; dirx=rascal.x/d; dirz=rascal.z/d; spd=12.5;
+    if(Math.max(Math.abs(rascal.x),Math.abs(rascal.z))>FIELD+8){ rascal.active=false; rascal.m.g.visible=false; return; }
+  }
+  const a=1-Math.exp(-dt*7); rascal.vx+=(dirx*spd-rascal.vx)*a; rascal.vz+=(dirz*spd-rascal.vz)*a;
+  rascal.x+=rascal.vx*dt; rascal.z+=rascal.vz*dt; collide(rascal,.4,{gate:true,perim:false});
+}
+function syncRascal(dt,time){ if(!rascal.active) return; syncAnimal(rascal,dt,3); rascal.m.tail.rotation.z=Math.sin(time*30)*.6; }
+
+// ---------------- crows, pecking about until something comes near ----------------
+const birds=[];
+function makeBird(){
+  const g=new THREE.Group(), k=mat(0x1c1c22);
+  box(.14,.12,.28,k,0,0,0,g); box(.1,.1,.1,k,0,.07,.16,g); box(.03,.03,.08,mat(0x3a3530),0,.06,.24,g);
+  const wings=[-1,1].map(sd=>{ const w=new THREE.Group(); w.position.set(.07*sd,.04,0); g.add(w); box(.3,.02,.16,k,.15*sd,0,0,w); return w; });
+  scene.add(g); return {g,wings};
+}
+function spawnBirds(){
+  for(const b of birds) scene.remove(b.m.g); birds.length=0;
+  let cx=0,cz=10; for(let t=0;t<80;t++){ const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-16); if(clearOf(x,z,4)){ cx=x; cz=z; break; } }
+  for(let i=0;i<7;i++) birds.push({x:cx+(Math.random()-.5)*5,z:cz+(Math.random()-.5)*5,y:0,vx:0,vy:0,vz:0,air:0,hop:Math.random(),m:makeBird(),yaw:Math.random()*TAU});
+}
+function updateBirds(dt,time){
+  let scare=false;
+  for(const b of birds){
+    if(b.air>0){
+      b.air-=dt; b.x+=b.vx*dt; b.z+=b.vz*dt; b.y=Math.min(9,b.y+b.vy*dt); b.vy*=Math.exp(-dt*.6);
+      if(b.air<=0){ b.y=0; b.vx=b.vz=0; }
+      b.m.wings.forEach((w,i)=>w.rotation.z=(i?1:-1)*Math.sin(time*26+b.hop*9)*.9);
+    } else {
+      const near=dogs.some(D=>Math.hypot(D.x-b.x,D.z-b.z)<7) || (rascal.active&&Math.hypot(rascal.x-b.x,rascal.z-b.z)<6);
+      if(near && G.phase!=='title') scare=true;
+      b.hop-=dt; if(b.hop<=0){ b.hop=.4+Math.random()*1.2; b.yaw+= (Math.random()-.5)*2; b.x+=Math.sin(b.yaw)*.25; b.z+=Math.cos(b.yaw)*.25; }
+      b.m.wings.forEach(w=>w.rotation.z=0);
+    }
+    b.m.g.position.set(b.x,b.y+.1+(b.air>0?0:Math.max(0,Math.sin(b.hop*12))*.05),b.z); b.m.g.rotation.y=b.air>0?Math.atan2(b.vx,b.vz):b.yaw;
+  }
+  if(scare){
+    // the whole flock goes up together and settles somewhere else
+    let nx=0,nz=0; for(let t=0;t<40;t++){ const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-16); if(clearOf(x,z,4)){ nx=x; nz=z; break; } }
+    for(const b of birds){ if(b.air>0) continue; const T=4+Math.random()*1.5; b.air=T; b.vy=5+Math.random()*2; b.vx=(nx+(Math.random()-.5)*5-b.x)/T; b.vz=(nz+(Math.random()-.5)*5-b.z)/T; }
+    sFlap();
+  }
+}
+
+// ---------------- Hank's cat, asleep on a hay bale ----------------
+const cat=(function(){
+  const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
+  const O=mat(0xd98a3a), S2=mat(0xf3d9b0);
+  const b=new THREE.Mesh(new THREE.SphereGeometry(.3,10,8),O); b.scale.set(1,.7,1.4); body.add(b);
+  const head=new THREE.Group(); head.position.set(0,.12,.38); body.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(.17,10,8),O));
+  const muz=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),S2); muz.position.set(0,-.04,.13); head.add(muz);
+  for(const sd of [-1,1]){ const e=new THREE.Mesh(new THREE.ConeGeometry(.06,.12,4),O); e.position.set(.09*sd,.15,0); head.add(e); }
+  const tail=new THREE.Group(); tail.position.set(0,0,-.4); body.add(tail);
+  const tm=new THREE.Mesh(new THREE.CylinderGeometry(.04,.05,.5,6),O); tm.rotation.x=Math.PI/2; tm.position.z=-.25; tail.add(tm);
+  g.position.set(PEN.x0+2.2,1.78,PEN.z0+2.2); g.rotation.y=.8; scene.add(g);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  return {g,body,head,tail,hissT:0,puff:0};
+})();
+function updateCat(dt,time){
+  const near=dogs.some(D=>Math.hypot(D.x-cat.g.position.x,D.z-cat.g.position.z)<5) && G.phase!=='title';
+  cat.hissT=Math.max(0,cat.hissT-dt);
+  if(near && cat.hissT<=0){ cat.hissT=6; sHiss(); }
+  cat.puff=lerp(cat.puff,near?1:0,1-Math.exp(-dt*6));
+  cat.body.scale.set(1+cat.puff*.15,1+cat.puff*.45,1);
+  cat.head.rotation.x=lerp(-.3,.2,cat.puff);
+  cat.tail.rotation.y=Math.sin(time*(near?10:1.2))*(near?.2:.5); cat.tail.rotation.x=cat.puff*-1.2;
+  cat.body.position.y=Math.sin(time*1.5)*.01*(1-cat.puff);   // slow sleepy breathing
+}
+function updatePond(dt){ for(const r of pondRipples){ r.t+=dt; const k=(r.t%4)/4; r.m.scale.setScalar(.3+k*2.2); r.m.material.opacity=.35*(1-k); if(k<dt/4){ r.m.position.set(POND.x+(Math.random()-.5)*7,.09,POND.z+(Math.random()-.5)*7); } } }
+
 // ---------------- Old Hank, the shepherd ----------------
 function makeShepherd(){
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
@@ -2386,6 +2616,7 @@ function syncDog(D,dt,time,party){
     dm.head.rotation.x=lerp(dm.head.rotation.x, sp>7?.25:-.05, .15);
   }
   if(party) dm.body.position.y=Math.abs(Math.sin(time*9))*.55;
+  if(D.swim){ dm.body.position.y=-.5+Math.sin(time*7)*.05; const pf=Math.sin(time*14)*.7; dm.legs.forEach((l,i)=>l.rotation.x=i%2?pf:-pf); if(sp>1.5 && Math.random()<.5) burst(D.x-D.vx*.05,.15,D.z-D.vz*.05,1,[0xcfe9ff,0xffffff],.8,1.5,8); }
   dm.tail.rotation.y=Math.sin(time*(party?22:D.lying?6:12))*(D.lying?.3:.5);
   dm.tail.rotation.x=party?.2:(sp>5?-1.0:-.7);
   if(D.barkT>.35) dm.head.rotation.x=-.3;
@@ -2570,6 +2801,9 @@ function drawMinimap(time){
     mx.fillStyle=c.boss?'#ff2a1a':'#e2643f'; mx.beginPath(); const k=c.boss?2.4:c.alpha?1.6:1; mx.moveTo(cx,cy-5*k); mx.lineTo(cx+4.5*k,cy+4*k); mx.lineTo(cx-4.5*k,cy+4*k); mx.closePath(); mx.fill();
   }
   for(const p of powerups){ mx.fillStyle=p.type==='apple'?'#ff6b6b':p.type==='bone'?'#fff2c8':'#ffc061'; const px=X(p.x),py=Y(p.z),r=5+Math.sin(time*6)*1.2; mx.beginPath(); mx.moveTo(px,py-r); mx.lineTo(px+r,py); mx.lineTo(px,py+r); mx.lineTo(px-r,py); mx.closePath(); mx.fill(); }
+  mx.fillStyle='rgba(63,134,181,.85)'; mx.beginPath(); mx.arc(X(POND.x),Y(POND.z),POND.r*S,0,TAU); mx.fill();
+  for(const d of ducks){ mx.fillStyle=d.baby?'#ffd84a':'#ffffff'; mx.beginPath(); mx.arc(X(d.x),Y(d.z),d.baby?1.8:2.6,0,TAU); mx.fill(); }
+  if(rascal.active){ mx.fillStyle='#d0904f'; mx.beginPath(); mx.arc(X(rascal.x),Y(rascal.z),3.5,0,TAU); mx.fill(); }
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   if(lv('nose')) for(const gb of goldBones){ if(gb.got) continue; mx.fillStyle='#ffd34d'; mx.beginPath(); mx.arc(X(gb.x),Y(gb.z),3.5+Math.sin(time*5)*1,0,TAU); mx.fill(); }
   if(llama.active){ mx.fillStyle='#eadfc8'; mx.fillRect(X(llama.x)-3,Y(llama.z)-4,6,8); }
@@ -2658,6 +2892,8 @@ function step(dt){
   updateBullets(dt);
   updateShepherd(dt);
   updateLlama(dt);
+  updateDucks(dt);
+  updateRascal(dt);
   if(G.phase==='day'){
     const alive=G.sheep.filter(s=>!s.dead);
     const f=G.t/dayLen(G.day);
@@ -2702,6 +2938,7 @@ function frame(now){
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);
+  syncDucks(dt,time); syncRascal(dt,time); updateBirds(dt,time); updateCat(dt,time); updatePond(dt);
   updateBubble(dt);
   syncAll(dt,time);
   applySky(time);
