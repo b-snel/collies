@@ -85,10 +85,13 @@ body.pad #keysHint .gp{display:flex}
 @media (max-width:920px){#keysHint{display:none}}
 
 #pops{position:fixed;inset:0;pointer-events:none;overflow:hidden}
-.popup{position:absolute;left:0;top:0;font-family:var(--display);font-size:22px;color:var(--wool);text-shadow:0 2px 0 rgba(0,0,0,.55);white-space:nowrap;will-change:transform,opacity}
-.popup.gold{color:var(--lantern);font-size:28px}
-.popup.red{color:var(--coyote)}
+.popup{--o:#2a1d14;position:absolute;left:0;top:0;font-family:var(--display);font-size:24px;letter-spacing:.02em;color:#fff8ea;white-space:nowrap;will-change:transform,opacity;
+  text-shadow:2px 0 0 var(--o),-2px 0 0 var(--o),0 2px 0 var(--o),0 -2px 0 var(--o),1.5px 1.5px 0 var(--o),-1.5px 1.5px 0 var(--o),1.5px -1.5px 0 var(--o),-1.5px -1.5px 0 var(--o),0 4.5px 0 var(--o),0 7px 10px rgba(0,0,0,.3)}
+.popup.gold{color:#ffd23f;font-size:30px}
+.popup.red{color:#ff6d4d}
 .popup.green{color:#b8f06a}
+/* toasts: chunky storybook lettering with an ink outline (overrides the base #toast shadow) */
+#toast{--o:#2a1d14;text-shadow:3px 0 0 var(--o),-3px 0 0 var(--o),0 3px 0 var(--o),0 -3px 0 var(--o),2px 2px 0 var(--o),-2px 2px 0 var(--o),2px -2px 0 var(--o),-2px -2px 0 var(--o),0 6px 0 var(--o),0 0 26px rgba(0,0,0,.4)}
 .stat.score b{color:var(--lantern)}
 #power{position:absolute;left:50%;top:calc(112px + env(safe-area-inset-top,0px));transform:translateX(-50%);display:flex;gap:8px}
 .chip{background:var(--panel);border:1px solid var(--edge);border-radius:999px;padding:5px 12px;font-weight:700;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);display:flex;gap:8px;align-items:center}
@@ -1110,25 +1113,84 @@ function makeCoyote(alpha,boss){
 
 // bark rings
 const rings=[];
-const ringGeo=new THREE.RingGeometry(.85,1,48); ringGeo.rotateX(-Math.PI/2);
+// a cartoon shockwave: bold ring, a thin echo, speed dashes and a soft wash (one shared texture)
+const ringGeo=new THREE.PlaneGeometry(2,2); ringGeo.rotateX(-Math.PI/2);
+const ringTex=(function(){
+  const S=256, m=S/2, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  const g=x.createRadialGradient(m,m,m*.4,m,m,m*.9); g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(1,'rgba(255,255,255,.3)');
+  x.fillStyle=g; x.beginPath(); x.arc(m,m,m*.9,0,TAU); x.fill();
+  x.strokeStyle='#fff'; x.lineWidth=m*.1; x.beginPath(); x.arc(m,m,m*.9,0,TAU); x.stroke();
+  x.globalAlpha=.8; x.lineWidth=m*.035; x.beginPath(); x.arc(m,m,m*.7,0,TAU); x.stroke();
+  x.lineCap='round'; x.lineWidth=m*.03; for(let k=0;k<9;k++){ const a=k/9*TAU; x.beginPath(); x.arc(m,m,m*.79,a,a+.36); x.stroke(); }
+  return new THREE.CanvasTexture(c);
+})();
 function spawnRing(x,z){
-  const m=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0xfff2c8,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
+  const m=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({map:ringTex,color:0xfff8e6,transparent:true,opacity:.8,depthWrite:false}));
   m.position.set(x,groundH(x,z)+.08,z); scene.add(m); rings.push({m,t:0});
 }
 
 // ---------------- particles ----------------
+// cartoon bits drawn right in the point shader: round puffs (dust, wool, splashes), twinkles, stars, hearts, confetti strips
 const PN=700;
-const parts={floor:new Float32Array(PN),pos:new Float32Array(PN*3),col:new Float32Array(PN*3),vel:new Float32Array(PN*3),life:new Float32Array(PN),grav:new Float32Array(PN),next:0};
+const parts={floor:new Float32Array(PN),pos:new Float32Array(PN*3),col:new Float32Array(PN*3),vel:new Float32Array(PN*3),life:new Float32Array(PN),grav:new Float32Array(PN),next:0,
+  size:new Float32Array(PN),base:new Float32Array(PN),shape:new Float32Array(PN),seed:new Float32Array(PN),max:new Float32Array(PN),grow:new Float32Array(PN)};
 for(let i=0;i<PN;i++) parts.pos[i*3+1]=-999;
 const partGeo=new THREE.BufferGeometry();
 partGeo.setAttribute('position',new THREE.BufferAttribute(parts.pos,3));
 partGeo.setAttribute('color',new THREE.BufferAttribute(parts.col,3));
-const partPts=new THREE.Points(partGeo,new THREE.PointsMaterial({size:.4,vertexColors:true,transparent:true,depthWrite:false}));
+partGeo.setAttribute('aSize',new THREE.BufferAttribute(parts.size,1));
+partGeo.setAttribute('aShape',new THREE.BufferAttribute(parts.shape,1));
+partGeo.setAttribute('aSeed',new THREE.BufferAttribute(parts.seed,1));
+const partTime={value:0};
+// inside test for each shape (p in -1..1): 0 puff, 1 twinkle, 2 star, 3 heart, 4 confetti strip
+const PART_GLSL=`
+uniform float uTime;
+varying float vShape;
+varying float vSeed;
+float pIn( vec2 p, float s ){
+  if( s < .5 ) return step( dot( p, p ), 1.0 );
+  if( s < 1.5 ){ vec2 q = sqrt( abs( p ) ); return step( q.x + q.y, 1.0 ); }
+  if( s < 2.5 ){ float sg = 1.2566371, a = mod( atan( p.x, -p.y ) + sg*.5, sg ) - sg*.5, r = length( p );
+    vec2 q = vec2( r*cos( a ), r*abs( sin( a ) ) ), e = vec2( .42*cos( .6283185 ) - 1.0, .42*sin( .6283185 ) ), w = q - vec2( 1.0, 0.0 );
+    return step( 0.0, e.x*w.y - e.y*w.x ); }
+  if( s < 3.5 ){ vec2 q = vec2( p.x, -p.y )*1.25 + vec2( 0.0, .15 ); float a = dot( q, q ) - 1.0; return step( a*a*a - q.x*q.x*q.y*q.y*q.y, 0.0 ); }
+  return step( length( max( abs( p ) - vec2( .72, .26 ), 0.0 ) ), .16 );
+}
+void partShade( inout vec4 dc ){
+  vec2 p = gl_PointCoord*2.0 - 1.0;
+  float s = vShape;
+  if( s > .5 ){
+    float a = s < 3.5 && s > 2.5 ? sin( uTime*5.0 + vSeed*30.0 )*.35 : vSeed*6.2832 + uTime*( vSeed - .5 )*7.0;
+    float c = cos( a ), sn = sin( a ); p = vec2( c*p.x - sn*p.y, sn*p.x + c*p.y );
+    if( s > 3.5 ) p.x /= max( .3, abs( cos( uTime*6.0 + vSeed*40.0 ) ) );
+  }
+  if( pIn( p, s ) < .5 ) discard;
+  float rim = 1.0 - pIn( p*( s < .5 ? 1.17 : 1.3 ), s );
+  dc.rgb *= mix( 1.0, .62, rim );
+  if( s < .5 && rim < .5 && length( p + vec2( .3, .3 ) ) > 1.0 ) dc.rgb *= .82;
+  if( s > .5 && s < 2.5 && pIn( p*2.4, s ) > .5 ) dc.rgb = mix( dc.rgb, vec3( 1.0 ), .75 );
+}
+`;
+const partMat=new THREE.PointsMaterial({size:.55,vertexColors:true});
+partMat.onBeforeCompile=sh=>{
+  sh.uniforms.uTime=partTime;
+  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float aSize;\nattribute float aShape;\nattribute float aSeed;\nvarying float vShape;\nvarying float vSeed;')
+    .replace('gl_PointSize = size;','gl_PointSize = size * aSize; vShape = aShape; vSeed = aSeed;')
+    .replace('#include <logdepthbuf_vertex>','gl_PointSize = min( gl_PointSize, 80.0 );\n\t#include <logdepthbuf_vertex>');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+PART_GLSL)
+    .replace('#include <color_fragment>','#include <color_fragment>\n\tpartShade( diffuseColor );');
+};
+const partPts=new THREE.Points(partGeo,partMat);
 partPts.frustumCulled=false; scene.add(partPts);
-const PC={confetti:[0xf2b544,0xe2643f,0x8fb85a,0x7fb4ff,0xfbf6e9,0xff8fc8],gold:[0xffd84a,0xfff1a8,0xf2b544],heart:[0xff7aa8,0xff4f7f,0xffb3cc],spark:[0xfff2c8,0xbfe8ff,0xffffff],dust:[0xb59a72,0x8c7350],grass:[0x6fa53a,0x9ccf5a,0x4d7d2a,0xb8e07a]};
+const PC={confetti:[0xf2b544,0xe2643f,0x8fb85a,0x7fb4ff,0xfbf6e9,0xff8fc8],gold:[0xffd84a,0xfff1a8,0xf2b544],heart:[0xff7aa8,0xff4f7f,0xffb3cc],spark:[0xfff2c8,0xbfe8ff,0xffffff],dust:[0xe6d4ad,0xcdb286],grass:[0x6fa53a,0x9ccf5a,0x4d7d2a,0xb8e07a]};
 const _pc=new THREE.Color();
+// how each palette draws: size, the shapes to pick from, and how much a puff swells as it ages
+const PSTYLE=new Map([[PC.gold,{s:1.3,sh:[1,1,2],g:0}],[PC.spark,{s:1.05,sh:[1],g:0}],[PC.heart,{s:1.35,sh:[3],g:0}],[PC.confetti,{s:1.05,sh:[4,4,2],g:0}],[PC.dust,{s:1.7,sh:[0],g:.55}],[PC.grass,{s:.85,sh:[4],g:0}]]);
+const PSTY_STAR={s:1.15,sh:[2],g:0}, PSTY_PUFF={s:1.25,sh:[0],g:.25}, PSTY_MAGIC={s:1.2,sh:[1,1,2],g:0};
+let _prs=12345; const prand=()=>(_prs=(_prs*16807)%2147483647)/2147483647;   // looks only: leaves Math.random's sequence alone
 function burst(x,y,z,n,pal,speed,up,grav){
   speed=speed==null?6:speed; up=up==null?6:up; grav=grav==null?12:grav;
+  const st=PSTYLE.get(pal)||(pal.length>=4?PSTY_STAR:pal[0]===0xc77dff?PSTY_MAGIC:PSTY_PUFF), sz=st.s*clamp(.5+speed*.09,.55,1.05);   // gentle trickles draw smaller
   for(let k=0;k<n;k++){
     const i=parts.next; parts.next=(parts.next+1)%PN;
     const gy=groundH(x,z); parts.floor[i]=gy+.05;
@@ -1138,20 +1200,26 @@ function burst(x,y,z,n,pal,speed,up,grav){
     _pc.setHex(pal[(Math.random()*pal.length)|0]);
     parts.col[i*3]=_pc.r; parts.col[i*3+1]=_pc.g; parts.col[i*3+2]=_pc.b;
     parts.life[i]=.9+Math.random()*.8; parts.grav[i]=grav;
+    parts.max[i]=parts.life[i]; parts.shape[i]=st.sh[(prand()*st.sh.length)|0]; parts.base[i]=sz*(.75+prand()*.5); parts.grow[i]=st.g; parts.seed[i]=prand(); parts.size[i]=0;
   }
+  partGeo.attributes.aShape.needsUpdate=true; partGeo.attributes.aSeed.needsUpdate=true;
 }
 function updateParts(dt){
-  const P=parts.pos,V=parts.vel;
+  const P=parts.pos,V=parts.vel,S=parts.size;
+  partTime.value+=dt;
   for(let i=0;i<PN;i++){
     if(parts.life[i]<=0) continue;
     parts.life[i]-=dt;
-    if(parts.life[i]<=0){ P[i*3+1]=-999; continue; }
+    if(parts.life[i]<=0){ P[i*3+1]=-999; S[i]=0; continue; }
     V[i*3+1]-=parts.grav[i]*dt;
     const k=Math.exp(-dt*1.6); V[i*3]*=k; V[i*3+2]*=k;
     P[i*3]+=V[i*3]*dt; P[i*3+1]+=V[i*3+1]*dt; P[i*3+2]+=V[i*3+2]*dt;
     if(P[i*3+1]<parts.floor[i]){ P[i*3+1]=parts.floor[i]; V[i*3+1]*=-.3; V[i*3]*=.5; V[i*3+2]*=.5; }
+    // pop in, swell a little, shrink away at the end
+    const age=parts.max[i]-parts.life[i];
+    S[i]=parts.base[i]*Math.min(1,.25+age*12)*Math.min(1,parts.life[i]*3)*(1+parts.grow[i]*age);
   }
-  partGeo.attributes.position.needsUpdate=true; partGeo.attributes.color.needsUpdate=true;
+  partGeo.attributes.position.needsUpdate=true; partGeo.attributes.color.needsUpdate=true; partGeo.attributes.aSize.needsUpdate=true;
 }
 // floating score text
 const pops=[], popLayer=$('pops'), _pv=new THREE.Vector3();
@@ -2662,13 +2730,50 @@ function updateCoyotes(dt){
 }
 
 // ---------------- secret: the farmer's old gun ----------------
+// merge several parts [geometry, matrix, colour (null keeps its own vertex colours)] into one vertex-coloured geometry: a whole prop costs one draw call
+// (plus one for its outline) instead of one per piece. Used by the props below; build-time only.
+const _mv=new THREE.Vector3(), _mn=new THREE.Matrix3(), _mc=new THREE.Color(), _mo=new THREE.Object3D();
+function partM(x,y,z,rx,ry,rz,sx,sy,sz){ _mo.position.set(x||0,y||0,z||0); _mo.rotation.set(rx||0,ry||0,rz||0); _mo.scale.set(sx||1,sy||sx||1,sz||sx||1); _mo.updateMatrix(); return _mo.matrix.clone(); }
+function mergeParts(parts){
+  let nv=0, ni=0; const uv=parts.every(q=>q[0].attributes.uv);
+  for(const [g] of parts){ nv+=g.attributes.position.count; ni+=g.index?g.index.count:g.attributes.position.count; }
+  const pos=new Float32Array(nv*3), nor=new Float32Array(nv*3), col=new Float32Array(nv*3), uvs=uv?new Float32Array(nv*2):null, idx=new (nv>65535?Uint32Array:Uint16Array)(ni);
+  let ov=0, oi=0;
+  for(const [g,m,hex] of parts){
+    const P=g.attributes.position, N=g.attributes.normal, C=hex===null?g.attributes.color:null, n=P.count; _mn.getNormalMatrix(m); _mc.setHex(hex==null?0xffffff:hex);
+    for(let i=0;i<n;i++){ const o=(ov+i)*3;
+      _mv.fromBufferAttribute(P,i).applyMatrix4(m); pos[o]=_mv.x; pos[o+1]=_mv.y; pos[o+2]=_mv.z;
+      _mv.fromBufferAttribute(N,i).applyMatrix3(_mn).normalize(); nor[o]=_mv.x; nor[o+1]=_mv.y; nor[o+2]=_mv.z;
+      if(C){ col[o]=C.getX(i); col[o+1]=C.getY(i); col[o+2]=C.getZ(i); } else { col[o]=_mc.r; col[o+1]=_mc.g; col[o+2]=_mc.b; }
+      if(uv){ uvs[(ov+i)*2]=g.attributes.uv.getX(i); uvs[(ov+i)*2+1]=g.attributes.uv.getY(i); } }
+    if(g.index) for(let i=0;i<g.index.count;i++) idx[oi+i]=g.index.getX(i)+ov; else for(let i=0;i<n;i++) idx[oi+i]=ov+i;
+    oi+=g.index?g.index.count:n; ov+=n;
+  }
+  const out=new THREE.BufferGeometry();
+  out.setAttribute('position',new THREE.BufferAttribute(pos,3)); out.setAttribute('normal',new THREE.BufferAttribute(nor,3)); out.setAttribute('color',new THREE.BufferAttribute(col,3));
+  if(uv) out.setAttribute('uv',new THREE.BufferAttribute(uvs,2));
+  out.setIndex(new THREE.BufferAttribute(idx,1)); return out;
+}
+const lathe=(pts,seg)=>new THREE.LatheGeometry(pts.map(q=>new THREE.Vector2(q[0],q[1])),seg);
+// a chunky storybook blunderbuss: plump wooden stock, brass bands, a flared bell at the muzzle
+let GUN_GEO=null;
 function makeGun(){
-  const g=new THREE.Group();
-  box(.12,.17,.5,mat(0x7a4a2a),0,0,0,g);
-  box(.11,.15,.42,mat(0x2b2b2e,{metalness:.5,roughness:.5}),0,.02,.44,g);
-  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,.8,8),mat(0x3a3a3e,{metalness:.6,roughness:.4}));
-  bar.rotation.x=Math.PI/2; bar.position.set(0,.05,1.02); g.add(bar);
-  box(.04,.12,.06,mat(0x2b2b2e),0,-.1,.36,g);
+  if(!GUN_GEO){
+    const Z=Math.PI/2, wood=PAL.wood, dark=PAL.woodDark, steel=0x56607a, brass=0xf2b640;
+    GUN_GEO=mergeParts([
+      [lathe([[0,-.4],[.1,-.395],[.135,-.34],[.142,-.2],[.115,-.02],[.078,.12],[.066,.26],[0,.28]],14),partM(0,-.03,.02,Z-.14,0,0,.8,1,1),wood],   // the plump stock
+      [new THREE.CylinderGeometry(.085,.085,.34,14),partM(0,.04,.42,Z),steel],                                      // lock and breech
+      [new THREE.SphereGeometry(.045,8,6),partM(0,.13,.33),dark],
+      [new THREE.SphereGeometry(.5,12,8),partM(0,-.02,.74,0,0,0,.14,.11,.56),wood],                                  // forestock under the barrel
+      [new THREE.CylinderGeometry(.052,.058,.8,14),partM(0,.05,.98,Z),steel],
+      [lathe([[0,0],[.058,0],[.064,.05],[.085,.1],[.125,.15],[.13,.17],[.1,.175],[.07,.16],[0,.16]],16),partM(0,.05,1.36,Z),steel],   // the bell
+      [new THREE.CylinderGeometry(.068,.068,.01,14),partM(0,.05,1.526,Z),PAL.ink],
+      [new THREE.TorusGeometry(.064,.02,6,16),partM(0,.05,.7),brass], [new THREE.TorusGeometry(.064,.02,6,16),partM(0,.05,1.18),brass],
+      [new THREE.TorusGeometry(.055,.014,6,12,Math.PI),partM(0,-.1,.4,0,Z,Math.PI),dark]
+    ]);
+  }
+  const g=new THREE.Group(), m=new THREE.Mesh(GUN_GEO,mat(0xffffff,{vertexColors:true})); m.castShadow=true; g.add(m);
+  addOutline(g,.016);
   return g;
 }
 const groundGun=makeGun(); groundGun.scale.setScalar(1.3); groundGun.rotation.set(0,.7,1.45); groundGun.visible=false; scene.add(groundGun);
@@ -3256,12 +3361,31 @@ function updateBubble(dt){
 
 // ---------------- golden bones: three hidden every day ----------------
 const goldBones=[];
-const goldBoneMat=new THREE.MeshStandardMaterial({color:0xffd34d,metalness:.1,roughness:.35,emissive:0x7a5600,emissiveIntensity:.7,flatShading:true});
+const goldBoneMat=new THREE.MeshStandardMaterial({color:0xffc62e,roughness:1,metalness:0,emissive:0x8a5200,emissiveIntensity:.5});
+// twinkles: little four-point stars that pulse on and off (one shared texture and material for every pickup)
+const TWINKLE_MAT=new THREE.SpriteMaterial({map:(function(){
+  const S=64, m=S/2, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  const g=x.createRadialGradient(m,m,0,m,m,m*.5); g.addColorStop(0,'rgba(255,250,225,.85)'); g.addColorStop(1,'rgba(255,240,180,0)');
+  x.fillStyle=g; x.fillRect(0,0,S,S);
+  x.fillStyle='#fff'; x.beginPath();
+  for(let k=0;k<8;k++){ const a=k/8*TAU, r=k%2?m*.14:m*.96; x.lineTo(m+Math.sin(a)*r,m-Math.cos(a)*r); }
+  x.closePath(); x.fill();
+  return new THREE.CanvasTexture(c);
+})(),color:0xfff6c8,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
+function twinkleTick(){ const u=this.userData, k=Math.max(0,Math.sin(performance.now()*.001*u.f+u.ph)); this.scale.setScalar(u.s*(.2+.8*k*k)); this.updateMatrixWorld(); }
+function makeTwinkle(s,x,y,z){ const sp=new THREE.Sprite(TWINKLE_MAT); sp.position.set(x,y,z); sp.userData={s,f:2.6+prand()*2,ph:prand()*TAU}; sp.onBeforeRender=twinkleTick; return sp; }
+// a chunky cartoon bone: a pinched shaft and four fat knuckles (one merged geometry, shared with the bone power-up)
+let BONE_GEO=null;
+function makeBone(m){
+  if(!BONE_GEO){ const kn=new THREE.SphereGeometry(.2,16,12), parts=[[lathe([[0,-.5],[.135,-.5],[.118,-.3],[.104,0],[.118,.3],[.135,.5],[0,.5]],16),partM(0,0,0,0,0,Math.PI/2)]];
+    for(const sx of [-.5,.5]) for(const sz of [-.13,.13]) parts.push([kn,partM(sx,0,sz)]);
+    BONE_GEO=mergeParts(parts); }
+  const b=new THREE.Mesh(BONE_GEO,m); b.castShadow=true; return b;
+}
 function makeGoldBone(){
-  const g=new THREE.Group();
-  const c=new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.62,8),goldBoneMat); c.rotation.z=Math.PI/2; g.add(c);
-  for(const sx of [-.31,.31]) for(const sz of [-.08,.08]){ const b=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),goldBoneMat); b.position.set(sx,0,sz); g.add(b); }
-  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  const g=new THREE.Group(), b=makeBone(goldBoneMat); b.scale.setScalar(.68); b.rotation.z=.28; g.add(b);
+  addOutline(b,.05);
+  g.add(makeTwinkle(.55,.34,.26,.12), makeTwinkle(.4,-.3,-.12,-.14));
   return g;
 }
 function clearGoldBones(){ for(const b of goldBones) scene.remove(b.g); goldBones.length=0; G.bonesGot=0; updateBoneIcons(); }
@@ -3296,12 +3420,22 @@ function updateGoldBones(dt,time){
 // ---------------- the mad mushroom: run over it and the whole flock turns on you ----------------
 const RAGE_LEN=15;
 const shroom=(function(){
-  const g=new THREE.Group();
-  const stem=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.42,8),mat(0xf3ead6)); stem.position.y=.21; g.add(stem);
-  const cap=new THREE.Mesh(new THREE.SphereGeometry(.36,12,8,0,TAU,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0xd8261c,roughness:.6,emissive:0x5a0a2a,emissiveIntensity:.5,flatShading:true}));
-  cap.position.y=.38; cap.scale.y=.8; g.add(cap);
-  for(let k=0;k<7;k++){ const a=k/7*TAU+.3, r=k%2?.24:.17, sp=new THREE.Mesh(new THREE.SphereGeometry(.05,6,4),mat(0xffffff)); sp.position.set(Math.cos(a)*r,.38+Math.sqrt(Math.max(0,.36*.36-r*r))*.8,Math.sin(a)*r); g.add(sp); }
-  g.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  // a plump toadstool with a cross little face, and a baby one beside it (each body is one merged, vertex-coloured mesh)
+  const g=new THREE.Group(), parts=[[lathe([[0,0],[.17,0],[.205,.07],[.215,.18],[.19,.3],[.16,.4],[0,.42]],16),partM(),PAL.cream],
+    [lathe([[.3,.4],[.44,.37],[.5,.41],[.5,.49],[.45,.6],[.34,.7],[.18,.77],[0,.79]],24),partM(),0xec3440],[new THREE.CircleGeometry(.45,24),partM(0,.385,0,Math.PI/2),0xf3d9ae]];
+  // white spots sat on the cap (an ellipsoid fit of the dome), flattened along its surface
+  const spotG=new THREE.SphereGeometry(1,10,8), ZUP=new THREE.Vector3(0,0,1), q=new THREE.Quaternion(), nv=new THREE.Vector3(), pv=new THREE.Vector3(), sv=new THREE.Vector3();
+  for(const [th,n,r,ph] of [[0,1,.1,0],[.62,3,.065,.5],[1.02,5,.088,0]]) for(let k=0;k<n;k++){
+    const f=k/n*TAU+ph, sx=Math.sin(th)*Math.cos(f), sz=Math.sin(th)*Math.sin(f), cy=Math.cos(th);
+    nv.set(sx/.5,cy/.39,sz/.5).normalize(); pv.set(.5*sx,.4+.39*cy,.5*sz).addScaledVector(nv,-.02); q.setFromUnitVectors(ZUP,nv);
+    parts.push([spotG,new THREE.Matrix4().compose(pv,q,sv.set(r,r,r*.45)),0xfffbf2]);
+  }
+  const bodyG=mergeParts(parts), vc=mat(0xffffff,{vertexColors:true});
+  for(const [s,x,z,ry] of [[1,0,0,0],[.42,.62,.3,.8]]){ const b=new THREE.Mesh(bodyG,vc); b.position.set(x,0,z); b.scale.setScalar(s); b.rotation.y=ry; b.castShadow=true; g.add(b); addOutline(b,.03/s); }
+  // the cross little face
+  const eyeG=new THREE.SphereGeometry(.036,10,8), browG=new THREE.CylinderGeometry(.015,.015,.1,6), fp=[[new THREE.TorusGeometry(.034,.011,6,10,Math.PI),partM(0,.135,.205)]];
+  for(const sd of [-1,1]) fp.push([eyeG,partM(.075*sd,.22,.198,0,0,0,.8,1.25,.6)],[browG,partM(.08*sd,.295,.186,0,0,Math.PI/2-.5*sd)]);
+  g.add(new THREE.Mesh(mergeParts(fp),mat(PAL.ink)));
   g.visible=false; scene.add(g); return g;
 })();
 let shroomSpot=null;
@@ -3333,24 +3467,57 @@ function updateShroom(dt,time){
 
 // ---------------- power-ups ----------------
 const powerups=[];
-const glowGeo=new THREE.RingGeometry(.9,1.5,32); glowGeo.rotateX(-Math.PI/2);
+// the glowing pad under a power-up: a soft ring with a dotted halo (additive, tinted per type)
+const glowGeo=new THREE.PlaneGeometry(3.4,3.4); glowGeo.rotateX(-Math.PI/2);
+const glowTex=(function(){
+  const S=128, m=S/2, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  const g=x.createRadialGradient(m,m,m*.25,m,m,m*.92); g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(.5,'rgba(255,255,255,.5)'); g.addColorStop(.72,'rgba(255,255,255,.22)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g; x.fillRect(0,0,S,S);
+  x.strokeStyle='#fff'; x.lineWidth=4; x.beginPath(); x.arc(m,m,m*.6,0,TAU); x.stroke();
+  x.fillStyle='#fff'; for(let k=0;k<12;k++){ const a=k/12*TAU; x.beginPath(); x.arc(m+Math.cos(a)*m*.84,m+Math.sin(a)*m*.84,k%2?2.2:3.4,0,TAU); x.fill(); }
+  return new THREE.CanvasTexture(c);
+})();
+// shared parts for the power-ups: a wicker apple basket and a little storm lantern (merged, vertex-coloured, built once)
+let PW=null;
+function powerArt(){
+  if(PW) return PW;
+  const wc=document.createElement('canvas'); wc.width=wc.height=64; const x=wc.getContext('2d');
+  x.fillStyle='#9a5a26'; x.fillRect(0,0,64,64);
+  for(let r=0;r<4;r++) for(let q=0;q<4;q++){ x.fillStyle=(r+q)%2?'#f0bc6a':'#d4924a'; x.fillRect(q*16+1,r*16+2,14,12); }
+  const wt=new THREE.CanvasTexture(wc); wt.wrapS=wt.wrapT=THREE.RepeatWrapping; wt.repeat.set(9,2);
+  const hc=document.createElement('canvas'); hc.width=hc.height=64; const h=hc.getContext('2d'), hg=h.createRadialGradient(32,32,0,32,32,32);
+  hg.addColorStop(0,'rgba(255,230,160,.9)'); hg.addColorStop(.35,'rgba(255,190,90,.35)'); hg.addColorStop(1,'rgba(255,170,60,0)'); h.fillStyle=hg; h.fillRect(0,0,64,64);
+  const handle=new THREE.TorusGeometry(.47,.045,8,20,Math.PI), apple=new THREE.SphereGeometry(.2,16,12), stem=new THREE.CylinderGeometry(.018,.024,.13,5), dark=PAL.woodDark;
+  const ap=[[new THREE.TorusGeometry(.53,.055,8,30),partM(0,.1,0,Math.PI/2),dark],[handle,partM(0,.08,0,0,.6),dark],[new THREE.SphereGeometry(.1,8,6),partM(.09,.6,0,0,0,-.5,1,.3,.55),PAL.leaf]];
+  for(let i=0;i<6;i++){ const an=i/5*TAU+.4, top=i===5, x0=top?0:Math.cos(an)*.25, y0=top?.36:.17, z0=top?0:Math.sin(an)*.25;
+    ap.push([apple,partM(x0,y0,z0,0,0,0,1,.88,1),i===2?0x8fd14f:0xe8322e],[stem,partM(x0,y0+.2,z0,0,0,.3),dark]); }
+  const tin=0x2f9e86, brass=0xf2b640, bar=new THREE.CylinderGeometry(.026,.026,.5,6);
+  const lp=[[new THREE.CylinderGeometry(.27,.31,.14,20),partM(0,-.31,0),tin],[lathe([[0,0],[.31,0],[.3,.05],[.21,.14],[.1,.2],[0,.22]],20),partM(0,.22,0),tin],
+    [new THREE.SphereGeometry(.07,10,8),partM(0,.46,0),brass],[new THREE.TorusGeometry(.28,.032,6,24),partM(0,0,0,Math.PI/2),brass],[handle,partM(0,.48,0,0,0,0,.42),brass]];
+  for(let k=0;k<4;k++){ const a=k/4*TAU+Math.PI/4; lp.push([bar,partM(Math.cos(a)*.27,0,Math.sin(a)*.27),tin]); }
+  return PW={
+    basket:lathe([[0,-.24],[.34,-.24],[.42,-.17],[.48,-.02],[.52,.14],[.55,.19],[.5,.2],[.47,.1],[0,.08]],22),
+    wicker:new THREE.MeshStandardMaterial({map:wt,roughness:1}), apples:mergeParts(ap), frame:mergeParts(lp),
+    globe:lathe([[0,-.24],[.15,-.24],[.23,-.13],[.26,0],[.23,.13],[.15,.24],[0,.24]],20),
+    lamp:new THREE.MeshStandardMaterial({color:0xffd36a,roughness:1,emissive:0xff9a1a,emissiveIntensity:.9}),
+    halo:new THREE.SpriteMaterial({map:new THREE.CanvasTexture(hc),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})
+  };
+}
 function makePowerMesh(type){
   const g=new THREE.Group(), inner=new THREE.Group(); inner.position.y=1.2; g.add(inner);
+  const A=powerArt(), vc=mat(0xffffff,{vertexColors:true}), add=(geo,m,y)=>{ const o=new THREE.Mesh(geo,m); o.position.y=y||0; o.castShadow=true; inner.add(o); return o; };
   if(type==='bone'){
-    const W=mat(0xf5efe0);
-    const c=new THREE.Mesh(new THREE.CylinderGeometry(.13,.13,1,8),W); c.rotation.z=Math.PI/2; inner.add(c);
-    for(const sx of [-.5,.5]) for(const sz of [-.12,.12]){ const b=new THREE.Mesh(new THREE.SphereGeometry(.18,8,6),W); b.position.set(sx,0,sz); inner.add(b); }
+    const b=makeBone(mat(PAL.cream)); b.rotation.z=.3; inner.add(b);
   } else if(type==='apple'){
-    inner.add(new THREE.Mesh(new THREE.CylinderGeometry(.5,.38,.45,10),mat(0x9a6a3a)));
-    const R=mat(0xd8322a);
-    for(let i=0;i<6;i++){ const ap=new THREE.Mesh(new THREE.SphereGeometry(.2,8,6),R); const an=i/5*TAU; ap.position.set(i<5?Math.cos(an)*.22:0,i<5?.3:.48,i<5?Math.sin(an)*.22:0); inner.add(ap); }
+    add(A.basket,A.wicker,-.1); add(A.apples,vc);
   } else {
-    inner.add(new THREE.Mesh(new THREE.BoxGeometry(.5,.6,.5),new THREE.MeshStandardMaterial({color:0x3a2a14,emissive:0xffc061,emissiveIntensity:1.8})));
-    const top=new THREE.Mesh(new THREE.ConeGeometry(.4,.32,4),mat(0x2a2a2a)); top.position.y=.46; top.rotation.y=Math.PI/4; inner.add(top);
+    add(A.globe,A.lamp); add(A.frame,vc);
+    const halo=new THREE.Sprite(A.halo); halo.scale.setScalar(1.7); inner.add(halo);
   }
-  inner.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  addOutline(inner,.035);
+  inner.add(makeTwinkle(.6,.55,.45,.2), makeTwinkle(.45,-.5,.1,-.25), makeTwinkle(.38,.1,-.4,.45));
   const col = type==='bone'?0xfff2c8 : type==='apple'?0xff8f8f : 0xffc061;
-  const glow=new THREE.Mesh(glowGeo,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending}));
+  const glow=new THREE.Mesh(glowGeo,new THREE.MeshBasicMaterial({map:glowTex,color:col,transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending}));
   glow.position.y=.07; g.add(glow);
   scene.add(g); return {g,inner,glow};
 }
@@ -3807,22 +3974,54 @@ function sSizzle(){
 // ---------------- the day's puzzle: trial gates, a maze, or the weigh-in ----------------
 // gates and the weigh-in keep the pen padlocked until they're done; the maze is the puzzle itself
 const PZ={type:null,locked:false,gates:[],cur:0,scale:null,objs:[],obj:null};
-const goldGlow=new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide});
-const goalRing=new THREE.Mesh(new THREE.RingGeometry(2.3,2.8,40),new THREE.MeshBasicMaterial({color:0xffd84a,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
+// the objective marker: a soft pillar of light that fades up into the sky (with streaks rising through its core),
+// and a gold drop-zone ring with arrows pointing in
+const goldGlow=new THREE.MeshBasicMaterial({color:0xffe27a,map:(function(){
+  const c=document.createElement('canvas'); c.width=32; c.height=128; const x=c.getContext('2d'), g=x.createLinearGradient(0,0,0,128);
+  g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(.55,'rgba(255,255,255,.55)'); g.addColorStop(1,'rgba(255,255,255,1)');
+  x.fillStyle=g; x.fillRect(0,0,32,128); return new THREE.CanvasTexture(c);
+})(),transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide});
+const goalRing=new THREE.Mesh(new THREE.PlaneGeometry(5.6,5.6),new THREE.MeshBasicMaterial({map:(function(){
+  const S=256, m=S/2, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='rgba(255,216,74,.16)'; x.beginPath(); x.arc(m,m,m*.84,0,TAU); x.fill();
+  x.lineWidth=m*.17; x.strokeStyle='#c98a12'; x.beginPath(); x.arc(m,m,m*.89,0,TAU); x.stroke();
+  x.lineWidth=m*.11; x.strokeStyle='#ffd84a'; x.beginPath(); x.arc(m,m,m*.89,0,TAU); x.stroke();
+  x.lineWidth=m*.025; x.strokeStyle='#fff6c8'; x.beginPath(); x.arc(m,m,m*.91,0,TAU); x.stroke();
+  for(let k=0;k<4;k++){ const a=k/4*TAU+Math.PI/4, px=Math.cos(a), py=Math.sin(a), qx=-py, qy=px, tip=m*.5, back=m*.7, w=m*.13;
+    x.beginPath(); x.moveTo(m+px*tip,m+py*tip); x.lineTo(m+px*back+qx*w,m+py*back+qy*w); x.lineTo(m+px*back-qx*w,m+py*back-qy*w); x.closePath();
+    x.fillStyle='#ffd84a'; x.fill(); x.lineWidth=5; x.strokeStyle='#c98a12'; x.stroke(); }
+  return new THREE.CanvasTexture(c);
+})(),transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
 goalRing.rotation.x=-Math.PI/2; goalRing.visible=false; scene.add(goalRing);
-const goalBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,40,14,1,true),goldGlow); goalBeam.visible=false; scene.add(goalBeam);
+const goalBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,40,20,1,true),goldGlow); goalBeam.visible=false; scene.add(goalBeam);
+(function(){
+  const u={uTime:{value:0}}, core=new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,40,16,1,true),new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader:'uniform float uTime; varying vec2 vUv; void main(){ float h=1.0-vUv.y, fade=h*h*h; float st=smoothstep(.55,1.0,sin(vUv.x*37.7)*.5+.5)*smoothstep(.2,.9,fract(vUv.y*9.0-uTime*.9+sin(vUv.x*12.57)*.3)); gl_FragColor=vec4(vec3(1.0,.86,.45)*(fade*.18+st*fade*.55),1.0); }'}));
+  core.onBeforeRender=()=>{ u.uTime.value=performance.now()*.001; };
+  goalBeam.add(core);
+})();
 const penBlock={ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'perim'};
 const padlock=(function(){
-  const g=new THREE.Group(), gold=new THREE.MeshStandardMaterial({color:0xffcf3f,metalness:.6,roughness:.3,emissive:0x4a3200,emissiveIntensity:.5});
-  const body=new THREE.Mesh(new THREE.BoxGeometry(1.3,1.1,.5),gold); g.add(body);
-  const sh=new THREE.Mesh(new THREE.TorusGeometry(.42,.12,6,14,Math.PI),mat(0xb8bcc8)); sh.position.y=.55; g.add(sh);
-  const hole=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.52,8),mat(0x3a2a10)); hole.rotation.x=Math.PI/2; hole.position.y=-.05; g.add(hole);
+  // a chunky round storybook padlock: gold drum with a rolled rim, steel shackle, keyhole and a painted shine
+  const g=new THREE.Group(), rim=new THREE.TorusGeometry(.62,.1,10,40), leg=new THREE.CylinderGeometry(.11,.11,.3,12), steel=0xdfe5f0;
+  const body=new THREE.Mesh(mergeParts([[new THREE.CylinderGeometry(.62,.62,.36,36),partM(0,0,0,Math.PI/2),PAL.gold],[rim,partM(0,0,-.18),PAL.gold],[rim,partM(0,0,.18),PAL.gold],
+    [new THREE.TorusGeometry(.38,.11,12,24,Math.PI),partM(0,.52,0),steel],[leg,partM(-.38,.4,0),steel],[leg,partM(.38,.4,0),steel]]),mat(0xffffff,{vertexColors:true,emissive:0x4a2c00,emissiveIntensity:.35}));
+  g.add(body); addOutline(g,.05);
+  const kh=new THREE.Shape(); kh.absarc(0,.09,.12,0,TAU,false);
+  const ks=new THREE.Shape(); ks.moveTo(-.055,.04); ks.lineTo(.055,.04); ks.lineTo(.1,-.25); ks.lineTo(-.1,-.25); ks.closePath();
+  const hole=new THREE.Mesh(new THREE.ShapeGeometry([kh,ks],12),mat(PAL.ink)); hole.position.z=.184; g.add(hole);
+  const shine=new THREE.Mesh(new THREE.RingGeometry(.38,.47,16,1,Math.PI*.58,Math.PI*.36),new THREE.MeshBasicMaterial({color:0xfff6d6})); shine.position.z=.186; g.add(shine);
   g.position.set(0,2.6,PEN.z1+.2); g.visible=false; scene.add(g); return g;
 })();
 function numSprite(n){
+  // a red-and-cream rosette badge with a chunky ink number
   const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
-  x.fillStyle='#1d1609'; x.beginPath(); x.arc(64,64,58,0,TAU); x.fill(); x.lineWidth=8; x.strokeStyle='#ffd84a'; x.stroke();
-  x.fillStyle='#ffd84a'; x.font='bold 78px sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(String(n),64,70);
+  x.fillStyle='#2a1d14'; x.beginPath(); x.arc(64,64,61,0,TAU); x.fill();
+  x.fillStyle='#e84a3a'; x.beginPath(); x.arc(64,64,54,0,TAU); x.fill();
+  x.fillStyle='#fff4dc'; for(let k=0;k<14;k++){ const a=k/14*TAU; x.beginPath(); x.arc(64+Math.cos(a)*48.5,64+Math.sin(a)*48.5,2.6,0,TAU); x.fill(); }
+  x.beginPath(); x.arc(64,64,42,0,TAU); x.fill();
+  x.fillStyle='#2a1d14'; x.font='66px "Alfa Slab One", Rockwell, Georgia, serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(String(n),64,69);
   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false})); s.scale.set(1.6,1.6,1); return s;
 }
 function pzAdd(o){ scene.add(o); PZ.objs.push(o); return o; }
@@ -3835,6 +4034,64 @@ function unlockPen(){
   if(!PZ.locked) return;
   lockPen(false); burst(0,2.6,PEN.z1,60,PC.gold,6,6); sChime(); setTimeout(sChime,180); G.shake=Math.max(G.shake,.3);
   popText(0,3.5,PEN.z1+1,'PEN OPEN!','gold'); setTimeout(()=>shepSay("That's the gate open! Bring them in!",true),500);
+}
+// storybook hurdle parts for the trial gates, built once and shared by every gate
+let GATE_ART=null;
+function gateArt(pl,gap){
+  if(GATE_ART) return GATE_ART;
+  const sc=document.createElement('canvas'); sc.width=sc.height=64; const x=sc.getContext('2d');
+  x.fillStyle='#fff4dc'; x.fillRect(0,0,64,64); x.fillStyle='#e84a3a';
+  for(let k=-3;k<3;k++){ x.beginPath(); x.moveTo(k*32,0); x.lineTo(k*32+16,0); x.lineTo(k*32+80,64); x.lineTo(k*32+64,64); x.closePath(); x.fill(); }
+  const st=new THREE.CanvasTexture(sc); st.wrapS=st.wrapT=THREE.RepeatWrapping; st.repeat.set(1,3);
+  const tall=new THREE.CylinderGeometry(.13,.15,2.45,14); tall.translate(0,1.225,0);
+  const short=new THREE.CylinderGeometry(.11,.13,1.35,12); short.translate(0,.675,0);
+  const foot=new THREE.CylinderGeometry(.22,.28,.18,14); foot.translate(0,.09,0);
+  const rail=new THREE.CylinderGeometry(.065,.065,pl,10); rail.rotateX(Math.PI/2);
+  const fs=new THREE.Shape(); fs.moveTo(0,.17); fs.quadraticCurveTo(.4,.1,.78,0); fs.quadraticCurveTo(.4,-.1,0,-.17); fs.closePath();
+  const flag=new THREE.ShapeGeometry(fs,8); flag.rotateY(-Math.PI/2);
+  const tube=new THREE.CylinderGeometry(.12,.12,gap*2,10); tube.rotateX(Math.PI/2);
+  const fill=new THREE.CylinderGeometry(.19,.19,gap*2,14); fill.rotateX(Math.PI/2); fill.translate(0,0,gap);
+  const n=8, L=gap*2-.6, pos=[], col=[], cols=[0xffcf3f,0x4fb0ff,0xe84a3a,0x8fdc52,0xff8fb8], c=new THREE.Color();
+  for(let i=0;i<n;i++){ const z0=-L/2+i*L/n+.05, z1=z0+L/n-.1; pos.push(0,-.05,z0, 0,-.05,z1, 0,-.5,(z0+z1)/2); c.setHex(cols[i%5]); for(let k=0;k<3;k++) col.push(c.r,c.g,c.b); }
+  const bunting=new THREE.BufferGeometry(); bunting.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); bunting.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); bunting.computeVertexNormals();
+  // everything on one hurdle except the striped post is a single vertex-coloured mesh; so are the rope and its bunting
+  const side=mergeParts([[foot,partM(0,0,-pl/2),PAL.woodDark],[new THREE.SphereGeometry(.2,14,10),partM(0,2.58,-pl/2),PAL.gold],[short,partM(0,0,pl/2),PAL.cream],[foot,partM(0,0,pl/2),PAL.woodDark],
+    [new THREE.SphereGeometry(.15,12,8),partM(0,1.42,pl/2),PAL.red],[rail,partM(0,.45,0),PAL.cream],[rail,partM(0,.8,0),PAL.red],[rail,partM(0,1.15,0),PAL.cream]]);
+  return GATE_ART={tall,side,flag,fill,rope:mergeParts([[tube,partM(),0x3a2a1c],[bunting,partM(),null]]),
+    stripe:new THREE.MeshStandardMaterial({map:st,roughness:1}),vc:mat(0xffffff,{vertexColors:true}),
+    flagA:mat(0x4fb0ff,{side:THREE.DoubleSide}),flagB:mat(PAL.gold,{side:THREE.DoubleSide}),flags:new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:1})};
+}
+// the weigh-in: a painted farm weighing machine (plank deck on a red drum, marquee bulbs, a big friendly dial)
+let SCALE_ART=null;
+function scaleArt(r){
+  if(SCALE_ART) return SCALE_ART;
+  const pc=document.createElement('canvas'); pc.width=pc.height=256; const x=pc.getContext('2d');
+  for(let k=0;k<8;k++){ x.fillStyle=k%2?'#d99e5e':'#cd9052'; x.fillRect(k*32,0,32,256); x.fillStyle='rgba(255,236,190,.35)'; x.fillRect(k*32+6+(k*7)%12,0,2,256); x.fillStyle='#7a4a26'; x.fillRect(k*32,0,3,256);
+    x.fillStyle='#5a3a20'; for(const y of [26+k*9%40,230-k*7%40]){ x.beginPath(); x.arc(k*32+16,y,3,0,TAU); x.fill(); } }
+  const dc=document.createElement('canvas'); dc.width=dc.height=256; const d=dc.getContext('2d'), m=128, ang=f=>(f-90)*Math.PI/180;
+  d.fillStyle='#fff4dc'; d.fillRect(0,0,256,256);
+  d.lineWidth=22; d.strokeStyle='#f1d79a'; d.beginPath(); d.arc(m,m,92,ang(-126),ang(60)); d.stroke();
+  d.strokeStyle='#ffcf3f'; d.beginPath(); d.arc(m,m,92,ang(60),ang(126)); d.stroke();
+  d.strokeStyle='#2a1d14'; d.lineCap='round';
+  for(let k=0;k<=20;k++){ const f=ang(-126+k*252/20), big=k%5===0, r0=big?96:104; d.lineWidth=big?6:3; d.beginPath(); d.moveTo(m+Math.cos(f)*r0,m+Math.sin(f)*r0); d.lineTo(m+Math.cos(f)*116,m+Math.sin(f)*116); d.stroke(); }
+  // a little sheep on the dial face
+  d.fillStyle='#ffffff'; d.strokeStyle='#2a1d14'; d.lineWidth=4;
+  const puffs=[[-16,0,13],[0,-6,14],[16,0,13],[-8,9,12],[9,9,12]];
+  for(const [px,py,pr] of puffs){ d.beginPath(); d.arc(m+px,m+52+py,pr,0,TAU); d.stroke(); }
+  for(const [px,py,pr] of puffs){ d.beginPath(); d.arc(m+px,m+52+py,pr,0,TAU); d.fill(); }
+  d.fillStyle='#2a1d14'; d.beginPath(); d.ellipse(m+30,m+46,9,11,.3,0,TAU); d.fill(); d.fillRect(m-10,m+66,5,12); d.fillRect(m+6,m+66,5,12);
+  const plank=new THREE.CanvasTexture(pc), face=new THREE.CanvasTexture(dc);
+  // the deck's rim and the whole dial stand are one vertex-coloured mesh, placed relative to the dial's foot
+  const knob=new THREE.SphereGeometry(.16,12,10), H=Math.PI/2, dz=r+.6, gs=new THREE.SphereGeometry(.06,8,6), glints=[];
+  const body=mergeParts([[new THREE.TorusGeometry(r,.17,8,72),partM(0,.32,dz,H),PAL.cream],[new THREE.CylinderGeometry(.34,.44,.3,14),partM(0,.15,0),PAL.woodDark],[new THREE.CylinderGeometry(.17,.21,3.1,12),partM(0,1.6,0),PAL.wood],
+    [new THREE.CylinderGeometry(1.62,1.62,.36,40),partM(0,3.6,.02,H),PAL.red],[new THREE.TorusGeometry(1.5,.11,10,48),partM(0,3.6,.2),PAL.gold],[knob,partM(0,5.3,.02),PAL.gold],[knob,partM(-1.62,3.6,.02,0,0,0,.6),PAL.gold],[knob,partM(1.62,3.6,.02,0,0,0,.6),PAL.gold]]);
+  const needle=mergeParts([[new THREE.ConeGeometry(.09,1.25,12),partM(0,.55,0,0,0,0,1,1,.4),PAL.ink],[new THREE.SphereGeometry(.1,10,8),partM(0,-.14,0,0,0,0,1,1,.5),PAL.red],[new THREE.CylinderGeometry(.14,.14,.08,16),partM(0,0,.03,H),PAL.gold]]);
+  for(let i=0;i<24;i++){ const a=i/24*TAU; glints.push([gs,partM(Math.cos(a)*(r-.6),.52,Math.sin(a)*(r-.6),0,0,0,1,.8,1)]); }
+  const plat=new THREE.CylinderGeometry(r,r+.2,.35,56); plat.groups.length=2;   // no bottom cap: nobody sees under the deck
+  return SCALE_ART={
+    plat, deck:[mat(PAL.red),new THREE.MeshStandardMaterial({map:plank,roughness:1})], body, needle, glints:mergeParts(glints),
+    bulb:new THREE.SphereGeometry(.25,14,10), face:new THREE.CircleGeometry(1.42,40), faceM:new THREE.MeshStandardMaterial({map:face,emissiveMap:face,emissive:0xffffff,emissiveIntensity:.3,roughness:1})
+  };
 }
 function setupPuzzle(){
   for(const o of PZ.objs) scene.remove(o); PZ.objs.length=0;
@@ -3854,18 +4111,22 @@ function setupPuzzle(){
     pts.forEach((g,k)=>{
       const nx=k<pts.length-1?pts[k+1]:P, ux0=nx.x-g.x, uz0=nx.z-g.z, ul=Math.hypot(ux0,uz0)||1, ux=ux0/ul, uz=uz0/ul, px=-uz, pz=ux, gap=3.6, pl=3.2;
       const G2={x:g.x,z:g.z,ax:g.x+px*gap,az:g.z+pz*gap,bx:g.x-px*gap,bz:g.z-pz*gap,passed:new Set(),done:false,k};
-      const white=mat(0xf4ead2), red=mat(0xc8402e);
+      const A=gateArt(pl,gap);
       for(const sd of [1,-1]){
         const ix=g.x+px*gap*sd, iz=g.z+pz*gap*sd, ox=g.x+px*(gap+pl)*sd, oz=g.z+pz*(gap+pl)*sd;
         segs.push({ax:ix,az:iz,bx:ox,bz:oz,kind:'perim',level:true});
         const grp=pzAdd(new THREE.Group()); grp.position.set((ix+ox)/2,groundH((ix+ox)/2,(iz+oz)/2),(iz+oz)/2); grp.rotation.y=Math.atan2(ox-ix,oz-iz);
-        for(const e of [-.5,.5]){ const post=new THREE.Mesh(new THREE.BoxGeometry(.22,e*sd<0?1.9:1.3,.22),e*sd<0?red:white); post.position.set(0,(e*sd<0?1.9:1.3)/2,e*pl); post.castShadow=true; grp.add(post); }
-        for(const y of [.45,.85,1.2]){ const rl=new THREE.Mesh(new THREE.BoxGeometry(.1,.16,pl),y===.85?red:white); rl.position.y=y; rl.castShadow=true; grp.add(rl); }
+        // a painted storybook hurdle: tall candy-striped post at the gap, short cream post outside, round rails
+        const part=(geo,m,y,z)=>{ const o=new THREE.Mesh(geo,m); o.position.set(0,y,z); o.castShadow=true; grp.add(o); return o; };
+        part(A.tall,A.stripe,0,-pl/2); part(A.side,A.vc,0,0);
+        addOutline(grp,.035);
+        part(A.flag,sd>0?A.flagA:A.flagB,2.12,-pl/2);
       }
       const num=pzAdd(numSprite(k+1)); num.position.set(g.x,groundH(g.x,g.z)+3.4,g.z);
       const bar=pzAdd(new THREE.Group()); bar.position.set(g.x,groundH(g.x,g.z)+2.3,g.z); bar.rotation.y=Math.atan2(G2.bx-G2.ax,G2.bz-G2.az);
-      const bg=new THREE.Mesh(new THREE.BoxGeometry(.18,.22,gap*2),mat(0x2a2218)); bar.add(bg);
-      const fill=new THREE.Mesh(new THREE.BoxGeometry(.24,.26,gap*2),new THREE.MeshBasicMaterial({color:0xffd84a})); fill.scale.z=.001; bar.add(fill);
+      // the progress rope strung between the tall posts (it fills from one end), with bunting hanging off it
+      bar.add(new THREE.Mesh(A.rope,A.flags));
+      const fill=new THREE.Mesh(A.fill,new THREE.MeshBasicMaterial({color:0xffd84a})); fill.position.z=-gap; fill.scale.z=.001; bar.add(fill);
       G2.fill=fill; G2.num=num; PZ.gates.push(G2);
     });
     if(PZ.gates.length) lockPen(true); else PZ.type=null;
@@ -3875,15 +4136,18 @@ function setupPuzzle(){
       const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<16 || dp<22) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
     if(best){
       const S2={x:best.x,z:best.z,r:5.5,p:0,tiles:[],done:false}, gy=groundH(best.x,best.z);
-      const plat=pzAdd(new THREE.Mesh(new THREE.CylinderGeometry(S2.r,S2.r+.2,.35,32),mat(0x9a7a52))); plat.position.set(best.x,gy+.12,best.z); plat.receiveShadow=true;
-      const rim=pzAdd(new THREE.Mesh(new THREE.TorusGeometry(S2.r,.14,6,40),mat(0x8a8f9a))); rim.rotation.x=Math.PI/2; rim.position.set(best.x,gy+.32,best.z);
-      for(let i=0;i<24;i++){ const a=i/24*TAU, tl=pzAdd(new THREE.Mesh(new THREE.BoxGeometry(.6,.12,.6),new THREE.MeshBasicMaterial({color:0x4a4030}))); tl.position.set(best.x+Math.cos(a)*(S2.r-.6),gy+.36,best.z+Math.sin(a)*(S2.r-.6)); tl.rotation.y=-a; S2.tiles.push(tl); }
+      const A=scaleArt(S2.r);
+      const plat=pzAdd(new THREE.Mesh(A.plat,A.deck)); plat.position.set(best.x,gy+.12,best.z); plat.receiveShadow=true; plat.castShadow=true;
+      addOutline(plat,.04);
+      const glints=pzAdd(new THREE.Mesh(A.glints,new THREE.MeshBasicMaterial({color:0xffffff}))); glints.position.set(best.x,gy,best.z);
+      // marquee bulbs round the deck: they light up gold as the flock gets heavier
+      for(let i=0;i<24;i++){ const a=i/24*TAU, tl=pzAdd(new THREE.Mesh(A.bulb,new THREE.MeshBasicMaterial({color:0x4a4030}))); tl.position.set(best.x+Math.cos(a)*(S2.r-.6),gy+.36,best.z+Math.sin(a)*(S2.r-.6)); tl.rotation.y=-a; tl.scale.y=.8;
+        S2.tiles.push(tl); }
       // the big dial, facing the camera
       const dial=pzAdd(new THREE.Group()); dial.position.set(best.x,gy,best.z-S2.r-.6);
-      const post=new THREE.Mesh(new THREE.BoxGeometry(.35,3.2,.35),mat(0x6e5236)); post.position.y=1.6; dial.add(post);
-      const face=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,.2,28),mat(0xf4ead2)); face.rotation.x=Math.PI/2; face.position.set(0,3.6,.1); dial.add(face);
-      const rimD=new THREE.Mesh(new THREE.TorusGeometry(1.5,.12,6,28),mat(0xc8402e)); rimD.position.set(0,3.6,.2); dial.add(rimD);
-      const needle=new THREE.Group(); needle.position.set(0,3.6,.28); const nd=new THREE.Mesh(new THREE.BoxGeometry(.14,1.25,.06),mat(0x1d1609)); nd.position.y=.55; needle.add(nd); dial.add(needle);
+      const db=new THREE.Mesh(A.body,mat(0xffffff,{vertexColors:true})); db.castShadow=true; dial.add(db); addOutline(dial,.045);
+      const face=new THREE.Mesh(A.face,A.faceM); face.position.set(0,3.6,.205); dial.add(face);
+      const needle=new THREE.Group(); needle.position.set(0,3.6,.28); needle.add(new THREE.Mesh(A.needle,mat(0xffffff,{vertexColors:true}))); dial.add(needle);
       S2.needle=needle; PZ.scale=S2; circles.push({x:best.x,z:best.z-S2.r-.6,r:.5,level:true});
       lockPen(true);
     } else PZ.type=null;
@@ -4096,6 +4360,65 @@ function safeLaunch(s,ang,sp){
   s.vx=Math.cos(ang)*sp; s.vz=Math.sin(ang)*sp; s.flip=.6; s.boingCD=.6; s.fear=1; s.munch=0; s.thrownT=0; s.safeT=1.2;
 }
 function flockMid(){ const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried); if(!out.length) return {x:0,z:10,n:0}; let x=0,z=0; for(const s of out){x+=s.x;z+=s.z;} return {x:x/out.length,z:z/out.length,n:out.length}; }
+// cached art for the surprise events: the twister, round hay bales, parachutes and the disco (built on first use)
+let SX_ART=null;
+function surpriseArt(){
+  if(SX_ART) return SX_ART;
+  const V=a=>a.map(p=>new THREE.Vector2(p[0],p[1])), cv=(w,h)=>{ const c=document.createElement('canvas'); c.width=w; c.height=h; return [c,c.getContext('2d')]; };
+  // twister: a see-through funnel with spiral bands, white swooshes winding round it, debris and dust puffs
+  const fr=y=>.5+.05*y+.027*y*y, fp=[]; for(let y=0;y<=11.01;y+=.5) fp.push([fr(y),y]);
+  const [tc,tx]=cv(128,128);
+  tx.fillStyle='rgba(176,194,226,.6)'; tx.fillRect(0,0,128,128);
+  for(let k=-2;k<3;k++){ const o=k*64;
+    tx.fillStyle='rgba(255,255,255,.9)'; tx.beginPath(); tx.moveTo(o,128); tx.lineTo(o+22,128); tx.lineTo(o+86,0); tx.lineTo(o+64,0); tx.closePath(); tx.fill();
+    tx.fillStyle='rgba(112,134,182,.6)'; tx.beginPath(); tx.moveTo(o+36,128); tx.lineTo(o+42,128); tx.lineTo(o+106,0); tx.lineTo(o+100,0); tx.closePath(); tx.fill(); }
+  const tTex=new THREE.CanvasTexture(tc); tTex.wrapS=tTex.wrapT=THREE.RepeatWrapping; tTex.repeat.set(3,2);
+  class Swoosh extends THREE.Curve{
+    constructor(y0,a0,turn,h){ super(); this.y0=y0; this.a0=a0; this.turn=turn; this.h=h; }
+    getPoint(t,o=new THREE.Vector3()){ const y=this.y0+t*this.h, a=this.a0+t*this.turn, r=fr(y)+.22+.2*Math.sin(t*Math.PI); return o.set(Math.cos(a)*r,y,Math.sin(a)*r); }
+  }
+  // debris whirling round it (hay tufts, leaves, a plank) and dust puffs at its foot, each set merged into one mesh
+  const hay=new THREE.CylinderGeometry(.08,.12,.55,6), leaf=new THREE.SphereGeometry(.26,8,6), plank=new THREE.SphereGeometry(.5,10,6), puff=new THREE.SphereGeometry(1,14,10), debris=[], puffs=[];
+  [[hay,0xf2c850,2.2,0],[leaf,PAL.leaf,3.6,1.4],[plank,PAL.wood,5.2,2.6],[leaf,PAL.leafLight,6.6,3.9],[hay,0xf2c850,7.8,5.1],[leaf,PAL.leaf,9.2,.7]].forEach(([geo,c,y,a],i)=>{
+    const r=fr(y)+.9, s=geo===leaf?[1,.28,.6]:geo===plank?[.9,.1,.24]:[1,1,1]; debris.push([geo,partM(Math.cos(a)*r,y,Math.sin(a)*r,i*1.3,i*.7,i*2.1,...s),c]); });
+  for(let k=0;k<7;k++){ const a=k/7*TAU, s=.65+(k%3)*.18; puffs.push([puff,partM(Math.cos(a)*1.5,.35,Math.sin(a)*1.5,0,0,0,s,s*.75,s),0xeee3c8]); }
+  // hay: straw streaks round the bale, a rolled spiral on each end
+  const [hc,hx]=cv(256,256); hx.fillStyle='#eec45a'; hx.fillRect(0,0,256,256); hx.lineCap='round';
+  for(let k=0;k<520;k++){ const x0=prand()*256, y0=prand()*256, l=10+prand()*34; hx.strokeStyle=['#c9962e','#f8dc86','#dcaa40','#fff0b0','#d9a23a'][k%5]; hx.lineWidth=1.5+prand()*2; hx.beginPath(); hx.moveTo(x0,y0); hx.lineTo(x0+l,y0+(prand()-.5)*4); hx.stroke(); }
+  const hTex=new THREE.CanvasTexture(hc); hTex.wrapS=hTex.wrapT=THREE.RepeatWrapping; hTex.repeat.set(4,2);
+  const [ec,ex]=cv(128,128); ex.fillStyle='#e6b44c'; ex.fillRect(0,0,128,128); ex.lineCap='round';
+  for(const [col,lw,ph] of [['#b9842c',4,0],['#f8dc86',2.5,1.4]]){ ex.strokeStyle=col; ex.lineWidth=lw; ex.beginPath(); for(let i=0;i<=240;i++){ const f=i/240, a=f*TAU*5+ph, r=f*60; ex.lineTo(64+Math.cos(a)*r,64+Math.sin(a)*r); } ex.stroke(); }
+  const eTex=new THREE.CanvasTexture(ec);
+  const baleEnd=new THREE.CircleGeometry(1.42,28); baleEnd.rotateX(-Math.PI/2); const twine=new THREE.TorusGeometry(1.735,.05,6,44);
+  // parachutes: striped canopies in three colours
+  const canopy=new THREE.SphereGeometry(1.7,18,6,0,TAU,0,Math.PI*.42); canopy.scale(1,.7,1); canopy.translate(0,-.3,0);
+  const chuteM=[PAL.red,0x4fb0ff,PAL.gold].map(c=>{ const [cc,cx]=cv(128,8); for(let i=0;i<8;i++){ cx.fillStyle=i%2?'#fff8ec':'#'+c.toString(16).padStart(6,'0'); cx.fillRect(i*16,0,16,8); } return new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(cc),side:THREE.DoubleSide,roughness:1}); });
+  const sp=[]; for(let k=0;k<4;k++){ const a=k/4*TAU+Math.PI/4; sp.push(Math.cos(a)*1.55,0,Math.sin(a)*1.55, 0,-2.05,0); }
+  const strings=new THREE.BufferGeometry(); strings.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+  // disco: a mirror ball of little tiles, soft coloured spotlights and beams
+  const [bc,bx]=cv(128,64); bx.fillStyle='#6e7894'; bx.fillRect(0,0,128,64);
+  const tiles=['#eef3fb','#cbd6ea','#ffffff','#b6c4de','#ffd9f2','#d2ecff','#fff4c8'];
+  for(let r=0;r<8;r++) for(let q=0;q<16;q++){ bx.fillStyle=tiles[(q*5+r*3+(q*r)%4)%tiles.length]; bx.fillRect(q*8+1,r*8+1,6,6); }
+  const bTex=new THREE.CanvasTexture(bc);
+  const [sc,sx]=cv(128,128), sg=sx.createRadialGradient(64,64,0,64,64,62);
+  sg.addColorStop(0,'rgba(255,255,255,.35)'); sg.addColorStop(.85,'rgba(255,255,255,.8)'); sg.addColorStop(.9,'rgba(255,255,255,1)'); sg.addColorStop(.97,'rgba(255,255,255,1)'); sg.addColorStop(1,'rgba(255,255,255,0)');
+  sx.fillStyle=sg; sx.fillRect(0,0,128,128);
+  const sTex=new THREE.CanvasTexture(sc), discoCols=[0xff5aa0,0x5ab4ff,0xffe14d,0x6fd06f,0xb48cff];
+  const beam=new THREE.CylinderGeometry(2.2,.08,1,18,1,true); beam.rotateX(Math.PI/2); beam.translate(0,0,.5);
+  return SX_ART={
+    funnel:new THREE.LatheGeometry(V(fp),30), tTex, funnelM:new THREE.MeshBasicMaterial({map:tTex,color:0xffffff,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}),
+    swoosh:mergeParts([[.5,0,3.4,2.2],[2.3,2.1,3.1,2.4],[4.3,4.2,2.9,2.3],[6.3,1,2.6,2.4],[8.3,3.3,2.4,2.2],[1.4,3.6,2.8,2.6]].map(s=>[new THREE.TubeGeometry(new Swoosh(...s),36,.075,5,false),partM()])),
+    swooshM:new THREE.MeshBasicMaterial({color:0xffffff}), debris:mergeParts(debris), puffs:mergeParts(puffs),
+    bale:new THREE.LatheGeometry(V([[0,-1.6],[1.42,-1.6],[1.6,-1.52],[1.69,-1.34],[1.72,0],[1.69,1.34],[1.6,1.52],[1.42,1.6],[0,1.6]]),28),
+    hayM:new THREE.MeshStandardMaterial({map:hTex,roughness:1}), ends:mergeParts([[baleEnd,partM(0,1.605,0)],[baleEnd,partM(0,-1.605,0,Math.PI)]]), endM:new THREE.MeshStandardMaterial({map:eTex,roughness:1}),
+    twine:mergeParts([[twine,partM(0,-.8,0,Math.PI/2)],[twine,partM(0,.8,0,Math.PI/2)]]),
+    canopy, chuteM, knob:new THREE.SphereGeometry(.2,10,8), strings, stringM:new THREE.LineBasicMaterial({color:PAL.ink}),
+    ball:new THREE.SphereGeometry(1.5,24,14), ballM:new THREE.MeshStandardMaterial({map:bTex,emissiveMap:bTex,emissive:0xffffff,emissiveIntensity:.4,roughness:1,flatShading:true}),
+    chain:new THREE.CylinderGeometry(.05,.05,8,6), cap:new THREE.CylinderGeometry(.22,.3,.3,12),
+    spot:new THREE.CircleGeometry(2.6,32), spotM:discoCols.map(c=>new THREE.MeshBasicMaterial({map:sTex,color:c,transparent:true,opacity:.55,depthWrite:false})),
+    beam, beamM:discoCols.map(c=>new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.11,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}))
+  };
+}
 function startSurprise(kind){
   const info=SURPRISE_INFO[kind], ev={kind,t:0,dur:{sugar:9,disco:7,golden:12,twister:14,bales:9,rainbow:28,chutes:5,wolf:1.4}[kind]};
   G.ev=ev; SX.last=kind;
@@ -4108,14 +4431,20 @@ function startSurprise(kind){
   } else if(kind==='twister'){
     const a=Math.random()*TAU, R=FIELD+4; ev.x=mid.x+Math.cos(a)*R; ev.z=mid.z+Math.sin(a)*R;
     const tx=mid.x+(Math.random()-.5)*8, tz=mid.z+(Math.random()-.5)*8, d=Math.hypot(tx-ev.x,tz-ev.z)+1e-6; ev.dx=(tx-ev.x)/d; ev.dz=(tz-ev.z)/d;
-    const g=sxAdd(new THREE.Group()); const M=new THREE.MeshStandardMaterial({color:0xb8ab98,transparent:true,opacity:.55,roughness:1,flatShading:true,depthWrite:false,side:THREE.DoubleSide});
-    for(let k=0;k<7;k++){ const c=new THREE.Mesh(new THREE.CylinderGeometry(1+k*.55,.7+k*.5,1.6,10,1,true),M); c.position.y=.8+k*1.5; g.add(c); }
+    // a stylised swirl: see-through spiral funnel, white swooshes, debris whirling round, dust puffs at its foot
+    const A=surpriseArt(), g=sxAdd(new THREE.Group()), lean=new THREE.Group(), spin=new THREE.Group(), orbit=new THREE.Group(), dust=new THREE.Group();
+    g.add(lean,dust); lean.add(spin,orbit);
+    const body=new THREE.Mesh(A.funnel,A.funnelM); body.renderOrder=1; spin.add(body);
+    const vc=mat(0xffffff,{vertexColors:true}); spin.add(new THREE.Mesh(A.swoosh,A.swooshM)); orbit.add(new THREE.Mesh(A.debris,vc)); dust.add(new THREE.Mesh(A.puffs,vc));
+    addOutline(orbit,.04); addOutline(dust,.05);
+    g.userData={lean,spin,orbit,dust,tex:A.tTex};
     ev.g=g; ev.hits=new Set();
   } else if(kind==='chutes'){
     ev.drops=[]; const n=3+Math.min(4,Math.floor(G.day/3));
     for(let k=0;k<n;k++){ let x,z,tries=0; do{ x=mid.x+(Math.random()-.5)*30; z=mid.z+(Math.random()-.5)*30; tries++; }while(!clearOf(x,z,1.5) && tries<40); if(tries>=40){ x=mid.x; z=mid.z; }
       const m=makeSheep(false,false,false); m.g.position.set(x,groundH(x,z)+22+k*2,z);
-      const chute=new THREE.Group(); for(let i=0;i<6;i++){ const sp=new THREE.Mesh(new THREE.SphereGeometry(1.6,4,6,i*TAU/6,TAU/6,0,Math.PI/2),mat(i%2?0xffffff:[0xe2463f,0x6fb4ff,0xffcf3f][k%3])); chute.add(sp); }
+      const A=surpriseArt(), chute=new THREE.Group(), cn=new THREE.Mesh(A.canopy,A.chuteM[k%3]); chute.add(cn);
+      const kn=new THREE.Mesh(A.knob,mat(PAL.cream)); kn.position.y=.88; chute.add(kn); addOutline(chute,.05); chute.add(new THREE.LineSegments(A.strings,A.stringM));
       chute.position.y=3.2; m.g.add(chute);
       ev.drops.push({m,x,z,y:22+k*2,chute});
     }
@@ -4124,19 +4453,29 @@ function startSurprise(kind){
     const m=makeSheep(false,false,false); const s=newSheep(x,z,m,{}); s.rainbow=true; s.bonus=true; m.wool.emissive=new THREE.Color(0x222222); m.wool.emissiveIntensity=.6;
     G.sheep.push(s); ev.s=s; burst(x,1.5,z,60,[0xff5a5a,0xffa53a,0xffe14d,0x6fd06f,0x6fb4ff,0xb48cff],6,6);
   } else if(kind==='disco'){
-    if(!SX.ball){ SX.ball=new THREE.Mesh(new THREE.IcosahedronGeometry(1.5,1),new THREE.MeshStandardMaterial({color:0xdde3ee,metalness:.9,roughness:.15,flatShading:true,emissive:0x333344})); scene.add(SX.ball); }
+    if(!SX.ball){
+      // a mirror ball of little tiles on a long gold chain, with twinkles winking on and off round it
+      const A=surpriseArt(); SX.ball=new THREE.Mesh(A.ball,A.ballM);
+      const cap=new THREE.Mesh(A.cap,mat(PAL.gold)); cap.position.y=1.5; SX.ball.add(cap); const ch=new THREE.Mesh(A.chain,mat(PAL.gold)); ch.position.y=5.6; SX.ball.add(ch);
+      addOutline(SX.ball,.05);
+      for(let k=0;k<7;k++){ const a=k/7*TAU, y=Math.sin(k*2.3)*1.1, r=Math.sqrt(Math.max(.2,2.6-y*y))*1.02; SX.ball.add(makeTwinkle(.9+(k%3)*.3,Math.cos(a)*r,y,Math.sin(a)*r)); }
+      scene.add(SX.ball);
+    }
     SX.ball.visible=true; ev.x=mid.x; ev.z=mid.z;
     for(const s of G.sheep) if(!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy) s.dance=true;
-    ev.spots=[]; for(let k=0;k<5;k++){ const c=sxAdd(new THREE.Mesh(new THREE.CircleGeometry(2.6,24),new THREE.MeshBasicMaterial({color:[0xff5aa0,0x5ab4ff,0xffe14d,0x6fd06f,0xb48cff][k],transparent:true,opacity:.45,depthWrite:false}))); c.rotation.x=-Math.PI/2; ev.spots.push(c); }
+    ev.spots=[]; ev.beams=[]; const A=surpriseArt();
+    for(let k=0;k<5;k++){ const c=sxAdd(new THREE.Mesh(A.spot,A.spotM[k])); c.rotation.x=-Math.PI/2; ev.spots.push(c); ev.beams.push(sxAdd(new THREE.Mesh(A.beam,A.beamM[k]))); }
   } else if(kind==='bales'){
     // three giant bales roll across the field through the flock
     const horiz=Math.random()<.5, sgn=horiz?(Math.random()<.5?1:-1):-1; ev.b=[];
     for(let k=0;k<3;k++){
       const off=(k-1)*5.5+(Math.random()-.5)*2;
-      const g=sxAdd(new THREE.Group()), cyl=new THREE.Mesh(new THREE.CylinderGeometry(1.7,1.7,3.2,14),mat(0xd8b65a)); cyl.rotation.z=Math.PI/2; cyl.castShadow=true; g.add(cyl);
-      for(const sd of [-1,1]){ const r=new THREE.Mesh(new THREE.TorusGeometry(1.72,.08,4,16),mat(0x9a7a3a)); r.rotation.y=Math.PI/2; r.position.x=sd*.8; g.add(r); }
+      // a chunky round bale: rounded straw drum, rolled spiral ends, two bands of twine (all roll together)
+      const A=surpriseArt(), g=sxAdd(new THREE.Group()), cyl=new THREE.Mesh(A.bale,A.hayM); cyl.rotation.z=Math.PI/2; cyl.castShadow=true; g.add(cyl);
+      cyl.add(new THREE.Mesh(A.twine,mat(0xd2452e))); addOutline(g,.05); cyl.add(new THREE.Mesh(A.ends,A.endM));
       const b={g,cyl,hits:new Set()};
-      if(horiz){ b.x=-sgn*(FIELD+6+k*4); b.z=mid.z+off; b.vx=sgn*12; b.vz=0; g.rotation.y=0; } else { b.x=mid.x+off; b.z=-sgn*(FIELD+6+k*4); b.vx=0; b.vz=sgn*12; g.rotation.y=Math.PI/2; }
+      // (the bale's axis lies across its path, so it rolls rather than drills)
+      if(horiz){ b.x=-sgn*(FIELD+6+k*4); b.z=mid.z+off; b.vx=sgn*12; b.vz=0; g.rotation.y=Math.PI/2; } else { b.x=mid.x+off; b.z=-sgn*(FIELD+6+k*4); b.vx=0; b.vz=sgn*12; g.rotation.y=0; }
       ev.b.push(b);
     }
   } else if(kind==='golden'){
@@ -4228,11 +4567,13 @@ function syncSurprise(dt,time){
   // big air for sheep thrown by a twister or a bale
   for(const s of G.sheep){ if(s.air>0){ s.air=Math.max(0,s.air-dt*1.1); if(!s.dead) s.m.g.position.y+=Math.sin(s.air*Math.PI)*4.5; } if(s.safeT>0) s.safeT-=dt; }
   if(!ev) return;
-  if(ev.kind==='twister' && ev.g){ ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z); ev.g.rotation.y+=dt*9; ev.g.children.forEach((c,i)=>{ c.position.x=Math.sin(time*5+i)*.3*i*.3; }); }
+  if(ev.kind==='twister' && ev.g){ const u=ev.g.userData; ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z); u.spin.rotation.y+=dt*9; u.orbit.rotation.y+=dt*5.5; u.dust.rotation.y-=dt*2.5;
+    u.lean.rotation.z=Math.sin(time*1.7)*.09; u.lean.rotation.x=Math.cos(time*1.3)*.07; u.tex.offset.y-=dt*.7; }
   if(ev.kind==='bales') for(const b of ev.b) b.g.position.set(b.x,groundH(b.x,b.z)+1.7,b.z);
   if(ev.kind==='disco'){
     SX.ball.position.set(ev.x,groundH(ev.x,ev.z)+9+Math.min(0,ev.t-1)*0,ev.z); SX.ball.rotation.y+=dt*2;
     ev.spots.forEach((c,k)=>{ const a=time*1.7+k*1.3, r=4+k*1.5; c.position.set(ev.x+Math.cos(a)*r,groundH(ev.x+Math.cos(a)*r,ev.z+Math.sin(a)*r)+.1,ev.z+Math.sin(a)*r); });
+    if(ev.beams) ev.beams.forEach((b,k)=>{ const c=ev.spots[k]; b.position.copy(SX.ball.position); b.lookAt(c.position); b.scale.z=b.position.distanceTo(c.position); });
     if(Math.random()<dt*8) burst(ev.x+(Math.random()-.5)*14,6+Math.random()*3,ev.z+(Math.random()-.5)*14,1,PC.confetti,1,.5,2);
   }
   if(ev.kind==='golden' && Math.random()<dt*10){ const D=dog; burst(D.x+(Math.random()-.5)*24,4+Math.random()*4,D.z+(Math.random()-.5)*24,1,PC.gold,.5,.2,1); }
@@ -4384,6 +4725,65 @@ function updateTreeFade(dt){
     const hide=subj.some(p=>Math.abs(p.x-f.x)<3.1*f.s && f.z-p.z>-1.2 && f.z-p.z<5.5*f.s);
     f.op=lerp(f.op,hide?.25:1,k);
     for(const m of f.mats){ m.opacity=f.op; m.depthWrite=f.op>.95; }
+  }
+}
+// ---------------- wind trails: thin white curls that drift across the field and loop (Wind Waker style) ----------------
+// A handful of ribbons, reused forever: each one draws itself along a gentle wavy path with a single loop-the-loop,
+// then its tail catches up and it's gone. They follow the wind (and rush along during autumn gusts). Nothing is allocated per frame.
+const WIND_TR=(function(){
+  const N=4, K=48, list=[], idx=[];
+  for(let k=0;k<K-1;k++){ const a=k*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
+  for(let i=0;i<N;i++){
+    const pos=new Float32Array(K*6), geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setIndex(idx);
+    const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+    mesh.frustumCulled=false; mesh.visible=false; mesh.renderOrder=3; scene.add(mesh);
+    list.push({mesh,pos,c:new Float32Array(K*3),on:false,wait:.4+i*1.6,s:0,ox:0,oz:0,fx:1,fz:0,y:2,R:1.2,uc:6,L:20,seg:9,sp:8,A:.5,w:.4,ph:0,bu:1,bs:0,drift:.9});
+  }
+  return {list,K,fade:0};
+})();
+// a point on a trail's path at distance s (y is height above the ground): wave + one loop in a tilted plane
+function windPath(T,s,out,o){
+  const loop=TAU*T.R; let al, lift=0, lat=0;
+  if(s<T.uc) al=s;
+  else if(s<T.uc+loop){ const th=(s-T.uc)/T.R; al=T.uc+T.R*Math.sin(th); lift=T.R*(1-Math.cos(th)); lat=th/TAU*T.drift; }
+  else { al=s-loop; lat=T.drift; }
+  const side=T.A*Math.sin(s*T.w+T.ph)+lat+lift*T.bs;
+  out[o]=T.ox+T.fx*al-T.fz*side; out[o+1]=lift*T.bu+.25*Math.sin(s*.35+T.ph*2); out[o+2]=T.oz+T.fz*al+T.fx*side;
+}
+function updateWindTrails(dt,time){
+  const W=WIND_TR, K=W.K, th=LEVEL.theme;
+  const day=clamp(((sun.intensity+.05)/1.15-.35)/.4,0,1), ok=(th==='farm'||th==='desert'||th==='sky') && G.phase!=='night' && !G.storm;
+  W.fade=lerp(W.fade,ok?day:0,1-Math.exp(-dt*1.5));
+  const gust=G.gust>0 && (G.windX||G.windZ), baseA=gust?Math.atan2(G.windZ,G.windX):SEASON.windy?0:.45+.35*Math.sin(time*.013);
+  const cx=G.coop?(dog.x+dog2.x)/2:camLook.x, cz=G.coop?(dog.z+dog2.z)/2:camLook.z, cp=camera.position;
+  for(const T of W.list){
+    if(!T.on){
+      T.wait-=dt*(gust?5:1);
+      if(T.wait>0 || W.fade<.05){ T.mesh.visible=false; continue; }
+      // start upwind of the view so it drifts across it
+      const a=baseA+(prand()-.5)*.5, be=.35+prand()*.9; T.fx=Math.cos(a); T.fz=Math.sin(a);
+      T.R=1.1+prand()*.9; T.L=14+prand()*10; T.uc=T.L*(.3+prand()*.35); T.seg=8+prand()*5; T.sp=(gust?14:7)+prand()*3;
+      T.A=.3+prand()*.6; T.w=.25+prand()*.3; T.ph=prand()*TAU; T.bu=Math.cos(be); T.bs=Math.sin(be)*(prand()<.5?-1:1); T.drift=(.6+prand()*.6)*(prand()<.5?-1:1); T.y=1.6+prand()*2.6;
+      const half=(T.L+TAU*T.R)*.5+(prand()-.5)*8, off=(prand()-.5)*28;
+      T.ox=cx-T.fx*half-T.fz*off; T.oz=cz-T.fz*half+T.fx*off; T.s=0; T.on=true; T.mesh.visible=true;
+    }
+    T.s+=dt*T.sp;
+    const tot=T.L+TAU*T.R, head=Math.min(T.s,tot), tail=Math.max(0,T.s-T.seg), len=head-tail, c=T.c, P=T.pos;
+    if(tail>=tot){ T.on=false; T.wait=1+prand()*4; T.mesh.visible=false; continue; }
+    windPath(T,tail,c,0); const g0=groundH(c[0],c[2]); windPath(T,head,c,0); const g1=groundH(c[0],c[2]);
+    for(let k=0;k<K;k++){ const f=k/(K-1); windPath(T,tail+len*f,c,k*3); c[k*3+1]+=T.y+g0+(g1-g0)*f; }
+    // a flat ribbon turned to face the camera, about the same width on screen near or far, tapered at both ends
+    const m=(K>>1)*3, wb=clamp(Math.hypot(cp.x-c[m],cp.y-c[m+1],cp.z-c[m+2])*.0062,.08,.42);
+    for(let k=0;k<K;k++){
+      const i=k*3, a0=Math.max(0,k-1)*3, a1=Math.min(K-1,k+1)*3;
+      const tx=c[a1]-c[a0], ty=c[a1+1]-c[a0+1], tz=c[a1+2]-c[a0+2], vx=cp.x-c[i], vy=cp.y-c[i+1], vz=cp.z-c[i+2];
+      let sx=ty*vz-tz*vy, sy=tz*vx-tx*vz, sz=tx*vy-ty*vx; const sl=Math.hypot(sx,sy,sz)||1, w=wb*.5*Math.pow(Math.sin(Math.PI*k/(K-1)),.6)/sl;
+      sx*=w; sy*=w; sz*=w;
+      P[i*2]=c[i]-sx; P[i*2+1]=c[i+1]-sy; P[i*2+2]=c[i+2]-sz; P[i*2+3]=c[i]+sx; P[i*2+4]=c[i+1]+sy; P[i*2+5]=c[i+2]+sz;
+    }
+    T.mesh.geometry.attributes.position.needsUpdate=true;
+    T.mesh.material.opacity=.8*W.fade*clamp(Math.min(T.s/3,(tot+T.seg-T.s)/4),0,1);
   }
 }
 function updateLevelFx(dt,time){
@@ -4662,6 +5062,7 @@ function frame(now){
   updateWeather(dt,time);
   updateSeasonFx(dt,time);
   updateLevelFx(dt,time);
+  updateWindTrails(dt,time);
   updateCamera(dt,time);
   updatePops(dt);
   updatePartnerArrows(); updateGoalArrow(time); updateThreatArrows(time);
