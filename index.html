@@ -108,6 +108,14 @@ body.pad #keysHint .gp{display:flex}
 #sign.manyNames .nameRow{gap:8px}
 #sign.manyNames .nameRow input{font-size:16px;padding:5px 10px;width:170px}
 #sign.manyNames .nameRow label{min-width:130px;font-size:11px}
+.trailMap{width:100%;max-width:560px;height:auto;display:block;margin:6px auto 2px}
+.tmLand{fill:#f3e2b3;stroke:#2a1d14;stroke-width:4;stroke-linejoin:round}
+.tmDone{fill:none;stroke:#c8402e;stroke-width:7;stroke-linecap:round}
+.tmAhead{fill:none;stroke:#8a7a5a;stroke-width:5;stroke-dasharray:4 14;stroke-linecap:round}
+.tmPast{fill:#c8402e;stroke:#2a1d14;stroke-width:3}.tmNext{fill:#fffaf0;stroke:#2a1d14;stroke-width:3}
+.tmHere{fill:#ffcf3f;stroke:#2a1d14;stroke-width:4;animation:tmPulse 1.2s ease-in-out infinite}
+@keyframes tmPulse{50%{stroke-width:9}}
+.tmLabel{font:700 30px var(--display,serif);fill:#2a1d14;text-anchor:middle;paint-order:stroke;stroke:#fffaf0;stroke-width:8px}
 .sw{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:-1px;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
 .finds{border-top:1px solid var(--edge);padding-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px;font-size:14px;color:var(--muted)}
 .finds b{color:var(--ink);font-weight:700}
@@ -481,16 +489,16 @@ function generateLevel(d){
   // theme: day 1 is always the farm; never the same special theme twice running
   let theme='farm';
   const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
-  if(d===UNLOCK.hazards) theme=chance(.5)?'volcano':'sky';      // the day lava and cliffs arrive, make sure you see them
-  else if(d===UNLOCK.worlds) theme=pick(['desert','sea','moon']);
-  else if(d===UNLOCK.maze) theme='farm';                          // the first maze is a proper corn maze
-  else if(d===UNLOCK.cougar) theme='farm';                        // the first cougar day: trees, and nothing else new
+  const stop=trailStop(d);
+  if(stop) theme=stop.theme;                                     // on the trail, the stop decides the world
+  else if(d===UNLOCK.worlds) theme=pick(['sky','sea','moon','volcano']);
   else if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
-  const L={theme,season:THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null};
+  const L={theme,season:(stop&&stop.season)||THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null,special:stop&&stop.special||null};
   // the day's puzzle: trial gates or a weigh-in to unlock the pen, or a maze to get through
   const mazeOK=theme==='farm'||theme==='desert'||theme==='sea'||theme==='moon';
   let pz=null;
-  if(d===UNLOCK.gates) pz='gates'; else if(d===UNLOCK.maze) pz='maze'; else if(d===UNLOCK.scale) pz='scale'; else if(d===UNLOCK.cougar) pz=null;
+  if(stop && 'puzzle' in stop) pz=stop.puzzle;
+  else if(d===UNLOCK.gates) pz='gates'; else if(d===UNLOCK.maze) pz='maze'; else if(d===UNLOCK.scale) pz='scale'; else if(d===UNLOCK.cougar) pz=null;
   else if(d>UNLOCK.gates){ const o=[null,'gates']; if(d>UNLOCK.maze && mazeOK) o.push('maze','maze'); if(d>UNLOCK.scale) o.push('scale'); if(d>8) o.shift(); pz=pick(o); }
   L.puzzle=pz; L.gates=d===UNLOCK.gates?1:2+(d>=9&&chance(.5)?1:0);
   if(pz==='maze') L.maze=genMaze(R);
@@ -503,7 +511,13 @@ function generateLevel(d){
     || (L.river && Math.abs(z-riverZ(L.river,x))<L.river.w/2+2.5+pad)
     || L.walls.some(w=>{ const [ax,az,bx,bz]=w.seg, abx=bx-ax, abz=bz-az, t=clamp(((x-ax)*abx+(z-az)*abz)/(abx*abx+abz*abz),0,1); return Math.hypot(x-ax-abx*t,z-az-abz*t)<1.5+pad; });
   // a winding river with 1-3 bridges
-  if(d>2 && !L.maze && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
+  // the Grand Canyon: a rift right across the field, crossable only at a couple of narrow necks
+  if(L.special==='canyon'){
+    const zc=r(4,12), gaps=[r(-34,-12),r(12,34)]; L.canyon={z:zc};
+    for(let x=-FIELD-2;x<=FIELD+2;x+=6.2){ if(gaps.some(g=>Math.abs(g-x)<5.2)) continue; const rad=r(4,5); L.holes.push({x,z:zc+r(-1.2,1.2),r:rad}); taken.push({x,z:zc,r:rad+2}); }
+  }
+  if(L.special==='plains') L.twist='stampede';
+  if(L.special!=='canyon' && L.special!=='columbia' && d>2 && !L.maze && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
     const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[],lava:theme==='volcano'};
     const nb=1+((R()*3)|0); let tries=0;
     while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
@@ -554,12 +568,12 @@ function generateLevel(d){
   for(let k=0,t=0;k<nr && t<40;t++){ const cx=r(-38,38), cz=r(-4,42); if(blockedAt(cx,cz,4)) continue; const n=3+((R()*4)|0);
     for(let q=0;q<n;q++){ const a=R()*TAU, rr=r(0,4); L.rocks.push({x:cx+Math.cos(a)*rr,z:cz+Math.sin(a)*rr,s:r(.6,1.4)}); }
     taken.push({x:cx,z:cz,r:6}); k++; }
-  if(d>=UNLOCK.twist && chance(Math.min(.8,.3+.06*d))) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy') && !(L.maze&&(k==='foggy'||k==='stampede'))));   // fog underwater was unplayable
+  if(!L.twist && !L.special && !NEW_ON[d] && d>=UNLOCK.twist && chance(Math.min(.8,.3+.06*d))) L.twist=pick(Object.keys(TWISTS).filter(k=>!(theme==='sea'&&k==='foggy') && !(L.maze&&(k==='foggy'||k==='stampede'))));   // fog underwater was unplayable
   // a name for the place
   const adj=pick(['Windy','Mossy','Crooked','Sunny','Misty','Old','Lonely','Bonny','Wild','Muddy','Bramble','Thistle','Heather','Golden']);
   const noun=theme==='sky'?pick(['Skies','Clouds','Heights']):theme==='sea'?pick(['Deep','Reef','Shallows']):theme==='desert'?pick(['Dunes','Gulch','Flats']):theme==='moon'?pick(['Craters','Moon','Basin']):theme==='volcano'?pick(['Caldera','Cinders','Ashlands'])
     :L.river?pick(['Burn','Brook','Ford']):L.walls.length?pick(['Hedges','Lanes','Steadings']):L.copses.length>5?pick(['Wood','Copse']):pick(['Meadow','Glen','Brae','Fields']);
-  L.name=d===1?'Home Farm':adj+' '+noun;
+  L.name=stop?stop.place+', '+stop.st:adj+' '+noun;
   return L;
 }
 // ring: how the trees past the fence look in that world (no trunks: round shrubs, coral heads or moon boulders)
@@ -577,8 +591,37 @@ let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
-const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,worlds:4,twist:4,munch:4,storm:4,maze:5,cougar:6,boss:6,falcon:7,rascal:7,scale:8,hazards:9,shroom:9,wild:10};
-const NEW_ON={2:'Trial gates',3:'Surprises',4:'New worlds',5:'Corn maze',6:'The cougar',7:'Falcons',8:'The weigh-in',9:'Lava & cliffs',10:'Wild surprises'};
+const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,scale:10,worlds:11,hazards:11,wild:11};
+const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
+// The Long Drive: Hank has inherited a ranch on the Oregon coast and the flock is coming with him.
+// Each day is a stop on the trail west; after Oregon the game carries on with Hank's tall tales (every world, at random).
+const TRAIL=[
+  {place:'Saratoga Springs',st:'NY',lon:-73.8,lat:43.1,theme:'farm',puzzle:null,blurb:"Hank's farm in upstate New York. A letter came this morning: he's inherited a ranch on the Oregon coast, and the whole flock is coming with him."},
+  {place:'Saratoga Springs',st:'NY',lon:-73.8,lat:43.1,theme:'farm',puzzle:'gates',blurb:'One last day at home. Hank wants to see the flock run the trial course before the long drive west.'},
+  {place:'Lake Erie',st:'OH',lon:-81.7,lat:41.5,theme:'farm',season:'summer',blurb:'Down the lakeshore, sheep and all. Strange things happen on the road.'},
+  {place:'Corn Country',st:'IA',lon:-93.6,lat:41.6,theme:'farm',season:'summer',puzzle:'maze',blurb:'Corn as far as the eye can see, and a maze cut right through it.'},
+  {place:'The Great Plains',st:'NE',lon:-100,lat:41.4,theme:'farm',season:'summer',puzzle:null,special:'plains',blurb:'Big sky, big wind, nowhere to hide. Twister weather.'},
+  {place:'The Rockies',st:'CO',lon:-106,lat:39.6,theme:'farm',season:'autumn',puzzle:null,blurb:'Up into the mountains. This is cougar country.'},
+  {place:'Moab',st:'UT',lon:-109.6,lat:38.6,theme:'desert',blurb:'Red rock, big arches, and falcons riding the hot air.'},
+  {place:'The Grand Canyon',st:'AZ',lon:-112.1,lat:36.1,theme:'desert',puzzle:null,special:'canyon',blurb:'Hank took the scenic route. Mind the edge.'},
+  {place:'The Mighty Columbia',st:'OR',lon:-121.7,lat:45.7,theme:'farm',season:'spring',puzzle:null,special:'columbia',blurb:'No bridge for miles. The flock has to cross the Columbia.'},
+  {place:'The Oregon Coast',st:'OR',lon:-123.9,lat:45.6,theme:'farm',season:'spring',puzzle:'scale',special:'coast',blurb:'The ranch at last! The buyer wants the flock weighed before they go in the new barn.'}
+];
+const trailStop=d=>TRAIL[d-1]||null;
+// a cartoon map of the lower 48 with the route drawn on it
+const US_OUTLINE=[[-124.7,48.4],[-124,46.3],[-124.1,43],[-124.2,41.9],[-123.8,39.8],[-122.4,37.8],[-120.6,34.6],[-117.1,32.5],[-114.7,32.7],[-111,31.3],[-108.2,31.3],[-106.5,31.8],[-104.5,29.6],[-103,29],[-101.4,29.8],[-99.5,27.5],[-97.4,25.9],[-97.2,27.8],[-95,29.3],[-93.8,29.7],[-90.4,29.1],[-89.2,30.3],[-87.5,30.3],[-85.4,29.7],[-84,30.1],[-82.7,28.5],[-82.1,26.5],[-80.9,25.2],[-80.1,26.4],[-80.6,28.4],[-81.3,30.7],[-80.9,32.1],[-79,33.7],[-77.9,34],[-75.5,35.2],[-76.3,36.9],[-75.9,38],[-75,38.8],[-74,40.5],[-72,41],[-70,41.6],[-70.6,42.6],[-70.8,43.2],[-70,43.8],[-67,44.8],[-67.8,47.1],[-69.2,47.4],[-70.6,45.5],[-74.7,45],[-76.4,44.2],[-79,43.3],[-79.2,42.6],[-82.5,41.7],[-83.1,42.3],[-82.4,43],[-82.5,45.3],[-84.1,46.5],[-88.4,48.3],[-89.6,48],[-95.2,49],[-123.3,49],[-122.8,48.9]];
+const mapX=lon=>((lon+126)/60*1000).toFixed(1), mapY=lat=>((50-lat)/26*600).toFixed(1);
+function trailMap(day){
+  const stops=[]; TRAIL.forEach((s,i)=>{ if(!stops.length || stops[stops.length-1].place!==s.place) stops.push({...s,d:i+1}); });
+  const cur=Math.min(day,TRAIL.length), curStop=TRAIL[cur-1];
+  const land='M'+US_OUTLINE.map(([a,b])=>mapX(a)+','+mapY(b)).join(' L')+' Z';
+  let done='', ahead='', dots='';
+  stops.forEach((s,i)=>{ if(i===0) return; const a=stops[i-1], seg=`M${mapX(a.lon)},${mapY(a.lat)} L${mapX(s.lon)},${mapY(s.lat)}`; if(s.d<=cur) done+=seg+' '; else ahead+=seg+' '; });
+  stops.forEach(s=>{ const here=s.place===curStop.place, past=s.d<cur && !here;
+    dots+=`<circle cx="${mapX(s.lon)}" cy="${mapY(s.lat)}" r="${here?15:9}" class="${here?'tmHere':past?'tmPast':'tmNext'}"/>`;
+    if(here){ const mx=+mapX(s.lon), anc=mx>760?'end':mx<240?'start':'middle'; dots+=`<text x="${(mx+(anc==='end'?12:anc==='start'?-12:0)).toFixed(1)}" y="${(+mapY(s.lat)-24).toFixed(1)}" class="tmLabel" style="text-anchor:${anc}">${s.place}</text>`; } });
+  return `<svg class="trailMap" viewBox="0 0 1000 600" role="img" aria-label="Map of the trail west"><path d="${land}" class="tmLand"/><path d="${ahead}" class="tmAhead"/><path d="${done}" class="tmDone"/>${dots}</svg>`;
+}
 const coyoteCount = d => Math.min(9, 2 + d);
 const ramCount = d => d<UNLOCK.ram ? 0 : Math.min(4, 1 + Math.floor((d-2)/2));   // 0,1,1,2,2,3,3,4
 const alphaCount = d => d<3 ? 0 : Math.min(3, 1 + Math.floor((d-2)/2)); // 0,1,1,2,2,3
@@ -2041,7 +2084,7 @@ function spawnFlock(n){
   const groups=Math.min(3, 2+Math.floor(n/12));
   const centers=[];
   for(let i=0,tries=0;i<groups && tries<500;tries++){
-    const zLo=LEVEL.maze?LEVEL.maze.z1+5:PEN.z1+16, x=(Math.random()*2-1)*(FIELD-12), z=zLo+Math.random()*Math.max(4,FIELD-10-zLo);
+    const zLo=LEVEL.maze?LEVEL.maze.z1+5:LEVEL.canyon?LEVEL.canyon.z+9:PEN.z1+16, x=(Math.random()*2-1)*(FIELD-12), z=zLo+Math.random()*Math.max(4,FIELD-10-zLo);
     if(!clearOf(x,z,6)) continue;
     if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<20)) continue;
     centers.push([x,z]); i++;
@@ -2282,6 +2325,15 @@ function startGame(fresh){
   G.phase='day'; G.paused=false; for(const c of [camera,camera2,camera3,camera4]) c.userData.reset=true;
   hideOverlay();
   $('hud').hidden=false;
+  const stop=trailStop(G.day);
+  if(stop){
+    // the trail card: where we are, the map, and what Hank's up to today
+    G.paused=true;
+    showOverlay(`<span class="eyebrow">The Long Drive · Day ${G.day} of ${TRAIL.length}</span><h2>${stop.place}, ${stop.st}</h2>${trailMap(G.day)}<p>${stop.blurb}</p>${NEW_ON[G.day]?`<p class="small" style="color:var(--lantern)">New today: ${NEW_ON[G.day]}</p>`:''}<div class="btnrow"><button class="btn" id="goBtn" type="button">${G.day===1?"Let's go!":'Head out'}</button></div>`);
+    $('goBtn').onclick=()=>{ hideOverlay(); G.paused=false; kickoffDay(); };
+  } else kickoffDay();
+}
+function kickoffDay(){
   if(document.body.classList.contains('touch')) $('touch').hidden=false;
   toast('Day '+G.day+' · '+LEVEL.name+(LEVEL.theme==='farm'?' · '+SEASON.label:'')+(G.twist?' · '+TWISTS[G.twist]:''),'',3.2);
   if(NEW_ON[G.day]){ const d0=G.day; setTimeout(()=>{ if(G.day===d0 && G.phase==='day') toast('NEW: '+NEW_ON[d0].toUpperCase(),'gold',2.6); },3500); }
@@ -2622,13 +2674,15 @@ function endDay(reason){
   if(stars>0){ G.celebrate = stars>=2 ? 4 : 2; sFanfare(); }
   const N=G.name;
   shepSay({before:"That'll do, "+N+". That'll do.",nightsafe:"Good dog. They're all safe now.",dawn:'Morning! You did well, '+N+'.',wiped:'Ach. We will try again.',failed:"That's the flock gone. The farm's done for."}[reason],true);
-  const T={
+  const finale = !over && G.day===TRAIL.length;
+  if(finale){ try{ localStorage.setItem('collieDuskTrail','1'); }catch(e){} G.celebrate=8; setTimeout(sFanfare,900); }
+  const T=finale?['You made it to Oregon!','']:({
     before:["That'll do, "+N+".","Every sheep is in the fold with daylight to spare. The gate swings shut."],
     nightsafe:["Safe in the fold!","You got the last of them in under the moon, and the coyotes slink back to the trees."],
     dawn:["Morning!","You held off the coyotes until sunrise. Good dog, "+N+"."],
     failed:["The farm's done for.","Too many sheep were lost. Start again from day 1. Your wool and upgrades are kept."],
     wiped:["The flock is gone.","The coyotes carried off every last one. Shake it off, "+N+", and try again."]
-  }[reason];
+  })[reason];
   const stat=(v,l,c)=>`<div class="${c||''}"><b>${v}</b><span>${l}</span></div>`;
   const starsHtml='<div class="starsRow" role="img" aria-label="'+stars+' of 3 stars">'+[0,1,2].map(i=>`<span class="${i<stars?'on':''}" style="animation-delay:${(.25+i*.28).toFixed(2)}s">★</span>`).join('')+'</div>';
   const notes=[]; if(timeBonus) notes.push(timeBonus+' for daylight left'); if(fullBonus) notes.push('25 for a full flock'); if(outside&&!over) notes.push(outside*4+' for sheep that made it through the night');
@@ -2638,14 +2692,15 @@ function endDay(reason){
   WOOL+=woolEarned; saveMeta();
   const next = over
     ? `<button class="btn" id="nextBtn" type="button">Shearing shed</button>`
-    : `<button class="btn" id="nextBtn" type="button">Shearing shed</button><button class="btn ghost" id="againBtn" type="button">Restart</button>`;
+    : `<button class="btn" id="nextBtn" type="button">${finale?'Keep herding':'Shearing shed'}</button><button class="btn ghost" id="againBtn" type="button">Restart</button>`;
   setTimeout(()=>{
-    showOverlay(`<span class="eyebrow">${over?"Game over · reached day "+G.day:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
+    showOverlay(`<span class="eyebrow">${over?"Game over · reached day "+G.day:trailStop(G.day)?'Day '+G.day+' · '+trailStop(G.day).place:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
       <div class="stats">${stat(penned,'Penned')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(dayScore,'Score')}${stat(G.total,'Total','gold')}</div>
       ${G.coop?coopTable():''}
       <p class="woolLine">+${woolEarned} wool <span>· ${WOOL} to spend</span></p>
       ${newHat?`<p class="small" style="color:var(--lantern)">New hat: ${newHat.name}</p>`:''}
-      ${!over?`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`:''}
+      ${!over&&finale?`<p>The flock is home on the ranch at last. The trail's done, but there's always more herding. Hank has tall tales to tell.</p>`:''}
+      ${!over&&!finale?(trailStop(G.day+1)?`${trailMap(G.day+1)}<p class="small">Tomorrow: ${trailStop(G.day+1).place}, ${trailStop(G.day+1).st}${NEW_ON[G.day+1]?' · New: '+NEW_ON[G.day+1]:''}</p>`:`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`):''}
       <div class="btnrow">${next}</div>`);
     $('nextBtn').onclick=()=>openShop(()=>{ if(over) startGame(true); else { G.day++; startGame(false); } }, over?'Try again from day 1':'Start day '+(G.day+1));
     const a=$('againBtn'); if(a) a.onclick=()=>startGame(true);
@@ -4364,6 +4419,7 @@ function coralGeo(seed){
   return mergeGeos(parts);
 }
 const hedgeMat=new THREE.MeshStandardMaterial({color:0x4aa83e,vertexColors:true,roughness:1});
+const canyonMat=new THREE.MeshBasicMaterial({color:0x3a1810}), canyonLipMat=mat(0xc0603a);
 const coralWallMat=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.9});
 const HEDGE_GEOS=[hedgeGeo(3),hedgeGeo(8)], CORAL_GEOS=[coralGeo(5),coralGeo(13)];
 function wallPiece(style,x,z,len,ang){
@@ -4481,11 +4537,12 @@ function buildLevel(L){
   }
   // chasms (sky) and craters (moon)
   for(const h of L.holes){
-    if(L.theme!=='sky') circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms don't stop you: you fall in
+    if(L.theme!=='sky' && !L.canyon) circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms and the canyon don't stop you: you fall in
     const base=groundH(h.x,h.z), moon=L.theme==='moon';
     // a hole in the island: sky blue, deeper in the middle, with a lip of bare earth and clouds drifting just inside;
     // on the Moon a dusty bowl with a soft raised rim
-    const d=addObj(new THREE.Mesh(hugGround(holeDisc(h.r),h.x,h.z,base,.14),moon?craterMat:chasmMat)); d.position.set(h.x,base,h.z);
+    const d=addObj(new THREE.Mesh(hugGround(holeDisc(h.r),h.x,h.z,base,.14),moon?craterMat:L.canyon?canyonMat:chasmMat)); d.position.set(h.x,base,h.z);
+    if(L.canyon){ const lip=addObj(new THREE.Mesh(hugGround(new THREE.RingGeometry(h.r-.05,h.r+.9,40).rotateX(-Math.PI/2),h.x,h.z,base,.16),canyonLipMat)); lip.position.set(h.x,base,h.z); hideGrass((x,z)=>Math.hypot(x-h.x,z-h.z)<h.r+.5); continue; }
     if(moon){ const rim=addObj(new THREE.Mesh(hugGround(new THREE.TorusGeometry(h.r+.2,.42,8,40).rotateX(Math.PI/2).scale(1,.55,1),h.x,h.z,base,.02),craterRimMat)); rim.position.set(h.x,base,h.z); rim.receiveShadow=true; }
     else {
       const lip=addObj(new THREE.Mesh(hugGround(new THREE.RingGeometry(h.r-.05,h.r+.7,40).rotateX(-Math.PI/2),h.x,h.z,base,.16),chasmLipMat)); lip.position.set(h.x,base,h.z);
@@ -4506,7 +4563,7 @@ function buildLevel(L){
     for(let k=0;k<nRim;k++){ const a=k/nRim*TAU+Math.random()*.4, rr=lp.r+.4+Math.random()*.3, x=lp.x+Math.cos(a)*rr, z=lp.z+Math.sin(a)*rr, s=.4+Math.random()*.35, c=addObj(new THREE.Mesh(rockGeos[k%3],crustMat)); c.position.set(x,groundH(x,z)+.15,z); c.scale.set(s*1.2,s*.7,s); c.rotation.y=Math.random()*TAU; c.castShadow=true; }
     hideGrass((x,z)=>Math.hypot(x-lp.x,z-lp.z)<lp.r+.5);
   }
-  L.haz=[...(L.lava||[]).map(h=>({x:h.x,z:h.z,r:h.r,kind:'lava'})), ...(L.theme==='sky'?L.holes.map(h=>({x:h.x,z:h.z,r:h.r,kind:'chasm'})):[])];
+  L.haz=[...(L.lava||[]).map(h=>({x:h.x,z:h.z,r:h.r,kind:'lava'})), ...((L.theme==='sky'||L.canyon)?L.holes.map(h=>({x:h.x,z:h.z,r:h.r,kind:'chasm'})):[])];
   for(const c of L.copses) makeObstacle(c.kind,c.x,c.z,c.s);
   for(const rk of L.rocks) makeObstacle('rock',rk.x,rk.z,rk.s);
   if(L.pond) hideGrass((x,z)=>Math.hypot(x-L.pond.x,z-L.pond.z)<L.pond.r+.6);
@@ -4993,7 +5050,7 @@ const SURPRISE_INFO={
   golden:['GOLDEN HOUR! x3','Golden hour! Quick, get them in!']
 };
 const SX={objs:[],last:null};
-function resetSurprise(){ endSurprise(); G.evT=G.day<UNLOCK.surprise?1e9:G.day<5?26+Math.random()*8:G.day<UNLOCK.wild?20+Math.random()*8:13+Math.random()*7; SX.last=null; }
+function resetSurprise(){ endSurprise(); SX.force=LEVEL.special==='plains'?'twister':null; if(SX.force){ G.evT=12; SX.last=null; return; } G.evT=G.day<UNLOCK.surprise?1e9:G.day<5?26+Math.random()*8:G.day<UNLOCK.wild?20+Math.random()*8:13+Math.random()*7; SX.last=null; }
 function endSurprise(){
   if(G.ev && G.ev.drops) for(const dr of G.ev.drops) if(!dr.done) scene.remove(dr.m.g);
   for(const o of SX.objs) scene.remove(o); SX.objs.length=0;
@@ -5145,6 +5202,7 @@ function updateSurprise(dt){
     if(busy()){ G.evT=4; return; }
     G.evT=G.day<5?40+Math.random()*15:G.day<UNLOCK.wild?28+Math.random()*12:18+Math.random()*10;
     let pool=(G.day<UNLOCK.wild?FRIENDLY:SURPRISES).filter(k=>k!==SX.last);
+    if(SX.force){ pool=[SX.force]; SX.force=null; }
     if(LEVEL.theme==='sea') pool=pool.filter(k=>k!=='twister');
     if(!G.sheep.some(s=>!s.dead&&!s.penned)) return;
     startSurprise(pool[(Math.random()*pool.length)|0]); return;
