@@ -324,7 +324,7 @@ body.pad #sign button:focus,body.pad #shopSign button:focus{outline:3px solid #f
 #place{position:fixed;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translate(-50%,8px);z-index:2;pointer-events:none;font-family:var(--display);font-size:clamp(18px,2.6vw,26px);color:var(--wool);letter-spacing:.02em;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 18px rgba(0,0,0,.5);opacity:0;transition:opacity 1.2s ease,transform 1.2s ease;white-space:nowrap}
 #place.on{opacity:.9;transform:translate(-50%,0)}
 
-/* online co-op: the lobby on the title, and a friend's screen (their dog's view arrives as video under the HUD) */
+/* online co-op: the lobby on the title, and a friend's screen */
 #titleNet{display:flex;flex-direction:column;gap:14px}
 .netOr{display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
 .netOr::before,.netOr::after{content:"";flex:1;height:1px;background:var(--edge)}
@@ -338,10 +338,7 @@ body.pad #sign button:focus,body.pad #shopSign button:focus{outline:3px solid #f
 #netPlayers li b{font-family:var(--display);font-weight:400;font-size:18px}
 #netPlayers li span{color:var(--muted);font-size:13px}
 body.netHosting #playersRow,body.netHosting #name2Row,body.netHosting #name3Row,body.netHosting #name4Row,body.netHosting #coopHint{display:none}
-#netVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0c1511;pointer-events:none}
-body.netGuest #game canvas{display:none}
-body.netGuest #minimap{visibility:hidden}
-body.netGuest #pops,body.netGuest #bubble,body.netGuest .pArrow,body.netGuest #splitLine,body.netGuest #splitLineH{display:none!important}
+body.netGuest #splitLine,body.netGuest #splitLineH{display:none!important}
 body.netGuest #sign button:disabled,body.netGuest #sign input:disabled,body.netGuest #shopSign button:disabled{opacity:.4;cursor:default;filter:none}
 #netBanner{position:fixed;left:50%;top:calc(14px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:10px;background:rgba(14,20,16,.9);border:1px solid var(--edge);font-weight:600;font-size:15px;color:var(--ink);white-space:nowrap}
 #netBanner .btn{font-size:14px;padding:6px 12px;border-radius:8px}
@@ -499,7 +496,8 @@ button,input{touch-action:manipulation}</style>
 'use strict';
 const $ = id => document.getElementById(id);
 // online co-op (see "online co-op" further down): who we are on the network, the room, and each friend's slot
-const NET={role:null, peer:null, code:'', slots:[], conn:null, call:null, inGame:false, dead:false, i:0, zoom:1, lastMsg:0, video:null};
+const NET={role:null, peer:null, code:'', slots:[], conn:null, call:null, inGame:false, dead:false, i:0, zoom:1, lastMsg:0, audio:null,
+  mirror:false, built:false, vis:false, quietFx:false, fx:[], nid:0, bul:[], dirty:new Set(), sheepById:new Map(), coyById:new Map(), sx:null, hp:false, ff:1};
 const TAU = Math.PI * 2;
 const clamp = (v,a,b) => v<a?a:v>b?b:v;
 const lerp = (a,b,t) => a+(b-a)*t;
@@ -2141,9 +2139,9 @@ function projectWorld(x,y,z){
 }
 const _ap=new THREE.Vector3();
 function updatePartnerArrows(){
-  if(G.online && G.coop && G.phase!=='title'){        // online the host has the whole screen: one arrow, to player 2
-    $('arrow2').hidden=true; const el=$('arrow1'), w=window.innerWidth, h=window.innerHeight;
-    _ap.set(dog2.x,1,dog2.z).project(camera); const behind=_ap.z>1; let nx=_ap.x, ny=_ap.y; if(behind){ nx=-nx; ny=-ny; }
+  if((G.online||NET.mirror) && G.coop && G.phase!=='title'){        // online everyone has the whole screen: one arrow, to player 2 (or, for a friend, to the host)
+    const el=$(NET.mirror?'arrow2':'arrow1'), who=NET.mirror?dog:dog2, w=window.innerWidth, h=window.innerHeight; $(NET.mirror?'arrow1':'arrow2').hidden=true;
+    _ap.set(who.x,1,who.z).project(camera); const behind=_ap.z>1; let nx=_ap.x, ny=_ap.y; if(behind){ nx=-nx; ny=-ny; }
     if(!behind && Math.abs(nx)<.95 && Math.abs(ny)<.95){ el.hidden=true; return; }
     const m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*.9, ey=ny/m*.86;
     el.hidden=false; el.style.transform=`translate(${(ex*.5+.5)*w-13}px,${(-ey*.5+.5)*h-11}px) rotate(${Math.atan2(ex,ey)}rad)`; return;
@@ -2892,6 +2890,7 @@ function setupDay(mode){ clearAnimals(); buildLeg(G.day,mode||'scatter'); }
 // build a stretch of the trail: the land and everything on it. On a 'swap' (walking on up the lane into it) the flock, the
 // dogs, the clock and the weather carry on as they are; otherwise the flock is put out ('scatter', 'trail' or 'pen')
 function buildLeg(d,mode){
+  if(NET.role==='host') netLegOut(d,mode);       // friends online build the same stretch
   const swap=mode==='swap', id=lvl(d);
   JR.restT=0; G.ff=1; G.saidFew=false;
   const sky0=swap?[C_DAY.clone(),H_DAY.clone(),HG_DAY.clone()]:null;
@@ -3198,7 +3197,7 @@ function devAct(k){
   else if(k==='stam'){ G.devStam=!G.devStam; toast('Endless stamina '+(G.devStam?'on':'off'),'',1.6); }
 }
 function setPause(p){
-  if(G.phase!=='day' && G.phase!=='night') return;
+  if(NET.mirror || (G.phase!=='day' && G.phase!=='night')) return;
   G.paused=p;
   if(p){
     showOverlay('<h2>Paused</h2>'+(G.day<=FINAL_LEG?trailMap(lastStop(G.day),true):'')+controlsHTML()+'<div id="pauseOpts" hidden><div class="vols" id="pauseVols"></div><div class="btnrow"><button class="btn ghost" id="bubPause" type="button">Hank\'s bubbles: '+(bubblesOn?'on':'off')+'</button>'+(G.coop&&!G.online?'<button class="btn ghost" id="camBtn" type="button">Camera: '+(G.sharedCam?'Shared':'Split screen')+'</button>':'')+'</div></div><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="pShedBtn" type="button">Shearing shed</button><button class="btn ghost" id="pOptBtn" type="button">Options</button><button class="btn ghost" id="quitBtn" type="button">New journey</button></div>'+netPauseHTML()+(G.dev?'<div class="btnrow" id="devRow"><span class="eyebrow" style="width:100%">Dev</span><button class="btn ghost" type="button" data-dev="win">Pen them all</button><button class="btn ghost" type="button" data-dev="night">Skip to night</button><button class="btn ghost" type="button" data-dev="morn">Skip to morning</button><button class="btn ghost" type="button" data-dev="lamb">Lambs due</button><button class="btn ghost" type="button" data-dev="weak">Weaken flock</button><button class="btn ghost" type="button" data-dev="coy">Coyotes</button><button class="btn ghost" type="button" data-dev="surprise">Surprise</button><button class="btn ghost" type="button" data-dev="mad">Mad sheep</button><button class="btn ghost" type="button" data-dev="stam">Endless stamina: '+(G.devStam?'on':'off')+'</button></div>':''));
@@ -7194,7 +7193,7 @@ function updateGoalArrow(time){
 // red arrows at the screen edge for coyotes you can't see (they pulse when one's carrying a sheep off)
 const coyArrows=[...document.querySelectorAll('.pArrow.coy')], _tp=new THREE.Vector3();
 function updateThreatArrows(time){
-  const list=(G.phase==='day'||G.phase==='night') && !coopView ? G.coyotes.filter(c=>!c.gone && c.state!=='retreat').sort((a,b)=>Math.hypot(a.x-dog.x,a.z-dog.z)-Math.hypot(b.x-dog.x,b.z-dog.z)) : [];
+  const me=netMe(), list=(G.phase==='day'||G.phase==='night') && !coopView ? G.coyotes.filter(c=>!c.gone && c.state!=='retreat').sort((a,b)=>Math.hypot(a.x-me.x,a.z-me.z)-Math.hypot(b.x-me.x,b.z-me.z)) : [];
   const w=window.innerWidth, h=window.innerHeight;
   let n=0;
   for(const c of list){
@@ -7821,7 +7820,7 @@ function updateTreeFade(dt){
   RING_FADE.uDogs.value.forEach((v,i)=>{ const D=dogs[i]; if(D && (G.phase==='day'||G.phase==='night')) v.set(D.x,0,D.z,1); else v.w=0; });
   if(!fadeTrees.length) return;
   const subj=[...dogs.filter(D=>D===dog||G.coop)], k=1-Math.exp(-dt*8);
-  for(const s of G.sheep) if(!s.dead && !s.penned && (G.online?dogs.some(D=>Math.hypot(s.x-D.x,s.z-D.z)<34):Math.hypot(s.x-dog.x,s.z-dog.z)<34)) subj.push(s);   // online, every player's view counts
+  for(const s of G.sheep) if(!s.dead && !s.penned && (G.online?dogs.some(D=>Math.hypot(s.x-D.x,s.z-D.z)<34):Math.hypot(s.x-netMe().x,s.z-netMe().z)<34)) subj.push(s);   // online, every player's view counts
   for(const c of G.coyotes) if(!c.gone) subj.push(c);
   for(const f of fadeTrees){
     const hide=subj.some(p=>Math.abs(p.x-f.x)<3.1*f.s && f.z-p.z>-1.2 && f.z-p.z<5.5*f.s);
@@ -7932,7 +7931,7 @@ function frameCam(cam,look,D,dt,aspect,first){
   // how high the camera has to be to fit that box (depth and width), within limits
   const hz=(z1-z0)/(CAM_N-CAM_S), hx=(x1-x0)*Math.sin(CAM_PITCH)/(2*Math.tan(CAM_FIT/2)*aspect*.92);
   const inLane=(z0+z1)/2<PEN.z1-28 || (z0+z1)/2>60;
-  const h=Math.min(clamp(Math.max(hz,hx,17),17,shared?84:52)*(cam.userData.zoom||G.zoom), inLane?24:1e9);    // (a friend online zooms their own view)
+  const h=Math.min(clamp(Math.max(hz,hx,17),17,shared?84:52)*G.zoom, inLane?24:1e9);
   // aim so the box sits in the middle of the view
   let az=(z0+z1+(CAM_S+CAM_N)*h)/2-CAM_C*h; const ax=(x0+x1)/2;     // camera z is az+C*h; this splits the spare room evenly top and bottom
   if(inLane && az<-82) az=-82;
@@ -7954,12 +7953,11 @@ function updateCamera(dt,time){
     const a=time*.05; camera.position.set(Math.sin(a)*60, 30, Math.cos(a)*60);
     camLook.set(0,0,0); camera.lookAt(camLook); return;
   }
-  if(!coopView){ followCam(camera,camLook,G.coop&&G.sharedCam?dogs:dog,dt); }
+  if(!coopView){ followCam(camera,camLook,G.coop&&G.sharedCam?dogs:netMe(),dt); }
   else for(const v of viewports()){
     if(v.D) followCam(v.cam,camLooks[v.i],v.D,dt,v);
     else { overCam.position.set(0,120,62); overCam.lookAt(0,0,3); }
   }
-  if(G.online) netCams(dt);       // each friend online has a camera of their own, following their dog
   if(G.shake>0) G.shake=Math.max(0,G.shake-dt*2.2);
 }
 
@@ -8064,14 +8062,14 @@ function updateHUD(dt,time){
 }
 
 // ---------------- online co-op ----------------
-// One player hosts: their browser runs the whole game, just as it does for local co-op. Each friend who joins gets a dog
-// (players 2-4) and a camera of their own. The host renders that view, draws the things that hang off the world on top
-// of it (score pops, Hank's bubble, the arrows at the screen edge, the minimap), and streams it to the friend as live
-// video with the game's sound. The HUD cards and menus go over a data channel and are mirrored into the friend's own copy
-// of the page, so they stay sharp. The friend's browser shows all that and sends back its keys, stick and buttons.
-// Browsers connect to each other directly (WebRTC) through PeerJS: its free public server only introduces them, and
-// relays the video when there's no direct route between the two.
-const NET_VER=1, NET_FPS=30, NET_LONG=1280, NET_SHORT=720;          // video: 30 frames a second, up to 1280x720
+// One player hosts: their browser plays the game, just as it does for local co-op. Each friend who joins gets a dog
+// (players 2-4). Their browser builds the same world and draws it itself, with a camera on their own dog, from what the
+// host sends twenty times a second (see "keeping every friend's world in step" below). The game's sound is streamed from
+// the host, and the HUD cards and menus are mirrored into the friend's copy of the page. The friend's browser sends back
+// its keys, stick and buttons. Browsers connect to each other directly (WebRTC) through PeerJS: its free public server
+// only introduces them, and relays when there's no direct route between the two.
+const NET_VER=2;
+const NET_BUILD=(()=>{ const t=(document.currentScript&&document.currentScript.textContent)||''; let h=5381; for(let i=0;i<t.length;i++) h=((h<<5)+h+t.charCodeAt(i))|0; return (h>>>0).toString(36)+'.'+t.length; })();
 const NET_CLICKS=new Set(['goBtn','resumeBtn','againBtn']);   // menu buttons a friend can press (the rest are the host's)
 const NET_BODY=['coop','shared','many','p3','p4','noBubbles'];  // page-wide classes that shape the HUD
 const NET_IDLE={x:0,y:0,run:false,down:true,grab:false,latch:false};     // a dog whose player dropped out lies down and waits
@@ -8111,7 +8109,7 @@ function netErr(err){
   return 'Something went wrong going online ('+(t||'error')+'). Try again.';
 }
 // The HUD's elements in page order. Host and friend run the same page, so element k is the same thing on both.
-// (The camp card's stats line has its own markup, and the minimap is drawn into the video instead.)
+// (The camp card's stats line has its own markup, and each page draws its own minimap.)
 let netHudList=null;
 function netHudEls(){ return netHudList||(netHudList=[...$('hud').querySelectorAll('*')].filter(e=>e.id!=='minimap' && !e.closest('#campStats *, svg *'))); }
 function netSer(e){ return (e.hidden?'1':'0')+'\u0001'+(e.getAttribute('class')||'')+'\u0001'+(e.getAttribute('style')||'')+'\u0001'+(e.id==='campStats'?e.innerHTML:e.childElementCount?'':e.textContent)+'\u0001'+(e.disabled?'1':'0'); }
@@ -8207,8 +8205,8 @@ function netStop(){
   NET.role=null; NET.code=''; G.online=false;
   netUI(); netStatus('');
 }
-function netSlot(i){ const s={ctl:{x:0,y:0,run:false,down:false,grab:false,latch:false},zoom:1,w:1280,h:720,dpr:1,mm:null,canvas:null,ctx:null,drawn:0,hud:[],name:''}; netIndex(s,i); return s; }
-function netIndex(s,i){ s.i=i; s.D=ALLDOGS[i]; s.cam=[camera2,camera3,camera4][i-1]; s.look=camLooks[i]; }
+function netSlot(i){ const s={ctl:{x:0,y:0,run:false,down:false,grab:false,latch:false},hud:[],name:'',sent:null,synced:false}; netIndex(s,i); return s; }
+function netIndex(s,i){ s.i=i; s.D=ALLDOGS[i]; }
 function netAccept(conn){
   let s=null;
   conn.on('data',m=>{
@@ -8230,16 +8228,16 @@ function netIceWatch(conn,lost){
   });
 }
 function netWelcome(conn,m){
-  if(m.v!==NET_VER || m.n!==netHudEls().length){ try{ conn.send({t:'old'}); }catch(e){} setTimeout(()=>{ try{ conn.close(); }catch(e){} },1000); return null; }
+  if(m.v!==NET_VER || m.n!==netHudEls().length || m.b!==NET_BUILD){ try{ conn.send({t:'old'}); }catch(e){} setTimeout(()=>{ try{ conn.close(); }catch(e){} },1000); return null; }
   let s=NET.slots.find(x=>!x.conn);              // someone who dropped out mid-journey: their dog is waiting
   if(!s){ if(NET.slots.length>=3){ try{ conn.send({t:'full'}); }catch(e){} setTimeout(()=>{ try{ conn.close(); }catch(e){} },1000); return null; }
     s=netSlot(NET.slots.length+1); NET.slots.push(s); }
-  s.conn=conn; s.name=cleanName(m.name)||DEFAULT_NAMES[s.i]; s.lastMsg=performance.now(); netSize(s,m);
-  Object.assign(s.ctl,{x:0,y:0,run:false,down:false,grab:false,latch:false}); s.zoom=1; s.mm=null;
-  s.hud=[]; for(const k of ['ovH','sg','soH','ss','hh','pl','tr','bc','me']) s[k]=undefined;
+  s.conn=conn; s.name=cleanName(m.name)||DEFAULT_NAMES[s.i]; s.lastMsg=performance.now();
+  Object.assign(s.ctl,{x:0,y:0,run:false,down:false,grab:false,latch:false}); s.sent=null; s.synced=false;
+  s.hud=[]; for(const k of ['ovH','sg','soH','ss','hh','pl','bb','bc','me']) s[k]=undefined;
   sSend(s,{t:'welcome',i:s.i,host:myName()});
   netCall(s);
-  if(G.phase!=='title') netDropIn(s); else s.D.netCtl=s.ctl;
+  if(G.phase!=='title'){ netDropIn(s); s.synced=true; netSendLeg(s,G.day,'trail'); } else s.D.netCtl=s.ctl;
   netLobby(); netUI(); netPauseRefresh(); netStatus(''); sChime();
   return s;
 }
@@ -8247,7 +8245,7 @@ function netLost(s){
   netDrop(s);
   if(G.phase==='title'){          // still in the lobby: close the gap so the players stay 2, 3, 4
     s.D.netCtl=null; const k=NET.slots.indexOf(s); if(k>=0) NET.slots.splice(k,1);
-    NET.slots.forEach((x,j)=>{ if(x.i===j+1) return; x.D.netCtl=null; netIndex(x,j+1); x.D.netCtl=x.ctl; if(x.canvas) netCanvasSize(x); sSend(x,{t:'welcome',i:x.i,host:myName()}); });
+    NET.slots.forEach((x,j)=>{ if(x.i===j+1) return; x.D.netCtl=null; netIndex(x,j+1); x.D.netCtl=x.ctl; sSend(x,{t:'welcome',i:x.i,host:myName()}); });
   } else toast((s.name||'Your friend')+' lost connection','warn',2.4);
   netLobby(); netUI(); netPauseRefresh();
 }
@@ -8263,10 +8261,10 @@ function netSetPlayers(fresh){
   if(fresh && NET.slots.some(s=>!s.conn)){       // a new journey: friends who left don't keep a seat
     for(const s of NET.slots) s.D.netCtl=null;
     NET.slots=NET.slots.filter(s=>s.conn);
-    NET.slots.forEach((s,j)=>{ if(s.i!==j+1){ netIndex(s,j+1); if(s.canvas) netCanvasSize(s); sSend(s,{t:'welcome',i:s.i,host:myName()}); } });
+    NET.slots.forEach((s,j)=>{ if(s.i!==j+1){ netIndex(s,j+1); sSend(s,{t:'welcome',i:s.i,host:myName()}); } });
   }
   G.online=true; G.np=1+NET.slots.length; G.coop=G.np>1;
-  for(const s of NET.slots){ G.names[s.i]=s.name; s.D.netCtl=s.conn?s.ctl:NET_IDLE; s.cam.userData.reset=true; }
+  for(const s of NET.slots){ G.names[s.i]=s.name; s.D.netCtl=s.conn?s.ctl:NET_IDLE; if(s.conn && s.conn.open) s.synced=true; }
   G.name2=G.names[1];
 }
 // someone joins a journey that's already going: their dog trots in beside the host's
@@ -8280,7 +8278,6 @@ function netDropIn(s){
   if(!D.stats) D.stats={pens:0,drives:0,saves:0,catches:0,helps:0};
   const B=document.body.classList; B.add('coop','shared'); B.toggle('many',np>=3); B.toggle('p3',np===3); B.toggle('p4',np===4);
   ['dogCard2','dogCard3','dogCard4'].forEach((id,k)=>$(id).hidden=k+2>np);
-  s.cam.position.copy(camera.position); s.cam.userData.reset=true;
   netNames(s); toast(s.name+' joined!','gold',2.2);
 }
 function netNames(s){ if(!G.names) G.names=DEFAULT_NAMES.slice(); G.names[s.i]=s.name; G.name2=G.names[1]; const w=$('who'+(s.i+1)); if(w) w.textContent=s.name; }
@@ -8289,18 +8286,11 @@ function netFrom(s,m){
   s.lastMsg=performance.now();
   const n=(v,a,b,d)=>{ v=+v; return isFinite(v)?clamp(v,a,b):d; };
   switch(m.t){
-    case 'in': s.ctl.x=n(m.x,-1,1,0); s.ctl.y=n(m.y,-1,1,0); s.ctl.run=!!m.run; s.ctl.down=!!m.down; s.ctl.grab=!!m.grab; s.zoom=n(m.z,.6,1.6,1); break;
+    case 'in': s.ctl.x=n(m.x,-1,1,0); s.ctl.y=n(m.y,-1,1,0); s.ctl.run=!!m.run; s.ctl.down=!!m.down; s.ctl.grab=!!m.grab; break;
     case 'ev': netEvent(s,String(m.k)); break;
     case 'click': netClick(String(m.id)); break;
-    case 'size': netSize(s,m); break;
-    case 'mm': s.mm=Array.isArray(m.r)&&m.r.length===4?m.r.map(v=>n(v,0,9999,0)):null; break;
     case 'name': { const nm=cleanName(m.name); if(nm && nm!==s.name){ s.name=nm; if(G.phase!=='title' && dogs.includes(s.D)) netNames(s); netLobby(); netUI(); } break; }
   }
-}
-function netSize(s,m){
-  const n=(v,a,b,d)=>{ v=+v; return isFinite(v)&&v>0?clamp(v,a,b):d; };
-  s.w=n(m.w,200,8000,1280); s.h=n(m.h,200,8000,720); s.dpr=n(m.dpr,.5,4,1);
-  if(s.canvas) netCanvasSize(s);
 }
 // a friend's buttons, done to their dog just as if they were on this keyboard
 function netEvent(s,k){
@@ -8319,127 +8309,375 @@ function netClick(id){
   if(!NET_CLICKS.has(id) || !$('shopOverlay').hidden) return;
   const b=$(id); if(b && !$('overlay').hidden && $('sign').contains(b)) b.click();
 }
-// ---- the video each friend sees ----
-function netAudio(){       // the game's sound (everything goes through mainOut), for the friends
+// ---- the game's sound, streamed to friends (their own copy stays quiet) ----
+function netAudio(){       // everything the game plays goes through mainOut
   if(!AC || !mainOut) return null;
   try{ if(!NET.adest){ NET.adest=AC.createMediaStreamDestination(); mainOut.connect(NET.adest); } return NET.adest.stream.getAudioTracks()[0]||null; }catch(e){ return null; }
 }
-function netCanvasSize(s){
-  const k0=Math.min(2,s.dpr||1); let w=s.w*k0, h=s.h*k0;
-  const k=Math.min(1,NET_LONG/Math.max(w,h),NET_SHORT/Math.min(w,h));
-  w=Math.max(2,Math.round(w*k/2)*2); h=Math.max(2,Math.round(h*k/2)*2);
-  if(s.canvas.width!==w || s.canvas.height!==h){ s.canvas.width=w; s.canvas.height=h; s.ctx.fillStyle='#0c1511'; s.ctx.fillRect(0,0,w,h); }
-  s.cam.aspect=w/h; s.cam.updateProjectionMatrix();
-}
 function netCall(s){
-  if(!s.canvas){ s.canvas=document.createElement('canvas'); s.ctx=s.canvas.getContext('2d',{alpha:false}); }
-  netCanvasSize(s); s.ctx.fillStyle='#0c1511'; s.ctx.fillRect(0,0,s.canvas.width,s.canvas.height);
-  let vt=null; try{ vt=s.canvas.captureStream(NET_FPS).getVideoTracks()[0]; }catch(e){}
-  if(!vt || !NET.peer) return;
-  try{ vt.contentHint='motion'; }catch(e){}
-  s.vtrack=vt;
-  const tracks=[vt], at=netAudio(); if(at) tracks.push(at);
-  const call=NET.peer.call(s.conn.peer,new MediaStream(tracks),{metadata:{i:s.i}}); s.call=call;
-  if(!call) return;
-  call.on('error',()=>{}); call.on('close',()=>{ if(s.call===call) s.call=null; });
-  netTune(s,call,0);
+  const at=netAudio(); if(!at || !NET.peer || !s.conn) return;
+  const call=NET.peer.call(s.conn.peer,new MediaStream([at]),{metadata:{i:s.i}}); s.call=call;
+  if(call){ call.on('error',()=>{}); call.on('close',()=>{ if(s.call===call) s.call=null; }); }
 }
-// once it's connected: more bits than WebRTC's default, for a crisp view at a steady 30 frames
-function netTune(s,call,n){
-  const pc=call.peerConnection; if(s.call!==call || !pc || n>60) return;
-  const ok=pc.connectionState==='connected'||pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed';
-  if(!ok){ setTimeout(()=>netTune(s,call,n+1),500); return; }
-  for(const snd of pc.getSenders()){ if(!snd.track || snd.track.kind!=='video') continue;
-    try{ const p=snd.getParameters(); if(p.encodings && p.encodings.length){ p.encodings[0].maxBitrate=4e6; p.encodings[0].maxFramerate=NET_FPS; snd.setParameters(p).catch(()=>{}); } }catch(e){} }
+
+// ---- keeping every friend's world in step ----
+// A friend's browser builds each stretch of the trail itself (every leg is laid out from its number, so it comes out the
+// same) and draws it with its own camera, at its own resolution and frame rate. Twenty times a second the host sends what
+// has changed: where every animal is and how it's moving, its moods and timers, the time of day, the surprise going on,
+// the puzzle, the seesaw. Plain fields go across as they are; a field that points at another animal goes across as that
+// animal's key. Friends smooth the positions between updates. Bursts of particles, score pops and bark rings come across
+// as they happen.
+const NET_HZ=20, NET_REF='\u0002';
+// fields that are only the host's business (AI timers, paths, input) or that each side animates for itself
+const NET_SKIP=new Set(['m','nav','path','phase','flash','shown','pref','patch','homeBlocked','wt','rt','rcd','munchCD','boingCD','ox','oz','px','pz','gx','gz','cpz','cdx','cdz','wa','inX','inZ','pdx','pdz',
+  'padCtl','netCtl','stats','stamina','tired','barkCD','pounceCD','gunCD','whistleCD','pring','gunMesh','hat','_mv','_nx','_nz','_nt','_lk','_in','_pt','_ch','_chute','_sc','hits','madImm','lastSay','said','lastText','bumpCD']);
+const NET_GSKIP=new Set(['sheep','coyotes','paused','zoom','trip','skyBlend','ev','snap','roster','online','sharedCam','dev','devStam','devMorn','names','hub','elapsed','panicSay','lastMunchSay','saidTeam']);
+const netQ=v=>isFinite(v)?Math.round(v*100)/100:0;
+// encode a value for the wire (undefined: leave the field out)
+function netVal(v,depth){
+  const t=typeof v;
+  if(t==='number') return netQ(v);
+  if(t==='boolean'||t==='string') return v;
+  if(v==null) return null;
+  if(t!=='object') return undefined;
+  const r=NET.keyOf&&NET.keyOf.get(v); if(r) return NET_REF+r;
+  if(v.isObject3D||v.isMaterial||v.isColor||v.isVector3||v.isTexture||v.isBufferGeometry||v.isCurve) return undefined;
+  if(depth>3) return undefined;
+  if(v instanceof Set){ const a=[]; for(const x of v){ const k=NET.keyOf.get(x); if(k) a.push(k); } return {$s:a}; }
+  if(Array.isArray(v)){ if(v.length>80) return undefined; const a=[]; for(const x of v){ const e=netVal(x,depth+1); if(e===undefined) return undefined; a.push(e); } return a; }
+  if(Object.getPrototypeOf(v)!==Object.prototype) return undefined;
+  const o={}; for(const k in v){ if(NET_SKIP.has(k)) continue; const e=netVal(v[k],depth+1); if(e!==undefined) o[k]=e; } return {$o:o};
 }
-function netCams(dt){
-  for(const s of NET.slots){ if(!s.canvas || !dogs.includes(s.D)) continue; s.cam.userData.zoom=s.zoom; followCam(s.cam,s.look,s.D,dt,{w:s.canvas.width,h:s.canvas.height}); }
+// everything that's kept in step, as [key, object]: the dogs, the flock, the coyotes, the rest of the cast, and the state of play
+function netEntities(){
+  const E=[];
+  for(let i=0;i<dogs.length;i++) E.push(['d'+i,ALLDOGS[i]]);
+  for(const s of G.sheep) E.push(['s'+s.id,s]);
+  for(const c of G.coyotes){ if(!c.nid) c.nid=++NET.nid; E.push(['c'+c.nid,c]); }
+  for(const p of powerups){ if(!p.nid) p.nid=++NET.nid; E.push(['p'+p.nid,p]); }
+  E.push(['H',shep],['F',falcon],['K',COUG],['R',rascal],['G',G],['J',JR],['UP',UP],['Z',PZ],['T',CT],['L',llamas],['U',ducks],['W',leaves],['O',goldBones]);
+  if(G.ev){ if(!G.ev.nid) G.ev.nid=++NET.nid; E.push(['E',G.ev]); }
+  E.push(['X',{}]);        // odds and ends (filled in netFields)
+  return E;
 }
-// The sky, stars, moon and clouds sit around whichever camera is looking, and the fog starts past it
-function netAnchor(cam,fogN,fogF){
-  skyDome.position.copy(cam.position); stars.position.copy(cam.position);
-  moon.position.set(cam.position.x-120,cam.position.y+170,cam.position.z-360);
-  if(skyClouds.visible) skyClouds.position.set(cam.position.x,0,cam.position.z);
-  const cd=(cam.userData.h||20)/Math.sin(CAM_PITCH);
-  if(G.twist==='foggy'){ scene.fog.near=cd*.8; scene.fog.far=cd+22; } else { scene.fog.near=Math.max(fogN,cd*.95); scene.fog.far=Math.max(fogF,cd+75); }
-}
-// Each friend's view is drawn into a corner of the host's own canvas, copied into that friend's video canvas, and then the
-// host's view is drawn over the top, so it's one renderer and one copy of everything on the graphics card.
-function netRenderViews(now){
-  const cv=renderer.domElement, pr=renderer.getPixelRatio(), W=window.innerWidth, H=window.innerHeight;
-  const fogN=scene.fog.near, fogF=scene.fog.far;
-  let drew=false;
-  for(const s of NET.slots){
-    if(!s.conn || !s.canvas || !dogs.includes(s.D) || now-s.drawn<1000/NET_FPS-4) continue;
-    s.drawn=now;
-    const sw=s.canvas.width, sh=s.canvas.height, k=Math.min(1,cv.width/sw,cv.height/sh);
-    const rw=Math.max(1,Math.floor(sw*k/pr)), rh=Math.max(1,Math.floor(sh*k/pr)), bw=Math.floor(rw*pr), bh=Math.floor(rh*pr);
-    netAnchor(s.cam,fogN,fogF);
-    renderer.setViewport(0,0,rw,rh); renderer.setScissor(0,0,rw,rh); renderer.setScissorTest(true);
-    renderer.render(scene,s.cam);
-    renderer.setScissorTest(false);
-    if(!drew){ drew=true; renderer.shadowMap.autoUpdate=false; }       // the shadows are the same from every camera: once a frame is enough
-    try{ s.ctx.drawImage(cv,0,cv.height-bh,bw,bh,0,0,sw,sh); netOverlay(s,now/1000); }catch(e){}
+function netFields(key,o){
+  const f={}, skip=key==='G'?NET_GSKIP:NET_SKIP;       // (the game's own state has its own list: its phase and flash aren't an animal's)
+  if(key==='X'){
+    f.nl=netQ(NIGHT_LEN); f.sea=SEASON.name; f.sh=shroomSpot?shroomSpot.map(netQ):null; f.gd=netQ(G.gunDropT||0);
+    f.cl=clovers.map(c=>[netQ(c.x),netQ(c.z),netQ(c.r),netQ(c.food)]);
+    f.md=MADS.map(m=>[netQ(m.x),netQ(m.z),m.eaten?1:0]);
+    f.bu=bullets.map(b=>[netQ(b.x),netQ(b.z),netQ(b.vx),netQ(b.vz)]);
+    f.np=dogs.length; f.cel=netQ(G.celebrate||0);
+    return f;
   }
-  if(drew){ netAnchor(camera,fogN,fogF); scene.fog.near=fogN; scene.fog.far=fogF; renderer.setViewport(0,0,W,H); }
-  return drew;
+  for(const k in o){
+    if(skip.has(k)) continue;
+    const e=netVal(o[k],0); if(e!==undefined) f[k]=e;
+  }
+  const c=key[0];
+  if(c==='s'){ f._lk=''+(o.black&&!o.ram?1:0)+(o.golden?1:0)+(o.ram?1:0)+(o.leader?1:0)+(o.rainbow?1:0); f._sc=netQ(o.m.g.scale.x); f._in=!!o.m.g.parent; f._pt=!!(o.m.paint&&o.m.paint.visible);
+    f._ch=o.sky&&o.sky.chute?netQ(o.sky.chute.scale.x):0; }
+  else if(c==='c'){ f._lk=''+(o.alpha?1:0)+(o.boss?1:0); f._in=!!o.m.g.parent; }
+  else if(c==='d'){ f._ch=o.sky&&o.sky.chute?netQ(o.sky.chute.scale.x):0; }
+  return f;
 }
-const _nv=new THREE.Vector3(), POP_COL={gold:'#ffd23f',red:'#ff6d4d',green:'#b8f06a',mad:'#e08bff'}, NET_FONT='"Alfa Slab One",Rockwell,Georgia,serif';
-function netRound(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
-// on top of a friend's view: what the host's page shows as HTML over the field, drawn the same way for their camera
-function netOverlay(s,time){
-  const c=s.ctx, W=s.canvas.width, H=s.canvas.height, u=W/s.w;      // u: video pixels per pixel of the friend's screen
-  const proj=(x,y,z)=>{ _nv.set(x,y,z).project(s.cam); return {x:(_nv.x*.5+.5)*W,y:(-_nv.y*.5+.5)*H,nx:_nv.x,ny:_nv.y,behind:_nv.z>1}; };
-  c.save(); c.textAlign='center'; c.textBaseline='middle'; c.lineJoin='round';
-  // score pops float up off the world
-  for(const p of pops){
-    const q=proj(p.x,p.y+p.t*2.4,p.z); if(q.behind) continue;
-    const cls=p.el.className.replace('popup','').trim(), sc=p.t<.15?p.t/.15*1.25:1, sz=(cls==='gold'?30:cls==='mad'?26:24)*u*sc, txt=p.el.textContent;
-    c.globalAlpha=p.t>.9?Math.max(0,1-(p.t-.9)/.4):1; c.font=sz.toFixed(1)+'px '+NET_FONT;
-    c.fillStyle='#2a1d14'; c.fillText(txt,q.x,q.y+sz*.19);
-    c.strokeStyle='#2a1d14'; c.lineWidth=sz*.17; c.strokeText(txt,q.x,q.y);
-    c.fillStyle=POP_COL[cls]||'#fff8ea'; c.fillText(txt,q.x,q.y);
-  }
-  c.globalAlpha=1;
-  // Hank's speech bubble
-  const bub=$('bubble'), say=bub.textContent;
-  if(bubblesOn && shep.sayT>0 && say){
-    const q=proj(shep.x,3.7,shep.z); c.font=(13*u).toFixed(1)+'px '+NET_FONT;
-    const tw=Math.min(c.measureText(say).width,W*.42-18*u), bw=tw+18*u, bh=23*u;
-    const x=clamp(q.x,bw/2+8*u,W-bw/2-8*u), y=clamp(q.y,bh+96*u,H-30*u);
-    c.globalAlpha=.92; c.fillStyle='rgba(251,246,233,.8)';
-    netRound(c,x-bw/2,y-bh,bw,bh,9*u); c.fill();
-    c.beginPath(); c.moveTo(x-5*u,y); c.lineTo(x+5*u,y); c.lineTo(x,y+5*u); c.closePath(); c.fill();
-    c.fillStyle='#1d1609'; c.fillText(say,x,y-bh/2,tw); c.globalAlpha=1;
-  }
-  // arrows at the screen edge: the objective, coyotes you can't see, and the other dogs
-  c.shadowColor='rgba(0,0,0,.5)'; c.shadowBlur=3*u; c.shadowOffsetY=2*u;
-  const arrow=(q,lim,kx,ky,col,aw,ah,sc,bob)=>{
-    let nx=q.nx, ny=q.ny; if(q.behind){ nx=-nx; ny=-ny; }
-    if(!q.behind && Math.abs(nx)<lim && Math.abs(ny)<lim) return false;
-    const m=Math.max(Math.abs(nx),Math.abs(ny))||1, ex=nx/m*kx, ey=ny/m*ky, ang=Math.atan2(ex,ey);
-    c.save(); c.translate((ex*.5+.5)*W+Math.sin(ang)*bob,(-ey*.5+.5)*H-Math.cos(ang)*bob); c.rotate(ang); c.scale(sc,sc);
-    c.fillStyle=col; c.beginPath(); c.moveTo(0,-ah/2); c.lineTo(aw/2,ah/2); c.lineTo(-aw/2,ah/2); c.closePath(); c.fill(); c.restore();
-    return true;
-  };
-  const playing=G.phase==='day'||G.phase==='night', ob=objective();
-  if(ob && G.phase!=='result') arrow(proj(ob.x,groundH(ob.x,ob.z)+1,ob.z),.92,.86,.82,'#ffd84a',32*u,26*u,1,Math.sin(time*7)*3*u);
-  if(playing){
-    let n=0;
-    for(const cy of G.coyotes.filter(cy=>!cy.gone && cy.state!=='retreat').sort((a,b)=>Math.hypot(a.x-s.D.x,a.z-s.D.z)-Math.hypot(b.x-s.D.x,b.z-s.D.z))){
-      if(n>=4) break;
-      if(arrow(proj(cy.x,groundH(cy.x,cy.z)+1,cy.z),.95,.9,.86,'#ff4a3a',26*u,22*u,cy.carry?1.25+.25*Math.sin(time*14):cy.boss?1.3:1,0)) n++;
+// the host, twenty times a second: what's changed for each friend since they last heard
+function netSnapTick(now){
+  if(G.phase==='title'){ NET.fx.length=0; return; }
+  if(now<(NET.snapAt||0)) return;
+  const live=NET.slots.filter(s=>s.conn && s.conn.open && s.synced); if(!live.length){ NET.fx.length=0; return; }
+  NET.snapAt=now+1000/NET_HZ;
+  const ents=netEntities(); NET.keyOf=new Map(); for(const [k,o] of ents) NET.keyOf.set(o,k);
+  const cur=ents.map(([k,o])=>{ const f=netFields(k,o), cmp={}; for(const n in f){ const v=f[n]; cmp[n]=v!==null&&typeof v==='object'?JSON.stringify(v):v; } return [k,f,cmp]; });
+  const keys=new Set(cur.map(e=>e[0])), fx=NET.fx.splice(0);
+  for(const s of live){
+    const kf=!s.sent||!s.sent.size, sent=s.sent||(s.sent=new Map()), ch=[], rm=[];
+    for(const [k,f,cmp] of cur){
+      let old=sent.get(k); if(!old){ old={}; sent.set(k,old); }
+      let d=null; for(const n in cmp){ if(old[n]!==cmp[n]){ old[n]=cmp[n]; (d||(d={}))[n]=f[n]; } }
+      if(d) ch.push([k,d]);
     }
-    for(const D of dogs) if(D!==s.D) arrow(proj(D.x,1,D.z),.95,.9,.86,PCOL[dogIdx(D)],26*u,22*u,1,0);
+    for(const k of sent.keys()) if(!keys.has(k)){ sent.delete(k); rm.push(k); }
+    const m={t:'st',c:ch,hp:G.paused?1:0,ff:netQ(G.ff||1)}; if(rm.length) m.r=rm; if(fx.length) m.e=fx; if(kf) m.kf=1;
+    sSend(s,m); NET.bytes=(NET.bytes||0)+JSON.stringify(m).length;
   }
-  c.shadowColor='transparent';
-  // the minimap, where the friend's own page keeps a space for it
-  if(s.mm && s.mm[2]>4){
-    const [x,y,w,h]=s.mm.map(v=>v*u);
-    c.save(); netRound(c,x,y,w,h,10*u); c.clip(); c.drawImage(mm,x,y,w,h); c.restore();
-    c.strokeStyle='rgba(244,234,210,.16)'; c.lineWidth=Math.max(1,u); netRound(c,x,y,w,h,10*u); c.stroke();
+}
+// a new stretch of the trail: friends build it too, then hear everything afresh
+function netLegOut(d,mode){
+  for(const s of NET.slots) if(s.conn && s.conn.open && s.synced) netSendLeg(s,d,mode);
+}
+function netSendLeg(s,d,mode){
+  s.sent=new Map();
+  sSend(s,{t:'leg',day:d,mode,cal:JR.cal,roster:G.roster||null,np:dogs.length||G.np||1,up:Object.assign({},UP),ph:G.phase});
+}
+// particle bursts, score pops and bark rings from play (not the ones every screen makes for itself as it draws)
+const PC_NAME=new Map(Object.entries(PC).map(([k,v])=>[v,k]));
+function netFxOut(k,a){ if(NET.role==='host' && !NET.vis && NET.slots.some(s=>s.conn) && NET.fx.length<400) NET.fx.push([k,...a.map(v=>Array.isArray(v)?(PC_NAME.has(v)?'#'+PC_NAME.get(v):v.slice()):typeof v==='number'?netQ(v):v)]); }
+{
+  const b0=burst, p0=popText, r0=spawnRing;
+  burst=function(...a){ netFxOut('b',a); if(NET.mirror && NET.quietFx) return; return b0.apply(this,a); };
+  popText=function(...a){ netFxOut('p',a); return p0.apply(this,a); };
+  spawnRing=function(...a){ netFxOut('r',a); return r0.apply(this,a); };
+  NET.fxRaw={burst:b0,popText:p0,spawnRing:r0};
+}
+
+// ---- a friend's side: build the same world, apply the host's updates, and draw it all locally ----
+const netMe=()=>NET.mirror?ALLDOGS[NET.i]||dog:dog;
+function netResolve(key){
+  const c=key[0], n=key.slice(1);
+  if(c==='d') return ALLDOGS[+n]||null;
+  if(c==='s') return NET.sheepById.get(+n)||null;
+  if(c==='c') return NET.coyById.get(+n)||null;
+  if(c==='p') return powerups.find(p=>p.nid===+n)||null;
+  return {H:shep,F:falcon,K:COUG,R:rascal,G,J:JR,UP,Z:PZ,T:CT,L:llamas,U:ducks,W:leaves,O:goldBones,E:G.ev}[key]||null;
+}
+function netDecode(v){
+  if(typeof v==='string' && v[0]===NET_REF) return netResolve(v.slice(1));
+  if(Array.isArray(v)) return v.map(netDecode);
+  if(v && typeof v==='object'){
+    if(v.$s) return new Set(v.$s.map(netResolve).filter(Boolean));
+    if(v.$o){ const o={}; for(const k in v.$o) o[k]=netDecode(v.$o[k]); return o; }
   }
-  c.restore();
+  return v;
+}
+// put a value in place, merging into what's already there so the meshes this side made stay put
+function netAssign(o,k,v,now){
+  if(v && typeof v==='object' && !Array.isArray(v) && v.$o){
+    const cur=o[k];
+    if(cur && typeof cur==='object' && !Array.isArray(cur) && !(cur instanceof Set)){ for(const kk in v.$o) netAssign(cur,kk,v.$o[kk],now); }
+    else o[k]=netDecode(v);
+    return;
+  }
+  if(Array.isArray(v)){
+    const cur=o[k];
+    if(Array.isArray(cur) && cur.length===v.length && v.length && v.every(x=>x&&typeof x==='object'&&x.$o)){ for(let i=0;i<v.length;i++) netAssign(cur,i,v[i],now); }
+    else o[k]=netDecode(v);
+    return;
+  }
+  v=netDecode(v);
+  if(o._mv && (k==='x'||k==='z')){ if(o._nt===undefined || !isFinite(o[k])) o[k]=v; o[k==='x'?'_nx':'_nz']=v; o._nt=now; return; }
+  o[k]=v;
+}
+function netSheepMesh(s,lk){
+  if(s.m && s.m.g) scene.remove(s.m.g);
+  const m=makeSheep(lk[0]==='1',lk[1]==='1',lk[2]==='1');
+  if(lk[3]==='1') addBell(m);
+  if(lk[4]==='1'){ m.wool.emissive=new THREE.Color(0x222222); m.wool.emissiveIntensity=.6; }
+  s.m=m; s._lk=lk; s._chute=null; s._in=true;
+  if(s._sc) m.g.scale.setScalar(s._sc);
+}
+function netNewSheep(id,f){
+  const lk=String(f._lk||'00000'), s=newSheep(+f.x||0,+f.z||0,makeSheep(false,false,false),{});
+  scene.remove(s.m.g); s.id=id; netSheepMesh(s,lk); s._mv=true;
+  G.sheep.push(s); NET.sheepById.set(id,s); return s;
+}
+function netNewCoyote(nid,f){
+  const lk=String(f._lk||'00'), m=makeCoyote(lk[0]==='1',lk[1]==='1');
+  const c={x:+f.x||0,z:+f.z||0,vx:0,vz:0,yaw:0,phase:0,spin:0,state:'stalk',m,nid,_mv:true,_lk:lk};
+  G.coyotes.push(c); NET.coyById.set(nid,c); return c;
+}
+function netReindex(){
+  NET.sheepById=new Map(G.sheep.map(s=>[s.id,s])); NET.coyById=new Map(G.coyotes.filter(c=>c.nid).map(c=>[c.nid,c]));
+  for(const s of G.sheep){ s._mv=true; if(!s._lk) s._lk=''+(s.black&&!s.ram?1:0)+(s.golden?1:0)+(s.ram?1:0)+(s.leader?1:0)+(s.rainbow?1:0); } for(const c of G.coyotes) c._mv=true;
+  for(const D of ALLDOGS) D._mv=true; shep._mv=true; rascal._mv=true; for(const L of llamas) L._mv=true; for(const d of ducks) d._mv=true; for(const b of CT.bales) b._mv=true;
+  for(const o of [...ALLDOGS,...G.sheep,...G.coyotes,shep,rascal,...llamas,...ducks,...CT.bales]){ o._nx=o._nz=o._nt=undefined; }
+}
+// the host has laid out a new stretch: lay out the same one here
+function netGuestLeg(m){
+  const np=clamp(m.np|0,1,4);
+  G.day=m.day|0; JR.cal=m.cal|0; G.roster=Array.isArray(m.roster)?m.roster:null; G.np=np; G.coop=np>1;
+  if(m.up && typeof m.up==='object') UP=Object.assign({},m.up);
+  dogs=ALLDOGS.slice(0,np); ALLDOGS.forEach((D,i)=>D.m.g.visible=i<np); ensureDogLights(np);
+  if(m.ph) G.phase=m.ph;
+  netSxEnd();
+  if(m.mode==='swap'){ shiftWorld(SHIFT); buildLeg(G.day,'swap'); }
+  else {
+    clearAnimals(); buildLeg(G.day,m.mode||'trail');
+    for(const c of [camera,camera2,camera3,camera4]) c.userData.reset=true;
+  }
+  clearPowers(); for(const b of NET.bul) scene.remove(b); NET.bul.length=0;
+  netReindex(); NET.built=true;
+}
+// one update from the host
+function netGuestSnap(m,now){
+  if(!NET.built) return;
+  NET.hp=!!m.hp; NET.ff=+m.ff||1;
+  const c=Array.isArray(m.c)?m.c:[];
+  // things that are new this time: make them first, so the fields that point at them can find them
+  for(const [k,f] of c){
+    if(k[0]==='s' && !NET.sheepById.has(+k.slice(1))) netNewSheep(+k.slice(1),f);
+    else if(k[0]==='c' && !NET.coyById.has(+k.slice(1))) netNewCoyote(+k.slice(1),f);
+    else if(k[0]==='p' && !powerups.some(p=>p.nid===+k.slice(1)) && f.type){ const p={type:String(f.type),x:+f.x||0,z:+f.z||0,nid:+k.slice(1),m:makePowerMesh(String(f.type))}; p.m.g.position.set(p.x,groundH(p.x,p.z),p.z); powerups.push(p); }
+    else if(k==='E' && (!G.ev || G.ev.nid!==f.nid) && f.kind){ netSxEnd(); G.ev={kind:String(f.kind),t:0,nid:f.nid}; }
+  }
+  for(const [k,f] of c){
+    if(k==='X'){ netGuestMisc(f); continue; }
+    const o=netResolve(k); if(!o) continue;
+    for(const n in f){
+      if(k==='G' && NET_GSKIP.has(n)) continue;
+      if(k==='UP'){ UP[n]=f[n]; continue; }
+      if(n[0]==='_'){ netGuestSynth(k,o,n,f[n]); continue; }
+      netAssign(o,n,f[n],now);
+    }
+    if(k[0]==='s' && f._lk!==undefined && f._lk!==o._lk) netSheepMesh(o,String(f._lk));
+    if(k==='F' || k==='K' || k==='R' || k==='Z' || k==='T' || k==='L' || k==='O' || k==='E' || k==='U') NET.dirty.add(k);
+  }
+  // things that are gone (after a rebuild, the full list says what's here: anything else goes)
+  const gone=Array.isArray(m.r)?m.r.slice():[];
+  if(m.kf){ const here=new Set(c.map(e=>e[0]));
+    for(const s of G.sheep) if(!here.has('s'+s.id)) gone.push('s'+s.id);
+    for(const o of G.coyotes) if(!here.has('c'+o.nid)) gone.push('c'+o.nid);
+    for(const p of powerups) if(!here.has('p'+p.nid)) gone.push('p'+p.nid);
+    if(G.ev && !here.has('E')) gone.push('E'); }
+  for(const k of gone){
+    if(k[0]==='s'){ const s=NET.sheepById.get(+k.slice(1)); if(s){ scene.remove(s.m.g); const i=G.sheep.indexOf(s); if(i>=0) G.sheep.splice(i,1); NET.sheepById.delete(s.id); } }
+    else if(k[0]==='c'){ const o=NET.coyById.get(+k.slice(1)); if(o){ scene.remove(o.m.g); const i=G.coyotes.indexOf(o); if(i>=0) G.coyotes.splice(i,1); NET.coyById.delete(o.nid); } }
+    else if(k[0]==='p'){ const i=powerups.findIndex(p=>p.nid===+k.slice(1)); if(i>=0){ scene.remove(powerups[i].m.g); powerups.splice(i,1); } }
+    else if(k==='E'){ netSxEnd(); }
+  }
+  // what happened in between
+  for(const e of (Array.isArray(m.e)?m.e:[])){
+    const [kind,...a]=e;
+    try{
+      if(kind==='b'){ if(typeof a[4]==='string') a[4]=PC[a[4].slice(1)]||PC.gold; NET.fxRaw.burst(...a); }
+      else if(kind==='p') NET.fxRaw.popText(...a);
+      else if(kind==='r') NET.fxRaw.spawnRing(...a);
+    }catch(err){}
+  }
+  netGuestHooks();
+}
+// the extras sent alongside an animal's own fields: its look, its size, whether it's in the scene, its paint and parachute
+function netGuestSynth(k,o,n,v){
+  if(n==='_sc'){ o._sc=v; if(o.m) o.m.g.scale.setScalar(v); return; }
+  if(n==='_in'){ if(o.m){ if(v && !o.m.g.parent) scene.add(o.m.g); else if(!v && o.m.g.parent) scene.remove(o.m.g); } return; }
+  if(n==='_pt'){ paintSheep(o,!!v); return; }
+  if(n==='_ch'){
+    if(v>0){ if(!o._chute){ o._chute=chuteFor(o,(o.sky&&o.sky.k)||0); } o._chute.scale.setScalar(v); }
+    else if(o._chute){ o.m.g.remove(o._chute); o._chute=null; }
+    return;
+  }
+  if(n==='_lk' && k[0]==='c' && v!==o._lk){ scene.remove(o.m.g); const m=makeCoyote(v[0]==='1',v[1]==='1'); o.m=m; o._lk=v; }
+}
+// odds and ends: the season, the night's length, the mushrooms and the clover, bullets in flight
+function netGuestMisc(f){
+  if(f.nl!==undefined) NIGHT_LEN=+f.nl;
+  if(f.sea && SEASONS[f.sea] && f.sea!==SEASON.name) applySeason(f.sea);
+  if(f.np!==undefined){ const np=clamp(f.np|0,1,4); if(np!==dogs.length){ G.np=np; dogs=ALLDOGS.slice(0,np); ALLDOGS.forEach((D,i)=>D.m.g.visible=i<np); ensureDogLights(np); } }
+  if(f.cel!==undefined) G.celebrate=+f.cel;
+  if(f.gd!==undefined) G.gunDropT=+f.gd;
+  if(f.sh!==undefined){ if(f.sh){ shroomSpot=f.sh; shroom.position.set(f.sh[0],groundH(f.sh[0],f.sh[1]),f.sh[1]); shroom.visible=true; } else { shroomSpot=null; shroom.visible=false; } }
+  if(Array.isArray(f.cl)){
+    const same=f.cl.length===clovers.length && f.cl.every((c,i)=>Math.abs(c[0]-clovers[i].x)<.05 && Math.abs(c[1]-clovers[i].z)<.05);
+    if(!same){ clearClover(); for(const c of f.cl) addClover(c[0],c[1],c[2],c[3]); }
+    else f.cl.forEach((c,i)=>{ clovers[i].food=c[3]; sizeClover(clovers[i]); });
+  }
+  if(Array.isArray(f.md)){
+    const same=f.md.length===MADS.length && f.md.every((m,i)=>Math.abs(m[0]-MADS[i].x)<.05 && Math.abs(m[1]-MADS[i].z)<.05);
+    if(!same){ G.day=G.day||1; const keep=f.md; for(const m of MADS) scene.remove(m.g); MADS.length=0;
+      for(const [x,z] of keep){ const g=new THREE.Group(); g.position.set(x,groundH(x,z),z);
+        for(const [sc,ox,oz,ry] of [[.42,0,0,0],[.3,.34,.18,1.2],[.26,-.28,.22,2.3],[.2,.1,-.32,.4]]){ const b=new THREE.Mesh(shroom.userData.body,madMat); b.position.set(ox,0,oz); b.scale.setScalar(sc); b.rotation.y=ry; g.add(b); }
+        scene.add(g); MADS.push({x,z,g,eaten:false}); } }
+    f.md.forEach((m,i)=>{ const M=MADS[i]; if(M){ M.eaten=!!m[2]; M.g.visible=!M.eaten; } });
+  }
+  if(Array.isArray(f.bu)){
+    while(NET.bul.length<f.bu.length){ const m=new THREE.Mesh(bulletGeo,bulletMat); scene.add(m); NET.bul.push(m); }
+    while(NET.bul.length>f.bu.length) scene.remove(NET.bul.pop());
+    f.bu.forEach((b,i)=>{ NET.bul[i].userData.b={x:b[0],z:b[1],vx:b[2],vz:b[3],t:performance.now()}; });
+  }
+}
+// after an update: make the meshes match the state (things the host's own play code does to its meshes as it goes)
+function netGuestHooks(){
+  const D=NET.dirty;
+  if(D.has('F')){ const F=falcon; if(F.state==='idle'){ F.g.visible=F.shadow.visible=F.ring.visible=false; } else F.g.visible=true; }
+  if(D.has('K')){ const C=COUG; C.tree.visible=C.cat.visible=C.ring.visible=!!C.on;
+    if(C.on){ const gy=groundH(C.tx,C.tz); C.tree.position.set(C.tx,gy,C.tz); C.tree.rotation.y=C.ang; C.ring.position.set(C.tx,gy+.08,C.tz); } }
+  if(D.has('R')) rascal.m.g.visible=!!rascal.active;
+  if(D.has('L')) for(const L of llamas) L.m.g.visible=!!L.active;
+  if(D.has('O')) for(const b of goldBones) if(b.got && b.g.parent) scene.remove(b.g);
+  if(D.has('Z')){
+    padlock.visible=!!PZ.locked;
+    for(const g of PZ.gates){ if(g.fill){ const need=Math.max(1,PZ.need||1); g.fill.scale.z=Math.max(.001,Math.min(1,(g.passed?g.passed.size:0)/need)); if(g.done) g.fill.material.color.setHex(0x7bd65a); } }
+  }
+  if(D.has('T')) for(const b of CT.bales) if(b.g) b.g.visible=!b.gone;
+  if(D.has('E')) netSxSync();
+  D.clear();
+}
+// surprises: make this side's twister, parachutes and bales, and keep them where the host's are
+function netSxEnd(){
+  const X=NET.sx; if(X){ for(const o of X.objs) scene.remove(o); }
+  NET.sx=null; for(const s of G.sheep) s.dance=false; G.ev=null;
+}
+function netSxSync(){
+  const ev=G.ev; if(!ev) return;
+  let X=NET.sx;
+  if(!X || X.nid!==ev.nid){ if(X) for(const o of X.objs) scene.remove(o); X=NET.sx={nid:ev.nid,objs:[],drops:[],bales:[]}; }
+  const A=surpriseArt(), add=o=>{ scene.add(o); X.objs.push(o); return o; };
+  if(ev.kind==='twister' && !X.tw){
+    const g=add(new THREE.Group()), lean=new THREE.Group(), spin=new THREE.Group(), orbit=new THREE.Group(), dust=new THREE.Group();
+    g.add(lean,dust); lean.add(spin,orbit);
+    const body=new THREE.Mesh(A.funnel,A.funnelM); body.renderOrder=1; spin.add(body);
+    const vc=mat(0xffffff,{vertexColors:true}); spin.add(new THREE.Mesh(A.swoosh,A.swooshM)); orbit.add(new THREE.Mesh(A.debris,vc)); dust.add(new THREE.Mesh(A.puffs,vc));
+    addOutline(orbit,.04); addOutline(dust,.05); g.userData={lean,spin,orbit,dust,tex:A.tTex}; X.tw=g;
+  }
+  if(X.tw) ev.g=X.tw;
+  if(ev.kind==='bales' && Array.isArray(ev.b)) ev.b.forEach((b,k)=>{
+    if(!X.bales[k]){ const g=add(new THREE.Group()), cyl=new THREE.Mesh(A.bale,A.hayM); cyl.rotation.z=Math.PI/2; cyl.castShadow=true; g.add(cyl);
+      cyl.add(new THREE.Mesh(A.twine,mat(0xd2452e))); addOutline(g,.05); cyl.add(new THREE.Mesh(A.ends,A.endM)); g.rotation.y=b.vx?Math.PI/2:0; X.bales[k]={g,cyl}; }
+    b.g=X.bales[k].g; b.cyl=X.bales[k].cyl; b.g.visible=!b.gone;
+  });
+  if(ev.kind==='chutes' && Array.isArray(ev.drops)) ev.drops.forEach((dr,k)=>{
+    let M=X.drops[k];
+    if(!M && !dr.done){ const m=makeSheep(false,false,false), chute=new THREE.Group(), cn=new THREE.Mesh(A.canopy,A.chuteM[k%3]); chute.add(cn);
+      const kn=new THREE.Mesh(A.knob,mat(PAL.cream)); kn.position.y=.88; chute.add(kn); addOutline(chute,.05); chute.add(new THREE.LineSegments(A.strings,A.stringM));
+      chute.position.y=3.2; m.g.add(chute); X.objs.push(m.g); M=X.drops[k]={m}; }
+    if(M){ if(dr.done){ scene.remove(M.m.g); } else { const gy=groundH(dr.x,dr.z); M.m.g.position.set(dr.x+Math.sin(ev.t*2+dr.x)*.6,gy+Math.max(0,dr.y),dr.z); M.m.g.rotation.z=Math.sin(ev.t*3+dr.z)*.15; } }
+  });
+  if(ev.kind==='disco') { /* (switched off in the game for now) */ }
+}
+// the guest's frame: smooth everyone toward where the host says they are, then draw the world the way the host does
+function netSmooth(o,dt,now,ff){
+  if(o._nx===undefined) return;
+  const age=NET.hp?0:Math.min(.15,(now-o._nt)/1000)*GAME_SPEED*ff;
+  const tx=o._nx+(o.vx||0)*age, tz=o._nz+(o.vz||0)*age, dx=tx-o.x, dz=tz-o.z;
+  if(!(dx*dx+dz*dz<36) ){ o.x=tx; o.z=tz; return; }
+  const k=1-Math.exp(-dt*14); o.x+=dx*k; o.z+=dz*k;
+}
+let netLast=0, netTime=0;
+function netGuestDraw(now){
+  let dt=Math.min(.05,(now-(netLast||now))/1000); netLast=now;
+  const gdt=NET.hp?0:dt*GAME_SPEED; netTime+=gdt; const time=netTime, ff=NET.ff||1;
+  G.paused=true;           // nothing here plays the game: it only draws it (and picking things up is the host's call)
+  for(const D of dogs) netSmooth(D,dt,now,ff);
+  for(const s of G.sheep) if(!s.dead) netSmooth(s,dt,now,ff);
+  for(const c of G.coyotes) netSmooth(c,dt,now,ff);
+  netSmooth(shep,dt,now,ff); netSmooth(rascal,dt,now,ff); for(const L of llamas) netSmooth(L,dt,now,ff); for(const d of ducks) netSmooth(d,dt,now,ff); for(const b of CT.bales) netSmooth(b,dt,now,ff);
+  for(const m of NET.bul){ const b=m.userData.b; if(!b) continue; const a=Math.min(.3,(now-b.t)/1000)*GAME_SPEED; const x=b.x+b.vx*a, z=b.z+b.vz*a; m.position.set(x,groundH(x,z)+1.2,z); }
+  if(gdt>0) updateParts(gdt);
+  try{
+  NET.quietFx=true;         // their glints and sparkles arrive from the host
+  updatePowers(gdt,time); updateGun(gdt,time); updateGoldBones(gdt,time); updateShroom(gdt,time);
+  NET.quietFx=false; $('bShoot').hidden=G.gunOwner!==netMe();
+  if(G.gunSpot){ groundGun.visible=true; if(!(G.gunDropT>0)) groundGun.position.set(G.gunSpot[0],.16,G.gunSpot[1]); } else groundGun.visible=false;
+  hankGunSling.visible=!G.gunOwner && !G.gunSpot;
+  updateHome(gdt,time);
+  { let k=0; if(G.madN>0) for(const s of G.sheep){ if(!(s.madT>0)||s.penned||s.dead) continue; const D=netMe(); k=Math.max(k,1-Math.hypot(D.x-s.x,D.z-s.z)/20); }
+    G.trip=lerp(G.trip||0,clamp(k,0,1),1-Math.exp(-dt*2)); const el=$('trip'); if(el){ const o=(G.trip*.42).toFixed(3); if(el.style.opacity!==o) el.style.opacity=o; } }
+  if(G.skyBlend){ const B=G.skyBlend; B.t=Math.min(1,B.t+gdt/3.5); const k=smooth01(0,1,B.t); C_DAY.copy(B.from[0]).lerp(B.to[0],k); H_DAY.copy(B.from[1]).lerp(B.to[1],k); HG_DAY.copy(B.from[2]).lerp(B.to[2],k); if(B.t>=1) G.skyBlend=null; }
+  syncShepherd(gdt,time); syncLlama(gdt);
+  syncPuzzle(time); syncCougar(gdt,time); syncFalcon(gdt,time);
+  if(G.ev && G.ev.kind==='bales' && Array.isArray(G.ev.b)) for(const b of G.ev.b) if(b.cyl && !b.gone) b.cyl.rotation.x+=gdt*7*((b.vx||0)+(b.vz||0)>0?1:-1);
+  if(G.ev && G.ev.kind==='chutes') netSxSync();
+  syncSurprise(gdt,time); updateScarecrow();
+  syncDucks(gdt,time); syncRascal(gdt,time); updateBirds(gdt,time); updateCat(gdt,time); updatePond(gdt);
+  updateBubble(gdt);
+  syncAll(gdt,time);
+  applySky(time); updateWeather(gdt,time); updateSeasonFx(gdt,time); updateLevelFx(gdt,time); updateWindTrails(gdt,time);
+  updateCamera(dt,time);
+  updatePops(dt);
+  updatePartnerArrows(); updateGoalArrow(time); updateThreatArrows(time);
+  drawMinimap(time);
+  }catch(e){ NET.quietFx=false; if(!NET.drawErr){ NET.drawErr=1; console.error('online draw',e); } }
+  renderer.render(scene,camera);
 }
 // ---- the HUD and menus, sent to each friend ten times a second (only what's changed) ----
 function netHostTick(){
@@ -8449,7 +8687,7 @@ function netHostTick(){
   const live=NET.slots.filter(s=>s.conn && s.conn.open); if(!live.length) return;
   const cur=netHudEls().map(netSer);
   const ovH=$('overlay').hidden, sg=ovH?'':$('sign').innerHTML, soH=$('shopOverlay').hidden, ss=soH?'':$('shopSign').innerHTML;
-  const tp=$('trip'), pl=$('place'), st={ovH,sg,soH,ss,hh:$('hud').hidden,pl:pl?(pl.classList.contains('on')?'1':'0')+pl.textContent:'',tr:tp?tp.style.opacity:'',bc:NET_BODY.filter(k=>document.body.classList.contains(k)).join(' ')};
+  const pl=$('place'), bb=$('bubble'), st={ovH,sg,soH,ss,hh:$('hud').hidden,pl:pl?(pl.classList.contains('on')?'1':'0')+pl.textContent:'',bb:(bb.classList.contains('on')?'1':'0')+bb.textContent,bc:NET_BODY.filter(k=>document.body.classList.contains(k)).join(' ')};
   for(const s of live){
     const m={t:'ui',ph:G.phase}, h=[];
     for(let k=0;k<cur.length;k++) if(s.hud[k]!==cur[k]){ s.hud[k]=cur[k]; h.push(k,cur[k]); }
@@ -8472,14 +8710,14 @@ async function netJoin(){
   if(code.length<5){ netStatus("Type in the 5-letter room code from your friend's screen."); $('netCode').focus(); return; }
   const nm=cleanName($('netName').value)||myName(); $('dogName').value=nm; try{ localStorage.setItem('collieDuskName',nm); }catch(e){}
   NET.role='guest'; NET.code=code; NET.lobby=null; netUI(); netStatus('Connecting…');
-  netVideoEl().play().catch(()=>{});      // (touching play now lets the host's sound through later, on phones)
+  netAudioEl().play().catch(()=>{});      // (touching play now lets the host's sound through later, on phones)
   let Peer; try{ Peer=await loadPeer(); }catch(e){ netGuestReset("Couldn't load the online code. Check your connection and try again."); return; }
   if(NET.role!=='guest') return;
   const p=new Peer(peerOpts()); NET.peer=p;
   p.on('open',()=>{
     if(NET.peer!==p) return;
     const conn=p.connect(netId(code),{reliable:true}); NET.conn=conn;
-    conn.on('open',()=>{ netStatus('Connected. Saying hello…'); netSend({t:'hi',v:NET_VER,n:netHudEls().length,name:nm,...netViewSize()}); });
+    conn.on('open',()=>{ netStatus('Connected. Saying hello…'); netSend({t:'hi',v:NET_VER,n:netHudEls().length,b:NET_BUILD,name:nm}); });
     conn.on('data',m=>netGuestMsg(m));
     conn.on('close',()=>{ if(NET.conn===conn) netGuestLost(); });
     conn.on('error',()=>{});
@@ -8498,14 +8736,12 @@ function netGuestReset(msg){
   if(p) try{ p.destroy(); }catch(e){}
   netUI(); netStatus(msg||'');
 }
-function netViewSize(){ return {w:window.innerWidth,h:window.innerHeight,dpr:window.devicePixelRatio||1}; }
-function netVideoEl(){
-  if(NET.video) return NET.video;
-  const v=document.createElement('video'); v.id='netVideo'; v.autoplay=true; v.playsInline=true; v.setAttribute('playsinline',''); v.hidden=true;
-  host.insertBefore(v,host.firstChild); NET.video=v; return v;
+function netAudioEl(){
+  if(NET.audio) return NET.audio;
+  const v=document.createElement('audio'); v.id='netAudio'; v.autoplay=true; document.body.appendChild(v); NET.audio=v; return v;
 }
 function netGuestStream(st){
-  const v=netVideoEl(); if(v.srcObject===st) return;      // (PeerJS tells us once per track: the sound, then the picture)
+  const v=netAudioEl(); if(v.srcObject===st) return;
   v.srcObject=st; v.muted=!!NET.mute;
   v.play().catch(err=>{ if(!err || err.name!=='NotAllowedError') return; v.muted=true; v.play().catch(()=>{}); netBannerSet(); });     // no sound until a tap, on some browsers
 }
@@ -8520,6 +8756,8 @@ function netGuestMsg(m){
     case 'bye': netGuestLost('Your friend closed the game.'); break;
     case 'hb': NET.hostHid=!!m.hid; break;
     case 'ui': netGuestUI(m); break;
+    case 'leg': if(!NET.inGame) netGuestEnter(); try{ netGuestLeg(m); }catch(e){ console.error(e); } break;
+    case 'st': try{ netGuestSnap(m,performance.now()); }catch(e){ console.error(e); } break;
   }
 }
 function netApplyEl(e,v){
@@ -8544,23 +8782,24 @@ function netGuestUI(m){
   if('ss' in m) netSetHTML($('shopSign'),m.ss);
   if('soH' in m) $('shopOverlay').hidden=!!m.soH;
   if('pl' in m){ const el=$('place'), v=String(m.pl||''); if(el){ el.textContent=v.slice(1); el.classList.toggle('on',v[0]==='1'); } }
-  if('tr' in m){ const t=$('trip'); if(t) t.style.opacity=String(m.tr||''); }
+  if('bb' in m){ const b=$('bubble'), v=String(m.bb||''); if(b.textContent!==v.slice(1)) b.textContent=v.slice(1); b.classList.toggle('on',v[0]==='1'); }
   if('bc' in m){ const on=String(m.bc).split(' '); for(const k of NET_BODY) document.body.classList.toggle(k,on.includes(k)); }
-  if('me' in m){ $('bShoot').hidden=!(m.me&1); $('bWhistle').hidden=!(m.me&2); }
+  if('me' in m){ $('bWhistle').hidden=!(m.me&2); }
   const playing=m.ph==='day'||m.ph==='night';
   $('touch').hidden=!(document.body.classList.contains('touch') && playing && $('overlay').hidden && $('shopOverlay').hidden);
 }
 function netGuestEnter(){
-  NET.inGame=true; document.body.classList.add('netGuest');
+  NET.inGame=true; NET.mirror=true; document.body.classList.add('netGuest');
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  netVideoEl().hidden=false; $('touch').hidden=true;
-  netSend({t:'size',...netViewSize()}); NET.mmKey=null;
+  $('touch').hidden=true;
+  muted=true;          // the game's sounds come from the host now: this copy stays quiet
+  G.online=false; G.sharedCam=false; coopView=false; resize();
 }
 function netGuestLost(msg){
   if(NET.role!=='guest' || NET.dead) return;
   if(!NET.inGame){ netGuestReset(msg||'Lost the connection to the game.'); return; }
   NET.dead=true; const p=NET.peer; NET.peer=null; if(p) try{ p.destroy(); }catch(e){}
-  if(NET.video) NET.video.pause();
+  if(NET.audio) NET.audio.pause();
   netBannerSet(); $('touch').hidden=true; $('shopOverlay').hidden=true;
   $('sign').innerHTML=`<h2>${esc(msg||'Lost the connection')}</h2><p>${msg?'':"The link to your friend's game dropped. "}If they've still got the game open, you can jump straight back in.</p><div class="btnrow"><button class="btn" id="netRejoin" type="button">Rejoin</button><button class="btn ghost" id="netHome" type="button">Title screen</button></div>`;
   $('overlay').hidden=false;
@@ -8572,7 +8811,7 @@ function netGuestLost(msg){
 function netBannerSet(){
   let el=$('netBanner');
   if(NET.role!=='guest' || !NET.inGame || NET.dead){ if(el) el.remove(); return; }
-  const v=NET.video, quiet=performance.now()-NET.lastMsg>5000;
+  const v=NET.audio, quiet=performance.now()-NET.lastMsg>5000;
   const txt=NET.hostHid?"Your friend's game is in the background. Waiting for them…":quiet?'Waiting for the host…':'';
   const tap=!!(v && v.srcObject && v.muted && !NET.mute);
   if(!txt && !tap){ if(el) el.remove(); return; }
@@ -8588,7 +8827,7 @@ function netGuestKey(e){
   keys.add(e.code); if(e.repeat) return;
   const k={Space:'bark',KeyE:'pounce',KeyF:'shoot',KeyQ:'whistle',KeyP:'pause',Escape:'pause',Enter:'primary',NumpadEnter:'primary'}[e.code];
   if(k) netEv(k);
-  if(e.code==='KeyM'){ NET.mute=!NET.mute; if(NET.video) NET.video.muted=NET.mute; netBannerSet(); }
+  if(e.code==='KeyM'){ NET.mute=!NET.mute; if(NET.audio) NET.audio.muted=NET.mute; netBannerSet(); }
 }
 function netGuestPad(){
   let list=[]; try{ list=[...(navigator.getGamepads?navigator.getGamepads():[])].filter(g=>g&&g.connected); }catch(e){}
@@ -8605,8 +8844,8 @@ function netGuestPad(){
     else if(!$('overlay').hidden){ if(hit(0)) netEv('primary'); }        // a menu's up: A presses its main button
     else { if(hit(0)) netEv('bark'); if(hit(1)) netEv('pounce'); if(hit(2)) netEv('grabT'); if(hit(3)) netEv('shoot'); if(hit(4)) netEv('whistle'); }
   } else if(hit(0)) $('netRejoin').click();
-  if(hit(8)){ NET.mute=!NET.mute; if(NET.video) NET.video.muted=NET.mute; }
-  const rz=gp.axes[3]||0; if(Math.abs(rz)>.3) NET.zoom=clamp(NET.zoom+rz*.02,.6,1.6);
+  if(hit(8)){ NET.mute=!NET.mute; if(NET.audio) NET.audio.muted=NET.mute; }
+  const rz=gp.axes[3]||0; if(Math.abs(rz)>.3) G.zoom=clamp(G.zoom+rz*.02,.6,1.6);
   st.prev=gp.buttons.map((_,k)=>b(k));
 }
 function netGuestFrame(now){
@@ -8618,11 +8857,10 @@ function netGuestFrame(now){
   x+=joy.x; y+=joy.y; const P=NET.pad; if(P){ x+=P.x; y+=P.y; }
   const l=Math.hypot(x,y); if(l>1){ x/=l; y/=l; }
   const st={t:'in',x:Math.round(x*100)/100,y:Math.round(y*100)/100,run:keys.has('ShiftLeft')||keys.has('ShiftRight')||touchRun||!!(P&&P.run),
-    down:keys.has('KeyC')||touchDown||!!(P&&P.down),grab:keys.has('KeyR')||touchGrab,z:Math.round(NET.zoom*100)/100};
-  const k=[st.x,st.y,st.run,st.down,st.grab,st.z].join();
+    down:keys.has('KeyC')||touchDown||!!(P&&P.down),grab:keys.has('KeyR')||touchGrab};
+  const k=[st.x,st.y,st.run,st.down,st.grab].join();
   if(k!==NET.inKey ? now-(NET.inAt||0)>=16 : now-(NET.inAt||0)>=400){ NET.inKey=k; NET.inAt=now; netSend(st); }
-  // where this page keeps the minimap's space (it moves with the layout): the host draws the map there
-  if(now-(NET.mmAt||0)>500){ NET.mmAt=now; const r=$('minimap').getBoundingClientRect(), a=r.width>4 && !$('hud').hidden?[r.left,r.top,r.width,r.height].map(Math.round):null, mk=String(a); if(mk!==NET.mmKey){ NET.mmKey=mk; netSend({t:'mm',r:a}); } }
+  if(NET.built) netGuestDraw(now);
 }
 // a friend's clicks on the host's menus go to the host (the buttons that are theirs to press)
 document.addEventListener('click',e=>{
@@ -8631,8 +8869,9 @@ document.addEventListener('click',e=>{
   e.preventDefault(); e.stopPropagation(); b.blur();
   if(NET_CLICKS.has(b.id) && !b.disabled) netSend({t:'click',id:b.id});
 },true);
-window.addEventListener('wheel',e=>{ if(NET.role==='guest' && NET.inGame && $('overlay').hidden) NET.zoom=clamp(NET.zoom+(e.deltaY>0?.08:-.08),.6,1.6); },{passive:true});
-window.addEventListener('resize',()=>{ if(NET.role==='guest' && NET.inGame && !NET.dead) netSend({t:'size',...netViewSize()}); });
+// for testing online play: ?netdebug puts the online state where a test can look at it
+try{ if(new URLSearchParams(location.search).has('netdebug')) window.__collies={NET,G,JR,ALLDOGS,CT,falcon,COUG,camera,camLook,level:()=>LEVEL,dogs:()=>dogs,sheep:()=>G.sheep,coyotes:()=>G.coyotes,
+  fn:{advanceTrail,startSurprise,ctLaunch,spawnCoyote,flockLost,makeCamp}}; }catch(e){}
 // an invite link (?join=CODE) opens the join screen with the code filled in
 try{ const q=new URLSearchParams(location.search).get('join'); if(q){ $('netCode').value=netClean(q); netShow(); } }catch(e){}
 
@@ -8753,6 +8992,7 @@ function frame(now){
     let k=0; if(G.madN>0) for(const s of G.sheep){ if(!(s.madT>0)||s.penned||s.dead) continue; const D=nearestDog(s.x,s.z); k=Math.max(k,1-Math.hypot(D.x-s.x,D.z-s.z)/20); }
     G.trip=lerp(G.trip||0,clamp(k,0,1),1-Math.exp(-dt*2)); const el=$('trip'); if(el){ const o=(G.trip*.42).toFixed(3); if(el.style.opacity!==o) el.style.opacity=o; }
   }
+  NET.vis=true;            // (from here on it's drawing: friends' screens make these bursts for themselves)
   if(G.skyBlend){ const B=G.skyBlend; B.t=Math.min(1,B.t+dt/3.5); const k=smooth01(0,1,B.t); C_DAY.copy(B.from[0]).lerp(B.to[0],k); H_DAY.copy(B.from[1]).lerp(B.to[1],k); HG_DAY.copy(B.from[2]).lerp(B.to[2],k); if(B.t>=1) G.skyBlend=null; }
   updateMusic();
   syncShepherd(dt,time);
@@ -8766,11 +9006,12 @@ function frame(now){
   updateSeasonFx(dt,time);
   updateLevelFx(dt,time);
   updateWindTrails(dt,time);
+  NET.vis=false;
   updateCamera(dt,time);
   updatePops(dt);
   updatePartnerArrows(); updateGoalArrow(time); updateThreatArrows(time);
   if(G.phase!=='title'){ updateHUD(dt,time); updateCommand(dt); drawMinimap(time); }
-  if(NET.role==='host'){ netHostTick(dt); if(G.phase!=='title' && netRenderViews(now)) renderer.shadowMap.autoUpdate=false; }   // friends' views first (they refresh the shadows)
+  if(NET.role==='host'){ netHostTick(dt); netSnapTick(now); }      // friends hear what's changed
   if(coopView && G.phase!=='title'){
     const w=window.innerWidth, h=window.innerHeight;
     renderer.setScissorTest(true);
@@ -8779,7 +9020,6 @@ function frame(now){
       else renderer.render(scene,v.cam); }
     renderer.setScissorTest(false); renderer.setViewport(0,0,w,h);
   } else renderer.render(scene,camera);
-  renderer.shadowMap.autoUpdate=true;
 }
 
 function start(){
