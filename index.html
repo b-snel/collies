@@ -90,6 +90,10 @@ body.pad #keysHint .gp{display:flex}
 .popup.gold{color:#ffd23f;font-size:30px}
 .popup.red{color:#ff6d4d}
 .popup.green{color:#b8f06a}
+.popup.mad{color:#e08bff;font-size:26px}
+#trip{position:fixed;inset:-50%;pointer-events:none;opacity:0;mix-blend-mode:soft-light;background:conic-gradient(from 0deg,#ff3fd0,#ffe23f,#3fffb0,#3fb4ff,#c43fff,#ff3fd0);animation:tripSpin 7s linear infinite}
+@keyframes tripSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#trip{animation:none}}
 /* toasts: chunky storybook lettering with an ink outline (overrides the base #toast shadow) */
 #toast{--o:#2a1d14;text-shadow:3px 0 0 var(--o),-3px 0 0 var(--o),0 3px 0 var(--o),0 -3px 0 var(--o),2px 2px 0 var(--o),-2px 2px 0 var(--o),2px -2px 0 var(--o),-2px -2px 0 var(--o),0 6px 0 var(--o),0 0 26px rgba(0,0,0,.4)}
 .stat.score b{color:var(--lantern)}
@@ -866,8 +870,8 @@ let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
-const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,scale:10,worlds:11,hazards:11,wild:11};
-const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
+const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,rabid:5,scale:10,worlds:11,hazards:11,wild:11};
+const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
 // The Long Drive: Hank has inherited a ranch on the Oregon coast and the flock is coming with him.
 // Each day is a stop on the trail west; after Oregon the game carries on with Hank's tall tales (every world, at random).
 const TRAIL=[
@@ -995,6 +999,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
+{ const tr=document.createElement('div'); tr.id='trip'; tr.setAttribute('aria-hidden','true'); host.appendChild(tr); }
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xa8d4ea, 70, 190);
 scene.background = new THREE.Color(0xa8d4ea);
@@ -3317,6 +3322,7 @@ function obstacleSteer(s){
 }
 function updateSheep(dt){
   const L=G.sheep;
+  G.madN=0; for(const s of L) if(s.madT>0 && !s.penned && !s.dead) G.madN++;
   const pcx=(PEN.x0+PEN.x1)/2, pcz=(PEN.z0+PEN.z1)/2-1.5;
   for(const s of L){
     if(s.dead){
@@ -3366,9 +3372,38 @@ function updateSheep(dt){
         s.vx=D.pdx*20+bx/bd*3; s.vz=D.pdz*20+bz/bd*3; s.thrownT=.75; s.punted=G.elapsed; s.chain=0;
         D.pounceT=0; D.vx*=.15; D.vz*=.15;      // the dog stops dead; all the energy goes into the sheep
         sBoing(); sBleat(s.lamb?1.7:1.3); popText(s.x,2.4,s.z,'PUNT!','gold'); G.shake=Math.max(G.shake,.12);
+        if(s.madT>0){ s.madT=0; s.madImm=20; setTimeout(()=>popText(s.x,2.6,s.z,'Snapped out of it!','green'),250); }
         burst(s.x,1,s.z,12,s.golden?PC.gold:PC.confetti,3,4);
         if(s.ram){ s.rs='windup'; s.rt=.6; s.rtar=D; }
       }
+    }
+    if(s.madImm>0) s.madImm-=dt;
+    if(s.madT>0 && (s.penned || G.phase==='title')) s.madT=0;
+    if(s.madT>0 && s.flip<=0 && !(s.thrownT>0)){
+      // mad on mushrooms: wobbles at the nearest dog, head-butts it, and passes it on to sheep it bumps into
+      s.madT-=dt;
+      if(s.madT<=0){ s.madT=0; s.madImm=20; s.fear=.4; popText(s.x,2.4,s.z,'...huh?','green'); }
+      const D=nearestDog(s.x,s.z), dx=D.x-s.x, dz=D.z-s.z, d=Math.hypot(dx,dz)+1e-6;
+      const w=Math.sin(G.t*4.5+s.phase*3)*.85, cs=Math.cos(w), sn=Math.sin(w), sp=s.lamb?9.6:9;
+      let ax=(dx*cs-dz*sn)/d*sp, az=(dx*sn+dz*cs)/d*sp;
+      for(const o of L){ if(o===s||o.dead||o.penned||o.carried) continue; const ox=s.x-o.x, oz=s.z-o.z, od=Math.hypot(ox,oz);
+        if(od<1.5&&od>1e-6){ ax+=ox/od*(1.5-od)*6; az+=oz/od*(1.5-od)*6; }
+        if(od<1.35 && s.madSpread>0 && G.madN<MAD_MAX && !(o.madT>0) && !(o.madImm>0) && !o.grabbedBy && !(o.thrownT>0)){ s.madSpread--; G.madN++; goMad(o,MAD_LEN-2,1); } }
+      const a=1-Math.exp(-dt*5); s.vx+=(ax-s.vx)*a; s.vz+=(az-s.vz)*a;
+      s.buttCD=Math.max(0,(s.buttCD||0)-dt);
+      if(d<1.6 && s.buttCD<=0 && D.stunT<=0 && D.pounceT<=0){
+        D.vx+=dx/d*11; D.vz+=dz/d*11; D.stunT=.45*stunMul(); s.buttCD=1.4;
+        s.vx*=-.5; s.vz*=-.5; sThud(); G.shake=Math.max(G.shake,.35); rumble(.55,.35,150);
+        popText(D.x,2.4,D.z,'BAAAA!','mad');
+      }
+      if(Math.random()<dt*1.4 && s.hop<=0) s.hop=.32;
+      if(Math.random()<dt*6) burst(s.x,1.9,s.z,1,[0xff3fd0,0xffe23f,0x3fffb0,0x3fb4ff,0xc43fff],.5,1.8,2);
+      s.fear=.9; s.munch=0;
+      s.x+=s.vx*dt; s.z+=s.vz*dt;
+      collide(s,s.lamb?.45:.7,{gate:false,perim:onField(s.x,s.z)});
+      checkGoal(s);          // lure it into the pen and it's caught (and calms down)
+      s.attacked=Math.max(0,s.attacked-dt);
+      continue;
     }
     if(G.rageT>0 && !s.penned && G.phase!=='title' && s.flip<=0 && !(s.ram && s.rs!=='idle')){
       const D=nearestDog(s.x,s.z), dx=D.x-s.x, dz=D.z-s.z, d=Math.hypot(dx,dz)+1e-6;
@@ -4690,10 +4725,63 @@ const shroom=(function(){
   const eyeG=new THREE.SphereGeometry(.036,10,8), browG=new THREE.CylinderGeometry(.015,.015,.1,6), fp=[[new THREE.TorusGeometry(.034,.011,6,10,Math.PI),propM(0,.135,.205)]];
   for(const sd of [-1,1]) fp.push([eyeG,propM(.075*sd,.22,.198,0,0,0,.8,1.25,.6)],[browG,propM(.08*sd,.295,.186,0,0,Math.PI/2-.5*sd)]);
   g.add(new THREE.Mesh(mergeParts(fp),mat(PAL.ink)));
+  g.userData.body=bodyG;
   g.visible=false; scene.add(g); return g;
 })();
 let shroomSpot=null;
+// ---- mad mushrooms: little purple clumps out on the field. A sheep that eats one goes mad (spiral eyes, rainbow wool)
+// and charges the nearest dog; bump into another sheep and it catches it too, like rabies. Punt it to snap it out
+// of it, or lead it into the pen; otherwise it wears off. Capped so it never turns into a mob of the whole flock.
+const MADS=[], MAD_LEN=13, MAD_MAX=5;
+const madMat=mat(0xd99cff,{vertexColors:true});
+const SPIRAL_TEX=(function(){ const S=64, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='#fff'; x.beginPath(); x.arc(S/2,S/2,S/2-1,0,TAU); x.fill(); x.strokeStyle='#2a1640'; x.lineWidth=4.5; x.beginPath();
+  for(let a=0;a<TAU*3.2;a+=.12){ const r=1.5+a*2.6; x.lineTo(S/2+Math.cos(a)*r,S/2+Math.sin(a)*r); } x.stroke();
+  const tx=new THREE.CanvasTexture(c); return tx; })();
+const spiralMat=new THREE.MeshBasicMaterial({map:SPIRAL_TEX,transparent:true}), spiralGeo=new THREE.CircleGeometry(.1,20);
+function madEyes(s){
+  if(s.m.mad) return s.m.mad;
+  const g=new THREE.Group(), discs=[];
+  for(const sd of [1,-1]){ const e=new THREE.Group(); e.position.set(.095*sd,.04,.215); e.rotation.y=.42*sd; const d=new THREE.Mesh(spiralGeo,spiralMat); d.position.z=.048; e.add(d); g.add(e); discs.push(d); }
+  s.m.head.add(g); s.m.mad=g; g.userData.discs=discs; return g;
+}
+function placeMads(){
+  for(const m of MADS) scene.remove(m.g); MADS.length=0; G.saidMad=false;
+  if(G.day<UNLOCK.rabid) return;
+  const n=G.day>=11?3:2;
+  for(let tries=0;tries<400 && MADS.length<n;tries++){
+    const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
+    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x-dog.x,z-dog.z)<12) continue;
+    const g=new THREE.Group(); g.position.set(x,groundH(x,z),z);
+    for(const [sc,ox,oz,ry] of [[.42,0,0,0],[.3,.34,.18,1.2],[.26,-.28,.22,2.3],[.2,.1,-.32,.4]]){ const b=new THREE.Mesh(shroom.userData.body,madMat); b.position.set(ox,0,oz); b.scale.setScalar(sc); b.rotation.y=ry; b.castShadow=true; g.add(b); }
+    scene.add(g); MADS.push({x,z,g,eaten:false});
+  }
+}
+function goMad(s,len,spread){
+  s.madT=len; s.madSpread=spread; s.munch=0; s.hop=.45; s.fear=.9; madEyes(s).visible=true;
+  popText(s.x,2.4,s.z,'?!','mad'); sBleat(1.5); setTimeout(()=>sBleat(.7),160);
+  burst(s.x,1.4,s.z,18,[0xff3fd0,0xffe23f,0x3fffb0,0x3fb4ff,0xc43fff],3,4);
+}
+function updateMads(dt,time){
+  if(!MADS.length) return;
+  const play=(G.phase==='day'||G.phase==='night') && !G.paused, quiet=!busy();
+  for(const m of MADS){
+    if(m.eaten) continue;
+    m.g.children.forEach((b,i)=>b.scale.y=b.scale.x*(1+Math.sin(time*3+i)*.06));
+    if(Math.random()<dt*1.2) burst(m.x+(Math.random()-.5)*.6,.5,m.z+(Math.random()-.5)*.6,1,[0xc77dff,0xff7ad9,0x7dfff0],.3,1,1);
+    if(!play || !quiet) continue;
+    for(const s of G.sheep){
+      if(s.dead||s.penned||s.carried||s.grabbedBy||s.madT>0||(s.madImm||0)>0||s.fear>.45||s.thrownT>0) continue;
+      if(Math.hypot(s.x-m.x,s.z-m.z)>1.15 || Math.random()>dt*2.5) continue;
+      m.eaten=true; m.g.visible=false; burst(m.x,.6,m.z,24,[0xc77dff,0xff7ad9,0xffffff],3,4);
+      goMad(s,MAD_LEN,2);
+      if(!G.saidMad){ G.saidMad=true; setTimeout(()=>shepSay("What've they been eating?!",true),400); toast('A sheep ate a mad mushroom!','bad',2.4); }
+      break;
+    }
+  }
+}
 function placeShroom(){
+  placeMads();
   shroomSpot=null; shroom.visible=false; G.rageT=0;
   if(G.day<UNLOCK.shroom) return;
   for(let tries=0;tries<300;tries++){
@@ -4703,6 +4791,7 @@ function placeShroom(){
   }
 }
 function updateShroom(dt,time){
+  updateMads(dt,time);
   if(!shroomSpot) return;
   shroom.rotation.y=time*.6; shroom.scale.setScalar(1+Math.sin(time*4)*.06);
   if(Math.random()<dt*2.5) burst(shroomSpot[0]+(Math.random()-.5)*.5,.7,shroomSpot[1]+(Math.random()-.5)*.5,1,[0xc77dff,0xff7ad9,0xffffff],.3,1.2,1);
@@ -4869,6 +4958,8 @@ function syncAll(dt,time){
     if(s.rainbow){ s.m.base.setHSL((time*.5+s.phase*.1)%1,.85,.62); if(Math.random()<dt*14) burst(s.x,1.2,s.z,1,[0xff5a5a,0xffe14d,0x6fd06f,0x6fb4ff,0xb48cff],.6,1.6,3); }
     if(s.dance){ s.m.g.position.y+=Math.abs(Math.sin(time*8+s.phase))*.6; s.m.g.rotation.y=s.yaw+Math.sin(time*4+s.phase)*1.2; s.m.head.rotation.x=Math.sin(time*8+s.phase)*.4; }
     s.m.wool.color.copy(s.m.base).lerp(RED, Math.max(s.flash*.8, (G.rageT>0 && !s.penned) ? .45+.15*Math.sin(time*10+s.phase) : 0));
+    if(s.madT>0){ s.m.wool.color.setHSL((time*.7+s.phase*.13)%1,.8,.66); const me=madEyes(s); me.visible=true; me.userData.discs.forEach((d,i)=>d.rotation.z=time*(i?-9:9)); s.m.head.rotation.z=Math.sin(time*21+s.phase)*.28; }
+    else if(s.m.mad && s.m.mad.visible){ s.m.mad.visible=false; s.m.head.rotation.z=0; }
     if(!s.penned && s.stress>.65 && Math.random()<dt*4) burst(s.x,2,s.z,1,[0xbfe8ff,0xffffff],.5,1.6,6);   // nervous sweat
     if(s.leader && v>1.2 && Math.random()<dt*1.6) sBell();
     if(s.golden && Math.random()<dt*7) burst(s.x+(Math.random()-.5),1.3+Math.random()*.5,s.z+(Math.random()-.5),1,PC.gold,.8,2,2);
@@ -6138,7 +6229,7 @@ function startSurprise(kind){
   }
 }
 // is something big already going on? (a surprise, the falcon, coyotes in daylight, sheep rage)
-const busy=()=> !!G.ev || falcon.state!=='idle' || G.rageT>0 || G.coyotes.some(c=>!c.gone && c.state!=='retreat');
+const busy=()=> !!G.ev || falcon.state!=='idle' || G.rageT>0 || G.madN>0 || G.coyotes.some(c=>!c.gone && c.state!=='retreat');
 function updateSurprise(dt){
   if(G.phase!=='day' && G.phase!=='night'){ if(G.ev) endSurprise(); return; }
   if(!G.ev){
@@ -6751,6 +6842,10 @@ function frame(now){
   updateGun(dt,time);
   updateGoldBones(dt,time);
   updateShroom(dt,time);
+  { // a little psychedelic when a mad sheep is close to a dog
+    let k=0; if(G.madN>0) for(const s of G.sheep){ if(!(s.madT>0)||s.penned||s.dead) continue; const D=nearestDog(s.x,s.z); k=Math.max(k,1-Math.hypot(D.x-s.x,D.z-s.z)/20); }
+    G.trip=lerp(G.trip||0,clamp(k,0,1),1-Math.exp(-dt*2)); const el=$('trip'); if(el){ const o=(G.trip*.42).toFixed(3); if(el.style.opacity!==o) el.style.opacity=o; }
+  }
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);
