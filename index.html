@@ -2436,6 +2436,24 @@ function updateHUD(dt) {
 }
 function proj(x, y, z) { _ndc.set(x, y, z).project(camera); return [(_ndc.x * 0.5 + 0.5) * W, (-_ndc.y * 0.5 + 0.5) * H, _ndc.z]; }
 function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+// red arrows at the screen edge for coyotes you can't see; they pulse when one's carrying a sheep off
+function drawCoyoteArrows() {
+  if (G.mode !== 'play') return;
+  const pad = 40, cx = W / 2, cy = H / 2;
+  for (const c of G.coyotes) {
+    if (c.state === 'leave' && !c.prey) continue;
+    const [px, py, pz] = proj(c.x, c.y + 0.8, c.z);
+    if (px > 0 && px < W && py > 0 && py < H && pz < 1) continue;
+    const dx = px - cx, dy = py - cy, k = Math.min((W / 2 - pad) / Math.abs(dx || 1e-3), (H / 2 - pad) / Math.abs(dy || 1e-3));
+    const ax = cx + dx * k, ay = cy + dy * k, a = Math.atan2(dy, dx), dist = Math.hypot(c.x - cam.x, c.z - cam.z);
+    const pulse = c.prey ? 1 + Math.sin(G.time * 12) * 0.25 : 1, sz = (c.prey ? 15 : 11) * pulse;
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.globalAlpha = clamp(1.4 - dist / 70, 0.35, 1);
+    ctx.fillStyle = c.prey ? '#ff3b2f' : '#e8574a'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(sz, 0); ctx.lineTo(-sz * 0.6, -sz * 0.8); ctx.lineTo(-sz * 0.25, 0); ctx.lineTo(-sz * 0.6, sz * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
 function drawOverlay(dt) {
   ctx.setTransform(ovScale, 0, 0, ovScale, 0, 0); ctx.clearRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
@@ -2500,6 +2518,7 @@ function drawOverlay(dt) {
       ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(px + 20, py, 7, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
     }
   }
+  drawCoyoteArrows();
   // floating texts
   for (let i = floats.length - 1; i >= 0; i--) {
     const f = floats[i]; f.t += dt; if (f.t > 1.1) { floats.splice(i, 1); continue; }
