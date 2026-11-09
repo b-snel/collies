@@ -2922,7 +2922,7 @@ function updateSheep(dt){
       let threat=0;
       for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.grabbedBy) continue; const R=c.boss?24:17, e=Math.hypot(s.x-c.x,s.z-c.z); if(e<R) threat=Math.max(threat,1-e/R); }
       if(rascal.active && rascal.state==='run' && !rascal.grabbedBy){ const e=Math.hypot(s.x-rascal.x,s.z-rascal.z); if(e<13) threat=Math.max(threat,(1-e/13)*.7); }
-      s.threat=threat; s.hard=0; let stressIn=0, calmNear=false;
+      s.threat=threat; s.hard=0; s.press=0; let stressIn=0, calmNear=false;
       if(s.munch>0){ calmNear=true; /* too busy eating to notice the dog */ }
       else if(appleDog(s)){
         calmNear=true;
@@ -2960,6 +2960,7 @@ function updateSheep(dt){
             let ux=dx/d, uz=dz/d; const dv=D.speed; if(dv>1.5 && D.barkT<=0){ const vx=D.vx/dv, vz=D.vz/dv, dot=vx*ux+vz*uz; if(dot>-.2){ const w=.9*Math.min(1,dv/8); ux+=vx*w; uz+=vz*w; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul; } }
             fx+=ux*k*str; fz+=uz*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
             if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=1;      // driven hard: could go over the edge
+            if(k>s.press){ s.press=k; s.pressD=D; }                                 // how hard the closest dog is crowding it
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
             stressIn += (inner*.35 + k*Math.max(0,D.speed-7)/7*.7)*(1-threat*.7);
@@ -3048,6 +3049,27 @@ function updateSheep(dt){
     if(G.ev && G.ev.kind==='sugar' && !s.penned){ fx+=Math.cos(s.wa+G.elapsed)*7; fz+=Math.sin(s.wa+G.elapsed)*7; }
     if(s.rainbow && !s.penned){ const ND2=nearestDog(s.x,s.z), rx=s.x-ND2.x, rz=s.z-ND2.z, rd=Math.hypot(rx,rz)+1e-6; if(rd<16){ fx+=rx/rd*(16-rd)*2.2; fz+=rz/rd*(16-rd)*2.2; } }
     if(G.gust>0 && !s.penned){ fx+=G.windX*.9; fz+=G.windZ*.9; }
+    // cornered: crowded hard by a dog but boxed in (a fence, a hedge, the flock), a sheep panics and bursts out past the dog,
+    // and it'll bowl the dog over if it's in the way. Give it room, or lie down to take the pressure off.
+    if(!s.penned && !eating && !s.ram && G.phase!=='title' && (G.phase==='day'||G.phase==='night')){
+      const moved=s.cpx===undefined?9:Math.hypot(s.x-s.cpx,s.z-s.cpz)/Math.max(dt,1e-4);
+      s.cpx=s.x; s.cpz=s.z;
+      if(s.breakT>0) s.breakT-=dt;
+      else if(s.press>.5 && moved<1.8){ s.corner=(s.corner||0)+dt; if(s.corner>.45 && !s.cWarn){ s.cWarn=1; popText(s.x,2.4,s.z,'!','red'); sBleat(1.35); } }
+      else { s.corner=Math.max(0,(s.corner||0)-dt*1.5); if(!s.corner) s.cWarn=0; }
+      if(s.corner>.75 && s.pressD){
+        const D=s.pressD, ax=s.x-D.x, az=s.z-D.z, al=Math.hypot(ax,az)+1e-6, px=-az/al, pz=ax/al;
+        const room=sd=>{ let r=0; for(let q=1;q<=4;q++){ const tx=s.x+(px*sd-ax/al*.5)*q*1.6, tz=s.z+(pz*sd-az/al*.5)*q*1.6; if(Math.abs(tx)>FIELD-1.5||Math.abs(tz)>FIELD-1.5||hazardAt(tx,tz)||crossesWall(s.x,s.z,tx,tz,{gate:false,perim:true})||circles.some(c=>Math.hypot(c.x-tx,c.z-tz)<c.r+.6)) break; r++; } return r; };
+        const sd=room(1)>=room(-1)?1:-1, bx=px*sd*.8-ax/al*.6, bz=pz*sd*.8-az/al*.6, bl=Math.hypot(bx,bz);
+        s.vx=bx/bl*15; s.vz=bz/bl*15; s.breakT=1.8; s.charging=.9; s.corner=0; s.cWarn=0; s.boltT=0; s.fear=1; s.stress=Math.min(1,s.stress+.3); s.munch=0;
+        burst(s.x,1.2,s.z,14,[0xffffff,0xf6f1e3],3,3); sBleat(1.45); popText(s.x,2.6,s.z,'BAAA!','red');
+      }
+      if(s.charging>0){
+        s.charging-=dt;
+        for(const D of dogs){ if(D.stunT>0 || D.flying) continue; const dx=D.x-s.x, dz=D.z-s.z, dd=Math.hypot(dx,dz)+1e-6;
+          if(dd<1.4){ D.stunT=.55*stunMul(); D.vx+=s.vx*.6; D.vz+=s.vz*.6; s.charging=0; sThud(); G.shake=Math.max(G.shake,.35); rumble(.6,.4,180); popText(D.x,2.4,D.z,'OOF!','red'); shepSay('Oi! Watch it!'); } }
+      }
+    }
     // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking)
     s.munchImmune=Math.max(0,(s.munchImmune||0)-dt);
     if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && (G.phase==='day'||G.phase==='night')){
