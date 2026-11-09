@@ -1,11 +1,14 @@
-// Headless economy test: `node tools/breed-sim.mjs [days] [--norams]`. The flock is parked at the valley camp:
+// Headless economy test: `node tools/breed-sim.mjs [days] [--norams] [--set key=value ...]`. The flock is parked at the valley camp:
 // out grazing by day, everyone put in the pen at 19:00 (gate shut), let out at dawn. Rams court the fed ewes in the
 // closed pen in the evening; bred ewes lamb at dawn. Prints the flock each morning (the demo's "14 -> 22 by day 4").
 import { open } from './harness.mjs';
 const days = +process.argv.find(a => /^\d+$/.test(a)) || 4, noRams = process.argv.includes('--norams');
+// --set key=value (repeatable) overrides a T number, e.g. --set foodValue=0.075
+const sets = {}; process.argv.forEach((a, i) => { if (a === '--set') { const [k, v] = process.argv[i + 1].split('='); sets[k] = +v; } });
 const h = await open({ query: '?sim&debug' });
-const r = await h.page.evaluate(({ days, noRams }) => {
+const r = await h.page.evaluate(({ days, noRams, sets }) => {
   const { G, T, step, pens, CAMPS } = GAME;
+  Object.assign(T, sets);
   if (noRams) T.startRams = 0;
   GAME.startGame({ kind: 'bot', index: 0 }); GAME.resetGame(); G.players[0].bot = {};
   const pen = pens[1], c = CAMPS[1];
@@ -31,6 +34,6 @@ const r = await h.page.evaluate(({ days, noRams }) => {
   const live = G.sheep.filter(s => !s.dead);
   log.push(`end: ${live.length} sheep (${live.filter(s => s.ram).length} rams), born ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}`);
   return log;
-}, { days, noRams });
+}, { days, noRams, sets });
 console.log(r.join('\n')); if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 5));
 await h.close();
