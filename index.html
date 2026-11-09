@@ -413,9 +413,9 @@ function lerpAngle(a,b,t){ let d=((b-a+Math.PI)%TAU+TAU)%TAU-Math.PI; return a+d
 const FIELD = 48;
 const PEN = {x0:-10, x1:10, z0:-44, z1:-30, gx:6};
 const BARN = {bx:-23, bz:-38};
-const POND = {x:-26, z:16, r:7};
+const POND = {x:-26, z:16, r:7, k:[0,0,0,0,0,0]};   // k: the wobble in its outline
 const grassPos=[];
-let groundMesh=null, groundBase=null, grassMesh=null, grassBase=null, pondWater=null, pondBank=null; const pondPads=[];     // sheep walk around it; dogs and ducks can swim
+let groundMesh=null, groundBase=null, groundShape=null, grassMesh=null, grassBase=null, pondWater=null, pondBank=null; const pondPads=[];     // sheep walk around it; dogs and ducks can swim
 let NIGHT_LEN = 50;   // grows a little each night, set in setupDay()
 let WOOL=0, UP={};
 try{ WOOL=+localStorage.getItem('collieDuskWool')||0; UP=JSON.parse(localStorage.getItem('collieDuskUp')||'{}')||{}; }catch(e){}
@@ -455,7 +455,14 @@ let LEVEL={theme:'farm',name:'Home Farm',walls:[],copses:[],rocks:[],holes:[],po
 const TWISTS={bouncy:'Bouncy sheep',giant:'Giant sheep',tiny:'Tiny sheep',speedy:'Speedy sheep',foggy:'Thick fog',goldrush:'Gold rush',stampede:'Stampedes'};
 const THEMES={farm:{w:4},sky:{w:1.3,season:'summer'},sea:{w:1.2,season:'sea'},desert:{w:1.3,season:'desert'},moon:{w:1.1,season:'moon'},volcano:{w:1.4,season:'volcano'}};
 const riverZ=(R,x)=>R.z0+R.amp*Math.sin(R.k*x+R.ph);
-const inRiver=(x,z)=>{ const R=LEVEL.river; if(!R) return false; if(Math.abs(z-riverZ(R,x))>R.w/2) return false; return !R.bridges.some(b=>x>b[0]&&x<b[1]); };
+const inRiver=(x,z)=>{ const R=LEVEL.river; if(!R) return false; if(Math.abs(z-riverZ(R,x))>R.w/2) return false; return !R.bridges.some(b=>onDeck(R,b,x,z,0)); };
+// a bridge runs square across the river where it stands: centre (cx,cz), t along the flow, n across it, hw half its width, hl half its length (bank to bank and a bit)
+function bridgeFrame(R,b){
+  if(b.f) return b.f;
+  const cx=(b[0]+b[1])/2, cz=riverZ(R,cx), s=R.amp*R.k*Math.cos(R.k*cx+R.ph), L=Math.hypot(1,s);
+  return b.f={cx,cz,tx:1/L,tz:s/L,nx:-s/L,nz:1/L,hw:(b[1]-b[0])/2,hl:R.w/2/L+1.4};
+}
+function onDeck(R,b,x,z,pad){ const f=bridgeFrame(R,b), dx=x-f.cx, dz=z-f.cz; return Math.abs(dx*f.tx+dz*f.tz)<f.hw-pad && Math.abs(dx*f.nx+dz*f.nz)<f.hl+1; }
 // deadly ground: lava pools and lava rivers, and the edges of sky islands
 const lavaRiver=()=>!!(LEVEL.river&&LEVEL.river.lava);
 // outward direction from the hazard a point is in (or null)
@@ -471,7 +478,7 @@ function hazardAt(x,z){
 }
 // a maze across the field between the flock and the pen: corridors wide enough for the flock, a few loops so dead ends aren't hopeless
 function genMaze(R){
-  const C=8, cols=12, rows=5, x0=-FIELD, z0=PEN.z1+8, z1=z0+rows*C;
+  const C=8, cols=10, rows=5, x0=-cols*C/2, z0=PEN.z1+8, z1=z0+rows*C;
   const V=[], H=[]; for(let j=0;j<rows;j++) V.push(new Array(cols+1).fill(true)); for(let j=0;j<=rows;j++) H.push(new Array(cols).fill(true));
   const seen=new Set(), st=[[(R()*cols)|0,(R()*rows)|0]]; seen.add(st[0].join());
   while(st.length){ const [i,j]=st[st.length-1], nb=[[1,0],[-1,0],[0,1],[0,-1]].map(([a,b])=>[i+a,j+b,a,b]).filter(([a,b])=>a>=0&&b>=0&&a<cols&&b<rows&&!seen.has(a+','+b));
@@ -479,23 +486,30 @@ function genMaze(R){
     const [a,b,di,dj]=nb[(R()*nb.length)|0]; if(di) V[j][Math.max(i,a)]=false; else H[Math.max(j,b)][i]=false; seen.add(a+','+b); st.push([a,b]); }
   for(let j=0;j<rows;j++) for(let i=1;i<cols;i++) if(R()<.16) V[j][i]=false;
   for(let j=1;j<rows;j++) for(let i=0;i<cols;i++) if(R()<.16) H[j][i]=false;
-  H[0][5]=H[0][6]=false;                                  // out towards the pen gate
+  H[0][4]=H[0][5]=false;                                  // out towards the pen gate
   const e1=(R()*cols)|0; H[rows][e1]=false; H[rows][(e1+4+((R()*4)|0))%cols]=false;   // two ways in from the far side
   const walls=[];
-  for(let j=0;j<rows;j++) for(let i=1;i<cols;i++) if(V[j][i]) walls.push([x0+i*C,z0+j*C,x0+i*C,z0+(j+1)*C]);
+  for(let j=0;j<rows;j++) for(let i=0;i<=cols;i++) if(V[j][i]) walls.push([x0+i*C,z0+j*C,x0+i*C,z0+(j+1)*C]);
   for(let j=0;j<=rows;j++) for(let i=0;i<cols;i++) if(H[j][i]) walls.push([x0+i*C,z0+j*C,x0+(i+1)*C,z0+j*C]);
-  return {x0,z0,x1:FIELD,z1,C,walls};
+  return {x0,z0,x1:-x0,z1,C,walls};
 }
-function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
-function generateLevel(d){
-  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
-  // theme: day 1 is always the farm; never the same special theme twice running
+const themeCache={};
+function themeOf(d){
+  const key=RUN_SEED+':'+d; if(themeCache[key]) return themeCache[key];
+  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), pick=a=>a[(R()*a.length)|0];
   let theme='farm';
   const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
   const stop=trailStop(d);
   if(stop) theme=stop.theme;                                     // on the trail, the stop decides the world
   else if(d===UNLOCK.worlds) theme=pick(['sky','sea','moon','volcano']);
-  else if(d>1){ const prev=levelOf(d-1).theme; const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
+  else if(d>1){ const prev=themeOf(d-1); const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
+  return themeCache[key]=theme;
+}
+function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
+function generateLevel(d){
+  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
+  // theme: day 1 is always the farm; never the same special theme twice running
+  const theme=themeOf(d), stop=trailStop(d); R();   // (themeOf used the first draw of this same sequence: skip it so the rest doesn't follow the theme)
   const L={theme,season:(stop&&stop.season)||THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null,special:stop&&stop.special||null};
   // the day's puzzle: trial gates or a weigh-in to unlock the pen, or a maze to get through
   const mazeOK=theme==='farm'||theme==='desert'||theme==='sea'||theme==='moon';
@@ -508,26 +522,33 @@ function generateLevel(d){
   // a cougar up a tree on some tree-y levels
   L.cougar = d===UNLOCK.cougar || (d>UNLOCK.cougar && !L.maze && (theme==='farm'||theme==='sky') && chance(.45));
   L.hill={ox:r(0,90),oz:r(0,90),ox2:r(0,90),oz2:r(0,90),amp:{farm:r(.6,1.4),sky:r(.4,1),sea:r(.6,1.2),desert:r(.9,1.7),moon:r(.3,.8),volcano:r(.8,1.5)}[theme]*(L.maze?.3:1)};
+  // the lie of the land: this level's own shape (the canyon's rift has to run across it)
+  if(L.special==='canyon') L.canyon={z:r(4,12)};
+  L.shape=genShape(L,R,d,stop);
+  const SD=L.shape.sd;
   const taken=[];   // circles already used, so features don't pile on each other
-  const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || (L.maze && z>L.maze.z0-3-pad && z<L.maze.z1+3+pad) || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
+  const blockedAt=(x,z,pad)=> z<PEN.z1+12+pad || sdAt(SD,x,z)<pad+4 || (L.maze && Math.hypot(x,z-L.maze.z1-5)<8+pad) || (L.maze && z>L.maze.z0-3-pad && z<L.maze.z1+3+pad) || (Math.abs(x)<17 && z<PEN.z1+19) || Math.abs(x)>FIELD-4-pad || Math.abs(z)>FIELD-4-pad
     || taken.some(t=>Math.hypot(t.x-x,t.z-z)<t.r+pad)
     || (L.river && Math.abs(z-riverZ(L.river,x))<L.river.w/2+2.5+pad)
     || L.walls.some(w=>{ const [ax,az,bx,bz]=w.seg, abx=bx-ax, abz=bz-az, t=clamp(((x-ax)*abx+(z-az)*abz)/(abx*abx+abz*abz),0,1); return Math.hypot(x-ax-abx*t,z-az-abz*t)<1.5+pad; });
   // a winding river with 1-3 bridges
   // the Grand Canyon: a rift right across the field, crossable only at a couple of narrow necks
   if(L.special==='canyon'){
-    const zc=r(4,12), gaps=[r(-34,-12),r(12,34)]; L.canyon={z:zc};
-    for(let x=-FIELD-2;x<=FIELD+2;x+=6.2){ if(gaps.some(g=>Math.abs(g-x)<5.2)) continue; const rad=r(4,5); L.holes.push({x,z:zc+r(-1.2,1.2),r:rad}); taken.push({x,z:zc,r:rad+2}); }
+    const zc=L.canyon.z, gap=(lo,hi,g0)=>{ if(g0!==undefined && sdAt(SD,g0,zc)>5) return g0; let b=lo, bs=-1e9; for(let t=0;t<30;t++){ const x=r(lo,hi), s=sdAt(SD,x,zc); if(s>6) return x; if(s>bs){ bs=s; b=x; } } return b; }, G0=L.canyon.gaps||[], gaps=[gap(-34,-12,G0[0]),gap(12,34,G0[1])];
+    for(let x=-FIELD-2;x<=FIELD+2;x+=6.2){ if(gaps.some(g=>Math.abs(g-x)<5.2)) continue; const rad=r(4,5), z=zc+r(-1.2,1.2); if(sdAt(SD,x,z)<-rad+.5) continue; L.holes.push({x,z,r:rad}); taken.push({x,z:zc,r:rad+2}); }
   }
   if(L.special==='plains') L.twist='stampede';
-  if(L.special!=='canyon' && L.special!=='columbia' && d>2 && !L.maze && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
+  if(L.special!=='canyon' && L.special!=='columbia' && d>2 && !L.maze && !L.shape.K.regions.length && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
     const Rv={z0:r(-4,30),amp:r(2,7),k:r(.05,.11),ph:r(0,TAU),w:r(4.5,6.5),bridges:[],lava:theme==='volcano'};
-    const nb=1+((R()*3)|0); let tries=0;
-    while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
-    L.river=Rv;
+    // a bridge on every stretch of river that crosses the land, so it never cuts a part of it off
+    const runs=[]; let r0=null; for(let x=-46;x<=46;x+=1){ const ins=sdAt(SD,x,riverZ(Rv,x))>3; if(ins&&r0===null) r0=x; if((!ins||x>=46)&&r0!==null){ runs.push([r0,x]); r0=null; } }
+    for(const [a,b] of runs){ const bx=b-a>10?r(a+4,b-4):(a+b)/2; Rv.bridges.push([bx-3.2,bx+3.2]); }
+    const nb=runs.length+((R()*2)|0); let tries=0;
+    while(Rv.bridges.length<nb && tries++<40){ const bx=r(-40,40); if(sdAt(SD,bx,riverZ(Rv,bx))>5 && Rv.bridges.every(b=>Math.abs((b[0]+b[1])/2-bx)>14)) Rv.bridges.push([bx-3.2,bx+3.2]); }
+    if(runs.length) L.river=Rv;
   }
   // the pond moves about (none on the moon)
-  if(theme!=='moon' && theme!=='volcano'){ for(let t=0;t<60;t++){ const rad=r(5,8), x=r(-38,38), z=r(-6,38); if(!blockedAt(x,z,rad+1)){ L.pond={x,z,r:rad}; taken.push({x,z,r:rad+2}); break; } } }
+  if(theme!=='moon' && theme!=='volcano'){ for(let t=0;t<60;t++){ const rad=r(5,8), x=r(-38,38), z=r(-6,38); if(!blockedAt(x,z,rad*1.3+1)){ L.pond={x,z,r:rad,k:[r(.07,.15),r(0,TAU),r(.05,.1),r(0,TAU),r(.02,.05),r(0,TAU)]}; taken.push({x,z,r:rad*1.3+2}); break; } } }
   // walls with gaps: hedges on the farm, old fences in the desert, coral reefs underwater
   if(theme!=='moon' && theme!=='sky' && theme!=='volcano' && chance(d===1?.35:.6)){
     const style=theme==='desert'?'fence':theme==='sea'?'coral':'hedge';
@@ -578,6 +599,234 @@ function generateLevel(d){
     :L.river?pick(['Burn','Brook','Ford']):L.walls.length?pick(['Hedges','Lanes','Steadings']):L.copses.length>5?pick(['Wood','Copse']):pick(['Meadow','Glen','Brae','Fields']);
   L.name=stop?stop.place+', '+stop.st:adj+' '+noun;
   return L;
+}
+// ---------------- level shapes ----------------
+// No two levels are the same piece of land: each one is an irregular patch of lobes, side pockets, necks and passes, bounded by
+// cliffs, water, forest or a sheer drop. generateLevel makes it from the level's RNG as a signed-distance grid (world units,
+// positive inside); buildLevel turns that into walls, cliff faces, shorelines and trees, and groundH reads terrain built from it.
+const SG_O=-56, SG_N=113;                          // shape grid: node (i,j) sits at x=SG_O+i, z=SG_O+j
+const YARD={x0:-34,x1:16,z0:-50};                  // the barn and pen yard: flat land behind the front fence
+const KINDS=['forest','cliff','water','drop','lava','reef','rim'], KF=0,KC=1,KW=2,KD=3,KL=4,KR=5,KM=6, NK=7;
+// bilinear sample of a shape grid (a straight-line guess beyond its edge)
+function sdAt(sd,x,z){
+  let fx=x-SG_O, fz=z-SG_O, ox=0, oz=0; const M=SG_N-1.0001;
+  if(fx<0){ ox=-fx; fx=0; } else if(fx>M){ ox=fx-M; fx=M; }
+  if(fz<0){ oz=-fz; fz=0; } else if(fz>M){ oz=fz-M; fz=M; }
+  const i=fx|0, j=fz|0, u=fx-i, v=fz-j, k=j*SG_N+i, a=sd[k], b=sd[k+1], c=sd[k+SG_N], e=sd[k+SG_N+1];
+  const r=a+(b-a)*u+(c-a)*v+(a-b-c+e)*u*v;
+  return (ox||oz) ? r-Math.hypot(ox,oz) : r;
+}
+// how far inside the day's playing area a point is (negative outside), and the inward direction there
+function fieldD(x,z){ const S=LEVEL.shape; return S ? sdAt(S.sd,x,z) : FIELD-Math.max(Math.abs(x),Math.abs(z)); }
+const FN={x:0,z:1,l:1};
+function fieldN(x,z){
+  const S=LEVEL.shape;
+  if(!S){ if(Math.abs(x)>Math.abs(z)){ FN.x=-Math.sign(x); FN.z=0; } else { FN.x=0; FN.z=-Math.sign(z)||1; } FN.l=1; return FN; }
+  const gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz);
+  if(l<1e-6){ FN.x=0; FN.z=1; } else { FN.x=gx/l; FN.z=gz/l; } FN.l=l;
+  return FN;
+}
+// the nearest point at least pad inside the area (for anything that has ended up outside it)
+function intoField(p,pad){
+  for(let k=0;k<4;k++){ const d=fieldD(p.x,p.z); if(d>=pad-.05) return p; const n=fieldN(p.x,p.z); p.x+=n.x*(pad-d+.02); p.z+=n.z*(pad-d+.02); }
+  return p;
+}
+// exact Euclidean distance transform (Felzenszwalb): distance from every node to the nearest seed node
+function edt1d(f,n,d,v,z){
+  let k=0; v[0]=0; z[0]=-1e20; z[1]=1e20;
+  for(let q=1;q<n;q++){
+    let s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]);
+    while(s<=z[k]){ k--; s=((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]); }
+    k++; v[k]=q; z[k]=s; z[k+1]=1e20;
+  }
+  k=0; for(let q=0;q<n;q++){ while(z[k+1]<q) k++; d[q]=(q-v[k])*(q-v[k])+f[v[k]]; }
+}
+function edt2(seed,N){
+  const g=new Float64Array(N*N), f=new Float64Array(N), d=new Float64Array(N), v=new Int32Array(N), z=new Float64Array(N+1), out=new Float32Array(N*N);
+  for(let i=0;i<N;i++){ for(let j=0;j<N;j++) f[j]=seed[j*N+i]?0:1e12; edt1d(f,N,d,v,z); for(let j=0;j<N;j++) g[j*N+i]=d[j]; }
+  for(let j=0;j<N;j++){ for(let i=0;i<N;i++) f[i]=g[j*N+i]; edt1d(f,N,d,v,z); for(let i=0;i<N;i++) out[j*N+i]=Math.sqrt(d[i]); }
+  return out;
+}
+const capP=(ax,az,bx,bz,r)=>({ax,az,bx,bz,r});
+// a rounded rectangle, positive inside
+function rrect(x,z,x0,x1,z0,z1,rd){ const qx=Math.abs(x-(x0+x1)/2)-((x1-x0)/2-rd), qz=Math.abs(z-(z0+z1)/2)-((z1-z0)/2-rd); return -(Math.hypot(Math.max(qx,0),Math.max(qz,0))+Math.min(Math.max(qx,qz),0)-rd); }
+function capD(p,x,z){ const abx=p.bx-p.ax, abz=p.bz-p.az, l2=abx*abx+abz*abz; let t=l2>0?((x-p.ax)*abx+(z-p.az)*abz)/l2:0; t=t<0?0:t>1?1:t; return p.r-Math.hypot(x-p.ax-abx*t,z-p.az-abz*t); }
+const wave=(g,u)=>g.c+g.a1*Math.sin(g.k1*u+g.p1)+g.a2*Math.sin(g.k2*u+g.p2);
+// grow a little world of chambers out from the ones given (linked by necks), then tuck side pockets off them
+function grow(R,o,P,nodes,spots){
+  const r=(a,b)=>a+R()*(b-a), zMin=o.zMin===undefined?PEN.z1+4:o.zMin, zMax=o.zMax||43, xMax=o.xMax||41.5;
+  const inB=(x,z,rr)=>Math.abs(x)+rr*.7<xMax && z-rr*.45>zMin && z+rr*.55<zMax;
+  const sep=(x,z,rr,k,skip)=>nodes.every(q=>q===skip||Math.hypot(q.x-x,q.z-z)>(q.r+rr)*k);
+  const n=o.n?o.n[0]+((R()*(o.n[1]-o.n[0]+1))|0):0, first=nodes.length;
+  for(let k=0,t=0;k<n && t<300;t++){
+    const par=R()<.55?nodes[nodes.length-1]:nodes[(R()*nodes.length)|0]; if(par.pocket) continue;
+    const rr=r(o.r[0],o.r[1]), a=Math.PI/2+(R()-.5)*(o.spread||3.6), dist=(par.r+rr)*(o.near||.8)+r(o.gap[0],o.gap[1]);
+    const x=par.x+Math.cos(a)*dist, z=par.z+Math.sin(a)*dist;
+    if(!inB(x,z,rr) || !sep(x,z,rr,o.sep||.8)) continue;
+    const hl=R()<(o.elong||0)?r(rr*.3,rr*.85):0, ea=R()*Math.PI, ex=Math.cos(ea)*hl, ez=Math.sin(ea)*hl;
+    P.push(capP(x-ex,z-ez,x+ex,z+ez,hl?rr*.82:rr));
+    P.push(capP(par.x,par.z,x,z,Math.min(r(o.neck[0],o.neck[1]),rr*.95,par.r*.95)));
+    nodes.push({x,z,r:rr}); spots.push({x,z,r:rr*.55,pocket:false}); k++;
+  }
+  if(o.loop) for(let i=Math.max(1,first);i<nodes.length;i++) for(let j=0;j<i-1;j++){ const A=nodes[i], B=nodes[j]; if(!A.pocket && !B.pocket && Math.hypot(A.x-B.x,A.z-B.z)<A.r+B.r+9 && R()<o.loop) P.push(capP(A.x,A.z,B.x,B.z,r(o.neck[0],o.neck[1]))); }
+  const np=o.pk?o.pk[0]+((R()*(o.pk[1]-o.pk[0]+1))|0):0;
+  let cx=0,cz=0; nodes.forEach(q=>{ cx+=q.x; cz+=q.z; }); cx/=nodes.length; cz/=nodes.length;
+  for(let k=0,t=0;k<np && t<250;t++){
+    const par=nodes[(R()*nodes.length)|0]; if(par.pocket || (par===nodes[0] && !o.hubPk)) continue;
+    const pr=r(o.pr[0],o.pr[1]), a=Math.atan2(par.z-cz,par.x-cx)+(R()-.5)*2.6, dist=par.r*.85+pr+r(o.pl[0],o.pl[1]);
+    const x=par.x+Math.cos(a)*dist, z=par.z+Math.sin(a)*dist;
+    if(!inB(x,z,pr) || !sep(x,z,pr,.9,par)) continue;
+    P.push(capP(x,z,x,z,pr)); P.push(capP(par.x,par.z,x,z,r(o.pn[0],o.pn[1])));
+    nodes.push({x,z,r:pr,pocket:true}); spots.push({x,z,r:pr*.55,pocket:true}); k++;
+  }
+}
+function genShape(L,R,d,stop){
+  const r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], th=L.theme, place=stop?stop.place:'', mz=L.maze;
+  const tpl = mz?'maze':L.special==='canyon'?'rim':L.special==='columbia'?'columbia':L.special==='coast'?'coast':L.special==='plains'?'plains'
+    :place==='Lake Erie'?'lake':place==='The Rockies'?'valley':th==='desert'?'canyon':th==='sky'?'island':th==='sea'?'reef':th==='moon'?'craters':th==='volcano'?'lava'
+    :d<=2?'meadow':pick(['meadow','meadow','lake','valley']);
+  // what bounds it, by world: the edge kind everywhere outside (def), a second kind mixed in by noise, then water regions on top
+  const K={def:KF,mix:null,hMul:1,regions:[],holes:[]};
+  const mix=(k,t)=>{ K.mix={k,t,f:r(.035,.055),ox:r(0,99),oz:r(0,99)}; };
+  if(th==='desert'){ K.def=KC; K.hMul=1.15; }
+  else if(th==='sky') K.def=KD;
+  else if(th==='sea'){ K.def=KR; K.hMul=.62; }
+  else if(th==='moon') K.def=KM;
+  else if(th==='volcano'){ K.def=KC; K.hMul=.85; mix(KL,.5); }
+  else mix(KC,.58);
+  if(tpl==='valley'){ K.def=KC; K.hMul=1.4; mix(KF,.66); }
+  if(tpl==='plains'){ K.def=KC; K.hMul=.45; mix(KF,.52); }
+  if(tpl==='coast'){ K.def=KC; K.hMul=1.1; mix(KF,.62); }
+  if(tpl==='rim'){ K.def=KD; K.mix=null; }
+  // how much open land (the old square field had about 7000): a bit less, so it isn't all wide open
+  let a0=4300, a1=6600;
+  if(tpl==='plains'){ a0=4800; a1=7200; } else if(tpl==='maze'){ a0=5000; a1=7600; } else if(tpl==='columbia'){ a0=3300; a1=6000; } else if(tpl==='valley'||tpl==='canyon'||tpl==='rim'||tpl==='lake'||tpl==='coast'){ a0=3800; a1=6200; }
+  const N=SG_N, gi=-SG_O, gj=Math.round(PEN.z1+4-SG_O), RO=2.6;
+  let best=null, bestScore=1e9;
+  for(let att=0; att<24 && bestScore>150; att++){
+    const hub={x:0,z:PEN.z1+7,r:12}, P=[capP(hub.x,hub.z,hub.x,hub.z,hub.r)], nodes=[hub], spots=[], cuts=[], forced=[], holes=[], regions=[];
+    let spawnZ=null, river=null, warp=4.2, needSouth=false, gaps=null;
+    const C=(x,z,rr,pocket)=>{ const q={x,z,r:rr,pocket:!!pocket}; P.push(capP(x,z,x,z,rr)); spots.push({x,z,r:rr*.55,pocket:!!pocket}); return q; };
+    const W=(c,a1,a2)=>({c,a1:r(a1[0],a1[1]),k1:r(.045,.085),p1:r(0,TAU),a2:r(a2[0],a2[1]),k2:r(.14,.24),p2:r(0,TAU)});
+    const base={r:[13,18],gap:[3,11],neck:[4.5,9],elong:.5,loop:.25,pk:[2,3],pr:[6.5,9],pl:[3,8],pn:[3.8,4.8]};
+    if(tpl==='meadow') grow(R,Object.assign({},base,{n:[4,6]},d<=1?{neck:[6,9],pk:[1,2]}:{}),P,nodes,spots);
+    else if(tpl==='lake'){
+      const g=W(r(19,25),[3,6],[1,2.5]); g.k=KW; g.t='east'; regions.push(g); cuts.push((x,z)=>wave(g,z)-x);
+      const e=C(r(20,28),r(-2,20),r(13,16)); nodes.push(e); P.push(capP(hub.x,hub.z,e.x,e.z,r(6,9)));
+      grow(R,Object.assign({},base,{n:[4,5]}),P,nodes,spots);
+    }
+    else if(tpl==='plains'){
+      const g=W(r(38,41),[2,4],[.8,1.8]); g.k=KW; g.t='band'; g.hw=4.5; regions.push(g); cuts.push((x,z)=>wave(g,x)-g.hw-z);
+      grow(R,{n:[4,5],r:[15,21],gap:[1,7],neck:[7,12],sep:.72,elong:.4,loop:.35,pk:[2,2],pr:[6.5,8.5],pl:[3,7],pn:[3.7,4.8]},P,nodes,spots);
+    }
+    else if(tpl==='valley'){
+      const A=C(r(-14,14),r(-3,4),r(15,18)); nodes.push(A); P.push(capP(A.x-r(6,11),A.z,A.x+r(6,11),A.z,A.r*.85)); P.push(capP(hub.x,hub.z,A.x,A.z,r(8,10)));
+      let B=null; for(let t=0;t<40 && !B;t++){ const b={x:r(-24,24),z:r(28,32),r:r(14,16)}; if(Math.hypot(b.x-A.x,b.z-A.z)>A.r+b.r+6) B=b; }
+      if(!B) continue;
+      nodes.push(C(B.x,B.z,B.r)); P.push(capP(B.x-r(5,11),B.z,B.x+r(5,11),B.z,B.r*.85)); P.push(capP(A.x,A.z,B.x,B.z,r(4.1,4.8)));      // the pass
+      grow(R,Object.assign({},base,{n:[1,2],r:[10,13],neck:[4,6],pk:[2,3]}),P,nodes,spots);
+    }
+    else if(tpl==='canyon'){
+      // red-rock canyons: winding corridors off a couple of wide amphitheatres, with mesas standing in the open bits
+      grow(R,{n:[2,2],r:[14,17],gap:[4,10],neck:[6,8],sep:.9},P,nodes,spots);
+      grow(R,{n:[6,9],r:[6.5,9.5],gap:[0,4],near:.75,neck:[6,9.5],sep:.75,elong:.5,loop:.15,pk:[2,3],pr:[5.5,7.5],pl:[2,6],pn:[3.4,4.2]},P,nodes,spots);
+      for(const q of nodes) if(q.r>=13.5 && q!==hub && R()<.8) holes.push({x:q.x+r(-3,3),z:q.z+r(-3,3),r:r(3,4.8),k:KC});
+    }
+    else if(tpl==='island') grow(R,{n:[3,5],r:[13,18],gap:[3,10],neck:[5,10],elong:.5,loop:.2,pk:[2,3],pr:[7.5,10],pl:[6,12],pn:[3.3,3.9]},P,nodes,spots);
+    else if(tpl==='reef') grow(R,Object.assign({},base,{n:[4,6],r:[12,17],elong:.65,pk:[3,3]}),P,nodes,spots);
+    else if(tpl==='craters'){ warp=3; grow(R,{n:[4,6],r:[13,19],gap:[-9,-3],near:.8,neck:[20,20],sep:.62,pk:[2,3],pr:[6.5,9],pl:[-3,0],pn:[4.2,5]},P,nodes,spots); }
+    else if(tpl==='lava') grow(R,Object.assign({},base,{n:[4,6]}),P,nodes,spots);
+    else if(tpl==='coast'){
+      const g=W(r(27,33),[3,6],[1,2.5]); g.k=KW; g.t='south'; regions.push(g); cuts.push((x,z)=>wave(g,x)-z);
+      grow(R,Object.assign({},base,{n:[4,5],spread:2.8}),P,nodes,spots);
+    }
+    else if(tpl==='columbia'){
+      // the big river splits the land in two: the flock starts on the far bank and comes over at the fords
+      const g=W(r(6,11),[2,4.5],[.5,1.5]); g.k=KW; g.t='band'; g.hw=r(6,7.5); regions.push(g); river=g;
+      const nLim=g.c-g.a1-g.a2-g.hw, sLim=g.c+g.a1+g.a2+g.hw;
+      grow(R,Object.assign({},base,{n:[1,2],r:[11,15],zMax:nLim-1,pk:[0,1]}),P,nodes,spots);
+      const S0={x:r(-16,16),z:sLim+12,r:r(13,15)}, south=[S0]; P.push(capP(S0.x,S0.z,S0.x,S0.z,S0.r)); spots.push({x:S0.x,z:S0.z,r:S0.r*.55,pocket:false});
+      grow(R,Object.assign({},base,{n:[2,3],r:[11,15],zMin:sLim+2,pk:[1,2]}),P,south,spots);
+      cuts.push((x,z)=>Math.abs(z-wave(g,x))-g.hw);
+      const nf=R()<.5?2:1, fx=[]; g.fords=[];
+      for(let t=0;t<30 && fx.length<nf;t++){ const x=r(-30,30); if(fx.some(q=>Math.abs(q-x)<22)) continue; fx.push(x);
+        const zc=wave(g,x), f2={ax:x,az:zc-g.hw-5,bx:x+r(-5,5),bz:zc+g.hw+5,r:r(4.5,5.3)}; g.fords.push(f2); forced.push((X,Z)=>capD(f2,X,Z));
+        const nn=nodes.reduce((a,q)=>Math.hypot(q.x-f2.ax,q.z-f2.az)<Math.hypot(a.x-f2.ax,a.z-f2.az)?q:a), sn=south.reduce((a,q)=>Math.hypot(q.x-f2.bx,q.z-f2.bz)<Math.hypot(a.x-f2.bx,a.z-f2.bz)?q:a);
+        P.push(capP(f2.ax,f2.az-2,nn.x,nn.z,5.5)); P.push(capP(f2.bx,f2.bz+2,sn.x,sn.z,5.5)); }
+      spawnZ=sLim+2; needSouth=true;
+    }
+    else if(tpl==='rim'){
+      // the Grand Canyon: a broad shelf along the rift, land north of it by the barn and south of it where the flock is
+      const zc=L.canyon.z, bw=r(8,9.5); gaps=[r(-30,-14),r(14,30)];
+      P.push(capP(-35,zc,35,zc,bw)); for(const g of gaps) P.push(capP(g,zc-9,g,zc+9,6.5));      // land right across the rift where its two necks will be P.push(capP(hub.x,hub.z,r(-12,12),zc,r(8,10)));
+      grow(R,Object.assign({},base,{n:[0,1],r:[10,13],zMax:zc-8,pk:[0,1]}),P,nodes,spots);
+      const S0={x:r(-16,16),z:zc+r(17,22),r:r(12,15)}, south=[S0]; P.push(capP(S0.x,S0.z,S0.x,S0.z,S0.r)); P.push(capP(S0.x,zc,S0.x,S0.z,r(8,10))); spots.push({x:S0.x,z:S0.z,r:S0.r*.55,pocket:false});
+      grow(R,Object.assign({},base,{n:[1,2],r:[10,14],zMin:zc+9,pk:[1,2]}),P,south,spots);
+      spawnZ=zc+9; needSouth=true;
+    }
+    else if(tpl==='maze'){
+      // the maze band runs right across: straight sides at x=±41 (its own walls close it); open country to the south
+      warp=3.5; const z0=mz.z0, z1=mz.z1;
+      cuts.push((x,z)=>(z>z0-3&&z<z1+3)?41.2-Math.abs(x):1e9);
+      forced.push((x,z)=>Math.min(41.2-Math.abs(x),z-(PEN.z1-3),z1+1-z));
+      forced.push((x,z)=>rrect(x,z,-41.2,41.2,z1-2,z1+9,4)+rn(x,z));       // a lane along the far side, so every way into the maze can be reached
+      nodes.length=0; const S0=C(0,z1+8,12); nodes.push(S0);
+      grow(R,Object.assign({},base,{n:[2,3],r:[11,15],zMin:z1+3,pk:[1,2]}),P,nodes,spots);
+      spawnZ=z1+5;
+    }
+    // evaluate on the grid: warped union of the shapes, a little ragged noise, then the hard rules
+    const wo=[r(0,99),r(0,99),r(0,99),r(0,99),r(0,99),r(0,99),r(0,99),r(0,99)], f=new Float32Array(N*N), rn=(x,z)=>1.4*(vnoise(x*.15+wo[6],z*.15+wo[7])-.5)*2;
+    forced.push((x,z)=>rrect(x,z,-18,18,PEN.z1-3,PEN.z1+14,6)+rn(x,z));                      // in front of the gate
+    forced.push((x,z)=>rrect(x,z,YARD.x0-1,YARD.x1+1,YARD.z0-1,PEN.z1+1,5)+rn(x,z));          // the yard
+    for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+      const x=SG_O+i, z=SG_O+j;
+      const wx=x+warp*(vnoise(x*.055+wo[0],z*.055+wo[1])-.5)*2, wz=z+warp*(vnoise(x*.055+wo[2],z*.055+wo[3])-.5)*2;
+      let v=-1e9; for(const p of P){ const q=capD(p,wx,wz); if(q>v) v=q; }
+      v+=1.3*(vnoise(x*.17+wo[4],z*.17+wo[5])-.5)*2;
+      for(const c of cuts) v=Math.min(v,c(x,z));
+      const rb=rn(x*1.3,z*1.3); v=Math.min(v,46.3-Math.abs(x)+rb,46.3-z+rb,z-(PEN.z1-3));
+      for(const h of holes) v=Math.min(v,Math.hypot(x-h.x,z-h.z)-h.r);
+      for(const c of forced) v=Math.max(v,c(x,z));
+      f[j*N+i]=v;
+    }
+    // open it up: nothing narrower than 2*RO survives, and only what's connected to the gate
+    const ins=new Uint8Array(N*N), outS=new Uint8Array(N*N); for(let k=0;k<N*N;k++){ ins[k]=f[k]>0?1:0; outS[k]=1-ins[k]; }
+    const dOut=edt2(outS,N), core=new Uint8Array(N*N), q=[gj*N+gi];
+    if(dOut[q[0]]<RO) continue;
+    core[q[0]]=1;
+    while(q.length){ const k=q.pop(), i=k%N, j=(k/N)|0; for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ni=i+di, nj=j+dj; if(ni<0||nj<0||ni>=N||nj>=N) continue; const kk=nj*N+ni; if(core[kk]||dOut[kk]<RO) continue; core[kk]=1; q.push(kk); } }
+    const dCore=edt2(core,N), m=new Uint8Array(N*N); let area=0;
+    for(let k=0;k<N*N;k++) m[k]=ins[k]&&dCore[k]<=RO+.01?1:0;
+    // fill in specks of outside left in the middle of the field (bigger islands stay, as rocky knolls and mesas)
+    { const lab=new Int32Array(N*N).fill(-1); let id=0;
+      for(let s0=0;s0<N*N;s0++){ if(m[s0]||lab[s0]>=0) continue; const st=[s0], cells=[]; lab[s0]=id; let border=false;
+        while(st.length){ const k=st.pop(), i=k%N, j=(k/N)|0; cells.push(k); if(i===0||j===0||i===N-1||j===N-1) border=true;
+          for(const kk of [k-1,k+1,k-N,k+N]){ if(kk<0||kk>=N*N||m[kk]||lab[kk]>=0) continue; if((kk===k-1&&i===0)||(kk===k+1&&i===N-1)) continue; lab[kk]=id; st.push(kk); } }
+        if(!border && cells.length<36) for(const k of cells) m[k]=1; id++; } }
+    for(let k=0;k<N*N;k++) if(m[k] && SG_O+((k/N)|0)>PEN.z1) area++;
+    const ok=spots.filter(s=>{ const i=Math.round(s.x-SG_O), j=Math.round(s.z-SG_O); if(i<0||j<0||i>=N||j>=N) return false; const k=j*N+i; return m[k] && dOut[k]>=3; });
+    const far=ok.filter(s=>spawnZ===null||s.z>spawnZ+2);
+    let score=(area<a0?a0-area:area>a1?area-a1:0)+(far.length<2?3000:0)+(ok.some(s=>s.pocket)||tpl==='maze'?0:600)+(needSouth&&!far.length?1e5:0);
+    if(score<bestScore){ bestScore=score; best={m,spots:ok,area,regions,holes,spawnZ,river,tpl,gaps}; }
+  }
+  // signed distance from the final mask, softened a touch so the edges come out smooth rather than stepped
+  const m=best.m, dO=edt2(m.map(v=>1-v),N), dI=edt2(m,N), sd=new Float32Array(N*N), tmp=new Float32Array(N*N);
+  for(let k=0;k<N*N;k++) sd[k]=m[k]?dO[k]-.5:-(dI[k]-.5);
+  for(let pass=0;pass<2;pass++){ tmp.set(sd); for(let j=1;j<N-1;j++) for(let i=1;i<N-1;i++){ const k=j*N+i; sd[k]=(tmp[k]*4+tmp[k-1]+tmp[k+1]+tmp[k-N]+tmp[k+N])/8; } }
+  K.regions=best.regions; K.holes=best.holes;
+  if(best.gaps) L.canyon.gaps=best.gaps;
+  return {sd,tpl:best.tpl,K,spots:best.spots.filter(s=>sdAt(sd,s.x,s.z)>2.5),spawnZ:best.spawnZ,river:best.river,area:best.area};
+}
+// edge kind weights at a point (w: Float32Array(NK))
+function kindWeights(K,x,z,w){
+  w.fill(0); w[K.def]=1;
+  if(K.mix){ const M=K.mix, t=smooth01(M.t-.07,M.t+.07,vnoise(x*M.f+M.ox,z*M.f+M.oz)); w[K.def]=1-t; w[M.k]+=t; }
+  for(const g of K.regions){
+    const a = g.t==='south' ? smooth01(-7,0,z-wave(g,x)) : g.t==='east' ? smooth01(-7,0,x-wave(g,z)) : 1-smooth01(0,7,Math.abs(z-wave(g,x))-g.hw);
+    if(a<=0) continue; for(let i=0;i<NK;i++) w[i]*=1-a; w[g.k]+=a;
+  }
+  for(const h of K.holes){ const a=1-smooth01(h.r+1,h.r+4,Math.hypot(x-h.x,z-h.z)); if(a<=0) continue; for(let i=0;i<NK;i++) w[i]*=1-a; w[h.k]+=a; }
+  return w;
 }
 // ring: how the trees past the fence look in that world (no trunks: round shrubs, coral heads or moon boulders)
 SEASONS.desert={name:'desert',label:'Desert',ground:0xf0c886,ground2:0xf9daa0,ground3:0xdca868,dirt:0xd99a62,far:0xe8b070,grass:0xd8b45e,grassN:.4,clover:[0x5a9a3a,0x8cc850],trunk:0x8a5a34,leaves:[0x7aa53e,0x8fb446,0x6a963a],ring:{trunks:false,squash:.7},sky:0xffd9a0,hemi:0xf0e0ff,hemiGround:0xb08a50,
@@ -663,10 +912,16 @@ const smooth01=(a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
 const HILL={ox:3.1,oz:7.3,ox2:11,oz2:5,amp:1};
 function hillH(x,z){
   const h=((vnoise(x*.04+HILL.ox,z*.04+HILL.oz)-.3)*8.5 + (vnoise(x*.09+HILL.ox2,z*.09+HILL.oz2)-.5)*2.2)*HILL.amp;
-  const mask=smooth01(PEN.z1+3,PEN.z1+15,z)*smooth01(POND.r+1.5,POND.r+10,Math.hypot(x-POND.x,z-POND.z))*smooth01(1,9,FIELD-Math.max(Math.abs(x),Math.abs(z)));
+  const mask=smooth01(PEN.z1+3,PEN.z1+15,z)*smooth01(1.5,10,pondD(x,z))*smooth01(1,9,FIELD-Math.max(Math.abs(x),Math.abs(z)));
   return Math.max(-1.2,h)*mask;
 }
+// once a level is built the ground comes from its terrain grid (see buildTerrainGrid): cheap to sample, and it knows the cliffs and shores
+const WL=-1.6, TG_O=-100, TG_N=201, _kw=new Float32Array(7);   // WL: the water (and lava) level round the edges
+let TG=null, WALK_FLOOR=-99;                                    // WALK_FLOOR: animals out past the edge paddle on the water rather than walk the bottom
 function groundH(x,z){
+  if(TG){ const fx=x-TG_O, fz=z-TG_O;
+    if(fx>=0 && fz>=0 && fx<TG_N-1 && fz<TG_N-1){ const i=fx|0, j=fz|0, u=fx-i, v=fz-j, k=j*TG_N+i, h=TG.h, a=h[k], b=h[k+1], c=h[k+TG_N], e=h[k+TG_N+1]; return a+(b-a)*u+(c-a)*v+(a-b-c+e)*u*v; }
+    return terrainAt(x,z); }
   const m=Math.max(Math.abs(x),Math.abs(z));
   const hill=hillH(x,z);
   if(m<FIELD+6) return hill;
@@ -804,7 +1059,9 @@ function groundCol(S,n,n2,dt,out,c){
 }
 const _gc2=new THREE.Color();
 (function(){
-  const g = new THREE.PlaneGeometry(440,440,150,150); g.rotateX(-Math.PI/2);
+  // 176 rows: 1.25 apart over the middle ±65, stretched out to ±220 beyond
+  const g = new THREE.PlaneGeometry(440,440,176,176); g.rotateX(-Math.PI/2);
+  { const p=g.attributes.position, A=104/176, wp=v=>{ const u=v/220, a=Math.abs(u); return Math.sign(u)*(a<=A?a/A*65:65+(a-A)/(1-A)*155); }; for(let i=0;i<p.count;i++){ p.setX(i,wp(p.getX(i))); p.setZ(i,wp(p.getZ(i))); } }
   const pos=g.attributes.position, cols=new Float32Array(pos.count*3), vars=new Float32Array(pos.count*4), tmp=new THREE.Color();
   for(let i=0;i<pos.count;i++){
     const x=pos.getX(i), z=pos.getZ(i);
@@ -884,8 +1141,10 @@ function partM(x,y,z,sx,sy,sz,rx,ry,rz){ return new THREE.Matrix4().compose(_pp.
 const postMs=[], railMs=[];
 const _o=new THREE.Object3D();
 function fenceLine(ax,az,bx,bz,spacing,kind,h){
-  h=h||1.3;
   segs.push({ax,az,bx,bz,kind});
+  fencePieces(ax,az,bx,bz,spacing,h||1.3,postMs,railMs);
+}
+function fencePieces(ax,az,bx,bz,spacing,h,postMs,railMs){
   const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/spacing));
   const ang=Math.atan2(bx-ax,bz-az);
   for(let i=0;i<=n;i++){
@@ -900,21 +1159,14 @@ function fenceLine(ax,az,bx,bz,spacing,kind,h){
     }
   }
 }
-// perimeter
-fenceLine(-FIELD,-FIELD, FIELD,-FIELD, 4,'perim');
-fenceLine( FIELD,-FIELD, FIELD, FIELD, 4,'perim');
-fenceLine( FIELD, FIELD,-FIELD, FIELD, 4,'perim');
-fenceLine(-FIELD, FIELD,-FIELD,-FIELD, 4,'perim');
+// (no square perimeter: every level is bounded by its own cliffs, water and woods, see buildEdges)
 // pen
 fenceLine(PEN.x0,PEN.z0, PEN.x1,PEN.z0, 2,'pen');
 fenceLine(PEN.x0,PEN.z0, PEN.x0,PEN.z1, 2,'pen');
 fenceLine(PEN.x1,PEN.z0, PEN.x1,PEN.z1, 2,'pen');
 fenceLine(PEN.x0,PEN.z1, -PEN.gx,PEN.z1, 2,'pen');
 fenceLine(PEN.gx,PEN.z1, PEN.x1,PEN.z1, 2,'pen');
-// a fence along the pen's front line, side to side, seals off the corners behind the barn and the pen
-// ('perim' kind: dogs and sheep can't pass, coyotes slip through like they do the outer fence)
-fenceLine(-FIELD,PEN.z1, PEN.x0,PEN.z1, 4,'perim');
-fenceLine(PEN.x1,PEN.z1, FIELD,PEN.z1, 4,'perim');
+// the fence along the pen's front line, side to side, that seals off the yard is built with each level (buildEdges)
 segs.push({ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'gate'}); // invisible: penned sheep & coyotes can't cross
 // chunky round posts with domed tops, plank rails; every piece of wood a slightly different shade
 const FENCE_POST=0x8a5632, FENCE_RAIL=0xc58a4c, unitBox=new THREE.BoxGeometry(1,1,1);
@@ -1051,30 +1303,45 @@ const WATER_TEX=waterTex();
 const waterMat=new THREE.MeshStandardMaterial({color:0xffffff,map:WATER_TEX,roughness:.35,transparent:true,opacity:.94,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
 const foamMat=new THREE.MeshStandardMaterial({color:PAL.foam,roughness:1,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
 const pondFoam=[];
-(function(){
-  const bank=pondBank=new THREE.Mesh(new THREE.CircleGeometry(7+1.5,48),new THREE.MeshStandardMaterial({color:0xe6cb8a,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
-  bank.rotation.x=-Math.PI/2; bank.position.y=.035; bank.receiveShadow=true; pondGroup.add(bank);
-  const wg=new THREE.CircleGeometry(7,48), uv=wg.attributes.uv; for(let i=0;i<uv.count;i++) uv.setXY(i,uv.getX(i)*2.2,uv.getY(i)*2.2);
-  const water=pondWater=new THREE.Mesh(wg,waterMat.clone());
-  water.rotation.x=-Math.PI/2; water.position.y=.06; water.receiveShadow=true; pondGroup.add(water);
+// the pond's outline: a lumpy blob (a few sine wobbles on the radius), never a perfect circle
+function pondR(a){ const k=POND.k; return POND.r*(1+k[0]*Math.sin(2*a+k[1])+k[2]*Math.sin(3*a+k[3])+k[4]*Math.sin(5*a+k[5])); }
+function pondD(x,z){ const dx=x-POND.x, dz=z-POND.z; return Math.hypot(dx,dz)-pondR(Math.atan2(dz,dx)); }   // negative in the water
+function flatGeo(P,U,I){ const g=new THREE.BufferGeometry(), N=new Float32Array(P.length); for(let i=1;i<N.length;i+=3) N[i]=1;
+  g.setAttribute('position',new THREE.Float32BufferAttribute(P,3)); g.setAttribute('normal',new THREE.BufferAttribute(N,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2)); g.setIndex(I); return g; }
+function blobFan(off,uk){ const n=72, P=[0,0,0], U=[0,0], I=[];
+  for(let i=0;i<=n;i++){ const a=i/n*TAU, rr=pondR(a)+off, x=Math.cos(a)*rr, z=Math.sin(a)*rr; P.push(x,0,z); U.push(x*uk,z*uk); }
+  for(let i=1;i<=n;i++) I.push(0,i+1,i); return flatGeo(P,U,I); }
+function blobRing(o0,o1,a0,a1,n){ const P=[], U=[], I=[];
+  for(let i=0;i<=n;i++){ const a=a0+(a1-a0)*i/n, r0=pondR(a)+o0, r1=pondR(a)+o1; P.push(Math.cos(a)*r0,0,Math.sin(a)*r0,Math.cos(a)*r1,0,Math.sin(a)*r1); U.push(0,0,1,1); if(i) I.push(i*2-2,i*2,i*2-1, i*2-1,i*2,i*2+1); }
+  return flatGeo(P,U,I); }
+const pondBankMat=new THREE.MeshStandardMaterial({color:0xe6cb8a,roughness:1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}), pondWaterMat=waterMat.clone();
+const pondPadMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,polygonOffset:true,polygonOffsetFactor:-7,polygonOffsetUnits:-7}), pondReedMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1});
+let pondParts=[];
+function buildPond(){
+  for(const m of pondParts){ pondGroup.remove(m); m.geometry.dispose(); } pondParts=[]; pondFoam.length=0; pondPads.length=0;
+  const s=POND.r/7, add=(g,m,y)=>{ const me=new THREE.Mesh(g,m); me.position.y=y; pondGroup.add(me); pondParts.push(me); return me; };
+  pondBank=add(blobFan(1.5*s,0),pondBankMat,.035); pondBank.receiveShadow=true;
+  pondWater=add(blobFan(0,.157),pondWaterMat,.06); pondWater.receiveShadow=true;
   // a white foam rim, and a broken inner ring that breathes in and out
-  const rim=new THREE.Mesh(new THREE.RingGeometry(6.45,7.05,64),foamMat); rim.rotation.x=-Math.PI/2; rim.position.y=.07; pondGroup.add(rim); pondFoam.push(rim);
-  const inner=[]; for(let k=0;k<7;k++){ const a0=k/7*TAU+Math.random()*.3; inner.push({g:new THREE.RingGeometry(5.75,6.05,10,1,a0,TAU/7*(.45+Math.random()*.3)),m:partM(0,0,0,1)}); }
-  const ring2=new THREE.Mesh(mergeGeos(inner),foamMat); ring2.rotation.x=-Math.PI/2; ring2.position.y=.072; pondGroup.add(ring2); pondFoam.push(ring2);
+  pondFoam.push(add(blobRing(-.55*s,.05*s,0,TAU,96),foamMat,.07));
+  const inner=[]; for(let k=0;k<7;k++){ const a0=k/7*TAU+Math.random()*.3; inner.push({g:blobRing(-1.25*s,-.95*s,a0,a0+TAU/7*(.45+Math.random()*.3),10),m:partM(0,0,0,1)}); }
+  pondFoam.push(add(mergeGeos(inner),foamMat,.072));
   // lily pads (a notch cut out of each) with the odd pink flower
   const pads=[], padC=new THREE.Color(0x5cc04a), padC2=new THREE.Color(0x46a83e), pink=new THREE.Color(0xff9ccf), yel=new THREE.Color(0xffe066);
-  for(let i=0;i<10;i++){ const a=Math.random()*TAU, r=1.2+Math.random()*4.2, ps=.4+Math.random()*.3, x=Math.cos(a)*r, z=Math.sin(a)*r;
+  for(let i=0;i<10;i++){ const a=Math.random()*TAU, r=pondR(a)*(.17+Math.random()*.55), ps=(.4+Math.random()*.3)*Math.min(1.2,s), x=Math.cos(a)*r, z=Math.sin(a)*r;
     pads.push({g:new THREE.CircleGeometry(ps,14,.35,TAU-.7),m:partM(x,.085,z,1,1,1,-Math.PI/2,0,Math.random()*TAU),c:i%2?padC:padC2});
     if(i%3===0){ for(let p=0;p<5;p++){ const pa=p/5*TAU; pads.push({g:new THREE.SphereGeometry(.1,6,4),m:partM(x+Math.cos(pa)*.1,.15,z+Math.sin(pa)*.1,1,.7,1.6,0,Math.PI/2-pa,0),c:pink}); } pads.push({g:new THREE.SphereGeometry(.07,6,4),m:partM(x,.2,z,1),c:yel}); } }
-  const padMesh=new THREE.Mesh(mergeGeos(pads),new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,polygonOffset:true,polygonOffsetFactor:-7,polygonOffsetUnits:-7})); pondGroup.add(padMesh); pondPads.push(padMesh);
-  // reeds and cattails round the bank, all one mesh
+  pondPads.push(add(mergeGeos(pads),pondPadMat,0));
+  // reeds and cattails round the bank, bunched in clumps
   const reeds=[], stem=new THREE.Color(0x5e9a34), stem2=new THREE.Color(0x7cb444), cat=new THREE.Color(0x8a4f2a);
-  for(let i=0;i<40;i++){ const a=Math.random()*TAU, r=7.1+Math.random()*1.1, h=.8+Math.random()*1, x=Math.cos(a)*r, z=Math.sin(a)*r, tz=(Math.random()-.5)*.3, tx=(Math.random()-.5)*.3;
+  for(let i=0;i<46;i++){ const a=(i<30?Math.floor(i/6)*1.3+Math.random()*.7:Math.random()*TAU), r=pondR(a)+(.1+Math.random()*1.1)*s, h=.8+Math.random()*1, x=Math.cos(a)*r, z=Math.sin(a)*r, tz=(Math.random()-.5)*.3, tx=(Math.random()-.5)*.3;
     reeds.push({g:new THREE.ConeGeometry(.07,h,5),m:partM(x,h/2,z,1,1,1,tx,0,tz),c:i%2?stem:stem2});
     if(i%3===0) reeds.push({g:new THREE.SphereGeometry(.085,7,5),m:partM(x-Math.sin(tz)*h*.4,h*.88,z+Math.sin(tx)*h*.4,1,2.2,1,tx,0,tz),c:cat}); }
-  const reedMesh=new THREE.Mesh(mergeGeos(reeds),new THREE.MeshStandardMaterial({vertexColors:true,roughness:1})); reedMesh.castShadow=true; pondGroup.add(reedMesh);
-  for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(.9,1,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false})); rg.rotation.x=-Math.PI/2; scene.add(rg); pondRipples.push({m:rg,t:i*1.3}); }
-})();
+  add(mergeGeos(reeds),pondReedMat,0).castShadow=true;
+  if(typeof paintPond==='function' && SEASON) paintPond(SEASON);
+}
+buildPond();
+for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(.9,1,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false})); rg.rotation.x=-Math.PI/2; scene.add(rg); pondRipples.push({m:rg,t:i*1.3}); }
 // the pond's look for the season: open water, or ice with a snowy bank
 function paintPond(S){
   if(!pondWater) return;
@@ -1086,8 +1353,9 @@ function paintPond(S){
 }
 paintPond(SEASONS.spring);
 function movePond(P){
-  if(P){ POND.x=P.x; POND.z=P.z; POND.r=P.r; pondGroup.visible=true; } else { POND.x=9999; POND.z=9999; POND.r=1; pondGroup.visible=false; }
-  pondGroup.position.set(POND.x,0,POND.z); pondGroup.scale.set(POND.r/7,1,POND.r/7);
+  if(P){ POND.x=P.x; POND.z=P.z; POND.r=P.r; POND.k=P.k||[0,0,0,0,0,0]; pondGroup.visible=true; } else { POND.x=9999; POND.z=9999; POND.r=1; POND.k=[0,0,0,0,0,0]; pondGroup.visible=false; }
+  pondGroup.position.set(POND.x,0,POND.z);
+  if(P) buildPond();
 }
 
 // trees & rocks
@@ -1168,29 +1436,23 @@ function makeObstacle(kind,x,z,s){
 let reachGrid=null;
 function clearOf(x,z,pad){
   if(z<PEN.z1+10 && x>BARN.bx-11 && x<PEN.x1+10) return false;   // pen + barn area
-  if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad) return false;
-  if(Math.hypot(x-POND.x,z-POND.z)<POND.r+2+pad) return false;
+  if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad || fieldD(x,z)<pad+1) return false;
+  if(pondD(x,z)<2+pad) return false;
   if(LEVEL.river && Math.abs(z-riverZ(LEVEL.river,x))<LEVEL.river.w/2+2+pad) return false;
   if(LEVEL.haz) for(const h of LEVEL.haz) if(Math.hypot(h.x-x,h.z-z)<h.r+2+pad) return false;
   if(!reachable(x,z)) return false;
-  for(const sg of segs){ if(!sg.level) continue; const abx=sg.bx-sg.ax, abz=sg.bz-sg.az, t=clamp(((x-sg.ax)*abx+(z-sg.az)*abz)/(abx*abx+abz*abz),0,1); if(Math.hypot(x-sg.ax-abx*t,z-sg.az-abz*t)<1.5+pad) return false; }
+  for(const sg of segs){ if(!sg.level || sg.edge) continue; const abx=sg.bx-sg.ax, abz=sg.bz-sg.az, t=clamp(((x-sg.ax)*abx+(z-sg.az)*abz)/(abx*abx+abz*abz),0,1); if(Math.hypot(x-sg.ax-abx*t,z-sg.az-abz*t)<1.5+pad) return false; }
   for(const c of circles) if(Math.hypot(c.x-x,c.z-z)<c.r+pad) return false;
   return true;
 }
-// the woods past the fence: a few instanced meshes instead of hundreds of little trees
-const ringTrees=[];
-for(let i=0;i<190;i++){
-  const a=Math.random()*TAU, r=FIELD+12+Math.random()*120;
-  let x=Math.cos(a)*r, z=Math.sin(a)*r;
-  if(Math.max(Math.abs(x),Math.abs(z))<FIELD+8) continue;
-  ringTrees.push({x,y:groundH(x,z),z,s:1.2+Math.random()*1.3,ry:Math.random()*TAU,leaf:(Math.random()*3)|0,shape:(Math.random()*2)|0,far:r>FIELD+42?1:0});
-}
+// the woods past the edge: a few instanced meshes instead of hundreds of little trees (laid out for each level by layoutRingTrees)
+const ringTrees=[], RING_NEAR=120, RING_FAR=300;   // near: the front row (detailed, casting shadows); far: everything behind
 const ringMesh=(function(){
   const tg=mergeGeos([{g:new THREE.CylinderGeometry(.3,.46,2.9,7,1,true),m:partM(0,1.45,0,1)},{g:new THREE.CylinderGeometry(.46,.78,.55,7,1,true),m:partM(0,.27,0,1)}]);
-  const trunks=new THREE.InstancedMesh(tg,trunkM,ringTrees.length), crowns=[];
-  for(let f=0;f<2;f++) for(let l=0;l<3;l++) for(let sh=0;sh<2;sh++){ const n=ringTrees.filter(t=>t.far===f&&t.leaf===l&&t.shape===sh).length; if(!n) continue;
-    const im=new THREE.InstancedMesh(crownGeosLo[f][sh],leafMs[l],n); im.userData.key=f+'_'+l+'_'+sh; im.castShadow=!f; crowns.push(im); }
-  trunks.castShadow=true;
+  const trunks=new THREE.InstancedMesh(tg,trunkM,RING_NEAR+RING_FAR), crowns=[];
+  for(let f=0;f<2;f++) for(let l=0;l<3;l++) for(let sh=0;sh<2;sh++){
+    const im=new THREE.InstancedMesh(crownGeosLo[f][sh],leafMs[l],Math.ceil((f?RING_FAR:RING_NEAR)/6)+1); im.userData.key=f+'_'+l+'_'+sh; im.castShadow=!f; im.count=0; crowns.push(im); }
+  trunks.castShadow=true; trunks.count=0;
   for(const im of [trunks,...crowns]){ im.frustumCulled=false; scene.add(im); }
   return {trunks,crowns};
 })();
@@ -1201,9 +1463,12 @@ function layoutRing(S){
   ringTrees.forEach((t,i)=>{
     o.position.set(t.x,t.y,t.z); o.rotation.set(0,t.ry,0); o.scale.setScalar(t.s); o.updateMatrix(); ringMesh.trunks.setMatrixAt(i,o.matrix);
     if(R.trunks===false){ o.position.y=t.y-(2.3*q+.2)*t.s*1.15; o.scale.set(t.s*1.15,t.s*q*1.15,t.s*1.15); o.updateMatrix(); }
-    const key=t.far+'_'+t.leaf+'_'+t.shape, im=ringMesh.crowns.find(c=>c.userData.key===key), j=k[key]=(k[key]||0); k[key]++;
+    const key=t.far+'_'+t.leaf+'_'+t.shape, im=ringMesh.crowns.find(c=>c.userData.key===key), j=k[key]||0;
+    if(j>=im.instanceMatrix.count) return; k[key]=j+1;
     im.setMatrixAt(j,o.matrix);
   });
+  ringMesh.trunks.count=ringTrees.length;
+  for(const im of ringMesh.crowns) im.count=k[im.userData.key]||0;
   for(const im of [ringMesh.trunks,...ringMesh.crowns]) im.instanceMatrix.needsUpdate=true;
 }
 layoutRing(SEASONS.spring);
@@ -1700,6 +1965,7 @@ function crossesWall(ax,az,bx,bz,o){
     if(s2.kind==='gate' && !o.gate) continue;
     if(s2.kind==='perim' && !o.perim) continue;
     if(s2.kind==='leaf' && !s2.on) continue;
+    if(s2.bb && (Math.max(ax,bx)<s2.bb[0] || Math.min(ax,bx)>s2.bb[2] || Math.max(az,bz)<s2.bb[1] || Math.min(az,bz)>s2.bb[3])) continue;
     const d1x=bx-ax, d1z=bz-az, d2x=s2.bx-s2.ax, d2z=s2.bz-s2.az, den=d1x*d2z-d1z*d2x;
     if(Math.abs(den)<1e-9) continue;
     const t=((s2.ax-ax)*d2z-(s2.az-az)*d2x)/den, u=((s2.ax-ax)*d1z-(s2.az-az)*d1x)/den;
@@ -1707,18 +1973,20 @@ function crossesWall(ax,az,bx,bz,o){
   }
   return false;
 }
-// safety net: put anything that has ended up outside the field, or in the closed strip behind the barn and pen, back on the field
+// safety net: put anything that has ended up outside the land (past the cliffs, in the water), or in the closed strip
+// behind the barn and pen, back on the field, at the nearest point inside
 function keepOnField(e,pad){
   pad=pad||.8;
   const inPen=e.x>PEN.x0 && e.x<PEN.x1 && e.z>PEN.z0 && e.z<PEN.z1;
-  if(Math.abs(e.x)>FIELD-.2 || Math.abs(e.z)>FIELD-.2 || (e.z<PEN.z1-.2 && !inPen)){
-    e.x=clamp(e.x,-FIELD+pad,FIELD-pad); e.z=clamp(e.z,-FIELD+pad,FIELD-pad);
-    if(e.z<PEN.z1+.5 && !(e.x>PEN.x0+.5 && e.x<PEN.x1-.5 && e.z>PEN.z0+.5)) e.z=PEN.z1+1.2;
-    e.vx*=.2; e.vz*=.2;
-  }
+  if(inPen) return;
+  let moved=false;
+  if(fieldD(e.x,e.z)<-.25){ intoField(e,pad); moved=true; }
+  if(e.z<PEN.z1-.2){ e.z=PEN.z1+1.2; if(fieldD(e.x,e.z)<pad) intoField(e,pad); moved=true; }
+  if(moved){ e.vx*=.2; e.vz*=.2; }
 }
+const onField=(x,z)=>fieldD(x,z)>-.3;
 function collide(e,r,o){
-  if(!o.swim && !SEASON.frozen){ const dx=e.x-POND.x, dz=e.z-POND.z, d=Math.hypot(dx,dz), m=POND.r+r*.6;
+  if(!o.swim && !SEASON.frozen){ const dx=e.x-POND.x, dz=e.z-POND.z, d=Math.hypot(dx,dz), m=d<POND.r*1.5+r?pondR(Math.atan2(dz,dx))+r*.6:0;
     if(d<m && d>1e-6){ const nx=dx/d, nz=dz/d; e.x=POND.x+nx*m; e.z=POND.z+nz*m; const vn=e.vx*nx+e.vz*nz; if(vn<0){ e.vx-=vn*nx; e.vz-=vn*nz; } } }
   for(const c of circles){
     const dx=e.x-c.x, dz=e.z-c.z, d=Math.hypot(dx,dz), m=r+c.r;
@@ -1733,8 +2001,9 @@ function collide(e,r,o){
     } else if(d<r){ e.x=cx+dx/d*r; e.z=cz+dz/d*r; }
   }
   for(const s of segs){
+    if(s.bb && (e.x<s.bb[0]-r || e.x>s.bb[2]+r || e.z<s.bb[1]-r || e.z>s.bb[3]+r)) continue;
     if(s.kind==='gate' && !o.gate) continue;
-    if(s.kind==='perim' && !o.perim) continue;
+    if(s.kind==='perim' && !o.perim && !(o.walls && s.level && !s.edge) && !(o.edge && s.edge)) continue;
     if(s.kind==='leaf' && !s.on) continue;
     if(s.kind==='river' && (o.swim || o.perim===false)) continue;      // dogs swim it, coyotes slink through (unless hauling a sheep)
     const abx=s.bx-s.ax, abz=s.bz-s.az, L2=abx*abx+abz*abz;
@@ -2085,17 +2354,24 @@ function clearAnimals(){
 }
 function spawnFlock(n){
   const groups=Math.min(3, 2+Math.floor(n/12));
-  const centers=[];
-  for(let i=0,tries=0;i<groups && tries<500;tries++){
-    const zLo=LEVEL.maze?LEVEL.maze.z1+5:LEVEL.canyon?LEVEL.canyon.z+9:PEN.z1+16, x=(Math.random()*2-1)*(FIELD-12), z=zLo+Math.random()*Math.max(4,FIELD-10-zLo);
+  const centers=[], SH=LEVEL.shape, zLo0=LEVEL.maze?LEVEL.maze.z1+5:LEVEL.canyon?LEVEL.canyon.z+9:(SH&&SH.spawnZ!=null)?SH.spawnZ:PEN.z1+16;
+  // tucked away in the side pockets and the far lobes of the land, so they have to be found (one group in a pocket, or more)
+  if(SH){ let pockets=0; const maxP=Math.max(1,groups-1);
+    const sp=SH.spots.filter(s=>s.z>zLo0 && Math.hypot(s.x,s.z-(PEN.z1+10))>16).map(s=>({s,w:(s.pocket?60:0)+Math.hypot(s.x,s.z-PEN.z1)+Math.random()*30})).sort((a,b)=>b.w-a.w);
+    for(const {s} of sp){ if(centers.length>=groups) break; if(s.pocket && pockets>=maxP) continue;
+      for(let t=0;t<14;t++){ const x=s.x+(Math.random()*2-1)*s.r*.6, z=s.z+(Math.random()*2-1)*s.r*.6; if(clearOf(x,z,3.5) && !centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<18)){ centers.push([x,z]); if(s.pocket) pockets++; break; } } } }
+  for(let i=centers.length,tries=0;i<groups && tries<500;tries++){
+    const zLo=zLo0, x=(Math.random()*2-1)*(FIELD-12), z=zLo+Math.random()*Math.max(4,FIELD-10-zLo);
     if(!clearOf(x,z,6)) continue;
     if(centers.some(c=>Math.hypot(c[0]-x,c[1]-z)<20)) continue;
     centers.push([x,z]); i++;
   }
+  for(let t=0;t<600 && !centers.length;t++){ const x=(Math.random()*2-1)*44, z=PEN.z1+14+Math.random()*60; if(clearOf(x,z,3)) centers.push([x,z]); }
   if(!centers.length) centers.push([0,20]);
   for(let i=0;i<n;i++){
     const c=centers[i%centers.length];
     let x,z,k=0; do{ x=c[0]+(Math.random()*2-1)*6; z=c[1]+(Math.random()*2-1)*6; k++; }while(!clearOf(x,z,1.5) && k<30);
+    if(!clearOf(x,z,1.5)){ x=c[0]+(Math.random()-.5); z=c[1]+(Math.random()-.5); }
     const golden = (i<(G.twist==='goldrush'?3:1) && n>=8);
     const black = (!golden && i===n-1 && Math.random()<.6);
     const ram = (i>=1 && i<=ramCount(G.day) && n>=8);
@@ -2111,7 +2387,8 @@ function spawnFlock(n){
   const moms=G.sheep.filter(o=>!o.ram && !o.golden).slice(0,lambCount(G.day));
   for(const mom of moms){
     const m=makeSheep(false,false,false); m.g.scale.setScalar(.55);
-    const l=newSheep(mom.x+1.3,mom.z+.9,m,{lamb:true}); l.mom=mom; G.sheep.push(l);
+    let lx=mom.x+1.3, lz=mom.z+.9; for(const [ox,oz] of [[1.3,.9],[-1.3,.9],[1.3,-.9],[-1.3,-.9],[0,1.4],[0,-1.4]]){ if(clearOf(mom.x+ox,mom.z+oz,.3)){ lx=mom.x+ox; lz=mom.z+oz; break; } }
+    const l=newSheep(lx,lz,m,{lamb:true}); l.mom=mom; G.sheep.push(l);
   }
 }
 const BELL={};
@@ -2593,9 +2870,18 @@ function killSheep(s){
   else if(G.lossCap && G.lost===G.lossCap-1){ setTimeout(()=>shepSay('Careful! We cannae lose any more!',true),900); }
   toast('Sheep lost!','bad',1.8);
 }
+// somewhere out past the edge of the land, on solid ground if there is any, for things coming in from the wild
+function edgeSpot(){
+  if(!edgeLoops.length) return null;
+  const lp=edgeLoops.reduce((a,b)=>b.length>a.length?b:a), sd=LEVEL.shape.sd;
+  for(let t=0;t<40;t++){ const p=lp[(Math.random()*lp.length)|0]; if(p[1]<PEN.z1+4) continue;
+    const gx=sdAt(sd,p[0]+.5,p[1])-sdAt(sd,p[0]-.5,p[1]), gz=sdAt(sd,p[0],p[1]+.5)-sdAt(sd,p[0],p[1]-.5), l=Math.hypot(gx,gz)||1, k=kindAt(p[0]-gx/l*5,p[1]-gz/l*5), wet=k===KW||k===KL||k===KD;
+    if(wet && t<28) continue; const o=wet?1.5:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }
+  return null;
+}
 function spawnCoyote(alpha,boss){
   const a=Math.PI*(.05+Math.random()*.9);
-  const r=FIELD+28, x=Math.cos(a)*r, z=Math.sin(a)*r*.9+6;
+  const r=FIELD+28, es=edgeSpot(); let x=Math.cos(a)*r, z=Math.sin(a)*r*.9+6; if(es){ x=es.x; z=es.z; }
   const m=makeCoyote(alpha,boss); if(alpha) m.g.scale.setScalar(1.35); if(boss) m.g.scale.setScalar(2.1);
   const c={x,z,vx:0,vz:0,yaw:0,phase:Math.random()*10,hp:boss?wolfHp(G.day):alpha?4:2,alpha:!!alpha,boss:!!boss,state:'stalk',fleeT:0,hitCD:0,target:null,carry:null,spin:0,wob:Math.random()*10,gone:false,m,lcd:6,rt:0,ldx:0,ldz:1,tgt:null};
   c.maxHp=c.hp; G.coyotes.push(c); return c;
@@ -2769,7 +3055,7 @@ function updateDog(D,dt){
   else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
   if(D.grab) updateGrab(D,dt);
   D.shakeT=Math.max(0,(D.shakeT||0)-dt);
-  const wasSwim=D.swim, inPond=Math.hypot(D.x-POND.x,D.z-POND.z)<POND.r-.4 || (inRiver(D.x,D.z) && !lavaRiver()); D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
+  const wasSwim=D.swim, inPond=pondD(D.x,D.z)<-.4 || (inRiver(D.x,D.z) && !lavaRiver()); D.swim=inPond && !SEASON.frozen; D.onIce=inPond && !!SEASON.frozen;
   if(D.swim && !wasSwim && G.phase!=='title'){ sSplash(); burst(D.x,.3,D.z,24,[0xcfe9ff,0x8fc7ec,0xffffff],3,4,10); if(!G.saidTowel){ G.saidTowel=true; shepSay("Ye'll be wanting a towel!",true); } }
   D.speed=Math.hypot(D.vx,D.vz);
   D.barkCD=Math.max(0,D.barkCD-dt); D.barkT=Math.max(0,D.barkT-dt);
@@ -2794,13 +3080,64 @@ function fenceTurn(e,nx,nz,mid,base,Z,g){
 }
 function fenceSteer(s,fx,fz){
   FS.x=fx; FS.z=fz;
-  const Z=LEVEL.maze?5:FENCE_ZONE, B=LEVEL.maze?14:24, cz=(FIELD+PEN.z1)/2;
-  // the tie-break along each fence: which way is the middle of it (the tangent is (-nz,nx))
-  let e=FIELD-s.x; if(e<Z) fenceTurn(e,-1,0,s.z<cz?-1:1,B,Z,1);
-  e=FIELD+s.x; if(e<Z) fenceTurn(e,1,0,s.z<cz?1:-1,B,Z,1);
-  e=FIELD-s.z; if(e<Z) fenceTurn(e,0,-1,s.x<0?1:-1,B,Z,1);
+  const Z=LEVEL.maze?5:FENCE_ZONE, B=LEVEL.maze?14:24;
+  // the edge of the land (cliffs, water, woods): turn toward the more open side. In a narrow neck the inward
+  // direction is unclear (it's the ridge between both walls), so it eases off there and doesn't fight a drive through.
+  const d=fieldD(s.x,s.z);
+  if(d<Z && s.z>PEN.z1+.5){ const n=fieldN(s.x,s.z), nx=n.x, nz=n.z, tx=-nz, tz=nx, g=clamp(n.l,0,1);
+    const mid=clamp((fieldD(s.x+tx*5,s.z+tz*5)-fieldD(s.x-tx*5,s.z-tz*5))*.3,-1,1);
+    fenceTurn(d,nx,nz,mid,B*g,Z,g); }
   // the pen-side fence: half the bias (so the drift along it toward the gate still works), none near the gate itself
-  e=s.z-PEN.z1; if(e<Z){ const g=clamp((Math.abs(s.x)-PEN.x1-2)/6,0,1); if(g>0) fenceTurn(e,0,1,s.x<0?-1:1,B*g*.5,Z,g); }
+  const e=s.z-PEN.z1; if(e<Z){ const g=clamp((Math.abs(s.x)-PEN.x1-2)/6,0,1); if(g>0) fenceTurn(e,0,1,s.x<0?-1:1,B*g*.5,Z,g); }
+  obstacleSteer(s);
+}
+// ---- sheep and obstacles: hedges, maze walls, paddock fences, trial gates, river banks, trees, rocks ----
+// The same peel-off as the edges but short range: within OBS_Z of an obstacle there's a gentle push away, and a push
+// into it is turned along it (round the free end of a wall, out of a corner, or one way round a tree) and partly
+// back out, so a flock pressed against a hedge slides off and keeps moving. Maze corridors and gaps are wider than
+// the zone, so a sheep going straight through feels nothing. Obstacles are binned in a coarse grid, rebuilt when
+// the walls or trees change (a new level, the day's puzzle, the cougar's tree).
+const OBS={N:30,C:4,O:-60,cells:null,sig:-1,ver:0}, OBS_Z=2.5, OBS_B=4, OBS_HIT=[];
+function obsBuild(){
+  const N=OBS.N, C=OBS.C, O=OBS.O, cells=new Array(N*N);
+  for(let i=0;i<N*N;i++) cells[i]=[];
+  const put=(x0,z0,x1,z1,o)=>{ const i0=clamp(Math.floor((x0-O)/C),0,N-1), i1=clamp(Math.floor((x1-O)/C),0,N-1), j0=clamp(Math.floor((z0-O)/C),0,N-1), j1=clamp(Math.floor((z1-O)/C),0,N-1);
+    for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++) cells[j*N+i].push(o); };
+  const list=segs.filter(s=>s.level && !s.edge && (s.kind==='perim'||s.kind==='river')), R=OBS_Z+.6;
+  const near=(x,z,s)=>list.some(o=>o!==s && (Math.hypot(o.ax-x,o.az-z)<1.6 || Math.hypot(o.bx-x,o.bz-z)<1.6));
+  for(const s of list){ s.jA=near(s.ax,s.az,s); s.jB=near(s.bx,s.bz,s); put(Math.min(s.ax,s.bx)-R,Math.min(s.az,s.bz)-R,Math.max(s.ax,s.bx)+R,Math.max(s.az,s.bz)+R,s); }
+  for(const c of circles) put(c.x-c.r-OBS_Z,c.z-c.r-OBS_Z,c.x+c.r+OBS_Z,c.z+c.r+OBS_Z,c);
+  OBS.cells=cells;
+}
+function obstacleSteer(s){
+  const sig=OBS.ver*1e7+segs.length*1000+circles.length; if(sig!==OBS.sig){ OBS.sig=sig; obsBuild(); }
+  const i=Math.floor((s.x-OBS.O)/OBS.C), j=Math.floor((s.z-OBS.O)/OBS.C); if(i<0||j<0||i>=OBS.N||j>=OBS.N) return;
+  const list=OBS.cells[j*OBS.N+i]; if(!list.length) return;
+  if(!s.peel) s.peel=Math.random()<.5?-1:1;
+  const H=OBS_HIT; H.length=0;
+  for(const o of list){
+    if(o.ax!==undefined){
+      const abx=o.bx-o.ax, abz=o.bz-o.az, l2=abx*abx+abz*abz||1, t=clamp(((s.x-o.ax)*abx+(s.z-o.az)*abz)/l2,0,1), dx=s.x-o.ax-abx*t, dz=s.z-o.az-abz*t, d=Math.hypot(dx,dz), e=d-.55;
+      if(e>=OBS_Z || d<1e-6) continue;
+      const nx=dx/d, nz=dz/d, tx=-nz, tz=nx, toA=(o.ax-s.x)*tx+(o.az-s.z)*tz, toB=(o.bx-s.x)*tx+(o.bz-s.z)*tz;
+      // round the end that's free (a wall joined at one end peels away from the corner); the nearer end if both are free
+      const goA=o.jA&&!o.jB?false:o.jB&&!o.jA?true:(o.jA&&o.jB?null:t<.5);
+      H.push({e,nx,nz,mid:goA===null?s.peel:(Math.sign(goA?toA:toB)||s.peel)});
+    } else {
+      const dx=s.x-o.x, dz=s.z-o.z, d=Math.hypot(dx,dz), e=d-o.r;
+      if(e>=OBS_Z || d<1e-6) continue;
+      H.push({e,nx:dx/d,nz:dz/d,mid:s.peel});
+    }
+  }
+  if(!H.length) return;
+  H.sort((a,b)=>a.e-b.e);
+  // the nearest few, one per direction (a run of short river-bank pieces counts once)
+  let n1x=0,n1z=0,used=0;
+  for(const h of H){
+    if(used===1 && h.nx*n1x+h.nz*n1z>.8) continue;
+    fenceTurn(h.e,h.nx,h.nz,h.mid,OBS_B,OBS_Z,1);
+    if(++used===1){ n1x=h.nx; n1z=h.nz; } else break;
+  }
 }
 function updateSheep(dt){
   const L=G.sheep;
@@ -2874,7 +3211,7 @@ function updateSheep(dt){
       if(Math.random()<dt*3) burst(s.x,1.9,s.z,1,[0xffffff,0xdddddd],.4,1.6,1);   // steaming mad
       s.fear=.9; s.munch=0;
       s.x+=s.vx*dt; s.z+=s.vz*dt;
-      collide(s,s.lamb?.45:.7,{gate:false,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
+      collide(s,s.lamb?.45:.7,{gate:false,perim:onField(s.x,s.z)});
       checkGoal(s);          // lead them into the pen (or the pickup) and they're caught
       s.attacked=Math.max(0,s.attacked-dt);
       continue;
@@ -3044,7 +3381,7 @@ function updateSheep(dt){
     if(!s.penned && (s.safeT>0 || (!s.hard && !(s.thrownT>0) && s.flip<=0))){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
     // a sheep dropped just outside the boundary slips back through the wire
-    collide(s,s.lamb?.45:.7,{gate:s.penned,perim:Math.max(Math.abs(s.x),Math.abs(s.z))<FIELD});
+    collide(s,s.lamb?.45:.7,{gate:s.penned,perim:onField(s.x,s.z)});
     if(!s.penned && G.phase!=='title'){ const hz=s.safeT>0?null:hazardAt(s.x,s.z); if(hz && !s.carried && !s.grabbedBy){ hazardKill(s,hz); continue; } checkGoal(s); }
     s.attacked=Math.max(0,s.attacked-dt);
   }
@@ -3144,7 +3481,7 @@ function wolfUpdate(c,dt){
   } else if(c.state==='flee'){ c.state='stalk'; return false; }
   else return false;
   c.x+=c.vx*dt; c.z+=c.vz*dt;
-  collide(c,1.1,{gate:true,perim:false});
+  collide(c,1.1,{gate:true,perim:false,walls:true});
   for(const D of dogs){
     if(c.hitCD>0) break;
     const e=Math.hypot(c.x-D.x,c.z-D.z);
@@ -3161,13 +3498,13 @@ function updateCoyotes(dt){
     if(c.grabbedBy){ if(c.carry) dropSheep(c,true); continue; }     // held in a dog's jaws
     if(c.thrownT>0){
       c.thrownT-=dt; c.x+=c.vx*dt; c.z+=c.vz*dt; const k=Math.exp(-dt*2.2); c.vx*=k; c.vz*=k;
-      if(Math.hypot(c.x-POND.x,c.z-POND.z)<POND.r-.3){
+      if(pondD(c.x,c.z)<-.3){
         // flung into the pond: soaked, and off home it goes
         c.thrownT=0; c.state='retreat'; c.target=null; G.drivenOff++; G.score+=20; pop('tScore');
         sSplash(); burst(c.x,.4,c.z,40,[0xcfe9ff,0x8fc7ec,0xffffff],4,6,10); popText(c.x,2.4,c.z,'SPLOSH! +20','gold');
       }
       for(const o of G.coyotes){ if(o===c||o.gone||o.state==='retreat'||o.hitCD>0||o.grabbedBy) continue; if(Math.hypot(o.x-c.x,o.z-c.z)<1.9){ hitCoyote(o,1,16,c,'BOWLED!'); c.vx*=.5; c.vz*=.5; } }
-      collide(c,.6,{gate:true,perim:false,swim:true});
+      collide(c,.6,{gate:true,perim:false,swim:true,walls:true});
       continue;
     }
     if(c.boss && wolfUpdate(c,dt)) continue;
@@ -3192,7 +3529,7 @@ function updateCoyotes(dt){
         const dx=c.x, dz=c.z-PCZ, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d;
         if(dd<6){ dirx+=ddx/dd*.5; dirz+=ddz/dd*.5; }
         spd=(c.boss?5.2:c.alpha?6.6:5.8)+coyoteBoost(G.day)*.5;
-        if(Math.max(Math.abs(c.x),Math.abs(c.z))>FIELD-1.8){
+        if(fieldD(c.x,c.z)<1.2 || Math.max(Math.abs(c.x),Math.abs(c.z))>FIELD-1.8){     // reached the edge of the land with it
           killSheep(s); scene.remove(s.m.g); c.carry=null; c.gone=true; scene.remove(c.m.g); continue;
         }
       }
@@ -3201,13 +3538,13 @@ function updateCoyotes(dt){
       if(c.fleeT<=0) c.state=(G.phase==='night'||G.phase==='day')?'stalk':'retreat';
     } else if(c.state==='retreat'){
       const d=Math.hypot(c.x,c.z)+1e-6; dirx=c.x/d; dirz=c.z/d; spd=11;
-      if(d>FIELD+50){ c.gone=true; scene.remove(c.m.g); continue; }
+      if(d>FIELD+50 || (WALK_FLOOR>-1 && fieldD(c.x,c.z)<-5)){ c.gone=true; scene.remove(c.m.g); continue; }
     }
     const dl=Math.hypot(dirx,dirz); if(dl>1e-6){ dirx/=dl; dirz/=dl; }
     const a=1-Math.exp(-dt*6);
     c.vx+=(dirx*spd-c.vx)*a; c.vz+=(dirz*spd-c.vz)*a;
     c.x+=c.vx*dt; c.z+=c.vz*dt;
-    collide(c,.6,{gate:true,perim:!!c.carry});
+    collide(c,.6,{gate:true,perim:!!c.carry,walls:true});
     if(c.carry){ const s=c.carry; s.x=c.x+Math.sin(c.yaw)*1.25; s.z=c.z+Math.cos(c.yaw)*1.25; s.vx=c.vx; s.vz=c.vz; }
     if((G.phase==='night'||G.phase==='day') && c.state!=='retreat' && c.hitCD<=0){
       for(const D of dogs){
@@ -3550,7 +3887,7 @@ const ducks=[];
 function spawnDucks(){
   for(const d of ducks) scene.remove(d.m.g); ducks.length=0; G.ducksPenned=false;
   if(SEASON.frozen || POND.x>999) return;          // the ducks fly south for the winter (and there's no pond on the moon)
-  for(let i=0;i<5;i++){ const a=1.2+i*.12; ducks.push({x:POND.x+Math.cos(a)*(POND.r+1.5+i*.8),z:POND.z+Math.sin(a)*(POND.r+1.5+i*.8),vx:0,vz:0,yaw:0,phase:Math.random()*6,baby:i>0,m:makeDuck(i>0),wa:Math.random()*TAU,wt:0,alarm:0}); }
+  for(let i=0;i<5;i++){ const a=1.2+i*.12, rr=pondR(a)+1.5+i*.8; ducks.push({x:POND.x+Math.cos(a)*rr,z:POND.z+Math.sin(a)*rr,vx:0,vz:0,yaw:0,phase:Math.random()*6,baby:i>0,m:makeDuck(i>0),wa:Math.random()*TAU,wt:0,alarm:0}); }
 }
 function updateDucks(dt){
   if(!ducks.length) return;
@@ -3591,7 +3928,7 @@ function syncDucks(dt,time){
   for(const d of ducks){
     const sp=Math.hypot(d.vx,d.vz);
     if(sp>.15) d.yaw=lerpAngle(d.yaw,Math.atan2(d.vx,d.vz),1-Math.exp(-dt*10));
-    const wet=!SEASON.frozen && Math.hypot(d.x-POND.x,d.z-POND.z)<POND.r-.2;
+    const wet=!SEASON.frozen && pondD(d.x,d.z)<-.2;
     d.phase+=dt*(4+sp*5);
     d.m.g.position.set(d.x,wet?-.08:groundH(d.x,d.z),d.z); d.m.g.rotation.y=d.yaw;
     d.m.body.rotation.z=wet?0:Math.sin(d.phase)*.18*Math.min(1,sp*1.5+.2);     // waddle
@@ -3782,7 +4119,7 @@ function updateCat(dt,time){
 }
 let pondClock=0;
 function updatePond(dt){ pondClock+=dt; WATER_TEX.offset.set(pondClock*.013,pondClock*.006); if(pondFoam[1]) pondFoam[1].scale.setScalar(1+Math.sin(pondClock*1.7)*.022);
-  for(const r of pondRipples){ r.t+=dt; const k=(r.t%4)/4; r.m.scale.setScalar(.3+k*2.2); r.m.material.opacity=.5*(1-k); if(k<dt/4){ r.m.position.set(POND.x+(Math.random()-.5)*7,.09,POND.z+(Math.random()-.5)*7); } } }
+  for(const r of pondRipples){ r.t+=dt; const k=(r.t%4)/4; r.m.scale.setScalar(.3+k*2.2); r.m.material.opacity=.5*(1-k); if(k<dt/4){ const a=Math.random()*TAU, rr=Math.random()*pondR(a)*.5; r.m.position.set(POND.x+Math.cos(a)*rr,.09,POND.z+Math.sin(a)*rr); } } }
 
 // ---------------- Old Hank, the shepherd ----------------
 function makeShepherd(){
@@ -3869,7 +4206,7 @@ function bumpHank(D){
   D.pounceT=0; D.vx*=-.3; D.vz*=-.3;
   if(behind && hankGunSling.visible){
     hankGunSling.visible=false;
-    let gx=clamp(shep.x-fx*2,-FIELD+2,FIELD-2), gz=clamp(shep.z-fz*2,-FIELD+2,FIELD-2);
+    let gx=clamp(shep.x-fx*2,-FIELD+2,FIELD-2), gz=clamp(shep.z-fz*2,-FIELD+2,FIELD-2); { const p=intoField({x:gx,z:gz},2); gx=p.x; gz=p.z; }
     if(insidePen(gx,gz)) gz=PEN.z1+2;
     G.gunSpot=[gx,gz]; G.gunDropT=.7;
     groundGun.position.set(gx,.16,gz); groundGun.visible=true;
@@ -3891,7 +4228,7 @@ function updateShepherd(dt){
   const a=1-Math.exp(-dt*4);
   shep.vx+=(dirx*spd-shep.vx)*a; shep.vz+=(dirz*spd-shep.vz)*a;
   shep.x+=shep.vx*dt; shep.z+=shep.vz*dt;
-  collide(shep,.55,{gate:false,perim:!LEVEL.maze});
+  collide(shep,.55,{gate:false,perim:!LEVEL.maze,edge:true});
   shep.stumble=Math.max(0,shep.stumble-dt); shep.bumpCD=Math.max(0,shep.bumpCD-dt);
   if(G.phase==='day'||G.phase==='night') for(const D of dogs){ if(D.pounceT>0 && shep.bumpCD<=0 && Math.hypot(D.x-shep.x,D.z-shep.z)<1.7) bumpHank(D); }
 }
@@ -3996,7 +4333,7 @@ function spawnGoldBones(){
     // tucked away: near the edges, behind trees and rocks, never by the pen
     const x=(Math.random()*2-1)*(FIELD-4), z=PEN.z1+4+Math.random()*(FIELD-PEN.z1-8);
     if(!clearOf(x,z,1.5) || Math.hypot(x,z-(PEN.z1+10))<16 || goldBones.some(b=>Math.hypot(b.x-x,b.z-z)<20)) continue;
-    if(Math.max(Math.abs(x),Math.abs(z))<FIELD-18 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) continue;
+    if(fieldD(x,z)>9 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) continue;
     const g=makeGoldBone(); g.position.set(x,groundH(x,z)+.5,z); scene.add(g);
     goldBones.push({x,z,g,got:false}); i++;
   }
@@ -4153,7 +4490,7 @@ function updatePowers(dt,time){
 function syncAnimal(e,dt,rate){
   const sp=Math.hypot(e.vx,e.vz);
   if(sp>.3) e.yaw=lerpAngle(e.yaw,Math.atan2(e.vx,e.vz),1-Math.exp(-dt*9));
-  const g=e.m.g; g.position.x=e.x; g.position.z=e.z; if(!e.dead) g.position.y=groundH(e.x,e.z);
+  const g=e.m.g; g.position.x=e.x; g.position.z=e.z; if(!e.dead) g.position.y=Math.max(groundH(e.x,e.z),WALK_FLOOR);
   g.rotation.y=e.yaw;
   e.phase+=dt*sp*rate;
   const amp=Math.min(1,sp/3)*.75, s=Math.sin(e.phase)*amp;
@@ -4382,9 +4719,7 @@ function applySeason(name){
   SEASON=SEASONS[name];
   const S=SEASON, c=new THREE.Color();
   if(groundMesh){
-    const col=groundMesh.geometry.attributes.color, V=groundBase;
-    for(let i=0;i<col.count;i++){ groundCol(S,V[i*4],V[i*4+1],V[i*4+2],V[i*4+3],c); col.setXYZ(i,c.r,c.g,c.b); }
-    col.needsUpdate=true;
+    paintGround(S);
   }
   if(grassMesh){ const gt=new THREE.Color(S.grass); for(let k=0;k<grassBase.length;k++){ c.copy(grassBase[k]).multiply(gt); grassMesh.setColorAt(k,c); } grassMesh.instanceColor.needsUpdate=true; grassMesh.visible=!S.noGrass; grassMesh.count=Math.round(grassBase.length*(S.grassN||1)); }
   leafMs.forEach((m,i)=>m.color.setHex(S.leaves[i%S.leaves.length])); trunkM.color.setHex(S.trunk); layoutRing(S);
@@ -4416,6 +4751,223 @@ function updateSeasonFx(dt,time){
   seasonFx.material.opacity=(G.storm||LEVEL.theme==='sky'||LEVEL.theme==='sea'||LEVEL.theme==='moon')?0:.9;
 }
 
+// ---------------- the land round each level: terrain, cliffs, shores, trees ----------------
+// rock faces and cliff tops by world (two rock shades make the strata)
+const ROCKS={farm:[0xd4c098,0x9a8466],desert:[0xdc7c4c,0xb85c3a],sea:[0xf59a8c,0xd8727e],moon:[0xc8cad6,0x9c9eaf],volcano:[0x5c4c52,0x3e3238],sky:[0xbc8a5c,0x8c6444]};
+const TOPS={desert:0xe39a62,sea:0x4a9a8a,moon:0xb6b8c4,volcano:0x4c3e3e};
+// the colour up on top of the cliffs: the world's own, or the season's grass a shade darker
+function cliffTop(S,th){ return TOPS[th]!==undefined?new THREE.Color(TOPS[th]):new THREE.Color(S.ground3).lerp(new THREE.Color(S.far),.3).multiplyScalar(S.frozen?1:.92); }
+// height of one point of land (s: how far inside the shape, hc: the cliff height there)
+function terrainAt(x,z,s,hc,w){
+  const S=LEVEL.shape, K=S.K;
+  if(s===undefined) s=sdAt(S.sd,x,z);
+  if(!w) w=kindWeights(K,x,z,_kw);
+  if(hc===undefined) hc=cliffH(x,z,s);
+  if(s>=0){
+    const rh=((vnoise(x*.04+HILL.ox,z*.04+HILL.oz)-.3)*8.5 + (vnoise(x*.09+HILL.ox2,z*.09+HILL.oz2)-.5)*2.2)*HILL.amp;
+    let y=Math.max(-1.2,rh)*smooth01(PEN.z1+3,PEN.z1+15,z)*smooth01(1.5,10,pondD(x,z))*smooth01(1,9,s);
+    const ww=w[KW]+w[KL];
+    if(ww>0){ const yb=WL+.3+1.3*smooth01(0,7,s); y=lerp(y,yb,ww*(1-smooth01(4,9,s))); }        // beaches slope down to the water
+    return y;
+  }
+  const d=-s; let y=0;
+  if(w[KF]>0) y+=w[KF]*(.5*smooth01(.3,3,d)+(12*vnoise(x*.03,z*.03)+2)*smooth01(8,45,d));
+  if(w[KC]+w[KR]>0) y+=(w[KC]+w[KR])*(hc*smooth01(1.4,4.4,d)+6*vnoise(x*.07+3,z*.07+9)*smooth01(3,18,d)*Math.min(1,hc/6)+(12*vnoise(x*.03,z*.03)+4)*smooth01(12,50,d));
+  if(w[KM]>0) y+=w[KM]*(3.4*smooth01(1.4,4.4,d)-2*smooth01(5,12,d)+(6*vnoise(x*.04+5,z*.04)+1)*smooth01(8,40,d));
+  if(w[KW]+w[KL]>0) y+=(w[KW]+w[KL])*(WL+.3-2.8*smooth01(0,3,d)-1.2*smooth01(4,20,d));
+  if(w[KD]>0) y+=w[KD]*(d<1?0:-38*smooth01(1,2.2,d)+3*(vnoise(x*.05,z*.05)-.5)*smooth01(3,8,d));
+  return y;
+}
+// cliffs stand tall to the north and sides, but stay low along the south so they don't hide the flock from the camera
+function cliffH(x,z,s){
+  const S=LEVEL.shape, gz=sdAt(S.sd,x,z+1)-sdAt(S.sd,x,z-1), gx=sdAt(S.sd,x+1,z)-sdAt(S.sd,x-1,z), l=Math.hypot(gx,gz)||1;
+  return 7*S.K.hMul*(.75+.5*vnoise(x*.06+11,z*.06+5))*(1-.62*smooth01(-.2,.75,-gz/l));
+}
+function boxBlur(a,N,R){ const t=new Float32Array(N*N);
+  for(let j=0;j<N;j++){ let acc=0; for(let i=-R;i<=R;i++) acc+=a[j*N+clamp(i,0,N-1)]; for(let i=0;i<N;i++){ t[j*N+i]=acc/(2*R+1); acc+=a[j*N+Math.min(N-1,i+R+1)]-a[j*N+Math.max(0,i-R)]; } }
+  for(let i=0;i<N;i++){ let acc=0; for(let j=-R;j<=R;j++) acc+=t[clamp(j,0,N-1)*N+i]; for(let j=0;j<N;j++){ a[j*N+i]=acc/(2*R+1); acc+=t[Math.min(N-1,j+R+1)*N+i]-t[Math.max(0,j-R)*N+i]; } } }
+// the terrain grid for the day: every metre over ±100 (groundH reads it), with the strongest edge kind at each node
+function buildTerrainGrid(){
+  const S=LEVEL.shape, N=TG_N, h=new Float32Array(N*N), kd=new Uint8Array(N*N), hc=new Float32Array(N*N), sv=new Float32Array(N*N);
+  let water=false, lava=false;
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const x=TG_O+i, z=TG_O+j, k=j*N+i; sv[k]=sdAt(S.sd,x,z); hc[k]=cliffH(x,z,sv[k]); }
+  boxBlur(hc,N,3); boxBlur(hc,N,3);
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const x=TG_O+i, z=TG_O+j, k=j*N+i, w=kindWeights(S.K,x,z,_kw);
+    h[k]=terrainAt(x,z,sv[k],hc[k],w);
+    let b=0; for(let q=1;q<NK;q++) if(w[q]>w[b]) b=q; kd[k]=b;
+    if(sv[k]<0 && sv[k]>-30){ if(w[KW]>.3) water=true; if(w[KL]>.3) lava=true; } }
+  TG={h,kd,water,lava};
+}
+// the strongest edge kind near a point
+function kindAt(x,z){ if(!TG) return KF; const i=clamp(Math.round(x-TG_O),0,TG_N-1), j=clamp(Math.round(z-TG_O),0,TG_N-1); return TG.kd[j*TG_N+i]; }
+// paint the ground: the season's grass, then rock faces, cliff tops, beaches, the sea floor and the cloud sea under a sky island
+function paintGround(S){
+  if(!groundMesh) return;
+  const col=groundMesh.geometry.attributes.color, pos=groundMesh.geometry.attributes.position, V=groundBase, Q=groundShape, c=new THREE.Color(), t=new THREE.Color();
+  const th=LEVEL.theme, RK=ROCKS[th]||ROCKS.farm, ra=new THREE.Color(RK[0]), rb=new THREE.Color(RK[1]);
+  const topC=cliffTop(S,th);
+  const sandC=new THREE.Color(S.frozen?0xe8eef2:th==='desert'?0xf6d8a0:PAL.sand), deepC=new THREE.Color(0x2a8c9c), cloudC=new THREE.Color(th==='sky'?0xf4f8ff:0x9a4630);
+  for(let i=0;i<col.count;i++){
+    groundCol(S,V[i*4],V[i*4+1],V[i*4+2],V[i*4+3],c);
+    if(Q){ const q=i*5;
+      if(Q[q+4]>0) c.lerp(topC,Q[q+4]);
+      if(Q[q+1]>0) c.lerp(sandC,Q[q+1]);
+      if(Q[q]>0){ t.copy(ra).lerp(rb,.5+.5*Math.sin(pos.getY(i)*1.3)); c.lerp(t,Q[q]); }
+      if(Q[q+2]>0) c.lerp(deepC,Q[q+2]);
+      if(Q[q+3]>0) c.lerp(cloudC,Q[q+3]);
+    }
+    col.setXYZ(i,c.r,c.g,c.b);
+  }
+  col.needsUpdate=true;
+}
+// ---- the edge itself: marching squares round the shape, smoothed ----
+function contourLoops(sd){
+  const N=SG_N, adj=new Map(), P=new Map();
+  const key=(i,j,v)=>((j*N+i)<<1)|v;
+  const pt=k=>{ if(P.has(k)) return; const v=k&1, n=k>>1, i=n%N, j=(n/N)|0, a=sd[n], b=v?sd[n+N]:sd[n+1], t=a/(a-b); P.set(k,v?[SG_O+i,SG_O+j+t]:[SG_O+i+t,SG_O+j]); };
+  const link=(a,b)=>{ pt(a); pt(b); if(!adj.has(a)) adj.set(a,[]); if(!adj.has(b)) adj.set(b,[]); adj.get(a).push(b); adj.get(b).push(a); };
+  for(let j=0;j<N-1;j++) for(let i=0;i<N-1;i++){
+    const k=j*N+i, c=(sd[k]>0?1:0)|(sd[k+1]>0?2:0)|(sd[k+N+1]>0?4:0)|(sd[k+N]>0?8:0);
+    if(c===0||c===15) continue;
+    const e0=key(i,j,0), e1=key(i+1,j,1), e2=key(i,j+1,0), e3=key(i,j,1), ctr=sd[k]+sd[k+1]+sd[k+N]+sd[k+N+1]>0;
+    switch(c){
+      case 1: case 14: link(e3,e0); break;
+      case 2: case 13: link(e0,e1); break;
+      case 3: case 12: link(e3,e1); break;
+      case 4: case 11: link(e1,e2); break;
+      case 6: case 9: link(e0,e2); break;
+      case 7: case 8: link(e3,e2); break;
+      case 5: if(ctr){ link(e0,e1); link(e2,e3); } else { link(e3,e0); link(e1,e2); } break;
+      case 10: if(ctr){ link(e3,e0); link(e1,e2); } else { link(e0,e1); link(e2,e3); } break;
+    }
+  }
+  const loops=[], seen=new Set();
+  for(const s of adj.keys()){ if(seen.has(s)) continue; const loop=[]; let prev=-1, cur=s;
+    while(cur!==undefined && !seen.has(cur)){ seen.add(cur); loop.push(P.get(cur)); const nb=adj.get(cur), nx=nb[0]!==prev?nb[0]:nb[1]; prev=cur; cur=nx; }
+    if(loop.length>4) loops.push(loop); }
+  return loops;
+}
+function chaikin(L){ const o=[]; for(let i=0;i<L.length;i++){ const a=L[i], b=L[(i+1)%L.length]; o.push([a[0]*.75+b[0]*.25,a[1]*.75+b[1]*.25],[a[0]*.25+b[0]*.75,a[1]*.25+b[1]*.75]); } return o; }
+function resample(L,step){
+  const o=[], n=L.length; let carry=0;
+  for(let i=0;i<n;i++){ const a=L[i], b=L[(i+1)%n], l=Math.hypot(b[0]-a[0],b[1]-a[1]); let t=carry;
+    while(t<l){ o.push([a[0]+(b[0]-a[0])*t/l,a[1]+(b[1]-a[1])*t/l]); t+=step; } carry=t-l; }
+  return o;
+}
+// Douglas-Peucker on a closed loop
+function simplifyLoop(L,tol){
+  const pts=L.concat([L[0]]), n=pts.length, keep=new Uint8Array(n); keep[0]=keep[n-1]=1; const st=[[0,n-1]];
+  while(st.length){ const [a,b]=st.pop(); let md=0, mi=-1; const ax=pts[a][0], az=pts[a][1], dx=pts[b][0]-ax, dz=pts[b][1]-az, l2=dx*dx+dz*dz;
+    for(let i=a+1;i<b;i++){ const px=pts[i][0]-ax, pz=pts[i][1]-az; let t=l2>0?(px*dx+pz*dz)/l2:0; t=clamp(t,0,1); const d=Math.hypot(px-dx*t,pz-dz*t); if(d>md){ md=d; mi=i; } }
+    if(mi>0 && (md>tol || b-a>40)){ keep[mi]=1; st.push([a,mi],[mi,b]); } }
+  const o=[]; for(let i=0;i<n-1;i++) if(keep[i]) o.push(pts[i]); return o;
+}
+// ---- building the edge for the day ----
+const ribMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide});
+const foamStripMat=new THREE.MeshStandardMaterial({color:PAL.foam,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
+const glowStripMat=new THREE.MeshBasicMaterial({color:0xffd25a,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
+let edgeLoops=[], mmBg=null;
+function ribRun(acc,pts,rows){
+  const base=acc.p.length/3, R=rows.length;
+  for(const q of pts) for(let r=0;r<R;r++){ const v=rows[r](q); acc.p.push(q.x+q.nx*v[0],v[1],q.z+q.nz*v[0]); const c=v[2]; acc.c.push(c.r*q.cm,c.g*q.cm,c.b*q.cm); }
+  for(let a=0;a<pts.length-1;a++) for(let r=0;r<R-1;r++){ const i0=base+a*R+r, i1=i0+R; acc.i.push(i0,i1,i0+1, i1,i1+1,i0+1); }
+}
+function ribMesh(acc,m,shadow){
+  if(!acc.i.length) return;
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(acc.p,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(acc.c,3)); g.setIndex(acc.i); g.computeVertexNormals();
+  const me=addObj(new THREE.Mesh(g,m)); me.receiveShadow=true; me.castShadow=!!shadow; return me;
+}
+function buildEdges(L){
+  const S=L.shape, S2=SEASON, th=L.theme, raw=contourLoops(S.sd);
+  // collision: the outline, simplified (the strip behind the barn is fenced off anyway)
+  for(const lp of raw){ const sm=simplifyLoop(chaikin(lp),.22);
+    for(let i=0;i<sm.length;i++){ const a=sm[i], b=sm[(i+1)%sm.length]; if(a[1]<PEN.z1-1.5 && b[1]<PEN.z1-1.5) continue;
+      segs.push({ax:a[0],az:a[1],bx:b[0],bz:b[1],kind:'perim',level:true,edge:true,bb:[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])]}); } }
+  edgeLoops=raw.map(lp=>resample(chaikin(lp),1));
+  // the look of it: cliff faces (rock with strata and a grassy cap), drops, surf and glowing lava edges
+  const RK=ROCKS[th]||ROCKS.farm, ra=new THREE.Color(RK[0]), rb=new THREE.Color(RK[1]), rd=new THREE.Color(RK[1]).multiplyScalar(.72), rl=new THREE.Color(RK[0]).lerp(new THREE.Color(0xffffff),.25), gc=new THREE.Color();
+  const topC=cliffTop(S2,th);
+  const up={p:[],c:[],i:[]}, down={p:[],c:[],i:[]}, foam={p:[],c:[],i:[]}, foam2={p:[],c:[],i:[]}, glow={p:[],c:[],i:[]};
+  const TYPE={[KC]:'up',[KR]:'up',[KM]:'up',[KD]:'down',[KW]:'foam',[KL]:'glow'};
+  for(const lp of edgeLoops){
+    const n=lp.length; let s=0;
+    const pts=lp.map((p,i)=>{ const x=p[0], z=p[1], gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
+      if(i) s+=Math.hypot(x-lp[i-1][0],z-lp[i-1][1]);
+      const w=kindWeights(S.K,x+nx*2.5,z+nz*2.5,_kw); let b=0; for(let q=1;q<NK;q++) if(w[q]>w[b]) b=q;
+      let oc=4.6; for(let o=1;o<=4.6;o+=.4){ if(-sdAt(S.sd,x+nx*o,z+nz*o)<o*.75-.2){ oc=Math.max(1.2,o-.4); break; } }
+      let type=TYPE[b]||null; const g=groundH(x-nx*.4,z-nz*.4), top=groundH(x+nx*oc,z+nz*oc)+.12, sq=oc/4.6;
+      if(type==='up' && top-g<1.2) type=null;
+      return {x,z,nx,nz,s,type,g,top,sq,j:(vnoise(s*.4,7.3)-.5)*.8,j2:(vnoise(s*.4,2.1)-.5)*.8,cm:.92+.16*vnoise(s*.7,1.1)}; });
+    // runs of one type (a loop that is all one type wraps round)
+    let start=0; while(start<n && pts[start].type===pts[(start+n-1)%n].type) start++; const allSame=start>=n; if(allSame) start=0;
+    const order=[]; for(let i=0;i<=n;i++) order.push(pts[(start+i)%n]);
+    let run=[order[0]];
+    const flush=()=>{ const t=run[0].type; if(run.length<2 || !t){ return; }
+      if(t==='up') ribRun(up,run,[q=>[-.35,q.g-.6,rd],q=>[(.35+q.j*.4)*q.sq,q.g+(q.top-q.g)*.25,ra],q=>[(1+q.j)*q.sq,q.g+(q.top-q.g)*.5,rb],q=>[(1.7+q.j2*.6)*q.sq,q.g+(q.top-q.g)*.75,ra],q=>[(2.5+q.j*.3)*q.sq,q.top-.15,rl],q=>[2.8*q.sq,q.top+.04,topC],q=>[4.6*q.sq,groundH(q.x+q.nx*4.6*q.sq,q.z+q.nz*4.6*q.sq)+.14,topC]]);
+      else if(t==='down') ribRun(down,run,[q=>[-.5,q.g+.05,groundCol(S2,vnoise(q.x*.045+7,q.z*.045),vnoise(q.x*.21+40,q.z*.21),0,0,gc).clone()],q=>[1,q.g+.05,gc.clone()],q=>[1.08+q.j*.3,q.g-1.4,ra],q=>[1.2+q.j,q.g-6,rb],q=>[1.35+q.j2*.6,q.g-13,ra],q=>[1.5,q.g-24,rd]]);
+      else if(t==='foam'){ ribRun(foam,run,[q=>[.15,WL+.05,ra],q=>[1.05,WL+.05,ra]]);
+        let sub=[]; for(const q of run){ if(Math.floor(q.s/3)%2){ sub.push(q); } else { if(sub.length>1) ribRun(foam2,sub,[q2=>[1.6,WL+.04,ra],q2=>[1.85,WL+.04,ra]]); sub=[]; } } if(sub.length>1) ribRun(foam2,sub,[q2=>[1.6,WL+.04,ra],q2=>[1.85,WL+.04,ra]]); }
+      else if(t==='glow') ribRun(glow,run,[q=>[.1,WL+.06,ra],q=>[.85,WL+.06,ra]]);
+    };
+    for(let i=1;i<order.length;i++){ const q=order[i]; if(q.type===run[0].type) run.push(q); else { run.push(q); flush(); run=[q]; } }
+    flush();
+  }
+  ribMesh(up,ribMat,true); ribMesh(down,ribMat,false); ribMesh(foam,foamStripMat); ribMesh(foam2,foamStripMat); ribMesh(glow,glowStripMat);
+  // open water (or lava) out to the horizon
+  if(TG.water||TG.lava){ const g=new THREE.PlaneGeometry(700,700,1,1).rotateX(-Math.PI/2), uv=g.attributes.uv; for(let i=0;i<uv.count;i++) uv.setXY(i,uv.getX(i)*50,uv.getY(i)*50);
+    const me=addObj(new THREE.Mesh(g,TG.lava?lavaMat:seaMat)); me.position.y=WL; me.receiveShadow=!TG.lava; }
+  // the front fence between the field and the yard, wall to wall
+  let xw=PEN.x0, xe=PEN.x1; while(xw>SG_O+1 && sdAt(S.sd,xw,PEN.z1)>0) xw-=.25; while(xe<-SG_O-1 && sdAt(S.sd,xe,PEN.z1)>0) xe+=.25;
+  levelFence([[xw-1.2,PEN.z1,PEN.x0,PEN.z1],[PEN.x1,PEN.z1,xe+1.2,PEN.z1]]);
+  // grass only grows on the field, cliff tops and the forest floor
+  hideGrass((x,z)=>{ const s=fieldD(x,z); if(s>.3) return false; const k=kindAt(x,z); return !(s<-2.5 && k===KF || s<-5 && (k===KC||k===KM||k===KR)); });
+  layoutRingTrees(L);
+  drawMinimapBg(L);
+}
+const seaMat=waterMat.clone(); seaMat.opacity=.9;
+// a fence along a line (posts and rails, instanced), with its collision wall
+function levelFence(lines){
+  const pm=[], rm=[];
+  for(const [ax,az,bx,bz] of lines){ if(Math.abs(bx-ax)<.5) continue; fencePieces(ax,az,bx,bz,4,1.3,pm,rm); segs.push({ax,az,bx,bz,kind:'perim',level:true,edge:true}); }   // edge: coyotes slip through it, as they do the land's edge
+  if(!pm.length) return;
+  const c=new THREE.Color(), posts=new THREE.InstancedMesh(fencePostGeo,mat(0xffffff),pm.length), rails=new THREE.InstancedMesh(unitBox,mat(0xffffff),rm.length);
+  pm.forEach((m,i)=>{ posts.setMatrixAt(i,m); posts.setColorAt(i,c.setHex(FENCE_POST).multiplyScalar(.88+Math.random()*.22)); });
+  rm.forEach((m,i)=>{ rails.setMatrixAt(i,m); rails.setColorAt(i,c.setHex(FENCE_RAIL).multiplyScalar(.86+Math.random()*.22)); });
+  for(const im of [posts,rails]){ im.castShadow=true; im.receiveShadow=true; addObj(im); }
+}
+// ---- the trees round the edge: a dense wood along forest edges, a few up on the cliff tops, the rest scattered far off ----
+function layoutRingTrees(L){
+  const S=L.shape, near=[], far=[], NC=RING_NEAR, FC=RING_FAR;
+  const add=(arr,cap,x,z,s)=>{ if(arr.length<cap) arr.push({x,z,s}); };
+  for(const lp of edgeLoops){
+    for(let i=0;i<lp.length;i+=2){ const x=lp[i][0], z=lp[i][1];
+      const gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
+      const k=kindAt(x+nx*3,z+nz*3), south=nz>.35, sm=south?.62:1;
+      const at=(o,sp)=>{ const a=(Math.random()-.5)*sp; return [x+nx*o-nz*a,z+nz*o+nx*a]; };
+      if(k===KF){ let p=at(1.9+Math.random()*.8+(south?.6:0),1.6); add(near,NC,p[0],p[1],(1+Math.random()*.5)*sm);
+        if(Math.random()<.7){ p=at(4.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],(1.1+Math.random()*.6)*sm); }
+        if(Math.random()<.6){ p=at(7.5+Math.random()*4,3); add(far,FC,p[0],p[1],(1.2+Math.random()*.6)*sm); } }
+      else if(k===KR){ let p=at(1.4+Math.random()*1,1.4); add(near,NC,p[0],p[1],.9+Math.random()*.6); if(Math.random()<.6){ p=at(3.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],1+Math.random()*.6); } }
+      else if(k===KC && Math.random()<(L.theme==='farm'||L.theme==='sky'?.3:.14)){ const p=at(5.8+Math.random()*5,3); add(far,FC,p[0],p[1],(.9+Math.random()*.5)*(south?.7:1)); }
+      else if(k===KM && Math.random()<.18){ const p=at(5+Math.random()*3,3); add(far,FC,p[0],p[1],.6+Math.random()*.5); }
+    }
+  }
+  for(let t=0;t<2000 && far.length<FC;t++){ const a=Math.random()*TAU, r=55+Math.random()*100, x=Math.cos(a)*r, z=Math.sin(a)*r; if(fieldD(x,z)>-10) continue; const k=kindAt(x,z); if(k===KF||k===KC||k===KM||(k===KR&&Math.random()<.4)) far.push({x,z,s:1.2+Math.random()*1.3}); }
+  ringTrees.length=0;
+  near.forEach((t,i)=>ringTrees.push({x:t.x,y:groundH(t.x,t.z),z:t.z,s:t.s,ry:Math.random()*TAU,leaf:i%3,shape:((i/3)|0)%2,far:0}));
+  far.forEach((t,i)=>ringTrees.push({x:t.x,y:groundH(t.x,t.z),z:t.z,s:t.s,ry:Math.random()*TAU,leaf:i%3,shape:((i/3)|0)%2,far:1}));
+  layoutRing(SEASON);
+}
+// the minimap's land: the field in green, water blue, cliffs brown, forest dark, the edge picked out
+function drawMinimapBg(L){
+  const W=150, cv=mmBg||(mmBg=document.createElement('canvas')); cv.width=cv.height=W; const x=cv.getContext('2d'), img=x.createImageData(W,W), D=img.data, S=L.shape;
+  const CK=[[30,62,34],[112,96,78],[52,118,168],[18,24,40],[176,74,32],[168,86,98],[84,84,96]];
+  for(let j=0;j<W;j++) for(let i=0;i<W;i++){ const wx=(i+.5)/W*(2*FIELD+12)-FIELD-6, wz=(j+.5)/W*(2*FIELD+12)-FIELD-6, s=sdAt(S.sd,wx,wz), o=(j*W+i)*4;
+    let c; if(s>1.1) c=[98,150,72]; else if(s>-.4) c=[236,226,196]; else c=CK[kindAt(wx,wz)];
+    D[o]=c[0]; D[o+1]=c[1]; D[o+2]=c[2]; D[o+3]=s>1.1?235:s>-.4?240:200; }
+  x.putImageData(img,0,0);
+}
+
 // ---------------- building each level's layout ----------------
 const levelObjs=[];
 const _zero=new THREE.Matrix4().makeScale(0,0,0);
@@ -4424,14 +4976,32 @@ function clearLevel(){
   for(const o of levelObjs) scene.remove(o); levelObjs.length=0;
   for(let i=segs.length-1;i>=0;i--) if(segs[i].level) segs.splice(i,1);
   for(let i=circles.length-1;i>=0;i--) if(circles[i].level) circles.splice(i,1);
+  OBS.ver++;
   for(let i=treeDots.length-1;i>=0;i--) if(treeDots[i].level) treeDots.splice(i,1);
   if(grassMesh){ grassPos.forEach((g,i)=>grassMesh.setMatrixAt(i,g[2])); grassMesh.instanceMatrix.needsUpdate=true; }
 }
 function addObj(o){ scene.add(o); levelObjs.push(o); return o; }
 function hideGrass(test){ if(!grassMesh) return; grassPos.forEach((g,i)=>{ if(test(g[0],g[1])) grassMesh.setMatrixAt(i,_zero); }); grassMesh.instanceMatrix.needsUpdate=true; }
 function regenTerrain(){
-  if(groundMesh){ const pos=groundMesh.geometry.attributes.position; for(let i=0;i<pos.count;i++){ const x=pos.getX(i), z=pos.getZ(i); if(Math.abs(x)<FIELD+2 && Math.abs(z)<FIELD+2) pos.setY(i,groundH(x,z)); } pos.needsUpdate=true; groundMesh.geometry.computeVertexNormals(); }
-  if(grassMesh){ const o=new THREE.Object3D(); grassPos.forEach((g,i)=>{ if(Math.abs(g[0])>FIELD+2||Math.abs(g[1])>FIELD+2) return; o.position.set(g[0],groundH(g[0],g[1]),g[1]); o.rotation.set(g[3],g[4],g[5]); o.scale.set(g[6],g[7],g[6]); o.updateMatrix(); g[2].copy(o.matrix); grassMesh.setMatrixAt(i,o.matrix); }); grassMesh.instanceMatrix.needsUpdate=true; }
+  buildTerrainGrid();
+  if(groundMesh){
+    const geo=groundMesh.geometry, pos=geo.attributes.position, n=pos.count;
+    for(let i=0;i<n;i++) pos.setY(i,groundH(pos.getX(i),pos.getZ(i)));
+    pos.needsUpdate=true; geo.computeVertexNormals(); geo.computeBoundingSphere();
+    // what each bit of ground is: rock face, cliff top, beach, sea floor, cloud
+    const nor=geo.attributes.normal, S=LEVEL.shape, Q=groundShape||(groundShape=new Float32Array(n*5)), sky=LEVEL.theme==='sky', w=new Float32Array(NK), wet=TG.water||TG.lava;
+    for(let i=0;i<n;i++){ const x=pos.getX(i), z=pos.getZ(i), y=pos.getY(i), s=sdAt(S.sd,x,z), d=-s, q=i*5; kindWeights(S.K,x,z,w);
+      const steep=1-smooth01(.55,.82,nor.getY(i));
+      groundBase[i*4+3]=s<0?smooth01(1.5,10,d)*(w[KF]+w[KC]+w[KR]+w[KM]):0;
+      Q[q]=Math.min(1,steep*(s<.5?1:.5)+w[KL]*(s<0?.8:.8*(1-smooth01(1,4,s))));
+      Q[q+1]=w[KW]*(s>=0?1-smooth01(2.5,6,s):1);
+      Q[q+2]=wet?clamp((WL-y)/3,0,1):0;
+      Q[q+3]=w[KD]*smooth01(-6,-20,y);
+      Q[q+4]=s<0?smooth01(3,5,d)*(w[KC]+w[KR]+w[KM])*(1-steep):0;
+    }
+    paintGround(SEASON);
+  }
+  if(grassMesh){ const o=new THREE.Object3D(); grassPos.forEach((g,i)=>{ o.position.set(g[0],groundH(g[0],g[1]),g[1]); o.rotation.set(g[3],g[4],g[5]); o.scale.set(g[6],g[7],g[6]); o.updateMatrix(); g[2].copy(o.matrix); grassMesh.setMatrixAt(i,o.matrix); }); grassMesh.instanceMatrix.needsUpdate=true; }
   for(const b of flies.userData.base) b[1]=groundH(b[0],b[2])+.5+Math.random()*2;
 }
 // a rounded hedge three units long: a soft-topped body with leafy lumps along the crown and sides (scaled to each piece's length)
@@ -4495,7 +5065,7 @@ function holeDisc(r){ const g=new THREE.CircleGeometry(r,40).rotateX(-Math.PI/2)
 // a strip running along the river between two sideways offsets from its middle (a<b), at heights from yf(x,z,zMiddle)
 function riverStrip(R,a,b,yf){
   const pos=[], uv=[], idx=[]; let i=0;
-  for(let x=-FIELD;x<=FIELD+.01;x+=2,i++){ const zc=riverZ(R,x); for(const o of [a,b]){ const z=zc+o; pos.push(x,yf(x,z,zc),z); uv.push(x/6,o/6); } if(i>0){ const k=(i-1)*2; idx.push(k,k+1,k+2, k+1,k+3,k+2); } }
+  for(let x=-FIELD;x<=FIELD+.01;x+=2,i++){ const zc=riverZ(R,x); for(const o of [a,b]){ const z=zc+o; pos.push(x,yf(x,z,zc),z); uv.push(x/6,o/6); } if(i>0 && fieldD(x-1,riverZ(R,x-1))>-2.5){ const k=(i-1)*2; idx.push(k,k+1,k+2, k+1,k+3,k+2); } }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
 const chasmMat=new THREE.MeshBasicMaterial({color:0x9ad8ff,vertexColors:true,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
@@ -4521,6 +5091,8 @@ const volcanoMat=new THREE.MeshStandardMaterial({color:0x3a2226,roughness:1,fog:
 function buildLevel(L){
   clearLevel(); reachGrid=null; LEVEL=L; G.twist=L.twist; G.stampT=undefined;
   Object.assign(HILL,L.hill); movePond(L.pond); regenTerrain();
+  WALK_FLOOR=TG.water||TG.lava?WL-.4:L.shape.K.def===KD?-.3:-99;
+  buildEdges(L);
   // walls with gaps
   for(const w of L.walls){
     const [ax,az,bx,bz]=w.seg; segs.push({ax,az,bx,bz,kind:'perim',level:true});
@@ -4547,11 +5119,14 @@ function buildLevel(L){
   }
   // the winding river
   if(L.river){
-    const R=L.river, step=2, xs=[]; for(let x=-FIELD;x<=FIELD+.01;x+=step) xs.push(x);
-    const onBridge=x=>R.bridges.some(b=>x>b[0]-.2&&x<b[1]+.2);
-    for(let i=0;i<xs.length-1;i++){ const x0=xs[i], x1=xs[i+1], xm=(x0+x1)/2; if(onBridge(xm)) continue;
-      for(const sd of [-1,1]) segs.push({ax:x0,az:riverZ(R,x0)+sd*R.w/2,bx:x1,bz:riverZ(R,x1)+sd*R.w/2,kind:'river',level:true}); }
-    for(const b of R.bridges) for(const x of b){ const zc=riverZ(R,x); segs.push({ax:x,az:zc-R.w/2-.4,bx:x,bz:zc+R.w/2+.4,kind:'perim',level:true}); }
+    // the banks (finely near a bridge, so they stop right at its rails), and the rails themselves, square to the flow
+    const R=L.river, xs=[], fine=x=>R.bridges.some(b=>{ const f=bridgeFrame(R,b); return Math.abs(x-f.cx)<f.hw+Math.abs(f.nx)*f.hl+3; });
+    for(let x=-FIELD;x<=FIELD+.01;){ xs.push(x); x+=fine(x)?.5:2; }
+    for(let i=0;i<xs.length-1;i++){ const x0=xs[i], x1=xs[i+1], xm=(x0+x1)/2; if(fieldD(xm,riverZ(R,xm))<-4) continue;
+      for(const sd of [-1,1]){ const az=riverZ(R,x0)+sd*R.w/2, bz=riverZ(R,x1)+sd*R.w/2; if(R.bridges.some(b=>onDeck(R,b,x0,az,.15)||onDeck(R,b,x1,bz,.15))) continue;
+        segs.push({ax:x0,az,bx:x1,bz,kind:'river',level:true}); } }
+    for(const b of R.bridges){ const f=bridgeFrame(R,b); for(const sd of [-1,1]){ const ox=f.cx+f.tx*sd*(f.hw-.2), oz=f.cz+f.tz*sd*(f.hw-.2);
+      segs.push({ax:ox-f.nx*f.hl,az:oz-f.nz*f.hl,bx:ox+f.nx*f.hl,bz:oz+f.nz*f.hl,kind:'perim',level:true}); } }
     // water (or lava) with white foam (or a white-hot glow) along both edges, on sandy (or charred) banks
     const wl=(x,z,zc)=>Math.max(groundH(x,z),groundH(x,zc))+.12, hw=R.w/2;
     const wm=addObj(new THREE.Mesh(riverStrip(R,-hw,hw,wl),R.lava?lavaMat:waterMat)); wm.receiveShadow=!R.lava;
@@ -4561,12 +5136,16 @@ function buildLevel(L){
       const bk=addObj(new THREE.Mesh(riverStrip(R,sd<0?-hw-1.5:hw-.1,sd<0?-hw+.1:hw+1.5,(x,z)=>groundH(x,z)+.05),bankM)); bk.receiveShadow=true; }
     // chunky plank bridges on two beams, with stout posts and rails (stone slabs over lava)
     const plank=mat(R.lava?0x6e625c:0xc08550), plank2=mat(R.lava?0x5e5450:0xa8703e), beam=mat(R.lava?0x3a302c:0x7a4a2a);
-    for(const b of R.bridges){ const cx=(b[0]+b[1])/2, w2=b[1]-b[0], zc=riverZ(R,cx), ang=Math.atan(R.amp*R.k*Math.cos(R.k*cx+R.ph));
-      const bg=addObj(new THREE.Group()); bg.position.set(cx,0,zc); bg.rotation.y=-ang; const yc=groundH(cx,zc);
-      let q=0; for(let z=-R.w/2-.7;z<=R.w/2+.7;z+=.7,q++){ const pk=new THREE.Mesh(unitBox,q%2?plank2:plank); pk.scale.set(w2-.1+Math.random()*.2,.2,.62); pk.position.set((Math.random()-.5)*.1,groundH(cx,zc+z)+.36,z); pk.rotation.y=(Math.random()-.5)*.05; bg.add(pk); }
-      for(const x of [-w2/2+.45,w2/2-.45]){ const bm=new THREE.Mesh(unitBox,beam); bm.scale.set(.32,.32,R.w+1.8); bm.position.set(x,yc+.12,0); bg.add(bm); }
-      for(const x of [-w2/2+.2,w2/2-.2]){ const rl=new THREE.Mesh(unitBox,beam); rl.scale.set(.18,.22,R.w+1.6); rl.position.set(x,yc+1.1,0); bg.add(rl);
-        for(const z of [-R.w/2-.7,0,R.w/2+.7]){ const pt=new THREE.Mesh(fencePostGeo,beam); pt.scale.set(.32,1.25,.32); pt.position.set(x,groundH(cx,zc+z)+.75,z); bg.add(pt); } }
+    for(const b of R.bridges){ const f=bridgeFrame(R,b), w2=f.hw*2, hl=f.hl, gy=z=>groundH(f.cx+f.nx*z,f.cz+f.nz*z);
+      // the deck sits level with the higher bank, so it never dips into the water
+      const yc=Math.max(gy(-hl+.6),gy(hl-.6),gy(0));
+      const bg=addObj(new THREE.Group()); bg.position.set(f.cx,0,f.cz); bg.rotation.y=Math.atan2(f.nx,f.nz);
+      let q=0; for(let z=-hl+.3;z<=hl-.3;z+=.7,q++){ const pk=new THREE.Mesh(unitBox,q%2?plank2:plank); pk.scale.set(w2-.1+Math.random()*.2,.2,.62); pk.position.set((Math.random()-.5)*.1,yc+.36,z); pk.rotation.y=(Math.random()-.5)*.05; bg.add(pk); }
+      for(const x of [-w2/2+.45,w2/2-.45]){ const bm=new THREE.Mesh(unitBox,beam); bm.scale.set(.32,.32,hl*2); bm.position.set(x,yc+.12,0); bg.add(bm); }
+      for(const x of [-w2/2+.2,w2/2-.2]){ const rl=new THREE.Mesh(unitBox,beam); rl.scale.set(.18,.22,hl*2-.2); rl.position.set(x,yc+1.1,0); bg.add(rl);
+        for(const z of [-hl+.3,0,hl-.3]){ const pt=new THREE.Mesh(fencePostGeo,beam); pt.scale.set(.32,1.25,.32); pt.position.set(x,yc+.75,z); bg.add(pt); } }
+        // sloping end planks down to the bank on each side
+      for(const sd of [-1,1]){ const ge=gy(sd*(hl+.6)), dy=yc+.36-(ge+.1); if(dy<.12) continue; const ramp=new THREE.Mesh(unitBox,plank2); ramp.scale.set(w2-.6,.16,Math.hypot(.9,dy)); ramp.position.set(0,(yc+.36+ge+.1)/2,sd*(hl+.15)); ramp.rotation.x=sd*Math.atan2(dy,.9); bg.add(ramp); }
       bg.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } }); }
     hideGrass((x,z)=>Math.abs(z-riverZ(R,x))<R.w/2+1.2 && Math.abs(x)<FIELD+1);
   }
@@ -4601,7 +5180,7 @@ function buildLevel(L){
   L.haz=[...(L.lava||[]).map(h=>({x:h.x,z:h.z,r:h.r,kind:'lava'})), ...((L.theme==='sky'||L.canyon)?L.holes.map(h=>({x:h.x,z:h.z,r:h.r,kind:'chasm'})):[])];
   for(const c of L.copses) makeObstacle(c.kind,c.x,c.z,c.s);
   for(const rk of L.rocks) makeObstacle('rock',rk.x,rk.z,rk.s);
-  if(L.pond) hideGrass((x,z)=>Math.hypot(x-L.pond.x,z-L.pond.z)<L.pond.r+.6);
+  if(L.pond) hideGrass((x,z)=>pondD(x,z)<.6);
   // theme decorations
   if(L.theme==='sky'){
     // big soft clouds drifting round the islands, beside and below the meadow
@@ -4636,14 +5215,14 @@ function buildLevel(L){
   }
   // make sure everything that spawns can actually reach the gate
   computeReach();
-  let open=0, total=0; for(let j=0;j<RN;j++) for(let i=0;i<RN;i++){ const z=-FIELD+(j+.5)*RC; if(z>PEN.z1+2){ total++; if(reachGrid[j*RN+i]) open++; } }
+  let open=0, total=0; for(let j=0;j<RN;j++) for(let i=0;i<RN;i++){ const x=-FIELD+(i+.5)*RC, z=-FIELD+(j+.5)*RC; if(z>PEN.z1+2 && fieldD(x,z)>1.5){ total++; if(reachGrid[j*RN+i]) open++; } }
   if(open<total*.55 && (L.walls.length||L.river)){ L.walls=[]; L.river=null; buildLevel(L); }
 }
 const RC=2, RN=Math.ceil(FIELD*2/RC);
 function computeReach(){
   const grid=new Uint8Array(RN*RN), blocked=new Uint8Array(RN*RN), cx=x=>Math.floor((x+FIELD)/RC), cz=z=>Math.floor((z+FIELD)/RC);
   for(let j=0;j<RN;j++) for(let i=0;i<RN;i++){ const x=-FIELD+(i+.5)*RC, z=-FIELD+(j+.5)*RC;
-    if(z<PEN.z1+.5 || inRiver(x,z) || hazardAt(x,z) || (!SEASON.frozen && Math.hypot(x-POND.x,z-POND.z)<POND.r+.4) || circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+.5)) blocked[j*RN+i]=1; }
+    if(z<PEN.z1+.5 || fieldD(x,z)<.6 || inRiver(x,z) || hazardAt(x,z) || (!SEASON.frozen && pondD(x,z)<.4) || circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+.5)) blocked[j*RN+i]=1; }
   const si=cx(0), sj=cz(PEN.z1+3), q=[[si,sj]]; grid[sj*RN+si]=1;
   while(q.length){ const [i,j]=q.pop(), x=-FIELD+(i+.5)*RC, z=-FIELD+(j+.5)*RC;
     for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){ const ni=i+di, nj=j+dj; if(ni<0||nj<0||ni>=RN||nj>=RN) continue; const k=nj*RN+ni; if(grid[k]||blocked[k]) continue;
@@ -4820,8 +5399,8 @@ function setupPuzzle(){
     const n=LEVEL.gates, pts=[];
     for(let k=0;k<n;k++){
       const tt=(k+1)/(n+1), bx=lerp(fx,P.x,tt), bz=lerp(fz,P.z,tt), dx=P.x-fx, dz=P.z-fz, dl=Math.hypot(dx,dz)||1, px=-dz/dl, pz=dx/dl;
-      let best=null; for(let q=0;q<80 && !best;q++){ const side=(k%2?1:-1)*(q<40?1:Math.sign(Math.random()-.5)), off=side*(6+Math.random()*12), x=bx+px*off+(Math.random()-.5)*6, z=bz+pz*off+(Math.random()-.5)*6;
-        if(z>PEN.z1+9 && clearOf(x,z,4.5) && !out.some(s=>Math.hypot(s.x-x,s.z-z)<7) && !pts.some(p=>Math.hypot(p.x-x,p.z-z)<14)) best={x,z}; }
+      let best=null; for(let q=0;q<220 && !best;q++){ const side=(k%2?1:-1)*(q<40?1:Math.sign(Math.random()-.5)), off=side*(6+Math.random()*12), wide=q>=80, x=wide?(Math.random()*2-1)*40:bx+px*off+(Math.random()-.5)*6, z=wide?PEN.z1+12+Math.random()*52:bz+pz*off+(Math.random()-.5)*6;   // off the straight line if the land doesn't allow it
+        if(z>PEN.z1+9 && clearOf(x,z,4.5) && fieldD(x,z)>7.2 && !out.some(s=>Math.hypot(s.x-x,s.z-z)<7) && !pts.some(p=>Math.hypot(p.x-x,p.z-z)<14)) best={x,z}; }
       if(best) pts.push(best);
     }
     pts.forEach((g,k)=>{
@@ -4848,8 +5427,8 @@ function setupPuzzle(){
     if(PZ.gates.length) lockPen(true); else PZ.type=null;
   } else if(PZ.type==='scale'){
     let best=null, bd=-1;
-    for(let q=0;q<200;q++){ const x=(Math.random()*2-1)*(FIELD-12), z=PEN.z1+20+Math.random()*(FIELD-PEN.z1-30); if(!clearOf(x,z,7)) continue;
-      const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<16 || dp<22) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
+    for(let q=0;q<400 && !(best && q>=200);q++){ const loose=q>=200, x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+(loose?14:20)+Math.random()*(FIELD-PEN.z1-(loose?20:30)); if(!clearOf(x,z,loose?6.5:7) || fieldD(x,z)<(loose?7.5:9)) continue;
+      const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<(loose?10:16) || dp<(loose?16:22)) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
     if(best){
       const S2={x:best.x,z:best.z,r:5.5,p:0,tiles:[],done:false}, gy=groundH(best.x,best.z);
       const A=scaleArt(S2.r);
@@ -5041,7 +5620,7 @@ function updateFalcon(dt){
   if(F.state==='carry'){
     F.t+=dt; const T=2.6, k=Math.min(1,F.t/T), e=k*k*(3-2*k);
     const x=lerp(F.from.x,F.to.x,e), z=lerp(F.from.z,F.to.z,e);
-    const early=F.release && k>.12 && Math.abs(x)<FIELD-2 && Math.abs(z)<FIELD-2 && z>PEN.z1+2 && !hazardAt(x,z) && clearOf(x,z,.4);
+    const early=F.release && k>.12 && fieldD(x,z)>1.5 && z>PEN.z1+2 && !hazardAt(x,z) && clearOf(x,z,.4);
     D.x=x; D.z=z; D.fy=Math.sin(k*Math.PI)*7; D.yaw+=dt*3;
     if(k>=1 || early){
       D.flying=false; D.fy=0; D.vx=D.vz=0; D.stunT=early?.15:.35; D.px=D.x; D.pz=D.z;
@@ -5101,7 +5680,7 @@ function sTaDa(){
 // throw a sheep somewhere safe (never into lava or off a cliff: that's not your fault)
 function safeLaunch(s,ang,sp){
   for(let k=0;k<12;k++){ const a=ang+k*.55*(k%2?1:-1), lx=s.x+Math.cos(a)*sp*.7, lz=s.z+Math.sin(a)*sp*.7;
-    if(!hazardAt(lx,lz) && Math.abs(lx)<FIELD-3 && Math.abs(lz)<FIELD-3 && lz>PEN.z1+2 && !(LEVEL.haz||[]).some(h=>Math.hypot(lx-h.x,lz-h.z)<h.r+2)){ ang=a; break; } }
+    if(!hazardAt(lx,lz) && fieldD(lx,lz)>3 && lz>PEN.z1+2 && !(LEVEL.haz||[]).some(h=>Math.hypot(lx-h.x,lz-h.z)<h.r+2)){ ang=a; break; } }
   s.vx=Math.cos(ang)*sp; s.vz=Math.sin(ang)*sp; s.flip=.6; s.boingCD=.6; s.fear=1; s.munch=0; s.thrownT=0; s.safeT=1.2;
 }
 function flockMid(){ const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried); if(!out.length) return {x:0,z:10,n:0}; let x=0,z=0; for(const s of out){x+=s.x;z+=s.z;} return {x:x/out.length,z:z/out.length,n:out.length}; }
@@ -5583,7 +6162,7 @@ function updateLevelFx(dt,time){
   for(const o of levelObjs){
     if(o.userData.sway!==undefined){ o.rotation.z=Math.sin(time*1.4+o.userData.sway)*.18; o.rotation.x=Math.cos(time*1.1+o.userData.sway)*.12; }
     if(o.userData.drift){ o.position.x+=Math.sin(time*.05)*o.userData.drift*dt; }
-    if(o.userData.tumble){ const t=o.userData.tumble; t.x+=t.sp*dt; if(t.x>FIELD+4){ t.x=-FIELD-4; t.z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-12); } o.position.set(t.x,groundH(t.x,t.z)+.7+Math.abs(Math.sin(time*4+t.z))*.4,t.z); o.rotation.z-=t.sp*dt*1.4; }
+    if(o.userData.tumble){ const t=o.userData.tumble; t.x+=t.sp*dt; if(t.x>FIELD+4){ t.x=-FIELD-4; t.z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-12); } o.position.set(t.x,groundH(t.x,t.z)+.7+Math.abs(Math.sin(time*4+t.z))*.4,t.z); o.visible=fieldD(t.x,t.z)>0; o.rotation.z-=t.sp*dt*1.4; }
     if(o.userData.smoke){ const S2=o.userData.smoke, k=(S2.k+time*.04)%1; o.position.set(S2.x+k*40+(S2.ox||0)*k*18,S2.y+k*90,S2.z+Math.sin(k*6)*8+(S2.oz||0)*k*18); o.scale.setScalar(.6+k*2.1); }
     if(o.userData.fish){ const f=o.userData.fish, a=time*f.sp+f.ph; o.position.set(f.cx+Math.cos(a)*f.r,groundH(f.cx,f.cz)+f.y+Math.sin(time*2+f.ph)*.3,f.cz+Math.sin(a)*f.r); o.rotation.y=-a; }
   }
@@ -5617,7 +6196,7 @@ function frameCam(cam,look,D,dt,aspect,first){
   const k=first?1:1-Math.exp(-dt*3), kh=first?1:1-Math.exp(-dt*1.8);
   look.x=lerp(look.x,ax,k); look.z=lerp(look.z,az,k); look.y=0;
   cam.userData.h=lerp(cam.userData.h||h,h,kh);
-  const H=cam.userData.h, gh=groundH(look.x,look.z);
+  const H=cam.userData.h, gh=clamp(groundH(look.x,look.z),-1.6,1.6);
   cam.position.set(look.x,gh+H,look.z+H*CAM_C);
   cam.lookAt(look.x,gh,look.z);
   if(G.shake>0){ cam.position.x+=(Math.random()-.5)*G.shake; cam.position.y+=(Math.random()-.5)*G.shake; }
@@ -5647,9 +6226,8 @@ function drawMinimap(time){
   const night=G.phase==='night';
   mx.clearRect(0,0,W,W);
   mx.fillStyle=night?'rgba(14,20,34,.82)':'rgba(24,36,24,.8)'; mx.fillRect(0,0,W,W);
-  mx.strokeStyle='rgba(244,234,210,.35)'; mx.lineWidth=2; mx.strokeRect(X(-FIELD),Y(-FIELD),2*FIELD*S,2*FIELD*S);
-  mx.fillStyle='rgba(0,0,0,.28)'; mx.fillRect(X(-FIELD),Y(-FIELD),2*FIELD*S,(PEN.z1+FIELD)*S);
-  mx.strokeStyle='rgba(244,234,210,.35)'; mx.beginPath(); mx.moveTo(X(-FIELD),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.moveTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(FIELD),Y(PEN.z1)); mx.stroke();
+  // the day's land (painted once per level by drawMinimapBg)
+  if(mmBg){ mx.globalAlpha=night?.55:.9; mx.imageSmoothingEnabled=true; mx.drawImage(mmBg,0,0,W,W); mx.globalAlpha=1; }
   mx.fillStyle='rgba(242,181,68,.28)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
   mx.strokeStyle='rgba(242,181,68,.9)'; mx.lineWidth=2;
   mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke();
@@ -5672,7 +6250,7 @@ function drawMinimap(time){
     mx.fillStyle=c.boss?'#ff2a1a':'#e2643f'; mx.beginPath(); const k=c.boss?2.4:c.alpha?1.6:1; mx.moveTo(cx,cy-5*k); mx.lineTo(cx+4.5*k,cy+4*k); mx.lineTo(cx-4.5*k,cy+4*k); mx.closePath(); mx.fill();
   }
   for(const p of powerups){ mx.fillStyle=p.type==='apple'?'#ff6b6b':p.type==='bone'?'#fff2c8':'#ffc061'; const px=X(p.x),py=Y(p.z),r=5+Math.sin(time*6)*1.2; mx.beginPath(); mx.moveTo(px,py-r); mx.lineTo(px+r,py); mx.lineTo(px,py+r); mx.lineTo(px-r,py); mx.closePath(); mx.fill(); }
-  mx.fillStyle='rgba(63,134,181,.85)'; mx.beginPath(); mx.arc(X(POND.x),Y(POND.z),POND.r*S,0,TAU); mx.fill();
+  mx.fillStyle='rgba(63,134,181,.85)'; mx.beginPath(); for(let i=0;i<=24;i++){ const a=i/24*TAU, rr=pondR(a), px=X(POND.x+Math.cos(a)*rr), py=Y(POND.z+Math.sin(a)*rr); if(i) mx.lineTo(px,py); else mx.moveTo(px,py); } mx.fill();
   for(const d of ducks){ mx.fillStyle=d.baby?'#ffd84a':'#ffffff'; mx.beginPath(); mx.arc(X(d.x),Y(d.z),d.baby?1.8:2.6,0,TAU); mx.fill(); }
   if(rascal.active){ mx.fillStyle='#d0904f'; mx.beginPath(); mx.arc(X(rascal.x),Y(rascal.z),3.5,0,TAU); mx.fill(); }
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
@@ -5761,7 +6339,7 @@ function step(dt){
     }
   }
   for(const D of dogs) updateDog(D,dt);
-  if(G.phase!=='title'){ for(const D of dogs) keepOnField(D); for(const sh of G.sheep) if(!sh.dead && !sh.penned && !sh.carried && !sh.grabbedBy) keepOnField(sh,1); }
+  if(G.phase!=='title'){ keepOnField(shep); for(const D of dogs) keepOnField(D); for(const sh of G.sheep) if(!sh.dead && !sh.penned && !sh.carried && !sh.grabbedBy) keepOnField(sh,1); }
   if(G.coop && (G.phase==='day'||G.phase==='night')){
     const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried);
     let fl=false;
