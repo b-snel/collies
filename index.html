@@ -3690,6 +3690,101 @@ function wolfUpdate(c,dt){
   }
   return true;
 }
+
+// ---------------- coyote pathfinding: A* over a 1 m grid of whatever blocks a coyote ----------------
+// Two grids: [0] a coyote on the prowl (hedges, maze, paddocks, gates, trees, rocks, the barn and the pond block it;
+// the land's edge and rivers don't) and [1] one hauling a sheep (the land's edge and the river banks block it too).
+// Walls are grown by the coyote's size, so a path through free cells never scrapes one. Rebuilt when the level's
+// walls change. A coyote that can see its target runs straight at it; otherwise it follows a path, cutting
+// corners wherever it can see past the next turn.
+const NAV={N:150,O:-75,sig:'',grid:[null,null],g:null,from:null,stamp:null,run:0,hp:null,hf:null};
+function navSig(){ return OBS.ver+':'+segs.length+':'+circles.length+':'+boxes.length+':'+POND.x+':'+POND.z+':'+POND.r+':'+(SEASON.frozen?1:0)+':'+(PZ.locked?1:0); }
+function navBuild(){
+  const N=NAV.N, O=NAV.O, R=1.05;
+  if(!NAV.g){ NAV.g=new Float32Array(N*N); NAV.from=new Int32Array(N*N); NAV.stamp=new Uint32Array(N*N); NAV.hp=new Int32Array(N*N*4); NAV.hf=new Float32Array(N*N*4); }
+  for(let k=0;k<2;k++){
+    const B=new Uint8Array(N*N), carry=k===1;
+    const mark=(x0,z0,x1,z1,fn)=>{ const i0=Math.max(0,Math.floor(x0-O)), i1=Math.min(N-1,Math.ceil(x1-O)), j0=Math.max(0,Math.floor(z0-O)), j1=Math.min(N-1,Math.ceil(z1-O));
+      for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++){ const q=j*N+i; if(!B[q] && fn(O+i+.5,O+j+.5)) B[q]=1; } };
+    for(const s of segs){
+      if(s.kind==='leaf') continue;
+      if(s.kind==='perim' && !carry && !(s.level && !s.edge)) continue;
+      if(s.kind==='river' && !carry) continue;
+      const abx=s.bx-s.ax, abz=s.bz-s.az, l2=abx*abx+abz*abz||1;
+      mark(Math.min(s.ax,s.bx)-R,Math.min(s.az,s.bz)-R,Math.max(s.ax,s.bx)+R,Math.max(s.az,s.bz)+R,(x,z)=>{ const u=clamp(((x-s.ax)*abx+(z-s.az)*abz)/l2,0,1); return Math.hypot(x-s.ax-abx*u,z-s.az-abz*u)<R; });
+    }
+    for(const c of circles){ const m=c.r+R; mark(c.x-m,c.z-m,c.x+m,c.z+m,(x,z)=>Math.hypot(x-c.x,z-c.z)<m); }
+    for(const b of boxes) mark(b.x0-R,b.z0-R,b.x1+R,b.z1+R,(x,z)=>Math.hypot(x-clamp(x,b.x0,b.x1),z-clamp(z,b.z0,b.z1))<R);
+    if(!SEASON.frozen && POND.r>0){ const m=POND.r*1.6+R; mark(POND.x-m,POND.z-m,POND.x+m,POND.z+m,(x,z)=>{ const dx=x-POND.x, dz=z-POND.z; return Math.hypot(dx,dz)<pondR(Math.atan2(dz,dx))+.75; }); }
+    NAV.grid[k]=B;
+  }
+}
+function navReady(){ const s=navSig(); if(s!==NAV.sig){ NAV.sig=s; navBuild(); } }
+const navCell=(x,z)=>{ const N=NAV.N; return clamp(Math.floor(z-NAV.O),0,N-1)*N+clamp(Math.floor(x-NAV.O),0,N-1); };
+function navFree(k,x,z){ const N=NAV.N, i=Math.floor(x-NAV.O), j=Math.floor(z-NAV.O); if(i<0||j<0||i>=N||j>=N) return true; return !NAV.grid[k][j*N+i]; }
+// can a coyote run straight from a to b? (the first and last stretch are let off: it may be brushing a wall already)
+function navLOS(k,x0,z0,x1,z1){
+  const d=Math.hypot(x1-x0,z1-z0), n=Math.ceil(d/.4);
+  for(let s=1;s<n;s++){ const u=s/n, w=u*d; if(w<1.1 || d-w<1.1) continue; if(!navFree(k,x0+(x1-x0)*u,z0+(z1-z0)*u)) return false; }
+  return true;
+}
+function navNearFree(k,q){
+  const N=NAV.N, B=NAV.grid[k]; if(!B[q]) return q; const i0=q%N, j0=(q/N)|0;
+  for(let r=1;r<6;r++) for(let dj=-r;dj<=r;dj++) for(let di=-r;di<=r;di++){ if(Math.max(Math.abs(di),Math.abs(dj))!==r) continue; const i=i0+di, j=j0+dj; if(i<0||j<0||i>=N||j>=N) continue; if(!B[j*N+i]) return j*N+i; }
+  return -1;
+}
+// A* from (x,z) to a goal cell or any cell where goalFn(x,z) holds; h(x,z) estimates the distance left. Returns waypoints [[x,z],...].
+function navPath(k,x,z,goalQ,goalFn,h){
+  const N=NAV.N, O=NAV.O, B=NAV.grid[k], g=NAV.g, from=NAV.from, st=NAV.stamp, hp=NAV.hp, hf=NAV.hf;
+  const s=navNearFree(k,navCell(x,z)); if(s<0) return null;
+  if(goalQ>=0){ goalQ=navNearFree(k,goalQ); if(goalQ<0) return null; }
+  const run=++NAV.run; let n=0;
+  const push=(q,f)=>{ let i=n++; while(i>0){ const p=(i-1)>>1; if(hf[p]<=f) break; hp[i]=hp[p]; hf[i]=hf[p]; i=p; } hp[i]=q; hf[i]=f; };
+  const pop=()=>{ const top=hp[0], q=hp[--n], f=hf[n]; let i=0; for(;;){ let c=2*i+1; if(c>=n) break; if(c+1<n && hf[c+1]<hf[c]) c++; if(hf[c]>=f) break; hp[i]=hp[c]; hf[i]=hf[c]; i=c; } hp[i]=q; hf[i]=f; return top; };
+  st[s]=run; g[s]=0; from[s]=-1; push(s,h(O+s%N+.5,O+((s/N)|0)+.5));
+  let end=-1, expanded=0;
+  while(n>0 && expanded<14000){
+    const q=pop(), qi=q%N, qj=(q/N)|0, qx=O+qi+.5, qz=O+qj+.5; expanded++;
+    if(q===goalQ || (goalFn && goalFn(qx,qz))){ end=q; break; }
+    const gq=g[q];
+    for(let dj=-1;dj<=1;dj++) for(let di=-1;di<=1;di++){
+      if(!di && !dj) continue; const i=qi+di, j=qj+dj; if(i<0||j<0||i>=N||j>=N) continue;
+      const r=j*N+i; if(B[r]) continue;
+      if(di && dj && (B[qj*N+i] || B[j*N+qi])) continue;          // no cutting a wall's corner
+      const ng=gq+(di&&dj?1.4142:1);
+      if(st[r]===run && g[r]<=ng) continue;
+      st[r]=run; g[r]=ng; from[r]=q; push(r,ng+h(O+i+.5,O+j+.5));
+    }
+  }
+  if(end<0) return null;
+  const path=[]; for(let q=end;q>=0 && q!==s;q=from[q]) path.push([O+q%N+.5,O+((q/N)|0)+.5]);
+  return path.reverse();
+}
+// follow (or re-plan) a coyote's path; returns a unit direction, or null when it can just run straight
+function navFollow(c,k,dt,plan){
+  let P=c.nav;
+  if(!P || P.k!==k || P.kind!==plan.kind || (P.t-=dt)<=0 || (plan.gx!==undefined && Math.hypot(P.gx-plan.gx,P.gz-plan.gz)>3)){
+    const path=navPath(k,c.x,c.z,plan.gx!==undefined?navCell(plan.gx,plan.gz):-1,plan.goal,plan.h);
+    P=c.nav={path:path||[],i:0,t:.55+Math.random()*.3,k,kind:plan.kind,gx:plan.gx,gz:plan.gz};
+  }
+  if(!P.path.length) return null;
+  for(let m=0;m<4 && P.i<P.path.length-1;m++){ const w=P.path[P.i+1]; if(navLOS(k,c.x,c.z,w[0],w[1])) P.i++; else break; }
+  const w=P.path[P.i]; let dx=w[0]-c.x, dz=w[1]-c.z, d=Math.hypot(dx,dz);
+  if(d<.7){ if(P.i<P.path.length-1){ P.i++; return navFollow(c,k,0,plan); } return null; }
+  return [dx/d,dz/d];
+}
+// steer at a point, round anything in the way
+function navTo(c,k,dt,tx,tz,kind){
+  navReady();
+  if(navLOS(k,c.x,c.z,tx,tz)){ c.nav=null; return null; }
+  return navFollow(c,k,dt,{kind,gx:tx,gz:tz,h:(x,z)=>Math.hypot(x-tx,z-tz)});
+}
+// head the way it wants (dirx,dirz) unless that's walled off within a few metres; then take a path to wherever goal() says
+function navOut(c,k,dt,dirx,dirz,kind,goal,h){
+  navReady();
+  if(navLOS(k,c.x,c.z,c.x+dirx*7,c.z+dirz*7) && (!c.nav || c.nav.kind!==kind || c.nav.clearT>.4)){ if(c.nav) c.nav.clearT=(c.nav.clearT||0)+dt; return null; }
+  const r=navFollow(c,k,dt,{kind,goal,h}); if(c.nav) c.nav.clearT=0; return r;
+}
 function updateCoyotes(dt){
   const PCZ=(PEN.z0+PEN.z1)/2;
   for(const c of G.coyotes){
@@ -3719,6 +3814,7 @@ function updateCoyotes(dt){
       const w=Math.sin(G.t*1.4+c.wob)*.7*Math.min(1,d/14), cs=Math.cos(w), sn=Math.sin(w);
       dirx=(dx*cs-dz*sn)/d; dirz=(dx*sn+dz*cs)/d;
       spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0)+coyoteBoost(G.day);
+      const nv=navTo(c,0,dt,t.x,t.z,'stalk'); if(nv){ dirx=nv[0]; dirz=nv[1]; }
       if(dd<5){ dirx+=ddx/dd*.6; dirz+=ddz/dd*.6; }
       if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; if(!sCoyote('yip',1.1)) sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
     } else if(c.state==='grab'){
@@ -3727,6 +3823,9 @@ function updateCoyotes(dt){
       else {
         // drag it away from the pen, toward the hills
         const dx=c.x, dz=c.z-PCZ, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d;
+        const nv=navOut(c,1,dt,dirx,dirz,'grab',(x,z)=>fieldD(x,z)<1.9,(x,z)=>Math.max(0,fieldD(x,z)-1.9));
+        if(nv){ dirx=nv[0]; dirz=nv[1]; }
+        else if(c.nav && c.nav.kind==='grab' && c.nav.path.length && fieldD(c.x,c.z)<3){ const e=.6, gx=fieldD(c.x+e,c.z)-fieldD(c.x-e,c.z), gz=fieldD(c.x,c.z+e)-fieldD(c.x,c.z-e), gl=Math.hypot(gx,gz)+1e-6; dirx=-gx/gl; dirz=-gz/gl; }   // at the end of its path: straight over the edge
         if(dd<6){ dirx+=ddx/dd*.5; dirz+=ddz/dd*.5; }
         spd=(c.boss?5.2:c.alpha?6.6:5.8)+coyoteBoost(G.day)*.5;
         if(fieldD(c.x,c.z)<1.2 || Math.max(Math.abs(c.x),Math.abs(c.z))>FIELD-1.8){     // reached the edge of the land with it
@@ -3735,11 +3834,14 @@ function updateCoyotes(dt){
       }
     } else if(c.state==='flee'){
       dirx=ddx/dd; dirz=ddz/dd; spd=11.5; c.fleeT-=dt;
+      { const nv=navTo(c,0,dt,c.x+dirx*12,c.z+dirz*12,'flee'); if(nv){ dirx=nv[0]; dirz=nv[1]; } }
       if(c.fleeT<=0) c.state=(G.phase==='night'||G.phase==='day')?'stalk':'retreat';
     } else if(c.state==='retreat'){
       const d=Math.hypot(c.x,c.z)+1e-6; dirx=c.x/d; dirz=c.z/d; spd=11;
+      { const nv=navOut(c,0,dt,dirx,dirz,'retreat',(x,z)=>fieldD(x,z)<-4,(x,z)=>Math.max(0,fieldD(x,z)+4)); if(nv){ dirx=nv[0]; dirz=nv[1]; } }
       if(d>FIELD+50 || (WALK_FLOOR>-1 && fieldD(c.x,c.z)<-5)){ c.gone=true; scene.remove(c.m.g); continue; }
     }
+    for(const o of G.coyotes){ if(o===c||o.gone||o.thrownT>0) continue; const ox=c.x-o.x, oz=c.z-o.z, od=Math.hypot(ox,oz); if(od<1.8 && od>1e-4){ dirx+=ox/od*(1.8-od)*.8; dirz+=oz/od*(1.8-od)*.8; } }
     const dl=Math.hypot(dirx,dirz); if(dl>1e-6){ dirx/=dl; dirz/=dl; }
     const a=1-Math.exp(-dt*6);
     c.vx+=(dirx*spd-c.vx)*a; c.vz+=(dirz*spd-c.vz)*a;
