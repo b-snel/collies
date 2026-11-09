@@ -395,6 +395,7 @@ button,input{touch-action:manipulation}</style>
       <span class="kb"><kbd>WASD</kbd>Move</span><span class="kb"><kbd>Shift</kbd>Run</span><span class="kb"><kbd>Space</kbd>Bark</span><span class="kb"><kbd>E</kbd>Punt</span><span class="kb"><kbd>C</kbd>Lie down</span><span class="kb"><kbd>R</kbd>Hold to grab</span>
       <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Punt</span><span class="gp"><kbd class="x">X</kbd>Lie down</span><span class="gp"><kbd class="pill">LT</kbd>Hold to grab</span>
     </div>
+    <div class="modeRow" role="group" aria-label="Difficulty"><button class="seg" id="hcBtn" type="button" aria-pressed="false">Hardcore: off</button><span class="small" id="hcHint" style="margin-left:10px;align-self:center">Lose a day and you replay it</span></div>
     <div class="modeRow" role="group" aria-label="Camera" id="camRow" hidden><button class="seg on" id="camSplit" type="button">Split screen</button><button class="seg" id="camShared" type="button">Shared camera</button></div>
     <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down, , grab. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button><button class="btn ghost" id="shedBtn" type="button">Shearing shed</button></div>
@@ -2038,6 +2039,9 @@ try{ const nm=localStorage.getItem('collieDuskName'); if(nm) $('dogName').value=
 let playerChoice=1;
 try{ playerChoice=+localStorage.getItem('collieDuskPlayers')||(localStorage.getItem('collieDuskCoop')==='1'?2:1); }catch(e){}
 // co-op camera: split screen (one view per dog) or one shared camera that zooms out to fit everyone. An experiment, so it's a toggle.
+// hardcore: losing a day sends you back to day 1 (normally you just replay the day)
+let hardcoreChoice=false; try{ hardcoreChoice=localStorage.getItem('collieDuskHardcore')==='1'; }catch(e){}
+function setHardcore(on){ hardcoreChoice=on; try{ localStorage.setItem('collieDuskHardcore',on?'1':'0'); }catch(e){} const b=$('hcBtn'); if(!b) return; b.textContent='Hardcore: '+(on?'on':'off'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); $('hcHint').textContent=on?'Lose a day and you start over from day 1':'Lose a day and you replay it'; }
 let sharedCamChoice=false; try{ sharedCamChoice=localStorage.getItem('collieDuskSharedCam')==='1'; }catch(e){}
 function setCamMode(sh){
   sharedCamChoice=sh; try{ localStorage.setItem('collieDuskSharedCam',sh?'1':'0'); }catch(e){}
@@ -2058,6 +2062,7 @@ function setMode(n){
     :'Player 1: WASD. Player 2: arrow keys (Enter bark, / punt). Players '+(n===3?'3':'3 and 4')+': plug in a controller each. With more controllers, they take over from the last player backwards.';
 }
 for(let k=1;k<=4;k++) $('mode'+k).addEventListener('click',()=>setMode(k));
+$('hcBtn').addEventListener('click',()=>setHardcore(!hardcoreChoice)); setHardcore(hardcoreChoice);
 $('camSplit').addEventListener('click',()=>setCamMode(false)); $('camShared').addEventListener('click',()=>setCamMode(true));
 setCamMode(sharedCamChoice);
 setMode(Math.min(4,Math.max(1,playerChoice)));
@@ -2358,7 +2363,8 @@ function startGame(fresh){
   if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   G.names=['dogName','dogName2','dogName3','dogName4'].map((id,i)=>{ const el=$(id), v=((el&&el.value.trim())||DEFAULT_NAMES[i]).slice(0,14); try{ localStorage.setItem('collieDuskName'+(i?i+1:''),v); }catch(e){} return v; });
   G.name=G.names[0]; G.name2=G.names[1];
-  if(fresh){ G.day=1; G.total=0; G.np=playerChoice; G.coop=G.np>1; RUN_SEED=(Math.random()*1e9)|0; }
+  if(fresh){ G.day=1; G.total=0; G.np=playerChoice; G.coop=G.np>1; G.hardcore=hardcoreChoice; RUN_SEED=(Math.random()*1e9)|0; }
+  G.dayStartTotal=G.total;          // a lost day is replayed from here (unless it's a hardcore run)
   const np=G.np||1;
   dogs=ALLDOGS.slice(0,np);
   ALLDOGS.forEach((D,i)=>D.m.g.visible=i<np);
@@ -2730,7 +2736,7 @@ function endDay(reason){
     before:["That'll do, "+N+".","Every sheep is in the fold with daylight to spare. The gate swings shut."],
     nightsafe:["Safe in the fold!","You got the last of them in under the moon, and the coyotes slink back to the trees."],
     dawn:["Morning!","You held off the coyotes until sunrise. Good dog, "+N+"."],
-    failed:["The farm's done for.","Too many sheep were lost. Start again from day 1. Your wool and upgrades are kept."],
+    failed:["The farm's done for.",G.hardcore?"Too many sheep were lost. Hardcore: start again from day 1. Your wool and upgrades are kept.":"Too many sheep were lost. Have another go at this day."],
     wiped:["The flock is gone.","The coyotes carried off every last one. Shake it off, "+N+", and try again."]
   })[reason];
   const stat=(v,l,c)=>`<div class="${c||''}"><b>${v}</b><span>${l}</span></div>`;
@@ -2744,7 +2750,7 @@ function endDay(reason){
     ? `<button class="btn" id="nextBtn" type="button">Shearing shed</button>`
     : `<button class="btn" id="nextBtn" type="button">${finale?'Keep herding':'Shearing shed'}</button><button class="btn ghost" id="againBtn" type="button">Restart</button>`;
   setTimeout(()=>{
-    showOverlay(`<span class="eyebrow">${over?"Game over · reached day "+G.day:trailStop(G.day)?'Day '+G.day+' · '+trailStop(G.day).place:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
+    showOverlay(`<span class="eyebrow">${over?(G.hardcore?"Game over · reached day "+G.day:'Day '+G.day+' lost'):trailStop(G.day)?'Day '+G.day+' · '+trailStop(G.day).place:"Day "+G.day}</span>${starsHtml}<h2>${T[0]}</h2>
       <div class="stats">${stat(penned,'Penned')}${stat(G.lost,'Lost',G.lost?'bad':'')}${stat(dayScore,'Score')}${stat(G.total,'Total','gold')}</div>
       ${G.coop?coopTable():''}
       <p class="woolLine">+${woolEarned} wool <span>· ${WOOL} to spend</span></p>
@@ -2752,7 +2758,7 @@ function endDay(reason){
       ${!over&&finale?`<p>The flock is home on the ranch at last. The trail's done, but there's always more herding. Hank has tall tales to tell.</p>`:''}
       ${!over&&!finale?(trailStop(G.day+1)?`${trailMap(G.day+1,true)}<p class="small">Tomorrow: ${trailStop(G.day+1).place}, ${trailStop(G.day+1).st}${NEW_ON[G.day+1]?' · New: '+NEW_ON[G.day+1]:''}</p>`:`<p class="small">Tomorrow: ${dayPlan(G.day+1)}</p>`):''}
       <div class="btnrow">${next}</div>`);
-    $('nextBtn').onclick=()=>openShop(()=>{ if(over) startGame(true); else { G.day++; startGame(false); } }, over?'Try again from day 1':'Start day '+(G.day+1));
+    $('nextBtn').onclick=()=>openShop(()=>{ if(over){ if(G.hardcore) startGame(true); else { G.total=G.dayStartTotal||0; startGame(false); } } else { G.day++; startGame(false); } }, over?(G.hardcore?'Try again from day 1':'Try day '+G.day+' again'):'Start day '+(G.day+1));
     const a=$('againBtn'); if(a) a.onclick=()=>startGame(true);
     $('touch').hidden=true;
   }, over?1400:1600);
