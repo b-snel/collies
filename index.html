@@ -3739,17 +3739,20 @@ function updateSheep(dt){
     // a sheep on its own heads back to the nearest flockmate
     if(!n && nb && !s.penned && !eating && !s.regBlocked){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
-    { const H=G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.35;
-      const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0;
-      if(!live || hd<8){ s.regBlocked=false; }
+    // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
+    { const H=G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6;
+      const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0, w=live?(1-(s.press||0)/.6)*(1-panic*.6):0;
+      if(!live || hd<6){ s.regBlocked=false; s.stray=false; }
       else {
+        s.stray=true;
         s.regT=(s.regT||0)-dt;
-        if(s.regT<=0){ s.regT=.35+Math.random()*.25; navReady(); s.regBlocked=!navLOS(1,s.x,s.z,H.x,H.z); }
-        if(s.regBlocked){ const v=navFollow(s,1,dt,{kind:'regroup',gx:H.x,gz:H.z,h:(x,z)=>Math.hypot(x-H.x,z-H.z)}); if(v){ const k=9*(1-panic*.6); fx+=v[0]*k; fz+=v[1]*k; } }
+        if(s.regT<=0){ s.regT=.3+Math.random()*.2; navReady(); s.regBlocked=!navLOS(1,s.x,s.z,H.x,H.z); }
+        if(s.regBlocked){ const v=navFollow(s,1,dt,{kind:'regroup',gx:H.x,gz:H.z,h:(x,z)=>Math.hypot(x-H.x,z-H.z)}); if(v){ const k=12*w; fx+=v[0]*k; fz+=v[1]*k; } }
+        else if(hd>9){ const k=Math.min(8,3+(hd-9)*.3)*w; fx+=(H.x-s.x)/hd*k; fz+=(H.z-s.z)/hd*k; }
       } }
     s.wt-=dt;
     if(s.wt<=0){ s.walking=Math.random()<.45; s.wa=Math.random()*TAU; s.wt=1.5+Math.random()*4; }
-    if(s.fear<.15 && s.walking && !steady && !eating){ fx+=Math.cos(s.wa)*1.3; fz+=Math.sin(s.wa)*1.3; }
+    if(s.fear<.15 && s.walking && !steady && !eating && !s.stray){ fx+=Math.cos(s.wa)*1.3; fz+=Math.sin(s.wa)*1.3; }
     if(G.ev && G.ev.kind==='sugar' && !s.penned){ fx+=Math.cos(s.wa+G.elapsed)*7; fz+=Math.sin(s.wa+G.elapsed)*7; }
     if(s.rainbow && !s.penned){ const ND2=nearestDog(s.x,s.z), rx=s.x-ND2.x, rz=s.z-ND2.z, rd=Math.hypot(rx,rz)+1e-6; if(rd<16){ fx+=rx/rd*(16-rd)*2.2; fz+=rz/rd*(16-rd)*2.2; } }
     if(G.gust>0 && !s.penned){ fx+=G.windX*.9; fz+=G.windZ*.9; }
@@ -3794,7 +3797,7 @@ function updateSheep(dt){
     { const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k; }
     const sheepHill=clamp(1-slopeAlong(s.x,s.z,s.vx,s.vz)*1.3,.6,1.3)*(LEVEL.theme==='sea'?.85:1);
     const twistV={giant:.85,tiny:1.15,speedy:1.3}[G.twist]||1;
-    let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; if(s.penned) maxV=1.3; if(s.regBlocked && !s.penned){ maxV=Math.max(maxV,3.8); if(Math.random()<dt*.12) sBleat(1.25+Math.random()*.2); }   // a stray trots back to the others, bleating for them
+    let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; if(s.penned) maxV=1.3; if((s.regBlocked||(s.stray && G.hub && Math.hypot(G.hub.x-s.x,G.hub.z-s.z)>12)) && !s.penned){ maxV=Math.max(maxV,3.8); if(Math.random()<dt*.12) sBleat(1.25+Math.random()*.2); }   // a stray trots back to the others, bleating for them
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     // the edge of lava or a cliff: a sheep stops and slides along it, unless a dog is driving it hard (or it's flying)
     if(!s.penned && (s.safeT>0 || (!s.hard && !(s.thrownT>0) && s.flip<=0))){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
