@@ -4976,8 +4976,8 @@ function setupPuzzle(){
       if(best) pts.push(best);
     }
     pts.forEach((g,k)=>{
-      const nx=k<pts.length-1?pts[k+1]:P, ux0=nx.x-g.x, uz0=nx.z-g.z, ul=Math.hypot(ux0,uz0)||1, ux=ux0/ul, uz=uz0/ul, px=-uz, pz=ux, gap=3.6, pl=3.2;
-      const G2={x:g.x,z:g.z,ax:g.x+px*gap,az:g.z+pz*gap,bx:g.x-px*gap,bz:g.z-pz*gap,passed:new Set(),done:false,k};
+      const nx=k<pts.length-1?pts[k+1]:P, ux0=nx.x-g.x, uz0=nx.z-g.z, ul=Math.hypot(ux0,uz0)||1, ux=ux0/ul, uz=uz0/ul, px=-uz, pz=ux, gap=4.6, pl=3.4;          // a wider gap: easier to thread the flock through
+      const G2={x:g.x,z:g.z,ux,uz,ax:g.x+px*gap,az:g.z+pz*gap,bx:g.x-px*gap,bz:g.z-pz*gap,passed:new Set(),done:false,k};
       const A=gateArt(pl,gap);
       for(const sd of [1,-1]){
         const ix=g.x+px*gap*sd, iz=g.z+pz*gap*sd, ox=g.x+px*(gap+pl)*sd, oz=g.z+pz*(gap+pl)*sd;
@@ -5028,16 +5028,26 @@ function objective(){
   return null;
 }
 const segHit=(ax,az,bx,bz,cx,cz,dx,dz)=>{ const d1x=bx-ax,d1z=bz-az,d2x=dx-cx,d2z=dz-cz,den=d1x*d2z-d1z*d2x; if(Math.abs(den)<1e-9) return false; const u=((cx-ax)*d2z-(cz-az)*d2x)/den, v=((cx-ax)*d1z-(cz-az)*d1x)/den; return u>=0&&u<=1&&v>=0&&v<=1; };
+// a raddle mark: a splotch of blue paint on a sheep's back once it's been through the current gate
+const PAINT={geo:new THREE.SphereGeometry(.42,12,8),mat:new THREE.MeshStandardMaterial({color:0x1f6dff,roughness:.9,emissive:0x0a2a88,emissiveIntensity:.6})};
+function paintSheep(s,on){ if(!s.m) return; if(on && !s.m.paint){ const m=new THREE.Mesh(PAINT.geo,PAINT.mat); m.position.set(0,1.82,-.05); m.scale.set(1.1,.3,1.3); s.m.body.add(m); s.m.paint=m; } if(s.m.paint) s.m.paint.visible=on; }
 function updatePuzzle(dt){
-  const flock=G.sheep.filter(s=>!s.dead && !s.bonus), need=Math.max(1,Math.ceil(flock.length*.6));
+  const flock=G.sheep.filter(s=>!s.dead && !s.bonus), need=Math.max(1,Math.ceil(flock.length*.5));
   PZ.need=need;
   if(PZ.type==='gates' && PZ.locked && (G.phase==='day'||G.phase==='night')){
     const g=PZ.gates[PZ.cur];
     if(g){
-      for(const s of flock){ if(s.penned||s.carried) continue; if(s.ox!==undefined && !g.passed.has(s) && segHit(s.ox,s.oz,s.x,s.z,g.ax,g.az,g.bx,g.bz)){ g.passed.add(s); sBell(); } }
+      for(const s of flock){ if(s.penned||s.carried) continue;
+        if(s.ox!==undefined && !g.passed.has(s) && segHit(s.ox,s.oz,s.x,s.z,g.ax,g.az,g.bx,g.bz)){ g.passed.add(s); sBell(); paintSheep(s,true); popText(s.x,2.2,s.z,'✓','green'); }
+        // unmarked sheep near the gate get drawn into the gap; marked ones are nudged on so they don't drift back through
+        const dx=g.x-s.x, dz=g.z-s.z, d=Math.hypot(dx,dz)+1e-6;
+        if(!g.passed.has(s)){ if(d<9 && s.flip<=0){ const k=1-d/9; s.vx+=dx/d*k*9*dt; s.vz+=dz/d*k*9*dt; } }
+        else if(d<5){ const sd=((s.x-g.x)*g.ux+(s.z-g.z)*g.uz)>=0?1:-1, k=1-d/5; s.vx+=g.ux*sd*k*7*dt; s.vz+=g.uz*sd*k*7*dt; }
+      }
       g.fill.scale.z=Math.max(.001,Math.min(1,g.passed.size/need));
       if(g.passed.size>=need){
         g.done=true; g.fill.material.color.setHex(0x7bd65a); burst(g.x,2.4,g.z,50,PC.confetti,5,6); sChime();
+        for(const s of G.sheep) paintSheep(s,false);      // the paint washes off, ready for the next gate
         PZ.cur++;
         if(PZ.cur>=PZ.gates.length) unlockPen(); else { popText(g.x,3.6,g.z,'GATE '+(g.k+1)+'!','gold'); shepSay("That's one!",true); }
       }
@@ -5815,7 +5825,7 @@ function drawMinimap(time){
   if(PZ.locked){ mx.strokeStyle='#ff6b5a'; mx.lineWidth=3; mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke(); }
   for(const s of G.sheep){
     if(s.dead) continue;
-    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
+    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : (PZ.locked && PZ.gates[PZ.cur] && PZ.gates[PZ.cur].passed.has(s)) ? '#5aa8ff' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
     mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.lamb?2.5:s.penned?3:4,0,TAU); mx.fill();
   }
   for(const c of G.coyotes){
