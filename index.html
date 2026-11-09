@@ -6642,12 +6642,12 @@ function reachable(x,z){ if(!reachGrid) return true; const i=Math.floor((x+FIELD
 
 // ---------------- contraptions: the seesaw up the cliff, and bales you can roll ----------------
 // The seesaw cliff (a day's puzzle, like the trial gates or the weigh-in): the pen sits up on a plateau with a rock face
-// across the whole field that the flock can't climb. At its foot a big seesaw waits between two fences that funnel the
-// sheep onto its low end. Pounce (punt) onto the high end and everything on the low end shoots up into the clouds in a
+// across the whole field that the flock can't climb. At its foot a big seesaw waits in an open (fenceless) funnel that
+// draws the sheep onto its low end. Pounce (punt) onto the high end and everything on the low end shoots up into the clouds in a
 // trail of stars, hangs there a beat, pops a parachute and floats down onto the plateau, then trots into the pen on its
 // own. It's meant to be easy: every launched sheep lands safely up top. Dogs scramble up and down the rock as they like
 // (and ride the seesaw too, if a partner pounces). plateauPrep/plateauRaise shape the land as the level is built;
-// placeSeesawCliff puts in the rock face, the seesaw, the fences and the sign.
+// placeSeesawCliff puts in the rock face, the seesaw and the sign.
 // Bales: round bales lying about the field (hay on the farm; tumbleweed, coral, moon rock, basalt or a cloud elsewhere).
 // Walk into one to roll it, punt it to send it trundling, or grab it to drag it. They block sheep and coyotes alike
 // (a bale in a hedge gap turns the coyotes' path around it). placeBales puts them out.
@@ -6731,6 +6731,18 @@ function ctArt(){
     arrow:new THREE.ConeGeometry(.5,.9,4).rotateX(Math.PI), arrowM:mat(PAL.gold,{emissive:PAL.gold,emissiveIntensity:.45})};
   return CT_ART;
 }
+// which button launches it, for whatever the player is holding: B on a controller, the Punt button on a touch screen, E on a keyboard
+const puntKey=()=>document.body.classList.contains('pad')?'B':document.body.classList.contains('touch')?'PUNT':'E';
+const PUNT_BADGE={};
+function puntBadgeMat(k){
+  if(PUNT_BADGE[k]) return PUNT_BADGE[k];
+  const c=document.createElement('canvas'); c.width=256; c.height=128; const x=c.getContext('2d'), w=k.length>1?236:120, cx=128, cy=64;
+  const pill=(hw,r)=>{ x.beginPath(); x.arc(cx-hw+r,cy,r,Math.PI/2,Math.PI*1.5); x.arc(cx+hw-r,cy,r,-Math.PI/2,Math.PI/2); x.closePath(); x.fill(); };
+  x.fillStyle='rgba(18,26,21,.85)'; pill(w/2+4,60);
+  x.fillStyle=k==='B'?'#d9443b':k==='E'?'#e84a3a':'#f2e6c8'; pill(w/2-4,52);
+  x.fillStyle=k==='PUNT'?'#1b231e':'#fff'; x.font='bold '+(k.length>1?54:76)+'px sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(k,cx,cy+4);
+  return PUNT_BADGE[k]=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true});
+}
 function makeSeesaw(x,z,ang){
   const A=ctArt(), g=new THREE.Group(), gy=groundH(x,z);
   g.position.set(x,gy,z); g.rotation.y=ang; g.scale.set(SEE_SX,SEE_SY,SEE_SZ);
@@ -6740,12 +6752,12 @@ function makeSeesaw(x,z,ang){
   addOutline(g,.03);
   addObj(g);
   const arrow=addObj(new THREE.Mesh(A.arrow,A.arrowM)); arrow.visible=false; addOutline(arrow,.03);
+  const badge=addObj(new THREE.Sprite(puntBadgeMat(puntKey()))); badge.scale.set(2.4,1.2,1); badge.renderOrder=5; badge.visible=false;
   // k: +1 with the cliff end down. The cliff end is weighted, so it always settles back that way after a launch.
-  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
+  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,badge,remT:0,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
 }
-// the rock face, the seesaw, the funnel fences and the sign (from setupDay, once the level is built; its own seeded RNG)
-// the funnel's two fence runs on side sd: [rail beside the plank, flaring wing]
-const FUNNEL=(sx,zc,W,L,sd)=>[[sx+sd*(W/2+.7),zc+.2,sx+sd*(W/2+1.6),zc+2*L+.2],[sx+sd*(W/2+1.6),zc+2*L+.2,sx+sd*15,zc+2*L+6.5]];
+// the rock face, the seesaw and the sign (from setupDay, once the level is built; its own seeded RNG)
+// the funnel's half-width at z: narrow beside the plank, flaring wide out in front of it (open ground, no fences)
 const funnelHW=(S,z)=>{ const zc=LEVEL.plat.zc, a=zc+.2, b=zc+2*S.L+.2, c=zc+2*S.L+6.5; return z<b?lerp(S.W/2+.7,S.W/2+1.6,(z-a)/(b-a)):lerp(S.W/2+1.6,15,(z-b)/(c-b)); };
 function placeSeesawCliff(){
   const P=LEVEL.plat; if(!P) return;
@@ -6768,13 +6780,9 @@ function placeSeesawCliff(){
   if(best===null) best=0;
   const sx=best, sz=zc+.9+L, S=makeSeesaw(sx,sz,Math.PI);       // ang=PI: its +u end points at the cliff
   CT.see.push(S);
-  // a fence each side to funnel the flock onto the low end: a short rail beside the plank, then a wing flaring out wide,
-  // so a flock driven at the cliff anywhere near it ends up in the funnel rather than sliding along the outside of it
-  for(const sd of [-1,1]) for(const [ax,az,bx,bz] of FUNNEL(sx,zc,S.W,L,sd)){
-    const len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/3)), ang=Math.atan2(bx-ax,bz-az);
-    segs.push({ax,az,bx,bz,kind:'perim',level:true});
-    for(let i=0;i<n;i++){ const f=(i+.5)/n; wallPiece(LEVEL.theme==='sea'?'coral':'fence',lerp(ax,bx,f),lerp(az,bz,f),len/n,ang); }
-  }
+  // no fences round it: they made a pocket against the rock face that sheep got stuck behind. The funnel is an open,
+  // invisible one now (ctInFunnel): a sheep that strays into the wedge in front of the plank is committed and files down
+  // onto the low end, and mouthPull draws calm sheep towards it from further out
   // the sign, up on the edge of the plateau where the flock can see it
   const sg=addObj(new THREE.Mesh(ctArt().sign,ctArt().m)); sg.position.set(sx,groundH(sx,zc-1.6),zc-1.6); sg.castShadow=true; addOutline(sg,.04);
   hideGrass((x,z)=>Math.abs(x-sx)<S.W/2+1 && z>zc && z<zc+2*L+1.5);
@@ -6898,7 +6906,7 @@ function homeForce(s){
   s.fear=Math.max(s.fear,.32);
   return [dx/d*18,dz/d*18];
 }
-// in the funnel between the seesaw's fences: those sheep are committed. They file down onto the low end and wait there
+// in the funnel in front of the seesaw: those sheep are committed. They file down onto the low end and wait there
 // (they don't wander back out to the flock), so you can load a few, fetch more, and launch them all at once
 function ctInFunnel(x,z){
   const S=CT.see[0], P=LEVEL.plat; if(!S||!P) return false;
@@ -6961,7 +6969,11 @@ function updateContraptions(dt){
     const rate=S.snap>0?16:2.2; S.snap=Math.max(0,S.snap-dt);
     S.k+=clamp(S.kT-S.k,-rate*dt,rate*dt);
     // hint: the first time a dog comes near one
-    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<12)){ CT.told.hint=1; toast('Load them on, punt the high end!','gold',3.5); }
+    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<12)){ CT.told.hint=1; S.remT=8; toast('Load them on, then press '+puntKey()+' on the high end to launch them!','gold',5); }
+    // a reminder while sheep sit waiting on the low end and a dog's close by, until the first launch
+    S.remT=Math.max(0,S.remT-dt);
+    if(playing && CT.told.hint && !S.launches && S.remT<=0 && S.k>.5 && S.on.some(o=>!o.dog && o.p>-.3) && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<10)){
+      S.remT=10; toast('Press '+puntKey()+' on the high end to launch them!','gold',4); }
   }
   // ---- bales ----
   for(const b of CT.bales){
@@ -7059,6 +7071,9 @@ function syncContraptions(dt,time){
     const ux=Math.sin(S.ang), uz=Math.cos(S.ang), load=S.on.some(o=>!o.dog && o.p>-.3);
     S.arrow.visible=G.phase!=='title' && load && S.cd<=0 && S.k>.5;
     if(S.arrow.visible){ const ex=S.x-ux*(S.L-1), ez=S.z-uz*(S.L-1); S.arrow.position.set(ex,ctPlankY(S,-(S.L-1))+1.4+Math.abs(Math.sin(time*5))*.5,ez); S.arrow.rotation.y=time*2; }
+    // and the button that launches them, floating over the arrow ("B" on a controller)
+    S.badge.visible=S.arrow.visible;
+    if(S.badge.visible){ const m=puntBadgeMat(puntKey()); if(S.badge.material!==m) S.badge.material=m; S.badge.position.set(S.arrow.position.x,S.arrow.position.y+1.6,S.arrow.position.z); }
   }
   for(const b of CT.bales){
     if(b.gone) continue;
