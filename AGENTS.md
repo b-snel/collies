@@ -1,4 +1,9 @@
-# Demo slice
+# Demo slice: <idea>
+
+> **This is the template.** If you are on `template/demo-slice` itself, don't
+> build anything here. Start a demo by branching off it as
+> `demo-slice/<idea>`, then fill in this file and delete this note. Change
+> the template only when the user asks to.
 
 This branch is a **demo slice**: a clean-slate prototype for trying one
 focused idea in isolation. Everything from `main` was deleted on purpose. See
@@ -16,14 +21,12 @@ focused idea in isolation. Everything from `main` was deleted on purpose. See
 
 ## The idea
 
-Not chosen yet. Replace this with one or two sentences once the user picks
-one.
+<one or two sentences>
 
 ## How to run
 
-Nothing here yet.
+<e.g. open index.html, or `python3 -m http.server` and visit localhost:8000>
 
 ## Notes for porting
 
-Nothing yet. Record what worked, key decisions, gotchas and what the main game
-needs to change.
+<what worked, key decisions, gotchas, what the main game needs to change>
