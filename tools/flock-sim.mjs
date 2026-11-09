@@ -11,11 +11,14 @@
 import { open } from './harness.mjs';
 const args = process.argv.slice(2);
 const ti = args.indexOf('--trials'); const trials = ti >= 0 ? +args[ti + 1] : 3;
-let names = args.filter((a, i) => !a.startsWith('--') && (ti < 0 || i !== ti + 1));
+// --set key=value (repeatable) overrides a T number for every scenario, e.g. --set denShow=0
+const sets = {}; args.forEach((a, i) => { if (a === '--set') { const [k, v] = args[i + 1].split('='); sets[k] = +v; } });
+let names = args.filter((a, i) => !a.startsWith('--') && (ti < 0 || i !== ti + 1) && args[i - 1] !== '--set');
 const ALL = ['drive', 'sprint', 'gatebot', 'critical', 'criticalControl', 'criticalHungry', 'corner', 'ram', 'calm', 'day1'];
 if (!names.length || names.includes('all')) names = ALL;
 
 const h = await open({ query: '?sim&debug' });
+await h.page.evaluate(sets => Object.assign(GAME.T, sets), sets);
 await h.page.evaluate(() => {
   const { G, T, step, pens, CAMPS, pathPoint, sAt, sdfAt, toggleGate, setGate } = GAME;
   const R = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }, F = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 };
@@ -233,7 +236,9 @@ await h.page.evaluate(() => {
       gateBot(fetchStage ? { gx: stX, gz: stZ } : c1, { list: grp, back: 5 });
     };
     const log = [];
+    let awake = 0, cNear = 1e9;   // den coyotes woken during the drive, and how close any came to the flock
     while (G.clock.hour < 20.5 && G.clock.day === 1) {
+      { const st = stats(); for (const c of G.coyotes) if (c.state !== 'sleep') { awake = Math.max(awake, G.coyotes.filter(o => o.state !== 'sleep').length); cNear = Math.min(cNear, Math.hypot(c.x - st.x, c.z - st.z)); } }
       const st = stats(live());
       if (phase === 'open0') { if (pressGate(c0, true)) phase = 'out'; }
       else if (phase === 'out') { const w = pathPoint(30, 2); goTo(w.x, w.z); if (live().filter(s => s.pen === c0).length === 0 || G.clock.hour > 9.5) phase = 'drive'; }
@@ -249,7 +254,7 @@ await h.page.evaluate(() => {
       if (Math.round(t * 40) % (40 * 10) === 0) log.push(`${G.clock.hour.toFixed(1)}h ${phase} s=${Math.round(sAt(st.x, st.z))} rms=${st.rms.toFixed(1)} str=${st.stress.toFixed(2)}`);
       if (phase === 'done' && G.clock.hour > 20.4) break;
     }
-    return { fetched: restaged, arriveHour: r2(arrive), allInHour: r2(allIn), closedHour: r2(closed), penned: live().filter(s => s.pen === c1).length, of: live().length, spareSec: closed > 0 ? Math.round((20.5 - closed) * T.hourSec) : null, log: log.filter((_, i) => i % 3 === 0) };
+    return { coyotesWoke: awake, coyoteNearestFlock: cNear < 1e9 ? r2(cNear) : null, fetched: restaged, arriveHour: r2(arrive), allInHour: r2(allIn), closedHour: r2(closed), penned: live().filter(s => s.pen === c1).length, of: live().length, spareSec: closed > 0 ? Math.round((T.nightStart - closed) * (T.day1HourSec || T.hourSec)) : null, log: log.filter((_, i) => i % 3 === 0) };
   };
   window.SCN = SCN; window.H = { reset, move, goTo, tick, stats, place, pressGate, gateBot, driveBot, live, free, P, D };
 });
