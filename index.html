@@ -481,6 +481,7 @@ const UPGRADES=[
   {id:'nose',   name:'Keen nose',         max:2, cost:[15,35],    desc:'Golden bones on the minimap, then +3 wool each'},
   {id:'whistle',name:"Shepherd's whistle",max:1, cost:[60],       desc:'LB / Q: steady every sheep nearby', ability:true},
   {id:'llama',  name:'Guard llamas',      max:3, cost:[90,110,140], desc:'Each level adds a llama that patrols and spits at coyotes', ability:true},
+  {id:'scarecrow',name:'Scarecrow',       max:2, cost:[50,85],    desc:'Rides on the bell ewe: falcons won\'t take a sheep near her (further at level 2)', ability:true},
 ];
 const stunMul=()=>1-.3*lv('collar');
 const barkMul=()=>1+.15*lv('bark');
@@ -952,7 +953,7 @@ const JR={cal:1,camp:false,campDays:0,campNights:0,born:0,lostTotal:0,legNights:
 const SEASON_DAYS=7, CAMP_DAY=56, CAMP_NIGHT=34, GEST=3, GROW=6, FLOCK_CAP=48;
 const calSeason = c => ['spring','summer','autumn','winter'][Math.floor((Math.max(1,c)-1)/SEASON_DAYS)%4];
 const daysToNextSeason = c => SEASON_DAYS-((Math.max(1,c)-1)%SEASON_DAYS);
-const seasonOf = d => { const L=levelOf(d); return (L.theme!=='farm' && L.season) || calSeason(JR.cal); };   // themed worlds bring their own weather; farmland follows the calendar
+const seasonOf = d => { const L=levelOf(lvl(d)); return (L.theme!=='farm' && L.season) || calSeason(JR.cal); };   // themed worlds bring their own weather; farmland follows the calendar
 let SEASON=SEASONS.spring;
 const dayLen = d => JR.camp ? CAMP_DAY : Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockMul = n => 1 + n/10;    // the final score: every sheep you bring to Oregon adds a tenth to the multiplier
@@ -976,6 +977,14 @@ const TRAIL=[
   {place:'The Oregon Coast',st:'OR',lon:-123.9,lat:45.6,theme:'farm',season:'spring',puzzle:'scale',special:'coast',blurb:'The ranch at last! The buyer wants the flock weighed before they go in the new barn.'}
 ];
 const trailStop=d=>TRAIL[d-1]||null;
+// The road west, with Hank's tall tales told along the way: which level each leg of the journey is. The trail's stops keep
+// their order (Oregon last), and the tall tales (levels 11-14) come in between; past Oregon, more tall tales. What a stretch
+// is (its land, its seed, its name, its homestead) comes from its level; how hard it is comes from how far along the leg is.
+const ROUTE=[1,2,3,11,4,5,12,6,7,13,8,9,14,10];
+const lvl=leg=>leg>=1&&leg<=ROUTE.length?ROUTE[leg-1]:leg;
+const FINAL_LEG=ROUTE.indexOf(TRAIL.length)+1;
+// the last stop on the real trail reached by a leg (for the map)
+function lastStop(leg){ if(leg>ROUTE.length) return TRAIL.length; let s=1; for(let i=1;i<=leg;i++) if(lvl(i)<=TRAIL.length) s=lvl(i); return s; }
 // a cartoon map of the lower 48 with the route drawn on it
 const US_OUTLINE=[[-124.7,48.4],[-124,46.3],[-124.1,43],[-124.2,41.9],[-123.8,39.8],[-122.4,37.8],[-120.6,34.6],[-117.1,32.5],[-114.7,32.7],[-111,31.3],[-108.2,31.3],[-106.5,31.8],[-104.5,29.6],[-103,29],[-101.4,29.8],[-99.5,27.5],[-97.4,25.9],[-97.2,27.8],[-95,29.3],[-93.8,29.7],[-90.4,29.1],[-89.2,30.3],[-87.5,30.3],[-85.4,29.7],[-84,30.1],[-82.7,28.5],[-82.1,26.5],[-80.9,25.2],[-80.1,26.4],[-80.6,28.4],[-81.3,30.7],[-80.9,32.1],[-79,33.7],[-77.9,34],[-75.5,35.2],[-76.3,36.9],[-75.9,38],[-75,38.8],[-74,40.5],[-72,41],[-70,41.6],[-70.6,42.6],[-70.8,43.2],[-70,43.8],[-67,44.8],[-67.8,47.1],[-69.2,47.4],[-70.6,45.5],[-74.7,45],[-76.4,44.2],[-79,43.3],[-79.2,42.6],[-82.5,41.7],[-83.1,42.3],[-82.4,43],[-82.5,45.3],[-84.1,46.5],[-88.4,48.3],[-89.6,48],[-95.2,49],[-123.3,49],[-122.8,48.9]];
 const mapX=lon=>((lon+126)/60*1000).toFixed(1), mapY=lat=>((50-lat)/26*600).toFixed(1);
@@ -1007,11 +1016,6 @@ const HATS=[{id:'none',name:'No hat',need:0},{id:'bandana',name:'Bandana',need:3
 function dayNews(d){
   if(bossNight(d)) return 'A wolf comes tonight!';
   return ({2:'Big coyote tonight. Clover too.', 3:'Two rams. Bigger raids.', 4:'Two big coyotes.', 5:'Three rams.', 6:'Three big coyotes.'})[d] || (d>6?'Bolder every night.':'');
-}
-function dayPlan(d){
-  const c=coyoteCount(d)+raidTotal(d), r=ramCount(d);
-  const Lv=levelOf(d);
-  return (NEW_ON[d]?'New: '+NEW_ON[d]+' · ':'')+Lv.name+(Lv.theme==='farm'?' · '+SEASONS[seasonOf(d)].label:'')+(Lv.twist?' · '+TWISTS[Lv.twist]:'')+' · '+c+' coyotes';
 }
 
 // ---------------- noise ----------------
@@ -2833,27 +2837,28 @@ function setupDay(mode){ clearAnimals(); buildLeg(G.day,mode||'scatter'); }
 // build a stretch of the trail: the land and everything on it. On a 'swap' (walking on up the lane into it) the flock, the
 // dogs, the clock and the weather carry on as they are; otherwise the flock is put out ('scatter', 'trail' or 'pen')
 function buildLeg(d,mode){
-  const swap=mode==='swap';
+  const swap=mode==='swap', id=lvl(d);
   JR.restT=0; G.ff=1; G.saidFew=false;
   const sky0=swap?[C_DAY.clone(),H_DAY.clone(),HG_DAY.clone()]:null;
   applySeason(seasonOf(d));
   if(sky0) G.skyBlend={t:0,from:sky0,to:[C_DAY.clone(),H_DAY.clone(),HG_DAY.clone()]};        // the sky eases into the new country's colours
-  seeded(d,1,()=>buildLevel(levelOf(d)));
-  seeded(d,8,placeContraptions);          // the seesaw cliff, before anything else is placed (so nothing spawns under the plank)
-  setHome(homeKind(d));
+  seeded(id,1,()=>buildLevel(levelOf(id)));
+  seeded(id,8,placeContraptions);          // the seesaw cliff, before anything else is placed (so nothing spawns under the plank)
+  setHome(homeKind(id));
   G.penned=0; G.lost=0; G.combo=0; G.lastPen=-99; G.celebrate=0; clearPowers();
   if(!swap){ G.t=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0; G.score=0; for(const D of ALLDOGS){ D.appleT=0; D.lanternT=0; } }
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
   // everything laid out on the land is part of the level too: the same every time this leg is played (the flock is yours)
   if(!swap) resetDog();
-  clearClover(); seeded(d,2,()=>spawnClover(cloverCount(d)));
-  if(d>=UNLOCK.bones) seeded(d,3,spawnGoldBones); else clearGoldBones();
-  seeded(d,4,placeShroom);
-  if(!swap) seeded(d,5,()=>spawnFlock(G.roster||newRoster(d),mode));
-  seeded(d,6,setupPuzzle);
-  seeded(d,7,setupCougar);
-  seeded(d,9,placeBales);
+  clearClover(); seeded(id,2,()=>spawnClover(cloverCount(d)));
+  if(d>=UNLOCK.bones) seeded(id,3,spawnGoldBones); else clearGoldBones();
+  seeded(id,4,placeShroom);
+  if(!swap) seeded(id,5,()=>spawnFlock(G.roster||newRoster(d),mode));
+  seeded(id,6,setupPuzzle);
+  seeded(id,7,setupCougar);
+  seeded(id,9,placeBales);
   if(!swap && G.trailHead) dogsToTrail();
+  if(mode==='pen') for(const D of dogs){ D.z=PEN.z1+7; }        // back at camp: the dogs are by the gate
   if(d>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(d-1)*4);
@@ -3113,7 +3118,7 @@ function konamiStep(tok){
 G.dev=false; try{ G.dev=localStorage.getItem('collieDuskDev')==='1'; }catch(e){}
 function openDev(){
   sChime&&sChime();
-  const days=[]; for(let d=1;d<=14;d++){ const s=trailStop(d); days.push(`<button class="btn ghost" type="button" data-day="${d}">Leg ${d} · ${s?s.place:'Tall tale'}</button>`); }
+  const days=[]; for(let d=1;d<=ROUTE.length+2;d++){ const s=trailStop(lvl(d)); days.push(`<button class="btn ghost" type="button" data-day="${d}">Leg ${d} · ${s?s.place:'Tall tale'}</button>`); }
   $('devSign').innerHTML=`<span class="eyebrow">Dev menu</span><h2>Jump to a leg</h2><div class="devGrid">${days.join('')}</div>
     <div class="btnrow"><button class="btn ghost" id="devTools" type="button">Dev tools in pause menu: ${G.dev?'on':'off'}</button><button class="btn" id="devClose" type="button">Close</button></div>
     <p class="small">Uses the players, Hardcore and camera settings from the title screen.</p>`;
@@ -3139,7 +3144,7 @@ function setPause(p){
   if(G.phase!=='day' && G.phase!=='night') return;
   G.paused=p;
   if(p){
-    showOverlay('<h2>Paused</h2>'+(G.day<=TRAIL.length?trailMap(G.day,true):'')+controlsHTML()+'<div id="pauseOpts" hidden><div class="vols" id="pauseVols"></div><div class="btnrow"><button class="btn ghost" id="bubPause" type="button">Hank\'s bubbles: '+(bubblesOn?'on':'off')+'</button>'+(G.coop?'<button class="btn ghost" id="camBtn" type="button">Camera: '+(G.sharedCam?'Shared':'Split screen')+'</button>':'')+'</div></div><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="pShedBtn" type="button">Shearing shed</button><button class="btn ghost" id="pOptBtn" type="button">Options</button><button class="btn ghost" id="quitBtn" type="button">New journey</button></div>'+(G.dev?'<div class="btnrow" id="devRow"><span class="eyebrow" style="width:100%">Dev</span><button class="btn ghost" type="button" data-dev="win">Pen them all</button><button class="btn ghost" type="button" data-dev="night">Skip to night</button><button class="btn ghost" type="button" data-dev="morn">Skip to morning</button><button class="btn ghost" type="button" data-dev="lamb">Lambs due</button><button class="btn ghost" type="button" data-dev="weak">Weaken flock</button><button class="btn ghost" type="button" data-dev="coy">Coyotes</button><button class="btn ghost" type="button" data-dev="surprise">Surprise</button><button class="btn ghost" type="button" data-dev="mad">Mad sheep</button><button class="btn ghost" type="button" data-dev="stam">Endless stamina: '+(G.devStam?'on':'off')+'</button></div>':''));
+    showOverlay('<h2>Paused</h2>'+(G.day<=FINAL_LEG?trailMap(lastStop(G.day),true):'')+controlsHTML()+'<div id="pauseOpts" hidden><div class="vols" id="pauseVols"></div><div class="btnrow"><button class="btn ghost" id="bubPause" type="button">Hank\'s bubbles: '+(bubblesOn?'on':'off')+'</button>'+(G.coop?'<button class="btn ghost" id="camBtn" type="button">Camera: '+(G.sharedCam?'Shared':'Split screen')+'</button>':'')+'</div></div><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="pShedBtn" type="button">Shearing shed</button><button class="btn ghost" id="pOptBtn" type="button">Options</button><button class="btn ghost" id="quitBtn" type="button">New journey</button></div>'+(G.dev?'<div class="btnrow" id="devRow"><span class="eyebrow" style="width:100%">Dev</span><button class="btn ghost" type="button" data-dev="win">Pen them all</button><button class="btn ghost" type="button" data-dev="night">Skip to night</button><button class="btn ghost" type="button" data-dev="morn">Skip to morning</button><button class="btn ghost" type="button" data-dev="lamb">Lambs due</button><button class="btn ghost" type="button" data-dev="weak">Weaken flock</button><button class="btn ghost" type="button" data-dev="coy">Coyotes</button><button class="btn ghost" type="button" data-dev="surprise">Surprise</button><button class="btn ghost" type="button" data-dev="mad">Mad sheep</button><button class="btn ghost" type="button" data-dev="stam">Endless stamina: '+(G.devStam?'on':'off')+'</button></div>':''));
     document.querySelectorAll('#devRow [data-dev]').forEach(b=>b.onclick=()=>devAct(b.dataset.dev));
     volSliders($('pauseVols'));
     $('pOptBtn').onclick=()=>{ const o=$('pauseOpts'); o.hidden=!o.hidden; };
@@ -3198,7 +3203,7 @@ function bark(D){
   if(G.phase!=='day' && G.phase!=='night') return;
   if(G.paused || D.barkCD>0) return;
   D.barkCD=1.1*(1-.1*lv('bark')); D.barkT=.5;
-  if(D.flying && falcon.D===D && falcon.state==='carry') falcon.release=true;   // bark and it lets go
+  falconBark(D);
   cougarBark(D);
   spawnRing(D.x,D.z); sBark([1,.86,1.1,.93][dogIdx(D)]);
   const other=dogs.find(o=>o!==D && G.elapsed-(o.lastBark||-9)<.6 && Math.hypot(D.x-o.x,D.z-o.z)<16)||(D===dog?dog2:dog);
@@ -3386,18 +3391,22 @@ function killSheep(s){
   s.dead=true; s.deadT=0; s.carried=null; G.lost++; if(!s.bonus) JR.lostTotal++; pop('tLost'); sBleat(.7);
   { const left=G.sheep.filter(o=>!o.dead&&!o.bonus).length; if(left>0 && left<=3 && !G.saidFew){ G.saidFew=true; setTimeout(()=>shepSay('Careful! We cannae lose any more!',true),900); } }
 }
-// somewhere out past the edge of the land, on solid ground if there is any, for things coming in from the wild
+// somewhere out past the edge of the land, on dry ground, for things coming in from the wild (never out of the sea, a lava
+// lake or the sky: where the edge is all water or a drop, they come in down the lanes instead)
 function edgeSpot(){
   if(!edgeLoops.length) return null;
-  const lp=edgeLoops.reduce((a,b)=>b.length>a.length?b:a), sd=LEVEL.shape.sd;
-  for(let t=0;t<40;t++){ const p=lp[(Math.random()*lp.length)|0]; if(p[1]<PEN.z1+4) continue;
-    const gx=sdAt(sd,p[0]+.5,p[1])-sdAt(sd,p[0]-.5,p[1]), gz=sdAt(sd,p[0],p[1]+.5)-sdAt(sd,p[0],p[1]-.5), l=Math.hypot(gx,gz)||1, k=kindAt(p[0]-gx/l*5,p[1]-gz/l*5), wet=k===KW||k===KL||k===KD;
-    if(wet && t<28) continue; const o=wet?-2:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }   // out of the woods or off the cliff top; by water or a drop, from just inside the edge (not walking on air)
-  return null;
+  if(!LEVEL._spawns){ const sd=LEVEL.shape.sd, out=[];
+    for(const lp of edgeLoops) for(let i=0;i<lp.length;i+=3){ const p=lp[i]; if(p[1]<PEN.z1+4 || Math.abs(p[1])>58) continue;
+      const gx=sdAt(sd,p[0]+.5,p[1])-sdAt(sd,p[0]-.5,p[1]), gz=sdAt(sd,p[0],p[1]+.5)-sdAt(sd,p[0],p[1]-.5), l=Math.hypot(gx,gz)||1, x=p[0]-gx/l*9, z=p[1]-gz/l*9;
+      const k=kindAt(p[0]-gx/l*5,p[1]-gz/l*5), k2=kindAt(x,z); if(k===KW||k===KL||k===KD||k2===KW||k2===KL||k2===KD) continue;
+      if(groundH(x,z)<WL+.4 || pondD(x,z)<2) continue; out.push({x,z}); }
+    LEVEL._spawns=out; }
+  const S=LEVEL._spawns;
+  if(S.length) return S[(Math.random()*S.length)|0];
+  return {x:XL+(Math.random()-.5)*4,z:(Math.random()<.5?-1:1)*(LANE_END-6)};      // all water or sky round here: down the lanes
 }
 function spawnCoyote(alpha,boss){
-  const a=Math.PI*(.05+Math.random()*.9);
-  const r=FIELD+28, es=edgeSpot(); let x=Math.cos(a)*r, z=Math.sin(a)*r*.9+6; if(es){ x=es.x; z=es.z; }
+  const es=edgeSpot()||{x:XL,z:LANE_END-6}, x=es.x, z=es.z;
   const m=makeCoyote(alpha,boss); if(alpha) m.g.scale.setScalar(1.35); if(boss) m.g.scale.setScalar(2.1);
   const c={x,z,vx:0,vz:0,yaw:0,phase:Math.random()*10,hp:boss?wolfHp(G.day):alpha?4:2,alpha:!!alpha,boss:!!boss,state:'stalk',fleeT:0,hitCD:0,target:null,carry:null,spin:0,wob:Math.random()*10,gone:false,m,lcd:6,rt:0,ldx:0,ldz:1,tgt:null};
   c.maxHp=c.hp; G.coyotes.push(c); return c;
@@ -3474,7 +3483,7 @@ function coopTable(){
 }
 
 // ---------------- the Long Drive: make camp, rest and lamb, then move on ----------------
-const placeName=()=>{ const st=trailStop(G.day); return st?st.place+', '+st.st:LEVEL.name; };
+const placeName=()=>{ const st=trailStop(lvl(G.day)); return st?st.place+', '+st.st:LEVEL.name; };
 function flockStats(){
   const F=G.sheep.filter(s=>!s.dead&&!s.bonus&&!s.carried), ad=F.filter(s=>!s.lamb);
   return {n:F.length, rams:ad.filter(s=>s.ram).length, lambs:F.length-ad.length, inLamb:ad.filter(s=>s.due).length, hp:F.length?F.reduce((a,s)=>a+s.hp,0)/F.length:0, weak:F.filter(s=>s.hp<30).length};
@@ -3510,7 +3519,7 @@ function makeCamp(quiet){
   G.celebrate=stars>=2?4:2; sFanfare();
   shepSay("That'll do, "+G.name+". That'll do.",true,"That'll do");
   if(!night && f<.7) JR.release={t:5.2,say:"We'll rest here a while. Let them graze."};
-  if(G.day===TRAIL.length && !JR.finale) setTimeout(()=>{ if(JR.camp) finale(); },3000);
+  if(G.day===FINAL_LEG && !JR.finale) setTimeout(()=>{ if(JR.camp) finale(); },3000);
   saveJourney();
   pregen(2000);
 }
@@ -3624,7 +3633,7 @@ function advanceTrail(){
   pregen(2500);
 }
 // work out the next stretches of land ahead of time (the lane's colours look two ahead), a bit at a time, so the change is quick
-function pregen(ms){ const d=G.day; setTimeout(()=>{ if(G.day===d) levelOf(d+1); setTimeout(()=>{ if(G.day===d) levelOf(d+2); },700); },ms); }
+function pregen(ms){ const d=G.day; setTimeout(()=>{ if(G.day===d) levelOf(lvl(d+1)); setTimeout(()=>{ if(G.day===d) levelOf(lvl(d+2)); },700); },ms); }
 // move everything that's out on the trail by dz (the lane out of one stretch becomes the lane into the next)
 function shiftWorld(dz){
   const mv=o=>{ if(o) o.position.z+=dz; };
@@ -3713,10 +3722,12 @@ function finale(){
 // the journey is saved at every camp; closing the game mid-leg picks up again at the last camp
 function saveJourney(){
   if(G.phase==='title' || !JR.camp) return;
-  try{ localStorage.setItem('collieDuskJourney',JSON.stringify({v:1,day:G.day,cal:JR.cal,startCal:JR.startCal,total:G.total+G.score,roster:rosterOf(),born:JR.born,lostTotal:JR.lostTotal,peak:JR.peak,hardcore:!!G.hardcore,finale:!!JR.finale,place:placeName()})); }catch(e){}
+  try{ localStorage.setItem('collieDuskJourney',JSON.stringify({v:2,day:G.day,cal:JR.cal,startCal:JR.startCal,total:G.total+G.score,roster:rosterOf(),born:JR.born,lostTotal:JR.lostTotal,peak:JR.peak,hardcore:!!G.hardcore,finale:!!JR.finale,place:placeName()})); }catch(e){}
   refreshContinue();
 }
-function loadSave(){ try{ const d=JSON.parse(localStorage.getItem('collieDuskJourney')||'null'); return d&&d.v===1&&d.roster&&d.roster.length?d:null; }catch(e){ return null; } }
+function loadSave(){ try{ const d=JSON.parse(localStorage.getItem('collieDuskJourney')||'null'); if(!d||!d.roster||!d.roster.length) return null;
+  if(d.v===1){ d.day=d.day<=TRAIL.length?ROUTE.indexOf(d.day)+1:d.day+ROUTE.length-TRAIL.length; d.v=2; }   // older saves counted stops, not legs of the road
+  return d.v===2?d:null; }catch(e){ return null; } }
 function clearSave(){ try{ localStorage.removeItem('collieDuskJourney'); }catch(e){} refreshContinue(); }
 function resumeJourney(){
   const d=loadSave(); if(!d){ startGame(true); return; }
@@ -5735,9 +5746,9 @@ function applySkyInner(time){
   // lamps come up as the light goes, so dusk stays golden instead of spotlit
   const lamp=smooth01(.4,.95,n), glowK=SEASON.frozen||LEVEL.theme==='moon'?.62:1;   // snow and moondust would blow out white
   // a soft wide glow, not a moving spotlight; brighter and wider for a dog carrying the lantern
-  dogLight.intensity=lamp*glowK*(dog.lanternT>0?2.4:1.15); dogLight.distance=dog.lanternT>0?50:34; dogLight.position.set(dog.x,5.5,dog.z+1);
-  for(let i=1;i<dogLights.length;i++){ const L=dogLights[i], D=ALLDOGS[i]; L.intensity=i<dogs.length?lamp*glowK*(D.lanternT>0?2.4:1.15):0; L.distance=D.lanternT>0?50:34; L.position.set(D.x,5.5,D.z+1); }
-  lantern.intensity=lamp*1.25; shepLight.intensity=lamp*1.4; lanternMat.emissiveIntensity=n*2.2; barnWin.emissiveIntensity=n*1.6;
+  dogLight.intensity=lamp*glowK*(dog.lanternT>0?1.6:1.15); dogLight.distance=dog.lanternT>0?40:34; dogLight.position.set(dog.x,5.5,dog.z+1);
+  for(let i=1;i<dogLights.length;i++){ const L=dogLights[i], D=ALLDOGS[i]; L.intensity=i<dogs.length?lamp*glowK*(D.lanternT>0?1.6:1.15):0; L.distance=D.lanternT>0?40:34; L.position.set(D.x,5.5,D.z+1); }
+  lantern.intensity=lamp*.75; shepLight.intensity=lamp*1.1; lanternMat.emissiveIntensity=n*1.3; barnWin.emissiveIntensity=n*1.6;
   stars.position.copy(camera.position); stars.material.opacity=LEVEL.theme==='moon'?1:clamp(n*1.3-.3,0,1);
   moon.position.set(camera.position.x-120, camera.position.y+170, camera.position.z-360); moon.material.opacity=clamp(n*1.4-.4,0,1);
   if(LEVEL.theme==='sky'){
@@ -5926,7 +5937,7 @@ function paintGround(S){
 }
 // the lanes' palettes: the lane in wears this stretch's colours, the lane out the next one's (so they match at the change)
 const LP={north:null,south:null,objs:[]};
-function lanePalettes(){ LP.south=SEASON; const nd=G.day+1, nl=levelOf(nd); LP.north=SEASONS[(nl.theme!=='farm'&&nl.season)||calSeason(JR.cal)]||SEASON; }
+function lanePalettes(){ LP.south=SEASON; const nl=levelOf(lvl(G.day+1)); LP.north=SEASONS[(nl.theme!=='farm'&&nl.season)||calSeason(JR.cal)]||SEASON; }
 const laneGround=(S,out)=>out.setHex(S.ground).lerp(_gc2.setHex(S.ground2),.35);
 function paintLanes(){ for(const o of LP.objs){ const S=o.userData.north?LP.north:LP.south; if(S) o.material.color.setHex(o.userData.dirt?S.dirt:S.ground); } }
 // ---- the edge itself: marching squares round the shape, smoothed ----
@@ -6502,7 +6513,7 @@ const FUNNEL=(sx,zc,W,L,sd)=>[[sx+sd*(W/2+.7),zc+.2,sx+sd*(W/2+1.6),zc+2*L+.2],[
 const funnelHW=(S,z)=>{ const zc=LEVEL.plat.zc, a=zc+.2, b=zc+2*S.L+.2, c=zc+2*S.L+6.5; return z<b?lerp(S.W/2+.7,S.W/2+1.6,(z-a)/(b-a)):lerp(S.W/2+1.6,15,(z-b)/(c-b)); };
 function placeSeesawCliff(){
   const P=LEVEL.plat; if(!P) return;
-  const R=mulberry32(((daySeed(G.day)^Math.imul(G.day+7919,2246822519))>>>0)||1), zc=P.zc, L=SEE_L*SEE_SZ;
+  const id=lvl(G.day), R=mulberry32(((daySeed(id)^Math.imul(id+7919,2246822519))>>>0)||1), zc=P.zc, L=SEE_L*SEE_SZ;
   // the cliff: a wall right across the land that sheep (and bales, and coyotes hauling a sheep) can't climb.
   // It's a 'river' kind of wall: dogs and coyotes scramble over it, nothing else does.
   for(let x=-FIELD-4;x<FIELD+4;x+=2){ if(fieldD(x,zc)<-1.5 && fieldD(x+2,zc)<-1.5) continue; segs.push({ax:x,az:zc,bx:x+2,bz:zc,kind:'river',cliff:true,level:true}); }
@@ -7137,7 +7148,10 @@ function updateThreatArrows(time){
   for(;n<coyArrows.length;n++) coyArrows[n].hidden=true;
 }
 
-// ---------------- the falcon: now and then it swoops down and carries the dog off ----------------
+// ---------------- the falcon: now and then it swoops down on a sheep and carries it off ----------------
+// It picks a lamb, a weak sheep or a stray over the rest, and its shadow (with a red ring) closes in fast. Bark near the
+// shadow and it sheers off; bark under it while it's still lifting a sheep and it drops it. The scarecrow (from the shed)
+// rides on the bell ewe, and no falcon will take a sheep near it.
 // a long pointed falcon wing along +x (sd=1) or -x (sd=-1): a sphere squashed and swept back, so it stays smooth for the outline
 function falconWing(sd,top,under,tip){
   const k='falconWing'+sd; if(CRIT_GEO[k]) return CRIT_GEO[k];
@@ -7186,13 +7200,37 @@ const falcon=(function(){
   return {g,wings,shadow,ring,state:'idle',t:0,x:0,z:0,D:null,next:1e9,release:false};
 })();
 function resetFalcon(){
-  falcon.state='idle'; falcon.release=false; falcon.g.visible=falcon.shadow.visible=falcon.ring.visible=false;
-  for(const D of dogs){ D.flying=false; D.fy=0; }
-  falcon.next=(G.day>=UNLOCK.falcon && LEVEL.theme!=='sea' && LEVEL.theme!=='moon') ? (G.day===UNLOCK.falcon?16:12)+Math.random()*10 : 1e9;
+  const F=falcon;
+  if(F.state==='carry' && F.S && !F.S.dead){ F.S.carried=null; F.S.liftY=0; }
+  F.state='idle'; F.release=false; F.S=null; F.g.visible=F.shadow.visible=F.ring.visible=false;
+  for(const D of dogs){ if(!D.sky){ D.flying=false; D.fy=0; } }
+  F.next=(G.day>=UNLOCK.falcon && LEVEL.theme!=='sea' && LEVEL.theme!=='moon') ? (G.day===UNLOCK.falcon?14:10)+Math.random()*9 : 1e9;
 }
 function sScreech(){
   if(!ok()) return; let t=AC.currentTime;
   for(const [a,b,d] of [[1900,2700,.16],[2500,1500,.32]]){ const o=AC.createOscillator(), l=AC.createOscillator(), lg=AC.createGain(); o.type='triangle'; o.frequency.setValueAtTime(a,t); o.frequency.exponentialRampToValueAtTime(b,t+d); l.frequency.value=28; lg.gain.value=90; l.connect(lg).connect(o.frequency); o.connect(envG(t,.01,.16,d)); o.start(t); l.start(t); o.stop(t+d+.02); l.stop(t+d+.02); t+=d+.03; }
+}
+const FALCON_T=1.6;          // how long its shadow takes to close in
+// the scarecrow's reach, and who's carrying it
+const scareR=()=>[0,16,28][lv('scarecrow')]||0;
+function scarecrowAt(){ const C=SCARE.on; return C && !C.dead && !C.carried ? C : null; }
+function falconTarget(){
+  const C=scarecrowAt(), R=scareR(), H=G.hub; let best=null, bw=0;
+  for(const s of G.sheep){
+    if(s.dead||s.penned||s.carried||s.grabbedBy||s.sky||s.bonus||s.inF) continue;
+    if(C && Math.hypot(s.x-C.x,s.z-C.z)<R) continue;
+    const w=(s.lamb?3:1)*(s.hp<40?2:1)*(H&&Math.hypot(s.x-H.x,s.z-H.z)>12?2:1)*(s.ram?.3:1)*(.5+Math.random());
+    if(w>bw){ bw=w; best=s; } }
+  return best;
+}
+function falconScared(F,pts){
+  F.state='leave'; F.t=0; F.lx=F.x; F.lz=F.z; sScreech();
+  if(pts){ G.score+=pts; pop('tScore'); }
+}
+function falconBark(D){
+  const F=falcon;
+  if(F.state==='shadow' && Math.hypot(D.x-F.x,D.z-F.z)<14*barkMul()){ falconScared(F,10); shepSay('Ha! Missed!',true); }
+  else if(F.state==='carry' && F.S && F.t<1.8 && Math.hypot(D.x-F.S.x,D.z-F.S.z)<14*barkMul()) F.release=true;
 }
 function updateFalcon(dt){
   const F=falcon, playing=G.phase==='day'||G.phase==='night';
@@ -7200,50 +7238,48 @@ function updateFalcon(dt){
     if(G.phase!=='day' || JR.camp) return;
     F.next-=dt; if(F.next>0) return;
     if(busy()){ F.next=4; return; }
-    const pool=dogs.filter(D=>(D===dog||G.coop) && !D.flying && D.stunT<=0); if(!pool.length){ F.next=3; return; }
-    const D=pool[(Math.random()*pool.length)|0];
-    F.D=D; F.state='shadow'; F.t=0; F.x=D.x-D.vx*.3; F.z=D.z-D.vz*.3; F.release=false;
-    sScreech(); shepSay('Falcon! Run, '+dogName(D)+'!',true);
+    const S=falconTarget(); if(!S){ F.next=4; return; }
+    F.S=S; F.state='shadow'; F.t=0; F.x=S.x-S.vx*.4+(Math.random()-.5)*6; F.z=S.z-S.vz*.4+(Math.random()-.5)*6; F.release=false;
+    sScreech(); shepSay('Falcon! Run, '+G.name+'!',true);
     F.g.visible=F.shadow.visible=F.ring.visible=true;
     return;
   }
-  const D=F.D;
+  const S=F.S;
   if(F.state==='shadow'){
-    F.t+=dt; const T=2.3, k=Math.min(1,F.t/T);
-    // the shadow creeps after the dog: keep moving and you'll get away
-    const dx=D.x-F.x, dz=D.z-F.z, d=Math.hypot(dx,dz)+1e-6, sp=Math.min(d/dt,7);
+    F.t+=dt; const k=Math.min(1,F.t/FALCON_T);
+    if(!S||S.dead||S.penned||S.carried||S.sky){ falconScared(F,0); return; }
+    // the shadow closes in on its sheep, quick
+    const dx=S.x-F.x, dz=S.z-F.z, d=Math.hypot(dx,dz)+1e-6, sp=Math.min(d/dt,9);
     F.x+=dx/d*sp*dt; F.z+=dz/d*sp*dt;
+    const C=scarecrowAt(); if(C && Math.hypot(F.x-C.x,F.z-C.z)<scareR()){ falconScared(F,0); burst(C.x,2.6,C.z,10,[0xe8c46a,0xc8963e],2,2); return; }   // the scarecrow flaps: off it goes
     if(k>=1 || !playing){
-      if(playing && !D.flying && Math.hypot(D.x-F.x,D.z-F.z)<1.9){
-        if(D.grab) releaseGrab(D,false);
-        F.state='carry'; F.t=0; D.flying=true; D.fy=0; D.lying=false; F.from={x:D.x,z:D.z};
-        let to=null; for(let i=0;i<300 && !to;i++){ const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+6+Math.random()*(FIELD-PEN.z1-10); if(Math.hypot(x-D.x,z-D.z)>24 && clearOf(x,z,1) && !hazardAt(x,z)) to={x,z}; }
-        F.to=to||{x:0,z:PEN.z1+12};
-        sWhoosh(); sYelp(); rumble(.7,.5,300); G.shake=Math.max(G.shake,.35);
-        popText(D.x,3,D.z,'SNATCHED!','red'); burst(D.x,1.5,D.z,20,[0x7a5232,0xe8d8b8],3,4);
-        setTimeout(()=>shepSay('Oi! Bring back me dog!',true),400);
-      } else {
-        F.state='leave'; F.t=0;
-        if(playing){ G.score+=10; pop('tScore');  shepSay('Ha! Missed!',true); }
-      }
+      if(playing && Math.hypot(S.x-F.x,S.z-F.z)<2.1){
+        if(S.grabbedBy) for(const D of dogs) if(D.grab && D.grab.t===S) releaseGrab(D,false);
+        F.state='carry'; F.t=0; S.carried=F; S.liftY=0; S.munch=0; S.hp=Math.max(4,S.hp-15); F.from={x:S.x,z:S.z};
+        // off toward the nearest bit of the land's edge, away from the flock
+        const H=G.hub||S; let ox=S.x-H.x, oz=S.z-H.z; const ol=Math.hypot(ox,oz); if(ol<1){ ox=Math.random()-.5; oz=Math.random()-.5; }
+        const ul=Math.hypot(ox,oz); F.to={x:S.x+ox/ul*34,z:S.z+oz/ul*34};
+        sWhoosh(); sBleat(.75); G.shake=Math.max(G.shake,.25); burst(S.x,1.5,S.z,20,[0xffffff,0xe8d8b8],3,4);
+        setTimeout(()=>shepSay('Drop it, ye feathered thief!',true),400);
+      } else falconScared(F,0);
     }
     return;
   }
   if(F.state==='carry'){
-    F.t+=dt; const T=2.6, k=Math.min(1,F.t/T), e=k*k*(3-2*k);
-    const x=lerp(F.from.x,F.to.x,e), z=lerp(F.from.z,F.to.z,e);
-    const early=F.release && k>.12 && fieldD(x,z)>1.5 && z>PEN.z1+2 && !hazardAt(x,z) && clearOf(x,z,.4);
-    D.x=x; D.z=z; D.fy=Math.sin(k*Math.PI)*7; D.yaw+=dt*3;
-    if(k>=1 || early){
-      D.flying=false; D.fy=0; D.vx=D.vz=0; D.stunT=early?.15:.35; D.px=D.x; D.pz=D.z;
-      sThud(); G.shake=Math.max(G.shake,.3); burst(D.x,.4,D.z,24,PC.dust,4,3);
-      if(early) popText(D.x,2.4,D.z,'BREAK FREE!','green');
-      F.state='leave'; F.t=0;
+    if(!S||S.dead){ falconScared(F,0); return; }
+    F.t+=dt; const T=3.2, k=Math.min(1,F.t/T), e=k*k*(3-2*k);
+    S.x=lerp(F.from.x,F.to.x,e); S.z=lerp(F.from.z,F.to.z,e); S.liftY=Math.min(9,k*14); S.yaw+=dt*2;
+    // a bark under it in time and it lets go: the sheep tumbles down, shaken but saved
+    if(F.release && fieldD(S.x,S.z)>1.2 && !hazardAt(S.x,S.z)){
+      S.carried=null; S.liftY=0; S.vx=S.vz=0; S.dazeT=1.2; S.fear=1; S.stress=1; S.jumpy=true; S.hp=Math.max(4,S.hp-8);
+      sThud(); burst(S.x,.5,S.z,20,PC.dust,4,3); G.score+=10; pop('tScore'); sBleat(1.2);
+      falconScared(F,0); return;
     }
+    if(k>=1){ S.carried=null; S.liftY=0; killSheep(S); scene.remove(S.m.g); F.state='leave'; F.t=0; F.lx=S.x; F.lz=S.z; }
     return;
   }
   if(F.state==='leave'){
-    F.t+=dt; if(F.t>1.6){ F.state='idle'; F.g.visible=F.shadow.visible=F.ring.visible=false; F.next=G.day<UNLOCK.wild?38+Math.random()*16:24+Math.random()*16; }
+    F.t+=dt; if(F.t>1.6){ F.state='idle'; F.S=null; F.g.visible=F.shadow.visible=F.ring.visible=false; F.next=G.day<UNLOCK.wild?34+Math.random()*14:22+Math.random()*14; }
   }
 }
 function syncFalcon(dt,time){
@@ -7251,15 +7287,38 @@ function syncFalcon(dt,time){
   const flap=Math.sin(time*(F.state==='carry'?16:9))*.7;
   for(const [piv,sd] of F.wings) piv.rotation.z=sd*flap;
   let x=F.x, z=F.z, y;
-  if(F.state==='shadow'){ const k=Math.min(1,F.t/2.3); y=groundH(x,z)+2.5+34*(1-k)*(1-k); F.g.rotation.set(.5*k,Math.atan2(F.D.x-x,F.D.z-z),0); }
-  else if(F.state==='carry'){ x=F.D.x; z=F.D.z; y=groundH(x,z)+F.D.fy+2.1; F.g.rotation.set(0,Math.atan2(F.to.x-F.from.x,F.to.z-F.from.z),0); }
-  else { const k=F.t/1.6; x=F.x+k*30; z=F.z-k*20; y=groundH(F.x,F.z)+3+k*k*40; F.g.rotation.set(-.4,Math.atan2(30,-20),0); }
-  if(F.state==='carry'){ F.x=x; F.z=z; }
+  if(F.state==='shadow'){ const k=Math.min(1,F.t/FALCON_T); y=groundH(x,z)+2.5+34*(1-k)*(1-k); F.g.rotation.set(.5*k,F.S?Math.atan2(F.S.x-x,F.S.z-z):0,0); }
+  else if(F.state==='carry'&&F.S){ x=F.S.x; z=F.S.z; y=groundH(x,z)+(F.S.liftY||0)+2.6; F.g.rotation.set(0,Math.atan2(F.to.x-F.from.x,F.to.z-F.from.z),0); F.x=x; F.z=z; }
+  else { const k=F.t/1.6; x=(F.lx??F.x)+k*30; z=(F.lz??F.z)-k*20; y=groundH(F.x,F.z)+3+k*k*40; F.g.rotation.set(-.4,Math.atan2(30,-20),0); }
   F.g.position.set(x,y,z);
-  const sx=F.state==='carry'?F.D.x:F.x, sz=F.state==='carry'?F.D.z:F.z, gy=groundH(sx,sz)+.07;
-  const big=F.state==='shadow'?.6+1.4*Math.min(1,F.t/2.3):1.2;
-  F.shadow.position.set(sx,gy,sz); F.shadow.scale.setScalar(big); F.shadow.visible=F.state!=='leave';
-  F.ring.position.set(sx,gy+.01,sz); F.ring.scale.setScalar(big*(1+.08*Math.sin(time*14))); F.ring.visible=F.state==='shadow';
+  const gy=groundH(F.x,F.z)+.07, big=F.state==='shadow'?.6+1.4*Math.min(1,F.t/FALCON_T):1.2;
+  F.shadow.position.set(F.x,gy,F.z); F.shadow.scale.setScalar(big); F.shadow.visible=F.state!=='leave';
+  F.ring.position.set(F.x,gy+.01,F.z); F.ring.scale.setScalar(big*(1+.08*Math.sin(time*14))); F.ring.visible=F.state==='shadow';
+}
+
+// ---------------- the scarecrow (from the shed): a wee scarecrow riding on the bell ewe's back ----------------
+const SCARE={on:null,g:null};
+function scarecrowMesh(){
+  const P=[], C=(g,m,c)=>P.push([g,m,c]);
+  C(new THREE.CylinderGeometry(.05,.06,1.7,6),propM(0,.85,0),0x7a4c2a);                         // the pole
+  C(new THREE.BoxGeometry(1.35,.08,.08),propM(0,1.15,0),0x7a4c2a);                              // the crossbar
+  C(new THREE.BoxGeometry(.5,.55,.26),propM(0,1.02,0),0xb5503a);                                // a patched plaid shirt
+  for(const sd of [-1,1]){ C(new THREE.BoxGeometry(.42,.2,.2),propM(sd*.42,1.15,0),0x8f3d2c); C(new THREE.ConeGeometry(.09,.22,5),propM(sd*.7,1.15,0,0,0,sd*Math.PI/2),0xe8c46a); }   // sleeves, straw hands
+  C(new THREE.SphereGeometry(.22,10,8),propM(0,1.52,0),0xd9c08a);                                // a burlap head
+  for(const sd of [-1,1]) C(new THREE.SphereGeometry(.035,6,5),propM(sd*.08,1.55,.2),0x2a1d14);
+  C(new THREE.CylinderGeometry(.42,.42,.04,14),propM(0,1.68,0),0xe0b54a); C(new THREE.ConeGeometry(.24,.34,10),propM(0,1.86,0),0xe0b54a);   // straw hat
+  C(new THREE.ConeGeometry(.08,.2,5),propM(0,.72,0,Math.PI),0xe8c46a);                          // straw poking out the bottom
+  const g=new THREE.Group(), m=new THREE.Mesh(mergeParts(P),new THREE.MeshStandardMaterial({vertexColors:true,roughness:1})); m.castShadow=true; g.add(m);
+  addOutline(g,.03); g.position.set(0,1.15,-.2); g.scale.setScalar(.95); return g;
+}
+// keep it on the bell ewe (or, if she's gone, another ewe); none at all without the upgrade
+function updateScarecrow(){
+  if(!lv('scarecrow') || G.phase==='title'){ if(SCARE.g && SCARE.g.parent) SCARE.g.parent.remove(SCARE.g); SCARE.on=null; return; }
+  const C=SCARE.on; if(C && !C.dead && G.sheep.includes(C) && SCARE.g.parent===C.m.body) return;
+  const pool=G.sheep.filter(s=>!s.dead&&!s.lamb&&!s.bonus), n=pool.find(s=>s.leader)||pool.find(s=>!s.ram)||pool[0]||null;
+  if(!SCARE.g) SCARE.g=scarecrowMesh();
+  if(SCARE.g.parent) SCARE.g.parent.remove(SCARE.g);
+  SCARE.on=n; if(n) n.m.body.add(SCARE.g);
 }
 
 // ---------------- surprises: every so often something odd happens ----------------
@@ -8062,7 +8121,7 @@ function frame(now){
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);
-  syncPuzzle(time); syncCougar(dt,time); syncFalcon(dt,time); syncSurprise(dt,time);
+  syncPuzzle(time); syncCougar(dt,time); syncFalcon(dt,time); syncSurprise(dt,time); updateScarecrow();
   syncDucks(dt,time); syncRascal(dt,time); updateBirds(dt,time); updateCat(dt,time); updatePond(dt);
   updateBubble(dt);
   syncAll(dt,time);
