@@ -38,7 +38,7 @@ for (const v of variants) for (let k = 0; k < trials; k++) {
     const out = { v };
     if (trough !== null) {
       // a hungry flock shut in the valley pen at 18:30, with (or without) a trough of feed: who eats, how they queue, lambs at dawn
-      const pen = GAME.pens[1]; GAME.setGate(pen, false); pen.trough = trough ? { food: trough, cap: 12 } : undefined;
+      const pen = GAME.pens[1]; GAME.setGate(pen, false); if (pen.trough) pen.trough.food = trough || 0; else if (trough) pen.trough = { food: trough, cap: 12 };   // the pen's real trough
       for (const s of G.sheep) { const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * (pen.R - 2); s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.hunger = s.lamb ? 0.3 : 0.35 + Math.random() * 0.3; }
       G.clock.hour = 18.5; d.x = pen.x + 30;
       const food0 = trough || 0; let maxAt = 0, maxWait = 0, close = 0, samples = 0, hunger21 = null, wellFed21 = null;

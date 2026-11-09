@@ -194,7 +194,7 @@ try {
 
   // ---------------------------------------------------------------- grass grazed on the host shows on the guest
   const patch = await A.page.evaluate(() => {   // a 12 x 12 m patch of good grass somewhere on the trail ahead
-    for (let s = 95; s < 170; s += 5) for (const lat of [-12, -6, 0, 6]) {
+    for (let s = 95; s < 340; s += 5) for (const lat of [-12, -6, 0, 6]) {   // (well ahead of where the flock has been grazing)
       const c = GAME.pathPoint(s, lat), pts = [];
       for (let x = -6; x <= 6; x += 2) for (let z = -6; z <= 6; z += 2) pts.push([c.x + x, c.z + z]);
       if (pts.every(([x, z]) => GAME.grassAt(x, z) > 0.2 && GAME.sdfAt(x, z) > 1)) return (window.__patch = pts);
@@ -228,6 +228,19 @@ try {
   check('coyotes that leave are removed on the guest, models too', await B.page.evaluate(() => window.__coyRoots.every(r => !r.parent)));
   const sleepers = await Promise.all([A, B].map(X => X.page.evaluate(() => GAME.G.coyotes.filter(c => c.state === 'sleep').length)));
   check('coyotes asleep in their dens show asleep on the guest too', sleepers[0] === sleepers[1], { host: sleepers[0], guest: sleepers[1] });
+
+  // ---------------------------------------------------------------- forage: picked plants, the bucket and the trough reach the guest
+  await A.page.evaluate(() => {
+    const { PLANTS, BUCKETS, pens } = GAME;
+    for (const p of PLANTS.slice(0, 5)) { p.picked = true; p.regrowAt = 1e9; }
+    const b = BUCKETS[1]; b.state = 'ground'; b.x += 3; b.z += 2; b.fill = 2.5;
+    pens[1].trough.food = 3.2;
+  });
+  await sleep(1200);
+  const fg = await B.page.evaluate(() => { const { PLANTS, BUCKETS, pens } = GAME; const b = BUCKETS[1]; return { picked: PLANTS.slice(0, 5).filter(p => p.picked).length, bState: b.state, fill: b.fill, trough: pens[1].trough.food }; });
+  const fh = await A.page.evaluate(() => { const b = GAME.BUCKETS[1]; return { x: b.x, z: b.z }; });
+  const fgPos = await B.page.evaluate(() => { const b = GAME.BUCKETS[1]; return { x: b.x, z: b.z }; });
+  check('forage reaches the guest: picked plants, a bucket set down (and how full), the trough', fg.picked === 5 && fg.bState === 'ground' && Math.abs(fg.fill - 2.5) < 0.05 && Math.abs(fg.trough - 3.2) < 0.05 && Math.hypot(fh.x - fgPos.x, fh.z - fgPos.z) < 0.2, { ...fg, posErr: r3(Math.hypot(fh.x - fgPos.x, fh.z - fgPos.z)) });
 
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });

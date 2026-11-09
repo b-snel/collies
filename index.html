@@ -413,8 +413,7 @@ const T = {
   // Food is in hunger units: 1 unit takes 1.0 off one sheep's hunger. Grazing flat out takes ~0.14 an hour,
   // so a full bucket (4) is a few hours' grazing each for most of a 14-sheep flock.
   forage: { daisy: 0.15, alfalfa: 0.35, bucketCap: 4, troughCap: 6, pickR: 1.35, regrowDays: [1, 2],
-    deliverR: 6, hankHour: 19, spill: 0.25, kickSpeed: 7,
-    troughRate: 0.12, troughFrom: 0.12 },   // stand-in feeding: hunger per game hour per penned sheep at night, down to this hunger
+    deliverR: 6, hankHour: 19, spill: 0.25, kickSpeed: 7 },   // penned sheep feed at the trough: see troughWant/troughRate (sheep mind)
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
@@ -3608,7 +3607,7 @@ for (const p of pens) {
   const fill = new THREE.Mesh(merge(P(BOX(L - 0.12, 1, Wd - 0.08), '#9bc84a', { p: [0, 0.5, 0] }),
     ...Array.from({ length: 9 }, (_, i) => P(SPH(5), ['#ffffff', '#b48ae6', '#ffc62a'][i % 3], { s: [0.06, 0.04, 0.06], p: [-1.05 + i * 0.26, 1.0, ((i * 37) % 5 - 2) * 0.1] }))), MAT.vc);
   fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
-  p.trough = { food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, shown: 0, fill };
+  p.trough = { food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, yaw: Math.atan2(-tz, tx), len: L, shown: 0, fill };   // yaw/len: where the sheep line up to feed
   const hw = Wd / 2 + 0.05, hl = L / 2 + 0.05, corner = (u, v) => [c.x + tx * u - tz * v, c.z + tz * u + tx * v];
   const cs = [corner(hl, hw), corner(-hl, hw), corner(-hl, -hw), corner(hl, -hw)];
   for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; staticFences.push({ ax, az, bx, bz }); }   // sheep bump into it (and stamped for the coyotes' nav)
@@ -3622,20 +3621,6 @@ function troughEat(pen, amt) {
   const tr = pen && pen.trough; if (!tr || !(amt > 0)) return 0;
   const got = Math.min(tr.food, amt); tr.food -= got; return got;
 }
-// TEMPORARY STAND-IN — remove once the sheep mind walks penned sheep to the trough and eats via troughEat().
-// Until then: at night, penned sheep share the trough evenly while they sleep.
-function troughStandIn(dtH) {
-  if (!isNight() || dtH <= 0) return;
-  const F = T.forage;
-  for (const p of pens) {
-    if (p.trough.food <= 0) continue;
-    for (const s of G.sheep) {
-      if (s.dead || s.pen !== p || s.air || s.heldBy || s.grabbed || s.hunger <= F.troughFrom) continue;
-      s.hunger -= troughEat(p, Math.min(s.hunger - F.troughFrom, F.troughRate * dtH));
-    }
-  }
-}
-
 // ---------------- the buckets ----------------
 function makeBucketModel() {
   const root = new THREE.Group(), tilt = new THREE.Group(); root.add(tilt); tilt.scale.setScalar(1.35);
@@ -3809,7 +3794,6 @@ function hankForageGoal() {
 function updateForage(dt) {
   updateBuckets(dt);
   if (G.mode === 'play') {
-    troughStandIn(dt / T.hourSec * (G.ff ? T.ffMul : 1));   // TEMPORARY STAND-IN (see above)
     if ((FORAGE.regrowT -= dt) <= 0) { FORAGE.regrowT = 0.5; regrowPlants(); }
     // the first time a dog comes by a camp's bucket in the day: what it's for
     if (!G.hints.bucket && G.clock.hour > 7.5 && G.clock.hour < 17.5) for (const b of BUCKETS) if (b.state === 'hook' && G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 12)) { hint('bucket'); break; }
@@ -6009,7 +5993,7 @@ const NET_TYPES = {
       x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', mode: 's', stamina: .02, exhausted: 'b', hopT: .02, stunT: .02, barkAnim: .02,
       name: { c: 's', get: d => d.player.name, set: (d, v) => { d.player.name = v; } },
       pounceT: .02, shakeT: .02,
-      holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote or a gate
+      holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote, a gate or a bucket
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -6033,8 +6017,23 @@ const NET_TYPES = {
   },
   pen: {   // push-gates: the leaf's angle (eased on guests) and whether it's latched; gateT and open follow from phi
     tag: 'p', all: () => pens, id: p => pens.indexOf(p), static: true,
-    fields: { phi: 'a', latched: 'b', fresh: 'b' },
+    fields: { phi: 'a', latched: 'b', fresh: 'b',
+      troughFood: { c: .02, get: p => p.trough ? p.trough.food : 0, set: (p, v) => { if (p.trough) p.trough.food = v; } } },   // the forage trough's fill
     animate: p => updateGateGeometry(p),
+  },
+  bucket: {   // each camp's forage bucket: on its peg, in a dog's mouth, set down in the field, or in Hank's hands
+    tag: 'u', all: () => BUCKETS, id: b => b.id, static: true,
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, y: .02, yaw: 'a', state: 's', fill: .02, swing: .02, slot: 'i', heldBy: '@dog',
+      home: { c: 'i', get: b => pens.indexOf(b.home), set: (b, v) => { if (pens[v]) b.home = pens[v]; } } },
+  },
+  plant: {   // alfalfa and daisies: picked or growing (they pop back up on their own on each screen)
+    tag: 'f', all: () => PLANTS, id: p => p.ni ?? (p.ni = PLANTS.indexOf(p)), static: true,
+    fields: { picked: { c: 'b', get: p => p.picked, set: (p, v) => { v = !!v; if (v && !p.picked) setPlantMatrix(p, 0); if (!v && p.picked) p.growT = G.time; p.picked = v; } } },
+  },
+  forage: {   // Hank's twilight run with the bucket (it drives his carry-and-tip pose)
+    tag: 'F', one: () => FORAGE,
+    fields: { run: { c: 's', get: F => F.run ? `${pens.indexOf(F.run.pen)},${F.run.b.id},${F.run.stage},${Math.round(F.run.t * 20) / 20}` : null,
+      set: (F, v) => { if (!v) { F.run = null; return; } const [pi, bi, stage, t] = v.split(','); F.run = { pen: pens[+pi], b: BUCKETS[+bi], stage, t: +t, total: 0 }; } } },
   },
   launcher: {   // the Sheep Express: the plank's tilt (it's also the ground height on the plank)
     tag: 'L', all: () => LAUNCHERS, id: S => LAUNCHERS.indexOf(S), static: true,
@@ -6191,6 +6190,7 @@ function netRefStr(v) {
   if (G.sheep.includes(v)) return 's' + v.id;
   if (G.coyotes.includes(v)) return 'c' + NET_TYPES.coyote.id(v);
   const pi = pens.indexOf(v); if (pi >= 0) return 'p' + pi;
+  const bi = BUCKETS.indexOf(v); if (bi >= 0) return 'u' + bi;   // the forage bucket
   if (G.dogs.includes(v)) return 'd' + v.player.slot;
   return null;
 }
