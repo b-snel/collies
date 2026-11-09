@@ -1428,7 +1428,9 @@ const baleGeo=(function(){
   return mergeGeos(parts);
 })();
 const baleMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1});
-for(const [x,z] of [[PEN.x0+2.2,PEN.z0+2.2],[PEN.x1-2.2,PEN.z0+2.2]]){
+// (snug in the back corners: with room behind a bale a sheep could get stuck there, and the flock leaves by the back gate)
+const PEN_BALE=1.35;
+for(const [x,z] of [[PEN.x0+PEN_BALE,PEN.z0+PEN_BALE],[PEN.x1-PEN_BALE,PEN.z0+PEN_BALE]]){
   const hb=new THREE.Mesh(baleGeo, baleMat); hb.rotation.z=Math.PI/2; hb.position.set(x,1.1,z); hb.castShadow=true; hb.receiveShadow=true; scene.add(hb);
   circles.push({x,z,r:1.2});
 }
@@ -5424,7 +5426,7 @@ const cat=(function(){
   const curve=new THREE.CatmullRomCurve3([[0,0,0],[0,-.02,.15],[.07,-.07,.3],[.21,-.09,.37],[.33,-.09,.29]].map(p=>new THREE.Vector3(...p)));
   critMesh(tail,critBake([[new THREE.TubeGeometry(curve,14,.042,6),(x,y,z)=>Math.floor(Math.hypot(x,z)/.075)%2?STR:O],[CRIT_SPH_S,O,[0,0,0],0,[.044,.044,.044]],[CRIT_SPH_S,STR,[.33,-.09,.29],0,[.042,.042,.042]]]));
   addOutline(g,.018);
-  g.position.set(PEN.x0+2.2,2.16,PEN.z0+2.2); g.rotation.y=.8; scene.add(g);
+  g.position.set(PEN.x0+PEN_BALE,2.16,PEN.z0+PEN_BALE); g.rotation.y=.8; scene.add(g);
   g.traverse(o=>{ if(o.isMesh && !o.userData.isOutline) o.castShadow=true; });
   return {g,body,head,tail,hissT:0,puff:0};
 })();
@@ -8613,7 +8615,7 @@ function netEntities(){
   for(const s of G.sheep) E.push(['s'+s.id,s]);
   for(const c of G.coyotes){ if(!c.nid) c.nid=++NET.nid; E.push(['c'+c.nid,c]); }
   for(const p of powerups){ if(!p.nid) p.nid=++NET.nid; E.push(['p'+p.nid,p]); }
-  E.push(['H',shep],['F',falcon],['K',COUG],['R',rascal],['G',G],['J',JR],['UP',UP],['Z',PZ],['T',CT],['L',llamas],['U',ducks],['W',leaves],['O',goldBones]);
+  E.push(['H',shep],['F',falcon],['K',COUG],['R',rascal],['G',G],['J',JR],['UP',UP],['Z',PZ],['T',CT],['L',llamas],['U',ducks],['W',leaves],['V',backLeaves],['B',BP],['O',goldBones]);
   if(G.ev){ if(!G.ev.nid) G.ev.nid=++NET.nid; E.push(['E',G.ev]); }
   E.push(['X',{}]);        // odds and ends (filled in netFields)
   return E;
@@ -8687,7 +8689,7 @@ function netResolve(key){
   if(c==='s') return NET.sheepById.get(+n)||null;
   if(c==='c') return NET.coyById.get(+n)||null;
   if(c==='p') return powerups.find(p=>p.nid===+n)||null;
-  return {H:shep,F:falcon,K:COUG,R:rascal,G,J:JR,UP,Z:PZ,T:CT,L:llamas,U:ducks,W:leaves,O:goldBones,E:G.ev}[key]||null;
+  return {H:shep,F:falcon,K:COUG,R:rascal,G,J:JR,UP,Z:PZ,T:CT,L:llamas,U:ducks,W:leaves,V:backLeaves,B:BP,O:goldBones,E:G.ev}[key]||null;
 }
 function netDecode(v){
   if(typeof v==='string' && v[0]===NET_REF) return netResolve(v.slice(1));
@@ -8857,6 +8859,7 @@ function netGuestHooks(){
     for(const g of PZ.gates){ if(g.fill){ const need=Math.max(1,PZ.need||1); g.fill.scale.z=Math.max(.001,Math.min(1,(g.passed?g.passed.size:0)/need)); if(g.done) g.fill.material.color.setHex(0x7bd65a); } }
   }
   if(D.has('T')) for(const b of CT.bales) if(b.g) b.g.visible=!b.gone;
+  if(D.has('B') && BP.on && BP.seg && BP.art) bpSync();        // the breeding pen's gate, where the host's dogs have swung it
   if(D.has('E')) netSxSync();
   D.clear();
 }
