@@ -90,6 +90,10 @@ body.pad #keysHint .gp{display:flex}
 .popup.gold{color:#ffd23f;font-size:30px}
 .popup.red{color:#ff6d4d}
 .popup.green{color:#b8f06a}
+.popup.mad{color:#e08bff;font-size:26px}
+#trip{position:fixed;inset:-50%;pointer-events:none;opacity:0;mix-blend-mode:soft-light;background:conic-gradient(from 0deg,#ff3fd0,#ffe23f,#3fffb0,#3fb4ff,#c43fff,#ff3fd0);animation:tripSpin 7s linear infinite}
+@keyframes tripSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#trip{animation:none}}
 /* toasts: chunky storybook lettering with an ink outline (overrides the base #toast shadow) */
 #toast{--o:#2a1d14;text-shadow:3px 0 0 var(--o),-3px 0 0 var(--o),0 3px 0 var(--o),0 -3px 0 var(--o),2px 2px 0 var(--o),-2px 2px 0 var(--o),2px -2px 0 var(--o),-2px -2px 0 var(--o),0 6px 0 var(--o),0 0 26px rgba(0,0,0,.4)}
 .stat.score b{color:var(--lantern)}
@@ -866,8 +870,8 @@ let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
-const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,scale:10,worlds:11,hazards:11,wild:11};
-const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
+const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,rabid:5,scale:10,worlds:11,hazards:11,wild:11};
+const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
 // The Long Drive: Hank has inherited a ranch on the Oregon coast and the flock is coming with him.
 // Each day is a stop on the trail west; after Oregon the game carries on with Hank's tall tales (every world, at random).
 const TRAIL=[
@@ -995,6 +999,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
+{ const tr=document.createElement('div'); tr.id='trip'; tr.setAttribute('aria-hidden','true'); host.appendChild(tr); }
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xa8d4ea, 70, 190);
 scene.background = new THREE.Color(0xa8d4ea);
@@ -1115,7 +1120,7 @@ function tuftGeo(){
 }
 (function(){
   const N=3600, IN=2700;
-  const im=new THREE.InstancedMesh(tuftGeo(), new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1}), N);
+  const im=new THREE.InstancedMesh(tuftGeo(), new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,stencilWrite:true,stencilRef:1,stencilFunc:THREE.AlwaysStencilFunc,stencilZPass:THREE.ReplaceStencilOp}), N);
   const d=new THREE.Object3D(), c=new THREE.Color();
   let i=0;
   grassBase=[];
@@ -1469,6 +1474,26 @@ function clearOf(x,z,pad){
   return true;
 }
 // the woods past the edge: a few instanced meshes instead of hundreds of little trees (laid out for each level by layoutRingTrees)
+// edge-wood trees between the camera and a dog thin out to a stipple so you can always see yourself
+const RING_FADE={uDogs:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,0,0))}};
+function ringFadeMat(m){
+  m.onBeforeCompile=sh=>{
+    sh.uniforms.uDogs=RING_FADE.uDogs;
+    sh.vertexShader='uniform vec4 uDogs[4];\nvarying float vRF;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+      vRF=0.0;
+      #ifdef USE_INSTANCING
+        vec3 ic=(modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xyz; float isc=length(instanceMatrix[0].xyz);
+        for(int i=0;i<4;i++){ vec4 d=uDogs[i]; if(d.w>0.5){
+          float dx=abs(ic.x-d.x), dz=ic.z-d.z;
+          float h=(1.0-smoothstep(2.6*isc,3.6*isc+.8,dx))*smoothstep(-2.2,-.6,dz)*(1.0-smoothstep(6.0*isc,7.5*isc+1.5,dz));
+          vRF=max(vRF,h); } }
+      #endif`);
+    sh.fragmentShader='varying float vRF;\n'+sh.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>
+      if(vRF>0.01){ float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715)))); if(n<vRF*0.82) discard; }`);
+  };
+  m.customProgramCacheKey=()=>'ringfade';
+  m.needsUpdate=true;
+}
 const ringTrees=[], RING_NEAR=120, RING_FAR=300;   // near: the front row (detailed, casting shadows); far: everything behind
 const ringMesh=(function(){
   const tg=mergeGeos([{g:new THREE.CylinderGeometry(.3,.46,2.9,7,1,true),m:partM(0,1.45,0,1)},{g:new THREE.CylinderGeometry(.46,.78,.55,7,1,true),m:partM(0,.27,0,1)}]);
@@ -1477,6 +1502,7 @@ const ringMesh=(function(){
     const im=new THREE.InstancedMesh(crownGeosLo[f][sh],leafMs[l],Math.ceil((f?RING_FAR:RING_NEAR)/6)+1); im.userData.key=f+'_'+l+'_'+sh; im.castShadow=!f; im.count=0; crowns.push(im); }
   trunks.castShadow=true; trunks.count=0;
   for(const im of [trunks,...crowns]){ im.frustumCulled=false; scene.add(im); }
+  [trunkM,...leafMs].forEach(ringFadeMat);
   return {trunks,crowns};
 })();
 // place the ring for a world: trees, or (no trunks) squashed crowns sitting on the ground as shrubs, coral or boulders
@@ -2317,7 +2343,29 @@ dog2.m.g.visible=false; dog3.m.g.visible=false; dog4.m.g.visible=false;
 const ALLDOGS=[dog,dog2,dog3,dog4];
 // in co-op each dog also gets a faint ring on the ground in its player's colour, readable from the gameplay camera
 ALLDOGS.forEach((D,i)=>{ D.pring=new THREE.Mesh(new THREE.RingGeometry(.8,1.02,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:['#ffb31f','#2f9cff','#a35cff','#3fd040'][i],transparent:true,opacity:.6,depthWrite:false})); D.pring.visible=false; scene.add(D.pring); });
-ALLDOGS.forEach((D,i)=>{ if(D.m.collar){ const c=['#ffb31f','#2f9cff','#a35cff','#3fd040'][i]; D.m.collar.material.color.set(c); D.m.collar.material.emissive.set(c).multiplyScalar(.25); } });   // collar = the player's colour
+// The dog's own pixels mark the stencil; the silhouette draws only where the dog is behind something (and the
+// stencil is still clear, so overlapping parts don't double up). Legs are left out so grass doesn't light them up.
+// A dog hidden behind something shows a soft silhouette in its player's colour. After all the solid stuff is drawn,
+// a mask pass re-draws the dog (and anything it wears) where it's actually the visible surface, marking the stencil;
+// then the silhouette draws only where the dog is behind something and the stencil is clear (so parts don't double up).
+// Legs and gear get the mask but no silhouette, so grass round the paws doesn't light them up.
+const DOG_MASK=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false,depthFunc:THREE.LessEqualDepth,transparent:true,
+  polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-4,
+  stencilWrite:true,stencilRef:1,stencilFunc:THREE.AlwaysStencilFunc,stencilZPass:THREE.ReplaceStencilOp});
+function stencilMark(root){ const list=[]; root.traverse(o=>{ if(o.isMesh && !o.userData.isSil && !o.userData.isMask && !o.userData.isOutline) list.push(o); });
+  for(const o of list){ const m=new THREE.Mesh(o.geometry,DOG_MASK); m.userData.isMask=true; m.renderOrder=59; o.add(m); } }
+function addSilhouette(D,col){
+  const sil=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.62,depthWrite:false,depthFunc:THREE.GreaterDepth,
+    stencilWrite:true,stencilRef:0,stencilFunc:THREE.EqualStencilFunc,stencilFail:THREE.KeepStencilOp,stencilZFail:THREE.KeepStencilOp,stencilZPass:THREE.IncrementStencilOp});
+  const legSet=new Set(); (D.m.legs||[]).forEach(l=>l.traverse(o=>legSet.add(o)));
+  const list=[]; D.m.g.traverse(o=>{ if(o.isMesh && !o.userData.isOutline && !o.userData.isSil && !o.userData.isMask) list.push(o); });
+  stencilMark(D.m.g);
+  for(const o of list){
+    if(legSet.has(o)) continue;
+    const s=new THREE.Mesh(o.geometry,sil); s.userData.isSil=true; s.renderOrder=60; o.add(s);
+  }
+}
+ALLDOGS.forEach((D,i)=>{ if(D.m.collar){ const c=['#ffb31f','#2f9cff','#a35cff','#3fd040'][i]; D.m.collar.material.color.set(c); D.m.collar.material.emissive.set(c).multiplyScalar(.25); } addSilhouette(D,['#f2b544','#8fd3ff','#c79bff','#8fe07a'][i]); });   // collar = the player's colour
 const PCOL=['#f2b544','#8fd3ff','#c79bff','#8fe07a'];          // each player's colour: name, minimap dot, title swatch
 const DEFAULT_NAMES=['Bramble','Moss','Pip','Juniper'];
 const dogIdx=D=>Math.max(0,ALLDOGS.indexOf(D));
@@ -2333,6 +2381,8 @@ let best=0; try{ best=+localStorage.getItem('collieDuskBest')||0; }catch(e){}
 function updateBestLine(){ $('bestLine').textContent = best>0 ? 'Best: '+best : ''; }
 updateBestLine();
 try{ const nm=localStorage.getItem('collieDuskName'); if(nm) $('dogName').value=nm; const nm2=localStorage.getItem('collieDuskName2'); if(nm2) $('dogName2').value=nm2; for(const k of [3,4]){ const v=localStorage.getItem('collieDuskName'+k); if(v) $('dogName'+k).value=v; } }catch(e){}
+// names stick as soon as you type them, not just when a game starts
+['dogName','dogName2','dogName3','dogName4'].forEach((id,i)=>{ const el=$(id); if(el) el.addEventListener('input',()=>{ const v=el.value.trim().slice(0,14); try{ if(v) localStorage.setItem('collieDuskName'+(i?i+1:''),v); }catch(e){} }); });
 let playerChoice=1;
 try{ playerChoice=+localStorage.getItem('collieDuskPlayers')||(localStorage.getItem('collieDuskCoop')==='1'?2:1); }catch(e){}
 // co-op camera: split screen (one view per dog) or one shared camera that zooms out to fit everyone. An experiment, so it's a toggle.
@@ -3272,6 +3322,7 @@ function obstacleSteer(s){
 }
 function updateSheep(dt){
   const L=G.sheep;
+  G.madN=0; for(const s of L) if(s.madT>0 && !s.penned && !s.dead) G.madN++;
   const pcx=(PEN.x0+PEN.x1)/2, pcz=(PEN.z0+PEN.z1)/2-1.5;
   for(const s of L){
     if(s.dead){
@@ -3321,9 +3372,38 @@ function updateSheep(dt){
         s.vx=D.pdx*20+bx/bd*3; s.vz=D.pdz*20+bz/bd*3; s.thrownT=.75; s.punted=G.elapsed; s.chain=0;
         D.pounceT=0; D.vx*=.15; D.vz*=.15;      // the dog stops dead; all the energy goes into the sheep
         sBoing(); sBleat(s.lamb?1.7:1.3); popText(s.x,2.4,s.z,'PUNT!','gold'); G.shake=Math.max(G.shake,.12);
+        if(s.madT>0){ s.madT=0; s.madImm=20; setTimeout(()=>popText(s.x,2.6,s.z,'Snapped out of it!','green'),250); }
         burst(s.x,1,s.z,12,s.golden?PC.gold:PC.confetti,3,4);
         if(s.ram){ s.rs='windup'; s.rt=.6; s.rtar=D; }
       }
+    }
+    if(s.madImm>0) s.madImm-=dt;
+    if(s.madT>0 && (s.penned || G.phase==='title')) s.madT=0;
+    if(s.madT>0 && s.flip<=0 && !(s.thrownT>0)){
+      // mad on mushrooms: wobbles at the nearest dog, head-butts it, and passes it on to sheep it bumps into
+      s.madT-=dt;
+      if(s.madT<=0){ s.madT=0; s.madImm=20; s.fear=.4; popText(s.x,2.4,s.z,'...huh?','green'); }
+      const D=nearestDog(s.x,s.z), dx=D.x-s.x, dz=D.z-s.z, d=Math.hypot(dx,dz)+1e-6;
+      const w=Math.sin(G.t*4.5+s.phase*3)*.85, cs=Math.cos(w), sn=Math.sin(w), sp=s.lamb?9.6:9;
+      let ax=(dx*cs-dz*sn)/d*sp, az=(dx*sn+dz*cs)/d*sp;
+      for(const o of L){ if(o===s||o.dead||o.penned||o.carried) continue; const ox=s.x-o.x, oz=s.z-o.z, od=Math.hypot(ox,oz);
+        if(od<1.5&&od>1e-6){ ax+=ox/od*(1.5-od)*6; az+=oz/od*(1.5-od)*6; }
+        if(od<1.35 && s.madSpread>0 && G.madN<MAD_MAX && !(o.madT>0) && !(o.madImm>0) && !o.grabbedBy && !(o.thrownT>0)){ s.madSpread--; G.madN++; goMad(o,MAD_LEN-2,1); } }
+      const a=1-Math.exp(-dt*5); s.vx+=(ax-s.vx)*a; s.vz+=(az-s.vz)*a;
+      s.buttCD=Math.max(0,(s.buttCD||0)-dt);
+      if(d<1.6 && s.buttCD<=0 && D.stunT<=0 && D.pounceT<=0){
+        D.vx+=dx/d*11; D.vz+=dz/d*11; D.stunT=.45*stunMul(); s.buttCD=1.4;
+        s.vx*=-.5; s.vz*=-.5; sThud(); G.shake=Math.max(G.shake,.35); rumble(.55,.35,150);
+        popText(D.x,2.4,D.z,'BAAAA!','mad');
+      }
+      if(Math.random()<dt*1.4 && s.hop<=0) s.hop=.32;
+      if(Math.random()<dt*6) burst(s.x,1.9,s.z,1,[0xff3fd0,0xffe23f,0x3fffb0,0x3fb4ff,0xc43fff],.5,1.8,2);
+      s.fear=.9; s.munch=0;
+      s.x+=s.vx*dt; s.z+=s.vz*dt;
+      collide(s,s.lamb?.45:.7,{gate:false,perim:onField(s.x,s.z)});
+      checkGoal(s);          // lure it into the pen and it's caught (and calms down)
+      s.attacked=Math.max(0,s.attacked-dt);
+      continue;
     }
     if(G.rageT>0 && !s.penned && G.phase!=='title' && s.flip<=0 && !(s.ram && s.rs!=='idle')){
       const D=nearestDog(s.x,s.z), dx=D.x-s.x, dz=D.z-s.z, d=Math.hypot(dx,dz)+1e-6;
@@ -3645,6 +3725,101 @@ function wolfUpdate(c,dt){
   }
   return true;
 }
+
+// ---------------- coyote pathfinding: A* over a 1 m grid of whatever blocks a coyote ----------------
+// Two grids: [0] a coyote on the prowl (hedges, maze, paddocks, gates, trees, rocks, the barn and the pond block it;
+// the land's edge and rivers don't) and [1] one hauling a sheep (the land's edge and the river banks block it too).
+// Walls are grown by the coyote's size, so a path through free cells never scrapes one. Rebuilt when the level's
+// walls change. A coyote that can see its target runs straight at it; otherwise it follows a path, cutting
+// corners wherever it can see past the next turn.
+const NAV={N:150,O:-75,sig:'',grid:[null,null],g:null,from:null,stamp:null,run:0,hp:null,hf:null};
+function navSig(){ return OBS.ver+':'+segs.length+':'+circles.length+':'+boxes.length+':'+POND.x+':'+POND.z+':'+POND.r+':'+(SEASON.frozen?1:0)+':'+(PZ.locked?1:0); }
+function navBuild(){
+  const N=NAV.N, O=NAV.O, R=1.05;
+  if(!NAV.g){ NAV.g=new Float32Array(N*N); NAV.from=new Int32Array(N*N); NAV.stamp=new Uint32Array(N*N); NAV.hp=new Int32Array(N*N*4); NAV.hf=new Float32Array(N*N*4); }
+  for(let k=0;k<2;k++){
+    const B=new Uint8Array(N*N), carry=k===1;
+    const mark=(x0,z0,x1,z1,fn)=>{ const i0=Math.max(0,Math.floor(x0-O)), i1=Math.min(N-1,Math.ceil(x1-O)), j0=Math.max(0,Math.floor(z0-O)), j1=Math.min(N-1,Math.ceil(z1-O));
+      for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++){ const q=j*N+i; if(!B[q] && fn(O+i+.5,O+j+.5)) B[q]=1; } };
+    for(const s of segs){
+      if(s.kind==='leaf') continue;
+      if(s.kind==='perim' && !carry && !(s.level && !s.edge)) continue;
+      if(s.kind==='river' && !carry) continue;
+      const abx=s.bx-s.ax, abz=s.bz-s.az, l2=abx*abx+abz*abz||1;
+      mark(Math.min(s.ax,s.bx)-R,Math.min(s.az,s.bz)-R,Math.max(s.ax,s.bx)+R,Math.max(s.az,s.bz)+R,(x,z)=>{ const u=clamp(((x-s.ax)*abx+(z-s.az)*abz)/l2,0,1); return Math.hypot(x-s.ax-abx*u,z-s.az-abz*u)<R; });
+    }
+    for(const c of circles){ const m=c.r+R; mark(c.x-m,c.z-m,c.x+m,c.z+m,(x,z)=>Math.hypot(x-c.x,z-c.z)<m); }
+    for(const b of boxes) mark(b.x0-R,b.z0-R,b.x1+R,b.z1+R,(x,z)=>Math.hypot(x-clamp(x,b.x0,b.x1),z-clamp(z,b.z0,b.z1))<R);
+    if(!SEASON.frozen && POND.r>0){ const m=POND.r*1.6+R; mark(POND.x-m,POND.z-m,POND.x+m,POND.z+m,(x,z)=>{ const dx=x-POND.x, dz=z-POND.z; return Math.hypot(dx,dz)<pondR(Math.atan2(dz,dx))+.75; }); }
+    NAV.grid[k]=B;
+  }
+}
+function navReady(){ const s=navSig(); if(s!==NAV.sig){ NAV.sig=s; navBuild(); } }
+const navCell=(x,z)=>{ const N=NAV.N; return clamp(Math.floor(z-NAV.O),0,N-1)*N+clamp(Math.floor(x-NAV.O),0,N-1); };
+function navFree(k,x,z){ const N=NAV.N, i=Math.floor(x-NAV.O), j=Math.floor(z-NAV.O); if(i<0||j<0||i>=N||j>=N) return true; return !NAV.grid[k][j*N+i]; }
+// can a coyote run straight from a to b? (the first and last stretch are let off: it may be brushing a wall already)
+function navLOS(k,x0,z0,x1,z1){
+  const d=Math.hypot(x1-x0,z1-z0), n=Math.ceil(d/.4);
+  for(let s=1;s<n;s++){ const u=s/n, w=u*d; if(w<1.1 || d-w<1.1) continue; if(!navFree(k,x0+(x1-x0)*u,z0+(z1-z0)*u)) return false; }
+  return true;
+}
+function navNearFree(k,q){
+  const N=NAV.N, B=NAV.grid[k]; if(!B[q]) return q; const i0=q%N, j0=(q/N)|0;
+  for(let r=1;r<6;r++) for(let dj=-r;dj<=r;dj++) for(let di=-r;di<=r;di++){ if(Math.max(Math.abs(di),Math.abs(dj))!==r) continue; const i=i0+di, j=j0+dj; if(i<0||j<0||i>=N||j>=N) continue; if(!B[j*N+i]) return j*N+i; }
+  return -1;
+}
+// A* from (x,z) to a goal cell or any cell where goalFn(x,z) holds; h(x,z) estimates the distance left. Returns waypoints [[x,z],...].
+function navPath(k,x,z,goalQ,goalFn,h){
+  const N=NAV.N, O=NAV.O, B=NAV.grid[k], g=NAV.g, from=NAV.from, st=NAV.stamp, hp=NAV.hp, hf=NAV.hf;
+  const s=navNearFree(k,navCell(x,z)); if(s<0) return null;
+  if(goalQ>=0){ goalQ=navNearFree(k,goalQ); if(goalQ<0) return null; }
+  const run=++NAV.run; let n=0;
+  const push=(q,f)=>{ let i=n++; while(i>0){ const p=(i-1)>>1; if(hf[p]<=f) break; hp[i]=hp[p]; hf[i]=hf[p]; i=p; } hp[i]=q; hf[i]=f; };
+  const pop=()=>{ const top=hp[0], q=hp[--n], f=hf[n]; let i=0; for(;;){ let c=2*i+1; if(c>=n) break; if(c+1<n && hf[c+1]<hf[c]) c++; if(hf[c]>=f) break; hp[i]=hp[c]; hf[i]=hf[c]; i=c; } hp[i]=q; hf[i]=f; return top; };
+  st[s]=run; g[s]=0; from[s]=-1; push(s,h(O+s%N+.5,O+((s/N)|0)+.5));
+  let end=-1, expanded=0;
+  while(n>0 && expanded<14000){
+    const q=pop(), qi=q%N, qj=(q/N)|0, qx=O+qi+.5, qz=O+qj+.5; expanded++;
+    if(q===goalQ || (goalFn && goalFn(qx,qz))){ end=q; break; }
+    const gq=g[q];
+    for(let dj=-1;dj<=1;dj++) for(let di=-1;di<=1;di++){
+      if(!di && !dj) continue; const i=qi+di, j=qj+dj; if(i<0||j<0||i>=N||j>=N) continue;
+      const r=j*N+i; if(B[r]) continue;
+      if(di && dj && (B[qj*N+i] || B[j*N+qi])) continue;          // no cutting a wall's corner
+      const ng=gq+(di&&dj?1.4142:1);
+      if(st[r]===run && g[r]<=ng) continue;
+      st[r]=run; g[r]=ng; from[r]=q; push(r,ng+h(O+i+.5,O+j+.5));
+    }
+  }
+  if(end<0) return null;
+  const path=[]; for(let q=end;q>=0 && q!==s;q=from[q]) path.push([O+q%N+.5,O+((q/N)|0)+.5]);
+  return path.reverse();
+}
+// follow (or re-plan) a coyote's path; returns a unit direction, or null when it can just run straight
+function navFollow(c,k,dt,plan){
+  let P=c.nav;
+  if(!P || P.k!==k || P.kind!==plan.kind || (P.t-=dt)<=0 || (plan.gx!==undefined && Math.hypot(P.gx-plan.gx,P.gz-plan.gz)>3)){
+    const path=navPath(k,c.x,c.z,plan.gx!==undefined?navCell(plan.gx,plan.gz):-1,plan.goal,plan.h);
+    P=c.nav={path:path||[],i:0,t:.55+Math.random()*.3,k,kind:plan.kind,gx:plan.gx,gz:plan.gz};
+  }
+  if(!P.path.length) return null;
+  for(let m=0;m<4 && P.i<P.path.length-1;m++){ const w=P.path[P.i+1]; if(navLOS(k,c.x,c.z,w[0],w[1])) P.i++; else break; }
+  const w=P.path[P.i]; let dx=w[0]-c.x, dz=w[1]-c.z, d=Math.hypot(dx,dz);
+  if(d<.7){ if(P.i<P.path.length-1){ P.i++; return navFollow(c,k,0,plan); } return null; }
+  return [dx/d,dz/d];
+}
+// steer at a point, round anything in the way
+function navTo(c,k,dt,tx,tz,kind){
+  navReady();
+  if(navLOS(k,c.x,c.z,tx,tz)){ c.nav=null; return null; }
+  return navFollow(c,k,dt,{kind,gx:tx,gz:tz,h:(x,z)=>Math.hypot(x-tx,z-tz)});
+}
+// head the way it wants (dirx,dirz) unless that's walled off within a few metres; then take a path to wherever goal() says
+function navOut(c,k,dt,dirx,dirz,kind,goal,h){
+  navReady();
+  if(navLOS(k,c.x,c.z,c.x+dirx*7,c.z+dirz*7) && (!c.nav || c.nav.kind!==kind || c.nav.clearT>.4)){ if(c.nav) c.nav.clearT=(c.nav.clearT||0)+dt; return null; }
+  const r=navFollow(c,k,dt,{kind,goal,h}); if(c.nav) c.nav.clearT=0; return r;
+}
 function updateCoyotes(dt){
   const PCZ=(PEN.z0+PEN.z1)/2;
   for(const c of G.coyotes){
@@ -3674,6 +3849,7 @@ function updateCoyotes(dt){
       const w=Math.sin(G.t*1.4+c.wob)*.7*Math.min(1,d/14), cs=Math.cos(w), sn=Math.sin(w);
       dirx=(dx*cs-dz*sn)/d; dirz=(dx*sn+dz*cs)/d;
       spd=(d>18?9.5:(d<8?10.5:8.2))+(c.alpha?.8:0)+coyoteBoost(G.day);
+      const nv=navTo(c,0,dt,t.x,t.z,'stalk'); if(nv){ dirx=nv[0]; dirz=nv[1]; }
       if(dd<5){ dirx+=ddx/dd*.6; dirz+=ddz/dd*.6; }
       if(d<1.6){ c.state='grab'; c.carry=t; t.carried=c; if(!sCoyote('yip',1.1)) sYelp(); sBleat(.75); popText(t.x,2.2,t.z,'Help!','red'); shepSay("Get 'im, "+G.name+"!",true); }
     } else if(c.state==='grab'){
@@ -3682,6 +3858,9 @@ function updateCoyotes(dt){
       else {
         // drag it away from the pen, toward the hills
         const dx=c.x, dz=c.z-PCZ, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d;
+        const nv=navOut(c,1,dt,dirx,dirz,'grab',(x,z)=>fieldD(x,z)<1.9,(x,z)=>Math.max(0,fieldD(x,z)-1.9));
+        if(nv){ dirx=nv[0]; dirz=nv[1]; }
+        else if(c.nav && c.nav.kind==='grab' && c.nav.path.length && fieldD(c.x,c.z)<3){ const e=.6, gx=fieldD(c.x+e,c.z)-fieldD(c.x-e,c.z), gz=fieldD(c.x,c.z+e)-fieldD(c.x,c.z-e), gl=Math.hypot(gx,gz)+1e-6; dirx=-gx/gl; dirz=-gz/gl; }   // at the end of its path: straight over the edge
         if(dd<6){ dirx+=ddx/dd*.5; dirz+=ddz/dd*.5; }
         spd=(c.boss?5.2:c.alpha?6.6:5.8)+coyoteBoost(G.day)*.5;
         if(fieldD(c.x,c.z)<1.2 || Math.max(Math.abs(c.x),Math.abs(c.z))>FIELD-1.8){     // reached the edge of the land with it
@@ -3690,11 +3869,14 @@ function updateCoyotes(dt){
       }
     } else if(c.state==='flee'){
       dirx=ddx/dd; dirz=ddz/dd; spd=11.5; c.fleeT-=dt;
+      { const nv=navTo(c,0,dt,c.x+dirx*12,c.z+dirz*12,'flee'); if(nv){ dirx=nv[0]; dirz=nv[1]; } }
       if(c.fleeT<=0) c.state=(G.phase==='night'||G.phase==='day')?'stalk':'retreat';
     } else if(c.state==='retreat'){
       const d=Math.hypot(c.x,c.z)+1e-6; dirx=c.x/d; dirz=c.z/d; spd=11;
+      { const nv=navOut(c,0,dt,dirx,dirz,'retreat',(x,z)=>fieldD(x,z)<-4,(x,z)=>Math.max(0,fieldD(x,z)+4)); if(nv){ dirx=nv[0]; dirz=nv[1]; } }
       if(d>FIELD+50 || (WALK_FLOOR>-1 && fieldD(c.x,c.z)<-5)){ c.gone=true; scene.remove(c.m.g); continue; }
     }
+    for(const o of G.coyotes){ if(o===c||o.gone||o.thrownT>0) continue; const ox=c.x-o.x, oz=c.z-o.z, od=Math.hypot(ox,oz); if(od<1.8 && od>1e-4){ dirx+=ox/od*(1.8-od)*.8; dirz+=oz/od*(1.8-od)*.8; } }
     const dl=Math.hypot(dirx,dirz); if(dl>1e-6){ dirx/=dl; dirz/=dl; }
     const a=1-Math.exp(-dt*6);
     c.vx+=(dirx*spd-c.vx)*a; c.vz+=(dirz*spd-c.vz)*a;
@@ -3760,7 +3942,7 @@ function makeGun(){
   return g;
 }
 const groundGun=makeGun(); groundGun.scale.setScalar(1.3); groundGun.rotation.set(0,.7,1.45); groundGun.visible=false; scene.add(groundGun);
-for(const D of ALLDOGS){ const g=makeGun(); g.scale.setScalar(.75); g.position.set(.16,-.14,.42); g.visible=false; D.m.head.add(g); D.gunMesh=g; }
+for(const D of ALLDOGS){ const g=makeGun(); g.scale.setScalar(.75); g.position.set(.16,-.14,.42); g.visible=false; D.m.head.add(g); D.gunMesh=g; stencilMark(g); }
 const bullets=[];
 const bulletGeo=new THREE.SphereGeometry(.14,8,6), bulletMat=new THREE.MeshBasicMaterial({color:0xffe27a});
 function updateGun(dt,time){
@@ -3875,7 +4057,7 @@ function setHat(id){
   hatSel=id; try{ localStorage.setItem('collieDuskHat',id); }catch(e){}
   for(const D of ALLDOGS){
     const h=buildHat(id);
-    if(h){ h.g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); (h.onBody?D.m.body:D.m.head).add(h.g); hatObjs.push(h); }
+    if(h){ h.g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); (h.onBody?D.m.body:D.m.head).add(h.g); stencilMark(h.g); hatObjs.push(h); }
   }
   refreshHatUI();
 }
@@ -4543,10 +4725,63 @@ const shroom=(function(){
   const eyeG=new THREE.SphereGeometry(.036,10,8), browG=new THREE.CylinderGeometry(.015,.015,.1,6), fp=[[new THREE.TorusGeometry(.034,.011,6,10,Math.PI),propM(0,.135,.205)]];
   for(const sd of [-1,1]) fp.push([eyeG,propM(.075*sd,.22,.198,0,0,0,.8,1.25,.6)],[browG,propM(.08*sd,.295,.186,0,0,Math.PI/2-.5*sd)]);
   g.add(new THREE.Mesh(mergeParts(fp),mat(PAL.ink)));
+  g.userData.body=bodyG;
   g.visible=false; scene.add(g); return g;
 })();
 let shroomSpot=null;
+// ---- mad mushrooms: little purple clumps out on the field. A sheep that eats one goes mad (spiral eyes, rainbow wool)
+// and charges the nearest dog; bump into another sheep and it catches it too, like rabies. Punt it to snap it out
+// of it, or lead it into the pen; otherwise it wears off. Capped so it never turns into a mob of the whole flock.
+const MADS=[], MAD_LEN=13, MAD_MAX=5;
+const madMat=mat(0xd99cff,{vertexColors:true});
+const SPIRAL_TEX=(function(){ const S=64, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='#fff'; x.beginPath(); x.arc(S/2,S/2,S/2-1,0,TAU); x.fill(); x.strokeStyle='#2a1640'; x.lineWidth=4.5; x.beginPath();
+  for(let a=0;a<TAU*3.2;a+=.12){ const r=1.5+a*2.6; x.lineTo(S/2+Math.cos(a)*r,S/2+Math.sin(a)*r); } x.stroke();
+  const tx=new THREE.CanvasTexture(c); return tx; })();
+const spiralMat=new THREE.MeshBasicMaterial({map:SPIRAL_TEX,transparent:true}), spiralGeo=new THREE.CircleGeometry(.1,20);
+function madEyes(s){
+  if(s.m.mad) return s.m.mad;
+  const g=new THREE.Group(), discs=[];
+  for(const sd of [1,-1]){ const e=new THREE.Group(); e.position.set(.095*sd,.04,.215); e.rotation.y=.42*sd; const d=new THREE.Mesh(spiralGeo,spiralMat); d.position.z=.048; e.add(d); g.add(e); discs.push(d); }
+  s.m.head.add(g); s.m.mad=g; g.userData.discs=discs; return g;
+}
+function placeMads(){
+  for(const m of MADS) scene.remove(m.g); MADS.length=0; G.saidMad=false;
+  if(G.day<UNLOCK.rabid) return;
+  const n=G.day>=11?3:2;
+  for(let tries=0;tries<400 && MADS.length<n;tries++){
+    const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
+    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x-dog.x,z-dog.z)<12) continue;
+    const g=new THREE.Group(); g.position.set(x,groundH(x,z),z);
+    for(const [sc,ox,oz,ry] of [[.42,0,0,0],[.3,.34,.18,1.2],[.26,-.28,.22,2.3],[.2,.1,-.32,.4]]){ const b=new THREE.Mesh(shroom.userData.body,madMat); b.position.set(ox,0,oz); b.scale.setScalar(sc); b.rotation.y=ry; b.castShadow=true; g.add(b); }
+    scene.add(g); MADS.push({x,z,g,eaten:false});
+  }
+}
+function goMad(s,len,spread){
+  s.madT=len; s.madSpread=spread; s.munch=0; s.hop=.45; s.fear=.9; madEyes(s).visible=true;
+  popText(s.x,2.4,s.z,'?!','mad'); sBleat(1.5); setTimeout(()=>sBleat(.7),160);
+  burst(s.x,1.4,s.z,18,[0xff3fd0,0xffe23f,0x3fffb0,0x3fb4ff,0xc43fff],3,4);
+}
+function updateMads(dt,time){
+  if(!MADS.length) return;
+  const play=(G.phase==='day'||G.phase==='night') && !G.paused, quiet=!busy();
+  for(const m of MADS){
+    if(m.eaten) continue;
+    m.g.children.forEach((b,i)=>b.scale.y=b.scale.x*(1+Math.sin(time*3+i)*.06));
+    if(Math.random()<dt*1.2) burst(m.x+(Math.random()-.5)*.6,.5,m.z+(Math.random()-.5)*.6,1,[0xc77dff,0xff7ad9,0x7dfff0],.3,1,1);
+    if(!play || !quiet) continue;
+    for(const s of G.sheep){
+      if(s.dead||s.penned||s.carried||s.grabbedBy||s.madT>0||(s.madImm||0)>0||s.fear>.45||s.thrownT>0) continue;
+      if(Math.hypot(s.x-m.x,s.z-m.z)>1.15 || Math.random()>dt*2.5) continue;
+      m.eaten=true; m.g.visible=false; burst(m.x,.6,m.z,24,[0xc77dff,0xff7ad9,0xffffff],3,4);
+      goMad(s,MAD_LEN,2);
+      if(!G.saidMad){ G.saidMad=true; setTimeout(()=>shepSay("What've they been eating?!",true),400); toast('A sheep ate a mad mushroom!','bad',2.4); }
+      break;
+    }
+  }
+}
 function placeShroom(){
+  placeMads();
   shroomSpot=null; shroom.visible=false; G.rageT=0;
   if(G.day<UNLOCK.shroom) return;
   for(let tries=0;tries<300;tries++){
@@ -4556,6 +4791,7 @@ function placeShroom(){
   }
 }
 function updateShroom(dt,time){
+  updateMads(dt,time);
   if(!shroomSpot) return;
   shroom.rotation.y=time*.6; shroom.scale.setScalar(1+Math.sin(time*4)*.06);
   if(Math.random()<dt*2.5) burst(shroomSpot[0]+(Math.random()-.5)*.5,.7,shroomSpot[1]+(Math.random()-.5)*.5,1,[0xc77dff,0xff7ad9,0xffffff],.3,1.2,1);
@@ -4722,6 +4958,8 @@ function syncAll(dt,time){
     if(s.rainbow){ s.m.base.setHSL((time*.5+s.phase*.1)%1,.85,.62); if(Math.random()<dt*14) burst(s.x,1.2,s.z,1,[0xff5a5a,0xffe14d,0x6fd06f,0x6fb4ff,0xb48cff],.6,1.6,3); }
     if(s.dance){ s.m.g.position.y+=Math.abs(Math.sin(time*8+s.phase))*.6; s.m.g.rotation.y=s.yaw+Math.sin(time*4+s.phase)*1.2; s.m.head.rotation.x=Math.sin(time*8+s.phase)*.4; }
     s.m.wool.color.copy(s.m.base).lerp(RED, Math.max(s.flash*.8, (G.rageT>0 && !s.penned) ? .45+.15*Math.sin(time*10+s.phase) : 0));
+    if(s.madT>0){ s.m.wool.color.setHSL((time*.7+s.phase*.13)%1,.8,.66); const me=madEyes(s); me.visible=true; me.userData.discs.forEach((d,i)=>d.rotation.z=time*(i?-9:9)); s.m.head.rotation.z=Math.sin(time*21+s.phase)*.28; }
+    else if(s.m.mad && s.m.mad.visible){ s.m.mad.visible=false; s.m.head.rotation.z=0; }
     if(!s.penned && s.stress>.65 && Math.random()<dt*4) burst(s.x,2,s.z,1,[0xbfe8ff,0xffffff],.5,1.6,6);   // nervous sweat
     if(s.leader && v>1.2 && Math.random()<dt*1.6) sBell();
     if(s.golden && Math.random()<dt*7) burst(s.x+(Math.random()-.5),1.3+Math.random()*.5,s.z+(Math.random()-.5),1,PC.gold,.8,2,2);
@@ -5991,7 +6229,7 @@ function startSurprise(kind){
   }
 }
 // is something big already going on? (a surprise, the falcon, coyotes in daylight, sheep rage)
-const busy=()=> !!G.ev || falcon.state!=='idle' || G.rageT>0 || G.coyotes.some(c=>!c.gone && c.state!=='retreat');
+const busy=()=> !!G.ev || falcon.state!=='idle' || G.rageT>0 || G.madN>0 || G.coyotes.some(c=>!c.gone && c.state!=='retreat');
 function updateSurprise(dt){
   if(G.phase!=='day' && G.phase!=='night'){ if(G.ev) endSurprise(); return; }
   if(!G.ev){
@@ -6264,6 +6502,7 @@ const bubbles=(function(){
 })();
 // trees between the camera and an animal you need to see turn see-through
 function updateTreeFade(dt){
+  RING_FADE.uDogs.value.forEach((v,i)=>{ const D=dogs[i]; if(D && (G.phase==='day'||G.phase==='night')) v.set(D.x,0,D.z,1); else v.w=0; });
   if(!fadeTrees.length) return;
   const subj=[...dogs.filter(D=>D===dog||G.coop)], k=1-Math.exp(-dt*8);
   for(const s of G.sheep) if(!s.dead && !s.penned && Math.hypot(s.x-dog.x,s.z-dog.z)<34) subj.push(s);
@@ -6603,6 +6842,10 @@ function frame(now){
   updateGun(dt,time);
   updateGoldBones(dt,time);
   updateShroom(dt,time);
+  { // a little psychedelic when a mad sheep is close to a dog
+    let k=0; if(G.madN>0) for(const s of G.sheep){ if(!(s.madT>0)||s.penned||s.dead) continue; const D=nearestDog(s.x,s.z); k=Math.max(k,1-Math.hypot(D.x-s.x,D.z-s.z)/20); }
+    G.trip=lerp(G.trip||0,clamp(k,0,1),1-Math.exp(-dt*2)); const el=$('trip'); if(el){ const o=(G.trip*.42).toFixed(3); if(el.style.opacity!==o) el.style.opacity=o; }
+  }
   updateMusic();
   syncShepherd(dt,time);
   syncLlama(dt);

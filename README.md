@@ -41,6 +41,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **The cougar:** on some farm and Sky Island days a cougar lies on a branch of a tree near the flock's route, tail swishing. A faint red ring on the ground shows how close is too close. If a sheep wanders inside, the cougar leaps out, grabs it and drags it up the tree, and that sheep is lost. Bark near the tree and it hisses and holds off for a few seconds (but barking scatters the flock); punt into it while it's dragging a sheep back and it drops the sheep and bolts up the tree, dazed.
 
+**Mad mushrooms:** from day 5, little purple toadstool clumps grow out on the field. A sheep that eats one goes mad: spiral eyes, rainbow wool, and it wobbles straight at the nearest dog and head-butts it. Mad sheep pass it on to sheep they bump into (up to five at once), and the screen goes a bit psychedelic when they're close. Punt a mad sheep to snap it out of it, lure it into the pen, or wait for it to wear off. The big red mad mushroom (step on it and the whole flock turns on you) still turns up from day 9.
+
 **Falcons:** from day 7, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
 **Seasons:** each day is the next season. Spring has blossom, extra lambs and extra clover. Summer has longer, hot days that tire the dog faster. Autumn has red and orange trees, falling leaves, wind gusts that push the flock, and mad mushrooms that regrow. Winter brings snow, a frozen and slippery pond everyone can cross, ducks gone south, shorter days, a huddling flock and hungrier coyotes.
