@@ -270,6 +270,7 @@ body.touch #power{top:calc(248px + env(safe-area-inset-top,0px))}
 .btn.ghost{background:transparent;color:var(--ink);border-color:var(--edge)}
 .btn:hover{filter:brightness(1.08)}
 .btn:focus-visible{outline:3px solid var(--wool);outline-offset:2px}
+body.pad #sign button:focus,body.pad #shopSign button:focus{outline:3px solid #ffcf3f;outline-offset:3px;box-shadow:0 0 0 7px rgba(255,207,63,.28)}
 @media (max-width:520px){
   #clockCard{width:150px;padding:8px 10px}
   .clock{font-size:19px}
@@ -2205,6 +2206,21 @@ function rumble(strong,weak,ms){
     for(const g of list){ const a=g&&g.vibrationActuator; if(a&&a.playEffect){ a.playEffect('dual-rumble',{duration:ms,strongMagnitude:strong,weakMagnitude:weak}).catch(()=>{}); return; } }
   }catch(e){}
 }
+// controller menus: which menu is open, what can be highlighted, and moving between buttons by direction
+function menuRoot(){ return !$('shopOverlay').hidden ? $('shopSign') : !$('overlay').hidden ? $('sign') : null; }
+function menuItems(root){ return [...root.querySelectorAll('button:not([disabled])')].filter(e=>e.offsetParent!==null); }
+function menuMove(dir){
+  const root=menuRoot(); if(!root) return; const items=menuItems(root); if(!items.length) return;
+  const cur=items.includes(document.activeElement)?document.activeElement:null;
+  if(!cur){ const first=root.querySelector('.btn:not([disabled])')||items[0]; first.focus({preventScroll:true}); first.scrollIntoView({block:'nearest'}); return; }
+  const a=cur.getBoundingClientRect(), ax=a.left+a.width/2, ay=a.top+a.height/2; let best=null, bs=1e9;
+  for(const e of items){ if(e===cur) continue; const r=e.getBoundingClientRect(), dx=r.left+r.width/2-ax, dy=r.top+r.height/2-ay;
+    const along=dir==='up'?-dy:dir==='down'?dy:dir==='left'?-dx:dx, across=dir==='up'||dir==='down'?Math.abs(dx):Math.abs(dy);
+    if(along<4) continue; const sc=along+across*2.2; if(sc<bs){ bs=sc; best=e; } }
+  if(best){ best.focus({preventScroll:true}); best.scrollIntoView({block:'nearest'}); sTick(); }
+}
+function menuActivate(){ const root=menuRoot(), a=document.activeElement; if(root && a && root.contains(a) && a.tagName==='BUTTON' && !a.disabled) a.click(); else clickPrimary(); }
+function sTick(){ if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator(); o.type='triangle'; o.frequency.value=880; o.connect(envG(t,.004,.06,.05)); o.start(t); o.stop(t+.06); }
 function clickPrimary(){ if(!$('shopOverlay').hidden){ const g=$('shopGo'); if(g) g.click(); return; } if($('overlay').hidden) return; const bt=document.querySelector('#sign .btn'); if(bt) bt.click(); }
 function pollPad(){
   let list=[];
@@ -2227,7 +2243,15 @@ function pollPad(){
     const D=owners[i]||null;
     if(D) D.padCtl={x:ax,y:ay,run:b(7)||b(5)||b(10),down:b(2),grab:b(6)};   // LT = grab
     if(hit(9)){ if(playing) togglePause(); else clickPrimary(); }                     // Menu
-    else if(hit(0) && (!playing || G.paused)){ initAudio(); clickPrimary(); }         // A on a menu
+    else if(hit(0) && (!playing || G.paused)){ initAudio(); menuActivate(); }         // A on a menu: press the highlighted button
+    if((!playing || G.paused) && menuRoot()){
+      // D-pad or left stick moves the highlight around the menu (the stick repeats while held)
+      let dir=hit(12)?'up':hit(13)?'down':hit(14)?'left':hit(15)?'right':null;
+      const sx=gp.axes[0]||0, sy=gp.axes[1]||0, mag=Math.max(Math.abs(sx),Math.abs(sy)), now=performance.now();
+      if(mag<.4) st.navT=0;
+      else if(!dir && mag>.6 && now>(st.navT||0)){ dir=Math.abs(sx)>Math.abs(sy)?(sx>0?'right':'left'):(sy>0?'down':'up'); st.navT=now+(st.navT?170:330); }
+      if(dir) menuMove(dir);
+    }
     else if(D && playing && !G.paused){
       if(hit(0)) bark(D);
       if(hit(1)) pounce(D);
@@ -2388,7 +2412,7 @@ function openShop(onDone,label){
     return `<div class="item${u.ability?' ab':''}"><div class="info"><b>${u.name}</b><span>${u.desc}</span>${pips}</div><button class="buy" type="button" data-id="${u.id}" ${maxed||WOOL<c?'disabled':''}>${maxed?(u.max>1?'Max':'Owned'):c+' wool'}</button></div>`;
   }).join('');
   el.innerHTML=`<span class="eyebrow">Morag's shearing shed</span><div class="woolTotal"><b>${WOOL}</b> wool</div><div class="shop">${items}</div><div class="btnrow"><button class="btn" id="shopGo" type="button">${label}</button></div>`;
-  el.querySelectorAll('.buy').forEach(b=>b.onclick=()=>{ buyUpgrade(b.dataset.id); openShop(onDone,label); const nb=el.querySelector('.buy[data-id="'+b.dataset.id+'"]'); if(nb) nb.focus({preventScroll:true}); });
+  el.querySelectorAll('.buy').forEach(b=>b.onclick=()=>{ buyUpgrade(b.dataset.id); openShop(onDone,label); const nb=el.querySelector('.buy[data-id="'+b.dataset.id+'"]'); const tgt=nb&&!nb.disabled?nb:[...el.querySelectorAll('.buy')].slice([...el.querySelectorAll('.buy')].indexOf(nb)+1).find(x=>!x.disabled)||$('shopGo'); if(tgt) tgt.focus({preventScroll:true}); });   // stay near the item just bought
   $('shopGo').onclick=()=>{ $('shopOverlay').hidden=true; onDone(); };
   $('shopOverlay').hidden=false;
   setTimeout(()=>{ const g=$('shopGo'); if(g && document.activeElement && !el.contains(document.activeElement)) g.focus({preventScroll:true}); },50);
