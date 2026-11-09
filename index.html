@@ -3540,10 +3540,26 @@ function updateSheep(dt){
         if(o===s||o.dead||o.penned||o.carried||o.grabbedBy||o.thrownT>0||o.boingCD>0) continue;
         const ox=o.x-s.x, oz=o.z-s.z, od=Math.hypot(ox,oz)+1e-6; if(od>1.5) continue;
         // carom: pass most of the speed on, part along the line between them
-        o.vx=s.vx*.55+ox/od*sv*.35; o.vz=s.vz*.55+oz/od*sv*.35; o.thrownT=.55; o.flip=.6; o.boingCD=.6; o.fear=1; o.munch=0; o.punted=s.punted; o.chain=(s.chain||0)+1;
+        o.vx=s.vx*.6+ox/od*sv*.4; o.vz=s.vz*.6+oz/od*sv*.4; o.thrownT=.55; o.flip=0; if(!o.sky){ o.bY=.01; o.bVY=7.5; o.bN=1; o.bSpin=0; } o.boingCD=.6; o.fear=1; o.munch=0; o.punted=s.punted; o.chain=(s.chain||0)+1;
         s.vx*=.5; s.vz*=.5; sBoing(); sBleat(1.2+Math.random()*.3); burst(o.x,1.2,o.z,10,PC.confetti,3,3);
-        if(o.chain===2) popText(o.x,2.6,o.z,'CAROM!','gold'); else if(o.chain>=3) popText(o.x,2.8,o.z,'CHAIN x'+o.chain+'!','gold');
+        if(o.chain>=2) popText(o.x,2.8,o.z,'CHAIN x'+(o.chain+1)+'!','gold');
         break;
+      }
+    }
+    if(s.bY>0){
+      if(s.sky||s.penned||s.carried||s.grabbedBy){ s.bY=0; }
+      else {
+        const g=LEVEL.theme==='moon'?12:28; s.bVY-=g*dt; s.bY+=s.bVY*dt; s.bSpin+=dt*(s.bN===2?8:5);
+        s.thrownT=Math.max(s.thrownT,.12);
+        if(s.bY<=0){
+          burst(s.x,.3,s.z,10,PC.dust,3,2); sThud();
+          if(s.bN>0 && s.bVY<-3){ s.bN--; s.bVY=-s.bVY*.48; s.bY=.01; s.vx*=.82; s.vz*=.82; sBoing(); }
+          else { s.bY=0; s.bSpin=0; s.vx*=.7; s.vz*=.7; }
+        }
+        s.x+=s.vx*dt; s.z+=s.vz*dt;
+        collide(s,s.lamb?.45:.7,{gate:false,perim:onField(s.x,s.z)});
+        checkGoal(s);
+        continue;
       }
     }
     if(s.ram && !s.penned && G.phase!=='title' && ramUpdate(s,dt)) continue;
@@ -3556,9 +3572,10 @@ function updateSheep(dt){
       if(bd<1.7){
         s.boingCD=.8; s.munch=0; s.munchImmune=8; s.fear=1; s.flip=.6;
         // PUNT: the sheep goes flying the way you pounced, and bowls over anything it hits
-        s.vx=D.pdx*20+bx/bd*3; s.vz=D.pdz*20+bz/bd*3; s.thrownT=.75; s.punted=G.elapsed; s.chain=0;
+        s.vx=D.pdx*24+bx/bd*3; s.vz=D.pdz*24+bz/bd*3; s.thrownT=.75; s.punted=G.elapsed; s.chain=0; s.flip=0;
+        if(!s.sky){ s.bY=.01; s.bVY=(LEVEL.theme==='moon'?9:11); s.bN=2; s.bSpin=0; }      // up it goes, then a couple of bounces
         D.pounceT=0; D.vx*=.15; D.vz*=.15;      // the dog stops dead; all the energy goes into the sheep
-        sBoing(); sBleat(s.lamb?1.7:1.3); popText(s.x,2.4,s.z,'PUNT!','gold'); G.shake=Math.max(G.shake,.12);
+        sBoing(); sBleat(s.lamb?1.7:1.3); G.shake=Math.max(G.shake,.12);
         if(s.madT>0){ s.madT=0; s.madImm=20; setTimeout(()=>popText(s.x,2.6,s.z,'Snapped out of it!','green'),250); }
         burst(s.x,1,s.z,12,s.golden?PC.gold:PC.confetti,3,4);
         if(s.ram){ s.rs='windup'; s.rt=.6; s.rtar=D; }
@@ -5149,6 +5166,7 @@ function syncAll(dt,time){
     if(s.hop>0){ s.hop=Math.max(0,s.hop-dt); s.m.g.position.y+=Math.sin((1-s.hop/.45)*Math.PI)*(LEVEL.theme==='moon'?2.4:G.twist==='bouncy'?1.2:.7); }
     if(LEVEL.theme==='sea') s.m.g.position.y+=.25+Math.sin(time*2+s.phase)*.15;      // floating
     if(s.flip>0){ s.flip=Math.max(0,s.flip-dt); const k=1-s.flip/.6; s.m.g.rotation.x=-k*TAU*(LEVEL.theme==='moon'?2:1); s.m.g.position.y+=Math.sin(k*Math.PI)*(LEVEL.theme==='moon'?4.5:1.6); } else s.m.g.rotation.x=0;
+    if(s.bY>0){ s.m.g.position.y+=s.bY; s.m.g.rotation.x=s.bN===2?-Math.min(s.bSpin,TAU):Math.sin(s.bSpin*3)*.15; }      // punted: tumbling through the air
     const grazing=v<.35 && !s.walking && s.fear<.1;
     s.m.head.rotation.x=lerp(s.m.head.rotation.x, s.munch>0?.95+Math.sin(time*14)*.1:(grazing?.75:0), s.munch>0?.3:.08);
     if(s.munch>0 && Math.random()<dt*5) burst(s.x+Math.sin(s.yaw)*1.1,.35,s.z+Math.cos(s.yaw)*1.1,2,PC.grass,.9,1.8,9);
