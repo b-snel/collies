@@ -202,6 +202,7 @@ body.noBubbles #bubble{display:none}
 .chip.rage{color:var(--coyote);border-color:var(--coyote)}
 .chip.rage i{background:var(--coyote)}
 .chip.breed{color:#ffb3cc;border-color:#ff7aa8}
+.chip.fed{color:#cfe8a0;border-color:#8fb85a}
 
 .mood{display:flex;align-items:center;gap:8px}
 .mood span{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
@@ -402,7 +403,7 @@ button,input{touch-action:manipulation}</style>
   </div>
   <div id="bossBar" class="card" hidden><span>WOLF</span><div class="bar"><i id="bossFill"></i></div></div>
   <div id="command"></div>
-  <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div><div class="chip rage" id="pwRage" hidden>Sheep rage<i></i></div><div class="chip" id="pwFlank" hidden>Flanked</div><div class="chip breed" id="pwBreed" hidden></div></div>
+  <div id="power"><div class="chip" id="pwZoom" hidden>Super herder<i></i></div><div class="chip" id="pwApple" hidden>Apples<i></i></div><div class="chip" id="pwLamp" hidden>Lantern<i></i></div><div class="chip rage" id="pwRage" hidden>Sheep rage<i></i></div><div class="chip" id="pwFlank" hidden>Flanked</div><div class="chip breed" id="pwBreed" hidden></div><div class="chip fed" id="pwFed" hidden></div></div>
   <div id="toast"></div>
   <div id="keysHint">
     <span class="k kb"><kbd>WASD</kbd>Move</span>
@@ -1003,6 +1004,11 @@ SEASONS.moon={name:'moon',label:'Moon',ground:0x9c9ca8,ground2:0xb2b2bc,ground3:
 // JR.done: the flock's been penned at the end of this leg (it's scored); JR.out: the back gate is open and they're moving on
 const JR={cal:1,done:false,out:false,outT:0,born:0,lostTotal:0,legNights:0,startCal:1,peak:0};
 const SEASON_DAYS=7, GROW=6, FLOCK_CAP=48;
+// grazing: every grown sheep comes into each stretch hungry (fullness s.full, 0..100) and has to graze the clover up to FED
+// before it'll go into the pen at the end of the leg. A patch grazed down below BARE is bare: the sheep round it wander off
+// on their own, and it grows back slowly. (Lambs are on milk; up on a seesaw plateau with no grass, they're let off.)
+const FED=60, BARE=.15;
+const needsFeed=s=>!s.lamb && !s.bonus && !s.dead && (s.full||0)<FED && !(s.up && !G.platGrass);
 const calSeason = c => ['spring','summer','autumn','winter'][Math.floor((Math.max(1,c)-1)/SEASON_DAYS)%4];
 const daysToNextSeason = c => SEASON_DAYS-((Math.max(1,c)-1)%SEASON_DAYS);
 const seasonOf = d => { const L=levelOf(lvl(d)); return (L.theme!=='farm' && L.season) || calSeason(JR.cal); };   // themed worlds bring their own weather; farmland follows the calendar
@@ -1059,7 +1065,7 @@ const raidPlan = d => { if(d<UNLOCK.raid) return []; const w=seasonOf(d)==='wint
 const raidTotal = d => raidPlan(d).reduce((a,r)=>a+r[1],0);
 const coyoteBoost = d => Math.min(1.2, (d-1)*.15);
 const munchLevel = d => d<UNLOCK.munch ? 0 : Math.min(1, .25 + (d-UNLOCK.munch)*.19);       // how easily sheep get distracted by grass
-const cloverCount = d => seasonOf(d)==='winter' ? 0 : Math.min(5, Math.max(0, d-1)) + (seasonOf(d)==='spring'?1:0);
+const cloverCount = d => 4 + (seasonOf(d)==='spring'?1:0);       // enough to feed the whole flock (each patch fills about ten), so they have to move between them
 const lambCount = d => Math.min(7, 2 + Math.floor((d-1)/2) + (seasonOf(d)==='spring'?2:0));
 const stormChance = d => d<UNLOCK.storm ? 0 : .35;
 const bossNight = d => d>=UNLOCK.boss && d%3===0;       // the wolf comes on days 6, 9, 12...
@@ -1422,7 +1428,9 @@ const baleGeo=(function(){
   return mergeGeos(parts);
 })();
 const baleMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1});
-for(const [x,z] of [[PEN.x0+2.2,PEN.z0+2.2],[PEN.x1-2.2,PEN.z0+2.2]]){
+// (snug in the back corners: with room behind a bale a sheep could get stuck there, and the flock leaves by the back gate)
+const PEN_BALE=1.35;
+for(const [x,z] of [[PEN.x0+PEN_BALE,PEN.z0+PEN_BALE],[PEN.x1-PEN_BALE,PEN.z0+PEN_BALE]]){
   const hb=new THREE.Mesh(baleGeo, baleMat); hb.rotation.z=Math.PI/2; hb.position.set(x,1.1,z); hb.castShadow=true; hb.receiveShadow=true; scene.add(hb);
   circles.push({x,z,r:1.2});
 }
@@ -2627,12 +2635,18 @@ const flowerGeo=new THREE.SphereGeometry(.11,5,4), flowerMat=new THREE.MeshStand
 // little three-leaf clovers; the patch takes its colours from the world (moon moss, volcano moss, sea grass...)
 const leafGeo=mergeGeos([0,1,2].map(k=>({g:new THREE.SphereGeometry(.13,5,3),m:partM(Math.cos(k*TAU/3)*.12,0,Math.sin(k*TAU/3)*.12,1,.45,1)})));
 const cloverLeafMat=new THREE.MeshStandardMaterial({color:0x6cc040,roughness:1});
-function clearClover(){ for(const c of clovers) scene.remove(c.g); clovers.length=0; }
+function clearClover(){ for(const c of clovers){ scene.remove(c.g); if(c.dm) c.dm.dispose(); } clovers.length=0; }
 function spawnClover(n){
+  const P=LEVEL.plat, food=SEASON.name==='winter'?.75:1;      // (winter grass is thin: the patches don't go as far)
+  G.platGrass=false;
+  // a seesaw cliff: a patch up on the plateau too, for any sheep that go up hungry (they can't come back down)
+  if(P) for(let t=0;t<240;t++){ const x=(Math.random()<.5?-1:1)*(13+Math.random()*27), z=PEN.z1+5+Math.random()*Math.max(1,P.zc-PEN.z1-9);
+    if(fieldD(x,z)<5 || !reachable(x,z) || circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+4) || CT.see.some(S=>Math.hypot(S.x-x,S.z-z)<S.L+5) || bpNear(x,z,4)) continue;
+    addClover(x,z,2.8+Math.random()*.6,food).up=true; G.platGrass=true; break; }
   for(let i=0,tries=0;i<n && tries<300;tries++){
     const x=(Math.random()*2-1)*(FIELD-10), z=PEN.z1+8+Math.random()*(FIELD-PEN.z1-14);
-    if(!clearOf(x,z,5) || clovers.some(c=>Math.hypot(c.x-x,c.z-z)<12)) continue;
-    addClover(x,z,2.4+Math.random()*1.2,1); i++;
+    if((P && z<P.zc+4) || !clearOf(x,z,5) || clovers.some(c=>Math.hypot(c.x-x,c.z-z)<12)) continue;
+    addClover(x,z,3+Math.random()*1.2,food); i++;
   }
 }
 // one patch: a lumpy disc of clover with flowers. food (0..1) is how much is left; it's eaten down as sheep graze it, and grows back
@@ -2646,27 +2660,59 @@ function addClover(x,z,r,food){
   for(let k=0;k<cpos.count;k++){ const px=cpos.getX(k), pz=cpos.getZ(k), d=Math.hypot(px,pz); if(d>1e-4){ const f=rA(Math.atan2(pz,px))/r; cpos.setX(k,px*f); cpos.setZ(k,pz*f); } }
   for(let k=0;k<cpos.count;k++) cpos.setY(k,groundH(x+cpos.getX(k),z+cpos.getZ(k))-base+.05);
   cg.computeVertexNormals(); g.position.y=base;
-  const disc=new THREE.Mesh(cg,cloverMat); disc.receiveShadow=true; g.add(disc);
+  const dm=cloverMat.clone(), disc=new THREE.Mesh(cg,dm); disc.receiveShadow=true; g.add(disc);      // (its own colour: it browns as it's grazed)
   const leaves=new THREE.InstancedMesh(leafGeo,cloverLeafMat,40);
   const fl=new THREE.InstancedMesh(flowerGeo,flowerMat,26), o=new THREE.Object3D(), col=new THREE.Color();
   for(let k=0;k<40;k++){ const a=Math.random()*TAU, rr=Math.sqrt(Math.random())*rA(a)*.95; o.position.set(Math.cos(a)*rr,groundH(x+Math.cos(a)*rr,z+Math.sin(a)*rr)-base+.15,Math.sin(a)*rr); o.rotation.set(0,Math.random()*TAU,0); o.scale.setScalar(.8+Math.random()*.6); o.updateMatrix(); leaves.setMatrixAt(k,o.matrix); }
   for(let k=0;k<26;k++){ const a=Math.random()*TAU, rr=Math.sqrt(Math.random())*rA(a)*.9; o.position.set(Math.cos(a)*rr,groundH(x+Math.cos(a)*rr,z+Math.sin(a)*rr)-base+.3,Math.sin(a)*rr); o.scale.setScalar(.8+Math.random()*.5); o.updateMatrix(); fl.setMatrixAt(k,o.matrix); col.setHex([0xffffff,0xf7c6e0,0xd9a6f0,0xfff1a8][k%4]); fl.setColorAt(k,col); }
   g.add(leaves); g.add(fl); scene.add(g);
-  const c={x,z,r,rA,g,food:food===undefined?1:food,shown:-1}; clovers.push(c); sizeClover(c); return c;
+  const c={x,z,r,rA,g,dm,leaves,fl,green:new THREE.Color(CC[0]),bareC:new THREE.Color(SEASON.dirt||0xb08a58).multiplyScalar(.72),food:food===undefined?1:food,shown:-1}; clovers.push(c); sizeClover(c); return c;
 }
-const cloverK=c=>.3+.7*c.food;          // an eaten-down patch shrinks
-function sizeClover(c){ const k=cloverK(c); if(Math.abs(k-c.shown)<.02) return; c.shown=k; c.g.scale.set(k,1,k); c.g.visible=c.food>.04; }
-function nearestClover(x,z){
+const cloverK=c=>.6+.4*c.food;          // an eaten-down patch shrinks a little
+// grazed down, a patch goes brown and thin: the clover flattens, the flowers go, and bare earth shows through
+function sizeClover(c){ const k=cloverK(c); if(Math.abs(k-c.shown)<.02) return; c.shown=k; c.g.scale.set(k,1,k);
+  c.dm.color.copy(c.green).lerp(c.bareC,clamp((1-c.food)*1.15,0,1)); c.leaves.scale.y=Math.max(.05,c.food); c.leaves.visible=c.food>.12; c.fl.visible=c.food>.5; }
+// the nearest patch that isn't grazed bare (a bare one's no good till it's grown back to about half) (up: only patches up on a
+// seesaw plateau, or only ones below it)
+function nearestClover(x,z,up){
   let best=null, bd=1e9;
-  for(const c of clovers){ if(c.food<=.04) continue; const d=Math.hypot(c.x-x,c.z-z); if(d<bd){ bd=d; best=c; } }
+  for(const c of clovers){ if(c.food<BARE || c.bare || (up!==undefined && !!c.up!==!!up)) continue; const d=Math.hypot(c.x-x,c.z-z); if(d<bd){ bd=d; best=c; } }
   return best ? {x:best.x,z:best.z,r:(best.rA?best.rA(Math.atan2(z-best.z,x-best.x)):best.r)*cloverK(best),d:bd,c:best} : null;
 }
+// a hungry sheep tucking in is what you want; one that's already full and stops to eat again is just greedy
 function onMunch(s){
-  if(s.hp<45) return;
+  if(s.hp<45 || (s.full||0)<95) return;
   if(G.elapsed-(G.lastMunchSay||-99)>25){
     G.lastMunchSay=G.elapsed;
     shepSay(["That one's eatin' grass!","Quit yer munchin'!","Get that greedy one movin'!","Oi! No snackin'!"][(Math.random()*4)|0],true);
   }
+}
+// a patch grazed bare: the sheep round it give up on it and wander off, each its own way, for a few seconds
+function grazedBare(c){
+  c.bare=true; let n=0;
+  for(const s of G.sheep){ if(s.dead||s.penned||s.carried||s.grabbedBy||s.sky||s.inBreed) continue;
+    if(Math.hypot(s.x-c.x,s.z-c.z)>c.r+5) continue;
+    s.munch=0; s.munchImmune=5; s.roamT=4+Math.random()*4; s.roamA=Math.atan2(s.z-c.z,s.x-c.x)+(Math.random()-.5)*2.4; n++; }
+  burst(c.x,.5,c.z,16,PC.dust,2.5,2);
+  if(n && G.elapsed-(G.bareSay||-99)>18){ G.bareSay=G.elapsed; setTimeout(()=>shepSay(n>2?"They've grazed that one bare! Now they're wandering off!":"That patch is grazed bare!",true),300); }
+}
+// a hungry sheep's had its fill: a little pop of green, and when it's the last one, Hank says so
+function fedUp(s){
+  burst(s.x,2.3,s.z,10,PC.grass,1.6,2.4,4); s.hop=.4;
+  if(G.elapsed-(G.fedSnd||-99)>.35){ G.fedSnd=G.elapsed; sPickup(); }
+  if(!G.fedSaid && !JR.done && !G.sheep.some(o=>needsFeed(o) && !o.penned)){ G.fedSaid=true; setTimeout(()=>shepSay("That's them all fed! Bring them in!",true),500); }
+}
+// the thought bubble over a hungry sheep: a wee clover leaf (one texture, shared)
+const HUNGRY_MAT=new THREE.SpriteMaterial({map:(function(){ const S=64, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='rgba(255,255,255,.92)'; x.strokeStyle='rgba(60,70,40,.55)'; x.lineWidth=2.5;
+  x.beginPath(); x.arc(34,28,21,0,TAU); x.fill(); x.stroke(); x.beginPath(); x.arc(15,53,5,0,TAU); x.fill(); x.stroke(); x.beginPath(); x.arc(7,61,2.6,0,TAU); x.fill();
+  x.fillStyle='#4f9e2c'; for(let k=0;k<3;k++){ const a=-Math.PI/2+k*TAU/3; x.beginPath(); x.arc(34+Math.cos(a)*7,27+Math.sin(a)*7,7.5,0,TAU); x.fill(); }
+  x.strokeStyle='#3b7a20'; x.lineWidth=3; x.beginPath(); x.moveTo(34,29); x.quadraticCurveTo(37,38,42,42); x.stroke();
+  const t=new THREE.CanvasTexture(c); return t; })(),transparent:true,depthWrite:false});
+function hungerBubble(s,show,time){
+  if(!show){ if(s.m.hb) s.m.hb.visible=false; return; }
+  if(!s.m.hb){ const sp=new THREE.Sprite(HUNGRY_MAT); sp.scale.setScalar(1.05); sp.renderOrder=3; s.m.g.add(sp); s.m.hb=sp; }
+  s.m.hb.visible=true; s.m.hb.position.set(.35,2.55+Math.sin(time*3+s.phase)*.07,0);
 }
 
 function clearAnimals(){
@@ -2695,7 +2741,7 @@ function rosterOf(){
 const lambScale=born=>.55+.3*clamp((JR.cal-born)/GROW,0,1);
 function spawnSheep(e,x,z){
   const ram=e.ram&&!e.lamb, m=makeSheep(e.black&&!ram,e.golden,ram), s=newSheep(x,z,m,{golden:e.golden,ram,lamb:e.lamb});
-  Object.assign(s,{id:e.id,hp:e.hp,black:!!e.black,leader:!!e.leader,trait:e.trait||null,due:e.due||0,born:e.born||0});
+  Object.assign(s,{id:e.id,hp:e.hp,black:!!e.black,leader:!!e.leader,trait:e.trait||null,due:e.due||0,born:e.born||0,full:e.lamb?100:22+Math.random()*16});   // hungry after the road
   s.sz=ram?1.4:e.lamb?lambScale(e.born||JR.cal):(e.sz&&e.sz<1.3?e.sz:.9+Math.random()*.2);
   m.g.scale.setScalar(s.sz*(G.twist==='giant'?1.5:G.twist==='tiny'?.62:1));
   if(s.leader) addBell(m);
@@ -2763,7 +2809,7 @@ function addBell(m){
 }
 function newSheep(x,z,m,o){
   return {id:++sheepId,x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,
-    golden:!!o.golden,hop:0,ram:!!o.ram,lamb:!!o.lamb,mom:null,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6,flip:0,boingCD:0,stress:0,trait:null,leader:false,jumpy:false,boltT:0,boltA:0};
+    golden:!!o.golden,hop:0,ram:!!o.ram,lamb:!!o.lamb,full:o.lamb?100:30,mom:null,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6,flip:0,boingCD:0,stress:0,trait:null,leader:false,jumpy:false,boltT:0,boltA:0};
 }
 // arriving off the last leg: the dogs come in behind the flock, ready to drive it on
 function dogsToTrail(){
@@ -2893,7 +2939,7 @@ function setupDay(mode){ clearAnimals(); buildLeg(G.day,mode||'scatter'); }
 function buildLeg(d,mode){
   if(NET.role==='host') netLegOut(d,mode);       // friends online build the same stretch
   const swap=mode==='swap', id=lvl(d);
-  G.saidFew=false;
+  G.saidFew=false; G.fedSaid=false;
   const sky0=swap?[C_DAY.clone(),H_DAY.clone(),HG_DAY.clone()]:null;
   applySeason(seasonOf(d));
   if(sky0) G.skyBlend={t:0,from:sky0,to:[C_DAY.clone(),H_DAY.clone(),HG_DAY.clone()]};        // the sky eases into the new country's colours
@@ -3189,7 +3235,7 @@ function openDev(){
 }
 function devAct(k){
   setPause(false);
-  if(k==='win'){ if(JR.done) return; for(const s of G.sheep) if(!s.dead && !s.carried){ s.penned=true; s.home=false; s.x=lerp(PEN.x0+1,PEN.x1-1,Math.random()); s.z=lerp(PEN.z0+1,PEN.z1-1,Math.random()); } }
+  if(k==='win'){ if(JR.done) return; for(const s of G.sheep) if(!s.dead && !s.carried){ s.penned=true; s.home=false; s.full=100; s.x=lerp(PEN.x0+1,PEN.x1-1,Math.random()); s.z=lerp(PEN.z0+1,PEN.z1-1,Math.random()); } }
   else if(k==='night'){ if(G.phase==='day') G.t=dayLen(G.day)-.5; }
   else if(k==='morn'){ if(G.phase==='night') G.t=NIGHT_LEN-.2; else if(G.phase==='day'){ G.t=dayLen(G.day)-.5; G.devMorn=true; } }
   else if(k==='lamb'){ for(const s of G.sheep) if(!s.dead&&!s.lamb&&!s.ram) s.due=Math.max(1,JR.cal); toast('Every ewe is due at dawn','',1.6); }
@@ -3437,7 +3483,8 @@ function onPenned(s){
 // is this sheep in the pen? (the pen has to be open, and once the leg's done they're only passing through)
 function checkGoal(s){
   if(s.penned || PZ.locked || JR.done) return false;
-  if(insidePen(s.x,s.z)){ s.penned=true; onPenned(s); return true; }
+  if(insidePen(s.x,s.z)){ if(needsFeed(s)) return false;      // (a hungry one won't stay: it walks back out to graze)
+    s.penned=true; onPenned(s); return true; }
   return false;
 }
 function hazardKill(s,kind){
@@ -3505,7 +3552,7 @@ function startNight(){
   PZ.chal=false;          // the trial gates and the weigh-in are a daytime thing
   G.storm=(LEVEL.theme==='farm'||LEVEL.theme==='desert') && Math.random()<stormChance(G.day); G.boltT=3;
   { const F=G.sheep.filter(s=>!s.dead&&!s.bonus), pn=F.filter(s=>s.penned).length;
-    if(!JR.done && pn && pn>=Math.ceil(F.length*.6)) for(const s of F) if(!s.penned&&!s.carried&&!s.safe) s.home=true; }   // most of them are in: the rest come home on their own
+    if(!JR.done && pn && pn>=Math.ceil(F.length*.6)) for(const s of F) if(!s.penned&&!s.carried&&!s.safe&&!needsFeed(s)) s.home=true; }   // most of them are in: the rest (fed ones) come home on their own
   const n=coyoteCount(G.day), now=Math.ceil(n*.6);
   for(let i=0;i<now;i++) spawnCoyote(i<alphaCount(G.day));
   if(bossNight(G.day) && !JR.legNights){
@@ -3654,6 +3701,7 @@ function advanceTrail(){
   G.day++;
   JR.done=false; JR.out=false; JR.outT=0;
   buildLeg(G.day,'swap');
+  for(const s of G.sheep) if(!s.dead && !s.lamb) s.full=Math.min(s.full||0,22+Math.random()*16);     // a long walk: they're hungry again
   G.t=f*(night?NIGHT_LEN:dayLen(G.day));
   JR.legNights=0;
   // coming in partway through the day: whatever was due earlier on this stretch has been and gone
@@ -4135,8 +4183,13 @@ function updateSheep(dt){
   if(G.hubT<=0){ G.hubT=.5; let best=null, bn=-1; const F=L.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.bonus&&!(s.madT>0)&&!s.grabbedBy&&!s.sky&&!s.inF&&!s.inBreed&&!onPlateau(s.x,s.z));
     for(const a of F){ let k=0; for(const b of F){ const d=Math.hypot(a.x-b.x,a.z-b.z); if(d<13) k+=d<6?1:.6; } if(a===G.hub) k+=1.5; if(k>bn){ bn=k; best=a; } } G.hub=bn>=2?best:null; }   // a grazing flock spreads out: count company over a wide area, and don't flip-flop
   G.madN=0; for(const s of L) if(s.madT>0 && !s.penned && !s.dead) G.madN++;
+  // the clover grows back slowly while nobody's eating it (a bare patch is good again once it's grown back to about half)
+  for(const c of clovers){ if(c.food<1 && G.elapsed-(c.eatT||-99)>3){ c.food=Math.min(1,c.food+dt*.005); if(c.bare && c.food>.45) c.bare=false; } }
   // who's in the breeding pen (and safe in there, with its gate shut)
   for(const s of L){ s.inBreed=BP.on && !s.dead && !s.carried && !s.sky && !s.penned && bpInside(s.x,s.z,-.2); s.safe=s.inBreed && BP.latched && !s.grabbedBy; }
+  // how much of the flock is already in the pen, and in the breeding pen: sheep want to be where the flock is
+  let nF=0, nP=0, nB=0; for(const s of L){ if(s.dead||s.bonus||s.carried) continue; nF++; if(s.penned) nP++; else if(s.inBreed) nB++; }
+  const pF=nF?nP/nF:0, bF=nF?nB/nF:0, PEN_HUB={x:0,z:PEN.z1+2.5};
   const pcx=(PEN.x0+PEN.x1)/2, pcz=(PEN.z0+PEN.z1)/2-1.5;
   for(const s of L){
     if(s.dead){
@@ -4338,13 +4391,16 @@ function updateSheep(dt){
       if(G.flanked){ calmNear=true; stressIn*=.6; }
       const tg=(1-.15*lv('calm'))*(s.trait==='skittish'?1.6:s.trait==='stubborn'?.55:1)*(s.jumpy?1.5:1)*(s.leader?.8:1);
       s.stress=clamp(s.stress + stressIn*tg*dt - (stressIn>0?0:(calmNear?.3:.09))*dt, 0, 1);
-      // balking: a stressed sheep won't go through the gate. It shies away at the last moment.
-      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz);
-        if(false){
+      // balking: a hungry sheep won't go into the pen. It shies away from the gate (and one that's been pushed or flung in
+      // trots back out to graze)
+      if(!JR.done && !PZ.locked && G.phase!=='title' && needsFeed(s)){
+        const gd=Math.hypot(s.x,s.z-(PEN.z1+1));
+        if(insidePen(s.x,s.z)){ const dx=-s.x, dz=PEN.z1+4-s.z, d=Math.hypot(dx,dz)+1e-6; fx+=dx/d*7; fz+=dz/d*7; }
+        else if(s.z>PEN.z1-1 && gd<7){
           if(!s.balkSide) s.balkSide=Math.random()<.5?-1:1;
-          const b=(s.stress-.72)/.28; fz+=20*b; fx+=s.balkSide*12*b;
+          const b=1-gd/7; fz+=18*b; fx+=s.balkSide*10*b;
           if(Math.random()<dt*1.2) sBleat(1.1);
-          if(G.elapsed-(G.balkSay||-99)>10){ G.balkSay=G.elapsed; shepSay("Gently! They won't go in scared!",true); }
+          if(G.elapsed-(G.balkSay||-99)>12){ G.balkSay=G.elapsed; shepSay(["That one's still hungry! Let it graze first!","They won't go in hungry!","Take them to the clover first!"][(Math.random()*3)|0],true); }
         } }
       { const ex=s.x-shep.x, ez=s.z-shep.z, e=Math.hypot(ex,ez)+1e-6; if(e<6){ const k=1-e/6; fx+=ex/e*k*14; fz+=ez/e*k*14; fear=Math.max(fear,k*.5); } }
       if(s.lamb){
@@ -4363,10 +4419,12 @@ function updateSheep(dt){
       // sheep shy away from lava and cliff edges, but a dog driving them hard can still push them in
       // (the canyon's rift is a chain of overlapping circles: only the nearest one pushes, so it isn't many times as strong)
       if(LEVEL.haz){ let hb=null, hm=0; for(const h of LEVEL.haz){ const hd=Math.hypot(s.x-h.x,s.z-h.z), m=h.r+2.5-hd; if(m>hm){ hm=m; hb=h; } } const h=hb; if(h){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; { const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } } }
-      // calm sheep near the gate flow on in
-      { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PZ.locked && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
+      // sheep near the gate flow on in, and they want to be with the flock: the more of it that's in, the further off they feel
+      // the pull and the stronger it is (one beside the pen comes round to the front of the gate first, not into the fence)
+      { const gd=Math.hypot(s.x,s.z-(PEN.z1+1)), R=12+14*pF;
+        if(!PZ.locked && gd<R && s.z>PEN.z1-1 && !needsFeed(s)){ const front=Math.abs(s.x)<PEN.gx-1.2 || s.z>PEN.z1+4, k=(1-gd/R)*(10+10*pF), tx=-s.x, tz=(front?PEN.z1-4:PEN.z1+3)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*k; fz+=tz/td*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
-      if(!PZ.locked && !JR.out && s.z<PEN.z1+5 && s.z>PEN.z1-1 && Math.abs(s.x)>PEN.gx-1 && Math.abs(s.x)<PEN.x1+10){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*4*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
+      if(!PZ.locked && !JR.out && s.z<PEN.z1+5 && s.z>PEN.z1-1 && Math.abs(s.x)>PEN.gx-1 && Math.abs(s.x)<PEN.x1+10){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*(4+6*pF)*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       // the leg's done and the back gate's open: through the pen, out of the back gate and on up the lane
       if(JR.out && s.z<PEN.z1-.5 && (s.press||0)<.75){
         const inP=s.z>PEN.z0-1.5, corner=inP && Math.abs(s.x)>BACK_GX-.8 && s.z<PEN.z0+4.5;      // (tucked in a back corner behind the hay: out into the middle first)
@@ -4375,9 +4433,9 @@ function updateSheep(dt){
       // the breeding pen: calm sheep by its open gate wander in, and once in they settle (with no dog on them, they stay put)
       if(BP.on){
         if(s.inBreed){ const k=.35*(1-Math.min(1,(s.press||0)*1.5)); fx-=(s.x-BP.cx)*k; fz-=(s.z-BP.cz)*k; }
-        else if(!BP.latched && BP.phi>.5 && s.stress<.55 && !s.home && !JR.out){ const g=bpWorld(0,BP.hd+1.5), gd=Math.hypot(s.x-g[0],s.z-g[1]);
-          if(gd<8){ const q=bpLocal(s.x,s.z), front=q[1]>BP.hd-.5 && Math.abs(q[0])<BP.gw/2+.6, t=front?bpWorld(0,BP.hd-3):bpWorld(clamp(q[0],-1.2,1.2),BP.hd+2.6);      // round to the front of the gap, then in
-            const dx=t[0]-s.x, dz=t[1]-s.z, d=Math.hypot(dx,dz)+1e-6, k=7*(1-gd/8); fx+=dx/d*k; fz+=dz/d*k; } }
+        else if(!BP.latched && BP.phi>.5 && s.stress<.55 && !s.home && !JR.out){ const g=bpWorld(0,BP.hd+1.5), gd=Math.hypot(s.x-g[0],s.z-g[1]), R=8+10*bF;      // (the more in there, the stronger the pull)
+          if(gd<R){ const q=bpLocal(s.x,s.z), front=q[1]>BP.hd-.5 && Math.abs(q[0])<BP.gw/2+.6, t=front?bpWorld(0,BP.hd-3):bpWorld(clamp(q[0],-1.2,1.2),BP.hd+2.6);      // round to the front of the gap, then in
+            const dx=t[0]-s.x, dz=t[1]-s.z, d=Math.hypot(dx,dz)+1e-6, k=(7+7*bF)*(1-gd/R); fx+=dx/d*k; fz+=dz/d*k; } }
       }
       if(s.home && !(LEVEL.plat && !onPlateau(s.x,s.z))){      // (below a seesaw cliff the only way home is the seesaw: its funnel does the rest)
         const hx=0, hz=PEN.z1+3, dx=hx-s.x, dz=hz-s.z, d=Math.hypot(dx,dz)+1e-6;
@@ -4389,7 +4447,7 @@ function updateSheep(dt){
       }
       // up on the seesaw plateau: trot off to the pen on its own
       s.up=onPlateau(s.x,s.z); s.inF=!s.up && ctInFunnel(s.x,s.z);
-      if(G.phase!=='title' && (s.up&&!PZ.locked || s.inF)){ const h=s.up?homeForce(s):funnelForce(s); fx+=h[0]; fz+=h[1]; }
+      if(G.phase!=='title' && (s.up&&!PZ.locked&&!needsFeed(s) || s.inF)){ const h=s.up?homeForce(s):funnelForce(s); fx+=h[0]; fz+=h[1]; }      // (a hungry one grazes up there first)
       else if(CT.see.length && G.phase!=='title'){ const h=mouthPull(s); if(h){ fx+=h[0]; fz+=h[1]; } }   // and in the seesaw's funnel: down to its low end
     } else {
       fx+=(pcx-s.x)*.12; fz+=(pcz-s.z)*.12;
@@ -4412,7 +4470,7 @@ function updateSheep(dt){
     const steady=s.steady>0; s.steady=0;
     const eating=s.munch>0;
     // calm, pressured sheep pack tight; panicking sheep stop caring about the flock
-    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(s.roamT>0?.2:1)*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
     if(na && !eating){ const al=(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     // the bell ewe: followers drift after her and match her heading
     if(lead && !s.penned && !eating && ld>2.5){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
@@ -4427,7 +4485,8 @@ function updateSheep(dt){
     if(!n && nb && !s.penned && !eating && !s.regBlocked){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
     // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
-    { const H=G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed;
+    // (once most of the flock's in the pen, the pen is where the flock is: a fed sheep out on its own heads for its gate)
+    { const toPen=!JR.done && !PZ.locked && pF>=.5 && !needsFeed(s) && s.z>PEN.z1-1, H=toPen?PEN_HUB:G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed && !(s.roamT>0);
       const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0, w=live?(1-(s.press||0)/.6)*(1-panic*.6):0;
       if(!live || hd<6){ s.regBlocked=false; s.stray=false; }
       else {
@@ -4439,6 +4498,8 @@ function updateSheep(dt){
       } }
     s.wt-=dt;
     if(s.wt<=0){ s.walking=Math.random()<.45; s.wa=Math.random()*TAU; s.wt=1.5+Math.random()*4; }
+    // wandering off from a patch they've grazed bare: each its own way for a few seconds (a dog can still turn them)
+    if(s.roamT>0){ s.roamT-=dt; if(s.penned||eating) s.roamT=0; else { s.roamA+=(Math.random()-.5)*dt*2.5; fx+=Math.cos(s.roamA)*5; fz+=Math.sin(s.roamA)*5; } }
     if(s.fear<.15 && s.walking && !steady && !eating && !s.stray){ fx+=Math.cos(s.wa)*1.3; fz+=Math.sin(s.wa)*1.3; }
     if(G.ev && G.ev.kind==='sugar' && !s.penned){ fx+=Math.cos(s.wa+G.elapsed)*7; fz+=Math.sin(s.wa+G.elapsed)*7; }
     if(s.rainbow && !s.penned){ const ND2=nearestDog(s.x,s.z), rx=s.x-ND2.x, rz=s.z-ND2.z, rd=Math.hypot(rx,rz)+1e-6; if(rd<16){ fx+=rx/rd*(16-rd)*2.2; fz+=rz/rd*(16-rd)*2.2; } }
@@ -4464,19 +4525,20 @@ function updateSheep(dt){
           if(dd<1.4){ D.stunT=.55*stunMul(); D.vx+=s.vx*.6; D.vz+=s.vz*.6; s.charging=0; sThud(); G.shake=Math.max(G.shake,.35); rumble(.6,.4,180); popText(D.x,2.4,D.z,'OOF!','red'); shepSay('Oi! Watch it!'); } }
       }
     }
-    // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking)
+    const hungry=needsFeed(s), upF=LEVEL.plat?!!s.up:undefined;      // (on a seesaw cliff, grass on the same level as the sheep)
+    // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking, or full up)
     s.munchImmune=Math.max(0,(s.munchImmune||0)-dt);
-    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && (G.phase==='day'||G.phase==='night')){
-      const cl=nearestClover(s.x,s.z);
+    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && !(s.roamT>0) && ((s.full||0)<95 || munchLevel(G.day)>0) && (G.phase==='day'||G.phase==='night')){
+      const cl=nearestClover(s.x,s.z,upF);
       if(cl && cl.d<cl.r-.3){ s.patch=cl.c; s.munch=5+Math.random()*3; s.munchCD=5; s.vx*=.3; s.vz*=.3; onMunch(s); }
     }
-    // hungry sheep drift off toward clover and stop to eat: a thin sheep on the trail, or a greedy one later on
-    const ml=(s.home||JR.out||s.inBreed)?0:Math.max(munchLevel(G.day),(1-s.hp/100)*.9);
-    if(ml>0 && !s.penned && !s.ram && !eating && (G.phase==='day'||G.phase==='night') && s.fear<.12 && !s.court){
-      const cl=nearestClover(s.x,s.z), onPatch=cl && cl.d<cl.r;
-      if(cl && !onPatch && cl.d<16 && !steady){ fx+=(cl.x-s.x)/cl.d*2.2*ml; fz+=(cl.z-s.z)/cl.d*2.2*ml; }
+    // hungry sheep go looking for clover and stop to eat when they find it; so does a thin one, or a greedy one later on
+    const ml=(s.home||JR.out||s.inBreed)?0:Math.max(hungry?1:0,(s.full||0)<95?munchLevel(G.day):0,(1-s.hp/100)*.9);
+    if(ml>0 && !s.penned && !eating && !(s.roamT>0) && (G.phase==='day'||G.phase==='night') && s.fear<.12 && !s.court){
+      const cl=nearestClover(s.x,s.z,upF), onPatch=cl && cl.d<cl.r;
+      if(cl && !onPatch && cl.d<(hungry?30:16) && !steady){ const k=(hungry?3.2:2.2)*ml; fx+=(cl.x-s.x)/cl.d*k; fz+=(cl.z-s.z)/cl.d*k; }
       s.munchCD-=dt;
-      if(s.munchCD<=0 && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; s.patch=onPatch?cl.c:null; onMunch(s); }
+      if(s.munchCD<=0 && (onPatch || !hungry) && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; s.patch=onPatch?cl.c:null; onMunch(s); }
     }
     // in the breeding pen the rams court the ewes: hearts, and a little while later a lamb (or twins)
     if(s.ram && !s.lamb && s.inBreed && !s.grabbedBy && !(s.madT>0) && (G.phase==='day'||G.phase==='night')){
@@ -4498,11 +4560,15 @@ function updateSheep(dt){
     // health: the trail wears them down (stress, cold and heat make it worse); clover, apples, and the hay in a pen build them up
     if(G.phase==='day'||G.phase==='night'){
       let dh=0;
-      if(eating){ const c=s.patch, fd=c&&c.food!==undefined?c.food:1; dh+=3.2*(.2+.8*fd); if(c&&c.food!==undefined){ c.food=Math.max(0,c.food-dt*.006); } }
+      if(eating){ const c=s.patch, fd=c&&c.food!==undefined?c.food:1; dh+=3.2*(.2+.8*fd);
+        // clover fills them up (the lusher the patch, the quicker), and they eat it down: grazed below BARE, it's bare
+        if(c&&c.food!==undefined){ c.eatT=G.elapsed;
+          if(fd>=BARE && !c.bare && !s.lamb && !s.bonus){ const was=s.full||0; s.full=Math.min(100,was+9*(.3+.7*fd)*dt); if(was<FED && s.full>=FED) fedUp(s); if(s.full>=100) s.munch=Math.min(s.munch,.4); }   // (full up: done eating)
+          c.food=Math.max(0,c.food-dt*.012); if(c.food<BARE && !c.bare) grazedBare(c); } }
       else if(s.inBreed) dh+=.5;
       else if(s.penned) dh+=.1;
       else dh-=(.18+.25*s.stress+(s.fear>.3?.1:0))*(SEASON.frozen?1.4:SEASON.hot?1.2:1)*(G.phase==='night'?1.3:1);
-      if(!s.penned && appleDog(s)) dh+=1.5;
+      if(!s.penned && appleDog(s)){ dh+=1.5; if(!s.lamb && !s.bonus){ const was=s.full||0; s.full=Math.min(100,was+2*dt); if(was<FED && s.full>=FED) fedUp(s); } }     // apples fill them up a bit too
       s.hp=clamp(s.hp+dh*dt,dh<0?Math.min(s.hp,s.lamb?6:8):0,100);
     }
     if(!s.penned){ fenceSteer(s,fx,fz); fx=FS.x; fz=FS.z; }
@@ -4511,7 +4577,7 @@ function updateSheep(dt){
     { const k=Math.exp(-damp*dt); s.vx*=k; s.vz*=k; }
     const sheepHill=clamp(1-slopeAlong(s.x,s.z,s.vx,s.vz)*1.3,.6,1.3)*(LEVEL.theme==='sea'?.85:1);
     const twistV={giant:.85,tiny:1.15,speedy:1.3}[G.twist]||1;
-    let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; maxV*=(.72+.28*clamp(s.hp/50,0,1))*(s.due?.93:1); if(s.home||s.court||(JR.out&&!s.penned)) maxV=Math.max(maxV,2.8); if(s.penned) maxV=1.3; if((s.regBlocked||(s.stray && G.hub && Math.hypot(G.hub.x-s.x,G.hub.z-s.z)>12)) && !s.penned){ maxV=Math.max(maxV,3.8); if(Math.random()<dt*.12) sBleat(1.25+Math.random()*.2); }   // a stray trots back to the others, bleating for them
+    let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; maxV*=(.72+.28*clamp(s.hp/50,0,1))*(s.due?.93:1); if(s.home||s.court||(JR.out&&!s.penned)) maxV=Math.max(maxV,2.8); if(s.roamT>0) maxV=Math.max(maxV,2.6); if(s.penned) maxV=1.3; if((s.regBlocked||(s.stray && G.hub && Math.hypot(G.hub.x-s.x,G.hub.z-s.z)>12)) && !s.penned){ maxV=Math.max(maxV,3.8); if(Math.random()<dt*.12) sBleat(1.25+Math.random()*.2); }   // a stray trots back to the others, bleating for them
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     // the edge of lava or a cliff: a sheep stops and slides along it, unless a dog is driving it hard (or it's flying)
     // (the canyon's rift runs right across the field, so there it takes a bark or a pounce, not just a dog running past)
@@ -5360,7 +5426,7 @@ const cat=(function(){
   const curve=new THREE.CatmullRomCurve3([[0,0,0],[0,-.02,.15],[.07,-.07,.3],[.21,-.09,.37],[.33,-.09,.29]].map(p=>new THREE.Vector3(...p)));
   critMesh(tail,critBake([[new THREE.TubeGeometry(curve,14,.042,6),(x,y,z)=>Math.floor(Math.hypot(x,z)/.075)%2?STR:O],[CRIT_SPH_S,O,[0,0,0],0,[.044,.044,.044]],[CRIT_SPH_S,STR,[.33,-.09,.29],0,[.042,.042,.042]]]));
   addOutline(g,.018);
-  g.position.set(PEN.x0+2.2,2.16,PEN.z0+2.2); g.rotation.y=.8; scene.add(g);
+  g.position.set(PEN.x0+PEN_BALE,2.16,PEN.z0+PEN_BALE); g.rotation.y=.8; scene.add(g);
   g.traverse(o=>{ if(o.isMesh && !o.userData.isOutline) o.castShadow=true; });
   return {g,body,head,tail,hissT:0,puff:0};
 })();
@@ -5884,8 +5950,9 @@ function syncAll(dt,time){
     s.m.wool.color.copy(s.m.base);
     if(s.hp<60 && !s.golden) s.m.wool.color.lerp(DINGY,(60-s.hp)/60*.45);     // a thin, tired sheep looks a bit grubby
     s.m.wool.color.lerp(RED, Math.max(s.flash*.8, (G.rageT>0 && !s.penned) ? .45+.15*Math.sin(time*10+s.phase) : 0));
-    // a healthy fleece is big and fluffy, a weak one skinny; a ewe in lamb is round in the middle
-    if(s.m.fleece){ const k=.82+.22*clamp(s.hp/100,0,1); s.m.fleece.scale.set(k*(s.due?1.08:1),.92+.08*k,1); }
+    // a healthy fleece is big and fluffy, a weak one skinny; a ewe in lamb is round in the middle, and so is a sheep that's well fed
+    if(s.m.fleece){ const k=.82+.22*clamp(s.hp/100,0,1); s.m.fleece.scale.set(k*(s.due?1.08:1)*(s.lamb?1:.95+.1*clamp((s.full||0)/100,0,1)),.92+.08*k,1); }
+    hungerBubble(s,!s.penned && !s.carried && !s.sky && needsFeed(s) && (G.phase==='day'||G.phase==='night') && !JR.done,time);
     if(s.madT>0){ s.m.wool.color.setHSL((time*.7+s.phase*.13)%1,.8,.66); const me=madEyes(s); me.visible=true; me.userData.discs.forEach((d,i)=>d.rotation.z=time*(i?-9:9)); s.m.head.rotation.z=Math.sin(time*21+s.phase)*.28; }
     else if(s.m.mad && s.m.mad.visible){ s.m.mad.visible=false; s.m.head.rotation.z=0; }
     if(!s.penned && s.stress>.65 && Math.random()<dt*4) burst(s.x,2,s.z,1,[0xbfe8ff,0xffffff],.5,1.6,6);   // nervous sweat
@@ -6933,7 +7000,7 @@ function skyStep(e,dt){
 function airSheep(s,dt){
   if(!skyStep(s,dt)) return;
   s.vx=s.vz=0; s.hop=.45; s.fear=.4; s.stress=Math.max(0,(s.stress||0)-.3); sBleat(1.25);
-  if(LEVEL.canyon && !LEVEL.plat) s.home=true;         // over the Grand Canyon: they find their own way on to the pen from the far rim
+  if(LEVEL.canyon && !LEVEL.plat && !needsFeed(s)) s.home=true;         // over the Grand Canyon: a fed one finds its own way on to the pen from the far rim
   if(!CT.told.chute){ CT.told.chute=1; setTimeout(()=>shepSay('Sheep from the sky?!',true),200); }
   if(!PZ.locked) checkGoal(s);
 }
@@ -7076,6 +7143,11 @@ function updateContraptions(dt){
       if(b.gone || b.sinkT>0 || !b.hay) continue;
       const dx=b.x-S.x, dz=b.z-S.z, ux=Math.sin(S.ang), uz=Math.cos(S.ang), p=dx*ux+dz*uz, q=-dx*uz+dz*ux;
       if(b.z>S.zc && Math.abs(q)<S.W/2+4.5 && Math.abs(p)<S.L+4.5){ CT.bait=b; break; }
+    }
+    // and they eat it: sheep crowding in round the seesaw by the hay fill up, like grazing the clover
+    if(CT.bait && playing) for(const s of G.sheep){
+      if(s.dead||s.penned||s.sky||s.lamb||s.bonus||!(s.inF || Math.hypot(s.x-CT.bait.x,s.z-CT.bait.z)<4)) continue;
+      const was=s.full||0; s.full=Math.min(100,was+6*dt); if(was<FED && s.full>=FED) fedUp(s);
     }
     if(playing && S){
       const hay=CT.bales.find(b=>b.hay && !b.gone);
@@ -7374,6 +7446,9 @@ function setupPuzzle(){
 function objective(){
   if(PZ.type==='gates' && PZ.chal){ const g=PZ.gates[PZ.cur]; return g?{x:g.x,z:g.z,ring:false}:null; }
   if(PZ.type==='scale' && PZ.chal) return {x:PZ.scale.x,z:PZ.scale.z,ring:false};
+  // anyone still hungry: the nearest good clover to them
+  if(!JR.done){ let n=0, cx=0, cz=0; for(const s of G.sheep) if(needsFeed(s) && !s.penned && !s.carried && !s.inBreed && !s.sky){ n++; cx+=s.x; cz+=s.z; }
+    if(n){ const cl=nearestClover(cx/n,cz/n); if(cl) return {x:cl.x,z:cl.z,ring:false}; } }
   if(PZ.type==='seesaw' && CT.see[0] && G.sheep.some(s=>!s.dead&&!s.penned&&!s.bonus&&!s.sky&&!onPlateau(s.x,s.z))) return {x:CT.see[0].x,z:CT.see[0].z,ring:false};
   if(JR.out) return dogs.every(D=>D.z<PEN.z0-3) ? null : {x:XL,z:PEN.z0-5,ring:false};     // out the back gate (and up the lane, the way on is plain)
   if(JR.done) return null;
@@ -8223,7 +8298,7 @@ function drawMinimap(time){
     mx.strokeStyle='rgba(255,122,168,.95)'; mx.lineWidth=2; mx.beginPath(); for(let k=0;k<8;k++){ const q=bpCorner(k); k?mx.lineTo(X(q[0]),Y(q[1])):mx.moveTo(X(q[0]),Y(q[1])); } mx.stroke();
     if(BP.seg){ mx.strokeStyle=BP.latched?'#ff4f7f':'rgba(251,246,233,.85)'; mx.lineWidth=BP.latched?3:2; mx.beginPath(); mx.moveTo(X(BP.seg.ax),Y(BP.seg.az)); mx.lineTo(X(BP.seg.bx),Y(BP.seg.bz)); mx.stroke(); } }
   mx.fillStyle=HOME.cur==='barn'?'rgba(155,59,46,.85)':HOME.cur==='fairy'?'rgba(200,110,220,.85)':'rgba(190,160,110,.85)'; mx.fillRect(X(BARN_BOX.x0),Y(BARN_BOX.z0),(BARN_BOX.x1-BARN_BOX.x0)*S,(BARN_BOX.z1-BARN_BOX.z0)*S);
-  for(const c of clovers){ if(c.food<=.04) continue; mx.fillStyle='rgba(90,163,54,.55)'; mx.beginPath(); for(let k=0;k<=16;k++){ const a=k/16*TAU, rr=(c.rA?c.rA(a):c.r)*cloverK(c)*S, px=X(c.x)+Math.cos(a)*rr, py=Y(c.z)+Math.sin(a)*rr; k?mx.lineTo(px,py):mx.moveTo(px,py); } mx.fill(); }
+  for(const c of clovers){ mx.fillStyle=c.food<BARE?'rgba(150,112,64,.6)':'rgba(90,163,54,.55)'; mx.beginPath(); for(let k=0;k<=16;k++){ const a=k/16*TAU, rr=(c.rA?c.rA(a):c.r)*cloverK(c)*S, px=X(c.x)+Math.cos(a)*rr, py=Y(c.z)+Math.sin(a)*rr; k?mx.lineTo(px,py):mx.moveTo(px,py); } mx.fill(); }
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
   if(LEVEL.maze){ mx.strokeStyle='rgba(160,200,90,.9)'; mx.lineWidth=2.5; mx.beginPath(); for(const w of LEVEL.maze.walls){ mx.moveTo(X(w[0]),Y(w[1])); mx.lineTo(X(w[2]),Y(w[3])); } mx.stroke(); }
   PZ.gates.forEach((g,k)=>{ mx.strokeStyle=g.done?'#7bd65a':(k===PZ.cur&&PZ.chal?'#ffd84a':'rgba(244,234,210,.6)'); mx.lineWidth=3; mx.beginPath(); mx.moveTo(X(g.ax),Y(g.az)); mx.lineTo(X(g.bx),Y(g.bz)); mx.stroke(); });
@@ -8232,7 +8307,7 @@ function drawMinimap(time){
   if(PZ.locked){ mx.strokeStyle='#ff6b5a'; mx.lineWidth=3; mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke(); }
   for(const s of G.sheep){
     if(s.dead) continue;
-    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : s.court ? '#ff8fc8' : (!s.penned && s.hp<30) ? '#b49a78' : (PZ.chal && PZ.gates[PZ.cur] && PZ.gates[PZ.cur].passed.has(s)) ? '#5aa8ff' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
+    mx.fillStyle = s.attacked>0 ? '#ff6b5a' : s.court ? '#ff8fc8' : (!s.penned && s.hp<30) ? '#b49a78' : (PZ.chal && PZ.gates[PZ.cur] && PZ.gates[PZ.cur].passed.has(s)) ? '#5aa8ff' : (!s.penned && s.stress>.65) ? '#ffa04a' : s.munch>0 ? '#9ccf5a' : (!s.penned && !JR.done && needsFeed(s)) ? '#d9c98a' : s.leader ? '#ffcf3f' : s.golden ? '#ffd84a' : s.ram ? '#c9a46a' : (s.penned?'rgba(251,246,233,.55)':'#fbf6e9');
     mx.beginPath(); mx.arc(X(s.x),Y(s.z),s.ram?6:s.lamb?2.5:s.penned?3:4,0,TAU); mx.fill();
   }
   for(const c of G.coyotes){
@@ -8292,6 +8367,10 @@ function updateHUD(dt,time){
   $('keysHint').classList.toggle('faded', G.elapsed>12 && !G.paused);
   { const w=G.coyotes.find(c=>c.boss&&!c.gone&&c.state!=='retreat'&&(G.phase==='night'));
     $('bossBar').hidden=!w; if(w) $('bossFill').style.width=Math.max(0,w.hp/w.maxHp*100)+'%'; }
+  { // how many of the flock have grazed their fill (they won't go in the pen hungry)
+    const el=$('pwFed'); let need=0, tot=0;
+    if(!JR.done) for(const s of G.sheep){ if(s.dead||s.lamb||s.bonus) continue; tot++; if(!s.penned && needsFeed(s)) need++; }
+    el.hidden=!need; if(need){ const t='Fed '+(tot-need)+'/'+tot; if(el.textContent!==t) el.textContent=t; } }
   { // the breeding pen, while there's anyone in it: how the lambing's going
     const el=$('pwBreed'), inB=BP.on&&!JR.done?G.sheep.filter(s=>!s.dead&&s.inBreed):[];
     el.hidden=!inB.length;
@@ -8609,7 +8688,7 @@ function netEntities(){
   for(const s of G.sheep) E.push(['s'+s.id,s]);
   for(const c of G.coyotes){ if(!c.nid) c.nid=++NET.nid; E.push(['c'+c.nid,c]); }
   for(const p of powerups){ if(!p.nid) p.nid=++NET.nid; E.push(['p'+p.nid,p]); }
-  E.push(['H',shep],['F',falcon],['K',COUG],['R',rascal],['G',G],['J',JR],['UP',UP],['Z',PZ],['T',CT],['L',llamas],['U',ducks],['W',leaves],['O',goldBones]);
+  E.push(['H',shep],['F',falcon],['K',COUG],['R',rascal],['G',G],['J',JR],['UP',UP],['Z',PZ],['T',CT],['L',llamas],['U',ducks],['W',leaves],['V',backLeaves],['B',BP],['O',goldBones]);
   if(G.ev){ if(!G.ev.nid) G.ev.nid=++NET.nid; E.push(['E',G.ev]); }
   E.push(['X',{}]);        // odds and ends (filled in netFields)
   return E;
@@ -8683,7 +8762,7 @@ function netResolve(key){
   if(c==='s') return NET.sheepById.get(+n)||null;
   if(c==='c') return NET.coyById.get(+n)||null;
   if(c==='p') return powerups.find(p=>p.nid===+n)||null;
-  return {H:shep,F:falcon,K:COUG,R:rascal,G,J:JR,UP,Z:PZ,T:CT,L:llamas,U:ducks,W:leaves,O:goldBones,E:G.ev}[key]||null;
+  return {H:shep,F:falcon,K:COUG,R:rascal,G,J:JR,UP,Z:PZ,T:CT,L:llamas,U:ducks,W:leaves,V:backLeaves,B:BP,O:goldBones,E:G.ev}[key]||null;
 }
 function netDecode(v){
   if(typeof v==='string' && v[0]===NET_REF) return netResolve(v.slice(1));
@@ -8853,6 +8932,7 @@ function netGuestHooks(){
     for(const g of PZ.gates){ if(g.fill){ const need=Math.max(1,PZ.need||1); g.fill.scale.z=Math.max(.001,Math.min(1,(g.passed?g.passed.size:0)/need)); if(g.done) g.fill.material.color.setHex(0x7bd65a); } }
   }
   if(D.has('T')) for(const b of CT.bales) if(b.g) b.g.visible=!b.gone;
+  if(D.has('B') && BP.on && BP.seg && BP.art) bpSync();        // the breeding pen's gate, where the host's dogs have swung it
   if(D.has('E')) netSxSync();
   D.clear();
 }
@@ -9182,6 +9262,8 @@ function step(dt){
   // next stretch takes over
   if(playing){
     if(JR.done && !JR.out){ JR.outT-=dt; if(JR.outT<=0) openBackGate(); }
+    // the first leg it matters: they're hungry, and Hank says what to do about it
+    if(!JR.toldGraze && !JR.done && G.elapsed>6 && G.sheep.some(s=>needsFeed(s)&&!s.penned)){ JR.toldGraze=true; shepSay("They're hungry after the road. Let them graze the clover before ye pen them!",true); }
     maybeAdvance();
   }
   if(G.phase==='day'){
