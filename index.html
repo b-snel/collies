@@ -3671,7 +3671,7 @@ function bark(D){
 // ---- grab, drag, shake and fling ----
 // how fast the dog can move while holding each thing, how hard it pulls back, and how quickly it tires the dog
 const GRAB={
-  prop:{speed:.6,pull:0,grip:4}, sheep:{speed:.75,pull:2.5,grip:7}, lamb:{speed:.9,pull:1.5,grip:5}, ram:{speed:.5,pull:4.5,grip:12},
+  prop:{speed:.6,pull:0,grip:4}, gate:{speed:.75,pull:0,grip:1.5}, sheep:{speed:.75,pull:2.5,grip:7}, lamb:{speed:.9,pull:1.5,grip:5}, ram:{speed:.5,pull:4.5,grip:12},
   coyote:{speed:.6,pull:5.5,grip:12}, rascal:{speed:.7,pull:4,grip:9}, wolf:{speed:.4,pull:11,grip:18}
 };
 function grabKind(T){ return T.isRascal?'rascal':T.boss?'wolf':T.hp!==undefined&&T.alpha!==undefined?'coyote':T.ram?'ram':T.lamb?'lamb':'sheep'; }
@@ -3682,6 +3682,7 @@ function tryGrab(D){
   for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried && !s.sky) consider(s);
   for(const c of G.coyotes) if(!c.gone && c.state!=='retreat') consider(c, c.boss?1:0);
   if(rascal.active && rascal.state==='run') consider(rascal);
+  if(bpTryGrab(D,mx,mz,bd)) return;          // the breeding pen's gate, if it's nearer the dog's mouth than anything alive
   if(!best){ ctTryGrab(D); return; }        // nothing alive to grab: a seesaw end or a hay bale
   const kind=grabKind(best);
   if(best.grabbedBy){
@@ -3705,6 +3706,7 @@ function tryGrab(D){
 function releaseGrab(D,fling){
   const g=D.grab; D.grab=null; if(!g||!g.t) return;
   if(g.kind==='prop'){ ctRelease(D,g,fling); return; }
+  if(g.kind==='gate') return;                // (it swings on with whatever way it was going)
   const T=g.t;
   if(g.second){ if(T.grabbedBy2===D) T.grabbedBy2=null; return; }
   if(T.grabbedBy2){ const D2=T.grabbedBy2; T.grabbedBy=D2; T.grabbedBy2=null; if(D2.grab){ D2.grab.second=false; D2.grab.wob=Math.random()*TAU; } return; }   // the partner takes over
@@ -3733,6 +3735,7 @@ function shakeGrab(D){
 function updateGrab(D,dt){
   const g0=D.grab;
   if(g0.kind==='prop'){ ctUpdateGrab(D,dt); return; }
+  if(g0.kind==='gate'){ bpUpdateGrab(D,dt); return; }
   if(g0.second){
     const T=g0.t;
     if(!T || T.dead || T.gone || T.penned || T.grabbedBy2!==D || !T.grabbedBy){ releaseGrab(D,false); return; }
@@ -3792,7 +3795,7 @@ function whistle(D){
 function pounce(D){
   D=D||dog;
   if(G.phase!=='day' && G.phase!=='night') return;
-  if(D.grab && D.grab.kind==='prop') releaseGrab(D,false);     // let go of the seesaw or bale and pounce
+  if(D.grab && (D.grab.kind==='prop'||D.grab.kind==='gate')) releaseGrab(D,false);     // let go of the seesaw, bale or gate and pounce
   if(D.grab){ shakeGrab(D); return; }        // pounce while holding on = shake
   if(G.paused || D.pounceCD>0 || D.lying || D.stunT>0 || D.flying) return;
   const il=Math.hypot(D.inX,D.inZ);
@@ -4314,17 +4317,50 @@ function sLatch(){
 // swung shut: it latches with a clack
 function bpLatch(){
   BP.phi=0; BP.w=0; BP.latched=true; BP.fresh=false; BP.noTouch=0; bpSync();
+  for(const D of dogs) if(D.grab && D.grab.kind==='gate'){ D.grab=null; D.gateLock=true; }      // it clacks shut and the dog lets go
   sLatch(); sThud();
   const m=bpWorld(0,BP.hd); popText(m[0],2.4,m[1],'SHUT!','gold'); burst(m[0],.6,m[1],10,PC.dust,2,2);
   const n=G.sheep.filter(s=>!s.dead&&s.inBreed).length;
   if(n && !BP.toldShut && (G.phase==='day'||G.phase==='night')){ BP.toldShut=true; shepSay(JR.toldShut?'Snug as a bug!':"That's it! Shut them in, safe and sound.",true); JR.toldShut=true; }
 }
+// grabbing the gate: a dog can take hold of its far part in its mouth and pull it round, open or shut
+const bpWrap=a=>((a+Math.PI)%TAU+TAU)%TAU-Math.PI;
+const bpAng=(x,z)=>{ const px=x-BP.hx, pz=z-BP.hz; return Math.atan2(px*BP.vx+pz*BP.vz,px*BP.ux+pz*BP.uz); };     // round the hinge, as the gate's phi
+function bpGateDist(x,z){ const S=BP.seg, abx=S.bx-S.ax, abz=S.bz-S.az, l2=abx*abx+abz*abz, t=clamp(((x-S.ax)*abx+(z-S.az)*abz)/l2,0,1);
+  return {d:Math.hypot(x-S.ax-abx*t,z-S.az-abz*t), t}; }
+function bpTryGrab(D,mx,mz,bd){
+  if(!BP.on || !BP.seg || D.flying || D.sky || D.gateLock) return false;
+  const q=bpGateDist(mx,mz); if(q.d>1.3 || q.d>=bd || q.t*BP_LEN<.8) return false;      // (not right by the hinge: no purchase there)
+  const off=bpWrap(BP.phi-bpAng(D.x,D.z));          // where the dog stands round the hinge, against the gate: kept as it's dragged
+  D.grab={t:BP,kind:'gate',hold:0,shakeCD:0,lastShake:9,wob:0,off,r:clamp(q.t*BP_LEN,.9,BP_LEN)};
+  sGrowl(); rumble(.2,.3,90); sCreak(1.1);
+  if(!JR.toldGateGrab){ JR.toldGateGrab=true; shepSay('That\'s it! Pull it round shut!',true); }
+  return true;
+}
+function bpUpdateGrab(D,dt){
+  const g=D.grab; g.hold+=dt;
+  if(!BP.on || !BP.seg){ D.grab=null; return; }
+  // the bit of gate in its mouth: the dog faces it, and lets go if it's dragged too far off
+  const dx=Math.cos(BP.phi)*BP.ux+Math.sin(BP.phi)*BP.vx, dz=Math.cos(BP.phi)*BP.uz+Math.sin(BP.phi)*BP.vz, px=BP.hx+dx*g.r, pz=BP.hz+dz*g.r, d=Math.hypot(px-D.x,pz-D.z);
+  if(d>2.6 || Math.hypot(D.x-BP.hx,D.z-BP.hz)<.7){ D.grab=null; return; }
+  if(d>.3) D.yaw=Math.atan2(px-D.x,pz-D.z);
+  D.stamina=Math.max(0,D.stamina-GRAB.gate.grip*dt); if(D.stamina<=0) D.grab=null;
+}
 // the dogs and the gate: a dog walking into it swings it away (a latched gate holds until the dog backs off and shoves again)
 function updateBreedGate(dt){
   if(!BP.on || !BP.seg) return;
   const prev=BP.phi; let touch=false, want=null;
+  // a dog with the gate in its mouth: the gate follows the dog round the hinge (and a latched one is pulled open again)
   for(const D of dogs){
-    if(D.flying||D.sky) continue;
+    if(!D.grab || D.grab.kind!=='gate') continue;
+    const psi=bpWrap(bpAng(D.x,D.z)+D.grab.off);
+    touch=true;
+    if(BP.latched){ if(Math.abs(psi)<.15) continue; BP.latched=false; sCreak(1.2); }
+    want=psi;
+  }
+  if(want!==null) want=BP.phi+bpWrap(want-BP.phi);
+  for(const D of dogs){
+    if(D.flying||D.sky||(D.grab&&D.grab.kind==='gate')) continue;
     const px=D.x-BP.hx, pz=D.z-BP.hz, pu=px*BP.ux+pz*BP.uz, pv=px*BP.vx+pz*BP.vz, r=Math.hypot(pu,pv);
     if(r>BP_LEN+.6 || r<.9) continue;
     const psi=Math.atan2(pv,pu), del=Math.asin(Math.min(1,.62/r));
@@ -4343,7 +4379,7 @@ function updateBreedGate(dt){
   bpSync();
   // whatever the gate does, a dog never passes through it
   const S=BP.seg, abx=S.bx-S.ax, abz=S.bz-S.az, l2=abx*abx+abz*abz;
-  for(const D of dogs){ if(D.flying||D.sky) continue;
+  for(const D of dogs){ if(D.flying||D.sky||(D.grab&&D.grab.kind==='gate')) continue;
     const t=clamp(((D.x-S.ax)*abx+(D.z-S.az)*abz)/l2,0,1), qx=S.ax+abx*t, qz=S.az+abz*t, dx=D.x-qx, dz=D.z-qz, d=Math.hypot(dx,dz);
     if(d<.55 && d>1e-6){ D.x=qx+dx/d*.55; D.z=qz+dz/d*.55; const vn=D.vx*dx/d+D.vz*dz/d; if(vn<0){ D.vx-=vn*dx/d; D.vz-=vn*dz/d; } } }
 }
@@ -4363,7 +4399,7 @@ function updateBreeding(dt){
   const D=nearestDog(BP.cx,BP.cz), dd=Math.hypot(D.x-BP.cx,D.z-BP.cz), f=G.phase==='day'?G.t/dayLen(G.day):1;
   // the first time you come by: what it's for
   if(!BP.told && G.phase==='day' && !JR.done && dd<16 && G.elapsed>4){ BP.told=true;
-    if(!JR.toldBreed){ JR.toldBreed=true; shepSay('See the wee pen with the heart? Put a ram in with the ewes, shut the gate, and we\'ll have lambs!',true); }
+    if(!JR.toldBreed){ JR.toldBreed=true; shepSay('See the wee pen with the heart? Put a ram in with the ewes, shut the gate (push it, or grab it and pull), and we\'ll have lambs!',true); }
     else if(f<.6 && Math.random()<.5) shepSay('There\'s a breeding pen here, if ye\'ve the time.',true); }
   // ewes in there but no ram to court them
   if(inside && !rams && ewes>=2){ BP.nearT+=dt; if(BP.nearT>5 && !BP.ramSaid){ BP.ramSaid=true; shepSay("They'll need a ram in there with them!",true); } } else BP.nearT=0;
@@ -4437,6 +4473,7 @@ function updateDog(D,dt){
   D.x+=D.vx*dt; D.z+=D.vz*dt;
   collide(D,.55,{gate:false,perim:true,swim:true,dog:true});
   // grab: hold to latch on, let go to fling
+  if(!grabHeld) D.gateLock=false;      // (a gate that's just clacked shut isn't grabbed again till the button's let go)
   if(playing && grabHeld && !D.grab && !D.lying && D.stunT<=0) tryGrab(D);
   else if(D.grab && (!grabHeld || !playing)) releaseGrab(D,playing);
   if(D.grab) updateGrab(D,dt);
@@ -7260,7 +7297,7 @@ function makeBale(x,z,hay){
 // ---- placement (from setupDay: the cliff right after the level is built, so nothing else spawns under the seesaw;
 // the bales after the day's puzzle, so they keep clear of it) ----
 function placeContraptions(){
-  for(const D of ALLDOGS){ if(D.sky){ D.sky=null; D.flying=false; D.fy=0; } if(D.grab && D.grab.kind==='prop') D.grab=null; }
+  for(const D of ALLDOGS){ if(D.sky){ D.sky=null; D.flying=false; D.fy=0; } if(D.grab && (D.grab.kind==='prop'||D.grab.kind==='gate')) D.grab=null; }
   CT.see.length=0; CT.bales.length=0; for(let i=circles.length-1;i>=0;i--) if(circles[i].bale) circles.splice(i,1);
   CT.bait=null; CT.told.hayHint=CT.told.baited=0;      // (the hay hints are per seesaw day)
   placeSeesawCliff();
