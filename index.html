@@ -511,9 +511,21 @@ const SEASONS={
   winter:{name:'winter',label:'Winter',ground:0xeaf2f8,ground2:0xfdfeff,ground3:0xc8daea,dirt:0xc2cdd8,far:0xd8e4f0,grass:0xf4f8fc,trunk:0x6e4a34,leaves:[0xf4f8fc,0xdce8f2,0xffffff],sky:0xb2daf2,hemi:0xd8e6ff,hemiGround:0xb8c4cc,
           fx:{colors:[0xffffff,0xeef6ff],count:700,fall:2.2,sway:1,size:.2},flies:0,frozen:true},
 };
-// ---- every day is generated from the run's seed: terrain, obstacles, theme and a twist ----
+// ---- every day is built from that day's own fixed seed: terrain, obstacles, theme, twist and everything placed on it ----
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
-let RUN_SEED=(Math.random()*1e9)|0;
+// The levels are curated, not rolled per run: day N is always the same land with the same things in the same places.
+// DAY_SEEDS[d-1] is day d's seed, picked by an audit: build each day for seeds 1, 2, 3... in order and keep the first one
+// that passes every check: every sheep, the dog's start, the gates or scales, clover and bones reachable from the pen gate;
+// every stretch of edge in front of the yard closed by something you can see (cliff, drop, water, lava, boulders or a row of
+// trees, never a bare gap over 2m); the narrowest pass on the way from any sheep to the gate at least 5 wide (edges, hazards,
+// walls, rocks and trees all counted); the open area within the day's size range; the day's puzzle laid out in full. For
+// variety, Moab mustn't be a second maze, and the tall tales (11-14) are four different worlds with at most one maze.
+// Then each one was looked at from above and from the dog's camera. Days past the table use a fixed seed from the day number.
+const DAY_SEEDS=[3,2,6,2,3,4,4,1,4,4,1,4,15,8];
+const daySeed=d=>(d>=1 && d<=DAY_SEEDS.length ? DAY_SEEDS[d-1] : (Math.imul(d,2654435761)^0x2b1f0d)>>>0) ^ Math.imul(d,0x9E3779B1);
+// level construction draws its "random" numbers from the day's seed (one stream per job, so one job's draws never shift
+// another's); everything after (the weather, surprises, the animals' wobble) stays truly random
+function seeded(d,job,fn){ const MR=Math.random; Math.random=mulberry32(((daySeed(d)^Math.imul(job,0x85EBCA6B))>>>0)||1); try{ return fn(); } finally{ Math.random=MR; } }
 const levelCache={};
 let LEVEL={theme:'farm',name:'Home Farm',walls:[],copses:[],rocks:[],holes:[],pond:null,river:null,twist:null};
 const TWISTS={bouncy:'Bouncy sheep',giant:'Giant sheep',tiny:'Tiny sheep',speedy:'Speedy sheep',foggy:'Thick fog',goldrush:'Gold rush',stampede:'Stampedes'};
@@ -531,7 +543,9 @@ function onDeck(R,b,x,z,pad){ const f=bridgeFrame(R,b), dx=x-f.cx, dz=z-f.cz; re
 const lavaRiver=()=>!!(LEVEL.river&&LEVEL.river.lava);
 // outward direction from the hazard a point is in (or null)
 function hazardNormal(x,z){
-  if(LEVEL.haz) for(const h of LEVEL.haz){ const dx=x-h.x, dz=z-h.z, d=Math.hypot(dx,dz); if(d<h.r) return d>1e-6?{x:dx/d,z:dz/d}:{x:1,z:0}; }
+  // the one it's deepest in (the canyon's rift is a chain of overlapping circles: the first one found could point along it)
+  if(LEVEL.haz){ let b=null, bd=0; for(const h of LEVEL.haz){ const q=h.r-Math.hypot(x-h.x,z-h.z); if(q>bd){ bd=q; b=h; } }
+    if(b){ const dx=x-b.x, dz=z-b.z, d=Math.hypot(dx,dz); return d>1e-6?{x:dx/d,z:dz/d}:{x:1,z:0}; } }
   if(lavaRiver() && inRiver(x,z)){ const s=z>riverZ(LEVEL.river,x)?1:-1; return {x:0,z:s}; }
   return null;
 }
@@ -559,19 +573,19 @@ function genMaze(R){
 }
 const themeCache={};
 function themeOf(d){
-  const key=RUN_SEED+':'+d; if(themeCache[key]) return themeCache[key];
-  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), pick=a=>a[(R()*a.length)|0];
+  if(themeCache[d]) return themeCache[d];
+  const R=mulberry32((daySeed(d)>>>0)||1), pick=a=>a[(R()*a.length)|0];
   let theme='farm';
   const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
   const stop=trailStop(d);
   if(stop) theme=stop.theme;                                     // on the trail, the stop decides the world
   else if(d===UNLOCK.worlds) theme=pick(['sky','sea','moon','volcano']);
   else if(d>1){ const prev=themeOf(d-1); const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
-  return themeCache[key]=theme;
+  return themeCache[d]=theme;
 }
-function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
+function levelOf(d){ return levelCache[d]||(levelCache[d]=generateLevel(d)); }
 function generateLevel(d){
-  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
+  const R=mulberry32((daySeed(d)>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
   // theme: day 1 is always the farm; never the same special theme twice running
   const theme=themeOf(d), stop=trailStop(d); R();   // (themeOf used the first draw of this same sequence: skip it so the rest doesn't follow the theme)
   const L={theme,season:(stop&&stop.season)||THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null,special:stop&&stop.special||null};
@@ -581,6 +595,7 @@ function generateLevel(d){
   if(stop && 'puzzle' in stop) pz=stop.puzzle;
   else if(d===UNLOCK.gates) pz='gates'; else if(d===UNLOCK.maze) pz='maze'; else if(d===UNLOCK.scale) pz='scale'; else if(d===UNLOCK.cougar) pz=null;
   else if(d>UNLOCK.gates){ const o=[null,'gates']; if(d>UNLOCK.maze && mazeOK) o.push('maze','maze'); if(d>UNLOCK.scale) o.push('scale'); if(d>8) o.shift(); pz=pick(o); }
+  if(SEESAW_DAYS.includes(d)) pz='seesaw';      // (after the draws above, so the rest of the day's layout doesn't shift)
   L.puzzle=pz; L.gates=d===UNLOCK.gates?1:2+(d>=9&&chance(.5)?1:0);
   if(pz==='maze') L.maze=genMaze(R);
   // a cougar up a tree on some tree-y levels
@@ -598,8 +613,20 @@ function generateLevel(d){
   // a winding river with 1-3 bridges
   // the Grand Canyon: a rift right across the field, crossable only at a couple of narrow necks
   if(L.special==='canyon'){
+    // one continuous rift right across the shelf (a close chain of circles: the hazard is their union, and the land is carved
+    // and walled along its outline), broken only by two necks of solid ground 11 wide
     const zc=L.canyon.z, gap=(lo,hi,g0)=>{ if(g0!==undefined && sdAt(SD,g0,zc)>5) return g0; let b=lo, bs=-1e9; for(let t=0;t<30;t++){ const x=r(lo,hi), s=sdAt(SD,x,zc); if(s>6) return x; if(s>bs){ bs=s; b=x; } } return b; }, G0=L.canyon.gaps||[], gaps=[gap(-34,-12,G0[0]),gap(12,34,G0[1])];
-    for(let x=-FIELD-2;x<=FIELD+2;x+=6.2){ if(gaps.some(g=>Math.abs(g-x)<5.2)) continue; const rad=r(4,5), z=zc+r(-1.2,1.2); if(sdAt(SD,x,z)<-rad+.5) continue; L.holes.push({x,z,r:rad}); taken.push({x,z:zc,r:rad+2}); }
+    const wa=r(.6,1.4), wk=r(.07,.12), wp=r(0,TAU), wr=r(0,TAU), NECK=5.5;
+    L.canyon.gaps=gaps; L.canyon.wave=x=>zc+wa*Math.sin(wk*x+wp);
+    for(let x=-FIELD-4;x<=FIELD+4;x+=1.6){ const rad=3.5+.35*Math.sin(x*.21+wr), z=L.canyon.wave(x);
+      if(gaps.some(g=>Math.abs(g-x)<rad+NECK) || sdAt(SD,x,z)<-rad-1) continue; L.holes.push({x,z,r:rad}); }
+    for(const g of gaps) taken.push({x:g,z:zc,r:NECK+2});
+    taken.push(...L.holes.map(h=>({x:h.x,z:h.z,r:h.r+2})));
+    // the rift as a distance grid on the shape's lattice (positive on solid ground): its zero line sits 0.65 outside the
+    // circles, so the wall's lip is right where a sheep goes over (hazardAt: 0.35 inside a circle)
+    const rs=new Float32Array(SG_N*SG_N);
+    for(let j=0;j<SG_N;j++) for(let i=0;i<SG_N;i++){ const x=SG_O+i, z=SG_O+j; let v=99; for(const h of L.holes){ const q=Math.hypot(x-h.x,z-h.z)-h.r; if(q<v) v=q; } rs[j*SG_N+i]=v-.65; }
+    L.riftSD=rs;
   }
   if(L.special==='plains') L.twist='stampede';
   if(L.special!=='canyon' && L.special!=='columbia' && d>2 && !L.maze && !L.shape.K.regions.length && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
@@ -822,7 +849,8 @@ function genShape(L,R,d,stop){
     else if(tpl==='rim'){
       // the Grand Canyon: a broad shelf along the rift, land north of it by the barn and south of it where the flock is
       const zc=L.canyon.z, bw=r(8,9.5); gaps=[r(-30,-14),r(14,30)];
-      P.push(capP(-35,zc,35,zc,bw)); for(const g of gaps) P.push(capP(g,zc-9,g,zc+9,6.5));      // land right across the rift where its two necks will be P.push(capP(hub.x,hub.z,r(-12,12),zc,r(8,10)));
+      P.push(capP(-35,zc,35,zc,bw)); for(const g of gaps) P.push(capP(g,zc-9,g,zc+9,6.5));      // land right across the rift where its two necks will be
+      P.push(capP(hub.x,hub.z,r(-12,12),zc,r(8,10)));                                             // and the yard joined to the shelf
       grow(R,Object.assign({},base,{n:[0,1],r:[10,13],zMax:zc-8,pk:[0,1]}),P,nodes,spots);
       const S0={x:r(-16,16),z:zc+r(17,22),r:r(12,15)}, south=[S0]; P.push(capP(S0.x,S0.z,S0.x,S0.z,S0.r)); P.push(capP(S0.x,zc,S0.x,S0.z,r(8,10))); spots.push({x:S0.x,z:S0.z,r:S0.r*.55,pocket:false});
       grow(R,Object.assign({},base,{n:[1,2],r:[10,14],zMin:zc+9,pk:[1,2]}),P,south,spots);
@@ -879,7 +907,7 @@ function genShape(L,R,d,stop){
   for(let pass=0;pass<2;pass++){ tmp.set(sd); for(let j=1;j<N-1;j++) for(let i=1;i<N-1;i++){ const k=j*N+i; sd[k]=(tmp[k]*4+tmp[k-1]+tmp[k+1]+tmp[k-N]+tmp[k+N])/8; } }
   K.regions=best.regions; K.holes=best.holes;
   if(best.gaps) L.canyon.gaps=best.gaps;
-  return {sd,tpl:best.tpl,K,spots:best.spots.filter(s=>sdAt(sd,s.x,s.z)>2.5),spawnZ:best.spawnZ,river:best.river,area:best.area};
+  return {sd,tpl:best.tpl,K,spots:best.spots.filter(s=>sdAt(sd,s.x,s.z)>2.5),spawnZ:best.spawnZ,river:best.river,area:best.area,score:bestScore};
 }
 // edge kind weights at a point (w: Float32Array(NK))
 function kindWeights(K,x,z,w){
@@ -915,7 +943,8 @@ const flockMul = n => 1 + n/10;    // the final score: every sheep you bring to 
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
 const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,rabid:5,scale:10,worlds:11,hazards:11,wild:11,seesaw:3,bales:6};
-const NEW_ON={2:'Trial gates',3:'Surprises and the seesaw',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar and hay bales to roll',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
+const SEESAW_DAYS=[3,7,13];      // the seesaw cliff: Lake Erie, the mesa at Moab, and a tall tale on the Moon
+const NEW_ON={2:'Trial gates',3:'Surprises and the seesaw cliff',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar and bales to roll',7:'Falcons, and the pen up on a mesa',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
 // The Long Drive: Hank has inherited a ranch on the Oregon coast and the flock is coming with him.
 // Each day is a stop on the trail west; after Oregon the game carries on with Hank's tall tales (every world, at random).
 const TRAIL=[
@@ -1146,7 +1175,15 @@ const _gc2=new THREE.Color();
   }
   g.setAttribute('color', new THREE.BufferAttribute(cols,3));
   g.computeVertexNormals();
-  const m=new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0}));
+  const gm=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0});
+  // no shadows down on the floor of a drop or the canyon: the barn and fences up top would throw them far out across it
+  // (a fence floating in the canyon); the floor is in its own shade anyway
+  gm.onBeforeCompile=sh=>{
+    sh.vertexShader='varying float vGY;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n\tvGY=(modelMatrix*vec4(transformed,1.0)).y;');
+    sh.fragmentShader='varying float vGY;\n'+sh.fragmentShader.replace('#include <lights_fragment_begin>',THREE.ShaderChunk.lights_fragment_begin.split('receiveShadow ) )').join('receiveShadow && vGY>-4.0 ) )'));
+  };
+  gm.customProgramCacheKey=()=>'groundDeep';
+  const m=new THREE.Mesh(g, gm);
   groundMesh=m; groundBase=vars;
   m.receiveShadow=true; scene.add(m);
 })();
@@ -1515,6 +1552,7 @@ let reachGrid=null;
 function clearOf(x,z,pad){
   if(z<PEN.z1+10 && x>BARN.bx-11 && x<PEN.x1+10) return false;   // pen + barn area
   if(Math.abs(x)>FIELD-pad || Math.abs(z)>FIELD-pad || fieldD(x,z)<pad+1) return false;
+  for(const S of CT.see) if(Math.abs(x-S.x)<S.W/2+1.5+pad && Math.abs(z-S.z)<S.L+1.5+pad) return false;   // not under the seesaw
   if(pondD(x,z)<2+pad) return false;
   if(LEVEL.river && Math.abs(z-riverZ(LEVEL.river,x))<LEVEL.river.w/2+2+pad) return false;
   if(LEVEL.haz) for(const h of LEVEL.haz) if(Math.hypot(h.x-x,h.z-z)<h.r+2+pad) return false;
@@ -1544,7 +1582,7 @@ function ringFadeMat(m){
   m.customProgramCacheKey=()=>'ringfade';
   m.needsUpdate=true;
 }
-const ringTrees=[], RING_NEAR=120, RING_FAR=300;   // near: the front row (detailed, casting shadows); far: everything behind
+const ringTrees=[], RING_NEAR=420, RING_FAR=480;   // near: the front row (detailed, casting shadows); far: everything behind
 const ringMesh=(function(){
   const tg=mergeGeos([{g:new THREE.CylinderGeometry(.3,.46,2.9,7,1,true),m:partM(0,1.45,0,1)},{g:new THREE.CylinderGeometry(.46,.78,.55,7,1,true),m:partM(0,.27,0,1)}]);
   const trunks=new THREE.InstancedMesh(tg,trunkM,RING_NEAR+RING_FAR), crowns=[];
@@ -2524,6 +2562,7 @@ function nearestClover(x,z){
 const PASTURE={x:0,z:PEN.z1+16,r:16};
 function pastureOK(x,z){
   if(!clearOf(x,z,3)) return false;
+  if(LEVEL.plat && z>LEVEL.plat.zc-3) return false;          // a seesaw-cliff camp grazes up on its plateau
   const gx=0, gz=PEN.z1+3;
   if(crossesWall(gx,gz,x,z,{gate:false,perim:true})) return false;
   for(let k=1;k<=10;k++){ const f=k/10, px=gx+(x-gx)*f, pz=gz+(z-gz)*f; if(fieldD(px,pz)<1.5 || hazardAt(px,pz) || inRiver(px,pz) || pondD(px,pz)<1) return false; }
@@ -2664,9 +2703,10 @@ function dogsToTrail(){
   for(const [ox,oz] of [[0,9],[6,8],[-6,8],[0,6],[9,2],[-9,2]]){ if(clearOf(cx+ox,cz+oz,.6)){ bx=cx+ox; bz=cz+oz; break; } }
   dogs.forEach((D,i)=>{ const n=dogs.length; D.x=bx+(n>1?(i-(n-1)/2)*2.6:0); D.z=bz; D.yaw=Math.PI; });
 }
+const dogStartZ=()=>LEVEL.maze?LEVEL.maze.z1+4:PEN.z1+10;
 function resetDog(){
   for(const D of ALLDOGS){
-    const i=dogIdx(D), n=dogs.length; D.x=n>1?(i-(n-1)/2)*2.6:0; D.z=LEVEL.maze?LEVEL.maze.z1+4:PEN.z1+10; D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
+    const i=dogIdx(D), n=dogs.length; D.x=n>1?(i-(n-1)/2)*2.6:0; D.z=dogStartZ(); D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
     D.barkCD=0; D.barkT=0; D.bangT=0; D.gunCD=0; D.zoomT=0; D.pounceT=0; D.pounceCD=0; D.stunT=0;
     D.stats={pens:0,drives:0,saves:0,catches:0,helps:0}; D.grab=null;
   }
@@ -2782,20 +2822,24 @@ function updateHome(dt,time){
 }
 function setupDay(mode){
   clearAnimals(); JR.restT=0; G.ff=1; G.saidFew=false;
-  applySeason(seasonOf(G.day));
-  buildLevel(levelOf(G.day));
-  setHome(homeKind(G.day));
+  const d=G.day;
+  applySeason(seasonOf(d));
+  seeded(d,1,()=>buildLevel(levelOf(d)));
+  seeded(d,8,placeContraptions);          // the seesaw cliff, before anything else is placed (so nothing spawns under the plank)
+  setHome(homeKind(d));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; for(const D of ALLDOGS){ D.appleT=0; D.lanternT=0; } G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
-  clearClover(); spawnClover(cloverCount(G.day));
-  if(G.day>=UNLOCK.bones) spawnGoldBones(); else clearGoldBones();
-  placeShroom();
-  spawnFlock(G.roster||newRoster(G.day),mode||'scatter');
-  setupPuzzle();
-  setupCougar();
-  placeContraptions();
-  resetDog(); if(G.trailHead) dogsToTrail();
+  // everything laid out on the land is part of the level too: the same every time this leg is played (the flock is yours)
+  resetDog();
+  clearClover(); seeded(d,2,()=>spawnClover(cloverCount(d)));
+  if(d>=UNLOCK.bones) seeded(d,3,spawnGoldBones); else clearGoldBones();
+  seeded(d,4,placeShroom);
+  seeded(d,5,()=>spawnFlock(G.roster||newRoster(d),mode||'scatter'));
+  seeded(d,6,setupPuzzle);
+  seeded(d,7,setupCougar);
+  seeded(d,9,placeBales);
+  if(G.trailHead) dogsToTrail();
   if(G.day>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
@@ -3013,7 +3057,7 @@ function startGame(fresh,jumpDay,how){
   G.name=G.names[0]; G.name2=G.names[1];
   if(fresh){
     // a new journey: day 1 in spring at Saratoga (a dev jump starts further down the trail, a little later in the year)
-    G.day=jumpDay||1; G.total=0; G.np=playerChoice; G.coop=G.np>1; G.hardcore=hardcoreChoice; RUN_SEED=(Math.random()*1e9)|0;
+    G.day=jumpDay||1; G.total=0; G.np=playerChoice; G.coop=G.np>1; G.hardcore=hardcoreChoice;
     Object.assign(JR,{cal:1+(G.day-1)*2,camp:false,campDays:0,campNights:0,born:0,lostTotal:0,legNights:0,peak:0,finale:false,final:0});
     JR.startCal=1; G.roster=newRoster(G.day); G.snap=null;
   }
@@ -3033,7 +3077,7 @@ function kickoffDay(){
   toast((trailStop(G.day)?'Leg '+G.day+' · ':'')+LEVEL.name+(LEVEL.theme==='farm'?' · '+SEASON.label:'')+(G.twist?' · '+TWISTS[G.twist]:''),'',3.2);
   { const d0=G.day; setTimeout(()=>{ if(G.day===d0 && G.phase==='day' && !JR.camp) toast(d0===1?'Gather the flock into the pen':'Drive the flock on to camp','',2.6); },NEW_ON[G.day]?6600:3600); }
   if(NEW_ON[G.day]){ const d0=G.day; setTimeout(()=>{ if(G.day===d0 && G.phase==='day') toast('NEW: '+NEW_ON[d0].toUpperCase(),'gold',2.6); },3500); }
-  { const nm=crewNames(), line=PZ.type==='gates'?'Through the gates first, '+nm+'!':PZ.type==='scale'?'Get them on the scales, '+nm+'!':(PZ.type==='maze'&&LEVEL.theme==='farm')?"Mind ye don't lose them in the corn!":'Away out, '+nm+'! Bring them in!';
+  { const nm=crewNames(), line=PZ.type==='gates'?'Through the gates first, '+nm+'!':PZ.type==='seesaw'?'Load them up, '+nm+'!':PZ.type==='scale'?'Get them on the scales, '+nm+'!':(PZ.type==='maze'&&LEVEL.theme==='farm')?"Mind ye don't lose them in the corn!":'Away out, '+nm+'! Bring them in!';
     setTimeout(()=>shepSay(line,true),900); }
   if(G.day===1) setTimeout(()=>shepSay('Mind the bell ewe. The flock follows her!',true),7000);
 }
@@ -3341,7 +3385,7 @@ function edgeSpot(){
   const lp=edgeLoops.reduce((a,b)=>b.length>a.length?b:a), sd=LEVEL.shape.sd;
   for(let t=0;t<40;t++){ const p=lp[(Math.random()*lp.length)|0]; if(p[1]<PEN.z1+4) continue;
     const gx=sdAt(sd,p[0]+.5,p[1])-sdAt(sd,p[0]-.5,p[1]), gz=sdAt(sd,p[0],p[1]+.5)-sdAt(sd,p[0],p[1]-.5), l=Math.hypot(gx,gz)||1, k=kindAt(p[0]-gx/l*5,p[1]-gz/l*5), wet=k===KW||k===KL||k===KD;
-    if(wet && t<28) continue; const o=wet?1.5:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }
+    if(wet && t<28) continue; const o=wet?-2:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }   // out of the woods or off the cliff top; by water or a drop, from just inside the edge (not walking on air)
   return null;
 }
 function spawnCoyote(alpha,boss){
@@ -3653,14 +3697,14 @@ function finale(){
 // the journey is saved at every camp; closing the game mid-leg picks up again at the last camp
 function saveJourney(){
   if(G.phase==='title' || !JR.camp) return;
-  try{ localStorage.setItem('collieDuskJourney',JSON.stringify({v:1,seed:RUN_SEED,day:G.day,cal:JR.cal,startCal:JR.startCal,total:G.total+G.score,roster:rosterOf(),born:JR.born,lostTotal:JR.lostTotal,peak:JR.peak,hardcore:!!G.hardcore,finale:!!JR.finale,place:placeName()})); }catch(e){}
+  try{ localStorage.setItem('collieDuskJourney',JSON.stringify({v:1,day:G.day,cal:JR.cal,startCal:JR.startCal,total:G.total+G.score,roster:rosterOf(),born:JR.born,lostTotal:JR.lostTotal,peak:JR.peak,hardcore:!!G.hardcore,finale:!!JR.finale,place:placeName()})); }catch(e){}
   refreshContinue();
 }
 function loadSave(){ try{ const d=JSON.parse(localStorage.getItem('collieDuskJourney')||'null'); return d&&d.v===1&&d.roster&&d.roster.length?d:null; }catch(e){ return null; } }
 function clearSave(){ try{ localStorage.removeItem('collieDuskJourney'); }catch(e){} refreshContinue(); }
 function resumeJourney(){
   const d=loadSave(); if(!d){ startGame(true); return; }
-  RUN_SEED=d.seed; G.day=d.day; G.total=d.total; G.np=playerChoice; G.coop=G.np>1; G.hardcore=d.hardcore;
+  G.day=d.day; G.total=d.total; G.np=playerChoice; G.coop=G.np>1; G.hardcore=d.hardcore;
   Object.assign(JR,{cal:d.cal,startCal:d.startCal,born:d.born,lostTotal:d.lostTotal,peak:d.peak,finale:d.finale,camp:false});
   G.roster=d.roster; sheepId=Math.max(sheepId,...d.roster.map(e=>e.id||0));
   startGame(false,null,'resume');
@@ -3859,7 +3903,7 @@ function updateSheep(dt){
   // the flock's hub: the free sheep with the most company. Strays find their way back to it, round walls if need be.
   G.hubT=(G.hubT||0)-dt;
   if(G.hubT<=0){ for(const c of clovers) sizeClover(c); }
-  if(G.hubT<=0){ G.hubT=.5; let best=null, bn=-1; const F=L.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.bonus&&!(s.madT>0)&&!s.grabbedBy);
+  if(G.hubT<=0){ G.hubT=.5; let best=null, bn=-1; const F=L.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.bonus&&!(s.madT>0)&&!s.grabbedBy&&!s.sky&&!s.inF&&!onPlateau(s.x,s.z));
     for(const a of F){ let k=0; for(const b of F){ const d=Math.hypot(a.x-b.x,a.z-b.z); if(d<13) k+=d<6?1:.6; } if(a===G.hub) k+=1.5; if(k>bn){ bn=k; best=a; } } G.hub=bn>=2?best:null; }   // a grazing flock spreads out: count company over a wide area, and don't flip-flop
   G.madN=0; for(const s of L) if(s.madT>0 && !s.penned && !s.dead) G.madN++;
   const pcx=(PEN.x0+PEN.x1)/2, pcz=(PEN.z0+PEN.z1)/2-1.5;
@@ -3881,13 +3925,6 @@ function updateSheep(dt){
       continue;
     }
     if(s.sky){ airSheep(s,dt); continue; }          // launched off a seesaw
-    if(s.dazeT>0 && !s.carried && !s.grabbedBy){
-      // a bad landing: sits in a heap seeing stars for a moment
-      s.dazeT-=dt; const k=Math.exp(-dt*5); s.vx*=k; s.vz*=k; s.x+=s.vx*dt; s.z+=s.vz*dt; s.attacked=Math.max(0,s.attacked-dt);
-      collide(s,s.lamb?.45:.7,{gate:s.penned,perim:onField(s.x,s.z)});
-      if(!s.penned && G.phase!=='title'){ const hz=hazardAt(s.x,s.z); if(hz){ hazardKill(s,hz); continue; } checkGoal(s); }
-      continue;
-    }
     if(s.dance){ s.vx*=.8; s.vz*=.8; s.x+=s.vx*dt; s.z+=s.vz*dt; continue; }   // disco!
     if(s.carried){ s.attacked=.3; s.fear=1; continue; }
     if(s.grabbedBy){ s.penned=false; continue; }            // dangling from a dog's mouth
@@ -3926,7 +3963,7 @@ function updateSheep(dt){
     let fx=0,fz=0,fear=0;
     s.boingCD=Math.max(0,s.boingCD-dt);
     for(const D of dogs){
-      if(s.penned || G.phase==='title' || D.pounceT<=0 || s.boingCD>0) continue;
+      if(s.penned || G.phase==='title' || D.pounceT<=0 || s.boingCD>0 || s.inF) continue;      // (a dog pouncing down the seesaw funnel is going for the plank, not the queue)
       // pounce straight into a sheep and it goes BOING
       const bx=s.x-D.x, bz=s.z-D.z, bd=Math.hypot(bx,bz)+1e-6;
       if(bd<1.7){
@@ -4046,7 +4083,7 @@ function updateSheep(dt){
             // pressure has a direction: a dog walking onto the flock drives it the way it's walking, so you can steer it
             let ux=dx/d, uz=dz/d; const dv=D.speed; if(dv>1.5 && D.barkT<=0){ const vx=D.vx/dv, vz=D.vz/dv, dot=vx*ux+vz*uz; if(dot>-.2){ const w=.9*Math.min(1,dv/8); ux+=vx*w; uz+=vz*w; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul; } }
             fx+=ux*k*str; fz+=uz*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
-            if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=1;      // driven hard: could go over the edge
+            if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=Math.max(s.hard,D.barkT>0||D.pounceT>0?2:1);      // driven hard: could go over the edge
             if(k>s.press){ s.press=k; s.pressD=D; }                                 // how hard the closest dog is crowding it
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
@@ -4091,7 +4128,8 @@ function updateSheep(dt){
         if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
       }
       // sheep shy away from lava and cliff edges, but a dog driving them hard can still push them in
-      if(LEVEL.haz) for(const h of LEVEL.haz){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; if(hd<m){ const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } }
+      // (the canyon's rift is a chain of overlapping circles: only the nearest one pushes, so it isn't many times as strong)
+      if(LEVEL.haz){ let hb=null, hm=0; for(const h of LEVEL.haz){ const hd=Math.hypot(s.x-h.x,s.z-h.z), m=h.r+2.5-hd; if(m>hm){ hm=m; hb=h; } } const h=hb; if(h){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; { const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } } }
       // calm sheep near the gate flow on in
       { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PZ.locked && !s.graze && !G.leaving && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
@@ -4100,7 +4138,7 @@ function updateSheep(dt){
       if((s.graze||G.leaving) && s.z<PEN.z1+1.5 && s.x>PEN.x0-1 && s.x<PEN.x1+1){ const tx=clamp(s.x,-PEN.gx+1.5,PEN.gx-1.5)*.5-s.x, tz=PEN.z1+4.5-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*7; fz+=tz/td*7; }
       else if(G.leaving){ fz+=3; }
       else if(s.graze){ const px=s.x-PASTURE.x, pz=s.z-PASTURE.z, pd=Math.hypot(px,pz)+1e-6; if(pd>PASTURE.r){ const k=Math.min(8,(pd-PASTURE.r)*.8+1.5); fx-=px/pd*k; fz-=pz/pd*k; } }
-      if(s.home){
+      if(s.home && !(LEVEL.plat && !onPlateau(s.x,s.z))){      // (below a seesaw cliff the only way home is the seesaw: its funnel does the rest)
         const hx=0, hz=PEN.z1+3, dx=hx-s.x, dz=hz-s.z, d=Math.hypot(dx,dz)+1e-6;
         if(d>2){
           s.homeT=(s.homeT||0)-dt; if(s.homeT<=0){ s.homeT=.4+Math.random()*.3; navReady(); s.homeBlocked=!navLOS(1,s.x,s.z,hx,hz); }
@@ -4108,6 +4146,10 @@ function updateSheep(dt){
           const k=Math.min(7,2.5+d*.15); fx+=ux*k; fz+=uz*k;
         }
       }
+      // up on the seesaw plateau: trot off to the pen on its own
+      s.up=onPlateau(s.x,s.z); s.inF=!s.up && ctInFunnel(s.x,s.z);
+      if(G.phase!=='title' && (s.up&&!PZ.locked&&!s.graze&&!G.leaving || s.inF)){ const h=s.up?homeForce(s):funnelForce(s); fx+=h[0]; fz+=h[1]; }
+      else if(LEVEL.plat && G.phase!=='title' && !G.leaving){ const h=mouthPull(s); if(h){ fx+=h[0]; fz+=h[1]; } }   // and in the seesaw's funnel: down to its low end
     } else {
       fx+=(pcx-s.x)*.12; fz+=(pcz-s.z)*.12;
       s.stress=Math.max(0,s.stress-dt*.3);
@@ -4115,7 +4157,7 @@ function updateSheep(dt){
     s.fear=Math.max(fear, s.fear-dt*.45);
     let cx=0,cz=0,n=0,ax=0,az=0,na=0, ns=0, nsn=0, lead=null, ld=25, nb=null, nbd=1e9;
     for(const o of L){
-      if(o===s||o.dead||o.carried||o.penned!==s.penned) continue;
+      if(o===s||o.dead||o.carried||o.penned!==s.penned||o.sky||!!o.up!==!!s.up||!!o.inF!==!!s.inF) continue;
       const dx=s.x-o.x, dz=s.z-o.z, d2=dx*dx+dz*dz;
       if(d2<3.6 && d2>1e-6){ const d=Math.sqrt(d2); fx+=dx/d*(1.9-d)*14; fz+=dz/d*(1.9-d)*14; }
       if(d2<260){ cx+=o.x; cz+=o.z; n++; if(d2<49){ ax+=o.vx; az+=o.vz; na++; ns+=o.stress; nsn++; } }
@@ -4144,7 +4186,7 @@ function updateSheep(dt){
     if(!n && nb && !s.penned && !eating && !s.regBlocked){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
     // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
-    { const H=G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.graze && !s.home && !G.leaving;
+    { const H=G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.graze && !s.home && !G.leaving;
       const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0, w=live?(1-(s.press||0)/.6)*(1-panic*.6):0;
       if(!live || hd<6){ s.regBlocked=false; s.stray=false; }
       else {
@@ -4236,10 +4278,14 @@ function updateSheep(dt){
     let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; maxV*=(.72+.28*clamp(s.hp/50,0,1))*(s.due?.93:1); if(s.home||s.court) maxV=Math.max(maxV,2.8); if(G.leaving) maxV=Math.max(maxV,3.4); if(s.penned) maxV=1.3; if((s.regBlocked||(s.stray && G.hub && Math.hypot(G.hub.x-s.x,G.hub.z-s.z)>12)) && !s.penned){ maxV=Math.max(maxV,3.8); if(Math.random()<dt*.12) sBleat(1.25+Math.random()*.2); }   // a stray trots back to the others, bleating for them
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     // the edge of lava or a cliff: a sheep stops and slides along it, unless a dog is driving it hard (or it's flying)
-    if(!s.penned && (s.safeT>0 || (!s.hard && !(s.thrownT>0) && s.flip<=0))){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
+    // (the canyon's rift runs right across the field, so there it takes a bark or a pounce, not just a dog running past)
+    const guard=!s.penned && (s.safeT>0 || (!(s.hard>1 || (s.hard && !LEVEL.riftSD)) && !(s.thrownT>0) && s.flip<=0)), opx=s.x, opz=s.z;
+    if(guard){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
     // a sheep dropped just outside the boundary slips back through the wire
     collide(s,s.lamb?.45:.7,{gate:s.penned,perim:onField(s.x,s.z)});
+    // still nudged over the edge (by a fence, a rock, a shove)? a sheep nobody's driving hard digs its heels in instead
+    if(guard && hazardAt(s.x,s.z) && !hazardAt(opx,opz)){ s.x=opx; s.z=opz; s.vx*=-.3; s.vz*=-.3; }
     if(!s.penned && G.phase!=='title'){ const hz=s.safeT>0?null:hazardAt(s.x,s.z); if(hz && !s.carried && !s.grabbedBy){ hazardKill(s,hz); continue; } checkGoal(s); }
     s.attacked=Math.max(0,s.attacked-dt);
   }
@@ -4274,9 +4320,13 @@ function ramUpdate(s,dt){
     if(Math.random()<dt*10) burst(s.x-Math.sin(s.yaw)*.7,.2,s.z-Math.cos(s.yaw)*.7,2,PC.dust,1.5,1.5);
     if(t.isDog && t.barkT>0){ s.rs='idle'; s.rcd=8; s.fear=1; return false; }
     s.rt-=dt;
-    if(s.rt<=0){ const dx=t.x-s.x, dz=t.z-s.z, d=Math.hypot(dx,dz)+1e-6; s.cdx=dx/d; s.cdz=dz/d; s.rs='charge'; s.rt=1; sWhoosh(); }
+    if(s.rt<=0){ const dx=t.x-s.x, dz=t.z-s.z, d=Math.hypot(dx,dz)+1e-6; s.cdx=dx/d; s.cdz=dz/d;
+      // not straight over the edge of the canyon (or into lava, or the river): it thinks better of it
+      let clear=true; for(let q=1;q<=Math.min(d,14);q+=.7){ const x=s.x+s.cdx*q, z=s.z+s.cdz*q; if(hazardAt(x,z)||inRiver(x,z)){ clear=false; break; } }
+      if(clear){ s.rs='charge'; s.rt=1; sWhoosh(); } else { s.rs='idle'; s.rcd=3; } }
   } else if(s.rs==='charge'){
     s.vx=s.cdx*14; s.vz=s.cdz*14;
+    { const x=s.x+s.cdx*1.6, z=s.z+s.cdz*1.6; if(hazardAt(x,z)||inRiver(x,z)){ s.rs='dazed'; s.rt=1.2; s.vx=s.vz=0; } }   // skids to a stop at the edge
     if(Math.random()<dt*20) burst(s.x,.2,s.z,1,PC.dust,1,1);
     const d=Math.hypot(t.x-s.x,t.z-s.z);
     if(d<(t.isDog?1.8:2)){
@@ -4942,6 +4992,14 @@ function makeTerrier(){
 const rascal={isRascal:true,active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
 rascal.m.g.visible=false;
 function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<UNLOCK.rascal; G.rascalAt=.25+Math.random()*.3; }
+// a spot on solid ground just in from the edge of the land, going out from (x,z) at angle a: where things come in from the
+// wild and go back out again (not over a cliff or out of the sea)
+function landEntry(x,z,a,pad){
+  pad=pad||2.5; let best=null; const ca=Math.cos(a), sa=Math.sin(a);
+  for(let r=0;r<90;r+=1){ const px=x+ca*r, pz=z+sa*r, f=fieldD(px,pz); if(f<0 && r>4) break;
+    if(f>=pad && pz>PEN.z1+4 && !hazardAt(px,pz) && !inRiver(px,pz) && pondD(px,pz)>1.5) best={x:px,z:pz}; }
+  return best||{x,z};
+}
 function rascalLeave(shooed,D){
   if(rascal.state==='leave') return;
   rascal.state='leave'; rascal.target=null;
@@ -4951,7 +5009,9 @@ function updateRascal(dt){
   if(!rascal.active){
     if(G.phase==='day' && !JR.camp && !G.rascalDone && G.t/dayLen(G.day)>G.rascalAt){
       G.rascalDone=true; rascal.active=true; rascal.state='run'; rascal.t=0; rascal.m.g.visible=true;
-      const a=Math.PI*(.15+Math.random()*.7); rascal.x=Math.cos(a)*(FIELD+4); rascal.z=Math.sin(a)*(FIELD+4)*.9; rascal.vx=rascal.vz=0;
+      // out of the woods (or from behind a rock) at the land's edge, never in over a cliff or out of the water
+      const mid=flockMid(), a=Math.PI*(.15+Math.random()*.7), e=landEntry(mid.x,mid.z,a,2); rascal.x=rascal.hx=e.x; rascal.z=rascal.hz=e.z; rascal.vx=rascal.vz=0;
+      burst(e.x,.4,e.z,14,PC.dust,3,2);
       sYip(1); setTimeout(()=>sYip(1.1),160); shepSay("That wee rascal's loose again!",true);
     }
     return;
@@ -4969,8 +5029,9 @@ function updateRascal(dt){
     if(rascal.t>28 || G.phase!=='day') rascalLeave(false);
   }
   if(rascal.state==='leave'){
-    const d=Math.hypot(rascal.x,rascal.z)+1e-6; dirx=rascal.x/d; dirz=rascal.z/d; spd=12.5;
-    if(Math.max(Math.abs(rascal.x),Math.abs(rascal.z))>FIELD+8){ rascal.active=false; rascal.m.g.visible=false; return; }
+    // back the way it came, and off into the woods
+    const hx=rascal.hx===undefined?rascal.x*2:rascal.hx, hz=rascal.hz===undefined?rascal.z*2:rascal.hz, dx=hx-rascal.x, dz=hz-rascal.z, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d; spd=12.5;
+    if(d<1.5 || rascal.t>60){ burst(rascal.x,.4,rascal.z,14,PC.dust,3,2); rascal.active=false; rascal.m.g.visible=false; return; }
   }
   const a=1-Math.exp(-dt*7); rascal.vx+=(dirx*spd-rascal.vx)*a; rascal.vz+=(dirz*spd-rascal.vz)*a;
   rascal.x+=rascal.vx*dt; rascal.z+=rascal.vz*dt; collide(rascal,.4,{gate:true,perim:false});
@@ -5176,7 +5237,7 @@ function bumpHank(D){
     shepSay(['Oi! Watch it!','Mind yer manners!','Not me, the sheep!'][(Math.random()*3)|0],true);
   }
 }
-function resetShepherd(){ shep.x=PEN.gx+3; shep.z=LEVEL.maze?LEVEL.maze.z1+3:PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; shep.lastText=''; }
+function resetShepherd(){ shep.x=PEN.gx+3; shep.z=LEVEL.maze?LEVEL.maze.z1+3:PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; shep.lastText=''; shep.said={}; }
 function updateShepherd(dt){
   let dirx=0,dirz=0,spd=0;
   if(G.phase==='day'||G.phase==='night'){
@@ -5248,7 +5309,10 @@ function sWhistle(cmd){
 function shepSay(text,force,cmd){
   if(G.phase==='title') return;
   if(!force && G.elapsed-shep.lastSay<7) return;              // Hank chats, but not constantly
-  if(text===shep.lastText && G.phase!=='result') return;      // and never says the same thing twice in a row
+  if(G.phase!=='result'){                                      // and doesn't repeat himself: not the same line twice in a row,
+    if(text===shep.lastText) return;                            // nor a line he said in the last 15 seconds
+    const seen=(shep.said||(shep.said={}))[text]; if(seen!==undefined && G.elapsed-seen<15 && G.elapsed>=seen) return;
+    shep.said[text]=G.elapsed; }
   shep.lastText=text; shep.lastSay=G.elapsed; shep.sayT=1.9;
   const b=$('bubble'); b.textContent=text; b.classList.add('on');
   const lead=cmd?sWhistle(cmd):0, t0=ok()?AC.currentTime+lead:0;
@@ -5309,9 +5373,10 @@ function spawnGoldBones(){
     const x=(Math.random()*2-1)*(FIELD-4), z=PEN.z1+4+Math.random()*(FIELD-PEN.z1-8);
     if(!clearOf(x,z,1.5) || Math.hypot(x,z-(PEN.z1+10))<16 || goldBones.some(b=>Math.hypot(b.x-x,b.z-z)<20)) continue;
     if(fieldD(x,z)>9 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) continue;
-    const g=makeGoldBone(); g.position.set(x,groundH(x,z)+.5,z); scene.add(g);
-    goldBones.push({x,z,g,got:false}); i++;
+    goldBones.push({x,z,g:null,got:false}); i++;
   }
+  // the meshes after the spots are picked (the first one built draws on Math.random, which would shift the layout)
+  for(const b of goldBones){ const g=b.g=makeGoldBone(); g.position.set(b.x,groundH(b.x,b.z)+.5,b.z); scene.add(g); }
 }
 function updateBoneIcons(){ const icons=document.querySelectorAll('#bones svg'); icons.forEach((el,i)=>el.classList.toggle('got',i<(G.bonesGot||0))); }
 function updateGoldBones(dt,time){
@@ -5375,7 +5440,7 @@ function placeMads(){
   const n=G.day>=11?3:2;
   for(let tries=0;tries<400 && MADS.length<n;tries++){
     const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
-    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x-dog.x,z-dog.z)<12) continue;
+    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x,z-dogStartZ())<12) continue;
     const g=new THREE.Group(); g.position.set(x,groundH(x,z),z);
     for(const [sc,ox,oz,ry] of [[.42,0,0,0],[.3,.34,.18,1.2],[.26,-.28,.22,2.3],[.2,.1,-.32,.4]]){ const b=new THREE.Mesh(shroom.userData.body,madMat); b.position.set(ox,0,oz); b.scale.setScalar(sc); b.rotation.y=ry; b.castShadow=true; g.add(b); }
     scene.add(g); MADS.push({x,z,g,eaten:false});
@@ -5410,7 +5475,7 @@ function placeShroom(){
   if(G.day<UNLOCK.shroom) return;
   for(let tries=0;tries<300;tries++){
     const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-14);
-    if(!clearOf(x,z,2) || Math.hypot(x-dog.x,z-dog.z)<15) continue;
+    if(!clearOf(x,z,2) || Math.hypot(x,z-dogStartZ())<15) continue;
     shroomSpot=[x,z]; shroom.position.set(x,groundH(x,z),z); shroom.visible=true; return;
   }
 }
@@ -5809,6 +5874,7 @@ function terrainAt(x,z,s,hc,w){
     let y=Math.max(-1.2,rh)*smooth01(PEN.z1+3,PEN.z1+15,z)*smooth01(1.5,10,pondD(x,z))*smooth01(1,9,s);
     const ww=w[KW]+w[KL];
     if(ww>0){ const yb=WL+.3+1.3*smooth01(0,7,s); y=lerp(y,yb,ww*(1-smooth01(4,9,s))); }        // beaches slope down to the water
+    if(LEVEL.riftSD){ const rd=-sdAt(LEVEL.riftSD,x,z); if(rd>1){ const k=smooth01(1,2.2,rd); y=lerp(y,-38+3*(vnoise(x*.05,z*.05)-.5)*smooth01(3,8,rd),k); } }   // down into the canyon
     return y;
   }
   const d=-s; let y=0;
@@ -5909,7 +5975,7 @@ function simplifyLoop(L,tol){
 const ribMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide});
 const foamStripMat=new THREE.MeshStandardMaterial({color:PAL.foam,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
 const glowStripMat=new THREE.MeshBasicMaterial({color:0xffd25a,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
-let edgeLoops=[], mmBg=null;
+let edgeLoops=[], edgeInfo=[], mmBg=null;   // edgeInfo: per point of each edge loop, what closes the land off there (see buildEdges)
 function ribRun(acc,pts,rows){
   const base=acc.p.length/3, R=rows.length;
   for(const q of pts) for(let r=0;r<R;r++){ const v=rows[r](q); acc.p.push(q.x+q.nx*v[0],v[1],q.z+q.nz*v[0]); const c=v[2]; acc.c.push(c.r*q.cm,c.g*q.cm,c.b*q.cm); }
@@ -5933,15 +5999,20 @@ function buildEdges(L){
   const topC=cliffTop(S2,th);
   const up={p:[],c:[],i:[]}, down={p:[],c:[],i:[]}, foam={p:[],c:[],i:[]}, foam2={p:[],c:[],i:[]}, glow={p:[],c:[],i:[]};
   const TYPE={[KC]:'up',[KR]:'up',[KM]:'up',[KD]:'down',[KW]:'foam',[KL]:'glow'};
-  for(const lp of edgeLoops){
-    const n=lp.length; let s=0;
-    const pts=lp.map((p,i)=>{ const x=p[0], z=p[1], gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
+  edgeInfo=[];
+  // the Grand Canyon's rift is walled the same way as a drop at the edge (it has no collision: you can go over)
+  const riftLoops=L.riftSD?contourLoops(L.riftSD).map(lp=>resample(chaikin(lp),1)).filter(lp=>lp.some(p=>sdAt(S.sd,p[0],p[1])>-1)):[];
+  for(const lp of edgeLoops.concat(riftLoops)){
+    const n=lp.length; let s=0, rift=riftLoops.includes(lp), SD=rift?L.riftSD:S.sd;
+    const pts=lp.map((p,i)=>{ const x=p[0], z=p[1], gx=sdAt(SD,x+.5,z)-sdAt(SD,x-.5,z), gz=sdAt(SD,x,z+.5)-sdAt(SD,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
       if(i) s+=Math.hypot(x-lp[i-1][0],z-lp[i-1][1]);
       const w=kindWeights(S.K,x+nx*2.5,z+nz*2.5,_kw); let b=0; for(let q=1;q<NK;q++) if(w[q]>w[b]) b=q;
       let oc=4.6; for(let o=1;o<=4.6;o+=.4){ if(-sdAt(S.sd,x+nx*o,z+nz*o)<o*.75-.2){ oc=Math.max(1.2,o-.4); break; } }
       let type=TYPE[b]||null; const g=groundH(x-nx*.4,z-nz*.4), top=groundH(x+nx*oc,z+nz*oc)+.12, sq=oc/4.6;
       let low=false; if(type==='up' && top-g<1.2){ type=null; low=true; }
-      return {x,z,nx,nz,s,type,low,g,top,sq,j:(vnoise(s*.4,7.3)-.5)*.8,j2:(vnoise(s*.4,2.1)-.5)*.8,cm:.92+.16*vnoise(s*.7,1.1)}; });
+      if(rift){ type=sdAt(S.sd,x,z)>-.5?'down':null; b=KD; }
+      return {x,z,nx,nz,s,kind:b,type,low,g,top,sq,j:(vnoise(s*.4,7.3)-.5)*.8,j2:(vnoise(s*.4,2.1)-.5)*.8,cm:.92+.16*vnoise(s*.7,1.1)}; });
+    edgeInfo.push(pts);
     // runs of one type (a loop that is all one type wraps round)
     let start=0; while(start<n && pts[start].type===pts[(start+n-1)%n].type) start++; const allSame=start>=n; if(allSame) start=0;
     const order=[]; for(let i=0;i<=n;i++) order.push(pts[(start+i)%n]);
@@ -5993,12 +6064,13 @@ function levelFence(lines){
 function layoutRingTrees(L){
   const S=L.shape, near=[], far=[], NC=RING_NEAR, FC=RING_FAR;
   const add=(arr,cap,x,z,s)=>{ if(arr.length<cap) arr.push({x,z,s}); };
-  for(const lp of edgeLoops){
-    for(let i=0;i<lp.length;i+=2){ const x=lp[i][0], z=lp[i][1];
-      const gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
-      const k=kindAt(x+nx*3,z+nz*3), south=nz>.35, sm=south?.62:1;
+  // walk the edge points buildEdges classified: wherever it left the edge open (no cliff, drop, shore or boulders) the woods
+  // close it, a front row every two metres all the way along, so the land never stops at a gap you can see through
+  for(const pts of edgeInfo){
+    for(let i=0;i<pts.length;i+=2){ const q=pts[i], x=q.x, z=q.z, nx=q.nx, nz=q.nz;
+      const k=q.type||q.low ? kindAt(x+nx*3,z+nz*3) : KF, south=nz>.35, sm=south?.62:1;
       const at=(o,sp)=>{ const a=(Math.random()-.5)*sp; return [x+nx*o-nz*a,z+nz*o+nx*a]; };
-      if(k===KF){ let p=at(1.9+Math.random()*.8+(south?.6:0),1.6); add(near,NC,p[0],p[1],(1+Math.random()*.5)*sm);
+      if(k===KF){ let p=at(1.9+Math.random()*.6+(south?.6:0),1.2); add(near,NC,p[0],p[1],(1.05+Math.random()*.45)*sm);
         if(Math.random()<.7){ p=at(4.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],(1.1+Math.random()*.6)*sm); }
         if(Math.random()<.6){ p=at(7.5+Math.random()*4,3); add(far,FC,p[0],p[1],(1.2+Math.random()*.6)*sm); } }
       else if(k===KR){ let p=at(1.4+Math.random()*1,1.4); add(near,NC,p[0],p[1],.9+Math.random()*.6); if(Math.random()<.6){ p=at(3.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],1+Math.random()*.6); } }
@@ -6018,6 +6090,7 @@ function drawMinimapBg(L){
   const CK=[[30,62,34],[112,96,78],[52,118,168],[18,24,40],[176,74,32],[168,86,98],[84,84,96]];
   for(let j=0;j<W;j++) for(let i=0;i<W;i++){ const wx=(i+.5)/W*(2*FIELD+12)-FIELD-6, wz=(j+.5)/W*(2*FIELD+12)-FIELD-6, s=sdAt(S.sd,wx,wz), o=(j*W+i)*4;
     let c; if(s>1.1) c=[98,150,72]; else if(s>-.4) c=[236,226,196]; else c=CK[kindAt(wx,wz)];
+    if(L.riftSD && s>-.4){ const rf=sdAt(L.riftSD,wx,wz); if(rf<-1) c=[58,26,18]; else if(rf<.2) c=[236,226,196]; }   // the canyon's rift, dark, with a pale lip
     D[o]=c[0]; D[o+1]=c[1]; D[o+2]=c[2]; D[o+3]=s>1.1?235:s>-.4?240:200; }
   x.putImageData(img,0,0);
 }
@@ -6037,7 +6110,7 @@ function clearLevel(){
 function addObj(o){ scene.add(o); levelObjs.push(o); return o; }
 function hideGrass(test){ if(!grassMesh) return; grassPos.forEach((g,i)=>{ if(test(g[0],g[1])) grassMesh.setMatrixAt(i,_zero); }); grassMesh.instanceMatrix.needsUpdate=true; }
 function regenTerrain(){
-  buildTerrainGrid();
+  buildTerrainGrid(); plateauRaise();
   if(groundMesh){
     const geo=groundMesh.geometry, pos=geo.attributes.position, n=pos.count;
     for(let i=0;i<n;i++) pos.setY(i,groundH(pos.getX(i),pos.getZ(i)));
@@ -6143,7 +6216,7 @@ const BUTTE_GEO=vgrad(mergeGeos([{g:blobGeo(1,2,.08,1),m:partM(0,0,0,1,.55,1)},{
 const SMOKE_GEO=blobGeo(1,9,.1).scale(8,8,8), smokeMat=new THREE.MeshLambertMaterial({color:0x9a8c94,emissive:0x3a1a10,transparent:true,opacity:.7,depthWrite:false,fog:false});
 const volcanoMat=new THREE.MeshStandardMaterial({color:0x3a2226,roughness:1,fog:false}), volcanoLavaMat=new THREE.MeshBasicMaterial({color:0xff7a2a,fog:false});
 function buildLevel(L){
-  clearLevel(); reachGrid=null; LEVEL=L; G.twist=L.twist; G.stampT=undefined;
+  clearLevel(); reachGrid=null; LEVEL=L; G.twist=L.twist; G.stampT=undefined; plateauPrep(L);
   Object.assign(HILL,L.hill); movePond(L.pond); regenTerrain();
   WALK_FLOOR=TG.water||TG.lava?WL-.4:L.shape.K.def===KD?-.3:-99;
   buildEdges(L);
@@ -6204,8 +6277,9 @@ function buildLevel(L){
     hideGrass((x,z)=>Math.abs(z-riverZ(R,x))<R.w/2+1.2 && Math.abs(x)<FIELD+1);
   }
   // chasms (sky) and craters (moon)
-  for(const h of L.holes){
-    if(L.theme!=='sky' && !L.canyon) circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms and the canyon don't stop you: you fall in
+  if(L.riftSD) hideGrass((x,z)=>sdAt(L.riftSD,x,z)<.6);     // the canyon's rift is carved into the terrain and walled in buildEdges
+  for(const h of L.riftSD?[]:L.holes){
+    if(L.theme!=='sky' && !L.canyon) circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms don't stop you: you fall in
     const base=groundH(h.x,h.z), moon=L.theme==='moon';
     // a hole in the island: sky blue, deeper in the middle, with a lip of bare earth and clouds drifting just inside;
     // on the Moon a dusty bowl with a soft raised rim
@@ -6285,35 +6359,66 @@ function computeReach(){
 }
 function reachable(x,z){ if(!reachGrid) return true; const i=Math.floor((x+FIELD)/RC), j=Math.floor((z+FIELD)/RC); if(i<0||j<0||i>=RN||j>=RN) return false; return !!reachGrid[j*RN+i]; }
 
-// ---------------- contraptions: the seesaw and hay bales you can roll ----------------
-// The seesaw: a plank on a trestle. Sheep that walk onto it tip it their way; pounce (punt) onto the high end and
-// everything on the low end is flung in an arc out past it, over hedges, rivers and chasms, or right into the pen.
-// Grab either end to swing it round and aim; a ring on the ground shows where they'll come down.
-// Hay bales: round bales lying on their side. Walk into one to roll it, punt it to send it trundling, or grab it to drag it.
-// They block sheep and coyotes alike (a bale in a hedge gap turns the coyotes' path around it), and one rolled hard
-// into the high end of a seesaw sets it off. Everything here is placed by placeContraptions(), called once from setupDay.
+// ---------------- contraptions: the seesaw up the cliff, and bales you can roll ----------------
+// The seesaw cliff (a day's puzzle, like the trial gates or the weigh-in): the pen sits up on a plateau with a rock face
+// across the whole field that the flock can't climb. At its foot a big seesaw waits between two fences that funnel the
+// sheep onto its low end. Pounce (punt) onto the high end and everything on the low end shoots up into the clouds in a
+// trail of stars, hangs there a beat, pops a parachute and floats down onto the plateau, then trots into the pen on its
+// own. It's meant to be easy: every launched sheep lands safely up top. Dogs scramble up and down the rock as they like
+// (and ride the seesaw too, if a partner pounces). plateauPrep/plateauRaise shape the land as the level is built;
+// placeSeesawCliff puts in the rock face, the seesaw, the fences and the sign.
+// Bales: round bales lying about the field (hay on the farm; tumbleweed, coral, moon rock, basalt or a cloud elsewhere).
+// Walk into one to roll it, punt it to send it trundling, or grab it to drag it. They block sheep and coyotes alike
+// (a bale in a hedge gap turns the coyotes' path around it). placeBales puts them out.
 const CT={see:[],bales:[],told:{},navT:0};
-const SEE_L=2.9, SEE_H=.8, SEE_RANGE=20, SEE_VY=14, AIR_G=24, BALE_R=1;
-const CT_KW=new Float32Array(NK);
-const ctW=e=>e.isDog?1.5:e.ram?2.5:e.lamb?.5:1;            // how heavy each thing is on the plank
-const ctPlankY=(S,p)=>S.gy+SEE_H+.12-S.k*clamp(p,-SEE_L,SEE_L)/SEE_L*(SEE_H-.05);
-function ctRange(W){ return SEE_RANGE*clamp(1/(1+.03*(W-1)),.8,1); }
-// where something launched from (x,z) along (dx,dz) comes down (straight flight, no jitter): for the aiming ring
-function ctLanding(x,z,y,dx,dz,range){
-  const T=2*SEE_VY/AIR_G, vh=range/T; let vy=SEE_VY;
-  for(let i=0;i<120;i++){ const st=1/40; x+=dx*vh*st; z+=dz*vh*st; vy-=AIR_G*st; y+=vy*st; if(vy<0 && y<=Math.max(groundH(x,z),WALK_FLOOR)) break; }
-  return {x,z};
+const SEE_L=2.9, SEE_H=.8, BALE_R=1, PLAT_H=3.8, SKY_UP=.8, SKY_HANG=.5, SKY_TOP=9, CHUTE_V=3.4;   // (they pop off the top of the screen for a moment, then float back down into view)
+const SEE_SX=2.1, SEE_SY=1.25, SEE_SZ=1.45;                 // the cliff seesaw is a big one: room for a crowd on its low end
+const ctPlankY=(S,p)=>S.gy+SEE_SY*(SEE_H+.12)-S.k*clamp(p,-S.L,S.L)/S.L*SEE_SY*(SEE_H-.05);
+const onPlateau=(x,z)=>!!(LEVEL.plat && z<LEVEL.plat.zc);
+// ---- the plateau: clear the band in front of the pen of hedges, trees, ponds and rivers, and start the flock below it ----
+function plateauPrep(L){
+  CT.see.length=0; CT.bales.length=0;          // (yesterday's are gone with the old level)
+  if(L.puzzle!=='seesaw'){ L.plat=null; return; }
+  if(L.plat) return;
+  const zc=PEN.z1+17, inBand=(z,r)=>z-r<zc+5;
+  L.plat={zc,H:PLAT_H};
+  L.walls=L.walls.filter(w=>!inBand(Math.min(w.seg[1],w.seg[3]),0));
+  L.copses=L.copses.filter(c=>!inBand(c.z,2)); L.rocks=L.rocks.filter(c=>!inBand(c.z,2));
+  L.holes=L.holes.filter(h=>!inBand(h.z,h.r+2)); L.lava=(L.lava||[]).filter(h=>!inBand(h.z,h.r+2));
+  if(L.pond && inBand(L.pond.z,L.pond.r*1.4+1)) L.pond=null;
+  if(L.river && L.river.z0-L.river.amp-L.river.w/2<zc+8) L.river=null;
+  if(L.shape) L.shape.spawnZ=Math.max(L.shape.spawnZ==null?-99:L.shape.spawnZ,zc+9);
+}
+// raise the ground between the pen and the cliff line (called from regenTerrain, straight after the terrain grid is built,
+// so the ground mesh, its rock-face colouring, the grass and everything placed later all follow it)
+function plateauRaise(){
+  const P=LEVEL.plat; if(!P||!TG) return;
+  const S=LEVEL.shape, N=TG_N, h=TG.h;
+  for(let j=0;j<N;j++){ const z=TG_O+j; if(z<PEN.z1-1 || z>P.zc+2) continue;
+    const band=smooth01(PEN.z1+1.5,PEN.z1+7.5,z)*(1-smooth01(P.zc-.7,P.zc+.7,z)); if(band<=0) continue;
+    for(let i=0;i<N;i++){ const x=TG_O+i, inl=S?smooth01(-4,0,sdAt(S.sd,x,z)):1; h[j*N+i]+=P.H*band*inl; } }
 }
 function sCreak(p){
   if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator(), f=AC.createBiquadFilter();
   o.type='sawtooth'; o.frequency.setValueAtTime(95*(p||1),t); o.frequency.linearRampToValueAtTime(140*(p||1),t+.18); o.frequency.linearRampToValueAtTime(80*(p||1),t+.3);
   f.type='bandpass'; f.frequency.value=900; f.Q.value=3; o.connect(f).connect(envG(t,.02,.09,.32)); o.start(t); o.stop(t+.34);
 }
+// a rising cartoon whoosh for the launch, and a "pop" when a parachute opens
+function sZoom(){
+  if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
+  o.type='triangle'; o.frequency.setValueAtTime(260,t); o.frequency.exponentialRampToValueAtTime(1900,t+.55);
+  o.connect(envG(t,.02,.16,.6)); o.start(t); o.stop(t+.62); sWhoosh();
+}
+function sPop(){
+  if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator();
+  o.type='sine'; o.frequency.setValueAtTime(900,t); o.frequency.exponentialRampToValueAtTime(260,t+.08);
+  o.connect(envG(t,.003,.3,.1)); o.start(t); o.stop(t+.12);
+}
 // ---- art ----
 let CT_ART=null;
 function ctArt(){
   if(CT_ART) return CT_ART;
-  const wood=new THREE.Color(PAL.wood), woodD=new THREE.Color(PAL.woodDark), red=new THREE.Color(PAL.red), cream=new THREE.Color(PAL.cream), woodL=new THREE.Color(0xd09a5e);
+  const wood=new THREE.Color(PAL.wood), woodD=new THREE.Color(PAL.woodDark), red=new THREE.Color(PAL.red), cream=new THREE.Color(PAL.cream), woodL=new THREE.Color(0xd09a5e), gold=new THREE.Color(PAL.gold);
   // trestle: two A-frames on skids with a red axle across the top
   const T=[];
   for(const sx of [-.52,.52]){
@@ -6331,162 +6436,197 @@ function ctArt(){
     P.push({g:new THREE.BoxGeometry(1.04,.2,.16),m:partM(0,.14,sd*(SEE_L-.08),1),c:woodD});
     P.push({g:new THREE.CircleGeometry(.36,18),m:partM(0,.112,sd*(SEE_L-.75),1,1,1,-Math.PI/2,0,0),c:cream});
     P.push({g:new THREE.CircleGeometry(.2,14),m:partM(0,.116,sd*(SEE_L-.75),1,1,1,-Math.PI/2,0,0),c:red});
-    P.push({g:new THREE.CylinderGeometry(.06,.06,.42,8),m:partM(0,.31,sd*(SEE_L-1.55),1),c:woodD});
-    P.push({g:new THREE.CylinderGeometry(.075,.075,.62,8),m:partM(0,.52,sd*(SEE_L-1.55),1,1,1,0,0,Math.PI/2),c:red});
   }
   P.push({g:new THREE.BoxGeometry(.5,.08,.5),m:partM(0,-.13,0,1),c:woodL});
+  // the sign: a post and a cream board with a big red arrow pointing up the cliff
+  const sh=new THREE.Shape(); sh.moveTo(0,1.15); sh.lineTo(.95,.1); sh.lineTo(.42,.1); sh.lineTo(.42,-1.05); sh.lineTo(-.42,-1.05); sh.lineTo(-.42,.1); sh.lineTo(-.95,.1); sh.lineTo(0,1.15);
+  const ar=new THREE.ExtrudeGeometry(sh,{depth:.12,bevelEnabled:false});
+  const SG=[{g:new THREE.BoxGeometry(.28,4.2,.28),m:partM(-1.5,2.1,0,1),c:woodD},{g:new THREE.BoxGeometry(.28,4.2,.28),m:partM(1.5,2.1,0,1),c:woodD},
+    {g:new THREE.BoxGeometry(3.6,3,.22),m:partM(0,3.6,0,1),c:cream},{g:new THREE.BoxGeometry(3.8,.22,.3),m:partM(0,5.12,0,1),c:woodD},{g:new THREE.BoxGeometry(3.8,.22,.3),m:partM(0,2.08,0,1),c:woodD},
+    {g:ar,m:partM(0,3.6,.1,1.2),c:red}];
+  for(let k=0;k<5;k++) SG.push({g:new THREE.SphereGeometry(.12,8,6),m:partM(-1.3+k*.65,5.32,.05,1),c:gold});
   const VC={vertexColors:true};
-  CT_ART={trestle:mergeGeos(T),plank:mergeGeos(P),m:mat(0xffffff,VC),
-    ring:new THREE.RingGeometry(.8,1.15,32).rotateX(-Math.PI/2), dot:new THREE.CircleGeometry(.22,12).rotateX(-Math.PI/2),
-    ringOK:new THREE.MeshBasicMaterial({color:0xfff2a8,transparent:true,opacity:.8,depthWrite:false}),
-    ringBad:new THREE.MeshBasicMaterial({color:0xff6b5a,transparent:true,opacity:.8,depthWrite:false}),
-    arrow:new THREE.ConeGeometry(.32,.6,4).rotateX(Math.PI), arrowM:mat(PAL.gold,{emissive:PAL.gold,emissiveIntensity:.45})};
+  CT_ART={trestle:mergeGeos(T),plank:mergeGeos(P),sign:mergeGeos(SG),m:mat(0xffffff,VC),
+    arrow:new THREE.ConeGeometry(.5,.9,4).rotateX(Math.PI), arrowM:mat(PAL.gold,{emissive:PAL.gold,emissiveIntensity:.45})};
   return CT_ART;
 }
-function makeSeesaw(x,z,ang,k){
+function makeSeesaw(x,z,ang){
   const A=ctArt(), g=new THREE.Group(), gy=groundH(x,z);
-  g.position.set(x,gy,z); g.rotation.y=ang;
+  g.position.set(x,gy,z); g.rotation.y=ang; g.scale.set(SEE_SX,SEE_SY,SEE_SZ);
   const tr=new THREE.Mesh(A.trestle,A.m); tr.castShadow=true; tr.receiveShadow=true; g.add(tr);
   const pl=new THREE.Group(); pl.position.y=SEE_H+.12; g.add(pl);
   const pm=new THREE.Mesh(A.plank,A.m); pm.castShadow=true; pm.receiveShadow=true; pl.add(pm);
-  addOutline(g,.035);
+  addOutline(g,.03);
   addObj(g);
-  // the aiming ring (with a dotted trail) and the bouncing "pounce here" arrow live in the world, not on the seesaw
-  const ring=addObj(new THREE.Mesh(A.ring,A.ringOK)); ring.visible=false; ring.renderOrder=2;
-  const dots=[]; for(let i=0;i<7;i++){ const d=addObj(new THREE.Mesh(A.dot,A.ringOK)); d.visible=false; d.renderOrder=2; dots.push(d); }
   const arrow=addObj(new THREE.Mesh(A.arrow,A.arrowM)); arrow.visible=false; addOutline(arrow,.03);
-  return {x,z,gy,ang,k,kT:k,snap:0,cd:0,on:[],g,pl,ring,dots,arrow,aimT:0,creakT:0,launches:0};
+  // k: +1 with the cliff end down. The cliff end is weighted, so it always settles back that way after a launch.
+  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
+}
+// the rock face, the seesaw, the funnel fences and the sign (from setupDay, once the level is built; its own seeded RNG)
+function placeSeesawCliff(){
+  const P=LEVEL.plat; if(!P) return;
+  const R=mulberry32(((daySeed(G.day)^Math.imul(G.day+7919,2246822519))>>>0)||1), zc=P.zc, L=SEE_L*SEE_SZ;
+  // the cliff: a wall right across the land that sheep (and bales, and coyotes hauling a sheep) can't climb.
+  // It's a 'river' kind of wall: dogs and coyotes scramble over it, nothing else does.
+  for(let x=-FIELD-4;x<FIELD+4;x+=2){ if(fieldD(x,zc)<-1.5 && fieldD(x+2,zc)<-1.5) continue; segs.push({ax:x,az:zc,bx:x+2,bz:zc,kind:'river',cliff:true,level:true}); }
+  // the rock face itself: a row of chunky boulders stacked up the step, so the cliff reads from the camera
+  { const RK=ROCKS[LEVEL.theme]||ROCKS.farm, xs=[]; for(let x=-FIELD-2;x<FIELD+2;x+=1.5) if(fieldD(x,zc)>-1) xs.push(x);
+    const im=new THREE.InstancedMesh(rockGeos[1],mat(0xffffff,{vertexColors:true}),xs.length*2), o=new THREE.Object3D(), c=new THREE.Color(); let k=0;
+    for(const x of xs){ const top=groundH(x,zc-1.2), foot=groundH(x,zc+1.2);
+      for(let q=0;q<2;q++){ const s=.9+R()*.5; o.position.set(x+(R()-.5)*.6,q?top-.1:lerp(foot,top,.45),zc+(q?-.3:.35)); o.rotation.set((R()-.5)*.4,R()*TAU,(R()-.5)*.4); o.scale.set(s*1.1,q?s*.7:(top-foot)*.62,s*.9); o.updateMatrix(); im.setMatrixAt(k,o.matrix); im.setColorAt(k++,c.setHex(RK[q?0:1]).multiplyScalar(.9+R()*.2)); } }
+    im.castShadow=true; im.receiveShadow=true; addObj(im); }
+  // the seesaw at its foot, square to it, somewhere with room either side for the funnel
+  let best=null, bs=-1e9;
+  for(let t=0;t<80;t++){ const x=(R()*2-1)*24, zp=zc+.9+L;
+    if(fieldD(x,zp)<9 || fieldD(x,zc+1)<8 || fieldD(x,zc+12)<9) continue;
+    if(circles.some(c=>Math.abs(c.x-x)<9 && c.z<zc+15)) continue;
+    const sc=-Math.abs(x)*.15+R()*3; if(sc>bs){ bs=sc; best=x; } }
+  if(best===null) best=0;
+  const sx=best, sz=zc+.9+L, S=makeSeesaw(sx,sz,Math.PI);       // ang=PI: its +u end points at the cliff
+  CT.see.push(S);
+  // a fence each side, splaying out from the cliff, to funnel the flock onto the low end
+  for(const sd of [-1,1]){
+    const ax=sx+sd*(S.W/2+.7), az=zc+.2, bx=sx+sd*8, bz=zc+2*L+1.5, len=Math.hypot(bx-ax,bz-az), n=Math.max(1,Math.round(len/3)), ang=Math.atan2(bx-ax,bz-az);
+    segs.push({ax,az,bx,bz,kind:'perim',level:true});
+    for(let i=0;i<n;i++){ const f=(i+.5)/n; wallPiece(LEVEL.theme==='sea'?'coral':'fence',lerp(ax,bx,f),lerp(az,bz,f),len/n,ang); }
+  }
+  // the sign, up on the edge of the plateau where the flock can see it
+  const sg=addObj(new THREE.Mesh(ctArt().sign,ctArt().m)); sg.position.set(sx,groundH(sx,zc-1.6),zc-1.6); sg.castShadow=true; addOutline(sg,.04);
+  hideGrass((x,z)=>Math.abs(x-sx)<S.W/2+1 && z>zc && z<zc+2*L+1.5);
+  OBS.ver++;
+}
+// ---- bales: themed per world ----
+function baleMesh(){
+  const th=LEVEL.theme;
+  if(th==='desert'){ const m=new THREE.Mesh(TUMBLE_GEO,tumbleMat); m.scale.setScalar(.98); return m; }
+  if(th==='sky'){ const m=new THREE.Mesh(blobGeo(2,4,.14),mat(0xffffff,{emissive:0x3a4250})); m.scale.setScalar(.98); return m; }
+  if(th==='sea'||th==='moon'||th==='volcano'){
+    const col=th==='sea'?0xff8fa8:th==='moon'?0xa8aab8:0x4a3c40, m=new THREE.Mesh(blobGeo(2,th.length,.12),mat(col,{flatShading:th!=='sea'})); m.scale.setScalar(.98);
+    // knobbly bits: polyps on coral, little craters on moon rock, glowing cracks on basalt
+    const bc=th==='sea'?0xffd166:th==='moon'?0x8a8c9c:0xff7a2a, bm=th==='volcano'?mat(bc,{emissive:bc,emissiveIntensity:.8}):mat(bc);
+    for(let k=0;k<7;k++){ const a=k*2.4, y=Math.cos(k*1.7)*.8, r=Math.sqrt(1-y*y), d=new THREE.Mesh(new THREE.SphereGeometry(th==='volcano'?.12:.2,8,6),bm); d.position.set(Math.cos(a)*r*.95,y*.95,Math.sin(a)*r*.95); m.add(d); }
+    return m;
+  }
+  const m=new THREE.Mesh(baleGeo,baleMat); m.rotation.z=Math.PI/2; m.scale.set(.88,.86,.88); return m;
 }
 function makeBale(x,z){
-  const g=new THREE.Group(), roll=new THREE.Group(), m=new THREE.Mesh(baleGeo,baleMat);
-  m.rotation.z=Math.PI/2; m.scale.set(.88,.86,.88); m.castShadow=true; m.receiveShadow=true;
-  roll.add(m); roll.position.y=BALE_R*.97; g.add(roll); addOutline(g,.035);
+  const g=new THREE.Group(), roll=new THREE.Group(), m=baleMesh();
+  m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+  roll.add(m); roll.position.y=BALE_R*.97; g.add(roll); if(LEVEL.theme!=='desert') addOutline(g,.035);
   g.rotation.y=Math.random()*TAU; addObj(g);
   const c={x,z,r:BALE_R,level:true,bale:true};
   circles.push(c);
   return {c,x,z,vx:0,vz:0,r:BALE_R,g,roll,head:g.rotation.y,moved:0,gone:false,sinkT:0,thrower:null,hitT:0};
 }
-// ---- placement (one call from setupDay, after the level is built; its own seeded RNG so a day always lays out the same) ----
+// ---- placement (from setupDay: the cliff right after the level is built, so nothing else spawns under the seesaw;
+// the bales after the day's puzzle, so they keep clear of it) ----
 function placeContraptions(){
-  for(const S of CT.see) for(const D of dogs) if(D.grab && D.grab.t===S) D.grab=null;
-  for(const b of CT.bales) for(const D of dogs) if(D.grab && D.grab.t===b) D.grab=null;
-  for(const D of ALLDOGS) if(D.sky){ D.sky=null; D.flying=false; D.fy=0; }
+  for(const D of ALLDOGS){ if(D.sky){ D.sky=null; D.flying=false; D.fy=0; } if(D.grab && D.grab.kind==='prop') D.grab=null; }
   CT.see.length=0; CT.bales.length=0; for(let i=circles.length-1;i>=0;i--) if(circles[i].bale) circles.splice(i,1);
-  const d=G.day, L=LEVEL, R=mulberry32(((RUN_SEED^Math.imul(d+7919,2246822519))>>>0)||1), r=(a,b)=>a+R()*(b-a);
+  placeSeesawCliff();
+}
+function placeBales(){
+  const d=G.day, L=LEVEL, R=mulberry32(((daySeed(d)^Math.imul(d+104729,2246822519))>>>0)||1), r=(a,b)=>a+R()*(b-a);
   if(L.maze || L.special==='columbia' || L.special==='coast') return;
-  // clear of the day's trial gates, the scales and the flock
-  const busy=(x,z,pad)=>PZ.gates.some(g=>Math.hypot(g.x-x,g.z-z)<9+pad) || (PZ.scale && Math.hypot(PZ.scale.x-x,PZ.scale.z-z)<PZ.scale.r+3+pad) || G.sheep.some(s=>Math.hypot(s.x-x,s.z-z)<pad+1.2);
-  const penOpen=(x,z)=>x>PEN.x0+1.2 && x<PEN.x1-1.2 && z>PEN.z0+1.2 && z<PEN.z1-1.2;
-  // the seesaw: on its first day always, then on about half the levels
-  if(d>=UNLOCK.seesaw && (d===UNLOCK.seesaw || R()<.6)){
+  if(!(d>=UNLOCK.bales && (d===UNLOCK.bales || R()<.55))) return;
+  const busy=(x,z,pad)=>PZ.gates.some(g=>Math.hypot(g.x-x,g.z-z)<9+pad) || (PZ.scale && Math.hypot(PZ.scale.x-x,PZ.scale.z-z)<PZ.scale.r+3+pad) || G.sheep.some(s=>Math.hypot(s.x-x,s.z-z)<pad+1.2)
+    || (L.plat && z<L.plat.zc+6+pad) || CT.see.some(S=>Math.hypot(S.x-x,S.z-z)<S.L+9);
+  const n=d===UNLOCK.bales?3:2+((R()*3)|0), ends=[];
+  for(const w of L.walls){ ends.push([w.seg[0],w.seg[1]],[w.seg[2],w.seg[3]]); }
+  for(let k=0;k<n;k++){
     let best=null, bs=-1e9;
-    for(let t=0;t<260;t++){
+    for(let t=0;t<60;t++){
       const x=r(-40,40), z=r(PEN.z1+12,42);
-      if(Math.abs(x)<15 && z<PEN.z1+16) continue;           // not in the gate funnel where the dogs start
-      const pcx=r(PEN.x0+3,PEN.x1-3), pcz=r(PEN.z0+3,PEN.z1-3);
-      const ang=R()<.55 ? Math.atan2(pcx-x,pcz-z)+r(-.12,.12) : r(0,TAU), ux=Math.sin(ang), uz=Math.cos(ang);
-      const ax=x+ux*SEE_L, az=z+uz*SEE_L, bx=x-ux*SEE_L, bz=z-uz*SEE_L, gy=groundH(x,z);
-      if(!clearOf(x,z,2) || !clearOf(ax,az,.9) || !clearOf(bx,bz,.9) || busy(x,z,SEE_L)) continue;
-      if(Math.abs(groundH(ax,az)-gy)>.45 || Math.abs(groundH(bx,bz)-gy)>.45) continue;
-      if(crossesWall(ax,az,bx,bz,{gate:true,perim:true})) continue;
-      // how good a shot each way is: into the pen, over a hedge or the river or a chasm, or at least onto open ground
-      let sc=R()*2, bestDir=1, bestD=-1e9;
-      for(const sd of [1,-1]){
-        const ex=x+ux*sd*SEE_L, ez=z+uz*sd*SEE_L, lp=ctLanding(ex,ez,gy+.3,ux*sd,uz*sd,SEE_RANGE);
-        let v=(Math.hypot(ex,ez-PEN.z1)-Math.hypot(lp.x,lp.z-PEN.z1))/8;      // a shot that gains ground toward the gate
-        if(penOpen(lp.x,lp.z)) v+=r(1,5);
-        else if(!clearOf(lp.x,lp.z,.5) || hazardAt(lp.x,lp.z)) v-=6;
-        else { let over=crossesWall(ex,ez,lp.x,lp.z,{gate:false,perim:true}); for(let q=1;q<10 && !over;q++){ const f=q/10, px=lerp(ex,lp.x,f), pz=lerp(ez,lp.z,f); if(inRiver(px,pz)||hazardAt(px,pz)||pondD(px,pz)<0) over=true; } if(over) v+=r(1,5); }
-        if(v>bestD){ bestD=v; bestDir=sd; }
-      }
-      sc+=bestD;
-      if(sc>bs){ bs=sc; best={x,z,ang,k:bestDir}; }
+      if(Math.abs(x)<12 && z<PEN.z1+14) continue;
+      if(!clearOf(x,z,2.2) || busy(x,z,1.5) || CT.bales.some(b=>Math.hypot(b.x-x,b.z-z)<6)) continue;
+      let sc=R()*3; for(const [ex,ez] of ends){ const e=Math.hypot(ex-x,ez-z); if(e>3 && e<9){ sc+=3; break; } }
+      if(sc>bs){ bs=sc; best=[x,z]; }
     }
-    if(best && bs>-2) CT.see.push(makeSeesaw(best.x,best.z,best.ang,best.k));
+    if(best) CT.bales.push(makeBale(best[0],best[1]));
   }
-  // hay bales: a few lying about, some of them handy for plugging a gap in a hedge
-  if(d>=UNLOCK.bales && (d===UNLOCK.bales || R()<.55)){
-    const n=d===UNLOCK.bales?3:2+((R()*3)|0), ends=[];
-    for(const w of L.walls){ ends.push([w.seg[0],w.seg[1]],[w.seg[2],w.seg[3]]); }
-    for(let k=0;k<n;k++){
-      let best=null, bs=-1e9;
-      for(let t=0;t<60;t++){
-        const x=r(-40,40), z=r(PEN.z1+12,42);
-        if(Math.abs(x)<12 && z<PEN.z1+14) continue;
-        if(!clearOf(x,z,2.2) || busy(x,z,1.5) || CT.bales.some(b=>Math.hypot(b.x-x,b.z-z)<6) || CT.see.some(S=>Math.hypot(S.x-x,S.z-z)<SEE_L+4)) continue;
-        let sc=R()*3; for(const [ex,ez] of ends){ const e=Math.hypot(ex-x,ez-z); if(e>3 && e<9){ sc+=3; break; } }
-        if(sc>bs){ bs=sc; best=[x,z]; }
-      }
-      if(best) CT.bales.push(makeBale(best[0],best[1]));
-    }
-    if(CT.bales.length) OBS.ver++;
+  if(CT.bales.length) OBS.ver++;
+}
+// ---- up into the clouds and down by parachute ----
+// where each launched thing comes down: spread out across the plateau above the seesaw, always on safe ground
+function skySpot(S,i,n){
+  const zc=LEVEL.plat?LEVEL.plat.zc:S.z-10;
+  for(let t=0;t<30;t++){
+    const x=S.x+(i-(n-1)/2)*2.4+(Math.random()-.5)*(1.5+t*.6), z=zc-3.5-Math.random()*Math.min(5,zc-PEN.z1-10);
+    if(fieldD(x,z)>3 && !hazardAt(x,z) && pondD(x,z)>2 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+1)) return {x,z};
+  }
+  return {x:clamp(S.x*.5,-8,8),z:PEN.z1+10};
+}
+function chuteFor(e,k){
+  const A=surpriseArt(), chute=new THREE.Group(), cn=new THREE.Mesh(A.canopy,A.chuteM[k%3]); chute.add(cn);
+  const kn=new THREE.Mesh(A.knob,mat(PAL.cream)); kn.position.y=.88; chute.add(kn); addOutline(chute,.05); chute.add(new THREE.LineSegments(A.strings,A.stringM));
+  chute.position.y=e.isDog?2.4:3.2; chute.scale.setScalar(.15); e.m.g.add(chute); return chute;
+}
+function ctLaunch(e,S,i,n){
+  const sp=skySpot(S,i,n), y0=ctPlankY(S,(e.x-S.x)*Math.sin(S.ang)+(e.z-S.z)*Math.cos(S.ang));
+  const st={mode:'up',t:-i*.07,x0:e.x,z0:e.z,y0,y:y0,tx:sp.x,tz:sp.z,chute:null,k:i};
+  if(e.isDog){
+    if(e.grab) releaseGrab(e,false);
+    e.sky=st; e.flying=true; e.fy=0; e.lying=false; e.pounceT=0; e.vx=e.vz=0;
+    popText(e.x,2.6,e.z,'WHEEE!','gold'); sYip(1.3);
+  } else {
+    e.sky=st; e.vx=e.vz=0; e.thrownT=0; e.flip=0; e.bY=0; e.munch=0; e.munchImmune=6; e.boltT=0; e.corner=0; e.charging=0; e.fear=1;
+    if(e.ram){ e.rs='idle'; e.rt=0; }
+    sBleat(e.lamb?1.9:e.ram?.85:1.35+Math.random()*.2);
   }
 }
-// ---- flight ----
-function ctLaunchSheep(s,x,z,y,dx,dz,range,by){
-  const T=2*SEE_VY/AIR_G, vh=range/T;
-  s.sky={y,vy:SEE_VY*(.94+Math.random()*.1),t:0,by,bounces:0,doom:null};
-  s.vx=dx*vh; s.vz=dz*vh; s.thrownT=0; s.flip=0; s.dazeT=0; s.munch=0; s.munchImmune=6; s.fear=1; s.boltT=0; s.corner=0; s.charging=0;
-  s.stress=Math.min(1,(s.stress||0)+.2); if(s.ram){ s.rs='idle'; s.rt=0; }
-  sBleat(s.lamb?1.9:s.ram?.85:1.35+Math.random()*.2);
+// one step of a flight (sheep or dog): returns true once it has landed
+function skyStep(e,dt){
+  const A=e.sky; A.t+=dt;
+  if(A.t<0){ return false; }                                   // still on the plank, a moment behind the one in front
+  if(A.mode==='up'){
+    const f=Math.min(1,A.t/SKY_UP), ease=1-(1-f)*(1-f)*(1-f);
+    const fh=.35*f*f*(3-2*f); e.x=lerp(A.x0,A.tx,fh); e.z=lerp(A.z0,A.tz,fh); A.y=lerp(A.y0,groundH(A.tx,A.tz)+SKY_TOP,ease);   // mostly straight up; the drift over comes under the parachute
+    if(Math.random()<dt*40) burst(e.x,A.y-.4,e.z,1,Math.random()<.5?PC.gold:PC.spark,.6,.4,0);   // a trail of stars
+    if(f>=1){ A.mode='hang'; A.t=0; A.hx=e.x; A.hz=e.z; burst(e.x,A.y+.6,e.z,12,[0xffffff,0xf0f4ff,0xe6eeff],1.6,.6,0); }   // a puff of cloud at the top
+  } else if(A.mode==='hang'){
+    A.y=groundH(A.tx,A.tz)+SKY_TOP+Math.sin(A.t*12)*.15;
+    if(A.t>=SKY_HANG){ A.mode='chute'; A.t=0; A.chute=chuteFor(e,A.k); sPop(); burst(e.x,A.y+3,e.z,10,PC.confetti,3,2,2); }
+  } else {
+    if(A.chute) A.chute.scale.setScalar(Math.min(1,.15+A.t*5));
+    const gy=Math.max(groundH(A.tx,A.tz),WALK_FLOOR);
+    A.y-=dt*CHUTE_V; const fd=Math.min(1,A.t/1.4), fe=fd*fd*(3-2*fd); e.x=lerp(A.hx,A.tx,fe)+Math.sin(A.t*2+A.k)*.4; e.z=lerp(A.hz,A.tz,fe);
+    if(A.y<=gy){
+      if(A.chute) e.m.g.remove(A.chute);
+      e.sky=null; e.x=A.tx; e.z=A.tz; burst(e.x,gy+.5,e.z,14,PC.dust,3,2); return true;
+    }
+  }
+  return false;
 }
-function ctLaunchDog(D,dx,dz,range){
-  if(D.grab) releaseGrab(D,false);
-  const T=2*SEE_VY/AIR_G, vh=range/T;
-  D.sky={y:groundH(D.x,D.z)+.5,vy:SEE_VY*.95,vx:dx*vh,vz:dz*vh,t:0}; D.flying=true; D.fy=0; D.lying=false; D.pounceT=0;
-  popText(D.x,2.6,D.z,'WHEEE!','gold'); sYip(1.3);
-}
-// a sheep in the air: it sails over everything, bonks the pen fence if the pen's shut, and lands (well or badly)
+// a sheep in flight: nothing touches it until it's down on the plateau, then it heads for the pen
 function airSheep(s,dt){
-  const A=s.sky; A.t+=dt;
-  const px=s.x, pz=s.z;
-  s.x+=s.vx*dt; s.z+=s.vz*dt; A.vy-=AIR_G*dt; A.y+=A.vy*dt;
-  s.x=clamp(s.x,-FIELD-4,FIELD+4); s.z=clamp(s.z,-FIELD-4,FIELD+4);
-  // the pen and the yard behind it: only an open pen can be landed in, and nothing comes down in the barn yard
-  const penX=s.x>PEN.x0+.3 && s.x<PEN.x1-.3;
-  if(s.z<PEN.z1+.6 && pz>=PEN.z1+.6 && (PZ.locked || !penX)){ s.z=PEN.z1+.6; s.vz=Math.abs(s.vz)*.3; s.vx*=.5; if(A.y-groundH(s.x,s.z)<3){ sThud(); popText(s.x,2.2,s.z,'BONK!','red'); } }
-  if(penX && s.z<PEN.z0+.7 && pz>=PEN.z0+.7){ s.z=PEN.z0+.7; s.vz=Math.abs(s.vz)*.2; }
-  if(s.z<PEN.z1 && !penX && (px>PEN.x0+.3 && px<PEN.x1-.3)){ s.x=clamp(s.x,PEN.x0+.4,PEN.x1-.4); s.vx*=-.3; }
-  // out past the edge of the land: woods, cliffs and reefs knock it back; off a sky island or into lava it's gone
-  if(!A.doom && fieldD(s.x,s.z)<-.6){
-    const S=LEVEL.shape; if(S) kindWeights(S.K,s.x,s.z,CT_KW); else { CT_KW.fill(0); CT_KW[KF]=1; }
-    if(CT_KW[KD]>.5 || LEVEL.theme==='sky') A.doom='chasm'; else if(CT_KW[KL]>.5) A.doom='lava';
-    else { const n=fieldN(s.x,s.z), vn=s.vx*n.x+s.vz*n.z; if(vn<0){ s.vx-=vn*n.x*1.5; s.vz-=vn*n.z*1.5; s.vx*=.6; s.vz*=.6; } intoField(s,.4); }
-  }
-  // coming down on a coyote: BONK
-  if(A.vy<0 && A.y-groundH(s.x,s.z)<1.8) for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.hitCD>0||c.grabbedBy) continue; if(Math.hypot(c.x-s.x,c.z-s.z)<1.6){ hitCoyote(c,2,14,s,'BOMBS AWAY!'); s.vx*=.4; s.vz*=.4; } }
-  const gy=Math.max(groundH(s.x,s.z),WALK_FLOOR);
-  if(A.doom && A.y<gy-.5){ s.sky=null; hazardKill(s,A.doom); return; }
-  // landing on a hay bale is soft and springy: up it goes again
-  if(A.vy<0 && A.bounces<2) for(const b of CT.bales){ if(b.gone) continue; if(Math.hypot(b.x-s.x,b.z-s.z)<b.r+.35 && A.y<gy+b.r*2+.2 && A.y>gy+b.r){ A.vy=9.5; A.bounces++; s.vx*=.75; s.vz*=.75; sBoing(); popText(s.x,3.2,s.z,'BOING!','gold'); burst(s.x,2.2,s.z,10,[0xf2c850,0xfff0b0,0xdcaa40],3,4); return; } }
-  if(A.vy>=0 || A.y>gy || A.doom) return;
-  // down it comes
-  s.sky=null; s.punted=G.elapsed;
-  const sp=Math.hypot(s.vx,s.vz);
-  if(!PZ.locked && insidePen(s.x,s.z)){
-    s.vx*=.15; s.vz*=.15; burst(s.x,1,s.z,14,PC.dust,3,2); checkGoal(s);
-    if(G.elapsed-(CT.saidPen||-99)>20 && !s.golden && !s.ram){ CT.saidPen=G.elapsed; setTimeout(()=>popText(s.x,3.8,s.z,'SPECIAL DELIVERY!','gold'),150); }
-    return;
-  }
-  const hz=hazardAt(s.x,s.z); if(hz){ hazardKill(s,hz); return; }
-  if((!SEASON.frozen && pondD(s.x,s.z)<0) || (inRiver(s.x,s.z) && !lavaRiver())){
-    // a splash, then it scrambles out on the side it was heading for
-    sSplash(); burst(s.x,.4,s.z,30,[0xcfe9ff,0x8fc7ec,0xffffff],4,5,10); popText(s.x,2.2,s.z,'SPLOSH!','');
-    if(inRiver(s.x,s.z)){ const R=LEVEL.river, zc=riverZ(R,s.x), sd=Math.sign(s.vz)||1; let nz=zc+sd*(R.w/2+1.1); if(fieldD(s.x,nz)<1) nz=zc-sd*(R.w/2+1.1); s.z=nz; }
-    s.vx*=.2; s.vz*=.2; s.stress=Math.min(1,s.stress+.3); s.dazeT=.8; sBleat(1.1);
-    return;
-  }
-  // landed on another sheep: a boing, and both of them get a fright
-  if(A.bounces<1) for(const o of G.sheep){ if(o===s||o.dead||o.penned||o.carried||o.sky) continue; if(Math.hypot(o.x-s.x,o.z-s.z)<1.1){ o.flip=.6; o.fear=1; o.vx+=s.vx*.3; o.vz+=s.vz*.3; s.sky={y:gy+.2,vy:6.5,t:A.t,by:A.by,bounces:A.bounces+1,doom:null}; s.vx*=.5; s.vz*=.5; sBoing(); popText(s.x,2.6,s.z,'BOING!','gold'); return; } }
-  const hard=sp>13 && Math.random()<.3;
-  if(hard){
-    // a bad landing: in a heap, seeing stars for a moment
-    s.dazeT=1.6; s.vx*=.1; s.vz*=.1; s.stress=Math.min(1,s.stress+.25); sThud(); popText(s.x,2.4,s.z,'OOF!','red'); burst(s.x,.6,s.z,16,PC.dust,4,3);
-    G.shake=Math.max(G.shake,.15);
-    if(G.elapsed-(CT.saidOof||-99)>25){ CT.saidOof=G.elapsed; setTimeout(()=>shepSay("Easy! Ye'll scatter them!"),400); }
-  } else { s.vx*=.3; s.vz*=.3; s.hop=.45; s.dazeT=.35; burst(s.x,.5,s.z,10,PC.dust,3,2); sThud(); }
-  collide(s,s.lamb?.45:.7,{gate:false,perim:true});
-  keepOnField(s,1);
+  if(!skyStep(s,dt)) return;
+  s.vx=s.vz=0; s.hop=.45; s.fear=.4; s.stress=Math.max(0,(s.stress||0)-.3); sBleat(1.25);
+  if(!CT.told.chute){ CT.told.chute=1; setTimeout(()=>shepSay('Sheep from the sky?!',true),200); }
+  if(!PZ.locked) checkGoal(s);
+}
+// up on the plateau: trot to the gate and in (from updateSheep, while it's working out where to go)
+function homeForce(s){
+  const gate=s.z>PEN.z1+2.5, tx=gate?clamp(s.x,-PEN.gx+2,PEN.gx-2):s.x*.6, tz=gate?PEN.z1+1:PEN.z1-5, dx=tx-s.x, dz=tz-s.z, d=Math.hypot(dx,dz)+1e-6;
+  s.fear=Math.max(s.fear,.32);
+  return [dx/d*18,dz/d*18];
+}
+// in the funnel between the seesaw's fences: those sheep are committed. They file down onto the low end and wait there
+// (they don't wander back out to the flock), so you can load a few, fetch more, and launch them all at once
+function ctInFunnel(x,z){
+  const S=CT.see[0], P=LEVEL.plat; if(!S||!P) return false;
+  const f=(z-P.zc-.2)/(2*S.L+1.3); if(f<0||f>1) return false;
+  return Math.abs(x-S.x)<lerp(S.W/2+.7,8,f)-.4;
+}
+function funnelForce(s){
+  const S=CT.see[0], tx=S.x, tz=LEVEL.plat.zc+.9, dx=tx-s.x, dz=tz-s.z, d=Math.hypot(dx,dz)+1e-6;
+  s.fear=Math.max(s.fear,.2); s.munch=0;
+  return d<1.2?[0,0]:[dx/d*12,dz/d*12];
+}
+// and like the pen gate, the funnel's mouth draws in calm sheep that come near it
+function mouthPull(s){
+  const S=CT.see[0]; if(!S || s.stress>.75) return null;
+  const mx=S.x, mz=S.z+S.L+1, dx=mx-s.x, dz=mz-s.z, d=Math.hypot(dx,dz)+1e-6; if(d>13 || s.z<LEVEL.plat.zc) return null;
+  const k=1-d/13; return [dx/d*11*k,dz/d*11*k];
 }
 // ---- the per-step update ----
 function updateContraptions(dt){
@@ -6494,64 +6634,48 @@ function updateContraptions(dt){
   const playing=G.phase==='day'||G.phase==='night';
   // dogs in the air
   for(const D of dogs){
-    const A=D.sky; if(!A) continue;
-    A.t+=dt; D.x+=A.vx*dt; D.z+=A.vz*dt; A.vy-=AIR_G*dt; A.y+=A.vy*dt;
-    D.x=clamp(D.x,-FIELD-2,FIELD+2); D.z=clamp(D.z,PEN.z0,FIELD+2);
-    const gy=Math.max(groundH(D.x,D.z),WALK_FLOOR); D.fy=Math.max(0,A.y-gy); D.yaw=Math.atan2(A.vx,A.vz);
-    if(fieldD(D.x,D.z)<-.5){ const n=fieldN(D.x,D.z), vn=A.vx*n.x+A.vz*n.z; if(vn<0){ A.vx-=vn*n.x*1.5; A.vz-=vn*n.z*1.5; } }
-    if(A.vy<0 && A.y<=gy){
-      D.sky=null; D.flying=false; D.fy=0; D.vx=A.vx*.25; D.vz=A.vz*.25; D.stunT=Math.max(D.stunT,.25);
-      // never let a dog land in lava or a chasm: back up along the way it came until it's on solid ground
-      const vl=Math.hypot(A.vx,A.vz)||1; for(let q=0;q<30 && hazardAt(D.x,D.z);q++){ D.x-=A.vx/vl; D.z-=A.vz/vl; }
-      keepOnField(D); collide(D,.55,{gate:false,perim:true,swim:true}); D.px=D.x; D.pz=D.z;
-      sThud(); burst(D.x,.5,D.z,12,PC.dust,3,2); popText(D.x,2.4,D.z,'TA-DA!','gold');
-    }
+    if(!D.sky) continue;
+    const landed=skyStep(D,dt);
+    if(D.sky) D.fy=Math.max(0,D.sky.y-Math.max(groundH(D.x,D.z),WALK_FLOOR));
+    if(landed){ D.flying=false; D.fy=0; D.vx=D.vz=0; D.stunT=Math.max(D.stunT,.2); D.px=D.x; D.pz=D.z; sThud(); popText(D.x,2.4,D.z,'TA-DA!','gold'); }
   }
   // ---- seesaws ----
   for(const S of CT.see){
-    const ux=Math.sin(S.ang), uz=Math.cos(S.ang);
-    S.on.length=0; let tq=0;
-    const consider=(e,isDog)=>{ const dx=e.x-S.x, dz=e.z-S.z, p=dx*ux+dz*uz, q=-dx*uz+dz*ux; if(Math.abs(q)<(isDog?1.2:.9) && Math.abs(p)<SEE_L+.3){ S.on.push({e,p,dog:isDog}); if(!isDog) tq+=ctW(e)*p; } };
-    for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried && !s.grabbedBy && !s.sky) consider(s,false);
+    const ux=Math.sin(S.ang), uz=Math.cos(S.ang), hw=S.W/2+.45;
+    S.on.length=0;
+    const consider=(e,isDog)=>{ const dx=e.x-S.x, dz=e.z-S.z, p=dx*ux+dz*uz, q=-dx*uz+dz*ux; if(Math.abs(q)<(isDog?hw+.5:hw) && Math.abs(p)<S.L+.4) S.on.push({e,p,dog:isDog}); };
+    for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried && !s.grabbedBy && !s.sky && !(s.bY>0)) consider(s,false);
     for(const D of dogs) if(!D.sky && !D.flying) consider(D,true);
-    S.cd=Math.max(0,S.cd-dt); S.creakT=Math.max(0,S.creakT-dt);
-    // the heavier side goes down, slowly, with a creak
-    if(S.snap<=0 && Math.abs(tq)>.6 && Math.sign(tq)!==Math.sign(S.kT)){ S.kT=Math.sign(tq); if(S.creakT<=0){ S.creakT=.8; sCreak(1); } }
+    S.cd=Math.max(0,S.cd-dt);
     // the trigger: a dog pouncing onto the high end (or a bale rolled into it)
-    const upSd=-Math.sign(S.k||S.kT)||-1;
+    const upSd=-Math.sign(S.k)||-1;
     let trig=null;
-    if(playing && S.cd<=0 && Math.abs(S.k)>.5){
-      for(const o of S.on) if(o.dog && o.e.pounceT>0 && o.p*upSd>SEE_L*.3){ trig=o.e; break; }
-      if(!trig) for(const b of CT.bales){ if(b.gone) continue; const sp=Math.hypot(b.vx,b.vz), ex=S.x+ux*upSd*(SEE_L-.4), ez=S.z+uz*upSd*(SEE_L-.4); if(sp>5 && Math.hypot(b.x-ex,b.z-ez)<b.r+.6){ trig=b; b.vx*=-.2; b.vz*=-.2; break; } }
+    if(playing && S.cd<=0 && S.k>.5){
+      for(const o of S.on) if(o.dog && o.e.pounceT>0 && o.p*upSd>S.L*.1){ trig=o.e; break; }
+      if(!trig) for(const b of CT.bales){ if(b.gone) continue; const sp=Math.hypot(b.vx,b.vz), ex=S.x+ux*upSd*(S.L-.4), ez=S.z+uz*upSd*(S.L-.4); if(sp>5 && Math.hypot(b.x-ex,b.z-ez)<b.r+.8){ trig=b; b.vx*=-.2; b.vz*=-.2; break; } }
     }
     if(trig){
-      const dsd=-upSd, dx=ux*dsd, dz=uz*dsd, load=S.on.filter(o=>o.e!==trig && o.p*dsd>SEE_L*.12);
-      const W=load.reduce((a,o)=>a+ctW(o.e),0), range=ctRange(Math.max(1,W));
-      S.kT=-dsd; S.snap=.14; S.cd=.6;
+      const dsd=-upSd, load=S.on.filter(o=>o.e!==trig && o.p*dsd>-.3).sort((a,b)=>b.p*dsd-a.p*dsd);
+      S.kT=-1; S.snap=.14; S.cd=.9; S.back=.9;
       if(trig.isDog){ trig.pounceT=0; trig.vx*=.1; trig.vz*=.1; trig.stunT=Math.max(trig.stunT,.12); }
-      sThud(); G.shake=Math.max(G.shake,load.length?.3:.12); rumble(.5,.4,140);
-      burst(S.x+dx*SEE_L,S.gy+.4,S.z+dz*SEE_L,14,PC.dust,4,3);
+      sThud(); G.shake=Math.max(G.shake,load.length?.35:.12); rumble(.5,.4,140);
+      burst(S.x+ux*dsd*S.L,S.gy+.4,S.z+uz*dsd*S.L,14,PC.dust,4,3);
       if(load.length){
-        sBoing(); S.launches++;
-        const by=trig.isDog?trig:trig.thrower||null;
-        load.forEach((o,i)=>{
-          const j=(Math.random()-.5)*.2+(load.length>1?(i/(load.length-1)-.5)*.16:0), cs=Math.cos(j), sn=Math.sin(j), lx=dx*cs-dz*sn, lz=dx*sn+dz*cs;
-          const rr=range*(o.e.ram?.75:o.e.lamb?1.1:1)*(.92+Math.random()*.16), y=ctPlankY(S,o.p)+.2;
-          if(o.dog) ctLaunchDog(o.e,lx,lz,rr); else ctLaunchSheep(o.e,o.e.x,o.e.z,y,lx,lz,rr,by);
-        });
-        const pts=load.filter(o=>!o.dog).length;
-        popText(S.x+dx*SEE_L,3,S.z+dz*SEE_L,pts>2?'LAUNCH x'+pts+'!':'LAUNCH!','gold');
-        burst(S.x+dx*SEE_L,S.gy+1.2,S.z+dz*SEE_L,22,PC.confetti,5,6);
-        if(!CT.told.launch){ CT.told.launch=1; setTimeout(()=>shepSay("That's it!"),900); }
-      } else popText(S.x-dx*SEE_L*.6,2.4,S.z-dz*SEE_L*.6,'THUNK','');
+        sBoing(); sZoom(); S.launches++;
+        load.forEach((o,i)=>ctLaunch(o.e,S,i,load.length));
+        const n=load.filter(o=>!o.dog).length;
+        popText(S.x+ux*dsd*S.L*.6,3.4,S.z+uz*dsd*S.L*.6,n>2?'UP YE GO x'+n+'!':'UP YE GO!','gold');
+        burst(S.x+ux*dsd*S.L*.6,S.gy+1.5,S.z+uz*dsd*S.L*.6,26,PC.confetti,5,8);
+      } else popText(S.x-ux*dsd*S.L*.6,2.4,S.z-uz*dsd*S.L*.6,'THUNK','');
     }
-    // the plank: snaps over fast on a launch, eases over when walked on
-    const rate=S.snap>0?16:1.8; S.snap=Math.max(0,S.snap-dt);
+    // the plank: snaps over on a launch, then the weighted cliff end settles back down
+    if(S.back>0){ S.back-=dt; if(S.back<=0){ S.kT=1; sCreak(1); } }
+    const rate=S.snap>0?16:2.2; S.snap=Math.max(0,S.snap-dt);
     S.k+=clamp(S.kT-S.k,-rate*dt,rate*dt);
     // hint: the first time a dog comes near one
-    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<9)){ CT.told.hint=1; toast('Seesaw! Punt onto the high end to launch. Grab an end to aim it.','gold',4); }
+    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<12)){ CT.told.hint=1; toast('Drive them onto the seesaw, then punt the high end!','gold',3.5); }
   }
-  // ---- hay bales ----
+  // ---- bales ----
   for(const b of CT.bales){
     if(b.gone) continue;
     if(b.sinkT>0){ b.sinkT+=dt; if(b.sinkT>1.6){ b.gone=true; b.g.visible=false; } continue; }
@@ -6562,7 +6686,7 @@ function updateContraptions(dt){
       const dx=b.x-D.x, dz=b.z-D.z, d=Math.hypot(dx,dz)+1e-6, nx=dx/d, nz=dz/d;
       if(D.pounceT>0 && d<b.r+1.1){
         b.vx=D.pdx*15+nx*2; b.vz=D.pdz*15+nz*2; b.thrower=D; D.pounceT=0; D.vx*=.15; D.vz*=.15;
-        sThud(); popText(b.x,2.6,b.z,'THWUMP!','gold'); burst(b.x,1,b.z,12,[0xf2c850,0xfff0b0,0xdcaa40],3,3); G.shake=Math.max(G.shake,.12);
+        sThud(); popText(b.x,2.6,b.z,'THWUMP!','gold'); burst(b.x,1,b.z,12,PC.dust,3,3); G.shake=Math.max(G.shake,.12);
         continue;
       }
       if(d<b.r+.55+.2){ const vn=D.vx*nx+D.vz*nz, bn=b.vx*nx+b.vz*nz; if(vn>.5 && bn<vn*.85){ const add=(vn*.85-bn)*Math.min(1,dt*8); b.vx+=nx*add; b.vz+=nz*add; b.thrower=D; } }
@@ -6573,41 +6697,36 @@ function updateContraptions(dt){
       const dx=b.x-s.x, dz=b.z-s.z, d=Math.hypot(dx,dz)+1e-6; if(d>b.r+.95) continue;
       const nx=dx/d, nz=dz/d, sp=Math.hypot(b.vx,b.vz);
       if(sp>5.5){
-        // a fast bale bowls a sheep aside (it's only hay: a fright, no harm)
+        // a fast bale bowls a sheep aside (a fright, no harm)
         const bn=b.vx*nx+b.vz*nz; if(bn<-1 && !(s.boingCD>0)){ s.vx+=b.vx*.6-nx*4; s.vz+=b.vz*.6-nz*4; s.flip=.6; s.boingCD=.8; s.fear=1; b.vx*=.7; b.vz*=.7; sBoing(); sBleat(1.3); }
       } else { const vn=s.vx*nx+s.vz*nz; if(vn>.4){ b.vx+=nx*vn*.35*dt*6; b.vz+=nz*vn*.35*dt*6; } }
     }
     // a rolling bale bowls over coyotes
     const spd=Math.hypot(b.vx,b.vz); b.hitT=Math.max(0,b.hitT-dt);
     if(spd>5) for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.hitCD>0||c.grabbedBy) continue; if(Math.hypot(c.x-b.x,c.z-b.z)<b.r+.8){ hitCoyote(c,1,14,b,'BOWLED!'); b.vx*=.6; b.vz*=.6; } }
-    // dragged in a dog's jaws
     if(held){
       const fx=Math.sin(held.yaw), fz=Math.cos(held.yaw), tx=held.x+fx*(b.r+.75), tz=held.z+fz*(b.r+.75);
       b.vx=clamp((tx-b.x)*10,-14,14); b.vz=clamp((tz-b.z)*10,-14,14);
     } else {
-      // rolling: friction, and a little help (or hindrance) from the slope once it's moving
       const k=Math.exp(-dt*1.25); b.vx*=k; b.vz*=k;
       if(spd>.6){ const gx=(groundH(b.x+.5,b.z)-groundH(b.x-.5,b.z)), gz=(groundH(b.x,b.z+.5)-groundH(b.x,b.z-.5)); b.vx-=gx*6*dt; b.vz-=gz*6*dt; }
       if(spd<.15){ b.vx=0; b.vz=0; }
     }
     const ox=b.x, oz=b.z, vb=Math.hypot(b.vx,b.vz);
     b.x+=b.vx*dt; b.z+=b.vz*dt; b.c.x=b.x; b.c.z=b.z;   // (its own circle moves with it, so collide() skips it)
-    // bales knock into each other, and round the seesaw's trestle
     for(const o of CT.bales){ if(o===b||o.gone) continue; const dx=b.x-o.x, dz=b.z-o.z, d=Math.hypot(dx,dz); if(d<b.r+o.r && d>1e-6){ const nx=dx/d, nz=dz/d, pen=(b.r+o.r-d)/2; b.x+=nx*pen; b.z+=nz*pen; o.x-=nx*pen; o.z-=nz*pen; o.c.x=o.x; o.c.z=o.z; const rel=(b.vx-o.vx)*nx+(b.vz-o.vz)*nz; if(rel<0){ b.vx-=rel*nx*.8; b.vz-=rel*nz*.8; o.vx+=rel*nx*.8; o.vz+=rel*nz*.8; if(-rel>3) sThud(); } } }
-    for(const S of CT.see){ const dx=b.x-S.x, dz=b.z-S.z, d=Math.hypot(dx,dz), m=b.r+.8; if(d<m && d>1e-6){ b.x=S.x+dx/d*m; b.z=S.z+dz/d*m; const vn=(b.vx*dx+b.vz*dz)/d; if(vn<0){ b.vx-=vn*dx/d*1.4; b.vz-=vn*dz/d*1.4; } } }
-    // walls, trees, the pond, the river banks, the edge (it can't go in the pen: the gate stops it too)
+    for(const S of CT.see){ const dx=b.x-S.x, dz=b.z-S.z, d=Math.hypot(dx,dz), m=b.r+1; if(d<m && d>1e-6){ b.x=S.x+dx/d*m; b.z=S.z+dz/d*m; const vn=(b.vx*dx+b.vz*dz)/d; if(vn<0){ b.vx-=vn*dx/d*1.4; b.vz-=vn*dz/d*1.4; } } }
     collide(b,b.r,{gate:true,perim:true,walls:true,edge:true});
     keepOnField(b,b.r+.2);
     // keep the mouth of the pen clear so a bale can never shut the flock out
     if(b.z<PEN.z1+b.r+3 && Math.abs(b.x)<PEN.x1+2){ b.z=PEN.z1+b.r+3; if(b.vz<0) b.vz=-b.vz*.3; }
     const mv=Math.hypot(b.x-ox,b.z-oz);
-    if(vb>4 && mv<vb*dt*.5){ sThud(); }
+    if(vb>4 && mv<vb*dt*.5) sThud();
     b.moved+=mv; b.c.x=b.x; b.c.z=b.z;
-    // into the lava, or off into a chasm
     const hz=hazardAt(b.x,b.z);
     if(hz){ b.sinkT=.01; b.vx=b.vz=0; const i=circles.indexOf(b.c); if(i>=0) circles.splice(i,1); OBS.ver++;
       if(hz==='lava'){ sSizzle(); burst(b.x,groundH(b.x,b.z)+1,b.z,30,[0xff7a2a,0xffb14a,0x6a625c],3,5,3); popText(b.x,2.4,b.z,'TOASTED!','red'); }
-      else { popText(b.x,2.4,b.z,'BYE BYE!',''); }
+      else popText(b.x,2.4,b.z,'BYE BYE!','');
       for(const D of dogs) if(D.grab && D.grab.t===b) releaseGrab(D,false);
     }
   }
@@ -6615,66 +6734,44 @@ function updateContraptions(dt){
   CT.navT-=dt;
   if(CT.navT<=0 && CT.bales.some(b=>b.moved>.6 && Math.hypot(b.vx,b.vz)<.2)){ CT.navT=.5; for(const b of CT.bales) b.moved=0; OBS.ver++; }
 }
-// the dog grabs a seesaw end (to swing it round) or a bale (to drag it): tryGrab's fallback when there's no animal to grab
+// the dog grabs a bale to drag it: tryGrab's fallback when there's no animal to grab
 function ctTryGrab(D){
   const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*1.1, mz=D.z+fz*1.1;
-  let best=null, bd=1.9, bp=0;
+  let best=null, bd=1.9;
   for(const b of CT.bales){ if(b.gone||b.sinkT>0) continue; const d=Math.hypot(b.x-mx,b.z-mz)-b.r+.6; if(d<bd){ bd=d; best=b; } }
-  for(const S of CT.see){ const ux=Math.sin(S.ang), uz=Math.cos(S.ang), dx=mx-S.x, dz=mz-S.z, p=dx*ux+dz*uz, q=-dx*uz+dz*ux;
-    if(Math.abs(p)>1.2 && Math.abs(p)<SEE_L+1 && Math.abs(q)<1.3){ const d=Math.abs(q)*.5; if(d<bd){ bd=d; best=S; bp=Math.sign(p); } } }
   if(!best) return false;
-  D.grab={t:best,kind:'prop',hold:0,shakeCD:0,lastShake:9,wob:0,end:bp};
+  D.grab={t:best,kind:'prop',hold:0,shakeCD:0,lastShake:9,wob:0};
   sGrowl(); rumble(.2,.3,90);
-  if(best.ang!==undefined && !CT.told.aim){ CT.told.aim=1; popText(best.x,2.8,best.z,'Swing it round to aim!','gold'); }
   return true;
 }
 function ctUpdateGrab(D,dt){
   const g=D.grab, T=g.t; g.hold+=dt;
-  if(T.ang!==undefined){
-    // swing the seesaw round: the end you're holding follows your mouth
-    const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*.9, mz=D.z+fz*.9, dl=Math.hypot(mx-T.x,mz-T.z);
-    if(dl>SEE_L+3){ releaseGrab(D,false); return; }
-    if(dl>.8){ let want=Math.atan2(mx-T.x,mz-T.z); if(g.end<0) want+=Math.PI; let da=((want-T.ang+Math.PI)%TAU+TAU)%TAU-Math.PI; da=clamp(da,-2.2*dt,2.2*dt);
-      if(Math.abs(da)>1e-3){ T.ang+=da; T.aimT=.6; if(T.creakT<=0){ T.creakT=.45; sCreak(1.25); } } }
-    // keep the dog near the end it's holding
-    const ux=Math.sin(T.ang)*g.end, uz=Math.cos(T.ang)*g.end, ex=T.x+ux*(SEE_L-.3), ez=T.z+uz*(SEE_L-.3), ddx=D.x-ex, ddz=D.z-ez, dd=Math.hypot(ddx,ddz);
-    if(dd>1.8){ D.x=ex+ddx/dd*1.8; D.z=ez+ddz/dd*1.8; }
-  } else {
-    const dd=Math.hypot(T.x-D.x,T.z-D.z); if(dd>T.r+2.6){ releaseGrab(D,false); return; }
-    D.stamina=Math.max(0,D.stamina-4*dt); if(D.stamina<=0) releaseGrab(D,false);
-  }
+  const dd=Math.hypot(T.x-D.x,T.z-D.z); if(dd>T.r+2.6 || T.gone){ releaseGrab(D,false); return; }
+  D.stamina=Math.max(0,D.stamina-4*dt); if(D.stamina<=0) releaseGrab(D,false);
 }
 function ctRelease(D,g,fling){
-  const T=g.t; if(T.ang!==undefined) return;
-  const sp=Math.hypot(D.vx,D.vz), fx=Math.sin(D.yaw), fz=Math.cos(D.yaw);
+  const T=g.t, sp=Math.hypot(D.vx,D.vz), fx=Math.sin(D.yaw), fz=Math.cos(D.yaw);
   if(fling && sp>2){ T.vx=D.vx*1.25+fx*4; T.vz=D.vz*1.25+fz*4; T.thrower=D; sWhoosh(); }
   else { T.vx*=.3; T.vz*=.3; }
 }
 // ---- drawing ----
 function syncContraptions(dt,time){
   for(const s of G.sheep){
-    if(s.dead) continue;
-    if(s.sky){ const g=s.m.g; g.position.y=s.sky.y; g.rotation.x=-s.sky.t*6.5; g.rotation.z=Math.sin(s.sky.t*9)*.3; const f=Math.sin(time*28)*1.1; s.m.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f); if(Math.random()<dt*20) burst(s.x,s.sky.y+.8,s.z,1,[0xffffff,0xf6f1e3],.4,.5,1); }
-    else if(s.dazeT>0){ s.dz=1; s.m.head.rotation.z=Math.sin(time*12)*.35; if(Math.random()<dt*8) burst(s.x,groundH(s.x,s.z)+1.9,s.z,1,PC.gold,.8,.3,0); }
-    else if(s.dz){ s.dz=0; if(!(s.madT>0)) s.m.head.rotation.z=0; }
+    if(s.dead || !s.sky) continue;
+    const A=s.sky, g=s.m.g; if(A.t<0) continue;
+    g.position.y=A.y;
+    if(A.mode==='up'){ g.rotation.x=-A.t*11; g.rotation.z=0; } else { g.rotation.x=0; g.rotation.z=Math.sin(time*3+A.k)*.15; }
+    const f=Math.sin(time*(A.mode==='chute'?10:28))*(A.mode==='chute'?.5:1.1); s.m.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f);
   }
+  for(const D of dogs) if(D.sky && D.sky.mode==='up') D.m.body.rotation.x=-D.sky.t*9;
   for(const S of CT.see){
     S.g.rotation.y=S.ang; S.pl.rotation.x=Math.asin(clamp(S.k*(SEE_H-.05)/SEE_L,-1,1));
     // riders go up and down with the plank
     for(const o of S.on){ const e=o.e; if(e.sky) continue; const lift=ctPlankY(S,o.p)-.12-Math.max(groundH(e.x,e.z),WALK_FLOOR); if(lift>0) e.m.g.position.y+=lift; }
-    // the aiming ring: while someone's swinging it round, or when sheep are loaded and a dog is close
-    const dsd=Math.sign(S.k)||1, ux=Math.sin(S.ang)*dsd, uz=Math.cos(S.ang)*dsd;
-    const load=S.on.filter(o=>!o.dog && o.p*dsd>SEE_L*.12), near=dogs.some(D=>!D.sky && Math.hypot(D.x-S.x,D.z-S.z)<16);
-    S.aimT=Math.max(0,S.aimT-dt);
-    const show=G.phase!=='title' && (S.aimT>0 || (load.length && near)) && Math.abs(S.k)>.5;
-    S.ring.visible=show; S.arrow.visible=G.phase!=='title' && load.length>0 && near && S.cd<=0 && Math.abs(S.k)>.5;
-    if(show){
-      const W=load.reduce((a,o)=>a+ctW(o.e),0), ex=S.x+ux*(SEE_L-.6), ez=S.z+uz*(SEE_L-.6), lp=ctLanding(ex,ez,S.gy+.3,ux,uz,ctRange(Math.max(1,W)));
-      const bad=!!hazardAt(lp.x,lp.z) || (PZ.locked && lp.x>PEN.x0 && lp.x<PEN.x1 && lp.z<PEN.z1) || fieldD(lp.x,lp.z)<-.5;
-      S.ring.material=bad?CT_ART.ringBad:CT_ART.ringOK; S.ring.position.set(lp.x,Math.max(groundH(lp.x,lp.z),WALK_FLOOR)+.12,lp.z); S.ring.scale.setScalar(1+Math.sin(time*6)*.08);
-      S.dots.forEach((d,i)=>{ const f=(i+1)/(S.dots.length+1), x=lerp(ex,lp.x,f), z=lerp(ez,lp.z,f), h=Math.max(groundH(x,z),WALK_FLOOR); d.visible=true; d.material=S.ring.material; d.position.set(x,Math.max(h+.1,lerp(S.gy+.4,h,f)+4*f*(1-f)*SEE_VY*SEE_VY/(2*AIR_G)),z); });
-    } else S.dots.forEach(d=>d.visible=false);
-    if(S.arrow.visible){ const ex=S.x-ux*(SEE_L-.75), ez=S.z-uz*(SEE_L-.75); S.arrow.position.set(ex,ctPlankY(S,-dsd*(SEE_L-.75))+1.1+Math.abs(Math.sin(time*5))*.45,ez); S.arrow.rotation.y=time*2; }
+    // a bouncing arrow over the high end once there's a sheep on the low end
+    const ux=Math.sin(S.ang), uz=Math.cos(S.ang), load=S.on.some(o=>!o.dog && o.p>-.3);
+    S.arrow.visible=G.phase!=='title' && load && S.cd<=0 && S.k>.5;
+    if(S.arrow.visible){ const ex=S.x-ux*(S.L-1), ez=S.z-uz*(S.L-1); S.arrow.position.set(ex,ctPlankY(S,-(S.L-1))+1.4+Math.abs(Math.sin(time*5))*.5,ez); S.arrow.rotation.y=time*2; }
   }
   for(const b of CT.bales){
     if(b.gone) continue;
@@ -6686,7 +6783,7 @@ function syncContraptions(dt,time){
       let h=Math.atan2(b.vx,b.vz), sgn=1, dh=((h-b.head+Math.PI)%TAU+TAU)%TAU-Math.PI;
       if(Math.abs(dh)>Math.PI/2){ h+=Math.PI; sgn=-1; dh=((h-b.head+Math.PI)%TAU+TAU)%TAU-Math.PI; }
       b.head+=dh*Math.min(1,dt*8); b.g.rotation.y=b.head; b.roll.rotation.x+=sgn*sp*dt/b.r;
-      if(sp>3 && Math.random()<dt*10) burst(b.x-b.vx/sp*b.r,.2,b.z-b.vz/sp*b.r,1,[0xf2c850,0xdcaa40,0xe6d4ad],1,1.5,6);
+      if(sp>3 && Math.random()<dt*10) burst(b.x-b.vx/sp*b.r,.2,b.z-b.vz/sp*b.r,1,PC.dust,1,1.5,6);
     }
   }
 }
@@ -6887,8 +6984,14 @@ function setupPuzzle(){
     if(PZ.gates.length) lockPen(true); else PZ.type=null;
   } else if(PZ.type==='scale'){
     let best=null, bd=-1;
+    // keep the scale on the pen's side of any river: on lava days a weigh-in across the lava meant driving the flock over a bridge and back
+    const Rv=LEVEL.river, side=(x,z)=>Rv?Math.sign(z-riverZ(Rv,x)):0, penSide=side(P.x,P.z);
     for(let q=0;q<400 && !(best && q>=200);q++){ const loose=q>=200, x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+(loose?14:20)+Math.random()*(FIELD-PEN.z1-(loose?20:30)); if(!clearOf(x,z,loose?6.5:7) || fieldD(x,z)<(loose?7.5:9)) continue;
+      if(side(x,z)!==penSide || clovers.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+(loose?3:6.5))) continue;   // and off the clover, which holds sheep at the edge of the deck
       const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<(loose?10:16) || dp<(loose?16:22)) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
+    // still nowhere (a lava river can leave the pen's side cramped): anywhere on that side, as long as it isn't on top of the pen
+    for(let q=0;q<500 && !best;q++){ const x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
+      if(clearOf(x,z,6) && fieldD(x,z)>=7 && Math.hypot(x-P.x,z-P.z)>=12 && side(x,z)===penSide && !clovers.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) best={x,z}; }
     if(best){
       const S2={x:best.x,z:best.z,r:5.5,p:0,tiles:[],done:false}, gy=groundH(best.x,best.z);
       const A=scaleArt(S2.r);
@@ -6912,6 +7015,7 @@ function setupPuzzle(){
 function objective(){
   if(PZ.type==='gates' && PZ.locked){ const g=PZ.gates[PZ.cur]; return g?{x:g.x,z:g.z,ring:false}:null; }
   if(PZ.type==='scale' && PZ.locked) return {x:PZ.scale.x,z:PZ.scale.z,ring:false};
+  if(PZ.type==='seesaw' && CT.see[0] && G.sheep.some(s=>!s.dead&&!s.penned&&!s.bonus&&!s.sky&&!onPlateau(s.x,s.z))) return {x:CT.see[0].x,z:CT.see[0].z,ring:false};
   if(JR.camp) return (JR.calledHome||G.phase==='night') && G.sheep.some(s=>!s.dead&&!s.penned&&!s.bonus) ? {x:0,z:PEN.z1+1.5,ring:true} : null;
   return {x:0,z:PEN.z1+1.5,ring:true};          // on the trail: camp
 }
@@ -6991,6 +7095,7 @@ function objectiveText(){
   if(PZ.type==='gates' && PZ.locked){ const g=PZ.gates[PZ.cur]; return 'Gate '+(PZ.cur+1)+' of '+PZ.gates.length+(g?' · '+g.passed.size+'/'+PZ.need:''); }
   if(PZ.type==='scale' && PZ.locked) return 'Weigh-in · '+(PZ.on||0)+'/'+PZ.need+' on';
   if(PZ.type==='maze') return 'Through the maze to camp';
+  if(PZ.type==='seesaw') return 'Up the seesaw to camp';
   return G.day===1?'Gather them in':'On to camp';
 }
 
@@ -7227,7 +7332,7 @@ function startSurprise(kind){
     const m=makeSheep(false,false,false); m.g.scale.setScalar(1.02); const st=newSheep(x,z,m,{}); st.bonus=true; st.stranger=true; G.sheep.push(st);
     ev.s=st; popText(st.x,2.6,st.z,'?','red');
   } else if(kind==='twister'){
-    const a=Math.random()*TAU, R=FIELD+4; ev.x=mid.x+Math.cos(a)*R; ev.z=mid.z+Math.sin(a)*R;
+    const a=Math.random()*TAU, e=landEntry(mid.x,mid.z,a,3); ev.x=e.x; ev.z=e.z;      // spins up at the edge of the land
     const tx=mid.x+(Math.random()-.5)*8, tz=mid.z+(Math.random()-.5)*8, d=Math.hypot(tx-ev.x,tz-ev.z)+1e-6; ev.dx=(tx-ev.x)/d; ev.dz=(tz-ev.z)/d;
     // a stylised swirl: see-through spiral funnel, white swooshes, debris whirling round, dust puffs at its foot
     const A=surpriseArt(), g=sxAdd(new THREE.Group()), lean=new THREE.Group(), spin=new THREE.Group(), orbit=new THREE.Group(), dust=new THREE.Group();
@@ -7321,7 +7426,7 @@ function updateSurprise(dt){
     }
     for(const D of dogs){ if(D.flying||D.stunT>0) continue; const dx=D.x-ev.x, dz=D.z-ev.z, d=Math.hypot(dx,dz); if(d<3){ D.stunT=.7; D.vx=dx/(d+1e-6)*16; D.vz=dz/(d+1e-6)*16; popText(D.x,2.6,D.z,'WHEEE!','gold'); sYelp(); } }
     if(Math.random()<dt*30) burst(ev.x+(Math.random()-.5)*3,.3,ev.z+(Math.random()-.5)*3,2,PC.dust,4,3);
-    if(ev.t>4 && (Math.abs(ev.x)>FIELD+6 || Math.abs(ev.z)>FIELD+6) || ev.t>ev.dur) endSurprise();
+    if(ev.t>3 && (fieldD(ev.x,ev.z)<1 || hazardAt(ev.x,ev.z)) || ev.t>ev.dur) endSurprise();      // it blows itself out at the edge
     return;
   }
   if(ev.kind==='chutes'){
@@ -7366,7 +7471,8 @@ function syncSurprise(dt,time){
   // big air for sheep thrown by a twister or a bale
   for(const s of G.sheep){ if(s.air>0){ s.air=Math.max(0,s.air-dt*1.1); if(!s.dead) s.m.g.position.y+=Math.sin(s.air*Math.PI)*4.5; } if(s.safeT>0) s.safeT-=dt; }
   if(!ev) return;
-  if(ev.kind==='twister' && ev.g){ const u=ev.g.userData; ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z); u.spin.rotation.y+=dt*9; u.orbit.rotation.y+=dt*5.5; u.dust.rotation.y-=dt*2.5;
+  if(ev.kind==='twister' && ev.g){ const u=ev.g.userData; ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z);
+    ev.g.scale.setScalar(Math.max(.05,Math.min(1,ev.t/1.2,ev.t>3?(fieldD(ev.x,ev.z)-1)/4:1,(ev.dur-ev.t)/1.2)));      // grows as it spins up, shrinks as it dies u.spin.rotation.y+=dt*9; u.orbit.rotation.y+=dt*5.5; u.dust.rotation.y-=dt*2.5;
     u.lean.rotation.z=Math.sin(time*1.7)*.09; u.lean.rotation.x=Math.cos(time*1.3)*.07; u.tex.offset.y-=dt*.7; }
   if(ev.kind==='bales') for(const b of ev.b) b.g.position.set(b.x,groundH(b.x,b.z)+1.7,b.z);
   if(ev.kind==='disco'){
@@ -7658,6 +7764,7 @@ function frameCam(cam,look,D,dt,aspect,first){
   if(G.phase==='day'||G.phase==='night'||G.phase==='result'){
     const reach=coopView?18:23;
     for(const s of G.sheep) if(!s.dead && !s.penned && near(s.x,s.z,reach)) pts.push([s.x,s.z]);
+    for(const s of G.sheep) if(s.sky && s.sky.t>=0 && near(s.sky.x0,s.sky.z0,30)) pts.push([s.x,s.z-(s.sky.y-groundH(s.x,s.z))*1.6-3],[s.sky.tx,s.sky.tz-3]);   // keep seesaw flyers (and where they'll land) in view
     for(const c of G.coyotes){ if(c.gone || c.state==='retreat') continue; if(near(c.x,c.z,20) || pts.some(p=>Math.hypot(c.x-p[0],c.z-p[1])<10)) pts.push([c.x,c.z]); }
     if(COUG.on && COUG.prey) pts.push([COUG.x,COUG.z]);
   }
@@ -7732,7 +7839,7 @@ function drawMinimap(time){
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   if(lv('nose')) for(const gb of goldBones){ if(gb.got) continue; mx.fillStyle='#ffd34d'; mx.beginPath(); mx.arc(X(gb.x),Y(gb.z),3.5+Math.sin(time*5)*1,0,TAU); mx.fill(); }
   for(const L of llamas){ if(!L.active) continue; mx.fillStyle='#eadfc8'; mx.fillRect(X(L.x)-3,Y(L.z)-4,6,8); }
-  if(LEVEL.haz) for(const h of LEVEL.haz){ mx.fillStyle=h.kind==='lava'?'rgba(255,106,26,.85)':'rgba(190,230,255,.7)'; mx.beginPath(); mx.arc(X(h.x),Y(h.z),h.r*S,0,TAU); mx.fill(); }
+  if(LEVEL.haz) for(const h of LEVEL.haz){ if(LEVEL.riftSD && h.kind==='chasm') continue; mx.fillStyle=h.kind==='lava'?'rgba(255,106,26,.85)':'rgba(190,230,255,.7)'; mx.beginPath(); mx.arc(X(h.x),Y(h.z),h.r*S,0,TAU); mx.fill(); }
   const dx=X(dog.x), dy=Y(dog.z);
   mx.fillStyle='#f2b544'; mx.beginPath(); mx.arc(dx,dy,5.5,0,TAU); mx.fill();
   mx.strokeStyle='#111'; mx.lineWidth=2; mx.beginPath(); mx.moveTo(dx,dy); mx.lineTo(dx+Math.sin(dog.yaw)*9,dy+Math.cos(dog.yaw)*9); mx.stroke();
@@ -7870,7 +7977,8 @@ function step(dt){
       G.stampT=(G.stampT===undefined?14:G.stampT)-dt;
       if(G.stampT<=0){
         // the whole flock bolts the same way at once
-        G.stampT=16+Math.random()*8; const a=Math.random()*TAU;
+        G.stampT=16+Math.random()*8; const mid=flockMid(); let a=Math.random()*TAU, room=-1;
+        for(let k=0;k<10;k++){ const b=Math.random()*TAU; let r=0; for(;r<18;r+=1.5){ const x=mid.x+Math.cos(b)*r, z=mid.z+Math.sin(b)*r; if(fieldD(x,z)<2 || hazardAt(x,z) || z<PEN.z1+2) break; } if(r>room){ room=r; a=b; } }
         for(const sh of G.sheep){ if(sh.dead||sh.penned||sh.carried||sh.grabbedBy) continue; sh.boltA=a+(Math.random()-.5)*.5; sh.boltT=1.4; sh.stress=Math.min(1,sh.stress+.15); sh.munch=0; }
         toast('Stampede!','warn',1.6); sThud(); G.shake=Math.max(G.shake,.6);
       }
