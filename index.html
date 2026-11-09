@@ -52,6 +52,13 @@
   #banner .t { font-size:clamp(34px, 6vw, 64px); font-weight:700; letter-spacing:1px; text-shadow:0 4px 0 rgba(0,0,0,.4); }
   #banner .s { font-size:clamp(16px, 2.2vw, 22px); opacity:.9; }
   #banner.show { opacity:1; }
+  #journey { position:absolute; bottom:22px; left:18px; width:min(300px, 30vw); height:34px; }
+  #journey .line { position:absolute; left:6px; right:6px; top:16px; height:4px; border-radius:2px; background:rgba(255,248,232,.55); box-shadow:0 2px 0 rgba(0,0,0,.35); }
+  #journey .camp { position:absolute; top:10px; width:16px; height:16px; margin-left:-8px; border-radius:50%; background:#2b2a3a; border:3px solid var(--cream); }
+  #journey .camp.done { background:#7ed957; }
+  #journey .camp.final { background:#ffd36b; }
+  #journey .me { position:absolute; top:-6px; margin-left:-11px; font-size:20px; transition:left .4s; filter:drop-shadow(0 2px 0 rgba(0,0,0,.5)); }
+  #sound { position:fixed; left:12px; bottom:12px; background:rgba(27,26,40,.7); color:var(--cream); border-radius:10px; padding:4px 10px; font-size:14px; pointer-events:none; }
   #joins { position:absolute; bottom:16px; right:16px; display:flex; flex-direction:column; gap:4px; align-items:flex-end; font-size:14px; }
   #joins div { background:var(--panel); border-radius:10px; padding:3px 10px; opacity:.85; }
   .screen { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
@@ -103,7 +110,9 @@
   <div id="toasts"></div>
   <div id="banner"><div class="t"></div><div class="s"></div></div>
   <div id="joins"></div>
+  <div id="journey"><div class="line"></div></div>
 </div>
+<div id="sound" style="display:none">🔇 Click anywhere to turn on sound</div>
 <div id="title" class="screen hidden">
   <h1>COLLIES</h1>
   <h2>Herd your flock across the wilds to the Promised Land</h2>
@@ -137,7 +146,7 @@ const DEBUG = /debug/.test(location.search + location.hash);
 // =====================================================================
 const T = {
   // clock
-  hourSec: 9,            // real seconds per in-game hour
+  hourSec: 10,           // real seconds per in-game hour
   startHour: 6.6,
   nightStart: 20.5, nightEnd: 5.5,
   duskWarn: 17.5,
@@ -240,6 +249,7 @@ const Sound = (() => {
   const api = {
     init,
     get ready() { return !!ac; },
+    get running() { return !!ac && ac.state === 'running'; },
     bark(p = 1, pan = 0) { if (!ac) return; const t = ac.currentTime; const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
       if (!ac) return; const now = ac.currentTime; if (!force && now - lastBaa < 0.35) return; lastBaa = now;
@@ -417,14 +427,14 @@ const dot4 = (w, v) => w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3];
 // camps / waypoints
 const CAMPS = [
   { name: 'Desert Corral', sub: 'The journey begins', s: 58, R: 9, lat: -17 },
-  { name: 'Mountain Valley Camp', sub: 'Lush grass — and cold, hungry nights', s: 300, R: 9, lat: -17 },
+  { name: 'Mountain Valley Camp', sub: 'Lush grass — and cold, hungry nights', s: 285, R: 9, lat: -17 },
   { name: 'Oceanside Camp', sub: 'Salt wind and sea grass', s: 545, R: 9, lat: -17 },
   { name: 'The Promised Land', sub: 'Pen the flock and close the gate to finish', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
 ];
 for (const c of CAMPS) { const p = pathPoint(c.s, c.lat); c.x = p.x; c.z = p.z; c.gateA = Math.atan2(p.nz, p.nx); c.nx = p.nx; c.nz = p.nz; c.tx = p.tx; c.tz = p.tz; }
 
 // the river crossing (with a bridge) in the mountain valley
-const RIVER = { s: 385, hw: 5, bridgeHW: 3.2, deckY: 0.5 };
+const RIVER = { s: 385, hw: 5, bridgeHW: 4.5, deckY: 0.5 };
 { const p = pathPoint(RIVER.s); Object.assign(RIVER, { x: p.x, z: p.z, tx: p.tx, tz: p.tz, nx: p.nx, nz: p.nz }); }
 function riverAcross(x, z) { return (x - RIVER.x) * RIVER.tx + (z - RIVER.z) * RIVER.tz; }   // distance from river centreline
 function riverAlong(x, z) { return (x - RIVER.x) * RIVER.nx + (z - RIVER.z) * RIVER.nz; }    // position along the river (= offset from trail)
@@ -1346,12 +1356,14 @@ function findGrass(s, ccx, ccz) {
   const base = Math.random() * TAU, penClosed = s.pen && s.pen.gateT < 0.5;
   for (let k = 0; k < 10; k++) {
     const a = base + k * TAU / 10, ca = Math.cos(a), sa = Math.sin(a);
-    for (const r of [3, 6.5, 11]) {
+    for (const r of s.hunger > 0.45 ? [3, 6.5, 11, 17] : [3, 6.5, 11]) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2) continue;
       if (penClosed && !insidePen(s.pen, x, z, 1)) continue;
       if (!s.pen && penAt(x, z)) continue;
-      const g = grassAt(x, z) - r * 0.012 - (ccx !== undefined ? Math.hypot(x - ccx, z - ccz) * 0.025 : 0);
+      // hungrier sheep are bolder: they range further and care less about staying with the flock
+      const bold = 1 - Math.min(0.85, s.hunger);
+      const g = grassAt(x, z) - r * 0.012 * bold - (ccx !== undefined ? Math.hypot(x - ccx, z - ccz) * 0.025 * bold : 0);
       if (g > best) { best = g; bx = x; bz = z; found = true; }
     }
   }
@@ -1467,6 +1479,11 @@ function updateSheep(dt, dtH) {
       if (spd === 0 && (sepX || sepZ)) spd = 0.5;
       if (s.lamb && s.state !== 'sleep' && Math.random() < dt * 0.15) s.hopV = 2.6;   // lambs pronk
     }
+    // ---- moving sheep funnel onto the bridge like they'd follow a trail
+    if ((s.state === 'flee' || s.state === 'move') && Math.abs(riverAcross(s.x, s.z)) < RIVER.hw + 12) {
+      const al = riverAlong(s.x, s.z);
+      if (Math.abs(al) < 22 && Math.abs(al) > 1) { const k = Math.min(1, Math.abs(al) / 5) * 0.9 * -Math.sign(al); dX += RIVER.nx * k; dZ += RIVER.nz * k; }
+    }
     // ---- avoid walls and fences
     const sd = sdfAt(s.x, s.z);
     if (sd < 2.2) { const g = sdfGrad(s.x, s.z), k = (2.2 - sd) * 0.9; dX += g.x * k; dZ += g.z * k; }
@@ -1485,6 +1502,7 @@ function updateSheep(dt, dtH) {
     s.x += s.vx * dt; s.z += s.vz * dt;
     collideWorld(s, s.r); collideFences(s, s.r);
     const sp = Math.hypot(s.vx, s.vz);
+    if (sp > 4.2 && Math.random() < dt * 2.5) burst(s.x, s.y + 0.1, s.z, 1, '#e3d6b8', { speed: 0.5, up: 0.6, size: 0.22, life: 0.6, grav: 0 });
     if (sp > 0.25 && s.state !== 'graze') s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 7));
     s.hopV -= 14 * dt; s.hopY = Math.max(0, s.hopY + s.hopV * dt); if (s.hopY === 0 && s.hopV < 0) s.hopV = 0;
     s.y = groundY(s.x, s.z);
@@ -2005,6 +2023,12 @@ function updateHUD(dt) {
   for (const c of CAMPS) if (!G.visited.has(c.name) && (Math.hypot(fc.x - c.x, fc.z - c.z) < 35 || G.dogs.some(d => Math.hypot(d.x - c.x, d.z - c.z) < 28))) {
     G.visited.add(c.name); if (G.mode === 'play') { banner(c.name, c.sub); Sound.chime([0, 5, 9, 12], 523, 0.16, 0.12); }
   }
+  // journey bar: camps along the trail, the flock and the dogs
+  const jb = $('journey');
+  if (!jb.dataset.built) { jb.dataset.built = 1; CAMPS.forEach((c, i) => { const e = document.createElement('div'); e.className = 'camp' + (c.final ? ' final' : ''); e.style.left = `calc(6px + (100% - 12px) * ${c.s / PATH_LEN})`; e.title = c.name; jb.appendChild(e); }); const me = document.createElement('div'); me.className = 'me'; me.textContent = '🐑'; jb.appendChild(me); }
+  [...jb.querySelectorAll('.camp')].forEach((e, i) => e.classList.toggle('done', CAMPS[i].s < fs - 5 || (G.visited.has(CAMPS[i].name) && i === 0)));
+  jb.querySelector('.me').style.left = `calc(6px + (100% - 12px) * ${clamp(fs / PATH_LEN, 0, 1)})`;
+  $('sound').style.display = Sound.running ? 'none' : 'block';
   const joins = $('joins'); const want = G.mode === 'play' && G.players.length < 4 ? `<div>Press Ⓐ on another controller to join (${G.players.length}/4)</div>` : '';
   if (joins.innerHTML !== want) joins.innerHTML = want;
 }
@@ -2098,7 +2122,7 @@ addEventListener('resize', resize);
 function joinPlayer(dev) {
   if (G.players.length >= 4) return;
   const used = new Set(G.players.map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
-  const p = { kind: dev.kind, index: dev.index, slot, dog: null };
+  const p = { kind: dev.kind, index: dev.index, slot, dog: null, skipInput: true };   // the join press shouldn't also bark
   G.players.push(p); spawnDog(p);
   Sound.bark(PCOL[slot].pitch, 0); rumble(p, 0.3, 0.5, 150);
   if (G.players.length > 1) toast(`${PCOL[slot].name} joined the herd!`, 'good');
@@ -2153,8 +2177,9 @@ function step(dt) {
     G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05) && !G.coyotes.some(c => c.prey);
     const dtH = stepClock(dt);
     regrowAcc += dtH;
-    for (const p of G.players) if (p.dog) updateDog(p.dog, readInput(p), dt);
+    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.gate = false; } }   // button presses fire once per frame, not once per sub-step
     leashDogs();
+    for (const a of G.dogs) for (const b of G.dogs) { if (a === b) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     updateSheep(dt, dtH);
     updateCoyotes(dt);
     if (G.finalArm > 0) G.finalArm -= dt;
@@ -2172,6 +2197,7 @@ function frame(now) {
   else if (G.mode === 'play') { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
+  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.gate = false; p.skipInput = false; } }
   const n = Math.ceil(dt / 0.025), sdt = dt / n;
   for (let i = 0; i < n; i++) step(sdt);
   regrowT(dt);

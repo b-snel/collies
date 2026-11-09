@@ -62,7 +62,7 @@ What made herding feel right (all tested headlessly, see numbers below):
 - Result: one dog walking 7 m behind the flock drives it at ~2.1 m/s with a
   5–8 m spread; it coasts ~4 s when the dog backs off, then resumes grazing.
 
-Grass / hunger economy (per in-game hour; one hour = 9 real seconds):
+Grass / hunger economy (per in-game hour; one hour = 10 real seconds):
 
 - Grass lives on the 2 m terrain vertex grid (`gAmt` / `gCap`), uploaded to an
   R8 texture that both the terrain shader (blends bare→grass colour) and the
