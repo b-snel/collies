@@ -56,11 +56,20 @@ What made herding feel right (all tested headlessly, see numbers below):
 - **Contagion.** Calm sheep with 2+ neighbours moving within 6 m join them at
   0.88× their speed. The 0.88 matters: at ≥1.0 the flock keeps itself moving
   forever after the dog stops.
-- **Cohesive grazing.** Grass-seeking scores candidate spots with a penalty for
-  distance from the local flock centre, so the flock drifts as a group toward
-  fresh grass instead of chaining out across the map.
+- **Cohesive grazing, bolder when hungry.** Grass-seeking scores candidate
+  spots with a penalty for distance from the local flock centre, so the flock
+  drifts as a group instead of chaining out across the map. The penalty fades
+  and the search radius grows (to 17 m) as hunger rises; without that, a hungry
+  flock huddled and starved 15 m from untouched grass.
+- **Chokepoints need help.** The river bridge was a jam until it was widened to
+  9 m and moving sheep got a gentle pull toward the bridge axis (sheep follow
+  trails). Any future chokepoint (gates in walls, canyon passes) wants the same.
 - Result: one dog walking 7 m behind the flock drives it at ~2.1 m/s with a
-  5–8 m spread; it coasts ~4 s when the dog backs off, then resumes grazing.
+  5–8 m spread over every stretch of the trail; it coasts ~4 s when the dog
+  backs off, then resumes grazing. A dumb "drive at the gate" bot pens 13/14
+  sheep in 15 s, so the gate + funnel wings are forgiving enough.
+- Day 1 is the tightest: 7:00 start, 227 m to the valley camp, nightfall at
+  20:30 (135 s). Pushing steadily gets there with ~30 s to spare.
 
 Grass / hunger economy (per in-game hour; one hour = 10 real seconds):
 
@@ -70,9 +79,9 @@ Grass / hunger economy (per in-game hour; one hour = 10 real seconds):
   overgrazing visual.
 - hunger +0.034/h (×0.4 while asleep), eating 0.35 units/s × 0.04 hunger per
   unit, regrowth 0.022/h × (0.35 + cap). Death after ~9 h (±35%) at max hunger.
-- Simulated: 14 sheep at the valley camp, penned nightly → 26 sheep by day 3,
-  pasture overgrazed by day 3, starvation by day 4. That arc is the core
-  "stay vs. move on" tension; birth rate and starvation were softened once.
+- Simulated: 14 sheep parked at the valley camp, penned nightly → 22 sheep by
+  day 4, grazing up to 60 m from the pen as the pasture thins, first
+  starvation on day 5. That arc is the core "stay vs. move on" tension.
 - Lambs: at 23:00, adults inside a closed pen with hunger < 0.5 are flagged;
   at dawn each flagged adult has a 22% chance of a lamb. So penning AND
   feeding both pay off. Lambs follow their mothers and grow up after 2 dawns.
@@ -101,7 +110,10 @@ Flow / feel:
 - Lights: a fixed count (sun, hemi, 4 dog lights, 2 campfire lights) so
   shaders never recompile mid-game.
 
-Gotchas: the cel look is `MeshToonMaterial` with a 3-step `RedFormat` gradient
+Gotchas: buttons must be read once per rendered frame, not per physics
+sub-step, or toggles (the gate) fire twice at < 60 fps. Browsers don't treat
+gamepad presses as a user gesture, so audio can't start from a pad alone; a
+"click for sound" badge shows until it does. The cel look is `MeshToonMaterial` with a 3-step `RedFormat` gradient
 plus a screen-space inverted-hull outline `ShaderMaterial` that also works on
 `InstancedMesh`. DataTextures for grass/depth need `unpackAlignment = 1`
 (odd widths).
