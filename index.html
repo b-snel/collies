@@ -477,9 +477,21 @@ const SEASONS={
   winter:{name:'winter',label:'Winter',ground:0xeaf2f8,ground2:0xfdfeff,ground3:0xc8daea,dirt:0xc2cdd8,far:0xd8e4f0,grass:0xf4f8fc,trunk:0x6e4a34,leaves:[0xf4f8fc,0xdce8f2,0xffffff],sky:0xb2daf2,hemi:0xd8e6ff,hemiGround:0xb8c4cc,
           fx:{colors:[0xffffff,0xeef6ff],count:700,fall:2.2,sway:1,size:.2},flies:0,frozen:true},
 };
-// ---- every day is generated from the run's seed: terrain, obstacles, theme and a twist ----
+// ---- every day is built from that day's own fixed seed: terrain, obstacles, theme, twist and everything placed on it ----
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
-let RUN_SEED=(Math.random()*1e9)|0;
+// The levels are curated, not rolled per run: day N is always the same land with the same things in the same places.
+// DAY_SEEDS[d-1] is day d's seed, picked by an audit: build each day for seeds 1, 2, 3... in order and keep the first one
+// that passes every check: every sheep, the dog's start, the gates or scales, clover and bones reachable from the pen gate;
+// every stretch of edge in front of the yard closed by something you can see (cliff, drop, water, lava, boulders or a row of
+// trees, never a bare gap over 2m); the narrowest pass on the way from any sheep to the gate at least 5 wide (edges, hazards,
+// walls, rocks and trees all counted); the open area within the day's size range; the day's puzzle laid out in full. For
+// variety, Moab mustn't be a second maze, and the tall tales (11-14) are four different worlds with at most one maze.
+// Then each one was looked at from above and from the dog's camera. Days past the table use a fixed seed from the day number.
+const DAY_SEEDS=[3,2,6,2,3,4,4,1,4,4,1,4,15,8];
+const daySeed=d=>(d>=1 && d<=DAY_SEEDS.length ? DAY_SEEDS[d-1] : (Math.imul(d,2654435761)^0x2b1f0d)>>>0) ^ Math.imul(d,0x9E3779B1);
+// level construction draws its "random" numbers from the day's seed (one stream per job, so one job's draws never shift
+// another's); everything after (the weather, surprises, the animals' wobble) stays truly random
+function seeded(d,job,fn){ const MR=Math.random; Math.random=mulberry32(((daySeed(d)^Math.imul(job,0x85EBCA6B))>>>0)||1); try{ return fn(); } finally{ Math.random=MR; } }
 const levelCache={};
 let LEVEL={theme:'farm',name:'Home Farm',walls:[],copses:[],rocks:[],holes:[],pond:null,river:null,twist:null};
 const TWISTS={bouncy:'Bouncy sheep',giant:'Giant sheep',tiny:'Tiny sheep',speedy:'Speedy sheep',foggy:'Thick fog',goldrush:'Gold rush',stampede:'Stampedes'};
@@ -497,7 +509,9 @@ function onDeck(R,b,x,z,pad){ const f=bridgeFrame(R,b), dx=x-f.cx, dz=z-f.cz; re
 const lavaRiver=()=>!!(LEVEL.river&&LEVEL.river.lava);
 // outward direction from the hazard a point is in (or null)
 function hazardNormal(x,z){
-  if(LEVEL.haz) for(const h of LEVEL.haz){ const dx=x-h.x, dz=z-h.z, d=Math.hypot(dx,dz); if(d<h.r) return d>1e-6?{x:dx/d,z:dz/d}:{x:1,z:0}; }
+  // the one it's deepest in (the canyon's rift is a chain of overlapping circles: the first one found could point along it)
+  if(LEVEL.haz){ let b=null, bd=0; for(const h of LEVEL.haz){ const q=h.r-Math.hypot(x-h.x,z-h.z); if(q>bd){ bd=q; b=h; } }
+    if(b){ const dx=x-b.x, dz=z-b.z, d=Math.hypot(dx,dz); return d>1e-6?{x:dx/d,z:dz/d}:{x:1,z:0}; } }
   if(lavaRiver() && inRiver(x,z)){ const s=z>riverZ(LEVEL.river,x)?1:-1; return {x:0,z:s}; }
   return null;
 }
@@ -525,19 +539,19 @@ function genMaze(R){
 }
 const themeCache={};
 function themeOf(d){
-  const key=RUN_SEED+':'+d; if(themeCache[key]) return themeCache[key];
-  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), pick=a=>a[(R()*a.length)|0];
+  if(themeCache[d]) return themeCache[d];
+  const R=mulberry32((daySeed(d)>>>0)||1), pick=a=>a[(R()*a.length)|0];
   let theme='farm';
   const open=t=> t==='farm' || (d>=UNLOCK.worlds && (t==='desert'||t==='sea'||t==='moon')) || (d>=UNLOCK.hazards && (t==='sky'||t==='volcano'));
   const stop=trailStop(d);
   if(stop) theme=stop.theme;                                     // on the trail, the stop decides the world
   else if(d===UNLOCK.worlds) theme=pick(['sky','sea','moon','volcano']);
   else if(d>1){ const prev=themeOf(d-1); const opts=Object.keys(THEMES).filter(t=>open(t) && (t==='farm'||t!==prev)); let tot=opts.reduce((a,t)=>a+THEMES[t].w,0), x=R()*tot; for(const t of opts){ x-=THEMES[t].w; if(x<=0){ theme=t; break; } } }
-  return themeCache[key]=theme;
+  return themeCache[d]=theme;
 }
-function levelOf(d){ const key=RUN_SEED+':'+d; return levelCache[key]||(levelCache[key]=generateLevel(d)); }
+function levelOf(d){ return levelCache[d]||(levelCache[d]=generateLevel(d)); }
 function generateLevel(d){
-  const R=mulberry32(((RUN_SEED^Math.imul(d,2654435761))>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
+  const R=mulberry32((daySeed(d)>>>0)||1), r=(a,b)=>a+R()*(b-a), pick=a=>a[(R()*a.length)|0], chance=p=>R()<p;
   // theme: day 1 is always the farm; never the same special theme twice running
   const theme=themeOf(d), stop=trailStop(d); R();   // (themeOf used the first draw of this same sequence: skip it so the rest doesn't follow the theme)
   const L={theme,season:(stop&&stop.season)||THEMES[theme].season,walls:[],copses:[],rocks:[],holes:[],lava:[],pond:null,river:null,twist:null,special:stop&&stop.special||null};
@@ -564,8 +578,20 @@ function generateLevel(d){
   // a winding river with 1-3 bridges
   // the Grand Canyon: a rift right across the field, crossable only at a couple of narrow necks
   if(L.special==='canyon'){
+    // one continuous rift right across the shelf (a close chain of circles: the hazard is their union, and the land is carved
+    // and walled along its outline), broken only by two necks of solid ground 11 wide
     const zc=L.canyon.z, gap=(lo,hi,g0)=>{ if(g0!==undefined && sdAt(SD,g0,zc)>5) return g0; let b=lo, bs=-1e9; for(let t=0;t<30;t++){ const x=r(lo,hi), s=sdAt(SD,x,zc); if(s>6) return x; if(s>bs){ bs=s; b=x; } } return b; }, G0=L.canyon.gaps||[], gaps=[gap(-34,-12,G0[0]),gap(12,34,G0[1])];
-    for(let x=-FIELD-2;x<=FIELD+2;x+=6.2){ if(gaps.some(g=>Math.abs(g-x)<5.2)) continue; const rad=r(4,5), z=zc+r(-1.2,1.2); if(sdAt(SD,x,z)<-rad+.5) continue; L.holes.push({x,z,r:rad}); taken.push({x,z:zc,r:rad+2}); }
+    const wa=r(.6,1.4), wk=r(.07,.12), wp=r(0,TAU), wr=r(0,TAU), NECK=5.5;
+    L.canyon.gaps=gaps; L.canyon.wave=x=>zc+wa*Math.sin(wk*x+wp);
+    for(let x=-FIELD-4;x<=FIELD+4;x+=1.6){ const rad=3.5+.35*Math.sin(x*.21+wr), z=L.canyon.wave(x);
+      if(gaps.some(g=>Math.abs(g-x)<rad+NECK) || sdAt(SD,x,z)<-rad-1) continue; L.holes.push({x,z,r:rad}); }
+    for(const g of gaps) taken.push({x:g,z:zc,r:NECK+2});
+    taken.push(...L.holes.map(h=>({x:h.x,z:h.z,r:h.r+2})));
+    // the rift as a distance grid on the shape's lattice (positive on solid ground): its zero line sits 0.65 outside the
+    // circles, so the wall's lip is right where a sheep goes over (hazardAt: 0.35 inside a circle)
+    const rs=new Float32Array(SG_N*SG_N);
+    for(let j=0;j<SG_N;j++) for(let i=0;i<SG_N;i++){ const x=SG_O+i, z=SG_O+j; let v=99; for(const h of L.holes){ const q=Math.hypot(x-h.x,z-h.z)-h.r; if(q<v) v=q; } rs[j*SG_N+i]=v-.65; }
+    L.riftSD=rs;
   }
   if(L.special==='plains') L.twist='stampede';
   if(L.special!=='canyon' && L.special!=='columbia' && d>2 && !L.maze && !L.shape.K.regions.length && (theme==='farm'||theme==='desert'||theme==='sea'||theme==='volcano') && chance(theme==='volcano'?.55:.5)){
@@ -788,7 +814,8 @@ function genShape(L,R,d,stop){
     else if(tpl==='rim'){
       // the Grand Canyon: a broad shelf along the rift, land north of it by the barn and south of it where the flock is
       const zc=L.canyon.z, bw=r(8,9.5); gaps=[r(-30,-14),r(14,30)];
-      P.push(capP(-35,zc,35,zc,bw)); for(const g of gaps) P.push(capP(g,zc-9,g,zc+9,6.5));      // land right across the rift where its two necks will be P.push(capP(hub.x,hub.z,r(-12,12),zc,r(8,10)));
+      P.push(capP(-35,zc,35,zc,bw)); for(const g of gaps) P.push(capP(g,zc-9,g,zc+9,6.5));      // land right across the rift where its two necks will be
+      P.push(capP(hub.x,hub.z,r(-12,12),zc,r(8,10)));                                             // and the yard joined to the shelf
       grow(R,Object.assign({},base,{n:[0,1],r:[10,13],zMax:zc-8,pk:[0,1]}),P,nodes,spots);
       const S0={x:r(-16,16),z:zc+r(17,22),r:r(12,15)}, south=[S0]; P.push(capP(S0.x,S0.z,S0.x,S0.z,S0.r)); P.push(capP(S0.x,zc,S0.x,S0.z,r(8,10))); spots.push({x:S0.x,z:S0.z,r:S0.r*.55,pocket:false});
       grow(R,Object.assign({},base,{n:[1,2],r:[10,14],zMin:zc+9,pk:[1,2]}),P,south,spots);
@@ -845,7 +872,7 @@ function genShape(L,R,d,stop){
   for(let pass=0;pass<2;pass++){ tmp.set(sd); for(let j=1;j<N-1;j++) for(let i=1;i<N-1;i++){ const k=j*N+i; sd[k]=(tmp[k]*4+tmp[k-1]+tmp[k+1]+tmp[k-N]+tmp[k+N])/8; } }
   K.regions=best.regions; K.holes=best.holes;
   if(best.gaps) L.canyon.gaps=best.gaps;
-  return {sd,tpl:best.tpl,K,spots:best.spots.filter(s=>sdAt(sd,s.x,s.z)>2.5),spawnZ:best.spawnZ,river:best.river,area:best.area};
+  return {sd,tpl:best.tpl,K,spots:best.spots.filter(s=>sdAt(sd,s.x,s.z)>2.5),spawnZ:best.spawnZ,river:best.river,area:best.area,score:bestScore};
 }
 // edge kind weights at a point (w: Float32Array(NK))
 function kindWeights(K,x,z,w){
@@ -1104,7 +1131,15 @@ const _gc2=new THREE.Color();
   }
   g.setAttribute('color', new THREE.BufferAttribute(cols,3));
   g.computeVertexNormals();
-  const m=new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0}));
+  const gm=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,metalness:0});
+  // no shadows down on the floor of a drop or the canyon: the barn and fences up top would throw them far out across it
+  // (a fence floating in the canyon); the floor is in its own shade anyway
+  gm.onBeforeCompile=sh=>{
+    sh.vertexShader='varying float vGY;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n\tvGY=(modelMatrix*vec4(transformed,1.0)).y;');
+    sh.fragmentShader='varying float vGY;\n'+sh.fragmentShader.replace('#include <lights_fragment_begin>',THREE.ShaderChunk.lights_fragment_begin.split('receiveShadow ) )').join('receiveShadow && vGY>-4.0 ) )'));
+  };
+  gm.customProgramCacheKey=()=>'groundDeep';
+  const m=new THREE.Mesh(g, gm);
   groundMesh=m; groundBase=vars;
   m.receiveShadow=true; scene.add(m);
 })();
@@ -1497,7 +1532,7 @@ function ringFadeMat(m){
   m.customProgramCacheKey=()=>'ringfade';
   m.needsUpdate=true;
 }
-const ringTrees=[], RING_NEAR=120, RING_FAR=300;   // near: the front row (detailed, casting shadows); far: everything behind
+const ringTrees=[], RING_NEAR=420, RING_FAR=480;   // near: the front row (detailed, casting shadows); far: everything behind
 const ringMesh=(function(){
   const tg=mergeGeos([{g:new THREE.CylinderGeometry(.3,.46,2.9,7,1,true),m:partM(0,1.45,0,1)},{g:new THREE.CylinderGeometry(.46,.78,.55,7,1,true),m:partM(0,.27,0,1)}]);
   const trunks=new THREE.InstancedMesh(tg,trunkM,RING_NEAR+RING_FAR), crowns=[];
@@ -2541,9 +2576,10 @@ function newSheep(x,z,m,o){
   return {x,z,vx:0,vz:0,yaw:Math.random()*TAU,phase:Math.random()*10,m,penned:false,dead:false,deadT:0,hp:100,fear:0,wt:Math.random()*3,walking:false,wa:0,attacked:0,flash:0,carried:null,
     golden:!!o.golden,hop:0,ram:!!o.ram,lamb:!!o.lamb,mom:null,rs:'idle',rt:0,rcd:6+Math.random()*4,rtar:null,cdx:0,cdz:1,munch:0,munchCD:3+Math.random()*6,flip:0,boingCD:0,stress:0,trait:null,leader:false,jumpy:false,boltT:0,boltA:0};
 }
+const dogStartZ=()=>LEVEL.maze?LEVEL.maze.z1+4:PEN.z1+10;
 function resetDog(){
   for(const D of ALLDOGS){
-    const i=dogIdx(D), n=dogs.length; D.x=n>1?(i-(n-1)/2)*2.6:0; D.z=LEVEL.maze?LEVEL.maze.z1+4:PEN.z1+10; D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
+    const i=dogIdx(D), n=dogs.length; D.x=n>1?(i-(n-1)/2)*2.6:0; D.z=dogStartZ(); D.vx=D.vz=0; D.yaw=Math.PI; D.stamina=100; D.tired=false;
     D.barkCD=0; D.barkT=0; D.bangT=0; D.gunCD=0; D.zoomT=0; D.pounceT=0; D.pounceCD=0; D.stunT=0;
     D.stats={pens:0,drives:0,saves:0,catches:0,helps:0}; D.grab=null;
   }
@@ -2551,18 +2587,20 @@ function resetDog(){
 }
 function setupDay(){
   clearAnimals();
-  applySeason(seasonOf(G.day));
-  buildLevel(levelOf(G.day));
+  const d=G.day;
+  applySeason(seasonOf(d));
+  seeded(d,1,()=>buildLevel(levelOf(d)));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; for(const D of ALLDOGS){ D.appleT=0; D.lanternT=0; } G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
-  clearClover(); spawnClover(cloverCount(G.day));
-  if(G.day>=UNLOCK.bones) spawnGoldBones(); else clearGoldBones();
-  placeShroom();
-  spawnFlock(flockSize(G.day)+(G.twist==='tiny'?4:0));
-  setupPuzzle();
-  setupCougar();
+  // everything laid out on the land is part of the level too: the same every time this day is played
   resetDog();
+  clearClover(); seeded(d,2,()=>spawnClover(cloverCount(d)));
+  if(d>=UNLOCK.bones) seeded(d,3,spawnGoldBones); else clearGoldBones();
+  seeded(d,4,placeShroom);
+  seeded(d,5,()=>spawnFlock(flockSize(d)+(G.twist==='tiny'?4:0)));
+  seeded(d,6,setupPuzzle);
+  seeded(d,7,setupCougar);
   if(G.day>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
   NIGHT_LEN = 50 + Math.min(25,(G.day-1)*4);
@@ -2779,7 +2817,7 @@ function startGame(fresh,jumpDay){
   G.names=['dogName','dogName2','dogName3','dogName4'].map((id,i)=>{ const el=$(id), key='collieDuskName'+(i?i+1:''); let saved=null; try{ saved=localStorage.getItem(key); }catch(e){}
     const v=((el&&el.value.trim())||saved||(G.names&&G.names[i])||DEFAULT_NAMES[i]).slice(0,14); try{ localStorage.setItem(key,v); }catch(e){} return v; });
   G.name=G.names[0]; G.name2=G.names[1];
-  if(fresh){ G.day=1; G.total=0; G.np=playerChoice; G.coop=G.np>1; G.hardcore=hardcoreChoice; RUN_SEED=(Math.random()*1e9)|0; }
+  if(fresh){ G.day=1; G.total=0; G.np=playerChoice; G.coop=G.np>1; G.hardcore=hardcoreChoice; }
   if(fresh && jumpDay) G.day=jumpDay;
   $('devOverlay').hidden=true;
   G.dayStartTotal=G.total;          // a lost day is replayed from here (unless it's a hardcore run)
@@ -3106,7 +3144,7 @@ function edgeSpot(){
   const lp=edgeLoops.reduce((a,b)=>b.length>a.length?b:a), sd=LEVEL.shape.sd;
   for(let t=0;t<40;t++){ const p=lp[(Math.random()*lp.length)|0]; if(p[1]<PEN.z1+4) continue;
     const gx=sdAt(sd,p[0]+.5,p[1])-sdAt(sd,p[0]-.5,p[1]), gz=sdAt(sd,p[0],p[1]+.5)-sdAt(sd,p[0],p[1]-.5), l=Math.hypot(gx,gz)||1, k=kindAt(p[0]-gx/l*5,p[1]-gz/l*5), wet=k===KW||k===KL||k===KD;
-    if(wet && t<28) continue; const o=wet?1.5:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }
+    if(wet && t<28) continue; const o=wet?-2:9; return {x:p[0]-gx/l*o,z:p[1]-gz/l*o}; }   // out of the woods or off the cliff top; by water or a drop, from just inside the edge (not walking on air)
   return null;
 }
 function spawnCoyote(alpha,boss){
@@ -3528,7 +3566,7 @@ function updateSheep(dt){
             // pressure has a direction: a dog walking onto the flock drives it the way it's walking, so you can steer it
             let ux=dx/d, uz=dz/d; const dv=D.speed; if(dv>1.5 && D.barkT<=0){ const vx=D.vx/dv, vz=D.vz/dv, dot=vx*ux+vz*uz; if(dot>-.2){ const w=.9*Math.min(1,dv/8); ux+=vx*w; uz+=vz*w; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul; } }
             fx+=ux*k*str; fz+=uz*k*str; fear=Math.max(fear,k*(D.barkT>0?1:.8));
-            if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=1;      // driven hard: could go over the edge
+            if(d<R*.6 && (D.speed>11 || D.barkT>0 || D.pounceT>0)) s.hard=Math.max(s.hard,D.barkT>0||D.pounceT>0?2:1);      // driven hard: could go over the edge
             if(k>s.press){ s.press=k; s.pressD=D; }                                 // how hard the closest dog is crowding it
             // the outer part of the zone just walks them on; stress builds when the dog crowds in or comes in fast
             const inner=Math.max(0,1-d/(R*.55));
@@ -3573,7 +3611,8 @@ function updateSheep(dt){
         if(ld>9 && Math.random()<dt*.4) sBleat(1.75);
       }
       // sheep shy away from lava and cliff edges, but a dog driving them hard can still push them in
-      if(LEVEL.haz) for(const h of LEVEL.haz){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; if(hd<m){ const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } }
+      // (the canyon's rift is a chain of overlapping circles: only the nearest one pushes, so it isn't many times as strong)
+      if(LEVEL.haz){ let hb=null, hm=0; for(const h of LEVEL.haz){ const hd=Math.hypot(s.x-h.x,s.z-h.z), m=h.r+2.5-hd; if(m>hm){ hm=m; hb=h; } } const h=hb; if(h){ const hx=s.x-h.x, hz2=s.z-h.z, hd=Math.hypot(hx,hz2)+1e-6, m=h.r+2.5; { const k=Math.min(1.4,(m-hd)/2.5); fx+=hx/hd*k*9; fz+=hz2/hd*k*9; if(k>.7 && !G.saidLava && G.phase!=='title'){ G.saidLava=true; shepSay(h.kind==='lava'?'Mind the lava, '+G.name+'!':'Easy! Ye\'ll scatter them!',true); } } } }
       // calm sheep near the gate flow on in
       { const gx=s.x, gz=s.z-(PEN.z1+1), gd=Math.hypot(gx,gz); if(!PZ.locked && gd<12 && s.z>PEN.z1-1){ const k=1-gd/12, tx=-s.x, tz=(PEN.z1-4)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*10*k; fz+=tz/td*10*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
@@ -3662,10 +3701,14 @@ function updateSheep(dt){
     let maxV=(G.ev&&G.ev.kind==='sugar'?1.6:1)*sheepHill*twistV*(LEVEL.theme==='moon'?.9:1)*(1.4+s.fear*8)+panic*2+(s.trait==='stubborn'?-1:0); if(s.golden) maxV+=1.5; if(s.lamb) maxV+=1.8; if(s.rainbow) maxV+=2.5; if(s.penned) maxV=1.3;
     const v=Math.hypot(s.vx,s.vz); if(v>maxV && s.flip<=0){ s.vx*=maxV/v; s.vz*=maxV/v; }
     // the edge of lava or a cliff: a sheep stops and slides along it, unless a dog is driving it hard (or it's flying)
-    if(!s.penned && (s.safeT>0 || (!s.hard && !(s.thrownT>0) && s.flip<=0))){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
+    // (the canyon's rift runs right across the field, so there it takes a bark or a pounce, not just a dog running past)
+    const guard=!s.penned && (s.safeT>0 || (!(s.hard>1 || (s.hard && !LEVEL.riftSD)) && !(s.thrownT>0) && s.flip<=0)), opx=s.x, opz=s.z;
+    if(guard){ const hn=hazardNormal(s.x+s.vx*dt*4,s.z+s.vz*dt*4); if(hn){ const vn=s.vx*hn.x+s.vz*hn.z; if(vn<0){ s.vx-=vn*hn.x*1.6; s.vz-=vn*hn.z*1.6; } } }
     s.x+=s.vx*dt; s.z+=s.vz*dt;
     // a sheep dropped just outside the boundary slips back through the wire
     collide(s,s.lamb?.45:.7,{gate:s.penned,perim:onField(s.x,s.z)});
+    // still nudged over the edge (by a fence, a rock, a shove)? a sheep nobody's driving hard digs its heels in instead
+    if(guard && hazardAt(s.x,s.z) && !hazardAt(opx,opz)){ s.x=opx; s.z=opz; s.vx*=-.3; s.vz*=-.3; }
     if(!s.penned && G.phase!=='title'){ const hz=s.safeT>0?null:hazardAt(s.x,s.z); if(hz && !s.carried && !s.grabbedBy){ hazardKill(s,hz); continue; } checkGoal(s); }
     s.attacked=Math.max(0,s.attacked-dt);
   }
@@ -3700,9 +3743,13 @@ function ramUpdate(s,dt){
     if(Math.random()<dt*10) burst(s.x-Math.sin(s.yaw)*.7,.2,s.z-Math.cos(s.yaw)*.7,2,PC.dust,1.5,1.5);
     if(t.isDog && t.barkT>0){ s.rs='idle'; s.rcd=8; s.fear=1; return false; }
     s.rt-=dt;
-    if(s.rt<=0){ const dx=t.x-s.x, dz=t.z-s.z, d=Math.hypot(dx,dz)+1e-6; s.cdx=dx/d; s.cdz=dz/d; s.rs='charge'; s.rt=1; sWhoosh(); }
+    if(s.rt<=0){ const dx=t.x-s.x, dz=t.z-s.z, d=Math.hypot(dx,dz)+1e-6; s.cdx=dx/d; s.cdz=dz/d;
+      // not straight over the edge of the canyon (or into lava, or the river): it thinks better of it
+      let clear=true; for(let q=1;q<=Math.min(d,14);q+=.7){ const x=s.x+s.cdx*q, z=s.z+s.cdz*q; if(hazardAt(x,z)||inRiver(x,z)){ clear=false; break; } }
+      if(clear){ s.rs='charge'; s.rt=1; sWhoosh(); } else { s.rs='idle'; s.rcd=3; } }
   } else if(s.rs==='charge'){
     s.vx=s.cdx*14; s.vz=s.cdz*14;
+    { const x=s.x+s.cdx*1.6, z=s.z+s.cdz*1.6; if(hazardAt(x,z)||inRiver(x,z)){ s.rs='dazed'; s.rt=1.2; s.vx=s.vz=0; } }   // skids to a stop at the edge
     if(Math.random()<dt*20) burst(s.x,.2,s.z,1,PC.dust,1,1);
     const d=Math.hypot(t.x-s.x,t.z-s.z);
     if(d<(t.isDog?1.8:2)){
@@ -4368,6 +4415,14 @@ function makeTerrier(){
 const rascal={isRascal:true,active:false,state:'run',x:0,z:0,vx:0,vz:0,yaw:0,phase:0,t:0,target:null,m:makeTerrier()};
 rascal.m.g.visible=false;
 function resetRascal(){ rascal.active=false; rascal.m.g.visible=false; G.rascalDone=G.day<UNLOCK.rascal; G.rascalAt=.25+Math.random()*.3; }
+// a spot on solid ground just in from the edge of the land, going out from (x,z) at angle a: where things come in from the
+// wild and go back out again (not over a cliff or out of the sea)
+function landEntry(x,z,a,pad){
+  pad=pad||2.5; let best=null; const ca=Math.cos(a), sa=Math.sin(a);
+  for(let r=0;r<90;r+=1){ const px=x+ca*r, pz=z+sa*r, f=fieldD(px,pz); if(f<0 && r>4) break;
+    if(f>=pad && pz>PEN.z1+4 && !hazardAt(px,pz) && !inRiver(px,pz) && pondD(px,pz)>1.5) best={x:px,z:pz}; }
+  return best||{x,z};
+}
 function rascalLeave(shooed,D){
   if(rascal.state==='leave') return;
   rascal.state='leave'; rascal.target=null;
@@ -4377,7 +4432,9 @@ function updateRascal(dt){
   if(!rascal.active){
     if(G.phase==='day' && !G.rascalDone && G.t/dayLen(G.day)>G.rascalAt){
       G.rascalDone=true; rascal.active=true; rascal.state='run'; rascal.t=0; rascal.m.g.visible=true;
-      const a=Math.PI*(.15+Math.random()*.7); rascal.x=Math.cos(a)*(FIELD+4); rascal.z=Math.sin(a)*(FIELD+4)*.9; rascal.vx=rascal.vz=0;
+      // out of the woods (or from behind a rock) at the land's edge, never in over a cliff or out of the water
+      const mid=flockMid(), a=Math.PI*(.15+Math.random()*.7), e=landEntry(mid.x,mid.z,a,2); rascal.x=rascal.hx=e.x; rascal.z=rascal.hz=e.z; rascal.vx=rascal.vz=0;
+      burst(e.x,.4,e.z,14,PC.dust,3,2);
       sYip(1); setTimeout(()=>sYip(1.1),160); shepSay("That wee rascal's loose again!",true);
     }
     return;
@@ -4395,8 +4452,9 @@ function updateRascal(dt){
     if(rascal.t>28 || G.phase!=='day') rascalLeave(false);
   }
   if(rascal.state==='leave'){
-    const d=Math.hypot(rascal.x,rascal.z)+1e-6; dirx=rascal.x/d; dirz=rascal.z/d; spd=12.5;
-    if(Math.max(Math.abs(rascal.x),Math.abs(rascal.z))>FIELD+8){ rascal.active=false; rascal.m.g.visible=false; return; }
+    // back the way it came, and off into the woods
+    const hx=rascal.hx===undefined?rascal.x*2:rascal.hx, hz=rascal.hz===undefined?rascal.z*2:rascal.hz, dx=hx-rascal.x, dz=hz-rascal.z, d=Math.hypot(dx,dz)+1e-6; dirx=dx/d; dirz=dz/d; spd=12.5;
+    if(d<1.5 || rascal.t>60){ burst(rascal.x,.4,rascal.z,14,PC.dust,3,2); rascal.active=false; rascal.m.g.visible=false; return; }
   }
   const a=1-Math.exp(-dt*7); rascal.vx+=(dirx*spd-rascal.vx)*a; rascal.vz+=(dirz*spd-rascal.vz)*a;
   rascal.x+=rascal.vx*dt; rascal.z+=rascal.vz*dt; collide(rascal,.4,{gate:true,perim:false});
@@ -4734,9 +4792,10 @@ function spawnGoldBones(){
     const x=(Math.random()*2-1)*(FIELD-4), z=PEN.z1+4+Math.random()*(FIELD-PEN.z1-8);
     if(!clearOf(x,z,1.5) || Math.hypot(x,z-(PEN.z1+10))<16 || goldBones.some(b=>Math.hypot(b.x-x,b.z-z)<20)) continue;
     if(fieldD(x,z)>9 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) continue;
-    const g=makeGoldBone(); g.position.set(x,groundH(x,z)+.5,z); scene.add(g);
-    goldBones.push({x,z,g,got:false}); i++;
+    goldBones.push({x,z,g:null,got:false}); i++;
   }
+  // the meshes after the spots are picked (the first one built draws on Math.random, which would shift the layout)
+  for(const b of goldBones){ const g=b.g=makeGoldBone(); g.position.set(b.x,groundH(b.x,b.z)+.5,b.z); scene.add(g); }
 }
 function updateBoneIcons(){ const icons=document.querySelectorAll('#bones svg'); icons.forEach((el,i)=>el.classList.toggle('got',i<(G.bonesGot||0))); }
 function updateGoldBones(dt,time){
@@ -4800,7 +4859,7 @@ function placeMads(){
   const n=G.day>=11?3:2;
   for(let tries=0;tries<400 && MADS.length<n;tries++){
     const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
-    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x-dog.x,z-dog.z)<12) continue;
+    if(!clearOf(x,z,1.5) || MADS.some(m=>Math.hypot(m.x-x,m.z-z)<16) || Math.hypot(x,z-dogStartZ())<12) continue;
     const g=new THREE.Group(); g.position.set(x,groundH(x,z),z);
     for(const [sc,ox,oz,ry] of [[.42,0,0,0],[.3,.34,.18,1.2],[.26,-.28,.22,2.3],[.2,.1,-.32,.4]]){ const b=new THREE.Mesh(shroom.userData.body,madMat); b.position.set(ox,0,oz); b.scale.setScalar(sc); b.rotation.y=ry; b.castShadow=true; g.add(b); }
     scene.add(g); MADS.push({x,z,g,eaten:false});
@@ -4835,7 +4894,7 @@ function placeShroom(){
   if(G.day<UNLOCK.shroom) return;
   for(let tries=0;tries<300;tries++){
     const x=(Math.random()*2-1)*(FIELD-6), z=PEN.z1+10+Math.random()*(FIELD-PEN.z1-14);
-    if(!clearOf(x,z,2) || Math.hypot(x-dog.x,z-dog.z)<15) continue;
+    if(!clearOf(x,z,2) || Math.hypot(x,z-dogStartZ())<15) continue;
     shroomSpot=[x,z]; shroom.position.set(x,groundH(x,z),z); shroom.visible=true; return;
   }
 }
@@ -5228,6 +5287,7 @@ function terrainAt(x,z,s,hc,w){
     let y=Math.max(-1.2,rh)*smooth01(PEN.z1+3,PEN.z1+15,z)*smooth01(1.5,10,pondD(x,z))*smooth01(1,9,s);
     const ww=w[KW]+w[KL];
     if(ww>0){ const yb=WL+.3+1.3*smooth01(0,7,s); y=lerp(y,yb,ww*(1-smooth01(4,9,s))); }        // beaches slope down to the water
+    if(LEVEL.riftSD){ const rd=-sdAt(LEVEL.riftSD,x,z); if(rd>1){ const k=smooth01(1,2.2,rd); y=lerp(y,-38+3*(vnoise(x*.05,z*.05)-.5)*smooth01(3,8,rd),k); } }   // down into the canyon
     return y;
   }
   const d=-s; let y=0;
@@ -5328,7 +5388,7 @@ function simplifyLoop(L,tol){
 const ribMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide});
 const foamStripMat=new THREE.MeshStandardMaterial({color:PAL.foam,roughness:1,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
 const glowStripMat=new THREE.MeshBasicMaterial({color:0xffd25a,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
-let edgeLoops=[], mmBg=null;
+let edgeLoops=[], edgeInfo=[], mmBg=null;   // edgeInfo: per point of each edge loop, what closes the land off there (see buildEdges)
 function ribRun(acc,pts,rows){
   const base=acc.p.length/3, R=rows.length;
   for(const q of pts) for(let r=0;r<R;r++){ const v=rows[r](q); acc.p.push(q.x+q.nx*v[0],v[1],q.z+q.nz*v[0]); const c=v[2]; acc.c.push(c.r*q.cm,c.g*q.cm,c.b*q.cm); }
@@ -5352,15 +5412,20 @@ function buildEdges(L){
   const topC=cliffTop(S2,th);
   const up={p:[],c:[],i:[]}, down={p:[],c:[],i:[]}, foam={p:[],c:[],i:[]}, foam2={p:[],c:[],i:[]}, glow={p:[],c:[],i:[]};
   const TYPE={[KC]:'up',[KR]:'up',[KM]:'up',[KD]:'down',[KW]:'foam',[KL]:'glow'};
-  for(const lp of edgeLoops){
-    const n=lp.length; let s=0;
-    const pts=lp.map((p,i)=>{ const x=p[0], z=p[1], gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
+  edgeInfo=[];
+  // the Grand Canyon's rift is walled the same way as a drop at the edge (it has no collision: you can go over)
+  const riftLoops=L.riftSD?contourLoops(L.riftSD).map(lp=>resample(chaikin(lp),1)).filter(lp=>lp.some(p=>sdAt(S.sd,p[0],p[1])>-1)):[];
+  for(const lp of edgeLoops.concat(riftLoops)){
+    const n=lp.length; let s=0, rift=riftLoops.includes(lp), SD=rift?L.riftSD:S.sd;
+    const pts=lp.map((p,i)=>{ const x=p[0], z=p[1], gx=sdAt(SD,x+.5,z)-sdAt(SD,x-.5,z), gz=sdAt(SD,x,z+.5)-sdAt(SD,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
       if(i) s+=Math.hypot(x-lp[i-1][0],z-lp[i-1][1]);
       const w=kindWeights(S.K,x+nx*2.5,z+nz*2.5,_kw); let b=0; for(let q=1;q<NK;q++) if(w[q]>w[b]) b=q;
       let oc=4.6; for(let o=1;o<=4.6;o+=.4){ if(-sdAt(S.sd,x+nx*o,z+nz*o)<o*.75-.2){ oc=Math.max(1.2,o-.4); break; } }
       let type=TYPE[b]||null; const g=groundH(x-nx*.4,z-nz*.4), top=groundH(x+nx*oc,z+nz*oc)+.12, sq=oc/4.6;
       let low=false; if(type==='up' && top-g<1.2){ type=null; low=true; }
-      return {x,z,nx,nz,s,type,low,g,top,sq,j:(vnoise(s*.4,7.3)-.5)*.8,j2:(vnoise(s*.4,2.1)-.5)*.8,cm:.92+.16*vnoise(s*.7,1.1)}; });
+      if(rift){ type=sdAt(S.sd,x,z)>-.5?'down':null; b=KD; }
+      return {x,z,nx,nz,s,kind:b,type,low,g,top,sq,j:(vnoise(s*.4,7.3)-.5)*.8,j2:(vnoise(s*.4,2.1)-.5)*.8,cm:.92+.16*vnoise(s*.7,1.1)}; });
+    edgeInfo.push(pts);
     // runs of one type (a loop that is all one type wraps round)
     let start=0; while(start<n && pts[start].type===pts[(start+n-1)%n].type) start++; const allSame=start>=n; if(allSame) start=0;
     const order=[]; for(let i=0;i<=n;i++) order.push(pts[(start+i)%n]);
@@ -5412,12 +5477,13 @@ function levelFence(lines){
 function layoutRingTrees(L){
   const S=L.shape, near=[], far=[], NC=RING_NEAR, FC=RING_FAR;
   const add=(arr,cap,x,z,s)=>{ if(arr.length<cap) arr.push({x,z,s}); };
-  for(const lp of edgeLoops){
-    for(let i=0;i<lp.length;i+=2){ const x=lp[i][0], z=lp[i][1];
-      const gx=sdAt(S.sd,x+.5,z)-sdAt(S.sd,x-.5,z), gz=sdAt(S.sd,x,z+.5)-sdAt(S.sd,x,z-.5), l=Math.hypot(gx,gz)||1, nx=-gx/l, nz=-gz/l;
-      const k=kindAt(x+nx*3,z+nz*3), south=nz>.35, sm=south?.62:1;
+  // walk the edge points buildEdges classified: wherever it left the edge open (no cliff, drop, shore or boulders) the woods
+  // close it, a front row every two metres all the way along, so the land never stops at a gap you can see through
+  for(const pts of edgeInfo){
+    for(let i=0;i<pts.length;i+=2){ const q=pts[i], x=q.x, z=q.z, nx=q.nx, nz=q.nz;
+      const k=q.type||q.low ? kindAt(x+nx*3,z+nz*3) : KF, south=nz>.35, sm=south?.62:1;
       const at=(o,sp)=>{ const a=(Math.random()-.5)*sp; return [x+nx*o-nz*a,z+nz*o+nx*a]; };
-      if(k===KF){ let p=at(1.9+Math.random()*.8+(south?.6:0),1.6); add(near,NC,p[0],p[1],(1+Math.random()*.5)*sm);
+      if(k===KF){ let p=at(1.9+Math.random()*.6+(south?.6:0),1.2); add(near,NC,p[0],p[1],(1.05+Math.random()*.45)*sm);
         if(Math.random()<.7){ p=at(4.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],(1.1+Math.random()*.6)*sm); }
         if(Math.random()<.6){ p=at(7.5+Math.random()*4,3); add(far,FC,p[0],p[1],(1.2+Math.random()*.6)*sm); } }
       else if(k===KR){ let p=at(1.4+Math.random()*1,1.4); add(near,NC,p[0],p[1],.9+Math.random()*.6); if(Math.random()<.6){ p=at(3.2+Math.random()*2,2.4); add(far,FC,p[0],p[1],1+Math.random()*.6); } }
@@ -5437,6 +5503,7 @@ function drawMinimapBg(L){
   const CK=[[30,62,34],[112,96,78],[52,118,168],[18,24,40],[176,74,32],[168,86,98],[84,84,96]];
   for(let j=0;j<W;j++) for(let i=0;i<W;i++){ const wx=(i+.5)/W*(2*FIELD+12)-FIELD-6, wz=(j+.5)/W*(2*FIELD+12)-FIELD-6, s=sdAt(S.sd,wx,wz), o=(j*W+i)*4;
     let c; if(s>1.1) c=[98,150,72]; else if(s>-.4) c=[236,226,196]; else c=CK[kindAt(wx,wz)];
+    if(L.riftSD && s>-.4){ const rf=sdAt(L.riftSD,wx,wz); if(rf<-1) c=[58,26,18]; else if(rf<.2) c=[236,226,196]; }   // the canyon's rift, dark, with a pale lip
     D[o]=c[0]; D[o+1]=c[1]; D[o+2]=c[2]; D[o+3]=s>1.1?235:s>-.4?240:200; }
   x.putImageData(img,0,0);
 }
@@ -5623,8 +5690,9 @@ function buildLevel(L){
     hideGrass((x,z)=>Math.abs(z-riverZ(R,x))<R.w/2+1.2 && Math.abs(x)<FIELD+1);
   }
   // chasms (sky) and craters (moon)
-  for(const h of L.holes){
-    if(L.theme!=='sky' && !L.canyon) circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms and the canyon don't stop you: you fall in
+  if(L.riftSD) hideGrass((x,z)=>sdAt(L.riftSD,x,z)<.6);     // the canyon's rift is carved into the terrain and walled in buildEdges
+  for(const h of L.riftSD?[]:L.holes){
+    if(L.theme!=='sky' && !L.canyon) circles.push({x:h.x,z:h.z,r:h.r,level:true});     // sky chasms don't stop you: you fall in
     const base=groundH(h.x,h.z), moon=L.theme==='moon';
     // a hole in the island: sky blue, deeper in the middle, with a lip of bare earth and clouds drifting just inside;
     // on the Moon a dusty bowl with a soft raised rim
@@ -6237,7 +6305,7 @@ function startSurprise(kind){
     if(!pool.length){ G.ev=null; return; }
     ev.s=pool[(Math.random()*pool.length)|0]; popText(ev.s.x,2.6,ev.s.z,'?','red');
   } else if(kind==='twister'){
-    const a=Math.random()*TAU, R=FIELD+4; ev.x=mid.x+Math.cos(a)*R; ev.z=mid.z+Math.sin(a)*R;
+    const a=Math.random()*TAU, e=landEntry(mid.x,mid.z,a,3); ev.x=e.x; ev.z=e.z;      // spins up at the edge of the land
     const tx=mid.x+(Math.random()-.5)*8, tz=mid.z+(Math.random()-.5)*8, d=Math.hypot(tx-ev.x,tz-ev.z)+1e-6; ev.dx=(tx-ev.x)/d; ev.dz=(tz-ev.z)/d;
     // a stylised swirl: see-through spiral funnel, white swooshes, debris whirling round, dust puffs at its foot
     const A=surpriseArt(), g=sxAdd(new THREE.Group()), lean=new THREE.Group(), spin=new THREE.Group(), orbit=new THREE.Group(), dust=new THREE.Group();
@@ -6331,7 +6399,7 @@ function updateSurprise(dt){
     }
     for(const D of dogs){ if(D.flying||D.stunT>0) continue; const dx=D.x-ev.x, dz=D.z-ev.z, d=Math.hypot(dx,dz); if(d<3){ D.stunT=.7; D.vx=dx/(d+1e-6)*16; D.vz=dz/(d+1e-6)*16; popText(D.x,2.6,D.z,'WHEEE!','gold'); sYelp(); } }
     if(Math.random()<dt*30) burst(ev.x+(Math.random()-.5)*3,.3,ev.z+(Math.random()-.5)*3,2,PC.dust,4,3);
-    if(ev.t>4 && (Math.abs(ev.x)>FIELD+6 || Math.abs(ev.z)>FIELD+6) || ev.t>ev.dur) endSurprise();
+    if(ev.t>3 && (fieldD(ev.x,ev.z)<1 || hazardAt(ev.x,ev.z)) || ev.t>ev.dur) endSurprise();      // it blows itself out at the edge
     return;
   }
   if(ev.kind==='chutes'){
@@ -6376,7 +6444,8 @@ function syncSurprise(dt,time){
   // big air for sheep thrown by a twister or a bale
   for(const s of G.sheep){ if(s.air>0){ s.air=Math.max(0,s.air-dt*1.1); if(!s.dead) s.m.g.position.y+=Math.sin(s.air*Math.PI)*4.5; } if(s.safeT>0) s.safeT-=dt; }
   if(!ev) return;
-  if(ev.kind==='twister' && ev.g){ const u=ev.g.userData; ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z); u.spin.rotation.y+=dt*9; u.orbit.rotation.y+=dt*5.5; u.dust.rotation.y-=dt*2.5;
+  if(ev.kind==='twister' && ev.g){ const u=ev.g.userData; ev.g.position.set(ev.x,groundH(ev.x,ev.z),ev.z);
+    ev.g.scale.setScalar(Math.max(.05,Math.min(1,ev.t/1.2,ev.t>3?(fieldD(ev.x,ev.z)-1)/4:1,(ev.dur-ev.t)/1.2)));      // grows as it spins up, shrinks as it dies u.spin.rotation.y+=dt*9; u.orbit.rotation.y+=dt*5.5; u.dust.rotation.y-=dt*2.5;
     u.lean.rotation.z=Math.sin(time*1.7)*.09; u.lean.rotation.x=Math.cos(time*1.3)*.07; u.tex.offset.y-=dt*.7; }
   if(ev.kind==='bales') for(const b of ev.b) b.g.position.set(b.x,groundH(b.x,b.z)+1.7,b.z);
   if(ev.kind==='disco'){
@@ -6742,7 +6811,7 @@ function drawMinimap(time){
   mx.fillStyle='#b9c98a'; mx.fillRect(X(shep.x)-3.5,Y(shep.z)-3.5,7,7);
   if(lv('nose')) for(const gb of goldBones){ if(gb.got) continue; mx.fillStyle='#ffd34d'; mx.beginPath(); mx.arc(X(gb.x),Y(gb.z),3.5+Math.sin(time*5)*1,0,TAU); mx.fill(); }
   for(const L of llamas){ if(!L.active) continue; mx.fillStyle='#eadfc8'; mx.fillRect(X(L.x)-3,Y(L.z)-4,6,8); }
-  if(LEVEL.haz) for(const h of LEVEL.haz){ mx.fillStyle=h.kind==='lava'?'rgba(255,106,26,.85)':'rgba(190,230,255,.7)'; mx.beginPath(); mx.arc(X(h.x),Y(h.z),h.r*S,0,TAU); mx.fill(); }
+  if(LEVEL.haz) for(const h of LEVEL.haz){ if(LEVEL.riftSD && h.kind==='chasm') continue; mx.fillStyle=h.kind==='lava'?'rgba(255,106,26,.85)':'rgba(190,230,255,.7)'; mx.beginPath(); mx.arc(X(h.x),Y(h.z),h.r*S,0,TAU); mx.fill(); }
   const dx=X(dog.x), dy=Y(dog.z);
   mx.fillStyle='#f2b544'; mx.beginPath(); mx.arc(dx,dy,5.5,0,TAU); mx.fill();
   mx.strokeStyle='#111'; mx.lineWidth=2; mx.beginPath(); mx.moveTo(dx,dy); mx.lineTo(dx+Math.sin(dog.yaw)*9,dy+Math.cos(dog.yaw)*9); mx.stroke();
@@ -6870,7 +6939,8 @@ function step(dt){
       G.stampT=(G.stampT===undefined?14:G.stampT)-dt;
       if(G.stampT<=0){
         // the whole flock bolts the same way at once
-        G.stampT=16+Math.random()*8; const a=Math.random()*TAU;
+        G.stampT=16+Math.random()*8; const mid=flockMid(); let a=Math.random()*TAU, room=-1;
+        for(let k=0;k<10;k++){ const b=Math.random()*TAU; let r=0; for(;r<18;r+=1.5){ const x=mid.x+Math.cos(b)*r, z=mid.z+Math.sin(b)*r; if(fieldD(x,z)<2 || hazardAt(x,z) || z<PEN.z1+2) break; } if(r>room){ room=r; a=b; } }
         for(const sh of G.sheep){ if(sh.dead||sh.penned||sh.carried||sh.grabbedBy) continue; sh.boltA=a+(Math.random()-.5)*.5; sh.boltT=1.4; sh.stress=Math.min(1,sh.stress+.15); sh.munch=0; }
         toast('Stampede!','warn',1.6); sThud(); G.shake=Math.max(G.shake,.6);
       }
