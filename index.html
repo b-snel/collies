@@ -2714,10 +2714,43 @@ function sizeClover(c){ const k=cloverK(c); if(Math.abs(k-c.shown)<.02) return; 
   c.dm.color.copy(c.green).lerp(c.bareC,clamp((1-c.food)*1.15,0,1)); c.leaves.scale.y=Math.max(.05,c.food); c.leaves.visible=c.food>.12; c.fl.visible=c.food>.5; }
 // the nearest patch that isn't grazed bare (a bare one's no good till it's grown back to about half) (up: only patches up on a
 // seesaw plateau, or only ones below it)
+const cloverOK=(c,up)=>!(c.food<BARE || c.bare || (up!==undefined && !!c.up!==!!up));
+const cloverInfo=(c,x,z)=>({x:c.x,z:c.z,r:(c.rA?c.rA(Math.atan2(z-c.z,x-c.x)):c.r)*cloverK(c),d:Math.hypot(c.x-x,c.z-z),c});
 function nearestClover(x,z,up){
   let best=null, bd=1e9;
-  for(const c of clovers){ if(c.food<BARE || c.bare || (up!==undefined && !!c.up!==!!up)) continue; const d=Math.hypot(c.x-x,c.z-z); if(d<bd){ bd=d; best=c; } }
-  return best ? {x:best.x,z:best.z,r:(best.rA?best.rA(Math.atan2(z-best.z,x-best.x)):best.r)*cloverK(best),d:bd,c:best} : null;
+  for(const c of clovers){ if(!cloverOK(c,up)) continue; const d=Math.hypot(c.x-x,c.z-z); if(d<bd){ bd=d; best=c; } }
+  return best ? cloverInfo(best,x,z) : null;
+}
+// ---- what a sheep wants most right now ----
+// Each drive is scored from the sheep's own state, and the strongest one is its goal:
+//   'flee'  a coyote (or the rascal) is close: safety first, the grass and the flock can wait
+//   'graze' it's hungry and there's clover it can get to. The hungrier it is, the further it'll go and the less the flock
+//           (or the pen, with the rest of them in it) matters; a scared one needs to be hungrier still
+//   'flock' stay with the others, and once it's fed, go where they go: into the pen
+// A goal sticks for a moment, and a new one has to beat it clearly, so a sheep doesn't dither between the clover and the
+// flock. It also keeps heading for the patch it picked unless another is clearly nearer.
+// how hungry (0 = fed, .45 = only just short of FED, 1 = starving)
+const hungerOf=s=>needsFeed(s)?.45+.55*clamp(1-(s.full||0)/FED,0,1):0;
+const grazeRange=h=>18+50*h;        // how far it'll go for clover (about 40 to 70)
+function pickGoal(s,dt,hunger,up,pF){
+  s.goalT=(s.goalT||0)-dt; s.goalHold=Math.max(0,(s.goalHold||0)-dt);
+  const th=s.threat||0;
+  if(th>.12 && s.goal!=='flee'){ s.goal='flee'; s.goalHold=1; s.goalT=.3; return; }     // a predator: no weighing it up
+  if(s.goalT>0 && s.goal) return;
+  s.goalT=.25+Math.random()*.2;
+  // the patch it's after: stay with the one it picked while it's still good and not much further than the nearest
+  let g=null;
+  if(hunger>0){ const n=nearestClover(s.x,s.z,up), p=s.grassC && clovers.includes(s.grassC) && cloverOK(s.grassC,up) ? cloverInfo(s.grassC,s.x,s.z) : null;
+    g=p && (!n || p.d<n.d*1.35+4) ? p : n; }
+  s.grassC=g?g.c:null;
+  const range=grazeRange(hunger), fear=s.fear||0;
+  const sFlee=th>.05?.6+th*2:0;
+  const sGraze=g && g.d<range ? hunger*(.45+.55*clamp(1-Math.max(0,g.d-g.r)/range,0,1))*(1-th)*(1-th)*clamp(1.3-fear*(1.4-hunger),0,1) : 0;
+  // the flock's pull. For a hungry one it fades as the rest go into the pen: it can't join them in there till it's eaten
+  const sFlock=(.28+(s.stray?.08:0))*(hunger>0?1-.6*pF:1);
+  const cur={flee:sFlee,graze:sGraze,flock:sFlock}[s.goal]||0;
+  let best='flock', bs=sFlock; if(sGraze>bs){ best='graze'; bs=sGraze; } if(sFlee>bs){ best='flee'; bs=sFlee; }
+  if(!s.goal || (best!==s.goal && (s.goal==='flee' ? th<=.05 : s.goalHold<=0 && bs>cur+.1))){ s.goal=best; s.goalHold=best==='flee'?1:1.5; }
 }
 // a hungry sheep tucking in is what you want; one that's already full and stops to eat again is just greedy
 function onMunch(s){
@@ -4787,10 +4820,13 @@ function updateSheep(dt){
     const steady=s.steady>0; s.steady=0;
     const eating=s.munch>0;
     // calm, pressured sheep pack tight; panicking sheep stop caring about the flock
-    // a hungry sheep with good clover in reach puts the grass first: the flock (and the bell ewe, and the pen) can wait
-    const hungry=needsFeed(s), upF=LEVEL.plat?!!s.up:undefined, grass=hungry&&!s.penned?nearestClover(s.x,s.z,upF):null, toGrass=!!grass && grass.d<30;
-    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(s.roamT>0?.2:1)*(toGrass?.35:1)*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
-    if(na && !eating){ const al=(toGrass?.35:1)*(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
+    // what it wants most (pickGoal): a hungry sheep that's settled on the clover puts the grass first, and the hungrier it is,
+    // the less the flock (and the bell ewe, and the pen) pulls at it
+    const hungry=needsFeed(s), hunger=hungerOf(s), upF=LEVEL.plat?!!s.up:undefined;
+    if(s.penned){ s.goal='flock'; s.grassC=null; } else pickGoal(s,dt,hunger,upF,pF);
+    const toGrass=hungry && s.goal==='graze' && !!s.grassC && cloverOK(s.grassC,upF), social=toGrass?clamp(.55-.5*hunger,.05,.35):1;
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(s.roamT>0?.2:1)*social*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(na && !eating){ const al=social*(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     // the bell ewe: followers drift after her and match her heading
     if(lead && !s.penned && !eating && ld>2.5 && !toGrass){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
     // panic: bolt off in a random direction, mostly away from the dog
@@ -4801,7 +4837,7 @@ function updateSheep(dt){
     }
     if(s.boltT>0){ fx+=Math.cos(s.boltA)*15; fz+=Math.sin(s.boltA)*15; }
     // a sheep on its own heads back to the nearest flockmate
-    if(!n && nb && !s.penned && !eating && !s.regBlocked){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
+    if(!n && nb && !s.penned && !eating && !s.regBlocked && !toGrass){ const dd=Math.sqrt(nbd)+1e-6; fx+=(nb.x-s.x)/dd*3.2; fz+=(nb.z-s.z)/dd*3.2; }
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
     // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
     // (once most of the flock's in the pen, the pen is where the flock is: a fed sheep out on its own heads for its gate)
@@ -4846,15 +4882,16 @@ function updateSheep(dt){
     }
     // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking, or full up)
     s.munchImmune=Math.max(0,(s.munchImmune||0)-dt);
-    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && !(s.roamT>0) && (hungry || munchLevel(G.day)>0 || s.lamb) && (G.phase==='day'||G.phase==='night')){
+    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && !(s.roamT>0) && s.goal!=='flee' && (hungry || munchLevel(G.day)>0 || s.lamb) && (G.phase==='day'||G.phase==='night')){
       const cl=nearestClover(s.x,s.z,upF);
       if(cl && cl.d<cl.r-.3){ s.patch=cl.c; s.munch=5+Math.random()*3; s.munchCD=5; s.vx*=.3; s.vz*=.3; onMunch(s); }
     }
     // hungry sheep go looking for clover and stop to eat when they find it; so does a thin one, or a greedy one later on
     const ml=(s.home||JR.out||s.inBreed)?0:Math.max(hungry?1:0,(s.full||0)<95?munchLevel(G.day):0,(1-s.hp/100)*.9);
-    if(ml>0 && !s.penned && !eating && !(s.roamT>0) && (G.phase==='day'||G.phase==='night') && s.fear<(hungry?.35:.12) && !s.court){
-      const cl=nearestClover(s.x,s.z,upF), onPatch=cl && cl.d<cl.r;
-      if(cl && !onPatch && cl.d<(hungry?30:16) && !steady){ const k=hungry?(cl.d<12?9:6):2.2*ml; fx+=(cl.x-s.x)/cl.d*k; fz+=(cl.z-s.z)/cl.d*k; }
+    // (a hungry one goes for the patch it's settled on, harder the hungrier it is; a greedy one only nibbles when it's calm)
+    if(ml>0 && !s.penned && !eating && !(s.roamT>0) && (G.phase==='day'||G.phase==='night') && (hungry?toGrass:s.fear<.12 && s.goal!=='flee') && !s.court){
+      const cl=hungry?cloverInfo(s.grassC,s.x,s.z):nearestClover(s.x,s.z,upF), onPatch=cl && cl.d<cl.r;
+      if(cl && !onPatch && cl.d<(hungry?grazeRange(hunger):16) && !steady){ const k=hungry?(cl.d<12?9:6)*(.75+.5*hunger):2.2*ml; fx+=(cl.x-s.x)/cl.d*k; fz+=(cl.z-s.z)/cl.d*k; }
       s.munchCD-=dt;
       if(s.munchCD<=0 && (onPatch || !hungry) && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; s.patch=onPatch?cl.c:null; onMunch(s); }
     }
