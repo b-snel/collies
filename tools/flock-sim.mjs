@@ -195,7 +195,8 @@ await h.page.evaluate(() => {
   SCN.ram = () => {
     const out = {};
     // a) dog leans on a ram
-    reset(15); let sh = live(); const p0 = pathPoint(120); place(sh, p0.x, p0.z, 4);
+    reset(15); G.clock.day = Math.max(G.clock.day, T.ramDogFromDay || 1);   // rams only go for an unprovoking dog from day 2
+    let sh = live(); const p0 = pathPoint(120); place(sh, p0.x, p0.z, 4);
     let ram = sh.find(s => s.ram); if (!ram) return { error: 'no ram in flock' };
     for (const s of sh) if (s !== ram) { s.x += 40; }
     ram.x = p0.x; ram.z = p0.z; ram.rcd = 0.5;
