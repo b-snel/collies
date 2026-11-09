@@ -43,7 +43,7 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Mad mushrooms:** from day 5, little purple toadstool clumps grow out on the field. A sheep that eats one goes mad: spiral eyes, rainbow wool, and it wobbles straight at the nearest dog and head-butts it. Mad sheep pass it on to sheep they bump into (up to five at once), and the screen goes a bit psychedelic when they're close. Punt a mad sheep to snap it out of it, lure it into the pen, or wait for it to wear off. The big red mad mushroom (step on it and the whole flock turns on you) still turns up from day 9.
 
-**Controller:** left stick moves, RT runs (gas), LT lies down (brake), A barks, X grabs (X again flings), B punts or shakes whatever you're holding, Y shoots, the right stick zooms, Menu pauses.
+**Controller:** left stick moves, RT runs (gas), LT lies down (brake), A barks, X grabs (X again flings), B punts or shakes whatever you're holding, Y shoots, LB whistles (once you've bought the whistle), the right stick zooms, Menu pauses.
 
 **Dev menu:** on the title screen, enter the Konami code: up, up, down, down, left, right, left, right, B, A (D-pad and B/A on a controller, or arrow keys then B, A on a keyboard). Jump to any day, and turn on dev tools in the pause menu (win the day, skip to night, coyotes, a surprise, a mad sheep, endless stamina).
 
@@ -63,7 +63,7 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Around the farm:** a duck pond (dogs can swim, sheep go around it) with a mother duck and ducklings you can herd into the pen for a bonus; Rascal, the neighbour's terrier, who sneaks in from day 2 to chase the flock until you bark or pounce him home; crows that scatter when you run through them; and Hank's cat asleep on a hay bale.
 
-**Wool and the shearing shed:** every day earns wool (2 per penned sheep, 4 per ram, 10 for the golden sheep, 1 per lamb or sheep that survives outside, 3 per star, 1 per coyote driven off). Spend it at Morag's shearing shed, from the end-of-day screen or the title, on upgrades that stay on the device: Sturdy paws, Big lungs, Calm presence, Loud bark, Thick collar, Sharp nip, Longer days and Keen nose, plus the Shepherd's whistle (lie down and it blows the 'lie down' whistle too, steadying every sheep nearby) and up to three Guard llamas that spread around the flock and spit at coyotes.
+**Wool and the shearing shed:** every day earns wool (2 per penned sheep, 4 per ram, 10 for the golden sheep, 1 per lamb or sheep that survives outside, 3 per star, 1 per coyote driven off). Spend it at Morag's shearing shed, from the end-of-day screen or the title, on upgrades that stay on the device: Sturdy paws, Big lungs, Calm presence, Loud bark, Thick collar, Sharp nip, Longer days and Keen nose, plus the Shepherd's whistle (LB / Q: steadies every sheep nearby) and up to three Guard llamas that spread around the flock and spit at coyotes.
 
 **Power-ups:** Bone (zoomies), Apple basket (sheep follow you), Lantern (coyotes keep back). Each day also has one golden sheep worth 50 points.
 

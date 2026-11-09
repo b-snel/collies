@@ -460,7 +460,7 @@ const UPGRADES=[
   {id:'nip',    name:'Sharp nip',         max:2, cost:[25,55],    desc:'Faster pounce, then double-damage nips'},
   {id:'days',   name:'Longer days',       max:2, cost:[30,60],    desc:'8 more seconds of daylight'},
   {id:'nose',   name:'Keen nose',         max:2, cost:[15,35],    desc:'Golden bones on the minimap, then +3 wool each'},
-  {id:'whistle',name:"Shepherd's whistle",max:1, cost:[60],       desc:'Lie down and the whole flock nearby steadies too', ability:true},
+  {id:'whistle',name:"Shepherd's whistle",max:1, cost:[60],       desc:'LB / Q: steady every sheep nearby', ability:true},
   {id:'llama',  name:'Guard llamas',      max:3, cost:[90,110,140], desc:'Each level adds a llama that patrols and spits at coyotes', ability:true},
 ];
 const stunMul=()=>1-.3*lv('collar');
@@ -2738,15 +2738,15 @@ function controlsHTML(){
       <rect x="292" y="101" width="18" height="11" rx="5" class="cdPart"/><rect x="330" y="101" width="18" height="11" rx="5" class="cdPart"/>
       ${fb(412,90,'#ffcf3f','Y')}${fb(388,114,'#2f9cff','X')}${fb(436,114,'#e84a3a','B')}${fb(412,138,'#5fd35a','A')}</svg>`;
     const pill=l=>`<i class="pg">${l}</i>`, face=(l,c)=>`<i class="pg face" style="background:${c}">${l}</i>`;
-    const rows=[[pill('L stick')+pill('D-pad'),'Move'],[pill('RT')+pill('RB'),'Run'],[pill('LT')+' hold',lv('whistle')?'Lie down + whistle':'Lie down'],[face('A','#5fd35a'),'Bark'],[face('X','#2f9cff'),'Grab · press again to fling'],[face('B','#e84a3a'),'Punt · shake what you\'re holding'],
+    const rows=[[pill('L stick')+pill('D-pad'),'Move'],[pill('RT')+pill('RB'),'Run'],[pill('LT')+' hold','Lie down'],[pill('LB'),lv('whistle')?'Whistle':'Whistle (buy it at the shed)'],[face('A','#5fd35a'),'Bark'],[face('X','#2f9cff'),'Grab · press again to fling'],[face('B','#e84a3a'),'Punt · shake what you\'re holding'],
       [face('Y','#ffcf3f'),'Shoot (with the gun)'],[pill('R stick'),'Zoom'],[pill('Menu'),'Pause'],[pill('View'),'Mute']];
     return `<div class="padWrap">${svg}<div class="padLegend">${rows.map(([k,v])=>`<div class="kbRow"><span>${k}</span><b>${v}</b></div>`).join('')}</div></div>${coop?'<p class="small">Each player\'s controller works the same way.</p>':''}`;
   }
   const cap=(k,c)=>`<kbd class="cdCap" style="--c:${c||'#e8e2d0'}">${k}</kbd>`;
   const row=(keys,txt)=>`<div class="kbRow"><span>${keys}</span><b>${txt}</b></div>`;
-  const P1=[[cap('W','#5fd35a')+cap('A','#5fd35a')+cap('S','#5fd35a')+cap('D','#5fd35a'),'Move'],[cap('Shift','#5fd35a'),'Run'],[cap('Space','#ffcf3f'),'Bark'],[cap('E','#e84a3a'),'Punt'],[cap('C','#2f9cff'),lv('whistle')?'Lie down + whistle':'Lie down'],[cap('R','#ff9a3a')+' hold','Grab (let go to fling)'],[cap('F','#c79bff'),'Shoot (with the gun)']];
+  const P1=[[cap('W','#5fd35a')+cap('A','#5fd35a')+cap('S','#5fd35a')+cap('D','#5fd35a'),'Move'],[cap('Shift','#5fd35a'),'Run'],[cap('Space','#ffcf3f'),'Bark'],[cap('E','#e84a3a'),'Punt'],[cap('C','#2f9cff'),'Lie down'],[cap('R','#ff9a3a')+' hold','Grab (let go to fling)'],[cap('F','#c79bff'),'Shoot (with the gun)']].concat(lv('whistle')?[[cap('Q','#c79bff'),'Whistle']]:[]);
   const SYS=[[cap('P')+cap('Esc'),'Pause'],[cap('M'),'Mute'],['Mouse wheel','Zoom']].concat(coop?[[cap('V'),'Shared / split camera']]:[]);
-  const P2=[[cap('↑')+cap('←')+cap('↓')+cap('→'),'Move'],[cap('R Shift'),'Run'],[cap('Enter'),'Bark'],[cap('/'),'Punt'],[cap('.'),lv('whistle')?'Lie down + whistle':'Lie down'],[cap(',')+' hold','Grab'],[cap("'"),'Shoot']];
+  const P2=[[cap('↑')+cap('←')+cap('↓')+cap('→'),'Move'],[cap('R Shift'),'Run'],[cap('Enter'),'Bark'],[cap('/'),'Punt'],[cap('.'),'Lie down'],[cap(',')+' hold','Grab'],[cap("'"),'Shoot']];
   return `<div class="kbDiagram"><div><span class="eyebrow">${coop?"Player 1":"Keyboard"}</span>${P1.map(r=>row(...r)).join('')}${SYS.map(r=>row(...r)).join('')}</div>${coop?`<div><span class="eyebrow">Player 2</span>${P2.map(r=>row(...r)).join('')}<p class="small">Players 3 and 4: plug in controllers.</p></div>`:''}</div>`;
 }
 // controller menus: which menu is open, what can be highlighted, and moving between buttons by direction
@@ -2805,6 +2805,7 @@ function pollPad(){
       if(hit(0)) bark(D);
       if(hit(1)) pounce(D);
       if(hit(3)) shoot(D);
+      if(hit(4)) whistle(D);       // LB: the shepherd's whistle
     }
     if(hit(8)){ muted=!muted; try{ if(muted) speechSynthesis.cancel(); }catch(e){} }  // View
     const rz=gp.axes[3]||0; if(Math.abs(rz)>.3) G.zoom=clamp(G.zoom+rz*.02,.6,1.6);  // right stick zoom
@@ -2826,10 +2827,12 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space') bark(dog);
   if(e.code==='KeyE') pounce(dog);
   if(e.code==='KeyF') shoot(dog);
+  if(e.code==='KeyQ') whistle(dog);
   if(G.coop && (G.phase==='day'||G.phase==='night')){        // player 2 on the right side of the keyboard
     if(e.code==='Enter' || e.code==='NumpadEnter') bark(dog2);
     if(e.code==='Slash') pounce(dog2);
     if(e.code==='Quote') shoot(dog2);
+    if(e.code==='Semicolon') whistle(dog2);
   }
   if(e.code==='KeyV' && G.coop) setCamMode(!G.sharedCam);
   if(e.code==='KeyM'){ muted=!muted; try{ if(muted) speechSynthesis.cancel(); }catch(err){} }
@@ -2904,7 +2907,7 @@ function startGame(fresh,jumpDay){
   for(let i=0;i<4;i++) $('who'+(i+1)).textContent=G.names[i];
   setupDay();
   for(const c of [camera2,camera3,camera4]) c.position.copy(camera.position);
-  const hasW=!!lv('whistle'); $('whistleRow').hidden=!hasW; $('bWhistle').hidden=true; $('keyWhistle').hidden=true; $('keyWhistlePad').hidden=true;
+  const hasW=!!lv('whistle'); $('whistleRow').hidden=!hasW; $('bWhistle').hidden=!hasW; $('keyWhistle').hidden=!hasW; $('keyWhistlePad').hidden=!hasW;
   for(const D of ALLDOGS) D.whistleCD=0;
   G.phase='day'; G.paused=false; for(const c of [camera,camera2,camera3,camera4]) c.userData.reset=true;
   hideOverlay();
@@ -3377,7 +3380,6 @@ function updateDog(D,dt){
   D.inX=ix; D.inZ=iz;
   const wasLying=D.lying;
   D.lying = G.phase==='title' || (playing && down && D.pounceT<=0);
-  if(D.lying && !wasLying && playing && lv('whistle')) whistle(D);      // with the shepherd's whistle, lying down blows the 'lie down' whistle: the flock steadies too
   D.zoomT=Math.max(0,D.zoomT-dt);
   const zoom=D.zoomT>0;
   const wantRun = playing && run && il>.1 && !D.lying;
