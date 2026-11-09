@@ -35,7 +35,8 @@
   #hNight.urgent { color:#ff8a6b; animation:pulse 0.8s infinite alternate; }
   @keyframes pulse { from { transform:scale(1); } to { transform:scale(1.08); } }
   #needs { top:14px; right:14px; min-width:190px; font-size:15px; }
-  #needs .bar { height:12px; border-radius:7px; background:rgba(0,0,0,.4); border:2px solid rgba(255,248,232,.7); overflow:hidden; margin:3px 0 6px; }
+  #needs .bar { height:12px; border-radius:7px; background:rgba(0,0,0,.4); border:2px solid rgba(255,248,232,.7); overflow:hidden; margin:3px 0 6px; position:relative; }
+  #hFedMark { position:absolute; top:0; bottom:0; width:2px; background:#fff8e8; box-shadow:0 0 0 1px rgba(0,0,0,.35); }
   #hHunger { height:100%; width:30%; background:#7ed957; transition:width .3s, background .3s; }
   #hStarving { color:#ff7a6b; font-weight:600; }
   #hMoodBar { height:100%; width:4%; background:#7ed957; transition:width .3s, background .3s; }
@@ -185,8 +186,8 @@
     <div id="hNight"></div>
   </div>
   <div id="needs" class="panel">
-    <div>Flock hunger</div>
-    <div class="bar"><div id="hHunger"></div></div>
+    <div title="Sheep fed past the white mark are well fed: ewes like that can be courted by a ram in a shut pen overnight">Well fed: <b id="hFed">0/0</b></div>
+    <div class="bar"><div id="hHunger"></div><i id="hFedMark"></i></div>
     <div>Pasture: <b id="hGrass">Good</b></div>
     <div>Mood: <b id="hMood">Calm</b></div>
     <div class="bar"><div id="hMoodBar"></div></div>
@@ -259,11 +260,13 @@ const T = {
   // flock
   startAdults: 12, startLambs: 2, maxSheep: 160,
   hungerPerHour: 0.034, sleepHungerMul: 0.4, starveHours: 9,   // hours at max hunger before death (randomised ±35% per sheep)
-  eatRate: 0.35,         // grass units per second while grazing (1 unit = one full 2x2m cell)
-  foodValue: 0.04,       // hunger removed per grass unit eaten
+  eatPerHour: 3.85,      // grass units a sheep crops per in-game hour on good grass (1 unit = one full 2x2 m cell)
+  foodValue: 0.065,      // hunger removed per grass unit: good grass takes 0.25 hunger an hour, so a hungry sheep is fed in 3-4 h
+  grazeFull: 0.35,       // grass at least this thick is cropped at the full rate; thinner, proportionally slower
   grazeHunger: 0.1,      // sheep below this hunger stop grazing and idle
-  regrowPerHour: 0.022,  // grass units per cell per in-game hour
-  birthChance: 0.22, breedHunger: 0.5, lambGrowDays: 2,
+  regrowPerHour: 0.005,  // grass units per cell per in-game hour (x (0.35 + cap)): a cropped patch takes about five days to come back
+  breedHunger: 0.3,      // "well fed": ewes below this can be courted (and lamb at dawn); the HUD counts them
+  lambGrowDays: 2,
   sheepWalk: 1.3, sheepRun: 7.0, lambRun: 6.2, sheepR: 0.56,
   // sheep mind & rams: fear (instant) / stress (slow mood) / panic, goals, critical mass, cornering, rams, courting
   fleeBase: 1.6, fleeGain: 5.8, fleeStress: 0.8, panicRun: 1.6,   // flee speed = base + gain*fear + stress bonus (+panicRun when panicked), capped by run
@@ -275,6 +278,13 @@ const T = {
   stressUp: 0.4, stressDown: 0.15, panicAt: 0.75,             // contagion rates (panic spreads fast, calm slowly)
   lieCalmR: 22, pounceR: 12, pounceK: 1.8,
   goalHold: 1.5, goalHyst: 0.08,
+  grazeSpace: 2.8,       // grazing sheep keep about this far apart (centre to centre)
+  grazeGood: 0.4, grazeMin: 0.14,    // grass round a grazer this thick is "good"; under grazeMin there's nothing to crop
+  grazeStep: 0.06, grazeNibble: 0.9, grazeMove: 1.1,   // grazing walk (m/s): a slow step on lush grass, on to the next tuft, a walk off eaten-out ground
+  grazeLookCost: 0.006,  // the flock's look for its next grass: score falls by this per metre away
+  grazeMoveOn: 0.4,      // the flock moves on together once this share of its sheep have nothing good within a few steps
+  grazeWorkedT: 6,       // ...but not within this many seconds of a dog pressing it (it's being driven)
+  penSettleH: 2,         // in-game hours a hungry sheep stays in an open, bare pen before it wanders out to graze
   resolveHunger: 0.4, resolveGain: 0.6, resolveMax: 0.25,   // a hungry grazer ignores dog pressure below (hunger-0.4)*0.6 (max 0.25) on good grass
   penPullR: 12, penPullRF: 14, penPullBase: 0.45, penPullF: 0.9,   // pen pull radius/strength grow with the fraction already in
   penFedDay: 0.38, penFedDusk: 0.32,   // hunger above which the pen stops pulling: 0.38 by day, 0.7 at nightfall
@@ -284,6 +294,12 @@ const T = {
   ramCoyoteR: 7, ramBonk: 0.8, ramCoyoteCd: [12, 18],   // rams defend the flock, but they don't win the night on their own
   ramWindup: 0.9, ramWindupProvoked: 0.6, ramCharge: 14, ramChargeT: 1, ramHitR: 1.5, ramHitStun: 1.1, ramDazed: 1.8, ramCd: [10, 15], ramBarkCd: 8,
   courtHour: 16, wooTime: 3.2, courtCd: 2.8, lambChance: 0.4, twinChance: 0.15,
+  // the trough (pen.trough.food: 1 unit takes 1.0 off one sheep's hunger): penned sheep feed there from late afternoon and through the night
+  troughWant: 0.18, troughFull: 0.06,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
+  troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
+  troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
+  troughWake: 0.08,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
+  flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
   // dogs
   dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
   staminaDrain: 0.3, staminaRegen: 0.4,
@@ -1592,7 +1608,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
   };
 }
 // flock-wide mind: the hub strays head for, co-op flanking, the mood, Hank's cooldowns
-const MIND = { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0 };
+const MIND = { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, gzX: 1, gzZ: 0, gzCx: 0, gzCz: 0, gzQ: 0, workedT: -99 };
 const freeSheep = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.pen;
 function sheepSay(id, text, cd = 30) {
   const t = G.time; if (G.mode !== 'play' || t - MIND.lastSay < 6 || t < (MIND.said[id] || -1e9)) return false;
@@ -1600,7 +1616,7 @@ function sheepSay(id, text, cd = 30) {
 }
 function spawnFlock() {
   const c = CAMPS[0]; G.sheep = [];
-  Object.assign(MIND, { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0 });
+  Object.assign(MIND, { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, workedT: -99 });
   const place = () => { for (let k = 0; k < 50; k++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * (c.R - 1.6); const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (G.sheep.every(o => dist2(o, { x, z }) > 1.4)) return [x, z]; } return [c.x, c.z]; };
   for (let i = 0; i < T.startAdults; i++) {
     const [x, z] = place(), ram = i >= T.startAdults - T.startRams;
@@ -1621,23 +1637,54 @@ function killSheep(s, why) {
 }
 function findGrass(s, ccx, ccz) {
   let best = grassAt(s.x, s.z) + 0.05, bx = 0, bz = 0, found = false;
-  const base = Math.random() * TAU, penClosed = s.pen && s.pen.gateT < 0.5;
+  const base = Math.random() * TAU, withFlock = inGrazeFront(s);
   for (let k = 0; k < 10; k++) {
     const a = base + k * TAU / 10, ca = Math.cos(a), sa = Math.sin(a);
     for (const r of s.hunger > 0.45 ? [3, 6.5, 11, 17] : [3, 6.5, 11]) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2) continue;
-      if (penClosed && !insidePen(s.pen, x, z, 1)) continue;
+      if (s.pen && !insidePen(s.pen, x, z, 1)) continue;   // a penned sheep goes out by the gate first (decideCalm), never through the fence
       if (!s.pen && penAt(x, z)) continue;
       // hungrier sheep are bolder: they range further and care less about staying with the flock
       const bold = 1 - Math.min(0.85, s.hunger);
-      const g = grassAt(x, z) - r * 0.012 * bold - (ccx !== undefined ? Math.hypot(x - ccx, z - ccz) * 0.025 * bold : 0);
+      let g = grassAt(x, z) - r * 0.012 * bold - (ccx !== undefined ? Math.hypot(x - ccx, z - ccz) * 0.025 * bold : 0);
+      // spread out: a spot another sheep is standing on (or heading for) is worth less, so they don't all pile onto one tuft
+      for (const o of NBL) { const ox = o.state === 'seek' ? o.tx : o.x, oz = o.state === 'seek' ? o.tz : o.z, dd = Math.hypot(x - ox, z - oz); if (dd < T.grazeSpace) g -= (1 - dd / T.grazeSpace) * 0.25; }
+      if (withFlock) g += 0.06 * (ca * MIND.gzX + sa * MIND.gzZ);   // and lean the way the flock is grazing
       if (g > best) { best = g; bx = x; bz = z; found = true; }
     }
   }
   if (found) { s.tx = bx; s.tz = bz; }
   return found;
 }
+// ---- the grazing front: where's the grass? One heading for the flock round the hub, so when the ground round
+// it is eaten out it walks on together, the way a real flock grazes forward, instead of each sheep chaining off alone
+function grazeScan() {
+  const h = MIND.hub; MIND.gzOk = false; if (!h) return;
+  let cx = 0, cz = 0, n = 0, q = 0, poorN = 0;
+  for (const s of G.sheep) if (freeSheep(s) && (s.x - h.x) ** 2 + (s.z - h.z) ** 2 < 324) {
+    cx += s.x; cz += s.z; n++;   // what's within a few steps of each sheep (not just under it: it's cropped where it stands)
+    let g = 0; for (let q2 = 0; q2 < 6; q2++) g = Math.max(g, grassAt(s.x + Math.cos(q2 * 1.05 + s.id) * 3, s.z + Math.sin(q2 * 1.05 + s.id) * 3)); q += g;
+    if (g < T.grazeGood) poorN++;
+  }
+  if (n < 3) return;
+  cx /= n; cz /= n; q /= n;
+  let best = -1e9, bx = 0, bz = 0;
+  for (let k = 0; k < 16; k++) {
+    const a = k / 16 * TAU, ux = Math.cos(a), uz = Math.sin(a); let sc = -1e9;
+    for (const r of [5, 9, 14, 20, 27, 35, 44]) {
+      const x = cx + ux * r, z = cz + uz * r;
+      if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;   // walls, water and pens end the look that way
+      const g = (grassAt(x, z) + grassAt(x + uz * 2.5, z - ux * 2.5) + grassAt(x - uz * 2.5, z + ux * 2.5)) / 3;   // a patch, not one tuft
+      sc = Math.max(sc, g - r * T.grazeLookCost);
+    }
+    sc += 0.06 * (ux * MIND.gzX + uz * MIND.gzZ);   // keep heading the way it was going
+    if (sc > best) { best = sc; bx = ux; bz = uz; }
+  }
+  // move on only once the ground round the flock is eaten out, and only if there's clearly better grass to go to
+  MIND.gzOk = poorN >= n * T.grazeMoveOn && best > q + 0.1 && !(G.time - MIND.workedT < T.grazeWorkedT); MIND.gzX = bx; MIND.gzZ = bz; MIND.gzCx = cx; MIND.gzCz = cz; MIND.gzQ = q;
+}
+const inGrazeFront = s => MIND.gzOk && !s.pen && (s.x - MIND.gzCx) ** 2 + (s.z - MIND.gzCz) ** 2 < 400;
 // ---- critical mass: an open pen the flock is filling pulls calm, fed sheep in
 const duskK = () => { const h = G.clock.hour; return isNight() ? 1 : h >= 12 ? clamp((h - T.duskWarn) / (T.nightStart - T.duskWarn), 0, 1) : 0; };
 const PP = { pen: null, w: 0, tx: 0, tz: 0, dx: 0, dz: 0 };
@@ -1696,6 +1743,7 @@ function flockMind(dt, play) {
     }
     MIND.hub = bn >= 2 ? best : null;
   }
+  MIND.gzT -= dt; if (MIND.gzT <= 0) { MIND.gzT = 1.5; grazeScan(); }
   let n = 0, cx = 0, cz = 0, st = 0;
   for (const s of S) if (freeSheep(s)) { n++; cx += s.x; cz += s.z; st += s.stress; }
   MIND.mood = n ? st / n : 0;
@@ -1723,7 +1771,56 @@ function flockMind(dt, play) {
     }
   }
 }
+// ---- the trough: penned sheep eat what Hank tipped in. The trough itself, the bucket and Hank's twilight run belong
+// to the dog-moves work (pen.trough = { food, cap, x?, z?, yaw?, len? }, troughEat(pen, amt) -> what was taken).
+// A trough feeds T.troughSpot metres a sheep along the side toward the middle of the pen; the rest stand back and wait.
+const troughHas = p => !!(p && p.trough && p.trough.food > 0.01);
+const troughTime = p => p.gateT < 0.5 || G.clock.hour >= T.courtHour || isNight();   // evening and night (or whenever it's shut in)
+function troughTake(p, amt) {
+  if (typeof troughEat === 'function') return troughEat(p, amt);
+  const t = Math.min(amt, p.trough.food); p.trough.food -= t; return t;   // (until the trough work lands)
+}
+function troughSpots(p) {
+  const tr = p.trough, key = `${tr.x},${tr.z},${tr.yaw},${tr.len}`;
+  if (p.feedKey === key) return p.feedSpots;
+  const gx = Math.cos(p.gateA), gz = Math.sin(p.gateA);
+  let cx, cz, ax, az;
+  if (tr.x !== undefined) { cx = tr.x; cz = tr.z; const y = tr.yaw || 0; ax = Math.cos(y); az = -Math.sin(y); }   // its length along its local x
+  else { cx = p.x - gx * (p.R - 1.4); cz = p.z - gz * (p.R - 1.4); ax = -gz; az = gx; }   // else: 3 m along the back fence, opposite the gate
+  const len = tr.len || 3, k = Math.max(1, Math.round(len / T.troughSpot));
+  let nx = -az, nz = ax; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }   // the side toward the middle of the pen
+  const sides = Math.hypot(p.x - cx, p.z - cz) < p.R - 3.5 ? [1, -1] : [1];   // out in the open: both sides
+  const spots = [];
+  for (const sd of sides) for (let i = 0; i < k; i++) {
+    const a = (i - (k - 1) / 2) * len / k;
+    spots.push({ x: cx + ax * a + nx * 0.95 * sd, z: cz + az * a + nz * 0.95 * sd, yaw: Math.atan2(-nx * sd, -nz * sd), wx: cx + ax * a * 1.4 + nx * 3.2 * sd, wz: cz + az * a * 1.4 + nz * 3.2 * sd });
+  }
+  p.feedKey = key; p.feedSpots = spots; p.feedBy = spots.map(() => null); p.feedC = { x: cx, z: cz, len, ax, az, nx, nz, both: sides.length > 1 };
+  return spots;
+}
+function claimTrough(s) {
+  const p = s.pen, spots = troughSpots(p);
+  if (s.state === 'trough' && p.feedBy[s.slot] === s) return true;
+  if (s.troughCd > 0) return false;
+  let best = -1, bd = 1e9;
+  spots.forEach((q, i) => { if (p.feedBy[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
+  if (best < 0) return false;
+  p.feedBy[best] = s; s.slot = best; s.state = 'trough'; s.troughT = 0; s.troughBest = 1e9; return true;
+}
 function decideCalm(s, nb, night) {
+  // penned and hungry with food in the trough: feed (a sleeping one gets up now and then to)
+  if (s.pen && troughHas(s.pen) && troughTime(s.pen) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
+    if (claimTrough(s)) return;
+    // wait its turn where it is, but not in front of the trough (it'd block the way): step aside past an end
+    const c = s.pen.feedC, rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
+    s.state = 'wait'; s.tx = s.x; s.tz = s.z;
+    if (Math.abs(u) < c.len / 2 + 0.9 && (c.both ? Math.abs(v) : v) < 3.5) {
+      const u2 = (u < 0 ? -1 : 1) * (c.len / 2 + 1.7);
+      s.tx = c.x + c.ax * u2 + c.nx * Math.max(1, v); s.tz = c.z + c.az * u2 + c.nz * Math.max(1, v);
+      if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = c.x + c.nx * 4.5 + c.ax * u2 * 0.5; s.tz = c.z + c.nz * 4.5 + c.az * u2 * 0.5; }
+    }
+    return;
+  }
   const { nearest, nearestO, nC, cX, cZ, pp, steady } = nb;
   const lingering = !s.pen && s.hunger > 0.6 && grassAt(s.x, s.z) > 0.2;   // hungry sheep stay out grazing late
   if (night && (s.pen || s.near >= 1) && !lingering) { if (s.state === 'sleep' || Math.random() < 0.45) { s.state = 'sleep'; return; } }
@@ -1747,10 +1844,15 @@ function decideCalm(s, nb, night) {
   if (s.goal === 'pen' && s.pen) { s.state = Math.random() < 0.3 ? 'wander' : 'idle'; s.tx = s.pen.x + rnd(-3, 3); s.tz = s.pen.z + rnd(-3, 3); return; }   // in, and staying in
   if (stray && (s.goal !== 'graze' || (nC === 0 && s.hunger < 0.5))) { s.state = 'stray'; return; }   // a hungry one will graze on alone
   // stay in touch with the flock (cohesive grazing): hungry sheep tolerate a bit more distance, scared ones less
-  const rejoinD = 5.5 + 3 * Math.max(0, s.hunger - 0.5) - 2 * s.stress - (steady ? 2 : 0);
-  if (nearestO && (nearest > rejoinD || (s.near < 2 && nC >= 3 && Math.hypot(cX / nC - s.x, cZ / nC - s.z) > 6))) { s.state = 'rejoin'; s.tx = nC ? cX / nC : nearestO.x; s.tz = nC ? cZ / nC : nearestO.z; return; }
+  // (a grazer's cohesion comes from the graze state's own gentle pull, so a hungry one can step out to good grass at
+  // the edge of the flock instead of being dragged back onto the stubble in the middle; only a properly isolated one rejoins)
+  const grazing = s.goal === 'graze', rejoinD = (grazing ? 7 + 4 * Math.max(0, s.hunger - 0.4) : 5.5) - 2 * s.stress - (steady ? 2 : 0);
+  if (nearestO && (nearest > rejoinD || (!grazing && s.near < 2 && nC >= 3 && Math.hypot(cX / nC - s.x, cZ / nC - s.z) > 6))) { s.state = 'rejoin'; s.tx = nC ? cX / nC : nearestO.x; s.tz = nC ? cZ / nC : nearestO.z; return; }
+  // nothing to eat in here and the gate's open: once it's been in a while (and it's not evening), out by the gate to graze
+  if (grazing && s.pen && s.pen.gateT > 0.6 && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
   if (s.goal === 'graze') {
-    if (grassAt(s.x + Math.sin(s.yaw) * 0.6, s.z + Math.cos(s.yaw) * 0.6) > 0.14) { s.state = 'graze'; return; }
+    // good grass under its nose, or the flock is grazing on together (the graze state walks it on): graze
+    if (grassAt(s.x + Math.sin(s.yaw) * 0.6, s.z + Math.cos(s.yaw) * 0.6) > T.grazeMin || inGrazeFront(s)) { s.state = 'graze'; return; }
     if (findGrass(s, nC ? cX / nC : undefined, nC ? cZ / nC : undefined)) { s.state = 'seek'; return; }
     s.state = 'graze'; return;
   }
@@ -1893,6 +1995,7 @@ function breakOut(s, D) {
 // a moving bell ewe's bell (rate-limited, only near the camera)
 function bellDing(s) { const d = Math.hypot(s.x - cam.x, s.z - cam.z); if (d < 32 && Sound.ready) Sound.chime([0, 7], 1568 * rnd(0.98, 1.02), 0.05 * (1 - d / 34), 0.05); }
 const NB = { nearest: 0, nearestO: null, nC: 0, cX: 0, cZ: 0, pp: null, steady: false };
+const NBL = [];   // this sheep's flockmates within 12 m (same side of any fence), rebuilt each step
 function updateSheep(dt, dtH) {
   const S = G.sheep, N = S.length, night = isNight(), play = G.mode === 'play';
   for (const s of S) {
@@ -1901,6 +2004,7 @@ function updateSheep(dt, dtH) {
     for (const p of pens) if (insidePen(p, s.x, s.z)) { s.pen = p; break; }
   }
   flockMind(dt, play);
+  for (const p of pens) if (p.feedBy) p.feedBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'trough' || o.pen !== p || o.slot !== i || !S.includes(o))) p.feedBy[i] = null; });
   const bellR2 = T.bellR * T.bellR;
   for (let i = 0; i < N; i++) {
     const s = S[i]; if (s.dead) continue;
@@ -1908,10 +2012,11 @@ function updateSheep(dt, dtH) {
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
     if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; }   // dropped by a coyote: shaken, and jumpy from now on
-    s.goalHold -= dt;
+    s.goalHold -= dt; s.atTrough = false; if (s.troughCd > 0) s.troughCd -= dt;
     // ---- neighbours: only flockmates on the same side of a fence count
     let sepX = 0, sepZ = 0, aX = 0, aZ = 0, nA = 0, cX = 0, cZ = 0, nC = 0, nearest = 1e9, nearestO = null, near = 0, mov = 0, nMov = 0, mX = 0, mZ = 0;
-    let nsS = 0, nsN = 0, bell = null, bellD = bellR2;
+    let nsS = 0, nsN = 0, bell = null, bellD = bellR2, spX = 0, spZ = 0, gaX = 0, gaZ = 0, nG = 0;
+    NBL.length = 0;
     for (let j = 0; j < N; j++) {
       if (j === i) continue; const o = S[j]; if (o.dead || o.grabbed || o.air || o.heldBy) continue;
       const dx = o.x - s.x, dz = o.z - s.z, d2 = dx * dx + dz * dz;
@@ -1924,6 +2029,9 @@ function updateSheep(dt, dtH) {
       if (d < 5) { aX += o.vx; aZ += o.vz; nA++; near++; }
       if (d < 6 && (o.state === 'flee' || o.state === 'move')) { const os = Math.hypot(o.vx, o.vz); if (os > 0.9) { mov += os; nMov++; mX += o.vx; mZ += o.vz; } }
       if (d < 7) { nsS += o.stress; nsN++; }
+      if (d < T.grazeSpace) { const k = 1 - d / T.grazeSpace; spX -= dx / d * k; spZ -= dz / d * k; }   // personal space
+      if (d < 7 && o.state === 'graze') { gaX += Math.sin(o.yaw); gaZ += Math.cos(o.yaw); nG++; }        // which way the grazers round it face
+      NBL.push(o);
       cX += o.x; cZ += o.z; nC++;
       if (d < nearest) { nearest = d; nearestO = o; }
     }
@@ -1974,7 +2082,7 @@ function updateSheep(dt, dtH) {
       const resolve = clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
-    s.press = press;
+    s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
     fX += dfX; fZ += dfZ;
     const threat = Math.max(press, cThreat);
     if (threat > 0.01) { const l = Math.hypot(fX, fZ) || 1; s.fdx = lerp(s.fdx, fX / l, 0.35); s.fdz = lerp(s.fdz, fZ / l, 0.35); s.fear = Math.max(s.fear, threat); }
@@ -2046,8 +2154,27 @@ function updateSheep(dt, dtH) {
       if (s.state === 'sleep' && !night && Math.random() < dt * 0.6) s.state = 'idle';
       if (s.state !== 'move') switch (s.state) {
         case 'graze': {
-          dX = Math.sin(s.yaw); dZ = Math.cos(s.yaw); spd = 0.14;
-          if (Math.random() < dt * 0.5) s.yaw += rnd(-0.9, 0.9);
+          // graze forward: nibble along the way it's facing, bend toward the better grass a couple of metres off, face the
+          // way the grazers round it face, keep a couple of metres from them, and once the ground round about is eaten
+          // out, walk on with the flock toward the grass it has spotted (head up, at a walk)
+          const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), here = grassAt(s.x + fx * 0.6 * s.grow, s.z + fz * 0.6 * s.grow);
+          s.gzLook -= dt;
+          if (!(s.gzLook > 0)) {   // glance about: the best of a few spots a couple of metres off
+            s.gzLook = rnd(0.6, 1.2); let bg = -1;
+            for (const da of [-1.2, -0.55, 0, 0.55, 1.2]) { const a = s.yaw + da, g = grassAt(s.x + Math.sin(a) * 2.2, s.z + Math.cos(a) * 2.2) - Math.abs(da) * 0.04; if (g > bg) { bg = g; s.gzA = a; } }
+            s.gzNear = bg;
+          }
+          // 0 = lush, 1 = cropped: under its nose (step on to the next tuft) and round about (time to move on)
+          const poorHere = 1 - clamp(here / T.grazeGood, 0, 1), poor = 1 - clamp(Math.max(here, s.gzNear) / T.grazeGood, 0, 1);
+          let hx = fx * 1.2 + Math.sin(s.gzA) * (0.6 + 2 * poorHere), hz = fz * 1.2 + Math.cos(s.gzA) * (0.6 + 2 * poorHere);
+          if (nG) { hx += gaX / nG * 0.6; hz += gaZ / nG * 0.6; }
+          if (inGrazeFront(s)) { const w = 0.3 + 2.5 * poor; hx += MIND.gzX * w; hz += MIND.gzZ * w; }
+          if (nC) { const cx = cX / nC - s.x, cz = cZ / nC - s.z, cl = Math.hypot(cx, cz); if (cl > 4) { const w = Math.min(1, (cl - 4) * 0.15); hx += cx / cl * w; hz += cz / cl * w; } }
+          const spl = Math.hypot(spX, spZ);
+          dX = hx + spX * 2.2; dZ = hz + spZ * 2.2;
+          const better = clamp((s.gzNear - here) / 0.25, 0, 1);
+          spd = Math.max(lerp(T.grazeStep, T.grazeNibble, poorHere * better), inGrazeFront(s) ? lerp(T.grazeStep, T.grazeMove, poor * poor) : T.grazeStep, Math.min(0.7, spl * 0.9)); acc = 2.5;
+          if (poor > 0.7 && inGrazeFront(s) && Math.random() < dt * 0.12) baaAt(s, 0.2);   // moving on: the odd call to the others
           break;
         }
         case 'pen': {
@@ -2061,6 +2188,25 @@ function updateSheep(dt, dtH) {
           if (d < (g.pen ? 1.5 : 5)) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           dX = n.x; dZ = n.z; spd = d > 12 ? T.sheepTrot : T.sheepWalk * 1.5;
           s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(2.5, 4.5); baaAt(s, 0.3, 1.06); }   // trotting and bleating as it goes
+          break;
+        }
+        case 'trough': {   // to its place at the trough, then face it and feed
+          const p = s.pen, q = p && troughHas(p) && p.feedBy && p.feedBy[s.slot] === s ? troughSpots(p)[s.slot] : null;
+          if (!q) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
+          const dx = q.x - s.x, dz = q.z - s.z, d = Math.hypot(dx, dz);
+          if (d > 0.7) {
+            dX = dx / d; dZ = dz / d; spd = Math.min(T.sheepWalk * 1.4, 0.3 + d * 1.5);
+            if (!(d > s.troughBest - 0.3)) { s.troughBest = d; s.troughT = 0; }   // getting closer
+            else if ((s.troughT += dt) > 3) { s.state = 'idle'; s.troughCd = 3; }   // stuck: let another have the place
+          }
+          else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); s.atTrough = true; if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
+          break;
+        }
+        case 'wait': {   // stand back from the trough till a place comes free
+          const dx = s.tx - s.x, dz = s.tz - s.z, d = Math.hypot(dx, dz);
+          if (d > 0.6) { dX = dx / d; dZ = dz / d; spd = T.sheepWalk * 0.8; }
+          if (!s.pen || !troughHas(s.pen)) s.state = 'idle';
+          s.thinkT = Math.min(s.thinkT, 0.7);
           break;
         }
         case 'court': {
@@ -2134,6 +2280,7 @@ function updateSheep(dt, dtH) {
     const sp = Math.hypot(s.vx, s.vz);
     if (sp > 4.2 && Math.random() < dt * 2.5) burst(s.x, s.y + 0.1, s.z, 1, '#e3d6b8', { speed: 0.5, up: 0.6, size: 0.22, life: 0.6, grav: 0 });
     if (sp > 0.25 && s.state !== 'graze' && s.rs !== 'windup') s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 7));
+    else if (s.state === 'graze' && sp > 0.08) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 2.5));   // grazers turn slowly
     s.hopV -= 14 * dt; s.hopY = Math.max(0, s.hopY + s.hopV * dt); if (s.hopY === 0 && s.hopV < 0) s.hopV = 0;
     s.y = groundY(s.x, s.z);
     s.leg += sp * dt * 7;
@@ -2158,11 +2305,21 @@ function updateSheep(dt, dtH) {
     s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH * (sleeping ? T.sleepHungerMul : 1));
     s.eating = false;
     if (s.state === 'graze' && s.hunger > 0.02) {
-      const hx = s.x + Math.sin(s.yaw) * 0.6 * s.grow, hz = s.z + Math.cos(s.yaw) * 0.6 * s.grow;
-      const got = eatGrass(hx, hz, T.eatRate * dt * (s.lamb ? 0.6 : 1));
-      s.hunger = Math.max(0, s.hunger - got * T.foodValue / (s.lamb ? 0.6 : 1));
-      s.eating = got > T.eatRate * dt * 0.15;
-      if (!s.eating) s.thinkT = Math.min(s.thinkT, 0.3);
+      // eating is counted in in-game hours (so it keeps pace with hunger whatever T.hourSec is), and thin grass is
+      // slower to crop than lush: a sward under T.grazeFull feeds proportionally less
+      const hx = s.x + Math.sin(s.yaw) * 0.6 * s.grow, hz = s.z + Math.cos(s.yaw) * 0.6 * s.grow, lm = s.lamb ? 0.6 : 1;
+      const full = T.eatPerHour * dtH * lm, px = Math.cos(s.yaw) * 0.6, pz = -Math.sin(s.yaw) * 0.6;
+      let got = 0;   // the muzzle sweeps side to side: crop a swath, not a point
+      for (let k = -1; k <= 1; k++) { const ex = hx + px * k, ez = hz + pz * k; got += eatGrass(ex, ez, full / 3 * clamp(grassAt(ex, ez) / T.grazeFull, 0, 1)); }
+      s.hunger = Math.max(0, s.hunger - got * T.foodValue / lm);
+      s.eating = got > full * 0.12;
+      if (!s.eating && !inGrazeFront(s)) s.thinkT = Math.min(s.thinkT, 0.3);
+    }
+    if (s.atTrough && s.pen && troughHas(s.pen)) {
+      const got = troughTake(s.pen, Math.max(0, Math.min(T.troughRate * dtH, s.hunger - T.troughFull)));
+      s.hunger -= got; s.eating = got > 0; s.troughAte = (s.troughAte || 0) + got;
+      if (s.troughAte > 0.1 && !s.lamb && !s.ram) s.flushed = true;   // fed up for the night: a better chance of lambs (and twins)
+      if (s.hunger <= T.troughFull + 0.005 || !troughHas(s.pen)) { s.state = 'idle'; s.thinkT = rnd(0.5, 1.5); }
     }
     if (s.hunger >= 1) { s.starve += dtH; if (s.starve > s.starveMax) killSheep(s, 'starved'); }
     else s.starve = Math.max(0, s.starve - dtH);
@@ -2179,6 +2336,7 @@ function updateSheep(dt, dtH) {
     // ---- ambient baa
     s.baaT -= dt; if (s.baaT <= 0) { s.baaT = rnd(6, 22); if (!sleeping) baaAt(s, 0.18); }
     // ---- entering a pen
+    s.penH = s.pen ? (s.pen === s.wasPen ? (s.penH || 0) + dtH : 0) : 0;   // in-game hours since it came into this pen
     if (s.pen && !s.wasPen && G.mode === 'play') onSheepEnteredPen(s, s.pen);
   }
   // remove the dead
@@ -2194,6 +2352,15 @@ function onSheepEnteredPen(s, pen) {
   floatText('+1', pen.gx, pen.y + 2, pen.gz, '#ffffff', 0.7);
   if (s.ram && !s.lamb) sheepSay('old_ram', 'Ha! Got the old ram!', 60);
   hankSheepPenned(s, pen);   // HANK: the odd "Good dog!" / "In ye go!"
+}
+// a flock HUD readout: how full the flock is. The bar fills as they eat (it's the flock's average fullness, 1 - hunger),
+// the white mark is the breeding line (T.breedHunger), and "Well fed 9/14" counts the sheep past it
+function updateFedHUD(live) {
+  const el = document.getElementById('hFed'), bar = document.getElementById('hHunger'), mark = document.getElementById('hFedMark'); if (!el || !bar) return;
+  const n = live.length, full = n ? 1 - live.reduce((a, s) => a + s.hunger, 0) / n : 0, fed = live.filter(s => s.hunger < T.breedHunger).length, line = 1 - T.breedHunger;
+  bar.style.width = `${Math.round(full * 100)}%`; bar.style.background = full >= line ? '#7ed957' : full >= 0.4 ? '#ffd36b' : '#ff7a6b';
+  if (mark) mark.style.left = `${Math.round(line * 100)}%`;
+  const txt = `${fed}/${n}`; if (el.textContent !== txt) el.textContent = txt;
 }
 // a flock HUD readout: how worked up the free sheep are
 function updateMoodHUD() {
@@ -2215,8 +2382,8 @@ function lambsAtDawn() {
   let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram);
   for (const s of [...G.sheep]) {
     if (s.dead) continue;
-    if (!s.lamb && !s.ram && s.bred && s.hunger < T.breedHunger + 0.15 && Math.random() < T.lambChance) {
-      const n = Math.random() < T.twinChance ? 2 : 1;
+    if (!s.lamb && !s.ram && s.bred && s.hunger < T.breedHunger + 0.15 && Math.random() < T.lambChance * (s.flushed ? T.flushLamb : 1)) {
+      const n = Math.random() < (s.flushed ? T.flushTwins : T.twinChance) ? 2 : 1;
       for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
         const l = makeSheep(s.x + rnd(-0.6, 0.6), s.z + rnd(-0.6, 0.6), { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2 });
         G.sheep.push(l); born++;
@@ -2224,7 +2391,7 @@ function lambsAtDawn() {
         floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
       }
     }
-    s.bred = false; s.breedOK = false;
+    s.bred = false; s.breedOK = false; s.flushed = false; s.troughAte = 0;
   }
   for (const s of G.sheep) if (s.lamb) { s.age++; if (s.age >= T.lambGrowDays) growUp(s); }
   // the bell passes to another ewe if its owner is gone
@@ -3970,8 +4137,7 @@ function updateHUD(dt) {
     const secs = (T.nightStart - h) * T.hourSec;
     nn.textContent = secs < 75 ? `Nightfall in ${Math.ceil(secs)}s` : ''; nn.className = secs < 30 ? 'urgent' : '';
   } else { nn.textContent = G.ff ? 'Safe & sound…' : 'Night'; nn.className = ''; }
-  const avgH = live.length ? live.reduce((a, s) => a + s.hunger, 0) / live.length : 0;
-  const hb = $('hHunger'); hb.style.width = `${Math.round(avgH * 100)}%`; hb.style.background = avgH < 0.4 ? '#7ed957' : avgH < 0.7 ? '#ffd36b' : '#ff7a6b';
+  updateFedHUD(live);
   updateMoodHUD();
   const out = live.filter(s => !s.pen); const g = out.length ? out.reduce((a, s) => a + grassAt(s.x, s.z), 0) / out.length : -1;
   const gl = g < 0 ? ['In pens', '#fff8e8'] : g > 0.6 ? ['Lush', '#7ed957'] : g > 0.35 ? ['Good', '#b8e36b'] : g > 0.15 ? ['Thin', '#ffd36b'] : ['Overgrazed', '#ff7a6b'];
@@ -5169,7 +5335,7 @@ function step(dt) {
     const live = living();
     G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05) && !G.coyotes.some(c => c.prey);
     const dtH = stepClock(dt);
-    regrowAcc += dtH;
+    regrowAcc += dtH; regrowT();   // in step, not frame, so headless tests (?sim) regrow the grass too
     for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
     leashDogs();
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
@@ -5196,7 +5362,6 @@ function frame(now) {
   const simDt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // hit-stop: a few near-frozen frames on a big hit
   const n = Math.ceil(simDt / 0.025), sdt = simDt / n;
   for (let i = 0; i < n; i++) step(sdt);
-  regrowT(dt);
   updateCamera(dt);
   updateLighting(dt);
   for (const d of G.dogs) syncDog(d);
@@ -5227,7 +5392,7 @@ function debugKeys() {
 }
 // expose for debugging / automated tests
 window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
-  provokeRam, updateGateGeometry, setGate, MIND,
+  provokeRam, updateGateGeometry, setGate, MIND, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats };
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
