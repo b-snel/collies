@@ -121,9 +121,12 @@
     <span class="h"></span><span class="h">🎮 Controller</span><span class="h">⌨ Keys (P1 · P2)</span>
     <span>Move</span><span>Left stick</span><span>WASD · Arrows</span>
     <span>Bark</span><span>Ⓐ</span><span>Space · /</span>
-    <span>Open / close gate</span><span>Ⓧ or Ⓨ</span><span>E · .</span>
-    <span>Sprint</span><span>RT or Ⓑ</span><span>L-Shift · R-Shift</span>
-    <span>Creep (gentle)</span><span>LT or LB</span><span>Q · ,</span>
+    <span>Pounce (shake when holding)</span><span>Ⓑ</span><span>E · .</span>
+    <span>Grab &amp; drag (let go to fling)</span><span>hold Ⓧ</span><span>R · ,</span>
+    <span>Lie down</span><span>hold Ⓨ or LT</span><span>C · '</span>
+    <span>Sprint</span><span>RT or RB</span><span>L-Shift · R-Shift</span>
+    <span>Creep (gentle)</span><span>LB</span><span>Q · ;</span>
+    <span>Gates</span><span>walk into them to push</span><span>sprint to vault</span>
   </div>
   <div style="margin-top:14px;font-size:15px;opacity:.85">Local co-op for up to 4 dogs — friends press Ⓐ anytime to join.</div>
 </div>
@@ -164,14 +167,36 @@ const T = {
   // dogs
   dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
   staminaDrain: 0.3, staminaRegen: 0.4,
-  pressR: { walk: 9, creep: 5.5, sprint: 12 },
-  pressK: { walk: 1.0, creep: 0.5, sprint: 1.5 },
+  pressR: { walk: 9, creep: 5.5, sprint: 12, lie: 3.5 },
+  pressK: { walk: 1.0, creep: 0.5, sprint: 1.5, lie: 0.15 },
   barkR: 13, barkCd: 0.6,
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
   // camera
   viewMin: 25, viewMax: 46,
+  // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
+  pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
+  airGrav: 28,                 // everything that flies falls at this (m/s²)
+  punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2 },
+  bounceUp: 0.46, bounceSide: 0.8, landKeep: 0.55,
+  carom: { min: 7, r: 1.45, keep: 0.6, share: 0.4, up: 6 },   // up 6 m/s peaks under fence height, so caroms never jump a pen
+  fling: { mul: 1.35, add: 4, up: 8, minSpeed: 2 },
+  fenceClear: 0.7,             // flying things above this height pass over fences
+  grabReach: 1.9, wriggle: 0.35, ramBuck: 1.3,
+  grabKinds: {                 // speed: dog top-speed factor; pull: how hard it fights; grip: stamina per second
+    sheep: { speed: 0.75, pull: 5, grip: 0.07, reach: 1.15, lift: 0.35 },
+    lamb: { speed: 0.9, pull: 3, grip: 0.045, reach: 0.95, lift: 0.42 },
+    ram: { speed: 0.5, pull: 9, grip: 0.16, reach: 1.25, lift: 0.25 },
+    coyote: { speed: 0.6, pull: 11, grip: 0.13, reach: 1.2, lift: 0.4 },
+    gate: { speed: 0.75, pull: 0, grip: 0.015 },
+  },
+  coyotePounce: { courage: 0.75, kick: 19, up: 8 },
+  coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
+  gate: { rate: 7, damp: 2.6, maxOut: 1.7, maxIn: 2.0, openAt: 1.25, fresh: 0.35, lean: 0.45, dogDisc: 0.62, slam: 9, whack: 6 },
+  launcher: { L: 4.2, W: 2.1, pivotH: 0.55, drop: 0.45, flight: 1.35, cd: 0.9, back: 0.9, trigger: 7 },
+  swimSpeed: 1.8, dogSwim: 3.2,
+  shakeDecay: 2.2,
 };
 const WATER_Y = -3;
 
@@ -251,6 +276,7 @@ const Sound = (() => {
     init,
     get ready() { return !!ac; },
     get running() { return !!ac && ac.state === 'running'; },
+    raw() { return ac && ac.state === 'running' ? { ac, noiseBuf, out, env } : null; },   // for synth sounds built elsewhere (dog-moves SFX)
     bark(p = 1, pan = 0) { if (!ac) return; const t = ac.currentTime; const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
       if (!ac) return; const now = ac.currentTime; if (!force && now - lastBaa < 0.35) return; lastBaa = now;
@@ -345,12 +371,15 @@ const Sound = (() => {
 // =====================================================================
 const keys = new Set(), keyEdge = new Set();
 const KB = [
-  { id: 'kb1', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], bark: ['Space'], gate: ['KeyE'], sprint: ['ShiftLeft'], creep: ['KeyQ'],
+  { id: 'kb1', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], bark: ['Space'], pounce: ['KeyE'], grab: ['KeyR'], lie: ['KeyC'], sprint: ['ShiftLeft'], creep: ['KeyQ'],
     join: ['Space', 'Enter', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE'] },
-  { id: 'kb2', up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], bark: ['Slash', 'Numpad0'], gate: ['Period', 'NumpadDecimal'],
-    sprint: ['ShiftRight'], creep: ['Comma'], join: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Numpad0'] },
+  { id: 'kb2', up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], bark: ['Slash', 'Numpad0'], pounce: ['Period', 'NumpadDecimal'],
+    grab: ['Comma', 'Numpad1'], lie: ['Quote', 'ControlRight'], sprint: ['ShiftRight'], creep: ['Semicolon'], join: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Numpad0'] },
 ];
-const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.gate, ...k.sprint, ...k.creep, 'Enter']));
+// what to print for a player's buttons in hints and prompts
+const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'" } };
+const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + player.index] : KEY_LABEL.pad)[act];
+const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.sprint, ...k.creep, 'Enter']));
 addEventListener('keydown', e => { if (GAME_KEYS.has(e.code)) e.preventDefault(); if (!e.repeat) keyEdge.add(e.code); keys.add(e.code); Sound.init(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
@@ -371,9 +400,10 @@ function rumble(player, strong = 0.4, weak = 0.6, ms = 120) {
   try { gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }); } catch (e) {}
 }
 
-// read one player's controls this frame -> {mx,my,sprint,creep,bark,gate}
+// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie}
+// bark and pounce are one-shot (edge) presses; sprint, creep, grab and lie are held.
 function readInput(p) {
-  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, gate: false };
+  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false };
   if (p.kind === 'bot') return Object.assign(r, p.bot || {});   // scripted player for automated tests
   if (p.kind === 'pad') {
     const gp = padState(p.index); if (!gp) return r;
@@ -382,17 +412,19 @@ function readInput(p) {
     if (m < 0.18) { x = 0; y = 0; } else { const k = Math.min(1, (m - 0.18) / 0.72) / m; x *= k; y *= k; }
     if (padPressed(gp, 14)) x = -1; if (padPressed(gp, 15)) x = 1; if (padPressed(gp, 12)) y = -1; if (padPressed(gp, 13)) y = 1;
     r.mx = x; r.my = y;
-    r.sprint = padPressed(gp, 7) || padPressed(gp, 1) || padPressed(gp, 5);
-    r.creep = padPressed(gp, 6) || padPressed(gp, 4);
-    r.bark = padEdge(p.index, gp, 0);
-    r.gate = padEdge(p.index, gp, 2) || padEdge(p.index, gp, 3);
+    r.sprint = padPressed(gp, 7) || padPressed(gp, 5) || padPressed(gp, 10);   // RT, RB, L3
+    r.creep = padPressed(gp, 4);                                              // LB
+    r.lie = padPressed(gp, 3) || padPressed(gp, 6);                           // Y or LT
+    r.grab = padPressed(gp, 2);                                               // X (hold)
+    r.bark = padEdge(p.index, gp, 0);                                         // A
+    r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
   } else {
     const k = KB[p.index];
     r.mx = (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
     r.my = (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
     const m = Math.hypot(r.mx, r.my); if (m > 1) { r.mx /= m; r.my /= m; }
-    r.sprint = anyKey(k.sprint); r.creep = anyKey(k.creep);
-    r.bark = anyEdge(k.bark); r.gate = anyEdge(k.gate);
+    r.sprint = anyKey(k.sprint); r.creep = anyKey(k.creep); r.lie = anyKey(k.lie); r.grab = anyKey(k.grab);
+    r.bark = anyEdge(k.bark); r.pounce = anyEdge(k.pounce);
   }
   return r;
 }
@@ -552,7 +584,7 @@ function terrainH(x, z) {
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * VX + i;
   return lerp(lerp(vH[k], vH[k + 1], u), lerp(vH[k + VX], vH[k + VX + 1], u), v);
 }
-function groundY(x, z) { return onBridge(x, z) ? RIVER.deckY : terrainH(x, z); }
+function groundY(x, z) { if (onBridge(x, z)) return RIVER.deckY; const ly = launcherY(x, z); return ly === null ? terrainH(x, z) : ly; }   // launcherY: the sheep launcher's plank (dog-moves section)
 
 // ---------------- walkability + signed distance field (1 m) ----------------
 const blk = new Uint8Array(GN);
@@ -1094,10 +1126,10 @@ const pens = CAMPS.map(c => {
   }
   const gate = new THREE.Group(); gate.position.set(postA[0], 0, postA[1]); g.add(gate);
   const L = pen.gateLen;
-  part(gate, merge(
-    P(BOX(L, 0.15, 0.09), '#d39a5a', { p: [L / 2, 0.5, 0] }), P(BOX(L, 0.15, 0.09), '#d39a5a', { p: [L / 2, 0.95, 0] }),
-    P(BOX(Math.hypot(L, 0.45), 0.12, 0.08), '#c08648', { r: [0, 0, Math.atan2(0.45, L)], p: [L / 2, 0.72, 0] }),
-    P(CYL(0.08, 0.08, 1.1, 6), '#a06a38', { p: [L - 0.05, 0.6, 0] }), P(CYL(0.08, 0.08, 1.1, 6), '#a06a38', { p: [0.08, 0.6, 0] })));
+  part(gate, merge(   // a cream-painted farm gate with a red brace, so it reads as the thing you push
+    P(BOX(L, 0.15, 0.1), '#f4ead2', { p: [L / 2, 0.42, 0] }), P(BOX(L, 0.15, 0.1), '#f4ead2', { p: [L / 2, 0.74, 0] }), P(BOX(L, 0.15, 0.1), '#f4ead2', { p: [L / 2, 1.06, 0] }),
+    P(BOX(Math.hypot(L - 0.3, 0.64), 0.13, 0.11), '#d8473f', { r: [0, 0, Math.atan2(0.64, L - 0.3)], p: [L / 2, 0.74, 0] }),
+    P(CYL(0.09, 0.09, 1.25, 6), '#a06a38', { p: [L - 0.06, 0.66, 0] }), P(CYL(0.11, 0.11, 1.4, 6), '#7a5230', { p: [0.06, 0.7, 0] })));
   gate.rotation.y = -pen.angClosed;
   pen.gateMesh = gate;
   // campfire, tent and a sign
@@ -1125,10 +1157,14 @@ const pens = CAMPS.map(c => {
   board.position.y = 1.9; board.castShadow = true; sign.add(board);
   return pen;
 });
+// Gates swing on a hinge: pen.phi is the leaf's angle from shut (+ = swung out toward the funnel wing, - = swung into the pen).
+// gateT (0 shut … 1 open) is how much of the gateway is clear, which is what the sheep, coyote and nav code read.
 function updateGateGeometry(pen) {
-  const a = lerpA(pen.angClosed, pen.angOpen, smooth(0, 1, pen.gateT));
+  const phi = pen.phi || 0, a = pen.angClosed + (pen.outSign || -1) * phi;
   pen.gateSeg.bx = pen.hinge.x + Math.cos(a) * pen.gateLen; pen.gateSeg.bz = pen.hinge.z + Math.sin(a) * pen.gateLen;
   pen.gateMesh.rotation.y = -a;
+  pen.gateT = clamp((1 - Math.cos(Math.min(Math.abs(phi), Math.PI / 2))) / (1 - Math.cos(T.gate.openAt)), 0, 1);
+  pen.open = pen.gateT > 0.5;
 }
 function insidePen(pen, x, z, margin = 0.3) { return (x - pen.x) ** 2 + (z - pen.z) ** 2 < (pen.R - margin) ** 2; }
 function penAt(x, z) { for (const p of pens) if (insidePen(p, x, z)) return p; return null; }
@@ -1138,7 +1174,7 @@ function collideFences(e, r) {
   for (const p of pens) {
     if (Math.abs(e.x - p.x) > p.R + 9 || Math.abs(e.z - p.z) > p.R + 9) continue;
     for (const s of p.segs) if (collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
-    if (collideSeg(e, r, p.gateSeg)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
+    if (!e.isDog && collideSeg(e, r, p.gateSeg)) { hit = true; hx = HIT.nx; hz = HIT.nz; }   // dogs and the gate leaf: updateGate (they push it)
   }
   for (const s of staticFences) if (Math.abs(e.x - s.ax) < 20 && Math.abs(e.z - s.az) < 20 && collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
   HIT.nx = hx; HIT.nz = hz; return hit;
@@ -1605,53 +1641,93 @@ function spawnDog(player) {
   const base = G.dogs[0] || { x: pens[0].exitX + 3, z: pens[0].exitZ + 2 };
   const a = Math.random() * TAU;
   const d = { player, x: base.x + Math.cos(a) * 2, z: base.z + Math.sin(a) * 2, vx: 0, vz: 0, y: 0, yaw: Math.PI, mode: 'walk', stamina: 1, exhausted: false,
-    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi] };
+    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi],
+    isDog: true, pounceT: 0, pounceCD: 0, pdx: 0, pdz: 1, holding: null, holdKind: null, holdT: 0, shakeT: 0, air: null, wx: 0, wz: 0, inMag: 0, lieK: 0, leanT: 0 };
   if (G.dogs[0]) { d.x = G.dogs[0].x + Math.cos(a) * 2; d.z = G.dogs[0].z + Math.sin(a) * 2; }
   collideWorld(d, T.dogR);
   G.dogs.push(d); player.dog = d; return d;
 }
 function updateDog(d, inp, dt) {
+  d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt);
+  d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt);
+  if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
+  if (d.air) { if (d.holding) releaseHold(d, false); d.mode = 'walk'; d.pounceT = 0; updateAirborneDog(d, inp, dt); return; }
   if (d.stunT > 0) {   // bowled over: no control until it wears off
+    if (d.holding) releaseHold(d, false);
+    d.pounceT = 0; d.hopT = 0;
     d.stunT -= dt; const k = Math.exp(-dt * 4); d.vx *= k; d.vz *= k;
-    d.x += d.vx * dt; d.z += d.vz * dt; collideWorld(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
-    d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt); return;
+    d.x += d.vx * dt; d.z += d.vz * dt; collideWorld(d, T.dogR); collideFences(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
+    d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt);
+    // a partner nosing you gets you back on your feet
+    for (const o of G.dogs) if (o !== d && !o.air && o.stunT <= 0 && d.stunT > 0.15 && Math.hypot(o.x - d.x, o.z - d.z) < 1.6) {
+      d.stunT = 0; burst(d.x, d.y + 1.2, d.z, 8, '#ff8fb8', { speed: 1.2, up: 2.4, size: 0.14, grav: 1 });
+      floatText('UP YOU GET!', d.x, d.y + 1.9, d.z, '#ff8fb8', 1.1); Sound.chime([0, 7], 880, 0.14); sayOnce('help-up', 'on_yer_feet', 'On yer feet!'); break;
+    }
+    return;
   }
-  let mag = Math.hypot(inp.mx, inp.my);
+  const mag = Math.hypot(inp.mx, inp.my);
   const wx = inp.mx * CAM_R.x - inp.my * CAM_F.x, wz = inp.mx * CAM_R.z - inp.my * CAM_F.z;
-  let mode = 'walk';
-  if (inp.creep) mode = 'creep';
-  else if (inp.sprint && mag > 0.2 && !d.exhausted) mode = 'sprint';
-  if (mode === 'sprint') { d.stamina -= T.staminaDrain * dt; if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; } }
-  else { d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt); if (d.stamina > 0.35) d.exhausted = false; }
-  d.mode = mode;
-  const max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : T.dogWalk;
-  if (d.hopT > 0) { d.hopT -= dt; }
-  else {
-    const k = Math.min(1, T.dogAccel * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k;
+  d.inMag = mag; d.wx = mag > 0.05 ? wx / mag : 0; d.wz = mag > 0.05 ? wz / mag : 0;
+  // grab: hold the button to bite and keep hold; let go while moving to fling it
+  if (d.holding && !inp.grab) releaseHold(d, true);
+  if (!inp.grab) d.grabLock = false;
+  else if (!d.holding && !d.grabLock && !inp.lie && d.hopT <= 0 && d.pounceT <= 0) tryGrab(d);
+  // pounce, or shake whatever is in your mouth
+  if (inp.pounce) {
+    if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
+    if (d.holding) shakeHold(d); else if (!inp.lie) startPounce(d, wx, wz, mag);
   }
+  let mode = 'walk';
+  if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
+  else if (inp.creep) mode = 'creep';
+  else if (inp.sprint && mag > 0.2 && !d.exhausted) mode = 'sprint';
+  if (mode === 'lie' && d.mode !== 'lie') sayOnce('lie', 'lie_down', 'Lie down!');
+  const hk = d.holding ? T.grabKinds[d.holdKind] : null;
+  if (mode === 'sprint') { d.stamina -= T.staminaDrain * dt; if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; } }
+  else if (!hk) { d.stamina = Math.min(1, d.stamina + T.staminaRegen * (mode === 'lie' ? 1.5 : 1) * dt); if (d.stamina > 0.35) d.exhausted = false; }
+  if (hk) {   // keeping hold of something that fights back is tiring
+    d.stamina -= hk.grip * dt;
+    if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; floatText('SLIP!', d.x, d.y + 1.9, d.z, '#ff8a6b', 1.1); releaseHold(d, false); }
+  }
+  d.mode = mode;
+  let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
+  if (hk) max *= hk.speed;
+  if (d.pounceT > 0) {   // the lunge: fixed speed, no steering
+    d.pounceT -= dt; d.vx = d.pdx * T.pounceSpeed; d.vz = d.pdz * T.pounceSpeed;
+    if (Math.random() < dt * 40) burst(d.x, d.y + 0.15, d.z, 1, '#e8dcc0', { speed: 0.8, up: 0.8, size: 0.24, life: 0.45, grav: 0 });
+    if (d.pounceT <= 0) { d.vx *= 0.4; d.vz *= 0.4; landDog(d, 0.22); }
+  } else if (d.hopT > 0) { d.hopT -= dt; if (d.hopT <= 0) landDog(d, 0.2); }
+  else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
+  const ox = d.x, oz = d.z;
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideWorld(d, T.dogR);
-  if (d.hopT <= 0 && collideFences(d, T.dogR) && mag > 0.5) {
-    const into = -(HIT.nx * wx + HIT.nz * wz) / mag;
-    if (into > 0.45) { d.hopT = d.hopDur; const v = Math.max(6.5, max * 0.8); d.vx = -HIT.nx * v; d.vz = -HIT.nz * v; burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 }); }
+  if (d.pounceT > 0) pounceGateSlam(d, ox, oz);
+  if (d.hopT <= 0 && collideFences(d, T.dogR) && !d.holding) {
+    // pushing into a fence hops it (and a pounce sails over); holding something, you just stop
+    const lunge = d.pounceT > 0, dx = lunge ? d.pdx : wx, dz = lunge ? d.pdz : wz, m = lunge ? 1 : mag;
+    if (m > 0.5 && -(HIT.nx * dx + HIT.nz * dz) / m > 0.45) startHop(d, HIT.nx, HIT.nz, lunge ? 12 : Math.max(6.5, max * 0.8));
   }
+  if (d.pounceT > 0) pounceHits(d);
   const sp = Math.hypot(d.vx, d.vz);
-  if (sp > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * 14));
+  if (d.holding && d.holdKind === 'gate') { const g = gateGrip(d.holding, d); d.yaw = lerpA(d.yaw, Math.atan2(g.x - d.x, g.z - d.z), Math.min(1, dt * 14)); }
+  else if (d.pounceT > 0) d.yaw = Math.atan2(d.pdx, d.pdz);
+  else if (sp > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * (mode === 'lie' ? 4 : 14)));
   d.y = groundY(d.x, d.z);
-  d.leg += sp * dt * 3.2; d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt);
+  d.leg += sp * dt * 3.2;
   if (mode === 'sprint' && sp > 8 && Math.random() < dt * 14) burst(d.x - d.vx * 0.05, d.y + 0.1, d.z - d.vz * 0.05, 1, '#e8dcc0', { speed: 0.6, up: 0.8, size: 0.2, life: 0.5, grav: 0 });
   if (inp.bark && d.barkCd <= 0) bark(d);
-  if (inp.gate) {
-    let best = null, bd = 4.2;
-    for (const p of pens) { const dd = Math.hypot(d.x - p.gx, d.z - p.gz); if (dd < bd) { bd = dd; best = p; } }
-    if (best) toggleGate(best, d);
-  }
 }
+function startHop(d, nx, nz, v) {   // (nx, nz) points from the fence back to the dog; it leaps the other way
+  d.hopT = d.hopDur; d.pounceT = 0; d.vx = -nx * v; d.vz = -nz * v; d.leanT = 0;
+  burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 });
+}
+function landDog(d, sq) { d.landT = G.time; d.landSq = sq; burst(d.x, d.y + 0.1, d.z, 3, '#e8dcc0', { speed: 1.2, up: 0.6, size: 0.2, life: 0.4, grav: 0 }); }
 // SHARED HOOK: something bowled the dog over (a ram, a cornered sheep, a flying sheep)
 function knockDog(d, vx, vz, t, label = 'OOF!') {
-  d.vx = vx; d.vz = vz; d.stunT = Math.max(d.stunT || 0, t); d.hopT = 0;
+  d.vx = vx; d.vz = vz; d.stunT = Math.max(d.stunT || 0, t); d.hopT = 0; d.pounceT = 0;
   floatText(label, d.x, d.y + 1.8, d.z, '#ffd36b', 1.2); rumble(d.player, 0.8, 0.6, 220);
   burst(d.x, d.y + 0.5, d.z, 8, '#fff3c0', { speed: 2.5, up: 2.5, size: 0.14 }); Sound.yelp(panOf(d.x, d.z));
+  starBurst(d.x, d.y + 1, d.z, 5, undefined, { speed: 3, up: 3 }); dizzy(d, t, 1.6); shakeCam(0.3);
 }
 function bark(d) {
   d.barkCd = T.barkCd; d.barkAnim = 0.3; G.barks = (G.barks || 0) + 1;
@@ -1660,42 +1736,888 @@ function bark(d) {
   spawnRing(d.x, d.y, d.z, T.barkR, d.color);
   floatText('WOOF!', d.x, d.y + 1.6, d.z, d.color);
   for (const s of G.sheep) {
-    if (s.dead || s.grabbed) continue;
+    if (s.dead || s.grabbed || s.air || s.heldBy) continue;
     const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd > T.barkR) continue;
     const k = 1 - dd / T.barkR;
     s.vx += dx / dd * k * 4; s.vz += dz / dd * k * 4; s.fdx = dx / dd; s.fdz = dz / dd;
     s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, 0.3 + k * 0.6); s.hopV = Math.max(s.hopV, 2 + k * 2);
   }
-  for (const c of G.coyotes) if (Math.hypot(c.x - d.x, c.z - d.z) < T.barkR + 2) scareCoyote(c, 0.45, d);
+  for (const c of G.coyotes) if (!c.air && !c.heldBy && Math.hypot(c.x - d.x, c.z - d.z) < T.barkR + 2) scareCoyote(c, 0.45, d);
   hint('bark-used');
 }
+// Tests and debug: swing a gate open or shut as if a dog had shoved it (players push gates for real: updateGate)
 function toggleGate(pen, d) {
-  pen.open = !pen.open;
-  Sound.gate(pen.open);
-  floatText(pen.open ? 'Gate open' : 'Gate closed', pen.gx, pen.y + 2.2, pen.gz, '#fff1c8');
-  rumble(d && d.player, 0.15, 0.3, 60);
-  if (pen.open) { hint('gate-opened'); }
-  else onGateClosed(pen);
+  if (pen.gateT > 0.5 || (pen.auto !== undefined && pen.auto !== 0)) pen.auto = 0;
+  else { pen.auto = T.gate.maxOut * 0.95; pen.latched = false; }
 }
 function onGateClosed(pen) {
+  G.gateClosedN = (G.gateClosedN || 0) + 1;
   const live = living().filter(s => !s.grabbed), inside = live.filter(s => s.pen === pen).length;
   if (pen.final && inside > 0) {
     const out = live.length - inside;
     if (out === 0 || G.finalArm > 0) { finishGame(inside); return; }
     G.finalArm = 6;
-    toast(`${out} sheep still outside! Close the gate again to finish with ${inside}.`, 'warn');
+    toast(`${out} sheep still outside! Lean on the gate to finish with ${inside}.`, 'warn');
     return;
   }
   if (inside > 0 && inside === live.length) { toast('The whole flock is safe in the pen ✔', 'good'); Sound.chime([0, 4, 7], 784); }
   else if (inside > 0 && isNight()) toast(`${live.length - inside} sheep still out in the dark!`, 'warn');
+  hint('gates');
+}
+function onGateOpened(pen) {
+  hint('gate-opened');
+  if (G.mode === 'play' && (isNight() || G.clock.hour > 17.5)) sayOnce('gate-open', 'gate_open', "That's the gate open! Bring them in!");
 }
 
 // =====================================================================
-// DOG MOVES & PHYSICS — airborne and held sheep (stubs; the dog-moves work fills these in)
+// DOG MOVES & PHYSICS — the pounce, grab/drag/shake/fling, things in the
+// air (punted, flung, caromed and launched sheep, bowled coyotes, dogs off
+// the launcher), swimming back to shore, push-gates, the sheep launcher
+// at the river, and juice (camera shake, hit-stop, star bursts, squash).
+// Hand-rolled 2D physics with a faked vertical arc, after main's moves.
 // =====================================================================
-function updateAirborneSheep(s, dt) { s.air = false; }
-function updateHeldSheep(s, dt) { s.heldBy = null; }
-function updateHeldCoyote(c, dt) { c.heldBy = null; }
+const MV = { punts: 0, caroms: 0, maxChain: 0, holeInOne: 0, launches: 0, launched: 0, latches: 0, splashes: 0, flings: 0, bowled: 0, said: {} };
+function sayOnce(key, id, text) { if (MV.said[key] || G.mode !== 'play') return; MV.said[key] = true; hank(id, text); }
+// a flying, dropped or shaken sheep comes down running (sets the demo flock's fields; a newer sheep brain may read stress)
+function startleSheep(s, dx, dz, amt) {
+  const l = Math.hypot(dx, dz) || 1;
+  s.fdx = dx / l; s.fdz = dz / l; s.fear = Math.max(s.fear || 0, amt); s.panic = Math.max(s.panic || 0, amt * 0.6); s.alert = 3.5;
+  s.state = 'flee'; s.eating = false; s.stress = Math.min(1, (s.stress || 0) + amt * 0.3);
+}
+
+// ---------------- juice: camera shake, hit-stop, stars, synth sounds ----------------
+const FX = { shake: 0, stop: 0 };
+function shakeCam(a) { FX.shake = Math.max(FX.shake, a); }
+function hitStop(t) { FX.stop = Math.max(FX.stop, t); }
+const SFX = (() => {
+  const R = () => Sound.raw();
+  const osc = (A, type, t, f0, f1, dur) => { const o = A.ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); return o; };
+  const noise = (A, t, type, f, q) => { const n = A.ac.createBufferSource(); n.buffer = A.noiseBuf; const fl = A.ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; n.connect(fl); n.start(t, Math.random()); return [n, fl]; };
+  return {
+    whoosh(pan = 0, vol = 0.22, dur = 0.28) {
+      const A = R(); if (!A) return; const t = A.ac.currentTime, [n, f] = noise(A, t, 'bandpass', 380, 1.4);
+      f.frequency.setValueAtTime(380, t); f.frequency.exponentialRampToValueAtTime(2400, t + dur);
+      const g = A.ac.createGain(); A.env(g, t, dur * 0.35, 1, dur * 0.65); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + dur + 0.05);
+    },
+    boing(pan = 0, vol = 0.22, p = 1) {
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(220 * p, t); o.frequency.exponentialRampToValueAtTime(880 * p, t + 0.09); o.frequency.exponentialRampToValueAtTime(520 * p, t + 0.35);
+      const v = ac.createOscillator(); v.frequency.value = 22; const vg = ac.createGain(); vg.gain.value = 40 * p; v.connect(vg); vg.connect(o.frequency);
+      const g = ac.createGain(); A.env(g, t, 0.01, 0.9, 0.34); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); v.start(t); o.stop(t + 0.4); v.stop(t + 0.4);
+    },
+    thud(pan = 0, vol = 0.4) {
+      const A = R(); if (!A) return; const t = A.ac.currentTime;
+      const o = osc(A, 'sine', t, 160, 48, 0.2), g = A.ac.createGain(); A.env(g, t, 0.005, 1, 0.22); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.26);
+      const [n, f] = noise(A, t, 'lowpass', 420, 0.7), ng = A.ac.createGain(); A.env(ng, t, 0.003, 0.7, 0.09); f.connect(ng); ng.connect(A.out(vol, pan)); n.stop(t + 0.12);
+    },
+    clack(pan = 0, vol = 0.3) {
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (const [a, b, dt] of [[1400, 700, 0], [900, 450, 0.05]]) { const t = t0 + dt, o = osc(A, 'square', t, a, b, 0.04), g = A.ac.createGain(); A.env(g, t, 0.002, 0.6, 0.045); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.06); }
+    },
+    creak(pan = 0, vol = 0.22, p = 1) {
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(95 * p, t); o.frequency.linearRampToValueAtTime(140 * p, t + 0.18); o.frequency.linearRampToValueAtTime(80 * p, t + 0.4);
+      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 6;
+      const g = ac.createGain(); A.env(g, t, 0.04, 0.5, 0.36); o.connect(f); f.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.45);
+    },
+    splash(pan = 0, vol = 0.35) {
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, [n, f] = noise(A, t, 'lowpass', 2400, 0.7);
+      f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(300, t + 0.6);
+      const g = ac.createGain(); A.env(g, t, 0.01, 1, 0.6); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.7);
+      for (let k = 0; k < 4; k++) { const tt = t + 0.1 + k * 0.07 + Math.random() * 0.05, o = osc(A, 'sine', tt, 500 + Math.random() * 400, 1400 + Math.random() * 600, 0.06), bg = ac.createGain(); A.env(bg, tt, 0.005, 0.35, 0.06); o.connect(bg); bg.connect(A.out(vol * 0.5, pan)); o.start(tt); o.stop(tt + 0.08); }
+    },
+    shake(pan = 0, vol = 0.18) {
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (let k = 0; k < 4; k++) { const t = t0 + k * 0.05, [n, f] = noise(A, t, 'bandpass', 900 + k * 200, 2), g = A.ac.createGain(); A.env(g, t, 0.003, 0.8, 0.035); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.05); }
+    },
+    zoom(pan = 0, vol = 0.18) {
+      const A = R(); if (!A) return; const t = A.ac.currentTime, o = osc(A, 'triangle', t, 260, 1900, 0.55), g = A.ac.createGain();
+      A.env(g, t, 0.05, 0.7, 0.55); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.65);
+    },
+    bonk(pan = 0, vol = 0.3) {
+      const A = R(); if (!A) return; const t = A.ac.currentTime, o = osc(A, 'triangle', t, 720, 300, 0.12), g = A.ac.createGain();
+      A.env(g, t, 0.003, 0.9, 0.13); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.16); this.thud(pan, vol * 0.7);
+    },
+  };
+})();
+// star particles: flat cartoon stars that always face the camera, with an ink outline behind
+const STAR_MAX = 240;
+const STAR_GEO = (() => { const sh = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * TAU / 10, r = i % 2 ? 0.45 : 1; if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); } return new THREE.ShapeGeometry(sh); })();
+const starMesh = new THREE.InstancedMesh(STAR_GEO, new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), STAR_MAX);
+const starInk = new THREE.InstancedMesh(STAR_GEO, new THREE.MeshBasicMaterial({ color: '#17141f', side: THREE.DoubleSide }), STAR_MAX);
+for (let i = 0; i < STAR_MAX; i++) starMesh.setColorAt(i, _c.set('#ffffff'));
+for (const m of [starMesh, starInk]) { m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.setMatrixAt(0, _m4.makeScale(0, 0, 0)); m.count = 1; scene.add(m); }
+const starParts = [], dizzyList = [];
+function starBurst(x, y, z, n, colors = ['#ffd36b', '#fff3a0', '#ffffff'], { speed = 4, up = 4, size = 0.3, life = 0.8, grav = -9 } = {}) {
+  for (let i = 0; i < n && starParts.length < STAR_MAX - 24; i++) {
+    const a = Math.random() * TAU, s = speed * (0.35 + Math.random() * 0.65);
+    starParts.push({ x, y, z, vx: Math.cos(a) * s, vy: up * (0.4 + Math.random() * 0.8), vz: Math.sin(a) * s, life: life * (0.6 + Math.random() * 0.6), max: life, size: size * (0.6 + Math.random() * 0.7), color: colors[i % colors.length], spin: Math.random() * TAU, vs: rnd(-9, 9), grav });
+  }
+}
+function dizzy(e, t, h = 1.5) { const k = dizzyList.find(o => o.e === e); if (k) k.until = Math.max(k.until, G.time + t); else dizzyList.push({ e, until: G.time + t, h }); }
+function confetti(x, y, z, n = 24) { for (const c of ['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']) burst(x, y, z, Math.ceil(n / 5), c, { speed: 3.5, up: 5, size: 0.13, life: 1.3, grav: -7 }); }
+const _sq = new THREE.Quaternion(), _sq2 = new THREE.Quaternion(), _sZ = new THREE.Vector3(0, 0, 1), _sOff = new THREE.Vector3();
+function updateStars(dt) {
+  let n = 0;
+  _sOff.copy(CAM_DIR).multiplyScalar(-0.05);
+  const put = (x, y, z, size, spin, color) => {
+    if (n >= STAR_MAX || size <= 0.002) return;
+    _sq2.setFromAxisAngle(_sZ, spin); _sq.copy(camera.quaternion).multiply(_sq2);
+    _m4.compose(_v.set(x, y, z), _sq, _s.set(size, size, size)); starMesh.setMatrixAt(n, _m4); starMesh.setColorAt(n, _c.set(color));
+    const si = size * 1.4; _m4.compose(_v.set(x + _sOff.x, y + _sOff.y, z + _sOff.z), _sq, _s.set(si, si, si)); starInk.setMatrixAt(n, _m4);
+    n++;
+  };
+  for (let i = starParts.length - 1; i >= 0; i--) {
+    const p = starParts[i]; p.life -= dt; if (p.life <= 0) { starParts.splice(i, 1); continue; }
+    p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vx *= 1 - dt * 1.8; p.vz *= 1 - dt * 1.8; p.spin += p.vs * dt;
+    const gy = groundY(p.x, p.z) + 0.1; if (p.y < gy) { p.y = gy; p.vy = Math.abs(p.vy) * 0.3; }
+    put(p.x, p.y, p.z, p.size * Math.min(1, p.life / p.max * 2) * Math.min(1, (p.max - p.life) * 12 + 0.3), p.spin, p.color);
+  }
+  for (let i = dizzyList.length - 1; i >= 0; i--) {   // seeing stars after a knock or a big landing
+    const D = dizzyList[i], e = D.e;
+    if (G.time > D.until || e.dead || e.gone || !(e.isDog ? G.dogs : e.models ? G.coyotes : G.sheep).includes(e)) { dizzyList.splice(i, 1); continue; }
+    const k = Math.min(1, (D.until - G.time) * 2);
+    for (let j = 0; j < 3; j++) { const a = G.time * 5 + j * TAU / 3; put(e.x + Math.cos(a) * 0.5, (e.y || 0) + D.h + Math.sin(a * 2) * 0.06, e.z + Math.sin(a) * 0.5, 0.17 * k, G.time * 4 + j, j === 1 ? '#fff3a0' : '#ffd36b'); }
+  }
+  if (!n) { _m4.makeScale(0, 0, 0); starMesh.setMatrixAt(0, _m4); starInk.setMatrixAt(0, _m4); }   // keep one (invisible) instance so the shaders compile up front, not mid-game
+  starMesh.count = starInk.count = Math.max(1, n); starMesh.instanceMatrix.needsUpdate = true; starInk.instanceMatrix.needsUpdate = true;
+  if (starMesh.instanceColor) starMesh.instanceColor.needsUpdate = true;
+}
+
+// ---------------- the pounce ----------------
+function startPounce(d, wx, wz, mag) {
+  if (d.pounceCD > 0 || d.hopT > 0 || d.stunT > 0 || d.air) return;
+  if (mag > 0.1) { d.pdx = wx / mag; d.pdz = wz / mag; } else { d.pdx = Math.sin(d.yaw); d.pdz = Math.cos(d.yaw); }
+  d.pounceT = T.pounceTime; d.pounceCD = T.pounceCd; d.yaw = Math.atan2(d.pdx, d.pdz);
+  SFX.whoosh(panOf(d.x, d.z)); rumble(d.player, 0.15, 0.35, 70);
+  burst(d.x, d.y + 0.2, d.z, 8, '#e8dcc0', { speed: 2, up: 1.2, size: 0.22, life: 0.5, grav: 0 });
+  for (const c of G.coyotes) if (!c.air && !c.heldBy && Math.hypot(c.x - d.x, c.z - d.z) < T.pounceScareR) scareCoyote(c, 0.15, d);   // they flinch from a lunge
+  hint('pounce-used');
+}
+// what a lunge runs into: a coyote, the launcher's high end, or a sheep (which gets punted)
+function pounceHits(d) {
+  for (const c of G.coyotes) {
+    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
+  }
+  if (launcherPounce(d)) return;
+  for (const s of G.sheep) {
+    if (s.dead || s.air || s.heldBy || s.grabbed || s.pen) continue;
+    const bx = s.x - d.x, bz = s.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
+    if (bd < T.pounceHitR) { punt(s, d, bx / bd, bz / bd); return; }
+  }
+}
+function endLunge(d, k = 0.15) { d.pounceT = 0; d.vx *= k; d.vz *= k; landDog(d, 0.28); }   // the dog stops dead: all the energy goes into what it hit
+function punt(s, d, rx, rz) {
+  const P = T.punt;
+  launchSheep(s, d.pdx * P.speed + rx * P.radial, d.pdz * P.speed + rz * P.radial, s.lamb ? P.lambUp : P.up, 'punt', d);
+  s.air.bounces = P.bounces; if (s.ram) s.air.provoke = d;
+  endLunge(d); MV.punts++;
+  const pan = panOf(s.x, s.z);
+  SFX.boing(pan, 0.26); Sound.baa(s.pitch * 1.15, 0.4, pan, true);
+  floatText(pick(['BOING!', 'PUNT!', 'WHEEE!']), s.x, s.y + 1.6, s.z, '#ffffff', 1.35);
+  starBurst(s.x, s.y + 0.8, s.z, 7, undefined, { speed: 4, up: 3 }); burst(s.x, s.y + 0.3, s.z, 10, '#e8dcc0', { speed: 3, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
+  shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140);
+}
+function pounceCoyote(c, d) {
+  const P = T.coyotePounce, dx = c.x - d.x, dz = c.z - d.z, dd = Math.hypot(dx, dz) || 1;
+  let kx = d.pdx * 0.7 + dx / dd * 0.3, kz = d.pdz * 0.7 + dz / dd * 0.3; const kl = Math.hypot(kx, kz) || 1; kx = kx / kl * P.kick; kz = kz / kl * P.kick;
+  hitCoyote(c, P.courage, kx, kz, d, 'POUNCE!');   // drops its prey ("Saved!"), loses heart, flees
+  launchCoyote(c, kx, kz, P.up, d);
+  endLunge(d);
+  SFX.bonk(panOf(c.x, c.z), 0.35); starBurst(c.x, c.y + 0.9, c.z, 10, undefined, { speed: 5, up: 4 });
+  shakeCam(0.45); hitStop(0.08); rumble(d.player, 0.9, 0.6, 220); dizzy(c, 1.4, 1.5);
+}
+
+// ---------------- things in the air (sheep, coyotes, dogs) ----------------
+function wetAt(x, z) { return !onBridge(x, z) && terrainH(x, z) < WATER_Y + 0.6; }
+function overWater(x, z) { return !onBridge(x, z) && terrainH(x, z) < WATER_Y - 0.05; }
+// one ballistic step. Walls, rocks and trees bounce low fliers back; fences only stop low ones. → 'ground' | 'water' | null
+function airStep(e, a, r, dt) {
+  const ox = e.x, oz = e.z;
+  a.t = (a.t || 0) + dt; a.vy -= T.airGrav * dt; a.h += a.vy * dt;
+  e.x += e.vx * dt; e.z += e.vz * dt;
+  let gy = groundY(e.x, e.z);
+  const sd = sdfAt(e.x, e.z), g = sd < r && a.h - gy < 2.2 ? sdfGrad(e.x, e.z) : null;
+  if (g && !wetAt(e.x - g.x * (sd + 0.6), e.z - g.z * (sd + 0.6))) {   // low, and the nearest blocked cell is a wall or a rock, not water
+    const vn = e.vx * g.x + e.vz * g.z;
+    if (vn < 0) {
+      e.vx -= 1.6 * vn * g.x; e.vz -= 1.6 * vn * g.z; e.vx *= 0.65; e.vz *= 0.65;
+      if (-vn > 5) { SFX.thud(panOf(ox, oz), 0.22); burst(ox, a.h + 0.3, oz, 6, '#e8dcc0', { speed: 2, up: 1, size: 0.2, life: 0.5, grav: 0 }); }
+    }
+    e.x = ox; e.z = oz; gy = groundY(e.x, e.z);
+  }
+  if (a.h - gy < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }
+  if (a.t < (a.noLand || 0)) return null;
+  const water = overWater(e.x, e.z), floor = water ? WATER_Y : gy;
+  if (a.h <= floor) { a.h = floor; return water ? 'water' : 'ground'; }
+  return null;
+}
+function unstick(e, r) {   // last resort for something stuck in a wall or water: hop to the nearest open ground
+  for (let rad = 1; rad < 40; rad++) for (let k = 0; k < 16; k++) { const a = k / 16 * TAU, x = e.x + Math.cos(a) * rad, z = e.z + Math.sin(a) * rad; if (sdfAt(x, z) > r + 0.5) { e.x = x; e.z = z; return; } }
+}
+function splashFx(x, z, big = 1) {
+  for (const c of ['#e8f8ff', '#9fe3ff', '#ffffff']) burst(x, WATER_Y + 0.2, z, Math.round(8 * big), c, { speed: 2.5 * big, up: 6, size: 0.16, life: 0.9, grav: -12 });
+  spawnRing(x, WATER_Y, z, 3.5 * big, '#e8f8ff', 0.6); SFX.splash(panOf(x, z), 0.3 * big); MV.splashes++;
+}
+// SHARED HOOK owner: s.air is set → this sheep is flying (or swimming back to shore) and updateAirborneSheep moves it
+function launchSheep(s, vx, vz, vy, kind, by = null) {
+  if (s.heldBy) { const d = s.heldBy; if (d.holding === s) { d.holding = null; d.holdKind = null; } s.heldBy = null; }
+  s.air = { kind, by, h: Math.max(s.y + (s.hopY || 0), groundY(s.x, s.z)), vy, t: 0, spin: 0, bounces: 1, chain: 0, t0: G.time, from: s.pen, ghost: 0, noLand: 0.05 };
+  s.vx = vx; s.vz = vz; s.hopY = 0; s.hopV = 0; s.eating = false; s.state = 'flee'; s.pose = s.pose || {};
+  return s.air;
+}
+function updateAirborneSheep(s, dt) {
+  const a = s.air;
+  if (a.kind === 'swim') { swimSheep(s, a, dt); return; }
+  const res = airStep(s, a, s.r, dt);
+  a.spin += dt * (a.kind === 'punt' && a.bounces >= T.punt.bounces ? 8 : a.kind === 'launch' ? 9 : 5);
+  s.y = a.h; s.hopY = 0; s.leg += dt * 24; s.pose = s.pose || {};
+  const sp = Math.hypot(s.vx, s.vz);
+  if (sp > 0.5) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 6));
+  if (a.h - groundY(s.x, s.z) < 1.6) airHitsFromSheep(s, a, sp);
+  if (s.air !== a) return;
+  if (a.kind === 'launch' && Math.random() < dt * 30) starBurst(s.x, s.y + 0.6, s.z, 1, ['#ffd36b', '#fff3a0'], { speed: 0.6, up: 0.4, size: 0.22, life: 0.5, grav: 0 });
+  else if (sp > 9 && Math.random() < dt * 18) burst(s.x, s.y + 0.6, s.z, 1, '#ffffff', { speed: 0.3, up: 0.2, size: 0.16, life: 0.4, grav: 0 });
+  if (res === 'water') { splashSheep(s); return; }
+  if (res === 'ground') {
+    const impact = -a.vy; a.vy = 0;
+    launcherLand(s, impact);
+    if (a.bounces > 0 && impact > 3) {
+      a.bounces--; a.vy = impact * (a.kind === 'launch' ? 0.35 : T.bounceUp); s.vx *= T.bounceSide; s.vz *= T.bounceSide;
+      SFX.boing(panOf(s.x, s.z), 0.12, 1.3); burst(s.x, s.y + 0.15, s.z, 8, '#e8dcc0', { speed: 2.4, up: 1.2, size: 0.22, life: 0.6, grav: 0 });
+      s.pose.landT = G.time; s.pose.sq = Math.min(0.4, impact * 0.025);
+    } else landSheep(s, impact);
+  }
+}
+function landSheep(s, impact) {
+  const a = s.air; s.air = null;
+  s.y = groundY(s.x, s.z); s.hopY = 0; s.hopV = 0;
+  if (sdfAt(s.x, s.z) < s.r) collideWorld(s, s.r);
+  s.vx *= T.landKeep; s.vz *= T.landKeep;
+  const sp = Math.hypot(s.vx, s.vz);
+  startleSheep(s, sp > 0.3 ? s.vx : Math.sin(s.yaw), sp > 0.3 ? s.vz : Math.cos(s.yaw), 1);
+  s.pose = { landT: G.time, sq: Math.min(0.42, 0.12 + impact * 0.02) };
+  SFX.thud(panOf(s.x, s.z), 0.3); burst(s.x, s.y + 0.15, s.z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 });
+  if (impact > 10) dizzy(s, 1.6, 1.25);
+  const pen = penAt(s.x, s.z);
+  if (pen && pen !== a.from) {   // flew over the fence into a pen: that counts
+    s.pen = s.wasPen = pen;
+    if (G.mode === 'play') {
+      onSheepEnteredPen(s, pen);
+      const label = a.kind === 'fling' ? 'SLAM DUNK!' : a.kind === 'launch' ? 'SPECIAL DELIVERY!' : (a.kind === 'punt' || a.kind === 'carom') ? 'HOLE IN ONE!' : 'IN!';
+      floatText(label, s.x, s.y + 2.2, s.z, '#ffd36b', 1.7); confetti(s.x, s.y + 1, s.z, 30); starBurst(s.x, s.y + 1, s.z, 10);
+      Sound.chime([0, 4, 7, 12], 660, 0.2); shakeCam(0.15); MV.holeInOne++;
+      if (a.kind === 'punt' || a.kind === 'carom') sayOnce('hole-in-one', 'what_shot', 'What a shot!');
+    }
+  }
+  if (a.provoke) provokeRam(s, a.provoke);   // a punted ram gets up and comes for you
+  if (a.kind === 'launch') sayOnce('from-sky', 'from_sky', 'Sheep from the sky?!');
+}
+// a flying sheep caroms into other sheep, bowls over coyotes and knocks over dogs
+function airHitsFromSheep(s, a, sv) {
+  if (sv > 4) for (const c of G.coyotes) {
+    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    if (Math.hypot(c.x - s.x, c.z - s.z) > 1.6) continue;
+    const B = T.coyoteBowl, k = Math.max(B.kick, sv * 0.8) / sv;
+    hitCoyote(c, B.courage, s.vx * k, s.vz * k, s, 'BOWLED!');
+    launchCoyote(c, s.vx * k, s.vz * k, B.up, a.by);
+    s.vx *= 0.4; s.vz *= 0.4; sv *= 0.4; MV.bowled++;
+    SFX.bonk(panOf(c.x, c.z), 0.3); starBurst(c.x, c.y + 1, c.z, 8); shakeCam(0.3); hitStop(0.05); dizzy(c, 1.2, 1.5);
+  }
+  const C = T.carom;
+  if (sv > C.min) for (const o of G.sheep) {
+    if (o === s || o.dead || o.air || o.heldBy || o.grabbed) continue;
+    const ox = o.x - s.x, oz = o.z - s.z, od = Math.hypot(ox, oz) + 1e-6; if (od > C.r) continue;
+    if (fenceBetween(s.x, s.z, o.x, o.z)) continue;
+    launchSheep(o, s.vx * C.keep + ox / od * sv * C.share, s.vz * C.keep + oz / od * sv * C.share, C.up, 'carom', a.by);
+    o.air.chain = a.chain + 1; o.air.t0 = a.t0;
+    s.vx *= 0.5; s.vz *= 0.5;
+    MV.caroms++; MV.maxChain = Math.max(MV.maxChain, o.air.chain + 1);
+    const pan = panOf(o.x, o.z);
+    SFX.boing(pan, 0.18, 1.15 + o.air.chain * 0.08); Sound.baa(o.pitch * 1.2, 0.3, pan, true); confetti(o.x, o.y + 1, o.z, 10);
+    if (o.air.chain >= 2) {   // one popup per chain, counting up as it goes
+      const txt = `CHAIN x${o.air.chain + 1}!`, sz = Math.min(2, 1.3 + 0.15 * o.air.chain), cp = MV.chainPop;
+      if (cp && cp.chain === a.t0 && floats.includes(cp)) Object.assign(cp, { text: txt, x: o.x, y: o.y + 2.2, z: o.z, t: 0, size: sz });
+      else { MV.chainPop = floatText(txt, o.x, o.y + 2.2, o.z, '#ffd36b', sz); MV.chainPop.chain = a.t0; }
+    } else floatText('CAROM!', o.x, o.y + 2, o.z, '#ffffff', 1.3);
+    shakeCam(0.12 + 0.05 * o.air.chain);
+    break;   // one carom per sheep per step
+  }
+  if (sv > 8) for (const d of G.dogs) {
+    if (d.air || d.stunT > 0 || d.hopT > 0 || (d === a.by && a.t < 0.6)) continue;
+    if (Math.hypot(d.x - s.x, d.z - s.z) < 1.1) { knockDog(d, s.vx * 0.6, s.vz * 0.6, 0.55, 'OOF!'); s.vx *= 0.5; s.vz *= 0.5; break; }
+  }
+}
+// in the drink: a splash, then it paddles back to the nearest bank (nobody drowns)
+function splashSheep(s) {
+  const a = s.air; a.kind = 'swim'; a.t = 0; a.h = WATER_Y; s.vx *= 0.25; s.vz *= 0.25;
+  splashFx(s.x, s.z, 1);
+  floatText('SPLOSH!', s.x, WATER_Y + 1.6, s.z, '#9fe3ff', 1.35); Sound.baa(s.pitch * 1.25, 0.4, panOf(s.x, s.z), true);
+  sayOnce('towel', 'towel', "Ye'll be wanting a towel!");
+}
+function swimSheep(s, a, dt) {
+  a.t += dt;
+  if ((sdfAt(s.x, s.z) > s.r + 0.1 && !overWater(s.x, s.z)) || a.t > 25) {   // climbed out
+    if (a.t > 25) unstick(s, s.r);
+    s.air = null; s.y = groundY(s.x, s.z); s.pose = { landT: G.time, sq: 0.15 };
+    startleSheep(s, s.vx, s.vz, 0.5);
+    burst(s.x, s.y + 0.6, s.z, 10, '#9fe3ff', { speed: 1.5, up: 2, size: 0.12, life: 0.6 }); floatText('Brrr!', s.x, s.y + 1.5, s.z, '#cfefff', 0.9);
+    return;
+  }
+  const g = sdfGrad(s.x, s.z), k = Math.min(1, dt * 3);
+  s.vx += (g.x * T.swimSpeed - s.vx) * k; s.vz += (g.z * T.swimSpeed - s.vz) * k;
+  s.x += s.vx * dt; s.z += s.vz * dt;
+  if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
+  s.y = Math.max(groundY(s.x, s.z), WATER_Y - 0.45) + Math.sin(a.t * 5 + s.id) * 0.05;   // paddling: just the back and head above water
+  s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
+  if (Math.random() < dt * 1.5) spawnRing(s.x, WATER_Y, s.z, 1.3, '#e8f8ff', 0.7);
+}
+function launchCoyote(c, vx, vz, vy, by = null) {
+  if (c.prey) dropPrey(c, true);
+  if (c.heldBy) { if (c.heldBy.holding === c) { c.heldBy.holding = null; c.heldBy.holdKind = null; } c.heldBy = null; }
+  if (c.state === 'held') c.state = 'flee';
+  c.air = { h: c.y, vy, spin: 0, t: 0, by, bounces: 1, ghost: 0, noLand: 0.05 };
+  c.vx = vx; c.vz = vz;
+}
+function updateAirborneCoyote(c, dt) {
+  const a = c.air;
+  if (c.prey) dropPrey(c, true);
+  if (a.swim) {
+    a.t += dt;
+    if ((sdfAt(c.x, c.z) > T.coyoteR + 0.1 && !overWater(c.x, c.z)) || a.t > 25) {   // out, soaked, and done for the night
+      if (a.t > 25) unstick(c, T.coyoteR);
+      c.air = null; c.y = groundY(c.x, c.z); burst(c.x, c.y + 0.6, c.z, 10, '#9fe3ff', { speed: 1.5, up: 2, size: 0.12, life: 0.6 });
+      if (c.state !== 'leave') { c.courage = Math.min(c.courage, 0); c.state = 'leave'; c.stateT = 0; c.alone = true; floatText('Soggy…', c.x, c.y + 1.5, c.z, '#cfefff', 1); }
+      return;
+    }
+    const g = sdfGrad(c.x, c.z), k = Math.min(1, dt * 3);
+    c.vx += (g.x * 2.6 - c.vx) * k; c.vz += (g.z * 2.6 - c.vz) * k; c.x += c.vx * dt; c.z += c.vz * dt;
+    if (Math.hypot(c.vx, c.vz) > 0.2) c.yaw = lerpA(c.yaw, Math.atan2(c.vx, c.vz), Math.min(1, dt * 4));
+    c.y = Math.max(groundY(c.x, c.z), WATER_Y - 0.5) + Math.sin(a.t * 6) * 0.05; c.leg += dt * 14;
+    return;
+  }
+  const res = airStep(c, a, T.coyoteR, dt);
+  a.spin += dt * 10; c.y = a.h; c.leg += dt * 22;
+  const sv = Math.hypot(c.vx, c.vz);
+  if (sv > 5 && a.h - groundY(c.x, c.z) < 1.6) for (const o of G.coyotes) {   // a flying coyote bowls over its packmates
+    if (o === c || o.air || o.heldBy || o.gone || (o.state === 'leave' && o.stateT > 3)) continue;
+    if (Math.hypot(o.x - c.x, o.z - c.z) > 1.7) continue;
+    const B = T.coyoteBowl;
+    hitCoyote(o, B.courage, c.vx * 0.7, c.vz * 0.7, c, 'BOWLED!'); launchCoyote(o, c.vx * 0.7, c.vz * 0.7, B.up * 0.8, a.by);
+    c.vx *= 0.5; c.vz *= 0.5; MV.bowled++;
+    SFX.bonk(panOf(o.x, o.z), 0.3); starBurst(o.x, o.y + 1, o.z, 8); shakeCam(0.25); dizzy(o, 1.2, 1.5);
+    break;
+  }
+  if (res === 'water') {
+    a.swim = true; a.t = 0; c.vx *= 0.25; c.vz *= 0.25; splashFx(c.x, c.z, 1);
+    floatText('SPLASH!', c.x, WATER_Y + 1.6, c.z, '#9fe3ff', 1.3); Sound.yelp(panOf(c.x, c.z)); c.courage -= 0.6;
+    return;
+  }
+  if (res === 'ground') {
+    const impact = -a.vy; launcherLand(c, impact);
+    if (a.bounces > 0 && impact > 4) { a.bounces--; a.vy = impact * 0.4; c.vx *= 0.7; c.vz *= 0.7; burst(c.x, c.y + 0.15, c.z, 8, '#e8dcc0', { speed: 2.4, up: 1.2, size: 0.22, life: 0.6, grav: 0 }); SFX.thud(panOf(c.x, c.z), 0.2); }
+    else {
+      c.air = null; c.y = groundY(c.x, c.z); if (sdfAt(c.x, c.z) < T.coyoteR) collideWorld(c, T.coyoteR);
+      c.vx *= 0.4; c.vz *= 0.4; c.tumble = Math.max(c.tumble || 0, 0.6);
+      burst(c.x, c.y + 0.15, c.z, 10, '#e8dcc0', { speed: 2.6, up: 1.3, size: 0.24, life: 0.6, grav: 0 }); SFX.thud(panOf(c.x, c.z), 0.25);
+    }
+  }
+}
+function launchDog(d, vx, vz, vy) {
+  if (d.holding) releaseHold(d, false);
+  d.air = { h: d.y, vy, t: 0, spin: 0, bounces: 1, ghost: 0, noLand: 0.05 };
+  d.vx = vx; d.vz = vz; d.pounceT = 0; d.hopT = 0;
+}
+function updateAirborneDog(d, inp, dt) {
+  const a = d.air;
+  if (a.swim) {   // doggy paddle: steer, drifting toward the nearest bank
+    a.t += dt;
+    if ((sdfAt(d.x, d.z) > T.dogR + 0.1 && !overWater(d.x, d.z)) || a.t > 20) {
+      if (a.t > 20) unstick(d, T.dogR);
+      d.air = null; d.y = groundY(d.x, d.z); landDog(d, 0.15);
+      burst(d.x, d.y + 0.7, d.z, 14, '#9fe3ff', { speed: 2.5, up: 2, size: 0.12, life: 0.6 }); floatText('*shake shake*', d.x, d.y + 1.7, d.z, '#cfefff', 0.9);
+      return;
+    }
+    const mx = inp.mx * CAM_R.x - inp.my * CAM_F.x, mz = inp.mx * CAM_R.z - inp.my * CAM_F.z, g = sdfGrad(d.x, d.z), k = Math.min(1, dt * 4);
+    d.vx += (g.x * T.dogSwim * 0.5 + mx * T.dogSwim - d.vx) * k; d.vz += (g.z * T.dogSwim * 0.5 + mz * T.dogSwim - d.vz) * k;
+    d.x += d.vx * dt; d.z += d.vz * dt;
+    if (Math.hypot(d.vx, d.vz) > 0.3) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * 6));
+    d.y = Math.max(groundY(d.x, d.z), WATER_Y - 0.55) + Math.sin(a.t * 6) * 0.05; d.leg += dt * 9;
+    d.stamina = Math.min(1, d.stamina + T.staminaRegen * 0.5 * dt);
+    return;
+  }
+  const res = airStep(d, a, T.dogR, dt);
+  a.spin += dt * 9; d.y = a.h;
+  if (res === 'water') { a.swim = true; a.t = 0; d.vx *= 0.25; d.vz *= 0.25; splashFx(d.x, d.z, 1.2); floatText('SPLASH!', d.x, WATER_Y + 1.6, d.z, '#9fe3ff', 1.3); sayOnce('towel', 'towel', "Ye'll be wanting a towel!"); return; }
+  if (res === 'ground') {
+    const impact = -a.vy; launcherLand(d, impact);
+    if (a.bounces > 0 && impact > 8) { a.bounces--; a.vy = impact * 0.3; d.vx *= 0.5; d.vz *= 0.5; landDog(d, 0.3); }
+    else {
+      d.air = null; d.y = groundY(d.x, d.z); if (sdfAt(d.x, d.z) < T.dogR) collideWorld(d, T.dogR);
+      d.vx *= 0.3; d.vz *= 0.3; d.stunT = Math.max(d.stunT, 0.25); landDog(d, 0.35);
+      floatText('TA-DA!', d.x, d.y + 1.9, d.z, '#ffd36b', 1.3); SFX.thud(panOf(d.x, d.z), 0.35); rumble(d.player, 0.5, 0.4, 140);
+      burst(d.x, d.y + 0.15, d.z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 });
+    }
+  }
+}
+
+// ---------------- grab, drag, shake, fling ----------------
+function distSeg(x, z, s) { const abx = s.bx - s.ax, abz = s.bz - s.az, L2 = abx * abx + abz * abz || 1, t = clamp(((x - s.ax) * abx + (z - s.az) * abz) / L2, 0, 1); return { d: Math.hypot(x - s.ax - abx * t, z - s.az - abz * t), t }; }
+function gatewayBetween(ax, az, bx, bz) { for (const p of pens) { const m = p.mouthSeg; if (m && segX(ax, az, bx, bz, m.ax, m.az, m.bx, m.bz)) return true; } return false; }
+function collideMouths(e, r) { for (const p of pens) if (Math.abs(e.x - p.gx) < 7 && Math.abs(e.z - p.gz) < 7) collideSeg(e, r, p.mouthSeg); }
+function gateGrip(p, d) { const a = p.angClosed + p.outSign * p.phi, r = d.holdR || p.gateLen * 0.6; return { x: p.hinge.x + Math.cos(a) * r, z: p.hinge.z + Math.sin(a) * r }; }
+function tryGrab(d) {
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), mx = d.x + fx * 1.1, mz = d.z + fz * 1.1;   // the dog's mouth
+  let best = null, bd = T.grabReach, kind = null, grip = 0;
+  for (const c of G.coyotes) {
+    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3;
+    if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
+  }
+  for (const s of G.sheep) {
+    if (s.dead || s.heldBy || s.grabbed) continue;
+    if (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8)) continue;
+    const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0);   // easier to snatch one flying at you
+    if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; best = s; kind = s.ram ? 'ram' : s.lamb ? 'lamb' : 'sheep'; }
+  }
+  for (const p of pens) {
+    if (Math.abs(p.hinge.x - d.x) > 9 || Math.abs(p.hinge.z - d.z) > 9) continue;
+    const q = distSeg(mx, mz, p.gateSeg), r = q.t * p.gateLen;
+    if (r < 0.8 || q.d > 1.3) continue;
+    if (q.d - 0.2 < bd) { bd = q.d - 0.2; best = p; kind = 'gate'; grip = r; }
+  }
+  if (!best) return;
+  d.holding = best; d.holdKind = kind; d.holdT = 0; d.holdWob = rnd(0, TAU); d.lastShake = 0; d.shakes = 0;
+  const pan = panOf(d.x, d.z);
+  rumble(d.player, 0.3, 0.5, 120); hint('grab-used');
+  if (kind === 'gate') { d.holdR = clamp(grip, 0.9, best.gateLen); d.holdOff = wrapA(best.phi - gatePsi(best, d.x, d.z)); SFX.creak(pan, 0.2, 1.2); Sound.growl(pan, 0.1); return; }
+  best.heldBy = d;
+  if (kind === 'coyote') {
+    if (best.state === 'pack') best.state = 'held';   // out of the pack's plans while it's in your jaws
+    floatText('GOTCHA!', best.x, best.y + 1.8, best.z, '#ffd36b', 1.3); Sound.growl(pan, 0.2); Sound.yelp(pan); shakeCam(0.15);
+  } else {
+    const s = best;
+    if (s.air) { s.air = null; floatText('NICE CATCH!', s.x, s.y + 2, s.z, '#ffd36b', 1.5); starBurst(s.x, s.y + 1, s.z, 8); sayOnce('catch', 'catch', 'What a catch!'); Sound.chime([0, 7, 12], 784, 0.16); }
+    else floatText('GOTCHA!', s.x, s.y + 1.6, s.z, '#ffffff', 1.1);
+    s.state = 'flee'; s.eating = false; Sound.baa(s.pitch * 1.1, 0.4, pan, true); Sound.growl(pan, 0.08);
+  }
+}
+function releaseHold(d, fling) {
+  const H = d.holding, kind = d.holdKind; if (!H) return;
+  d.holding = null; d.holdKind = null;
+  if (kind === 'gate') return;
+  H.heldBy = null;
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), sp = Math.hypot(d.vx, d.vz), F = T.fling, pan = panOf(d.x, d.z);
+  const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
+  if (kind === 'coyote') {
+    if (H.state === 'held') H.state = 'flee';
+    if (throwIt) { launchCoyote(H, d.vx * F.mul + fx * F.add, d.vz * F.mul + fz * F.add, F.up * 0.8, d); H.air.ghost = 0.15; SFX.whoosh(pan, 0.3); floatText('YEET!', H.x, H.y + 1.8, H.z, '#ffd36b', 1.3); MV.flings++; }
+    else { H.vx = fx * 3; H.vz = fz * 3; H.y = groundY(H.x, H.z); }
+    if (H.state !== 'leave' && !H.prey) { H.state = 'flee'; H.stateT = 0; H.fleeDur = rnd(1.8, 2.8); H.fx = d.x; H.fz = d.z; }
+    return;
+  }
+  const s = H;
+  if (throwIt) {
+    launchSheep(s, d.vx * F.mul + fx * F.add, d.vz * F.mul + fz * F.add, F.up, 'fling', d);
+    s.air.ghost = 0.12; s.air.h = groundY(s.x, s.z) + 0.6;
+    SFX.whoosh(pan, 0.3); Sound.baa(s.pitch * 1.2, 0.4, pan, true); MV.flings++;
+  } else {
+    s.y = groundY(s.x, s.z); s.vx = d.vx * 0.5; s.vz = d.vz * 0.5; s.hopV = 2.2; s.pose = { landT: G.time, sq: 0.15 };
+    startleSheep(s, fx, fz, 0.6);
+  }
+}
+// pounce button while holding on
+function shakeHold(d) {
+  if ((d.shakeCD || 0) > G.time) return;
+  d.shakeCD = G.time + 0.28; d.shakeT = 0.3; d.lastShake = 0;
+  const H = d.holding, kind = d.holdKind, pan = panOf(d.x, d.z), fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  SFX.shake(pan); rumble(d.player, 0.45, 0.6, 130); Sound.growl(pan, 0.12);
+  if (kind === 'coyote') {
+    d.shakes++;
+    if (H.state !== 'leave') { if (H.state === 'held') H.state = 'flee'; scareCoyote(H, T.coyoteShake, d, true); } else if (H.prey) dropPrey(H, true);   // drops its prey, loses heart
+    floatText(d.shakes > 1 ? 'SHAKE SHAKE!' : 'SHAKE!', H.x, H.y + 1.8, H.z, '#ff8a6b', 1.2 + d.shakes * 0.1);
+    starBurst(H.x, H.y + 1, H.z, 5); shakeCam(0.18); dizzy(H, 1.5, 1.5);
+    if (H.courage <= 0.05 || H.state === 'leave' || d.shakes >= 3) {   // shaken loose: tossed aside and it bolts
+      d.holding = null; d.holdKind = null; H.heldBy = null; d.grabLock = true;
+      launchCoyote(H, fx * 9 + d.vx, fz * 9 + d.vz, 6, d); H.air.ghost = 0.15;
+      if (H.state !== 'leave') { H.state = 'flee'; H.stateT = 0; H.fleeDur = 3; H.fx = d.x; H.fz = d.z; }
+      floatText('AND STAY OUT!', H.x, H.y + 2.2, H.z, '#ffd36b', 1.3);
+    }
+  } else if (kind === 'ram') {   // a ram bucks you off and comes for you
+    releaseHold(d, false); knockDog(d, -fx * 10, -fz * 10, 0.5, 'BUCKED!'); provokeRam(H, d);
+  } else {   // a sheep or lamb: just frightened
+    H.fear = 1; H.panic = 1; H.stress = Math.min(1, (H.stress || 0) + 0.35); Sound.baa(H.pitch * 1.3, 0.45, pan, true); floatText('BAA!', H.x, H.y + 1.6, H.z, '#ffffff', 1);
+  }
+}
+// rigidly at the mouth (never a spring); it fights back as a force on the dog, and whatever it bumps stops the dog too
+function holdStep(d, e, k, r, dt) {
+  d.holdT += dt; d.lastShake += dt;
+  d.holdWob += (Math.random() - 0.5) * dt * 6;
+  const sp = Math.hypot(d.vx, d.vz) + 1e-6;
+  let px = Math.cos(d.holdWob), pz = Math.sin(d.holdWob);
+  if (sp > 1) { px -= d.vx / sp * 0.8; pz -= d.vz / sp * 0.8; }
+  const pl = Math.hypot(px, pz) + 1e-6;
+  d.vx += px / pl * k.pull * dt * 3; d.vz += pz / pl * k.pull * dt * 3;
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), jig = d.shakeT > 0 ? Math.sin(d.shakeT * 60) * 0.35 : 0;
+  // not through a fence or a pen's gateway: fling it over instead
+  for (const f of [1, 0.65, 0.35, 0]) {
+    const x = d.x + fx * k.reach * f + fz * jig * f, z = d.z + fz * k.reach * f - fx * jig * f;
+    if (f === 0 || !(fenceBetween(d.x, d.z, x, z) || gatewayBetween(d.x, d.z, x, z))) { e.x = x; e.z = z; break; }
+  }
+  e.vx = d.vx; e.vz = d.vz;
+  const ox = e.x, oz = e.z;
+  collideWorld(e, r); collideFences(e, r); collideMouths(e, r);
+  const cx = e.x - ox, cz = e.z - oz, cl = Math.hypot(cx, cz);
+  if (cl > 1e-4) {
+    const nx = d.x + cx, nz = d.z + cz;
+    if (!fenceBetween(d.x, d.z, nx, nz)) { d.x = nx; d.z = nz; collideWorld(d, T.dogR); }
+    const vn = (d.vx * cx + d.vz * cz) / cl; if (vn < 0) { d.vx -= vn * cx / cl; d.vz -= vn * cz / cl; }
+  }
+}
+function updateHeldSheep(s, dt) {
+  const d = s.heldBy;
+  if (!d || d.holding !== s || s.dead) { s.heldBy = null; s.pose = null; return; }
+  const k = T.grabKinds[d.holdKind] || T.grabKinds.sheep;
+  holdStep(d, s, k, s.r, dt);
+  s.y = groundY(s.x, s.z) + k.lift; s.hopY = 0; s.yaw = d.yaw + Math.PI / 2; s.leg += dt * 22;
+  s.state = 'flee'; s.eating = false; s.fear = Math.max(s.fear || 0, 0.6); s.stress = Math.min(1, (s.stress || 0) + 0.22 * dt);
+  s.pose = s.pose || {};
+  if (Math.random() < dt * 1.2) Sound.baa(s.pitch * 1.15, 0.25, panOf(s.x, s.z));
+  if (d.holdKind === 'ram' && d.holdT > T.ramBuck) {   // a ram won't stand for being held
+    const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+    releaseHold(d, false); knockDog(d, -fx * 12, -fz * 12, 0.6, 'BUCKED!'); provokeRam(s, d);
+  }
+}
+function updateHeldCoyote(c, dt) {
+  const d = c.heldBy;
+  if (!d || d.holding !== c) { c.heldBy = null; if (c.state === 'held') c.state = 'flee'; return; }
+  const k = T.grabKinds.coyote;
+  holdStep(d, c, k, T.coyoteR, dt);
+  c.y = groundY(c.x, c.z) + k.lift; c.yaw = d.yaw + Math.PI / 2; c.leg += dt * 26; c.tumble = 0;
+  if (c.prey) { const s = c.prey; s.x = c.x + Math.sin(c.yaw) * 0.9; s.z = c.z + Math.cos(c.yaw) * 0.9; s.y = groundY(s.x, s.z); s.yaw = c.yaw + Math.PI / 2; s.vx = c.vx; s.vz = c.vz; }
+  if (Math.random() < dt * 1.5) Sound.yelp(panOf(c.x, c.z));
+  if (d.lastShake > 1.2 && Math.random() < dt * T.wriggle) {   // it wriggles free unless you keep shaking it
+    d.holding = null; d.holdKind = null; c.heldBy = null; d.grabLock = true;
+    c.y = groundY(c.x, c.z); c.vx = Math.cos(d.yaw) * 6; c.vz = -Math.sin(d.yaw) * 6;
+    floatText('WRIGGLE!', c.x, c.y + 1.6, c.z, '#ff8a6b', 1.1); Sound.yelp(panOf(c.x, c.z));
+    if (c.state === 'held' || (c.state !== 'leave' && !c.prey)) { c.state = 'flee'; c.stateT = 0; c.fleeDur = 1.5; c.fx = d.x; c.fz = d.z; }
+  }
+}
+
+// ---------------- gates you push ----------------
+// A kinematic hinge (main's breeding-pen gate): contact sets a target angle just clear of the dog,
+// the leaf follows at up to T.gate.rate rad/s, then coasts with damping. It latches when it swings
+// through shut and only gives to a fresh shove after that. Sprint into it (or lean on it) to vault it.
+function initGates() {
+  for (const p of pens) {
+    p.outSign = Math.sign(wrapA(p.angOpen - p.angClosed)) || -1;
+    p.mouthSeg = { ax: p.hinge.x, az: p.hinge.z, bx: p.hinge.x + Math.cos(p.angClosed) * p.gateLen, bz: p.hinge.z + Math.sin(p.angClosed) * p.gateLen };
+    resetGate(p);
+  }
+}
+function resetGate(p) { p.phi = 0; p.w = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = false; updateGateGeometry(p); }
+function gatePsi(p, x, z) { return p.outSign * wrapA(Math.atan2(z - p.hinge.z, x - p.hinge.x) - p.angClosed); }   // a point's angle round the hinge, in phi terms
+function gateNormal(p, phi = p.phi) { const a = p.angClosed + p.outSign * phi; return { x: -Math.sin(a) * p.outSign, z: Math.cos(a) * p.outSign }; }   // toward the leaf's +phi side
+function vaultFx(d) { floatText('HUP!', d.x, d.y + 1.8, d.z, d.color, 1); SFX.whoosh(panOf(d.x, d.z), 0.14, 0.22); }
+function updateGate(p, dt) {
+  const K = T.gate, prev = p.phi, L = p.gateLen, hx = p.hinge.x, hz = p.hinge.z;
+  let touch = false, want = null, rate = K.rate;
+  // 1) a dog holding the gate drags it round the hinge
+  for (const d of G.dogs) {
+    if (d.holding !== p) continue;
+    touch = true;
+    const g = gateGrip(p, d);
+    if (Math.hypot(g.x - d.x, g.z - d.z) > 2.6 || Math.hypot(d.x - hx, d.z - hz) < 0.7) { releaseHold(d, false); continue; }
+    const psi = wrapA(gatePsi(p, d.x, d.z) + d.holdOff);
+    if (p.latched) { if (Math.abs(psi) < 0.15) continue; p.latched = false; SFX.creak(panOf(hx, hz), 0.22, 1.1); }
+    p.pushedBy = d;
+    want = Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;   // pulled nearly to: it swings the last bit and clacks shut
+  }
+  if (want === null && p.auto !== undefined) {   // swung by script (toggleGate)
+    touch = true; rate = 3; if (p.auto !== 0) p.latched = false;
+    want = p.auto; if (Math.abs(p.phi - p.auto) < 0.01) p.auto = undefined;
+  }
+  // 2) dogs walking into it push it away from them
+  const nP = gateNormal(p);
+  for (const d of G.dogs) {
+    if (d.air || d.hopT > 0 || d.holding === p) continue;
+    const r = Math.hypot(d.x - hx, d.z - hz);
+    if (r > L + K.dogDisc || r < 0.25) continue;
+    const psi = gatePsi(p, d.x, d.z), del = Math.asin(Math.min(1, K.dogDisc / Math.max(r, K.dogDisc))), diff = wrapA(psi - p.phi);
+    if (Math.abs(diff) > del + 0.03) continue;
+    touch = true;
+    const side = diff > 0 ? 1 : -1, into = d.inMag > 0.5 ? -(d.wx * nP.x + d.wz * nP.z) * side : 0;
+    if (d.mode === 'sprint' && into > 0.45 && !d.holding) { startHop(d, nP.x * side, nP.z * side, Math.max(7, T.dogSprint * 0.75)); vaultFx(d); continue; }   // sprinting: vault it
+    if (r < 0.9 || (p.latched && !p.fresh)) continue;   // too near the hinge to swing, or just latched (needs a fresh shove)
+    if (p.latched) { p.latched = false; SFX.creak(panOf(hx, hz), 0.24, 0.95); }
+    p.pushedBy = d;
+    const w = side > 0 ? Math.min(p.phi, psi - del) : Math.max(p.phi, psi + del);
+    want = want === null ? w : (side > 0 ? Math.min(want, w) : Math.max(want, w));
+  }
+  // 3) swing: driven (rate-limited) or coasting, against stops at both ends
+  if (want !== null) {
+    want = p.phi + wrapA(want - p.phi);
+    const lim = rate * dt, np = clamp(clamp(want, p.phi - lim, p.phi + lim), -K.maxIn, K.maxOut);
+    p.w = (np - p.phi) / Math.max(dt, 1e-4); p.phi = np;
+    if (Math.abs(p.w) > 1.5 && Math.random() < dt * 3) SFX.creak(panOf(hx, hz), 0.16, 0.9 + Math.random() * 0.3);
+  } else if (!p.latched && p.w) {
+    p.phi += p.w * dt; p.w *= Math.exp(-dt * K.damp); if (Math.abs(p.w) < 0.05) p.w = 0;
+    if (p.phi > K.maxOut || p.phi < -K.maxIn) {
+      const hit = Math.abs(p.w); p.phi = clamp(p.phi, -K.maxIn, K.maxOut); p.w = -p.w * 0.25;
+      if (hit > 2.5) { SFX.thud(panOf(p.gx, p.gz), 0.25); floatText('CLANG!', p.gx, p.y + 2, p.gz, '#ffffff', 1); }
+    }
+  }
+  // 4) it latches when it swings through shut, from either side
+  if (!p.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) latchGate(p, Math.abs(p.w));
+  // 5) a latched gate only gives to a fresh shove: nobody touching it for a moment first
+  if (touch) p.noTouch = 0; else if ((p.noTouch += dt) > K.fresh) p.fresh = true;
+  // 6) the leaf shoves whatever is in its way (a slammed gate whacks it)
+  if (p.phi !== prev) sweepGate(p, prev);
+  updateGateGeometry(p);
+  if (p.gateT > 0.5 && !p.wasOpen) { p.wasOpen = true; onGateOpened(p); } else if (p.gateT < 0.05) p.wasOpen = false;
+  // 7) dogs never pass through the leaf; leaning on one that won't give vaults it
+  for (const d of G.dogs) {
+    if (d.air || d.hopT > 0 || d.holding === p) continue;
+    if (!collideSeg(d, T.dogR + 0.05, p.gateSeg)) continue;
+    const into = d.inMag > 0.5 ? -(HIT.nx * d.wx + HIT.nz * d.wz) : 0;
+    if (into < 0.45 || d.holding) continue;
+    d.leaning = true; d.leanT += dt;
+    if (p.final && p.latched && G.finalArm > 0 && d.leanT > 0.3) { onGateClosed(p); continue; }
+    if (d.leanT > K.lean) { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
+  }
+}
+function sweepGate(p, prev) {
+  const dir = Math.sign(p.phi - prev), lo = Math.min(prev, p.phi), hi = Math.max(prev, p.phi), hx = p.hinge.x, hz = p.hinge.z, L = p.gateLen, K = T.gate;
+  const shove = (e, rad) => {
+    const r = Math.hypot(e.x - hx, e.z - hz); if (r > L + rad || r < 0.3) return 0;
+    const psi = gatePsi(p, e.x, e.z), del = Math.asin(Math.min(1, rad / r));
+    if (dir > 0 ? (psi < lo - 0.01 || psi > hi + del) : (psi > hi + 0.01 || psi < lo - del)) return 0;   // behind the old leaf, or clear of the new one
+    const np = p.phi + dir * (del + 0.02), a = p.angClosed + p.outSign * np;
+    e.x = hx + Math.cos(a) * r; e.z = hz + Math.sin(a) * r;
+    const n = gateNormal(p, np), vt = p.w * r;   // the leaf's speed there
+    const vn = e.vx * n.x + e.vz * n.z; if ((vt > 0 && vn < vt) || (vt < 0 && vn > vt)) { e.vx += n.x * (vt - vn); e.vz += n.z * (vt - vn); }
+    E.nx = n.x; E.nz = n.z; return vt;
+  };
+  const E = { nx: 0, nz: 0 };
+  for (const s of G.sheep) {
+    if (s.dead || s.air || s.heldBy || s.grabbed) continue;
+    const vt = shove(s, s.r + 0.1);
+    if (Math.abs(vt) > K.whack) {   // slammed: it goes flying
+      const sp = Math.min(12, Math.abs(vt) * 0.7) * Math.sign(vt);
+      launchSheep(s, E.nx * sp, E.nz * sp, 5, 'whack', p.pushedBy || null);
+      floatText('WHACK!', s.x, s.y + 1.6, s.z, '#ffffff', 1.2); SFX.bonk(panOf(s.x, s.z), 0.25); starBurst(s.x, s.y + 0.9, s.z, 6); shakeCam(0.15);
+    }
+  }
+  for (const c of G.coyotes) {
+    if (c.air || c.heldBy) continue;
+    const vt = shove(c, T.coyoteR + 0.1);
+    if (Math.abs(vt) > 8) { hitCoyote(c, 0.4, E.nx * vt * 0.6, E.nz * vt * 0.6, p.pushedBy || { x: c.x - E.nx * vt, z: c.z - E.nz * vt }, 'THWACK!'); dizzy(c, 1, 1.5); }
+  }
+  for (const d of G.dogs) {
+    if (d.air || d.hopT > 0 || d.holding === p || d === p.pushedBy) continue;
+    const vt = shove(d, T.dogR + 0.12);
+    if (Math.abs(vt) > 9 && d.stunT <= 0) knockDog(d, E.nx * vt * 0.5, E.nz * vt * 0.5, 0.45, 'WHAM!');
+  }
+}
+function latchGate(p, speed) {
+  p.phi = 0; p.w = 0; p.latched = true; p.fresh = false; p.noTouch = 0; p.auto = undefined;
+  for (const d of G.dogs) if (d.holding === p) { d.holding = null; d.holdKind = null; d.grabLock = true; }
+  updateGateGeometry(p); MV.latches++;
+  const pan = panOf(p.gx, p.gz);
+  SFX.clack(pan, 0.32); SFX.thud(pan, 0.2);
+  floatText('SHUT!', p.gx, p.y + 2.4, p.gz, '#ffd36b', 1.6);
+  burst(p.gx, p.y + 0.4, p.gz, 10, '#e8dcc0', { speed: 2, up: 1.5, size: 0.2, life: 0.6, grav: 0 }); starBurst(p.gx, p.y + 1.2, p.gz, 6);
+  shakeCam(0.1 + Math.min(0.2, speed * 0.03));
+  for (const d of G.dogs) if (Math.hypot(d.x - p.gx, d.z - p.gz) < 8) rumble(d.player, 0.3, 0.5, 90);
+  if (G.mode === 'play') onGateClosed(p);
+}
+// a pounce is too quick to push a gate: it slams it
+function pounceGateSlam(d, ox, oz) {
+  for (const p of pens) {
+    if (Math.abs(d.x - p.hinge.x) > 8 || Math.abs(d.z - p.hinge.z) > 8) continue;
+    const g = p.gateSeg;
+    if (!segX(ox, oz, d.x, d.z, g.ax, g.az, g.bx, g.bz) && distSeg(d.x, d.z, g).d > T.dogR + 0.15) continue;
+    const side = Math.sign(wrapA(gatePsi(p, ox, oz) - p.phi)) || 1, r = clamp(Math.hypot(ox - p.hinge.x, oz - p.hinge.z), 0.8, p.gateLen);
+    p.w = -side * Math.min(T.gate.slam, T.pounceSpeed * 0.8 / r); p.latched = false; p.auto = undefined; p.pushedBy = d;
+    d.x = ox; d.z = oz; endLunge(d, 0.2);
+    floatText('SLAM!', p.gx, p.y + 2.2, p.gz, '#ffd36b', 1.4); SFX.bonk(panOf(p.gx, p.gz), 0.32); SFX.creak(panOf(p.gx, p.gz), 0.25, 1.2);
+    shakeCam(0.25); rumble(d.player, 0.6, 0.5, 140); burst(p.gx, p.y + 0.4, p.gz, 10, '#e8dcc0', { speed: 2.5, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
+    return;
+  }
+}
+initGates();
+// the prompt over a gate when a dog is near: what a shove will do, and which way it'll swing
+function drawGatePrompt(p, d) {
+  const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0;
+  const line1 = finalArm ? 'Lean on the gate to finish!' : held ? (Math.abs(p.phi) < 0.35 ? 'Nearly… clack it shut!' : 'Drag it round') :
+    p.latched ? (p.fresh ? 'Walk into the gate to push it' : 'SHUT! Back off, then shove to reopen') : p.gateT > 0.5 ? 'Push the gate to swing it shut' : 'Keep pushing…';
+  const line2 = held ? `let go of ${keyLabel(d.player, 'grab')} to drop it` : `hold ${keyLabel(d.player, 'grab')} to grab it · sprint to vault`;
+  const [gx, gy] = proj(p.gx, p.y + 4.2, p.gz);   // well above the gate, so it never covers the dog
+  ctx.font = '600 15px Fredoka, sans-serif'; const w1 = ctx.measureText(line1).width; ctx.font = '500 12px Fredoka, sans-serif'; const w2 = ctx.measureText(line2).width;
+  const w = Math.max(w1, w2) + 24;
+  ctx.fillStyle = 'rgba(255,248,232,.92)'; rr(gx - w / 2, gy - 22, w, 42, 13); ctx.fill(); ctx.strokeStyle = d.color; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx - 7, gy + 20); ctx.lineTo(gx, gy + 28); ctx.lineTo(gx + 7, gy + 20); ctx.closePath(); ctx.fillStyle = d.color; ctx.fill();
+  ctx.fillStyle = '#1b1a22'; ctx.font = '600 15px Fredoka, sans-serif'; ctx.fillText(line1, gx, gy - 7);
+  ctx.fillStyle = '#5a5566'; ctx.font = '500 12px Fredoka, sans-serif'; ctx.fillText(line2, gx, gy + 10);
+  if (held || (p.latched && !p.fresh)) return;
+  // an arrow round the hinge: the way it swings if you shove it from where you stand
+  const side = Math.sign(wrapA(gatePsi(p, d.x, d.z) - p.phi)) || 1, to = clamp(p.phi - side * 1.0, -T.gate.maxIn, T.gate.maxOut);
+  if (Math.abs(to - p.phi) < 0.15) return;
+  const R = p.gateLen * 0.75, y = p.y + 0.6, pts = [];
+  for (let k = 0; k <= 14; k++) { const ph = p.phi + (to - p.phi) * k / 14, a = p.angClosed + p.outSign * ph; pts.push(proj(p.hinge.x + Math.cos(a) * R, y, p.hinge.z + Math.sin(a) * R)); }
+  ctx.lineCap = 'round'; ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(0,0,0,.45)';
+  for (const pass of [0, 1]) {
+    ctx.beginPath(); pts.forEach(([x, yy], i) => i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy)); ctx.stroke();
+    const [ax, ay] = pts[pts.length - 1], [bx, by] = pts[pts.length - 3], an = Math.atan2(ay - by, ax - bx);
+    ctx.beginPath(); ctx.moveTo(ax + Math.cos(an) * 6, ay + Math.sin(an) * 6); ctx.lineTo(ax + Math.cos(an + 2.5) * 13, ay + Math.sin(an + 2.5) * 13); ctx.moveTo(ax + Math.cos(an) * 6, ay + Math.sin(an) * 6); ctx.lineTo(ax + Math.cos(an - 2.5) * 13, ay + Math.sin(an - 2.5) * 13); ctx.stroke();
+    ctx.lineWidth = 3.5; ctx.strokeStyle = d.color;
+  }
+  ctx.lineCap = 'butt';
+}
+
+// ---------------- the sheep launcher (a seesaw at the river) ----------------
+// Sheep stand on the low end (there's clover heaped on it); a pounce on the high end, or anything landing
+// hard on it, snaps the plank over and throws everything on the low end across the river.
+var LAUNCHERS = [];   // var, not const: groundY (world gen) asks launcherY about the plank
+function launcherY(x, z) {
+  if (!LAUNCHERS) return null;
+  for (const S of LAUNCHERS) {
+    const dx = x - S.x, dz = z - S.z; if (Math.abs(dx) > S.L + 1.2 || Math.abs(dz) > S.L + 1.2) continue;
+    const p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux;
+    if (Math.abs(p) > S.L || Math.abs(q) > S.W / 2) continue;
+    return Math.max(terrainH(x, z), S.y + T.launcher.pivotH + 0.16 - S.k * p * Math.sin(S.tiltA));
+  }
+  return null;
+}
+function makeLauncher(x, z, ux, uz, land, title) {
+  const K = T.launcher, L = K.L, W = K.W;
+  const S = { x, z, ux, uz, L, W, y: terrainH(x, z), k: 1, kT: 1, snap: 0, cd: 0, back: 0, tiltA: Math.asin(K.drop / L), land, launches: 0 };
+  const root = new THREE.Group(); root.position.set(x, S.y, z); root.rotation.y = Math.atan2(-uz, ux); scene.add(root);   // local +x = toward the low (launch) end
+  const legs = [];
+  for (const sz of [-1, 1]) for (const sx of [-1, 1]) legs.push(P(BOX(0.16, K.pivotH + 0.25, 0.16), '#7a5230', { r: [0, 0, sx * 0.4], p: [sx * 0.22, K.pivotH / 2, sz * (W / 2 + 0.14)] }));
+  part(root, merge(...legs, P(CYL(0.1, 0.1, W + 0.55, 8), '#5a3a22', { r: [Math.PI / 2, 0, 0], p: [0, K.pivotH, 0] }), P(BOX(1.0, 0.12, W + 0.6), '#6b4226', { p: [0, 0.06, 0] })));
+  const tilt = new THREE.Group(); tilt.position.y = K.pivotH; root.add(tilt); S.tilt = tilt;
+  const bits = [];
+  for (let i = 0; i < 5; i++) bits.push(P(BOX(L * 2, 0.16, W / 5 - 0.03), i % 2 ? '#c98c4e' : '#b97a40', { p: [0, 0.08, -W / 2 + (i + 0.5) * W / 5] }));
+  bits.push(P(BOX(0.14, 0.24, W), '#7a5230', { p: [-L + 0.1, 0.12, 0] }), P(BOX(0.14, 0.24, W), '#7a5230', { p: [L - 0.1, 0.12, 0] }));
+  bits.push(P(CYL(0.8, 0.8, 0.05, 22), '#e8473f', { p: [-L * 0.6, 0.18, 0] }), P(CYL(0.54, 0.54, 0.06, 22), '#fff8e8', { p: [-L * 0.6, 0.19, 0] }), P(CYL(0.27, 0.27, 0.07, 22), '#e8473f', { p: [-L * 0.6, 0.2, 0] }));   // pounce here
+  for (let i = 0; i < 11; i++) bits.push(P(SPH(6), i % 3 ? '#4fae55' : '#7bdc55', { s: [0.34, 0.2, 0.34], p: [L * 0.52 + (wr() - 0.5) * 2, 0.2, (wr() - 0.5) * (W - 0.5)] }));   // clover on the low end
+  for (let i = 0; i < 5; i++) bits.push(P(SPH(5), ['#ff7eb6', '#ffffff', '#ffe14d'][i % 3], { s: [0.07, 0.06, 0.07], p: [L * 0.52 + (wr() - 0.5) * 1.8, 0.36, (wr() - 0.5) * (W - 0.7)] }));
+  part(tilt, merge(...bits));
+  // chute rails keep the load on the low end; they flare out behind so you can drive sheep in
+  const loc = (p, q) => [x + p * ux - q * uz, z + p * uz + q * ux];
+  const rail = (p0, q0, p1, q1) => { const [ax, az] = loc(p0, q0), [bx, bz] = loc(p1, q1); return { ax, az, bx, bz }; };
+  const hw = W / 2 + 0.6, f = L + 0.9;
+  const segs = [rail(f, -hw, f, hw), rail(0, hw, f, hw), rail(0, -hw, f, -hw), rail(0, hw, -2.6, hw + 1.8), rail(0, -hw, -2.6, -hw - 1.8)];
+  for (const s of segs) staticFences.push(s);
+  const fg = new THREE.Group(); fg.position.y = S.y; scene.add(fg); part(fg, fenceGeo(segs));
+  // the sign
+  const [sx, sz] = loc(-L - 1.4, -(hw + 2.6)), sign = new THREE.Group(); sign.position.set(sx, terrainH(sx, sz), sz); sign.rotation.y = Math.PI / 4; scene.add(sign);
+  part(sign, P(CYL(0.09, 0.1, 2.2, 6), '#7a5230', { p: [0, 1.1, 0] }));
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const cx = cv.getContext('2d');
+  cx.fillStyle = '#e8c070'; cx.fillRect(0, 0, 512, 160); cx.strokeStyle = '#c0392b'; cx.lineWidth = 12; cx.strokeRect(6, 6, 500, 148);
+  cx.fillStyle = '#c0392b'; cx.font = 'bold 54px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(title, 256, 62, 480);
+  cx.fillStyle = '#3a2416'; cx.font = '600 30px Fredoka, sans-serif'; cx.fillText('load the low end · pounce the target', 256, 118, 480);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const wood = new THREE.MeshBasicMaterial({ color: '#a8784a' }), face = new THREE.MeshBasicMaterial({ map: tex });
+  const board = new THREE.Mesh(new THREE.BoxGeometry(3, 0.94, 0.08), [wood, wood, wood, wood, face, face]); board.position.y = 1.9; board.castShadow = true; sign.add(board);
+  // clover the sheep can smell: a patch of extra-rich grass on the low end that grows back
+  const [cx0, cz0] = loc(L * 0.55, 0);
+  for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) {
+    const gx = GMINX + a * VS, gz = GMINZ + b * VS; if (Math.hypot(gx - cx0, gz - cz0) > 2.8) continue;
+    const v = b * VX + a; gCap[v] = gAmt[v] = gInit[v] = 1.4;
+  }
+  return S;
+}
+{ // beside the bridge, on the near bank, upstream (west, away from the camera); it throws across the river
+  const ra = -12.5, al = -17, x = RIVER.x + RIVER.tx * ra + RIVER.nx * al, z = RIVER.z + RIVER.tz * ra + RIVER.nz * al;
+  LAUNCHERS.push(makeLauncher(x, z, RIVER.tx, RIVER.tz, 24.5, 'SHEEP EXPRESS'));
+}
+function fireLauncher(S, trig) {
+  if (S.cd > 0 || S.k < 0.5) return false;
+  const K = T.launcher;
+  S.kT = -1; S.snap = 0.14; S.cd = K.cd; S.back = K.back; S.launches++; MV.launches++;
+  const riders = [];
+  const onLoad = (e, extra) => { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; return p > -0.3 && p < S.L + 0.5 && Math.abs(q) < S.W / 2 + 0.45 + extra ? { p, q } : null; };
+  for (const s of G.sheep) { if (s.dead || s.air || s.heldBy || s.grabbed || s === trig) continue; const o = onLoad(s, 0); if (o) riders.push({ e: s, kind: 'sheep', ...o }); }
+  for (const c of G.coyotes) { if (c.air || c.heldBy || c === trig) continue; const o = onLoad(c, 0); if (o) riders.push({ e: c, kind: 'coyote', ...o }); }
+  for (const d of G.dogs) { if (d.air || d === trig) continue; const o = onLoad(d, 0.5); if (o) riders.push({ e: d, kind: 'dog', ...o }); }
+  riders.sort((a, b) => b.p - a.p);
+  riders.forEach((r, i) => {
+    // each one gets its own landing spot on the far side
+    let tp = S.land + rnd(-1.2, 2.2) + (r.p - S.L * 0.5) * 0.4, tq = r.q * 1.8 + rnd(-1.4, 1.4), tx = 0, tz = 0;
+    for (let k = 0; k < 12; k++) { tx = S.x + tp * S.ux - tq * S.uz; tz = S.z + tp * S.uz + tq * S.ux; if (sdfAt(tx, tz) > 1.5 && !wetAt(tx, tz)) break; tp += 1.5; tq *= 0.7; }
+    const e = r.e, h0 = groundY(e.x, e.z), tf = K.flight + i * 0.05 + rnd(-0.06, 0.1);
+    const vx = (tx - e.x) / tf, vz = (tz - e.z) / tf, vy = (groundY(tx, tz) - h0 + 0.5 * T.airGrav * tf * tf) / tf;
+    let a;
+    if (r.kind === 'sheep') { a = launchSheep(e, vx, vz, vy, 'launch', trig && trig.isDog ? trig : null); a.bounces = 1; }
+    else if (r.kind === 'coyote') { launchCoyote(e, vx, vz, vy, trig); a = e.air; }
+    else { launchDog(e, vx, vz, vy); a = e.air; floatText('WHEEE!', e.x, e.y + 2, e.z, e.color, 1.3); }
+    a.h = h0; a.ghost = 0.3; a.noLand = 0.15;
+  });
+  if (trig && trig.isDog) { trig.pounceT = 0; trig.vx *= 0.1; trig.vz *= 0.1; trig.stunT = Math.max(trig.stunT, 0.12); landDog(trig, 0.35); }
+  const lx = S.x + S.ux * S.L * 0.6, lz = S.z + S.uz * S.L * 0.6, pan = panOf(S.x, S.z), n = riders.length;
+  SFX.thud(pan, 0.45); SFX.boing(pan, 0.3, 0.8);
+  burst(lx, S.y + 0.3, lz, 14, '#e8dcc0', { speed: 3, up: 2, size: 0.26, life: 0.7, grav: 0 });
+  shakeCam(n ? 0.42 : 0.15); hitStop(n ? 0.07 : 0.03);
+  if (trig && trig.player) rumble(trig.player, 0.6, 0.5, 160);
+  if (n) {
+    SFX.zoom(pan, 0.2); MV.launched += n;
+    floatText(n > 2 ? `UP YE GO x${n}!` : 'UP YE GO!', lx, S.y + 3, lz, '#ffd36b', 1.8); confetti(lx, S.y + 1.5, lz, 30); starBurst(lx, S.y + 1.5, lz, 12, undefined, { speed: 5, up: 7 });
+    if (n >= 3) sayOnce('all-aboard', 'all_aboard', 'All aboard! Grand!');
+  } else floatText('THUNK!', S.x - S.ux * S.L * 0.6, S.y + 2.2, S.z - S.uz * S.L * 0.6, '#ffffff', 1.1);
+  return true;
+}
+function onHighEnd(S, e, extra) { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; return p > -S.L - 0.4 && p < -S.L * 0.1 && Math.abs(q) < S.W / 2 + extra; }
+function launcherPounce(d) { for (const S of LAUNCHERS) if (onHighEnd(S, d, 0.95) && fireLauncher(S, d)) return true; return false; }
+function launcherLand(e, impact) { if (impact < T.launcher.trigger) return; for (const S of LAUNCHERS) if (onHighEnd(S, e, 0.6)) fireLauncher(S, e); }   // anything landing hard on the high end fires it too
+function updateLaunchers(dt) {
+  for (const S of LAUNCHERS) {
+    if (S.cd > 0) S.cd -= dt;
+    if (S.back > 0) { S.back -= dt; if (S.back <= 0) { S.kT = 1; SFX.creak(panOf(S.x, S.z), 0.2, 1); } }
+    const rate = S.snap > 0 ? 16 : 2.2; S.snap = Math.max(0, S.snap - dt);   // snaps over fast, settles back slowly
+    S.k += clamp(S.kT - S.k, -rate * dt, rate * dt);
+    if (G.mode === 'play' && !G.hints.launcher && G.dogs.some(d => Math.hypot(d.x - S.x, d.z - S.z) < 16)) { hint('launcher'); sayOnce('load-up', 'load_up', 'Load them up!'); }
+  }
+}
+
+// ---------------- per step / per frame ----------------
+function updateWorldPhysics(dt) {
+  for (const d of G.dogs) d.leaning = false;
+  for (const p of pens) updateGate(p, dt);
+  for (const d of G.dogs) if (!d.leaning) d.leanT = 0;
+  updateLaunchers(dt);
+}
+const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
+// SHARED HOOK (called from syncSheep): somersaults, being carried, swimming, squash on landing. Rotates about the body, not the feet.
+function poseSheep(s, mb, sc) {
+  const P = s.pose; let rx = 0, rz = 0, sy = 1, sxz = 1;
+  if (s.air && s.air.kind === 'swim') { rx = -0.25; rz = Math.sin(G.time * 5 + s.id) * 0.08; }
+  else if (s.air) { const a = s.air; rx = a.kind === 'punt' || a.kind === 'launch' ? -a.spin : Math.sin(a.spin * 3) * 0.25; rz = a.kind === 'carom' || a.kind === 'whack' ? a.spin * 0.8 : 0; if (a.vy > 4) { sy = 1.12; sxz = 0.94; } }
+  else if (s.heldBy) rz = 0.35 + Math.sin(G.time * 14 + s.id) * 0.3;
+  if (P.landT !== undefined) {
+    const k = (G.time - P.landT) / 0.35;
+    if (k < 1) { const q = (P.sq || 0.2) * (1 - k) * Math.cos(k * Math.PI * 2.5); sy *= 1 - q; sxz *= 1 + q * 0.6; }
+    else if (!s.air && !s.heldBy) s.pose = null;
+  } else if (!s.air && !s.heldBy) s.pose = null;
+  const c = 0.62 * sc;
+  mb.makeRotationY(s.yaw); mb.setPosition(_pv.set(s.x, s.y + s.hopY, s.z));
+  _pm.makeTranslation(0, c, 0); mb.multiply(_pm);
+  _pm.makeRotationFromEuler(_pe.set(rx, 0, rz, 'XYZ')); mb.multiply(_pm);
+  _pm.makeTranslation(0, -c, 0); mb.multiply(_pm);
+  _pm.makeScale(sc * sxz, sc * sy, sc * sxz); mb.multiply(_pm);
+}
+function syncMoves(dt) {
+  for (const S of LAUNCHERS) S.tilt.rotation.z = -S.k * S.tiltA;
+  for (const c of G.coyotes) {   // flying coyotes somersault; held ones dangle and kick
+    const M = c.models;
+    M.root.rotation.x = c.air && !c.air.swim ? -c.air.spin : 0;
+    if (c.air && !c.air.swim) { M.root.rotation.z = 0; M.legs.forEach((g, i) => { g.rotation.x = (i < 2 ? -1 : 1) * 0.9 + Math.sin(G.time * 25 + i) * 0.3; }); }
+    if (c.heldBy) { M.root.rotation.z = 0.35 + Math.sin(G.time * 14) * 0.35; M.legs.forEach((g, i) => { g.rotation.x = Math.sin(G.time * 30 + i * 1.7) * 0.9; }); }
+  }
+  updateStars(dt);
+}
 
 // =====================================================================
 // NAVIGATION — A* on the 1 m grid so coyotes find their way round pens,
@@ -2049,6 +2971,7 @@ function updateCoyotes(dt) {
   G.packs = G.packs.filter(p => !p.done);
   for (const c of G.coyotes) {
     if (c.heldBy) { updateHeldCoyote(c, dt); continue; }   // SHARED HOOK: in a dog's jaws (dog-moves section owns this)
+    if (c.air) { updateAirborneCoyote(c, dt); continue; }   // knocked flying / flung / swimming out (dog-moves section owns this)
     c.stateT += dt; c.tumble = Math.max(0, c.tumble - dt); c.growlT -= dt;
     const { dog: nd, d: ndd } = nearestDog(c.x, c.z);
     if (nd && c.state !== 'flee' && c.state !== 'leave') {
@@ -2248,6 +3171,9 @@ function updateCamera(dt, snap = false) {
   camera.lookAt(cam.x, ty, cam.z);
   const hv = cam.view / 2; camera.top = hv; camera.bottom = -hv; camera.left = -hv * aspect; camera.right = hv * aspect;
   camera.updateProjectionMatrix();
+  // juice: camera shake from big hits (dog-moves FX), an offset on top of the framing
+  FX.shake = Math.max(0, FX.shake - dt * T.shakeDecay);
+  if (FX.shake > 0.002) { const a = FX.shake * 2, ox = (Math.random() - 0.5) * a, oy = (Math.random() - 0.5) * a; camera.position.x += CAM_R.x * ox; camera.position.z += CAM_R.z * ox; camera.position.y += oy; }
 }
 // keep co-op dogs within one screen
 function leashDogs() {
@@ -2280,6 +3206,7 @@ function syncSheep() {
     const sc = s.scale * grow, lying = s.state === 'sleep' || !!s.grabbed;
     _e.set(0, s.yaw, s.grabbed ? 1.4 : 0, 'YXZ');
     _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0), s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
+    if (s.pose) poseSheep(s, _mb, sc);   // flying, held, squashed on landing (dog-moves section)
     const bob = s.state === 'flee' ? Math.abs(Math.sin(s.leg)) * 0.08 : 0, breathe = 1 + Math.sin(G.time * 2 + s.id) * 0.02;
     const thin = s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1;
     _mp.compose(_v.set(0, (lying ? 0.38 : 0.66) + bob, 0), _qa.identity(), _s.set(thin, breathe, 1));
@@ -2302,23 +3229,38 @@ function syncSheep() {
   SI.leg.m.count = SI.leg.o.count = nl; SI.leg.m.instanceMatrix.needsUpdate = true;
 }
 function syncDog(d) {
-  const M = d.models, sp = Math.hypot(d.vx, d.vz);
+  const M = d.models, sp = Math.hypot(d.vx, d.vz), t = G.time;
   const hopK = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) : 0;
-  M.root.position.set(d.x, d.y + hopK * 1.25, d.z); M.root.rotation.y = d.yaw;
-  M.root.rotation.z = d.stunT > 0 ? Math.sin(G.time * 16) * 0.35 * Math.min(1, d.stunT * 2) : 0;
-  M.ring.position.y = 0.06 - hopK * 1.25;
-  M.pring.position.y = 0.08 - hopK * 1.25;
-  const R = T.pressR[d.mode]; M.pring.scale.setScalar(lerp(M.pring.scale.x || R, R, 0.2)); M.pring.material.opacity = d.mode === 'walk' ? 0.12 : 0.28;
-  const crouch = d.mode === 'creep' ? 1 : 0;
-  M.body.position.y = lerp(M.body.position.y, -0.17 * crouch + Math.abs(Math.sin(d.leg * 2)) * 0.06 * Math.min(1, sp / 6), 0.3);
-  M.body.rotation.x = hopK * -0.5 + (d.mode === 'sprint' ? 0.08 : 0);
-  const amp = Math.min(0.95, sp * 0.13);
-  M.legs.forEach((g, i) => { g.rotation.x = Math.sin(d.leg * 2 + (i === 0 || i === 3 ? 0 : Math.PI) + (i > 1 ? 0.6 : 0)) * amp + hopK * (i < 2 ? -1 : 1) * 0.9; });
-  M.head.rotation.x = d.barkAnim > 0 ? -0.35 * Math.sin(d.barkAnim / 0.3 * Math.PI) : crouch * 0.25;
+  const pk = d.pounceT > 0 ? 1 - d.pounceT / T.pounceTime : 0, pounceK = d.pounceT > 0 ? Math.sin(pk * Math.PI) : 0;   // the lunge is a low leap
+  const lift = hopK * 1.25 + pounceK * 0.7;
+  M.root.position.set(d.x, d.y + lift, d.z); M.root.rotation.y = d.yaw;
+  M.root.rotation.z = d.stunT > 0 ? Math.sin(t * 16) * 0.35 * Math.min(1, d.stunT * 2) : 0;
+  M.root.rotation.x = d.air && !d.air.swim ? -d.air.spin : 0;                       // backflips off the launcher
+  M.ring.visible = M.pring.visible = !d.air;
+  M.ring.position.y = 0.06 - lift;
+  M.pring.position.y = 0.08 - lift;
+  const R = T.pressR[d.mode] || T.pressR.walk; M.pring.scale.setScalar(lerp(M.pring.scale.x || R, R, 0.2)); M.pring.material.opacity = d.mode === 'walk' ? 0.12 : 0.28;
+  const crouch = d.mode === 'creep' ? 1 : 0, swim = d.air && d.air.swim;
+  d.lieK = lerp(d.lieK || 0, d.mode === 'lie' ? 1 : 0, 0.25);
+  // squash on landing, stretch mid-lunge
+  let sq = 0; if (d.landT !== undefined) { const k = (t - d.landT) / 0.3; if (k < 1) sq = (d.landSq || 0.2) * (1 - k) * Math.cos(k * Math.PI * 2.2); }
+  if (d.pounceT > 0) sq = -0.16 * pounceK;
+  M.body.scale.set(1.3 * (1 + sq * 0.5), 1.3 * (1 - sq), 1.3 * (1 + sq * 0.5));
+  M.body.position.y = lerp(M.body.position.y, -0.17 * crouch - 0.32 * d.lieK - (swim ? 0.35 : 0) + Math.abs(Math.sin(d.leg * 2)) * 0.06 * Math.min(1, sp / 6) * (1 - d.lieK), 0.3);
+  M.body.rotation.x = hopK * -0.5 + (d.mode === 'sprint' ? 0.08 : 0) + (d.pounceT > 0 ? -0.3 + pk * 0.6 : 0) + (swim ? -0.25 : 0);
+  const amp = Math.min(0.95, sp * 0.13) * (1 - d.lieK);
+  M.legs.forEach((g, i) => {
+    let a = Math.sin(d.leg * 2 + (i === 0 || i === 3 ? 0 : Math.PI) + (i > 1 ? 0.6 : 0)) * amp + hopK * (i < 2 ? -1 : 1) * 0.9;
+    if (d.pounceT > 0) a = i < 2 ? -1.2 * pounceK : 1.1 * pounceK;                    // stretched out in the leap
+    if (d.air && !swim) a = (i < 2 ? -1 : 1) * 0.8 + Math.sin(t * 20 + i) * 0.25;   // spread-eagled in the air
+    g.rotation.x = lerp(a, i < 2 ? -1.45 : -1.25, d.lieK);                            // lying down: paws out front, hind legs tucked
+  });
+  M.head.rotation.x = d.barkAnim > 0 ? -0.35 * Math.sin(d.barkAnim / 0.3 * Math.PI) : d.holding ? 0.25 : crouch * 0.25 - d.lieK * 0.1;
+  M.head.rotation.y = d.shakeT > 0 ? Math.sin(t * 60) * 0.7 : 0;                       // shaking whatever is in its jaws
   M.head.position.z = 0.46 + crouch * 0.06;
   d.wag += (sp < 1 ? 14 : 6) * (1 / 60);
-  M.tail.rotation.y = Math.sin(d.wag) * (sp < 1 ? 0.6 : 0.25); M.tail.rotation.x = crouch ? -0.5 : d.mode === 'sprint' ? 0.5 : 0;
-  M.tongue.visible = d.mode === 'sprint' || d.stamina < 0.6;
+  M.tail.rotation.y = Math.sin(d.wag) * (sp < 1 ? 0.6 : 0.25); M.tail.rotation.x = d.lieK > 0.5 ? -1.0 : crouch ? -0.5 : d.mode === 'sprint' || d.pounceT > 0 ? 0.5 : 0;
+  M.tongue.visible = d.mode === 'sprint' || d.stamina < 0.6 || d.pounceT > 0;
 }
 function syncCoyote(c) {
   const M = c.models, sp = Math.hypot(c.vx, c.vz);
@@ -2339,7 +3281,16 @@ const $ = id => document.getElementById(id);
 const ov = $('overlay'), ctx = ov.getContext('2d');
 let W = innerWidth, H = innerHeight, ovScale = 1;
 const floats = [];
-function floatText(text, x, y, z, color = '#fff', size = 1) { floats.push({ text, x, y, z, color, t: 0, size }); }
+function floatText(text, x, y, z, color = '#fff', size = 1) {
+  // don't stack popups on top of each other: lift a new one above any fresh one in the same spot
+  const same = floats.find(f => f.text === text && f.t < 0.4 && Math.abs(f.x - x) < 1.5 && Math.abs(f.z - z) < 1.5);
+  if (same) { same.t = 0; return same; }   // the same popup again (a run of "+1"s): just refresh it
+  const sp = 0.85 * size;
+  for (let k = 0; k < 6; k++) { const f = floats.find(f => f.t < 0.7 && Math.abs(f.x - x) < 2.4 && Math.abs(f.z - z) < 2.4 && Math.abs(f.y + f.t * 1.2 - y) < sp * 0.97); if (!f) break; y = f.y + f.t * 1.2 + sp; }
+  if (floats.length > 18) floats.shift();
+  floats.push({ text, x, y, z, color, t: 0, size });
+  return floats[floats.length - 1];
+}
 function toast(msg, kind = '') {
   const box = $('toasts'); while (box.children.length > 3) box.firstChild.remove();
   const el = document.createElement('div'); el.className = 'toast ' + kind; el.textContent = msg; box.appendChild(el);
@@ -2351,22 +3302,28 @@ let bannerTimer = 0;
 function banner(t, s) { const b = $('banner'); b.querySelector('.t').textContent = t; b.querySelector('.s').textContent = s || ''; b.classList.add('show'); bannerTimer = 3.2; }
 // one-shot contextual hints
 const HINTS = {
-  start: 'Walk up to the corral gate and press <b>Ⓧ</b> / <b>E</b> to open it.',
+  start: 'Walk into the corral gate to <b>push it open</b> — gates swing whichever way you shove them.',
   herd: 'Sheep move away from you. <b>Circle around behind them</b> to drive the flock up the trail.',
-  modes: 'Hold <b>LT</b> / <b>Q</b> to creep up gently. Hold <b>RT</b> / <b>Shift</b> to sprint (they’ll scatter!).',
+  modes: 'Hold <b>LB</b> / <b>Q</b> to creep up gently. Hold <b>RT</b> / <b>Shift</b> to sprint (they’ll scatter!).',
   bark: 'Press <b>Ⓐ</b> / <b>Space</b> to bark — it spooks sheep and scares coyotes off.',
+  pounce: 'Tap <b>Ⓑ</b> / <b>E</b> to <b>pounce</b>: a quick dash to get round the flock. Pounce into a sheep and it goes flying!',
+  grab: 'Hold <b>Ⓧ</b> / <b>R</b> to <b>grab</b> a stubborn sheep and drag it along. Let go while running to <b>fling</b> it — even over a fence.',
+  lie: 'Hold <b>Ⓨ</b> / <b>C</b> to <b>lie down</b>. A dog lying still settles the flock.',
   travel: 'Follow the trail to the next camp and pen the flock before nightfall.',
   grass: 'The grass here is getting thin. Hungry sheep wander off — <b>move on</b> to greener pasture.',
-  dusk: 'Dusk is coming! Drive the flock into a pen and <b>close the gate</b>.',
-  night: 'Coyotes! <b>Bark</b> and <b>charge</b> them to drive them off. Keep the flock together.',
-  'coyote-grab': 'Chase the coyote down before it escapes into the dark — get close or bark to make it drop the sheep!',
-  dawn: 'Morning! Open the gate and let them graze — but don’t stay so long the pasture is eaten bare.',
+  dusk: 'Dusk is coming! Drive the flock into a pen and <b>push the gate shut</b> behind them — it clacks when it latches.',
+  night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (hold Ⓧ + Ⓑ / R + E). Keep the flock together.',
+  'coyote-grab': 'Chase it down! <b>Pounce</b> on the coyote, or grab it and <b>shake</b>, to make it drop the sheep!',
+  dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
+  gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / R) and drag it round.',
+  launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
 };
 const hintQ = []; let hintT = 0;
 function hint(key) {
-  if (key === 'gate-opened') { if (!G.hints.herd) { hint('herd'); setTimeout(() => hint('modes'), 9000); setTimeout(() => hint('bark'), 18000); setTimeout(() => hint('travel'), 27000); } return; }
+  if (key === 'gate-opened') { if (!G.hints.herd) { hint('herd'); [['modes', 9], ['bark', 18], ['pounce', 27], ['grab', 36], ['travel', 45], ['lie', 54]].forEach(([k, s]) => setTimeout(() => hint(k), s * 1000)); } return; }
   if (key === 'bark-used') { G.hints.bark = true; return; }
+  if (key === 'pounce-used' || key === 'grab-used') { G.hints[key.slice(0, -5)] = true; return; }
   if (G.hints[key] || !HINTS[key]) return; G.hints[key] = true; hintQ.push(key);
 }
 function updateHints(dt) {
@@ -2465,14 +3422,8 @@ function drawOverlay(dt) {
       ctx.fillStyle = p.gateT < 0.05 ? 'rgba(60,140,60,.85)' : 'rgba(27,26,40,.7)'; rr(px - w / 2, py - 13, w, 26, 12); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.fillText(txt + (p.gateT < 0.05 ? ' 🔒' : ''), px, py + 1);
     }
-    const near = G.dogs.find(d => Math.hypot(d.x - p.gx, d.z - p.gz) < 4.2);
-    if (near && G.mode === 'play') {
-      const [gx, gy] = proj(p.gx, p.y + 1.9, p.gz);
-      const txt = `${near.player.kind === 'pad' ? 'Ⓧ' : near.player.index === 0 ? 'E' : '.'}  ${p.open ? 'Close gate' : 'Open gate'}`;
-      ctx.font = '600 15px Fredoka, sans-serif'; const w = ctx.measureText(txt).width + 20;
-      ctx.fillStyle = 'rgba(255,248,232,.95)'; rr(gx - w / 2, gy - 14, w, 28, 13); ctx.fill(); ctx.strokeStyle = near.color; ctx.lineWidth = 2.5; ctx.stroke();
-      ctx.fillStyle = '#1b1a22'; ctx.fillText(txt, gx, gy + 1);
-    }
+    const near = G.mode === 'play' && G.dogs.find(d => !d.air && Math.hypot(d.x - p.gx, d.z - p.gz) < 6.5);
+    if (near) drawGatePrompt(p, near);   // teaches the push (dog-moves section)
   }
   // dog labels + stamina
   for (const d of G.dogs) {
@@ -2539,12 +3490,13 @@ function resetGame() {
   for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = [];
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
-  for (const p of pens) { p.open = false; p.gateT = 0; updateGateGeometry(p); }
+  for (const p of pens) resetGate(p);
+  for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, saved: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; G.lost = [];
   spawnFlock();
-  G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; });
+  G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
   G.mode = 'play'; banner(CAMPS[0].name, 'Day 1 — the journey begins'); updateCamera(0, true);
 }
@@ -2564,7 +3516,7 @@ function step(dt) {
     G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05) && !G.coyotes.some(c => c.prey);
     const dtH = stepClock(dt);
     regrowAcc += dtH;
-    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.gate = false; } }   // button presses fire once per frame, not once per sub-step
+    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
     leashDogs();
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     updateSheep(dt, dtH);
@@ -2574,7 +3526,7 @@ function step(dt) {
   } else {
     updateSheep(dt, 0);   // title / end: the flock still mills about
   }
-  for (const p of pens) { const t = p.open ? 1 : 0; if (p.gateT !== t) { p.gateT = clamp(p.gateT + (t ? dt : -dt) * 2.5, 0, 1); updateGateGeometry(p); } }
+  updateWorldPhysics(dt);   // push-gates and the sheep launcher (dog-moves section)
 }
 function frame(now) {
   requestAnimationFrame(frame);
@@ -2584,8 +3536,9 @@ function frame(now) {
   else if (G.mode === 'play') { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
-  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.gate = false; p.skipInput = false; } }
-  const n = Math.ceil(dt / 0.025), sdt = dt / n;
+  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = false; p.skipInput = false; } }
+  const simDt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // hit-stop: a few near-frozen frames on a big hit
+  const n = Math.ceil(simDt / 0.025), sdt = simDt / n;
   for (let i = 0; i < n; i++) step(sdt);
   regrowT(dt);
   updateCamera(dt);
@@ -2593,6 +3546,7 @@ function frame(now) {
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   syncSheep();
+  syncMoves(dt);
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   renderer.render(scene, camera);
@@ -2614,7 +3568,17 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living };
+window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+  // dog moves & physics
+  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats };
+// tests: draw one frame without stepping the sim (screenshots under ?sim)
+function renderOnce(dt = 1 / 60) {
+  updateCamera(dt); updateLighting(dt);
+  for (const d of G.dogs) syncDog(d);
+  for (const c of G.coyotes) syncCoyote(c);
+  syncSheep(); syncMoves(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
+}
 
 resize();
 spawnFlock();
