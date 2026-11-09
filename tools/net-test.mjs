@@ -212,16 +212,22 @@ try {
   check('the whole grass map matches (every cell within 3/255, compared with the host paused)', gd1.maxByteDiff <= 3, gd1);
 
   // ---------------------------------------------------------------- coyotes
-  await A.page.evaluate(() => GAME.spawnCoyotes(3));
-  await until(B, () => GAME.G.coyotes.length === 3 && GAME.G.coyotes.every(c => c.models.root.parent), null, 5000);
+  // (dens keep their own sleeping packs about, so track just the ones spawned here)
+  await A.page.evaluate(() => { window.__old = new Set(GAME.G.coyotes); GAME.spawnCoyotes(3); });
+  await sleep(400);
+  const newIds = await A.page.evaluate(() => GAME.G.coyotes.filter(c => !window.__old.has(c)).map(c => c.nid));
+  await until(B, ids => ids.every(id => GAME.G.coyotes.some(c => c.nid === id && c.models.root.parent)), newIds, 5000);
   await sleep(1500);
-  const [hc, gc] = await Promise.all([A.page.evaluate(() => GAME.G.coyotes.map(c => [c.nid, c.x, c.z, c.alpha])), B.page.evaluate(() => GAME.G.coyotes.map(c => [c.nid, c.x, c.z, c.alpha]))]);
+  const [hc, gc] = await Promise.all([A.page.evaluate(ids => GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => [c.nid, c.x, c.z, c.alpha]), newIds),
+    B.page.evaluate(ids => GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => [c.nid, c.x, c.z, c.alpha]), newIds)]);
   const cErr = Math.max(...hc.map(([id, x, z]) => { const q = gc.find(r => r[0] === id); return q ? Math.hypot(q[1] - x, q[2] - z) : 99; }));
-  check('coyotes spawned on the host appear on the guest (with the alpha\'s model)', gc.length === 3 && cErr < 0.6 && gc.filter(r => r[3]).length === hc.filter(r => r[3]).length, { n: gc.length, maxErr: r3(cErr) });
-  await B.page.evaluate(() => { window.__coyRoots = GAME.G.coyotes.map(c => c.models.root); });
-  await A.page.evaluate(() => { for (const c of GAME.G.coyotes) c.gone = true; });
-  await until(B, () => GAME.G.coyotes.length === 0, null, 5000);
+  check('coyotes spawned on the host appear on the guest (with the alpha\'s model)', newIds.length === 3 && gc.length === 3 && cErr < 0.6 && gc.filter(r => r[3]).length === hc.filter(r => r[3]).length, { n: gc.length, maxErr: r3(cErr) });
+  await B.page.evaluate(ids => { window.__coyRoots = GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => c.models.root); }, newIds);
+  await A.page.evaluate(ids => { for (const c of GAME.G.coyotes) if (ids.includes(c.nid)) c.gone = true; }, newIds);
+  await until(B, ids => !GAME.G.coyotes.some(c => ids.includes(c.nid)), newIds, 5000);
   check('coyotes that leave are removed on the guest, models too', await B.page.evaluate(() => window.__coyRoots.every(r => !r.parent)));
+  const sleepers = await Promise.all([A, B].map(X => X.page.evaluate(() => GAME.G.coyotes.filter(c => c.state === 'sleep').length)));
+  check('coyotes asleep in their dens show asleep on the guest too', sleepers[0] === sleepers[1], { host: sleepers[0], guest: sleepers[1] });
 
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });
