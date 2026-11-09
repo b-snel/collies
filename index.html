@@ -396,7 +396,7 @@ button,input{touch-action:manipulation}</style>
       <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Punt</span><span class="gp"><kbd class="x">X</kbd>Lie down</span><span class="gp"><kbd class="pill">LT</kbd>Hold to grab</span>
     </div>
     <div class="modeRow" role="group" aria-label="Difficulty"><button class="seg" id="hcBtn" type="button" aria-pressed="false">Hardcore: off</button><span class="small" id="hcHint" style="margin-left:10px;align-self:center">Lose a day and you replay it</span></div>
-    <div class="modeRow" role="group" aria-label="Camera" id="camRow" hidden><button class="seg on" id="camSplit" type="button">Split screen</button><button class="seg" id="camShared" type="button">Shared camera</button></div>
+    <div class="modeRow" role="group" aria-label="Camera" id="camRow" hidden><button class="seg on" id="camShared" type="button">Shared camera</button><button class="seg" id="camSplit" type="button">Split screen</button></div>
     <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down, , grab. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button><button class="btn ghost" id="shedBtn" type="button">Shearing shed</button></div>
     <div class="vols" id="titleVols"></div>
@@ -1327,7 +1327,12 @@ function makeDog(coat){
     ell(head,W,.055,.026,.03,.145*s,.165,.265,0,0,-.25*s).castShadow=false;   // brows
   }
   scene.add(g);
-  return {g,body,head,legs,tail};
+  // a coloured collar with a little gold tag: each player's dog wears their colour so you can tell whose is whose
+  const collarM=new THREE.MeshStandardMaterial({color:0xf2b544,roughness:.8,emissive:0x000000});
+  const collar=new THREE.Mesh(new THREE.TorusGeometry(.3,.075,10,24),collarM); collar.position.set(0,1.25,.74); collar.rotation.x=Math.PI/2-.6; collar.scale.set(1.05,1,.95); body.add(collar);
+  const tag=new THREE.Mesh(new THREE.SphereGeometry(.08,10,8),mat(0xffd84a,{metalness:.4,roughness:.3})); tag.position.set(0,-.29,.09); collar.add(tag);
+  addOutline(collar,.02);
+  return {g,body,head,legs,tail,collar};
 }
 // sheep parts are merged into a few shared geometries, so a big flock stays cheap to draw
 const SH_TMP=new THREE.Object3D();
@@ -2021,6 +2026,9 @@ const dog3 = makeDogState(0x5d6b80);     // player 3: blue merle
 const dog4 = makeDogState(0xb0602a);     // player 4: red and white
 dog2.m.g.visible=false; dog3.m.g.visible=false; dog4.m.g.visible=false;
 const ALLDOGS=[dog,dog2,dog3,dog4];
+// in co-op each dog also gets a faint ring on the ground in its player's colour, readable from the gameplay camera
+ALLDOGS.forEach((D,i)=>{ D.pring=new THREE.Mesh(new THREE.RingGeometry(.8,1.02,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:['#ffb31f','#2f9cff','#a35cff','#3fd040'][i],transparent:true,opacity:.6,depthWrite:false})); D.pring.visible=false; scene.add(D.pring); });
+ALLDOGS.forEach((D,i)=>{ if(D.m.collar){ const c=['#ffb31f','#2f9cff','#a35cff','#3fd040'][i]; D.m.collar.material.color.set(c); D.m.collar.material.emissive.set(c).multiplyScalar(.25); } });   // collar = the player's colour
 const PCOL=['#f2b544','#8fd3ff','#c79bff','#8fe07a'];          // each player's colour: name, minimap dot, title swatch
 const DEFAULT_NAMES=['Bramble','Moss','Pip','Juniper'];
 const dogIdx=D=>Math.max(0,ALLDOGS.indexOf(D));
@@ -2042,9 +2050,9 @@ try{ playerChoice=+localStorage.getItem('collieDuskPlayers')||(localStorage.getI
 // hardcore: losing a day sends you back to day 1 (normally you just replay the day)
 let hardcoreChoice=false; try{ hardcoreChoice=localStorage.getItem('collieDuskHardcore')==='1'; }catch(e){}
 function setHardcore(on){ hardcoreChoice=on; try{ localStorage.setItem('collieDuskHardcore',on?'1':'0'); }catch(e){} const b=$('hcBtn'); if(!b) return; b.textContent='Hardcore: '+(on?'on':'off'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); $('hcHint').textContent=on?'Lose a day and you start over from day 1':'Lose a day and you replay it'; }
-let sharedCamChoice=false; try{ sharedCamChoice=localStorage.getItem('collieDuskSharedCam')==='1'; }catch(e){}
+let sharedCamChoice=true; try{ const v=localStorage.getItem('collieDuskCamMode'); if(v) sharedCamChoice=v==='shared'; }catch(e){}     // shared camera by default
 function setCamMode(sh){
-  sharedCamChoice=sh; try{ localStorage.setItem('collieDuskSharedCam',sh?'1':'0'); }catch(e){}
+  sharedCamChoice=sh; try{ localStorage.setItem('collieDuskCamMode',sh?'shared':'split'); }catch(e){}
   if($('camSplit')){ $('camSplit').classList.toggle('on',!sh); $('camShared').classList.toggle('on',sh); }   // (the title's buttons are gone once a game is running)
   if(G.coop && (G.phase==='day'||G.phase==='night'||G.phase==='result')){
     G.sharedCam=sh; coopView=!sh; resize(); document.body.classList.toggle('shared',sh);
@@ -4242,6 +4250,7 @@ function syncAnimal(e,dt,rate){
 }
 const RED=new THREE.Color(0xff6b5a);
 function syncDog(D,dt,time,party){
+  if(D.pring){ D.pring.visible=G.coop && G.phase!=='title'; if(D.pring.visible) D.pring.position.set(D.x,groundH(D.x,D.z)+.08,D.z); }
   if(party) D.yaw+=dt*7;
   const sp=syncAnimal(D,dt,2.1);
   const dm=D.m;
