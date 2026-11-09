@@ -38,14 +38,14 @@ world gen (trail, 1 m grid, heights, signed distance field, grass) → renderer,
 terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
-river launcher) → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
+river launcher) → FORAGE (plants, buckets, troughs, Hank's twilight run) → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
 lighting → camera → visual sync → HUD and overlay → HANK, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
 Sections are delimited by `// ===` headers. The comments marked `SHARED HOOK`
 are the seams between systems: `knockDog`, `hitCoyote`, `provokeRam`, `hank`,
 `sheepWoolColor`, `s.headM` / `s.bodyM`, `s.air` / `s.heldBy` / `c.heldBy`,
-and `p.gateT` (0 shut … 1 open, derived from the gate's hinge angle). Keep
+`p.gateT` (0 shut … 1 open, derived from the gate's hinge angle), and `pen.trough` / `troughEat(pen, amt)` (food in hunger units: 1 takes 1.0 off one sheep's hunger; returns what was eaten). Keep
 them stable, or update every caller.
 
 ### Tests
@@ -57,6 +57,7 @@ that touch what you changed, and report their numbers.
 | --- | --- |
 | `node tools/flock-sim.mjs [scenario] [--trials N]` | driving, sprint-scatter, the gate bot, critical mass, cornering, rams, calming, day 1 |
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
+| `node tools/forage-sim.mjs` | forage plants, filling and delivering a bucket, Hank's twilight run to the trough, sheep eating from it overnight, regrowth |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
