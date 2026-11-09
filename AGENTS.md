@@ -58,7 +58,8 @@ that touch what you changed, and report their numbers.
 | `node tools/flock-sim.mjs [scenario] [--trials N]` | driving, sprint-scatter, the gate bot, critical mass, cornering, rams, calming, day 1 |
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
-| `node tools/breed-sim.mjs` | a flock parked at a camp for days: lambs, overgrazing, starvation |
+| `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
+| `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
@@ -101,6 +102,23 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   the terrain and the tufts sample: that texture is the whole overgrazing
   visual. One in-game hour is 10 real seconds. Staying too long overgrazes the
   camp, which is the "stay vs. move on" tension.
+  - Eating is counted per in-game hour (`T.eatPerHour` × `T.foodValue` = 0.25
+    hunger an hour on good grass), so it keeps pace with hunger whatever
+    `T.hourSec` is. Thin grass crops slower (`T.grazeFull`). A hungry flock
+    is half fed in about 3 hours and well fed (under `T.breedHunger`, the
+    breeding line the HUD counts) in about 4–5.
+  - Grazers keep about 2.5 m apart, graze forward as a loose front, and step
+    on from a cropped tuft. When the ground round most of the flock is eaten
+    out, the flock picks one heading to better grass and walks on together
+    (`grazeScan`), but never while a dog is working it.
+  - Regrowth is slow (a cropped patch takes about five days). A parked flock
+    ranges further out each day; hunger at dawn creeps up after about six
+    days and starvation trickles in, rather than a one-day crash.
+  - Regrowth runs in `step()`, so headless tests regrow grass too.
+- **The trough** (`pen.trough.food`, 1 unit = 1.0 hunger): penned sheep
+  hungrier than 0.18 take a place along it (one per metre), and the rest stand
+  aside and wait. They feed from late afternoon and wake at night to eat. A
+  ewe fed there the night she's courted is likelier to lamb (and twin).
 - **Coyote packs** gather out of sight on the far side of the flock and pick
   the loneliest or weakest sheep. A driver, ambushers and a decoy take up
   posts, then strike together. The carrier drags its catch off while the rest
