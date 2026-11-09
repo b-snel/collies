@@ -310,6 +310,7 @@ const T = {
     ram: { speed: 0.5, pull: 9, grip: 0.16, reach: 1.25, lift: 0.25 },
     coyote: { speed: 0.6, pull: 11, grip: 0.13, reach: 1.2, lift: 0.4 },
     gate: { speed: 0.75, pull: 0, grip: 0.015 },
+    bucket: { speed: 0.88, pull: 0, grip: 0, reach: 0.8 },   // the forage bucket: light, and it doesn't fight
   },
   coyotePounce: { courage: 0.75, kick: 19, up: 8 },
   coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
@@ -317,6 +318,12 @@ const T = {
   launcher: { L: 4.2, W: 2.1, pivotH: 0.55, drop: 0.45, flight: 1.35, cd: 0.9, back: 0.9, trigger: 7 },
   swimSpeed: 1.8, dogSwim: 3.2,
   shakeDecay: 2.2,
+  // forage: alfalfa and daisies along the trail, each pen's bucket and trough, Hank's twilight run.
+  // Food is in hunger units: 1 unit takes 1.0 off one sheep's hunger. Grazing flat out takes ~0.14 an hour,
+  // so a full bucket (4) is a few hours' grazing each for most of a 14-sheep flock.
+  forage: { daisy: 0.15, alfalfa: 0.35, bucketCap: 4, troughCap: 6, pickR: 1.35, regrowDays: [1, 2],
+    deliverR: 6, hankHour: 19, spill: 0.25, kickSpeed: 7,
+    troughRate: 0.12, troughFrom: 0.12 },   // stand-in feeding: hunger per game hour per penned sheep at night, down to this hunger
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
@@ -2279,7 +2286,7 @@ function updateDog(d, inp, dt) {
   // pounce, or shake whatever is in your mouth
   if (inp.pounce) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
-    if (d.holding) shakeHold(d); else if (!inp.lie) startPounce(d, wx, wz, mag);
+    if (d.holding && d.holdKind !== 'bucket') shakeHold(d); else if (!inp.lie) startPounce(d, wx, wz, mag);   // with the bucket in your mouth you can still pounce
   }
   let mode = 'walk';
   if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
@@ -2288,7 +2295,7 @@ function updateDog(d, inp, dt) {
   if (mode === 'lie' && d.mode !== 'lie') sayOnce('lie', 'lie_down', 'Lie down!');
   const hk = d.holding ? T.grabKinds[d.holdKind] : null;
   if (mode === 'sprint') { d.stamina -= T.staminaDrain * dt; if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; } }
-  else if (!hk) { d.stamina = Math.min(1, d.stamina + T.staminaRegen * (mode === 'lie' ? 1.5 : 1) * dt); if (d.stamina > 0.35) d.exhausted = false; }
+  else if (!hk || !hk.grip) { d.stamina = Math.min(1, d.stamina + T.staminaRegen * (mode === 'lie' ? 1.5 : 1) * dt); if (d.stamina > 0.35) d.exhausted = false; }
   if (hk) {   // keeping hold of something that fights back is tiring
     d.stamina -= hk.grip * dt;
     if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; floatText('SLIP!', d.x, d.y + 1.9, d.z, '#ff8a6b', 1.1); releaseHold(d, false); }
@@ -2306,7 +2313,7 @@ function updateDog(d, inp, dt) {
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideWorld(d, T.dogR);
   if (d.pounceT > 0) pounceGateSlam(d, ox, oz);
-  if (d.hopT <= 0 && collideFences(d, T.dogR) && !d.holding) {
+  if (d.hopT <= 0 && collideFences(d, T.dogR) && freeToHop(d)) {
     // pushing into a fence hops it (and a pounce sails over); holding something, you just stop
     const lunge = d.pounceT > 0, dx = lunge ? d.pdx : wx, dz = lunge ? d.pdz : wz, m = lunge ? 1 : mag;
     if (m > 0.5 && -(HIT.nx * dx + HIT.nz * dz) / m > 0.45) startHop(d, HIT.nx, HIT.nz, lunge ? 12 : Math.max(6.5, max * 0.8));
@@ -2325,6 +2332,7 @@ function startHop(d, nx, nz, v) {   // (nx, nz) points from the fence back to th
   d.hopT = d.hopDur; d.pounceT = 0; d.vx = -nx * v; d.vz = -nz * v; d.leanT = 0;
   burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 });
 }
+function freeToHop(d) { return !d.holding || d.holdKind === 'bucket'; }   // holding an animal or a gate you stop at fences; a bucket comes over with you
 function landDog(d, sq) { d.landT = G.time; d.landSq = sq; burst(d.x, d.y + 0.1, d.z, 3, '#e8dcc0', { speed: 1.2, up: 0.6, size: 0.2, life: 0.4, grav: 0 }); }
 // SHARED HOOK: something bowled the dog over (a ram, a cornered sheep, a flying sheep)
 function knockDog(d, vx, vz, t, label = 'OOF!') {
@@ -2442,6 +2450,16 @@ const SFX = (() => {
     bonk(pan = 0, vol = 0.3) {
       const A = R(); if (!A) return; const t = A.ac.currentTime, o = osc(A, 'triangle', t, 720, 300, 0.12), g = A.ac.createGain();
       A.env(g, t, 0.003, 0.9, 0.13); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.16); this.thud(pan, vol * 0.7);
+    },
+    clank(pan = 0, vol = 0.18) {   // a tin bucket knocked about (forage)
+      const A = R(); if (!A) return; const t = A.ac.currentTime;
+      for (const [f, d] of [[1250, 0.22], [1890, 0.16], [2730, 0.1]]) { const o = A.ac.createOscillator(); o.frequency.value = f * (0.97 + Math.random() * 0.06); const g = A.ac.createGain(); A.env(g, t, 0.002, 0.7, d); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + d + 0.05); }
+      const [n, f] = noise(A, t, 'highpass', 2500, 0.7), ng = A.ac.createGain(); A.env(ng, t, 0.001, 0.5, 0.03); f.connect(ng); ng.connect(A.out(vol, pan)); n.stop(t + 0.05);
+    },
+    rustle(pan = 0, vol = 0.3) {   // greens tipped into a trough (forage)
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (let k = 0; k < 5; k++) { const t = t0 + k * 0.09 + Math.random() * 0.04, [n, f] = noise(A, t, 'bandpass', 1400 + Math.random() * 900, 1.1), g = A.ac.createGain(); A.env(g, t, 0.01, 0.8, 0.16); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.2); }
+      this.thud(pan, vol * 0.5);
     },
   };
 })();
@@ -2792,10 +2810,12 @@ function tryGrab(d) {
     if (r < 0.8 || q.d > 1.3) continue;
     if (q.d - 0.2 < bd) { bd = q.d - 0.2; best = p; kind = 'gate'; grip = r; }
   }
+  const bk = bucketToGrab(d, mx, mz, bd); if (bk) { best = bk; kind = 'bucket'; }   // the forage bucket (FORAGE section)
   if (!best) return;
   d.holding = best; d.holdKind = kind; d.holdT = 0; d.holdWob = rnd(0, TAU); d.lastShake = 0; d.shakes = 0;
   const pan = panOf(d.x, d.z);
   rumble(d.player, 0.3, 0.5, 120); hint('grab-used');
+  if (kind === 'bucket') { bucketGrabbed(best, d); return; }
   if (kind === 'gate') { d.holdR = clamp(grip, 0.9, best.gateLen); d.holdOff = wrapA(best.phi - gatePsi(best, d.x, d.z)); SFX.creak(pan, 0.2, 1.2); Sound.growl(pan, 0.1); return; }
   best.heldBy = d;
   if (kind === 'coyote') {
@@ -2812,6 +2832,7 @@ function releaseHold(d, fling) {
   const H = d.holding, kind = d.holdKind; if (!H) return;
   d.holding = null; d.holdKind = null;
   if (kind === 'gate') return;
+  if (kind === 'bucket') { bucketSetDown(H, d); return; }   // never flung: set down where you stand (or delivered, at a pen)
   H.heldBy = null;
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), sp = Math.hypot(d.vx, d.vz), F = T.fling, pan = panOf(d.x, d.z);
   const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
@@ -2955,7 +2976,7 @@ function updateGate(p, dt) {
     if (Math.abs(diff) > del + 0.03) continue;
     touch = true;
     const side = diff > 0 ? 1 : -1, into = d.inMag > 0.5 ? -(d.wx * nP.x + d.wz * nP.z) * side : 0;
-    if (d.mode === 'sprint' && into > 0.45 && !d.holding) { startHop(d, nP.x * side, nP.z * side, Math.max(7, T.dogSprint * 0.75)); vaultFx(d); continue; }   // sprinting: vault it
+    if (d.mode === 'sprint' && into > 0.45 && freeToHop(d)) { startHop(d, nP.x * side, nP.z * side, Math.max(7, T.dogSprint * 0.75)); vaultFx(d); continue; }   // sprinting: vault it
     if (r < 0.9 || (p.latched && !p.fresh)) continue;   // too near the hinge to swing, or just latched (needs a fresh shove)
     if (p.latched) { p.latched = false; SFX.creak(panOf(hx, hz), 0.24, 0.95); }
     p.pushedBy = d;
@@ -2988,7 +3009,7 @@ function updateGate(p, dt) {
     if (d.air || d.hopT > 0 || d.holding === p) continue;
     if (!collideSeg(d, T.dogR + 0.05, p.gateSeg)) continue;
     const into = d.inMag > 0.5 ? -(HIT.nx * d.wx + HIT.nz * d.wz) : 0;
-    if (into < 0.45 || d.holding) continue;
+    if (into < 0.45 || !freeToHop(d)) continue;
     d.leaning = true; d.leanT += dt;
     if (p.final && p.latched && G.finalArm > 0 && d.leanT > 0.3) { onGateClosed(p); continue; }
     if (d.leanT > K.lean) { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
@@ -3195,6 +3216,7 @@ function updateWorldPhysics(dt) {
   for (const p of pens) updateGate(p, dt);
   for (const d of G.dogs) if (!d.leaning) d.leanT = 0;
   updateLaunchers(dt);
+  updateForage(dt);   // buckets, plants, troughs, Hank's twilight run (FORAGE section)
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
 // SHARED HOOK (called from syncSheep): somersaults, being carried, swimming, squash on landing. Rotates about the body, not the feet.
@@ -3224,6 +3246,361 @@ function syncMoves(dt) {
     if (c.heldBy) { M.root.rotation.z = 0.35 + Math.sin(G.time * 14) * 0.35; M.legs.forEach((g, i) => { g.rotation.x = Math.sin(G.time * 30 + i * 1.7) * 0.9; }); }
   }
   updateStars(dt);
+}
+
+// =====================================================================
+// FORAGE — alfalfa and daisies along the trail, each pen's bucket and
+// trough, and Hank's twilight run. A dog grabs the bucket off the fence by
+// the gate (X / R) and carries it over the plants to fill it, then lets go
+// back at the pen. From 19:00 Hank carries it to the trough, tips it in and
+// hangs it back on its hook. Penned sheep eat from the trough via troughEat().
+// =====================================================================
+const FR = mulberry32(730104);   // forage placement has its own rng, so the world's wr() sequence doesn't shift
+const frr = (a = 0, b = 1) => a + FR() * (b - a);
+const absHour = () => (G.clock.day - 1) * 24 + G.clock.hour;
+// ---------------- the plants (instanced, outlined) ----------------
+const PLANT_GEO = {
+  // a clump of big white daisies with yellow middles
+  daisy: merge(P(ICO(1, 0), '#5cae48', { s: [0.3, 0.09, 0.26], p: [0, 0.05, 0] }),
+    ...[[0, 0, 0.44], [0.2, 0.12, 0.34], [-0.17, 0.14, 0.3], [0.05, -0.2, 0.38]].flatMap(([x, z, h]) => [
+      P(CYL(0.02, 0.026, h, 4), '#4a9a3a', { p: [x, h / 2, z] }),
+      P(CYL(0.12, 0.1, 0.03, 9), '#ffffff', { p: [x, h, z] }),
+      P(CYL(0.05, 0.05, 0.05, 6), '#ffc62a', { p: [x, h + 0.02, z] })])),
+  // a bushy green clump of alfalfa with purple flower spikes
+  alfalfa: merge(P(ICO(1, 0), '#4f9e3f', { s: [0.32, 0.26, 0.3], p: [0, 0.2, 0] }), P(ICO(1, 0), '#5fb24a', { s: [0.24, 0.22, 0.22], p: [0.2, 0.28, 0.08] }),
+    P(ICO(1, 0), '#57a845', { s: [0.22, 0.2, 0.24], p: [-0.18, 0.26, -0.06] }),
+    ...[[0, 0.06, 0.62], [0.2, 0.1, 0.55], [-0.18, -0.06, 0.52], [0.06, -0.2, 0.5], [-0.1, 0.2, 0.56]].map(([x, z, h], i) =>
+      P(CONE(0.06, 0.2, 5), i % 2 ? '#9b6ad8' : '#b48ae6', { p: [x, h, z] }))),
+};
+const PLANTS = [];
+{
+  const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 9 })), L0 = LAUNCHERS[0];
+  const dens = [0.1, 0.65, 0.55, 0.45], alf = [0.15, 0.42, 0.32, 0.38];   // [desert, valley, ocean, promised]: patches per 7 m of trail, share that's alfalfa
+  for (let s = 14; s < PATH_LEN - 14; s += 7) {
+    const w = biomeW(s), k = pathIdx(s);
+    if (FR() > dot4(w, dens)) continue;
+    const kind = FR() < dot4(w, alf) ? 'alfalfa' : 'daisy';
+    let cx = 0, cz = 0, ok = false;
+    for (let t = 0; t < 8 && !ok; t++) {
+      const lat = frr(-hwWArr[k] * 0.85, hwEArr[k] * 0.85); if (Math.abs(lat) < 6) continue;   // never on the worn trail
+      const p = pathPoint(s + frr(-3, 3), lat); cx = p.x; cz = p.z;
+      ok = sdfAt(cx, cz) > 2.5 && !wetAt(cx, cz) && camps.every(c => Math.hypot(cx - c.x, cz - c.z) > c.r) && (!L0 || Math.hypot(cx - L0.x, cz - L0.z) > 10);
+    }
+    if (!ok) continue;
+    const n = kind === 'alfalfa' ? 3 + Math.floor(FR() * 4) : 5 + Math.floor(FR() * 5);
+    for (let i = 0; i < n; i++) {
+      const a = FR() * TAU, r = Math.sqrt(FR()) * (kind === 'alfalfa' ? 2.2 : 2.6), x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r, rot = FR() * TAU, sc = frr(1.35, 1.75);
+      if (sdfAt(x, z) < 1.2 || Math.abs(trailInfo(x, z).lat) < 4 || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 0.8)) continue;
+      PLANTS.push({ x, z, y: terrainH(x, z), kind, food: T.forage[kind], rot, sc, picked: false, regrowAt: 0, growT: -9 });
+    }
+  }
+}
+const plantGrid = new Map(), PCELL = 4, pkey = (x, z) => (Math.floor(x / PCELL) + 512) * 4096 + (Math.floor(z / PCELL) + 2048);
+for (const p of PLANTS) { const k = pkey(p.x, p.z); if (!plantGrid.has(k)) plantGrid.set(k, []); plantGrid.get(k).push(p); }
+function setPlantMatrix(p, k) { _m4.compose(_v.set(p.x, p.y, p.z), _q.setFromEuler(_e.set(0, p.rot, 0)), _s.setScalar(Math.max(1e-4, p.sc * k))); p.mesh.setMatrixAt(p.idx, _m4); p.mesh.instanceMatrix.needsUpdate = true; }
+{
+  const groups = new Map();
+  for (const p of PLANTS) { const key = p.kind + ':' + Math.floor(p.z / 90); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(p); }
+  for (const [key, list] of groups) {
+    const geo = PLANT_GEO[key.split(':')[0]], m = new THREE.InstancedMesh(geo, MAT.vc, list.length), o = new THREE.InstancedMesh(outlineGeo(geo), OUTLINE, list.length);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); o.instanceMatrix = m.instanceMatrix; m.receiveShadow = true;
+    list.forEach((p, i) => { p.mesh = m; p.idx = i; setPlantMatrix(p, 1); });
+    m.computeBoundingSphere(); m.boundingSphere.radius += 2; o.boundingSphere = m.boundingSphere; scene.add(m, o);
+  }
+}
+function regrowPlants() {   // picked plants come back after a day or two
+  const now = absHour();
+  for (const p of PLANTS) if (p.picked && now >= p.regrowAt) { p.picked = false; p.growT = G.time; }
+}
+function resetPlants() { for (const p of PLANTS) { p.picked = false; p.growT = -9; setPlantMatrix(p, 1); } }
+
+// ---------------- the pen trough (inside, by the fence) and the bucket's hook (outside, beside it) ----------------
+// Both sit past the gate's latch post, so Hank can reach over the fence without opening the gate.
+const troughA = p => p.gateA + p.gapHalf + 0.62, hookA = (p, slot = 0) => p.gateA + p.gapHalf + 0.33 + slot * (1.6 / p.R);
+const onRing = (p, a, r) => ({ x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r });
+for (const p of pens) {
+  const a = troughA(p), c = onRing(p, a, p.R - 0.9), tx = -Math.sin(a), tz = Math.cos(a), L = 2.6, Wd = 0.76;
+  const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = Math.atan2(-tz, tx); scene.add(g);   // local x runs along the fence
+  part(g, merge(
+    P(BOX(L, 0.32, 0.08), '#a8743f', { p: [0, 0.44, Wd / 2] }), P(BOX(L, 0.32, 0.08), '#a8743f', { p: [0, 0.44, -Wd / 2] }),
+    P(BOX(0.08, 0.32, Wd + 0.08), '#8a5a32', { p: [L / 2, 0.44, 0] }), P(BOX(0.08, 0.32, Wd + 0.08), '#8a5a32', { p: [-L / 2, 0.44, 0] }),
+    P(BOX(L, 0.06, Wd), '#6b4226', { p: [0, 0.3, 0] }),
+    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => P(BOX(0.1, 0.3, 0.1), '#6b4226', { p: [sx * (L / 2 - 0.15), 0.14, sz * (Wd / 2 - 0.06)] }))));
+  const fill = new THREE.Mesh(merge(P(BOX(L - 0.12, 1, Wd - 0.08), '#9bc84a', { p: [0, 0.5, 0] }),
+    ...Array.from({ length: 9 }, (_, i) => P(SPH(5), ['#ffffff', '#b48ae6', '#ffc62a'][i % 3], { s: [0.06, 0.04, 0.06], p: [-1.05 + i * 0.26, 1.0, ((i * 37) % 5 - 2) * 0.1] }))), MAT.vc);
+  fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
+  p.trough = { food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, shown: 0, fill };
+  const hw = Wd / 2 + 0.05, hl = L / 2 + 0.05, corner = (u, v) => [c.x + tx * u - tz * v, c.z + tz * u + tx * v];
+  const cs = [corner(hl, hw), corner(-hl, hw), corner(-hl, -hw), corner(hl, -hw)];
+  for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; staticFences.push({ ax, az, bx, bz }); }   // sheep bump into it (and stamped for the coyotes' nav)
+  const h0 = onRing(p, hookA(p), p.R + 0.42); p.hookX = h0.x; p.hookZ = h0.z;
+  // the peg the bucket hangs from
+  const peg = new THREE.Group(); const pg = onRing(p, hookA(p), p.R + 0.12); peg.position.set(pg.x, terrainH(pg.x, pg.z), pg.z); scene.add(peg);
+  part(peg, merge(P(CYL(0.08, 0.09, 1.2, 6), '#7a5230', { p: [0, 0.6, 0] }), P(CYL(0.03, 0.03, 0.4, 5), '#3a332c', { r: [0, 0, Math.PI / 2], p: [0, 1.05, 0] }).rotateY(-hookA(p))));
+}
+// SHARED HOOK (sheep agent): sheep eat from a pen's trough. amt in hunger units; returns what was taken.
+function troughEat(pen, amt) {
+  const tr = pen && pen.trough; if (!tr || !(amt > 0)) return 0;
+  const got = Math.min(tr.food, amt); tr.food -= got; return got;
+}
+// TEMPORARY STAND-IN — remove once the sheep mind walks penned sheep to the trough and eats via troughEat().
+// Until then: at night, penned sheep share the trough evenly while they sleep.
+function troughStandIn(dtH) {
+  if (!isNight() || dtH <= 0) return;
+  const F = T.forage;
+  for (const p of pens) {
+    if (p.trough.food <= 0) continue;
+    for (const s of G.sheep) {
+      if (s.dead || s.pen !== p || s.air || s.heldBy || s.grabbed || s.hunger <= F.troughFrom) continue;
+      s.hunger -= troughEat(p, Math.min(s.hunger - F.troughFrom, F.troughRate * dtH));
+    }
+  }
+}
+
+// ---------------- the buckets ----------------
+function makeBucketModel() {
+  const root = new THREE.Group(), tilt = new THREE.Group(); root.add(tilt); tilt.scale.setScalar(1.35);
+  const arch = new THREE.TorusGeometry(0.27, 0.022, 6, 16, Math.PI);   // the handle: an arch over the top
+  part(tilt, merge(
+    P(CYL(0.27, 0.21, 0.46, 12), '#c08a52', { p: [0, 0.23, 0] }),
+    P(CYL(0.245, 0.245, 0.012, 12), '#4a3420', { p: [0, 0.462, 0] }),        // the dark inside
+    P(CYL(0.278, 0.27, 0.05, 12), '#6a7078', { p: [0, 0.39, 0] }), P(CYL(0.228, 0.222, 0.05, 12), '#6a7078', { p: [0, 0.08, 0] }),
+    P(arch, '#4a4f56', { p: [0, 0.46, 0] })));
+  const greens = new THREE.Group(); greens.position.y = 0.465; tilt.add(greens);
+  part(greens, merge(P(SPH(10), '#7cc44a', { s: [0.24, 0.16, 0.24], p: [0, 0, 0] }),
+    ...Array.from({ length: 7 }, (_, i) => { const a = i * 2.4, r = 0.06 + (i % 3) * 0.05; return P(SPH(5), ['#ffffff', '#b48ae6', '#ffc62a', '#ffffff'][i % 4], { s: [0.045, 0.03, 0.045], p: [Math.cos(a) * r, 0.13 - r * 0.4, Math.sin(a) * r] }); })), { shadow: false });
+  greens.visible = false;
+  scene.add(root);
+  return { root, tilt, greens };
+}
+const BUCKETS = pens.map((p, i) => ({ id: i, home: p, slot: 0, x: p.hookX, z: p.hookZ, y: 0, vx: 0, vz: 0, yaw: 0, fill: 0, state: 'hook', heldBy: null, swing: 0, model: makeBucketModel() }));
+const FORAGE = { delivered: 0, picked: 0, runs: 0, poured: 0, run: null, regrowT: 0, lastPick: -9 };
+function hookPos(b) { const a = hookA(b.home, b.slot); return { ...onRing(b.home, a, b.home.R + 0.42), a }; }
+function hangBucket(b, pen = b.home) {
+  if (b.heldBy && b.heldBy.holding === b) { b.heldBy.holding = null; b.heldBy.holdKind = null; }
+  b.home = pen; const used = BUCKETS.filter(o => o !== b && o.home === pen && o.state === 'hook').map(o => o.slot);
+  b.slot = 0; while (used.includes(b.slot)) b.slot++;
+  const h = hookPos(b); b.state = 'hook'; b.heldBy = null; b.x = h.x; b.z = h.z; b.vx = b.vz = 0; b.yaw = -h.a + Math.PI / 2;
+}
+function resetForage() {
+  for (const b of BUCKETS) { b.fill = 0; b.heldBy = null; hangBucket(b, pens[b.id]); }
+  for (const p of pens) { p.trough.food = 0; p.trough.shown = 0; }
+  resetPlants(); FORAGE.run = null; FORAGE.delivered = FORAGE.picked = FORAGE.runs = FORAGE.poured = 0;
+}
+function bucketToGrab(d, mx, mz, bd) {   // the nearest bucket within reach of the dog's mouth, if it beats whatever else it could grab
+  let best = null;
+  for (const b of BUCKETS) {
+    if (b.state !== 'hook' && b.state !== 'ground') continue;
+    const dd = Math.hypot(b.x - mx, b.z - mz) - 0.4;
+    if (dd < bd && !fenceBetween(d.x, d.z, b.x, b.z)) { bd = dd; best = b; }
+  }
+  return best;
+}
+function bucketGrabbed(b, d) {
+  b.state = 'held'; b.heldBy = d;
+  const pan = panOf(b.x, b.z); SFX.clank(pan);
+  floatText('🪣', b.x, (b.y || 0) + 1.4, b.z, '#ffffff', 1.1);
+  hint('bucket'); if (b.fill < 0.05) sayOnce('bucket', null, "That's it! Fill it up with alfalfa and daisies!");
+}
+function deliveryPen(x, z) {   // forgiving: anywhere in a pen, near its gateway, or by its hook
+  for (const p of pens) if (insidePen(p, x, z, 0) || Math.hypot(x - p.gx, z - p.gz) < T.forage.deliverR || Math.hypot(x - p.hookX, z - p.hookZ) < 3) return p;
+  return null;
+}
+function bucketSetDown(b, d) {
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  b.heldBy = null; b.x = d.x + fx * 0.8; b.z = d.z + fz * 0.8; b.vx = d.vx * 0.3; b.vz = d.vz * 0.3;   // set down, not thrown
+  const pan = panOf(b.x, b.z), pen = G.mode === 'play' && deliveryPen(b.x, b.z);
+  if (pen && b.fill > 0.01) {   // back at a pen with greens in it: it goes on the hook for Hank
+    hangBucket(b, pen); FORAGE.delivered++;
+    floatText('DELIVERED!', b.x, (pen.y || 0) + 2.2, b.z, '#7ed957', 1.6); confetti(b.x, pen.y + 1.2, b.z, 18); starBurst(b.x, pen.y + 1.2, b.z, 6);
+    Sound.chime([0, 4, 7, 12], 587, 0.2); SFX.clank(pan); rumble(d.player, 0.3, 0.5, 120);
+    hint('trough'); hank('good_dog', null, { force: true });
+    return;
+  }
+  if (pen) { hangBucket(b, pen); SFX.clank(pan); return; }   // an empty bucket just goes back on its hook
+  b.state = 'ground'; if (sdfAt(b.x, b.z) < 0.3 || wetAt(b.x, b.z)) unstick(b, 0.3);
+  b.y = groundY(b.x, b.z); SFX.clank(pan, 0.12);
+}
+function pickPlant(p, b) {
+  const cap = T.forage.bucketCap; p.picked = true; p.regrowAt = absHour() + 24 * rnd(T.forage.regrowDays[0], T.forage.regrowDays[1]); setPlantMatrix(p, 0);
+  b.fill = Math.min(cap, b.fill + p.food); FORAGE.picked++;
+  const daisy = p.kind === 'daisy', pan = panOf(p.x, p.z);
+  burst(p.x, p.y + 0.45, p.z, 5, daisy ? '#ffffff' : '#b48ae6', { speed: 1.6, up: 2.4, size: 0.12, life: 0.6, grav: -6 });
+  burst(p.x, p.y + 0.3, p.z, 3, daisy ? '#ffc62a' : '#5fb24a', { speed: 1.2, up: 2, size: 0.1, life: 0.5, grav: -6 });
+  floatText(daisy ? '+🌼' : '+🌿', p.x, p.y + 1.3, p.z, '#ffffff', 0.9);
+  if (G.time - FORAGE.lastPick > 0.06) { Sound.pluck(Math.round(b.fill / cap * 12), 0.1); FORAGE.lastPick = G.time; }
+  if (b.fill >= cap - 1e-6) {
+    floatText('FULL! Back to the pen!', b.x, b.y + 2, b.z, '#7ed957', 1.4); Sound.chime([0, 7, 12], 784, 0.18); starBurst(b.x, b.y + 1.1, b.z, 6);
+    hint('deliver'); if (b.heldBy) rumble(b.heldBy.player, 0.25, 0.4, 90);
+  }
+}
+function updateBuckets(dt) {
+  const F = T.forage, cap = F.bucketCap;
+  for (const b of BUCKETS) {
+    if (b.state === 'held') {
+      const d = b.heldBy;
+      if (!d || d.holding !== b) { if (d) bucketSetDown(b, d); else b.state = 'ground'; continue; }
+      const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+      b.x = d.x + fx * 0.8; b.z = d.z + fz * 0.8; b.y = d.y + (d.air ? 0 : 0.18); b.yaw = d.yaw;
+      b.swing = lerp(b.swing, clamp(-(d.vx * fx + d.vz * fz) * 0.04, -0.4, 0.4), Math.min(1, dt * 6));
+      // walking over plants picks them
+      if (b.fill < cap - 1e-6 && !d.air) {
+        const ix = Math.floor(d.x / PCELL), iz = Math.floor(d.z / PCELL);
+        for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) {
+          const list = plantGrid.get((ix + a + 512) * 4096 + (iz + c + 2048)); if (!list) continue;
+          for (const p of list) if (!p.picked && b.fill < cap - 1e-6 && (Math.hypot(p.x - d.x, p.z - d.z) < F.pickR || Math.hypot(p.x - b.x, p.z - b.z) < F.pickR)) pickPlant(p, b);
+        }
+      }
+    } else if (b.state === 'ground') {   // physics-light: it slides, gets nudged, and a dog charging into it knocks it over
+      const k = Math.exp(-dt * 3); b.vx *= k; b.vz *= k;
+      for (const d of G.dogs) {
+        if (d.air || d.hopT > 0) continue;
+        const dx = b.x - d.x, dz = b.z - d.z, dd = Math.hypot(dx, dz), m = 0.45 + T.dogR; if (dd >= m || dd < 1e-4) continue;
+        const sp = Math.hypot(d.vx, d.vz);
+        if (sp > F.kickSpeed && b.fill > 0.01) {   // bowled over: some of it spills
+          const lost = b.fill * F.spill; b.fill -= lost; b.vx = d.vx * 0.7; b.vz = d.vz * 0.7;
+          burst(b.x, b.y + 0.5, b.z, 10, '#7cc44a', { speed: 2.5, up: 3, size: 0.13, life: 0.7 }); floatText('SPILL!', b.x, b.y + 1.5, b.z, '#ff8a6b', 1.1); SFX.clank(panOf(b.x, b.z));
+        } else { b.vx += dx / dd * (m - dd) * 8; b.vz += dz / dd * (m - dd) * 8; }
+      }
+      for (const s of G.sheep) { if (s.dead || s.air || s.heldBy) continue; const dx = b.x - s.x, dz = b.z - s.z, dd = Math.hypot(dx, dz), m = 0.4 + s.r; if (dd < m && dd > 1e-4) { b.x += dx / dd * (m - dd) * 0.5; b.z += dz / dd * (m - dd) * 0.5; } }
+      b.x += b.vx * dt; b.z += b.vz * dt; collideWorld(b, 0.3); collideFences(b, 0.3); b.y = groundY(b.x, b.z);
+    } else if (b.state === 'hook') { const h = hookPos(b); b.x = h.x; b.z = h.z; b.y = groundY(b.x, b.z) + 0.16; }
+  }
+}
+
+// ---------------- Hank's twilight run: bucket → trough → hook ----------------
+function forageRunPen() {   // the pen the flock's in, else (before dark) the one it's heading for
+  const live = G.sheep.filter(s => !s.dead); let best = null, bn = 0;
+  for (const p of pens) { let n = 0; for (const s of live) if (s.pen === p) n++; if (n > bn) { bn = n; best = p; } }
+  if (best && bn >= live.length * 0.5) return best;
+  if (isNight()) return null;   // at night he stays with the flock and the fire
+  const fc = flockCenter(), fs = fc.n ? sAt(fc.x, fc.z) : 0;
+  return pens.find(p => p.camp.s > fs - 25) || pens[pens.length - 1];
+}
+function forageStand(p, kind, b) {   // where Hank stands: outside the fence by the hook, or by the trough to tip it over
+  return kind === 'hook' ? onRing(b.home, hookA(b.home, b.slot), b.home.R + 1.15) : onRing(p, troughA(p), p.R + 0.95);
+}
+function updateHankForage(dt) {
+  const F = T.forage, hk = HANK, h = G.clock.hour;
+  let R = FORAGE.run;
+  if (!R) {
+    if (G.mode !== 'play' || !(h >= F.hankHour || h < T.nightEnd)) return;
+    const pen = forageRunPen(); if (!pen || pen.trough.food > pen.trough.cap - 0.2) return;
+    const b = BUCKETS.find(o => o.home === pen && o.state === 'hook' && o.fill > 0.01); if (!b) return;
+    R = FORAGE.run = { pen, b, stage: 'fetch', t: 0, total: 0, poured: false };
+    FORAGE.runs++;
+  }
+  R.t += dt; R.total += dt;
+  const b = R.b, pen = R.pen, at = (pt, r = 0.9) => Math.hypot(hk.x - pt.x, hk.z - pt.z) < r;
+  if (R.stage === 'fetch' && b.state !== 'hook') { FORAGE.run = null; return; }   // a dog took it first
+  if (R.total > 70) {   // never let it hang (stuck behind something): finish the job
+    if (b.state === 'hook' || b.state === 'hank') { pourBucket(R); hangBucket(b, b.home); }
+    FORAGE.run = null; return;
+  }
+  if (R.stage === 'fetch' && at(forageStand(pen, 'hook', b))) {
+    b.state = 'hank'; R.stage = 'carry'; R.t = 0; SFX.clank(panOf(b.x, b.z));
+    hank(null, pick(['Supper time, my lambs!', "Ah, grand greens! Into the trough wi' them.", 'What have we here? A feast!']), { force: true });
+  } else if (R.stage === 'carry' && at(forageStand(pen, 'trough'))) { R.stage = 'tip'; R.t = 0; }
+  else if (R.stage === 'tip') {
+    if (!R.poured && R.t > 0.6) pourBucket(R);
+    if (R.t > 1.7) { R.stage = 'hang'; R.t = 0; }
+  } else if (R.stage === 'hang' && at(forageStand(pen, 'hook', b))) { hangBucket(b, b.home); SFX.clank(panOf(b.x, b.z)); FORAGE.run = null; }
+}
+function pourBucket(R) {
+  if (R.poured) return; R.poured = true;
+  const tr = R.pen.trough, amt = Math.min(R.b.fill, tr.cap - tr.food);
+  tr.food += amt; R.b.fill -= amt; FORAGE.poured += amt;
+  const pan = panOf(tr.x, tr.z), y = groundY(tr.x, tr.z);
+  SFX.rustle(pan); Sound.chime([0, 4, 7, 12, 16], 523, 0.16, 0.08);
+  for (const c of ['#7cc44a', '#ffffff', '#b48ae6', '#ffc62a']) burst(tr.x, y + 1.2, tr.z, 6, c, { speed: 1.4, up: 1.5, size: 0.12, life: 0.8, grav: -9 });
+  floatText(`🌾 +${Math.round(amt / tr.cap * 100)}%`, tr.x, y + 1.8, tr.z, '#9bdc5a', 1.3);
+}
+// SHARED HOOK (called from hankGoal): where Hank is going on his run, if he's on one
+function hankForageGoal() {
+  const R = FORAGE.run; if (!R) return null;
+  const t = R.stage === 'fetch' || R.stage === 'hang' ? forageStand(R.pen, 'hook', R.b) : forageStand(R.pen, 'trough');
+  const face = R.stage === 'tip' ? R.pen.trough : null;
+  const n = navSteer(HANK, t.x, t.z);   // round the pen's fences and wings, not into them
+  if (!HANK.los && NAVDIR.d > 2) return { x: HANK.x + n.x * 4, z: HANK.z + n.z * 4, stop: 0 };
+  return { x: t.x, z: t.z, stop: 0.3, face, noShy: NAVDIR.d < 4 };   // the last few metres to the fence: sheep inside don't put him off
+}
+
+// ---------------- per step / per frame ----------------
+function updateForage(dt) {
+  updateBuckets(dt);
+  if (G.mode === 'play') {
+    troughStandIn(dt / T.hourSec * (G.ff ? T.ffMul : 1));   // TEMPORARY STAND-IN (see above)
+    if ((FORAGE.regrowT -= dt) <= 0) { FORAGE.regrowT = 0.5; regrowPlants(); }
+    // the first time a dog comes by a camp's bucket in the day: what it's for
+    if (!G.hints.bucket && G.clock.hour > 7.5 && G.clock.hour < 17.5) for (const b of BUCKETS) if (b.state === 'hook' && G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 12)) { hint('bucket'); break; }
+  }
+  updateHankForage(dt);
+}
+const _fv = new THREE.Vector3();
+function syncForage(dt) {
+  for (const p of PLANTS) if (!p.picked && G.time - p.growT < 1.2) { const k = clamp((G.time - p.growT) / 1.2, 0, 1); setPlantMatrix(p, k < 1 ? 1 - Math.pow(1 - k, 3) * Math.cos(k * 9) : 1); }   // pops back up with a wobble
+  for (const p of pens) {   // the trough fills (and empties) visibly
+    const tr = p.trough; tr.shown = lerp(tr.shown, tr.food, Math.min(1, dt * 2.5));
+    const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k);
+  }
+  const R = FORAGE.run, M = HANK.model;
+  for (const b of BUCKETS) {
+    const mod = b.model, cap = T.forage.bucketCap, k = clamp(b.fill / cap, 0, 1);
+    mod.greens.visible = k > 0.01; mod.greens.scale.set(0.45 + 0.55 * k, 0.15 + 1.15 * k, 0.45 + 0.55 * k);
+    mod.tilt.rotation.set(0, 0, 0);
+    if (b.state === 'hank' && R && R.b === b) {   // in Hank's hands: in front of him, then up over the fence and tipped
+      const tip = R.stage === 'tip' ? clamp(R.t / 0.55, 0, 1) * (R.t < 1.35 ? 1 : clamp((1.7 - R.t) / 0.35, 0, 1)) : 0;
+      if (R.stage === 'tip') { const tr = R.pen.trough; HANK.yaw = Math.atan2(tr.x - HANK.x, tr.z - HANK.z); M.root.rotation.y = HANK.yaw; }   // facing the trough to tip it
+      const fx = Math.sin(HANK.yaw), fz = Math.cos(HANK.yaw);
+      b.x = HANK.x + fx * (0.55 + tip * 0.55); b.z = HANK.z + fz * (0.55 + tip * 0.55); b.y = HANK.y + 0.55 + tip * 1.75;   // hoisted up over the fence (and over his hat, so you see it)
+      mod.root.position.set(b.x, b.y, b.z); mod.root.rotation.set(0, HANK.yaw, 0); mod.tilt.rotation.x = tip * 2.0;
+      const arm = -0.85 - tip * 1.9; M.armL.rotation.x = arm; M.armR.rotation.x = arm; M.armR.rotation.z = 0;   // both hands on the bucket
+      if (tip > 0.6 && Math.random() < dt * 30) burst(b.x + fx * 0.3, b.y + 0.5, b.z + fz * 0.3, 1, pick(['#7cc44a', '#ffffff', '#b48ae6']), { speed: 0.6, up: -0.5, size: 0.1, life: 0.5, grav: -12 });
+      continue;
+    }
+    mod.root.position.set(b.x, b.y, b.z);
+    mod.root.rotation.set(0, b.state === 'held' ? b.yaw : b.yaw, 0);
+    if (b.state === 'held') mod.tilt.rotation.x = b.swing + Math.sin(G.time * 9) * 0.06 * Math.min(1, Math.hypot(b.heldBy.vx, b.heldBy.vz) / 4);
+  }
+}
+// the overlay: how full each bucket is, where it's out, an arrow home when you're carrying a full one, the troughs
+function forageChip(x, y, txt, bg, fg = '#fff', w0 = 0) {
+  ctx.font = '600 13px Fredoka, sans-serif'; const w = Math.max(w0, ctx.measureText(txt).width + 16);
+  ctx.fillStyle = bg; rr(x - w / 2, y - 11, w, 22, 10); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(txt, x, y + 1); return w;
+}
+function forageBar(x, y, k, full) {
+  const w = 64; ctx.fillStyle = 'rgba(27,26,40,.78)'; rr(x - w / 2 - 14, y - 10, w + 28, 20, 10); ctx.fill();
+  ctx.font = '13px Fredoka, sans-serif'; ctx.fillText('🪣', x - w / 2 - 3, y + 1);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; rr(x - w / 2 + 8, y - 5, w, 10, 5); ctx.fill();
+  if (k > 0) { ctx.fillStyle = full ? '#7ed957' : '#b8e36b'; rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
+}
+function drawForageOverlay() {
+  if (G.mode !== 'play') return;
+  const cap = T.forage.bucketCap, vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
+  for (const b of BUCKETS) {
+    const k = clamp(b.fill / cap, 0, 1), o = b.state === 'held' ? b.heldBy : b, [px, py, pz] = proj(o.x, o.y + (o === b ? 1.35 : 2.4), o.z);   // carried: over the dog, above its name
+    if (b.state === 'held' || b.state === 'ground') { if (vis(px, py, pz)) forageBar(px, py, k, k > 0.99); }
+    else if (b.state === 'hook' && k > 0.01 && vis(px, py, pz)) forageChip(px, py, `🪣 ✔ ${Math.round(k * 100)}%`, 'rgba(60,140,60,.88)');
+    if (b.state === 'held' || b.state === 'ground') {   // its hook says it's out
+      const p = b.home, [hx, hy, hz] = proj(p.hookX, p.y + 1.1, p.hookZ);
+      if (vis(hx, hy, hz) && Math.hypot(b.x - p.hookX, b.z - p.hookZ) > 4) forageChip(hx, hy, '🪣 out', 'rgba(150,110,30,.85)');
+    }
+  }
+  // carrying a bucket that's half full or more and the pen's off screen: an arrow at the edge toward it
+  for (const d of G.dogs) {
+    const b = d.holding; if (!b || d.holdKind !== 'bucket' || b.fill < cap * 0.5) continue;
+    let pen = null, pd = 1e9; for (const p of pens) { const dd = Math.hypot(p.gx - d.x, p.gz - d.z); if (dd < pd) { pd = dd; pen = p; } }
+    const [px, py, pz] = proj(pen.gx, pen.y + 1, pen.gz); if (pz <= 1 && px > 0 && px < W && py > 0 && py < H) continue;
+    const cx = W / 2, cy = H / 2, dx = px - cx, dy = py - cy, kk = Math.min((W / 2 - 46) / Math.abs(dx || 1e-3), (H / 2 - 46) / Math.abs(dy || 1e-3)), ax = cx + dx * kk, ay = cy + dy * kk, a = Math.atan2(dy, dx);
+    ctx.save(); ctx.translate(ax, ay); ctx.fillStyle = 'rgba(60,140,60,.9)'; ctx.beginPath(); ctx.arc(0, 0, 17, 0, TAU); ctx.fill();
+    ctx.rotate(a); ctx.beginPath(); ctx.moveTo(27, 0); ctx.lineTo(16, -8); ctx.lineTo(16, 8); ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('🪣', ax, ay + 1);
+  }
+  for (const p of pens) {   // what's in each trough
+    const tr = p.trough; if (tr.shown < 0.02) continue;
+    const [px, py, pz] = proj(tr.x, p.y + 1.25, tr.z); if (!vis(px, py, pz)) continue;
+    forageChip(px, py, `🌾 ${Math.round(tr.shown / tr.cap * 100)}%`, 'rgba(110,140,40,.85)');
+  }
 }
 
 // =====================================================================
@@ -3939,6 +4316,9 @@ const HINTS = {
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
   gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / R) and drag it round.',
+  bucket: 'Grab the <b>bucket</b> by the pen gate (<b>Ⓧ</b> / <b>R</b>) and walk it over <b>alfalfa and daisies</b> to fill it. Bring it back and let go: Hank tips it into the trough at dusk.',
+  deliver: 'The bucket\'s full! Bring it back to the pen and <b>let go</b> by the gate. Hank fills the trough with it at dusk.',
+  trough: 'Delivered! At dusk Hank tips it into the <b>trough</b>, and the penned flock eats from it through the night.',
   launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
   barn: 'The flock is safe for the night. Press <b>Tab</b> / <b>View</b> to visit <b>Hank’s barn</b>: name them, dress them up, paint their fleece.',
 };
@@ -4064,6 +4444,7 @@ function drawOverlay(dt) {
     const near = G.mode === 'play' && G.dogs.find(d => !d.air && Math.hypot(d.x - p.gx, d.z - p.gz) < 6.5);
     if (near) drawGatePrompt(p, near);   // teaches the push (dog-moves section)
   }
+  drawForageOverlay();   // buckets: how full, where they are; trough levels (FORAGE section)
   // dog labels + stamina
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
@@ -4210,6 +4591,7 @@ function hankGoal() {
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
+  const fg = G.mode === 'play' && hankForageGoal(); if (fg) return fg;   // FORAGE: his twilight run with the bucket
   // evening and night: warming himself at the campfire of the pen the flock's in
   const h = G.clock.hour;
   if ((h >= 18.5 || h < 6.5) && live.length) {
@@ -4243,7 +4625,7 @@ function updateHank(dt) {
   const spd = d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
   // keep clear of the flock and of walls: steer round, don't push through
   let ax = 0, az = 0;
-  for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }
+  if (!g.noShy) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: at the fence on his bucket run)
   const sd = sdfAt(hk.x, hk.z); if (sd < 2) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
   let tvx = dx / d * spd + ax * 1.5, tvz = dz / d * spd + az * 1.5;
   const tl = Math.hypot(tvx, tvz), cap = Math.max(spd, 1.5); if (tl > cap) { tvx *= cap / tl; tvz *= cap / tl; }
@@ -5145,6 +5527,7 @@ function resetGame() {
   for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
   for (const p of pens) resetGate(p);
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
+  resetForage();   // FORAGE: buckets back on their hooks, troughs empty, every plant grown
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, saved: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; G.lost = [];
@@ -5205,6 +5588,7 @@ function frame(now) {
   syncMoves(dt);
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
   syncHank(dt);           // HANK: his model, lantern and speech bubble
+  syncForage(dt);         // FORAGE: plants regrowing, buckets, troughs (and Hank's arms when he carries one)
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   renderer.render(scene, camera);
@@ -5229,13 +5613,15 @@ function debugKeys() {
 window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND,
   // dog moves & physics
-  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats };
+  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
+  // forage
+  PLANTS, BUCKETS, FORAGE, troughEat, hangBucket, deliveryPen, forageRunPen, hookPos, absHour, regrowPlants, resetForage };
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
-  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
