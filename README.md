@@ -35,7 +35,7 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Punting:** pounce into a sheep and it goes flying the way you pounced. A flying sheep knocks into others like billiard balls (CAROM, CHAIN x3), bowls over coyotes, and a punt straight into the pen is a HOLE IN ONE (+25). Careful near lava.
 
-**Surprises:** every 20 seconds or so something happens: a sheep turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, a disco breaks out and everyone dances, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Day 1 only gets the friendly ones.
+**Surprises:** every 20 seconds or so something happens: a sheep turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Day 1 only gets the friendly ones.
 
 **The cougar:** on some farm and Sky Island days a cougar lies on a branch of a tree near the flock's route, tail swishing. A faint red ring on the ground shows how close is too close. If a sheep wanders inside, the cougar leaps out, grabs it and drags it up the tree, and that sheep is lost. Bark near the tree and it hisses and holds off for a few seconds (but barking scatters the flock); punt into it while it's dragging a sheep back and it drops the sheep and bolts up the tree, dazed.
 
