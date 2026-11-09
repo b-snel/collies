@@ -4740,7 +4740,7 @@ function bumpHank(D){
     shepSay(['Oi! Watch it!','Mind yer manners!','Not me, the sheep!'][(Math.random()*3)|0],true);
   }
 }
-function resetShepherd(){ shep.x=PEN.gx+3; shep.z=LEVEL.maze?LEVEL.maze.z1+3:PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; shep.lastText=''; }
+function resetShepherd(){ shep.x=PEN.gx+3; shep.z=LEVEL.maze?LEVEL.maze.z1+3:PEN.z1+4; shep.vx=shep.vz=0; shep.yaw=0; shep.lastSay=-99; shep.lastText=''; shep.said={}; }
 function updateShepherd(dt){
   let dirx=0,dirz=0,spd=0;
   if(G.phase==='day'||G.phase==='night'){
@@ -4812,7 +4812,10 @@ function sWhistle(cmd){
 function shepSay(text,force,cmd){
   if(G.phase==='title') return;
   if(!force && G.elapsed-shep.lastSay<7) return;              // Hank chats, but not constantly
-  if(text===shep.lastText && G.phase!=='result') return;      // and never says the same thing twice in a row
+  if(G.phase!=='result'){                                      // and doesn't repeat himself: not the same line twice in a row,
+    if(text===shep.lastText) return;                            // nor a line he said in the last 15 seconds
+    const seen=(shep.said||(shep.said={}))[text]; if(seen!==undefined && G.elapsed-seen<15 && G.elapsed>=seen) return;
+    shep.said[text]=G.elapsed; }
   shep.lastText=text; shep.lastSay=G.elapsed; shep.sayT=1.9;
   const b=$('bubble'); b.textContent=text; b.classList.add('on');
   const lead=cmd?sWhistle(cmd):0, t0=ok()?AC.currentTime+lead:0;
@@ -6039,8 +6042,14 @@ function setupPuzzle(){
     if(PZ.gates.length) lockPen(true); else PZ.type=null;
   } else if(PZ.type==='scale'){
     let best=null, bd=-1;
+    // keep the scale on the pen's side of any river: on lava days a weigh-in across the lava meant driving the flock over a bridge and back
+    const Rv=LEVEL.river, side=(x,z)=>Rv?Math.sign(z-riverZ(Rv,x)):0, penSide=side(P.x,P.z);
     for(let q=0;q<400 && !(best && q>=200);q++){ const loose=q>=200, x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+(loose?14:20)+Math.random()*(FIELD-PEN.z1-(loose?20:30)); if(!clearOf(x,z,loose?6.5:7) || fieldD(x,z)<(loose?7.5:9)) continue;
+      if(side(x,z)!==penSide || clovers.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+(loose?3:6.5))) continue;   // and off the clover, which holds sheep at the edge of the deck
       const df=Math.hypot(x-fx,z-fz), dp=Math.hypot(x-P.x,z-P.z); if(df<(loose?10:16) || dp<(loose?16:22)) continue; const sc=Math.min(df,28)+Math.random()*8; if(sc>bd){ bd=sc; best={x,z}; } }
+    // still nowhere (a lava river can leave the pen's side cramped): anywhere on that side, as long as it isn't on top of the pen
+    for(let q=0;q<500 && !best;q++){ const x=(Math.random()*2-1)*(FIELD-8), z=PEN.z1+12+Math.random()*(FIELD-PEN.z1-16);
+      if(clearOf(x,z,6) && fieldD(x,z)>=7 && Math.hypot(x-P.x,z-P.z)>=12 && side(x,z)===penSide && !clovers.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+3)) best={x,z}; }
     if(best){
       const S2={x:best.x,z:best.z,r:5.5,p:0,tiles:[],done:false}, gy=groundH(best.x,best.z);
       const A=scaleArt(S2.r);
