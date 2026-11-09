@@ -63,6 +63,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Dev menu:** on the title screen, enter the Konami code: up, up, down, down, left, right, left, right, B, A (D-pad and B/A on a controller, or arrow keys then B, A on a keyboard). Jump to any leg (the flock starts in the lane in, bigger the further along you start), and turn on dev tools in the pause menu (pen them all, skip to night or morning, every ewe due, weaken the flock, coyotes, a surprise, a mad sheep, endless stamina).
 
+**Which build:** the bottom of the title screen and of the pause menu says which build you're playing: the commit, the pull request it came from and when it was built, for example "Build 1aa6d71 · PR #7 · Nov 9, 5:50 PM". On the title screen it links to the commit on GitHub. Run straight from the repo, it says "Dev build".
+
 **Losing the flock:** the journey only ends if every last sheep is lost. Then you can try that leg again with the flock you set out on it with (or, on Hardcore, start the journey over).
 
 **Strays:** a sheep cut off from the flock by a hedge or the corn maze finds its own way round to the others, trotting and bleating as it goes.
@@ -75,6 +77,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **1–4 players:** pick 1, 2, 3 or 4 on the title screen and name each player's dog. Player 1 uses WASD, player 2 the arrow keys; controllers fill in from the last player backwards (4 players with 2 controllers: players 3 and 4 on controllers; 4 controllers: everyone). Two players split the screen down the middle; three or four get quadrants (with three, the spare quarter shows the whole field from above). Each dog has its own coat and colour, used for its name, its HUD card and its minimap dot.
 
+**Online co-op:** play with friends on their own computers or phones, up to 4 of you. On the title screen, pick **Play online** and **Host a game**: you get a five-letter room code and an invite link (`collies.bsnel.com/?join=CODE`). Friends open the link, or pick Play online and type the code, name their dog and press Join. Start a journey whenever you're ready, and more friends can join at any time, even halfway to Oregon: their dog trots in beside yours. You can also open a room mid-journey from the pause menu (**Invite friends online**). The host's computer plays the game, and each friend's browser builds the same stretch of the trail and draws it itself, sharp at their own screen's resolution, with a camera on their own dog. The host sends what's changed about twenty times a second (every animal's position and state, the time of day, surprises, the puzzle), which is only a few kilobytes a second, and streams the game's sound; the HUD and menus are mirrored too. Friends play with their keyboard (WASD or arrows, the same keys as player 1), a controller or the touch controls, and can press the main button on the host's menus (Resume, Try again, Keep herding). Either player pausing pauses the game. If a friend's connection drops, their dog lies down and waits, and they can press Rejoin to pick it up again. The journey, the wool and the upgrades are the host's. Both players need the same version of the game (if one of you has an old copy cached, reload), and the host's tab needs to stay in front (the game pauses when it's in the background). Browsers connect directly using [PeerJS](https://peerjs.com); its free public server only introduces them, and relays when there's no direct route. A work VPN or a strict firewall can block the connection.
+
 **Co-op extras:** run over to a stunned partner to help them up; both dogs grabbing the same animal pins it (it can't wriggle free, and shakes do double damage, even on the wolf); fling something to a partner who's holding grab and they catch it (+10); dogs on opposite sides of the flock flank it, keeping it calm and tight; arrows point to your partner when they're off your half of the screen; the results screen shows each player's pens, coyotes, rescues, catches and help-ups, with a star for the MVP.
 
 **Around the farm:** a duck pond (dogs can swim, sheep go around it) with a mother duck and ducklings you can herd into the pen for a bonus; Rascal, the neighbour's terrier, who sneaks in from leg 2 to chase the flock until you bark or pounce him home; crows that scatter when you run through them; and Hank's cat asleep on a hay bale.
@@ -85,12 +89,14 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 ## How it's built
 
-It's a static site with no build step:
+It's a static site. The only build step stamps it with the commit it was built from:
 
 - `index.html`: the whole game (three.js r128, plain JavaScript, recorded audio plus a few sounds synthesized with Web Audio)
 - `vendor/three.min.js`: a local copy of three.js so the game works offline
+- `vendor/peerjs.min.js`: PeerJS 1.5.5 (MIT), for online co-op; it's only loaded when someone hosts or joins a game. To test online play against your own PeerJS server, add `?peerserver=localhost:9000` to the URL on both browsers; `?netdebug` exposes the online state to automated tests as `window.__collies`
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
-- `vercel.json`: caching headers
+- `build.js`: the build step. It copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html` (Vercel provides them; locally it asks git)
+- `vercel.json`: the build command and output directory, and caching headers
 - `audio/`: recorded dog barks and Hank's voice clips (see [CREDITS.md](CREDITS.md) for sources and licenses)
 
 To run it locally:
@@ -101,8 +107,8 @@ npx serve .
 
 ## Deploying
 
-This repo is meant to be deployed on Vercel as a static project with framework preset **Other** and no build command. Every push to `main` deploys automatically.
+This repo is meant to be deployed on Vercel as a static project with framework preset **Other**. `vercel.json` sets the build command (`node build.js`) and the output directory (`dist`), so there's nothing to set in the Vercel dashboard. Every push to `main` deploys automatically. Vercel's system environment variables must be exposed to the build (they are by default), or the build stamp falls back to git and then to "Dev build".
 
 Custom domain: `collies.bsnel.com` is added to the Vercel project, and DNS has a `CNAME` record from `collies` to `cname.vercel-dns.com`.
 
-When `index.html`, `vendor/three.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.
+When `index.html`, `vendor/three.min.js`, `vendor/peerjs.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.
