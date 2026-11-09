@@ -134,6 +134,20 @@ const tests = {
       return { pounced, keptThroughPounce: held1, barked, keptThroughBark: held2, hoppedFence: hopped, landedInPen: inPen, keptOverFence: held3, droppedState: dropped, stayedPut: H.r(Math.hypot(b.x - x0, b.z - z0)), spilled: H.r(f0 - b.fill), knockedTo: H.r(Math.hypot(b.x - x0, b.z - z0)) };
     });
   },
+  // the run works at every camp, even with Hank starting far off (he catches up off-screen)
+  async allCamps() {
+    return h.page.evaluate(() => {
+      const { G, pens, BUCKETS, FORAGE, T, sdfAt } = GAME, out = [];
+      pens.forEach((p, i) => {
+        H.reset(18.9); const b = BUCKETS[i]; b.fill = T.forage.bucketCap; GAME.hangBucket(b, p);
+        for (const s of G.sheep) { const a = Math.random() * 6.283, r = Math.random() * (p.R - 2.5); H.place(s, p.x + Math.cos(a) * r, p.z + Math.sin(a) * r); }
+        H.place(H.d(), p.exitX + 6, p.exitZ + 6);
+        const t = H.run(80, () => FORAGE.runs && !FORAGE.run);
+        out.push({ camp: p.camp.name, poured: H.r(FORAGE.poured), secs: H.r(t), hookOnOpenGround: sdfAt(p.hookX, p.hookZ) > 2, bucketBack: b.state === 'hook' && b.fill < 0.01 });
+      });
+      return out;
+    });
+  },
   // a bucket delivered after dark with the flock penned: he still does it, from the campfire, and stays by the fire
   async lateDelivery() {
     return h.page.evaluate(() => {
