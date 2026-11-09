@@ -140,6 +140,7 @@
 import * as THREE from 'three';
 
 const DEBUG = /debug/.test(location.search + location.hash);
+const SIM = /[?&]sim\b/.test(location.search);   // headless tests: no render loop, they call GAME.step themselves
 
 // =====================================================================
 // TUNING — every gameplay number lives here
@@ -161,7 +162,7 @@ const T = {
   birthChance: 0.22, breedHunger: 0.5, lambGrowDays: 2,
   sheepWalk: 1.3, sheepRun: 6.2, lambRun: 5.4, sheepR: 0.56,
   // dogs
-  dogWalk: 7.6, dogSprint: 12.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
+  dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
   staminaDrain: 0.3, staminaRegen: 0.4,
   pressR: { walk: 9, creep: 5.5, sprint: 12 },
   pressK: { walk: 1.0, creep: 0.5, sprint: 1.5 },
@@ -1431,6 +1432,8 @@ function updateSheep(dt, dtH) {
   for (let i = 0; i < N; i++) {
     const s = S[i]; if (s.dead) continue;
     if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); continue; }
+    if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
+    if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
     // ---- neighbours
     let sepX = 0, sepZ = 0, aX = 0, aZ = 0, nA = 0, cX = 0, cZ = 0, nC = 0, nearest = 1e9, nearestO = null, near = 0, mov = 0, nMov = 0, mX = 0, mZ = 0;
     for (let j = 0; j < N; j++) {
@@ -1575,6 +1578,8 @@ function onSheepEnteredPen(s, pen) {
   Sound.pluck(Math.min(24, n % 25), 0.12);
   floatText('+1', pen.gx, pen.y + 2, pen.gz, '#ffffff', 0.7);
 }
+// SHARED HOOK: a dog punted, shook or held on to a ram too long. (Sheep/ram section owns this.)
+function provokeRam(s, dog) {}
 function lambsAtDawn() {
   let born = 0;
   for (const s of [...G.sheep]) {
@@ -1600,12 +1605,17 @@ function spawnDog(player) {
   const base = G.dogs[0] || { x: pens[0].exitX + 3, z: pens[0].exitZ + 2 };
   const a = Math.random() * TAU;
   const d = { player, x: base.x + Math.cos(a) * 2, z: base.z + Math.sin(a) * 2, vx: 0, vz: 0, y: 0, yaw: Math.PI, mode: 'walk', stamina: 1, exhausted: false,
-    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi] };
+    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi] };
   if (G.dogs[0]) { d.x = G.dogs[0].x + Math.cos(a) * 2; d.z = G.dogs[0].z + Math.sin(a) * 2; }
   collideWorld(d, T.dogR);
   G.dogs.push(d); player.dog = d; return d;
 }
 function updateDog(d, inp, dt) {
+  if (d.stunT > 0) {   // bowled over: no control until it wears off
+    d.stunT -= dt; const k = Math.exp(-dt * 4); d.vx *= k; d.vz *= k;
+    d.x += d.vx * dt; d.z += d.vz * dt; collideWorld(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
+    d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt); return;
+  }
   let mag = Math.hypot(inp.mx, inp.my);
   const wx = inp.mx * CAM_R.x - inp.my * CAM_F.x, wz = inp.mx * CAM_R.z - inp.my * CAM_F.z;
   let mode = 'walk';
@@ -1636,6 +1646,12 @@ function updateDog(d, inp, dt) {
     for (const p of pens) { const dd = Math.hypot(d.x - p.gx, d.z - p.gz); if (dd < bd) { bd = dd; best = p; } }
     if (best) toggleGate(best, d);
   }
+}
+// SHARED HOOK: something bowled the dog over (a ram, a cornered sheep, a flying sheep)
+function knockDog(d, vx, vz, t, label = 'OOF!') {
+  d.vx = vx; d.vz = vz; d.stunT = Math.max(d.stunT || 0, t); d.hopT = 0;
+  floatText(label, d.x, d.y + 1.8, d.z, '#ffd36b', 1.2); rumble(d.player, 0.8, 0.6, 220);
+  burst(d.x, d.y + 0.5, d.z, 8, '#fff3c0', { speed: 2.5, up: 2.5, size: 0.14 }); Sound.yelp(panOf(d.x, d.z));
 }
 function bark(d) {
   d.barkCd = T.barkCd; d.barkAnim = 0.3; G.barks = (G.barks || 0) + 1;
@@ -1673,6 +1689,13 @@ function onGateClosed(pen) {
   if (inside > 0 && inside === live.length) { toast('The whole flock is safe in the pen ✔', 'good'); Sound.chime([0, 4, 7], 784); }
   else if (inside > 0 && isNight()) toast(`${live.length - inside} sheep still out in the dark!`, 'warn');
 }
+
+// =====================================================================
+// DOG MOVES & PHYSICS — airborne and held sheep (stubs; the dog-moves work fills these in)
+// =====================================================================
+function updateAirborneSheep(s, dt) { s.air = false; }
+function updateHeldSheep(s, dt) { s.heldBy = null; }
+function updateHeldCoyote(c, dt) { c.heldBy = null; }
 
 // =====================================================================
 // NAVIGATION — A* on the 1 m grid so coyotes find their way round pens,
@@ -1809,7 +1832,7 @@ const NEAR = { dog: null, d: 1e9 };
 const _ndc = new THREE.Vector3();
 function onScreen(x, y, z, margin = 0.05) { _ndc.set(x, y, z).project(camera); return Math.abs(_ndc.x) < 1 + margin && Math.abs(_ndc.y) < 1 + margin; }
 const penShut = p => p.gateT < 0.3;
-const huntable = s => !s.dead && !s.grabbed && !(s.pen && penShut(s.pen));
+const huntable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && !(s.pen && penShut(s.pen));   // coyotes never go for a ram
 function guarded(s, r = 9) { for (const d of G.dogs) if (Math.hypot(d.x - s.x, d.z - s.z) < r) return true; return false; }
 let packIds = 0;
 function spawnPack(n, opts = {}) {
@@ -1886,6 +1909,13 @@ function scareCoyote(c, amt, dog, bump = false) {
       toast('You ran off the pack leader — the rest are slinking away!', 'good'); floatText('PACK BROKEN!', c.x, c.y + 2.2, c.z, '#7ed957', 1.4);
     }
   }
+}
+// SHARED HOOK: something hit a coyote hard (a pounce, a ram, a flung sheep). src needs x/z (and .player if it's a dog)
+function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
+  if (c.state === 'leave' && c.stateT > 3) return;
+  floatText(label, c.x, c.y + 1.7, c.z, '#ffd36b', 1.2);
+  scareCoyote(c, amt, src || { x: c.x - vx, z: c.z - vz }, true);
+  c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
 }
 function grab(c, s) {
   s.grabbed = c; c.prey = s; c.state = 'drag'; c.stateT = 0; s.state = 'flee';
@@ -2018,6 +2048,7 @@ function updateCoyotes(dt) {
   for (const p of G.packs) updatePack(p, dt, fc);
   G.packs = G.packs.filter(p => !p.done);
   for (const c of G.coyotes) {
+    if (c.heldBy) { updateHeldCoyote(c, dt); continue; }   // SHARED HOOK: in a dog's jaws (dog-moves section owns this)
     c.stateT += dt; c.tumble = Math.max(0, c.tumble - dt); c.growlT -= dt;
     const { dog: nd, d: ndd } = nearestDog(c.x, c.z);
     if (nd && c.state !== 'flee' && c.state !== 'leave') {
@@ -2236,6 +2267,11 @@ function leashDogs() {
 // =====================================================================
 const _mb = new THREE.Matrix4(), _mp = new THREE.Matrix4(), _ml = new THREE.Matrix4(), _qa = new THREE.Quaternion();
 const HIP = [[0.2, 0.42, 0.28], [-0.2, 0.42, 0.28], [0.2, 0.42, -0.28], [-0.2, 0.42, -0.28]];
+// SHARED HOOK: the fleece colour for one sheep (instance colour multiplies the white wool)
+function sheepWoolColor(s, out) {
+  const tint = s.black ? 0.27 : s.lamb ? 1.0 : 0.97, starveTint = s.hunger >= 1 ? 0.8 : 1;
+  return out.setRGB(tint * starveTint, tint * starveTint, (s.black ? 0.25 : tint) * starveTint);
+}
 function syncSheep() {
   let n = 0, nl = 0;
   for (const s of G.sheep) {
@@ -2248,11 +2284,12 @@ function syncSheep() {
     const thin = s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1;
     _mp.compose(_v.set(0, (lying ? 0.38 : 0.66) + bob, 0), _qa.identity(), _s.set(thin, breathe, 1));
     _ml.multiplyMatrices(_mb, _mp); SI.body.m.setMatrixAt(n, _ml);
-    const tint = s.black ? 0.27 : s.lamb ? 1.0 : 0.97, starveTint = s.hunger >= 1 ? 0.8 : 1;
-    SI.body.m.setColorAt(n, _c.setRGB(tint * starveTint, tint * starveTint, (s.black ? 0.25 : tint) * starveTint));
+    SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
+    (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
     _e.set(s.headPitch, s.headYaw, 0, 'YXZ');
     _mp.compose(_v.set(0, (lying ? 0.55 : 0.8) + bob, 0.5), _q.setFromEuler(_e), _s.set(1, 1, 1));
     _ml.multiplyMatrices(_mb, _mp); SI.head.m.setMatrixAt(n, _ml);
+    (s.headM || (s.headM = new THREE.Matrix4())).copy(_ml);   // SHARED HOOK: head transform for hats, horns, bells
     SI.head.m.setColorAt(n, _c.setRGB(s.black ? 0.5 : 1, s.black ? 0.5 : 1, s.black ? 0.5 : 1));
     for (let l = 0; l < 4; l++) {
       const sw = lying ? 0 : Math.sin(s.leg + (l === 0 || l === 3 ? 0 : Math.PI)) * Math.min(0.8, Math.hypot(s.vx, s.vz) * 0.25);
@@ -2268,6 +2305,7 @@ function syncDog(d) {
   const M = d.models, sp = Math.hypot(d.vx, d.vz);
   const hopK = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) : 0;
   M.root.position.set(d.x, d.y + hopK * 1.25, d.z); M.root.rotation.y = d.yaw;
+  M.root.rotation.z = d.stunT > 0 ? Math.sin(G.time * 16) * 0.35 * Math.min(1, d.stunT * 2) : 0;
   M.ring.position.y = 0.06 - hopK * 1.25;
   M.pring.position.y = 0.08 - hopK * 1.25;
   const R = T.pressR[d.mode]; M.pring.scale.setScalar(lerp(M.pring.scale.x || R, R, 0.2)); M.pring.material.opacity = d.mode === 'walk' ? 0.12 : 0.28;
@@ -2307,6 +2345,8 @@ function toast(msg, kind = '') {
   const el = document.createElement('div'); el.className = 'toast ' + kind; el.textContent = msg; box.appendChild(el);
   setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 600); }, 3800);
 }
+// SHARED HOOK: Hank says something (voice clip id + subtitle). Stub until Hank's voice and speech bubble land.
+function hank(id, text, opts = {}) { toast('Hank: ' + text); }
 let bannerTimer = 0;
 function banner(t, s) { const b = $('banner'); b.querySelector('.t').textContent = t; b.querySelector('.s').textContent = s || ''; b.classList.add('show'); bannerTimer = 3.2; }
 // one-shot contextual hints
@@ -2574,7 +2614,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { G, T, pens, CAMPS, cam, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living };
+window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living };
 
 resize();
 spawnFlock();
@@ -2582,7 +2622,7 @@ updateCamera(0, true);
 updateLighting(0);
 $('loading').style.opacity = 0; setTimeout(() => $('loading').remove(), 700);
 $('title').classList.remove('hidden');
-requestAnimationFrame(frame);
+if (!SIM) requestAnimationFrame(frame);
 </script>
 </body>
 </html>
