@@ -1,116 +1,133 @@
-# Collie at Dusk
+# Collies
 
-A 3D herding game. You're a border collie driving Hank's flock west from New York to a ranch on the Oregon coast, through one continuous world: no levels, loading screens or cards in between. Drive the flock across each stretch of country, let them graze the clover till they're fed, and bring them to the pen at the far end; once they're all in, the pen's back gate swings open onto the lane to the next stretch, and on you go. Every stretch also has a breeding pen off to one side: stop there and the flock has lambs, but the day wears on and the coyotes come at dusk. Bring as many sheep to Oregon as you can.
+A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, to the Promised Land. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
 Live at **https://collies.bsnel.com**
 
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| WASD / arrows | Move (sheep move away from you, so get behind them) |
-| Shift | Run |
-| Space | Bark: scatters sheep, scares coyotes |
-| E | Pounce: punts a sheep flying (it bowls over other sheep and coyotes), knocks coyotes over |
-| C | Lie down: calms the flock |
-| R (hold) | Grab the nearest sheep, coyote or Rascal. Drag it, press E to shake it, let go while moving to fling it. With nothing alive in reach, grab a bale to drag it |
-| P / Esc | Pause |
-| M | Sound on/off |
+| | Controller | Player 1 keys | Player 2 keys |
+| --- | --- | --- | --- |
+| Move | left stick | WASD | arrows |
+| Bark | A | Space | / |
+| Pounce (shake while holding) | B | E | . |
+| Grab / drag (hold; let go while moving to fling) | X | R | , |
+| Lie down (hold) | Y or LT | C | ' |
+| Sprint | RT or RB | Left Shift | Right Shift |
+| Creep (gentle pressure) | LB | Q | ; |
+| Hank's barn | View | Tab | |
+| Pause | Start | P / Esc | |
 
-Volume sliders for Hank's voice (up to 150%), the music and sound effects are on the title screen and the pause menu, and are remembered on the device.
+There's no gate button: walk into a gate to push it. Extra controllers press A at any time to drop in, and player 2 joins by pressing one of their keys.
 
-**Camera:** it looks steeply down with north always up, and zooms and slides on its own to keep your dog, the sheep you're working and any coyotes closing in on screen, whichever way you're driving the flock. Trees fade out when they're hiding an animal, and red arrows at the screen edge point at coyotes you can't see (they pulse when one's carrying a sheep off). Mouse wheel or the right stick zooms in and out on top of that.
+## Herding
 
-On phones and tablets you get an on-screen joystick and buttons. You can add it to your home screen, and it works offline after the first visit.
+Sheep move away from a dog. Each dog has a pressure zone round it (walking, creeping and sprinting push differently), and the push bends the way the dog is travelling. Walk up behind the flock and it moves off ahead of you; swing out to one side and it turns. After a push the flock keeps walking for a few seconds, and calm sheep join neighbours that are on the move, so a steady dog behind the flock drives it along the trail.
 
-**Grab, shake, fling:** hold R to latch on (on a controller, press X to grab and X again to let go). Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
+Sheep feel things:
 
-**The Long Drive:** Hank has inherited a ranch on the Oregon coast, and the flock is coming with him. It's one continuous journey: day turns to night and back again, the calendar runs on, and each stop on the trail west is a stretch of country (a leg): Saratoga Springs, NY (legs 1-2, trial gates on leg 2), Lake Erie (surprises and the seesaw cliff), Iowa corn country (corn maze), the Great Plains (twisters and stampedes), the Rockies (the cougar, and bales to roll), Moab (falcons), the Grand Canyon (a sheer-sided rift right across the field, crossable at two wide necks; a sheep only goes over if you bark or pounce at it by the edge), the Mighty Columbia, and the Oregon coast (the weigh-in at the ranch). Hank tells his tall tales along the way, and the road runs right into them: after Lake Erie, the Great Plains, Moab and the Columbia comes a stretch of one of them (an undersea meadow, Sky Islands, the Moon, a far-fetched farm), and then the trail goes on. Oregon is still the end of the trail (leg 14), and past it the tall tales keep coming, with everything mixed in. Only one big disruption (surprise, falcon or raid) happens at a time.
+- **Fear** comes and goes in an instant. **Stress** builds slowly, spreads through the flock faster than it calms, and only fades once the pressure stops.
+- Steady pressure gives you a tight, mobile flock. Sprint at the sheep and they scatter.
+- Sheep that are panicking break apart and bolt. A **mood bar** on the HUD shows how the flock is feeling, and Hank will tell you to ease off.
+- **Lie down**, or work the flock from both sides with a second dog, to calm it down fast.
+- A sheep you pin against a fence or a wall will **break out**, past you and sometimes through you.
+- Strays bleat and find their way back to the flock.
+- The **bell ewe** leads, and the rest follow her. Some sheep are skittish, some stubborn.
+- Hungry sheep linger on good grass and take more moving. Frightened sheep won't settle to graze.
+- Sheep like company. An open pen pulls in calm, fed sheep, and the more of the flock is already inside, the harder it pulls.
 
-**The road:** every stretch of land has a fenced drove lane coming in at the south, and the pen at the far end, with a second gate in its back fence that opens onto the lane out, marked by a signpost. On leg 1 the flock is scattered round Hank's farm and you gather them in. After that they come up the lane in from the last stretch, and you drive them to the pen (a gold beam marks it, and the place's name fades in at the bottom of the screen as you arrive). Once the whole flock is in (and they won't go in hungry: see grazing), the leg is done: the front gate shuts behind them, and a moment later the back gate swings open and the flock files out of it and up the lane. Follow them through the pen and up the lane, and when the whole flock and the dogs are well up it, the next stretch of the trail is already there ahead of them. (Under the hood the next stretch is built and everything shifts at once, but the lane looks the same at both ends and the camera keeps in close there, so there's no seam.) Time never skips ahead: the clock runs on from one stretch into the next, day and night. If night falls on the trail, the coyotes come for anything outside a pen; hold them off till dawn and keep going. If most of the flock is in the pen when night falls, the rest make their own way home to it. Walk into a new stretch after dark and its coyotes are already out. Lost sheep are gone for good.
+## Rams
 
-**Grazing:** the flock comes into every stretch hungry after the road, and a sheep won't go into the pen until it's eaten its fill. Each stretch has four or five clover patches (lush green with flowers): a hungry sheep goes looking for the nearest one and tucks in when it gets there, and fills up as it eats. Hungry sheep have a little clover thought-bubble over them; it pops when one's fed, and a chip at the top of the screen counts how many are ("Fed 12/20"). Until they all are, the gold arrow points at the nearest good clover rather than the pen. A hungry sheep balks at the pen gate, and one pushed or flung in just trots back out to graze. Each patch feeds about ten sheep before it's grazed bare: it goes brown, and every sheep round it gives up on it and wanders off, each its own way, so you'll be gathering them up again and taking the hungry ones on to the next patch. A bare patch grows back slowly when it's left alone. Lambs are on milk and don't need to graze. On a seesaw cliff there's a patch up on the plateau too, for any that go up hungry. A sheep that's already full and stops to eat again is just greedy (Hank will tell you), and apples fill them up a bit too.
+Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean on one and he'll paw the ground, then charge in a straight line: sidestep him, or bark during his windup to call it off. A ram goes for a coyote before he goes for a dog, and coyotes never try to take one. Lambs need a ram: pen him with the well-fed ewes for the night, and he'll court them in the evening.
 
-**The end of each leg:** sheep want to be with the flock. Fed sheep near the pen flow on in by themselves, and the more of the flock that's already inside, the further off they feel the pull; once half of them are in, a fed sheep out on its own heads for the pen gate (round hedges and walls if need be). Penning the whole flock scores the leg (points for every sheep, more for no losses and for beating nightfall, and stars toward hats), and Morag shears the flock for wool (a healthy fleece is worth more), all without a screen in the way. Then it's straight out of the back gate and on. Once the leg's done there are no more surprises, falcons or Rascal on it. Morag's shearing shed is in the pause menu, along with a map of the trail showing how far you've come. The journey is saved every time the flock is penned: Continue on the title screen picks up there, with the flock in the pen and the back gate about to open.
+## The dog's moves
 
-**The breeding pen:** every stretch has an eight-sided paddock off to one side of the way through, with a big pink heart on a sign by its gate (pink on the minimap). It's optional. Herd some of the flock in, rams and ewes together, and the rams court the ewes: they follow them about trailing hearts, and a few seconds later the ewe has a lamb, sometimes twins. Every healthy ewe can have one lamb each leg, and each ram courts one ewe at a time, so the more rams you put in, the quicker it goes. A chip at the top of the screen shows how it's going ("Needs a ram", how many ewes are still to lamb, or "All lambed"). The sheep inside nibble at the hay rack (good for their health, but it's no substitute for clover) and settle; with no dog pushing them they stay in, and calm sheep near the open gate wander in, the more readily the more of the flock is already inside. The catch is time: the clock keeps running while they're in there, and when night falls the coyotes come for anything outside a shut pen. The gate hangs on one post and swings both ways: walk the dog into it and it swings away from you. Swung shut, it latches with a clack ("SHUT!"), and a shut breeding pen keeps the coyotes and the falcon off everything inside, so you can leave them breeding while you deal with trouble. Leaning on a shut gate won't open it; back off for a moment and give it a fresh shove (from outside it swings in, from inside it swings out). Then drive them out and on to the pen at the end of the leg.
+- **Pounce** lunges you forward. Pounce into a sheep and it goes flying. Flying sheep carom into others (CAROM!, CHAIN x3!) and bowl coyotes over, and a punt that lands in a pen is a HOLE IN ONE. Pounce into a coyote to knock it flying and make it drop what it's carrying.
+- **Grab** a sheep, a ram or a coyote and drag it. It fights back and tires you out.
+  - Pounce while holding to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
+  - Let go while moving to fling it, over a fence into a pen if you like.
+  - A stubborn sheep can be hauled where it won't be driven.
+  - You can grab a gate and drag it round.
+- **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to vault it. Dogs hop fences when they push into them; sheep and coyotes can't.
+- **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
 
-**Levels:** every leg is a fixed, hand-checked level: leg 3 is always the same Lake Erie, with the same hills, pond, hedges, copses, boulders, clover, mushrooms, gold bones, gates, maze and the flock in the same starting spots, every run (the flock itself is yours: whoever made it through the last leg). Each leg's layout was picked from many candidates by an audit (every sheep and the pen reachable, no pass narrower than 5, no see-through gaps in the woods at the edge) and then looked over. Hank's tall tales after Oregon are fixed too: Sky Islands, underwater, the Moon or a Volcano, plus a twist (bouncy, giant, tiny or speedy sheep, fog, a gold rush, stampedes). What happens on the way (surprises, raids, the weather, where the coyotes come from) still varies.
+## Grazing, camps and nightfall
 
-**The land:** no two legs are the same shape. Each stretch is its own piece of land with chambers, narrow passes and side pockets, bounded by whatever fits the place: woods and rocky hills on the farm, a lake and beach at Lake Erie, tall cliffs in the Rockies, red-rock canyon walls at Moab, sheer drops at the Grand Canyon, the river itself on the Columbia, sea cliffs on the coast, and a floating island's edge in the sky. Sheep can wander into the pockets, so go and find them. Wherever woods close the land off, the trees stand in an unbroken row, so a gap you can see through is never a way out. Twisters, stampedes and the rascal come and go over the land, not over cliffs or water. Ponds are irregular, every stretch of river that crosses the land has a bridge, and sheep peel off hedges, maze walls and trees instead of getting stuck on them.
+The grass is real: sheep eat it down as they graze, and it grows back slowly. A hungry flock wanders off looking for food, and a pasture grazed bare sends them roaming. Stay too long and you run out of grass; push on too soon and you're on the trail at dusk.
 
-**Health, grazing and lambs:** every sheep has health. The trail wears them down (faster when they're stressed, cold in winter or hot in summer, and on a night in the open), and a coyote's bite takes a big chunk. Thin sheep look skinny and a bit grubby, can't keep up, and are the coyotes' first pick. They get it back by eating: clover patches out on the trail, the hay rack in a breeding pen, or the apple basket, and a night safe in a pen does them good. Lambs come from the breeding pens (see above); the two ewes already in lamb when the journey starts have theirs at dawn on the trail. Lambing takes it out of a ewe. Lambs stay by their mums (a lamb on the wrong side of the breeding pen's fence goes round by the gate), grow bigger every day, and after a week they're grown, some into young rams. Parachuting sheep join the flock too. The flock tops out at 48.
+Each camp has a round pen with a gate and funnel wings. Pen the flock and shut the gate before nightfall (20:30). When the whole flock is safe behind a shut gate at night, time runs fast till morning. Penned, well-fed ewes with a ram have lambs at dawn. Lambs follow their mothers and grow up in a couple of days, some of them into rams.
 
-**Scoring:** points come as you go (penning, coyotes, catches, lambs, legs done), and wool for Morag's upgrades comes in at the end of every leg. Reach Oregon and your final score is your points times the flock you brought: each sheep adds a tenth to the multiplier, so 25 sheep is ×3.5. The score in the corner shows the multiplier you'd get now.
+## Foraging and the trough
 
-**Challenges on the way:** the pen is always open; the trial gates and the weigh-in are there to try as you go, for a bonus (points, and wool at the end of the leg). Trial gates: numbered pairs of hurdles out on the field; drive most of the flock through each one in order (a bar on the gate fills up). The weigh-in: hold most of the flock on the big scale until the dial fills. Corn maze: a maze fills the field between the flock and the pen (corn on the farm, cacti in the desert, coral underwater, crystals on the Moon); find a way through without losing anyone. A gold beam and an arrow at the edge of the screen point at the challenge, then the pen, then the back gate. They're a daytime thing: at nightfall any challenge still going lapses.
+Every camp's pen has a bucket hanging on the fence by its gate and a wooden trough just inside. While the flock grazes, grab the bucket (X / R / `,`) and carry it about. Walk over **daisies** (white, everywhere but the desert) and **alfalfa** (purple-flowered clumps, more filling) and they go in the bucket, with a pop and a fill bar over your dog. A full bucket takes about fifteen plants. You can still bark and pounce, and hop fences, with it in your mouth, but you're away from the flock, and a dog charging into a bucket on the ground spills some.
 
-**Lava and cliffs:** volcano legs have lava pools and lava rivers; Sky Islands have holes straight down to the clouds. Sheep stop at the edge on their own, but run at them, bark or pounce near the edge and they'll go over. Lost sheep are gone for good. Dogs just get singed and bounce off. Fling a coyote in for 40 points.
+Bring it back and let go anywhere in the pen, by its gate or by its hook, and it's delivered: it hangs back up, heaped with greens (a green ✔ over it). From 19:00 Hank comes over, takes it down, tips it into the trough over the fence and hangs it back up for tomorrow. Penned sheep eat from the trough through the night. A full bucket is a few hours' grazing each for most of the flock, which helps, but it won't replace good grass. Picked plants grow back in a day or two.
 
-**Punting:** pounce into a sheep and it goes flying the way you pounced. A flying sheep knocks into others like billiard balls (CAROM, CHAIN x3), bowls over coyotes, and a punt straight into the pen is a HOLE IN ONE (+25). Careful near lava.
+## Coyotes
 
-**The seesaw cliff:** a puzzle leg (Lake Erie on leg 3, the mesa at Moab, and the Moon in the tall tales). The pen sits up on a plateau behind a rock face that runs right across the field, and the flock starts below it. At the foot of the cliff, under a big red arrow sign, is a giant seesaw. There are no fences round it: the ground in front of the plank is an open funnel, and calm sheep near its mouth wander in by themselves. Sheep that wander into the funnel file down onto the plank and wait there, so you can load several. A hay bale always lies out in the field: roll it up beside the seesaw and the whole flock comes trotting over to eat, straight into the funnel, so you can launch a crowd at once. Pounce (B on a controller, E on the keyboard) on the high end and everyone on the low end shoots up into the sky in a trail of stars, pops a parachute and floats down onto the plateau, then trots into the pen by themselves. Every launched sheep lands safely. The Grand Canyon has a seesaw too, on the near rim of the rift: load it up (there's hay out in the field there as well) and the launch sends the flock sailing right over the canyon to parachute down on the far rim, where they find their own way to the pen. The two narrow necks across the rift are still there for doing it the slow way. Dogs can scramble up and down the rock wherever they like, and in co-op a dog on the low end goes up with the sheep. A dog under a parachute steers with the stick (or WASD) to pick where it lands.
+At nightfall the coyotes come in packs, more each night.
 
-**Bales:** from leg 6, a few round bales lie about the field, often near a gap in a hedge: hay on the farm, tumbleweed in the desert, coral underwater, moon rock, basalt on the volcano and a cloud in the sky. Walk into one to roll it, punt it to send it trundling (it bowls over coyotes and knocks sheep aside), or grab it to drag it into place. A bale blocks sheep and coyotes, so you can make a wall, narrow a funnel, or plug a gap so the coyotes have to go the long way round. They can't be rolled into the pen or its gateway.
+- **Gathering:** a pack gathers out of sight on the far side of the flock from you and picks the loneliest or weakest sheep.
+- **The strike:** one coyote drives from the flock side, others wait in ambush beyond the sheep, and a decoy runs at the flock to draw you away. They yip to each other, then strike together.
+- **The escape:** the one carrying a sheep drags it off while the rest of the pack screens it from you. Pounce, bark, or grab and shake the carrier to make it drop the sheep.
+- **Breaking the pack:** run off the pack leader (bigger, darker, with orange eyes) and the whole pack gives up.
 
-**Surprises:** every 20 seconds or so on the trail something happens (Hank tells you what): a stranger who tagged along with the flock turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Leg 1 only gets the friendly ones.
+Red arrows at the screen edge point at coyotes you can't see. Closed pens are coyote-proof.
 
-**The cougar:** on some farm and Sky Island legs a cougar lies on a branch of a tree near the flock's route, tail swishing. A faint red ring on the ground shows how close is too close. If a sheep wanders inside, the cougar leaps out, grabs it and drags it up the tree, and that sheep is lost. Bark near the tree and it hisses and holds off for a few seconds (but barking scatters the flock); punt into it while it's dragging a sheep back and it drops the sheep and bolts up the tree, dazed.
+## Hank
 
-**Mad mushrooms:** from leg 5, little purple toadstool clumps grow out on the field. A sheep that eats one goes mad: spiral eyes, rainbow wool, and it wobbles straight at the nearest dog and head-butts it. Mad sheep pass it on to sheep they bump into (up to five at once), and the screen goes a bit psychedelic when they're close. Punt a mad sheep to snap it out of it, lure it into the pen, or wait for it to wear off. The big red mad mushroom (step on it and the whole flock turns on you) still turns up from leg 9.
+Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
 
-**Controller:** left stick moves, RT runs (gas), LT lies down (brake), A barks, X grabs (X again flings), B punts or shakes whatever you're holding, Y shoots (once you've found the gun), LB whistles (once you've bought the whistle), the right stick zooms, Menu pauses.
+## Hank's barn: making the flock yours
 
-**Dev menu:** on the title screen, enter the Konami code: up, up, down, down, left, right, left, right, B, A (D-pad and B/A on a controller, or arrow keys then B, A on a keyboard). Jump to any leg (the flock starts in the lane in, bigger the further along you start), and turn on dev tools in the pause menu (pen them all, skip to night or morning, every ewe due, weaken the flock, coyotes, a surprise, a mad sheep, endless stamina).
+Every sheep has a name. Open the barn (Tab or View, or from the title screen) to:
 
-**Which build:** the bottom of the title screen and of the pause menu says which build you're playing: the commit, the pull request it came from and when it was built, for example "Build 1aa6d71 · PR #7 · Nov 9, 5:50 PM". On the title screen it links to the commit on GitHub. Run straight from the repo, it says "Dev build".
+- rename a sheep, or roll for a new name
+- dye its wool
+- give it a hat (straw, cowboy, party, crown, top hat, bobble hat, flower crown) and a scarf, bow tie, sunglasses or a flower
+- paint on its fleece
 
-**Losing the flock:** the journey only ends if every last sheep is lost. Then you can try that leg again with the flock you set out on it with (or, on Hardcore, start the journey over).
+It all shows out on the trail. Your flock is saved on the device, and the sheep you've named and dressed start your next journey. "Start a fresh flock" on the title screen's barn clears it.
 
-**Strays:** a sheep cut off from the flock by a hedge or the corn maze finds its own way round to the others, trotting and bleating as it goes.
+A sheep being dragged off cries out with its name. A lost sheep gets a tombstone where it fell, with its name on it and its hat resting on top, and joins the "Fondly remembered" list in the barn and on the end screen.
 
-**Homesteads:** the barn is home, so it only stands in Saratoga Springs. Out on the trail the pen sits by whatever travellers would have: a lakeside camp with a rowboat at Lake Erie, a silo and windmill in corn country, a ring of covered wagons on the plains and at Moab, a log cabin in the Rockies, a tent camp at the Grand Canyon and the Columbia, and Hank's ranch house in Oregon. The tall tales get a fairy ring (the pen becomes a ring of glowing toadstools, with a stump cottage), a shipwreck under the sea, a moon lander, and a stone hut on the volcano.
+## Playing together
 
-**Falcons:** from leg 7, a falcon comes for the flock now and then: its shadow, with a red ring, closes in fast on a sheep, a lamb, a weak sheep or a stray before the rest. Bark near the shadow and it sheers off (+10). If it gets its sheep it lifts it away to the edge of the land; bark under it before it's high and away and it drops the sheep, shaken but saved. The Scarecrow from Morag's shed rides on the bell ewe's back, and no falcon will take a sheep near her (further at level 2), so keep the flock round her.
+**Local:** up to four dogs on one screen, on two keyboards' worth of keys and any number of controllers. The camera zooms out to keep every dog in view.
 
-**Seasons:** the calendar runs on through the whole journey, a day for every sunrise on the trail, and the season turns every week: spring, summer, autumn, winter. The longer you linger (at the breeding pens, say), the later in the year you're on the trail, and you want to reach Oregon before the snow. Spring has blossom and extra clover. Summer has longer, hot days that tire the dog faster. Autumn has red and orange trees, falling leaves, wind gusts that push the flock, and mad mushrooms that regrow. Winter brings snow, thin clover that doesn't go as far, a frozen and slippery pond everyone can cross, ducks gone south, shorter days, a huddling flock and hungrier coyotes.
+**Online:** pick **Play online** on the title screen.
 
-**1–4 players:** pick 1, 2, 3 or 4 on the title screen and name each player's dog. Player 1 uses WASD, player 2 the arrow keys; controllers fill in from the last player backwards (4 players with 2 controllers: players 3 and 4 on controllers; 4 controllers: everyone). Two players split the screen down the middle; three or four get quadrants (with three, the spare quarter shows the whole field from above). Each dog has its own coat and colour, used for its name, its HUD card and its minimap dot.
-
-**Online co-op:** play with friends on their own computers or phones, up to 4 of you. On the title screen, pick **Play online** and **Host a game**: you get a five-letter room code and an invite link (`collies.bsnel.com/?join=CODE`). Friends open the link, or pick Play online and type the code, name their dog and press Join. Start a journey whenever you're ready, and more friends can join at any time, even halfway to Oregon: their dog trots in beside yours. You can also open a room mid-journey from the pause menu (**Invite friends online**). The host's computer plays the game, and each friend's browser builds the same stretch of the trail and draws it itself, sharp at their own screen's resolution, with a camera on their own dog. The host sends what's changed about twenty times a second (every animal's position and state, the time of day, surprises, the puzzle), which is only a few kilobytes a second, and streams the game's sound; the HUD and menus are mirrored too. Friends play with their keyboard (WASD or arrows, the same keys as player 1), a controller or the touch controls, and can press the main button on the host's menus (Resume, Try again, Keep herding). Either player pausing pauses the game. If a friend's connection drops, their dog lies down and waits, and they can press Rejoin to pick it up again. The journey, the wool and the upgrades are the host's. Both players need the same version of the game (if one of you has an old copy cached, reload), and the host's tab needs to stay in front (the game pauses when it's in the background). Browsers connect directly using [PeerJS](https://peerjs.com); its free public server only introduces them, and relays when there's no direct route. A work VPN or a strict firewall can block the connection.
-
-**Co-op extras:** run over to a stunned partner to help them up; both dogs grabbing the same animal pins it (it can't wriggle free, and shakes do double damage, even on the wolf); fling something to a partner who's holding grab and they catch it (+10); dogs on opposite sides of the flock flank it, keeping it calm and tight; arrows point to your partner when they're off your half of the screen; the results screen shows each player's pens, coyotes, rescues, catches and help-ups, with a star for the MVP.
-
-**Around the farm:** a duck pond (dogs can swim, sheep go around it) with a mother duck and ducklings you can herd into the pen for a bonus; Rascal, the neighbour's terrier, who sneaks in from leg 2 to chase the flock until you bark or pounce him home; crows that scatter when you run through them; and Hank's cat asleep on a hay bale.
-
-**Hank's barn:** every sheep in the flock has a name, and between legs you can make them your own. When the whole flock is penned at the end of a leg, the barn opens while they wait for the back gate (you can also open it any time from the pause menu, and turn off it opening by itself). Pick a sheep from the list, rename it (or roll the dice for a new name), paint straight onto its fleece on the turntable (ten colours, brush size, eraser, undo; drag the straw to turn it round), choose its wool colour, a hat (straw, cowboy, party, crown, top hat, bobble hat or flower crown), a hat-and-scarf colour, and bits and bobs (scarf, bow tie, sunglasses, a flower behind the ear). It all shows out on the trail, is saved with the journey, and your friends see it online. The golden ewe stays golden. A sheep being carried off cries, with its name in red under a bouncing "!", and when one's lost, a message says who it was and what it was wearing. The barn keeps a list of the ones you've lost ("Fondly remembered").
-
-**Wool and the shearing shed:** every leg you finish earns wool from the shearing (2 per ewe, 3 per ram, 8 for the golden sheep, 1 per lamb, less for a thin fleece), plus 3 per star and 1 per coyote driven off. Spend it at Morag's shearing shed, from the pause menu or the title, on upgrades that stay on the device: Sturdy paws, Big lungs, Calm presence, Loud bark, Thick collar, Sharp nip, Longer days and Keen nose, plus the Shepherd's whistle (LB / Q: steadies every sheep nearby), up to three Guard llamas that spread around the flock and spit at coyotes, and the Scarecrow (keeps falcons off the flock).
-
-**Power-ups:** Bone (zoomies), Apple basket (sheep follow you, and munch apples as they go), Lantern (coyotes keep back; a soft glow round the dog at night). The flock has one golden ewe, worth 50 points every time she's penned at the end of a leg.
+- **Hosting:** **Host a game** gives you a five-letter room code and an invite link (`?join=CODE`).
+- **Joining:** friends open the link, or type the code, name their dog and press **Join**. They can drop in at any time, even halfway along the trail.
+- **How it runs:** the host's browser runs the game. Each friend's browser builds the same trail itself and draws it with its own camera, from about 20 updates a second.
+- **Pausing:** either player can pause. If a friend's connection drops, their dog lies down and waits, and **Rejoin** takes it back.
+- **Connecting:** browsers connect directly using [PeerJS](https://peerjs.com). Its free public server only introduces them, and relays when there's no direct route. A strict firewall or a work VPN can block the connection.
 
 ## How it's built
 
-It's a static site. The only build step stamps it with the commit it was built from:
+It's a static site with one build step, which stamps in the commit it was built from:
 
-- `index.html`: the whole game (three.js r128, plain JavaScript, recorded audio plus a few sounds synthesized with Web Audio)
-- `vendor/three.min.js`: a local copy of three.js so the game works offline
-- `vendor/peerjs.min.js`: PeerJS 1.5.5 (MIT), for online co-op; it's only loaded when someone hosts or joins a game. To test online play against your own PeerJS server, add `?peerserver=localhost:9000` to the URL on both browsers; `?netdebug` exposes the online state to automated tests as `window.__collies`
-- `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
-- `build.js`: the build step. It copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html` (Vercel provides them; locally it asks git)
-- `vercel.json`: the build command and output directory, and caching headers
-- `audio/`: recorded dog barks and Hank's voice clips (see [CREDITS.md](CREDITS.md) for sources and licenses)
+- `index.html`: the whole game. three.js r160, plain JavaScript, sound synthesized with Web Audio plus Hank's recorded clips.
+- `vendor/three.module.js`: three.js r160 as an ES module, kept locally so the game works offline.
+- `vendor/peerjs.min.js`: PeerJS 1.5.5, loaded only when someone hosts or joins an online game. `?peerserver=host:port` points both browsers at your own PeerJS server.
+- `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline.
+- `build.js`: copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html`.
+- `vercel.json`: the build command, the output directory and the caching headers.
+- `audio/`: Hank's voice clips and whistles. See [CREDITS.md](CREDITS.md).
+- `tools/`: a tiny static server and headless Playwright tests that drive the game through `window.GAME`. `AGENTS.md` lists them.
 
 To run it locally:
 
 ```bash
-npx serve .
+node tools/serve.mjs
 ```
+
+Then open http://localhost:8000. Add `?debug` for an FPS readout and cheat keys.
 
 ## Deploying
 
-This repo is meant to be deployed on Vercel as a static project with framework preset **Other**. `vercel.json` sets the build command (`node build.js`) and the output directory (`dist`), so there's nothing to set in the Vercel dashboard. Every push to `main` deploys automatically. Vercel's system environment variables must be exposed to the build (they are by default), or the build stamp falls back to git and then to "Dev build".
+The repo deploys to Vercel as a static project with the **Other** framework preset. `vercel.json` sets the build command (`node build.js`) and the output directory (`dist`). Every push to `main` deploys, and every pull request gets a preview. Vercel's system environment variables must be exposed to the build (they are by default); without them the build stamp falls back to git, then to "Dev build".
 
-Custom domain: `collies.bsnel.com` is added to the Vercel project, and DNS has a `CNAME` record from `collies` to `cname.vercel-dns.com`.
+The custom domain `collies.bsnel.com` has a `CNAME` record to `cname.vercel-dns.com`.
 
-When `index.html`, `vendor/three.min.js`, `vendor/peerjs.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.
+When `index.html`, anything in `vendor/` or the icons change, bump `CACHE` in `sw.js` so installed copies pick up the new files.
