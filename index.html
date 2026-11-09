@@ -1200,6 +1200,7 @@ fenceLine(PEN.gx,PEN.z1, PEN.x1,PEN.z1, 2,'pen');
 // the fence along the pen's front line, side to side, that seals off the yard is built with each level (buildEdges)
 segs.push({ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'gate'}); // invisible: penned sheep & coyotes can't cross
 // chunky round posts with domed tops, plank rails; every piece of wood a slightly different shade
+const PEN_DRESS=[];
 const FENCE_POST=0x8a5632, FENCE_RAIL=0xc58a4c, unitBox=new THREE.BoxGeometry(1,1,1);
 const fencePostGeo=mergeGeos([{g:new THREE.CylinderGeometry(.5,.5,.86,7,1,true),m:partM(0,-.07,0,1)},{g:new THREE.SphereGeometry(.5,7,3,0,TAU,0,Math.PI/2),m:partM(0,.36,0,1,.28,1)}]);
 (function(){
@@ -1208,13 +1209,13 @@ const fencePostGeo=mergeGeos([{g:new THREE.CylinderGeometry(.5,.5,.86,7,1,true),
   postMs.forEach((m,i)=>{ posts.setMatrixAt(i,m); posts.setColorAt(i,c.setHex(FENCE_POST).multiplyScalar(.88+Math.random()*.22)); });
   const rails=new THREE.InstancedMesh(unitBox, mat(0xffffff), railMs.length);
   railMs.forEach((m,i)=>{ rails.setMatrixAt(i,m); rails.setColorAt(i,c.setHex(FENCE_RAIL).multiplyScalar(.86+Math.random()*.22)); });
-  for(const im of [posts,rails]){ im.castShadow=true; im.receiveShadow=true; im.frustumCulled=false; scene.add(im); }
+  for(const im of [posts,rails]){ im.castShadow=true; im.receiveShadow=true; im.frustumCulled=false; scene.add(im); PEN_DRESS.push(im); }
 })();
 
 // gate leaves (swing open as a funnel)
 const LEAF_LEN = 5.2;
 function makeLeaf(px, openA, closedA){
-  const g=new THREE.Group(); g.position.set(px,0,PEN.z1); scene.add(g);
+  const g=new THREE.Group(); g.position.set(px,0,PEN.z1); scene.add(g); PEN_DRESS.push(g);
   // a sturdy farm gate: four chunky planks, diagonal braces and a stout end post
   const W=mat(0xd99a58), W2=mat(0xb8743e);
   for(const y of [1.2,.92,.64,.36]) box(LEAF_LEN-.1,.17,.12,W,LEAF_LEN/2,y,0,g);
@@ -1236,7 +1237,7 @@ const leaves=[ makeLeaf(-PEN.gx, -3*Math.PI/4, 0), makeLeaf(PEN.gx, -Math.PI/4, 
 const lanternMat = new THREE.MeshStandardMaterial({color:0x3a2a14, emissive:0xffb347, emissiveIntensity:0, roughness:.6});
 // stout round gate posts: a ball on the right one, the lantern under a little roof on the left
 (function(){
-  const P=mat(0x7a4a2a), K=mat(0x3a2a1c);
+  const P=mat(0x7a4a2a), K=mat(0x3a2a1c), n0=scene.children.length;
   for(const s of [-1,1]){
     const p=new THREE.Mesh(new THREE.CylinderGeometry(.24,.28,2.3,10),P); p.position.set(PEN.gx*s,1.15,PEN.z1); p.castShadow=true; scene.add(p);
     if(s>0){ const b=new THREE.Mesh(new THREE.SphereGeometry(.28,10,8),P); b.position.set(PEN.gx,2.42,PEN.z1); b.castShadow=true; scene.add(b); } }
@@ -1244,6 +1245,7 @@ const lanternMat = new THREE.MeshStandardMaterial({color:0x3a2a14, emissive:0xff
   box(.4,.5,.4,lanternMat,-PEN.gx,2.62,PEN.z1,scene);
   const roof=new THREE.Mesh(new THREE.ConeGeometry(.36,.34,4),K); roof.rotation.y=Math.PI/4; roof.position.set(-PEN.gx,3.04,PEN.z1); roof.castShadow=true; scene.add(roof);
   const knob=new THREE.Mesh(new THREE.SphereGeometry(.07,6,5),K); knob.position.set(-PEN.gx,3.24,PEN.z1); scene.add(knob);
+  PEN_DRESS.push(...scene.children.slice(n0));
 })();
 
 // hay + trough in pen
@@ -1268,7 +1270,8 @@ for(const [x,z] of [[PEN.x0+2.2,PEN.z0+2.2],[PEN.x1-2.2,PEN.z0+2.2]]){
   const wt=new THREE.Mesh(new THREE.PlaneGeometry(3.7,.75),new THREE.MeshStandardMaterial({color:PAL.water,roughness:.3})); wt.rotation.x=-Math.PI/2; wt.position.set(0,.89,PEN.z0+1); scene.add(wt);
 })();
 
-// barn
+// barn (and the other homesteads it swaps for along the trail)
+const HOME={built:{},cur:'barn'}, BARN_BOX={x0:BARN.bx-7.2,x1:BARN.bx+7.2,z0:BARN.bz-6.2,z1:BARN.bz+6.2,home:true};
 const barnWin = new THREE.MeshStandardMaterial({color:0x2a2010, emissive:0xffc061, emissiveIntensity:0});
 // a storybook barn: red board walls on a stone footing, crisp white trim, a chunky stepped shingle roof with a rounded ridge,
 // big X-braced doors and a little cupola with a weathervane. One vertex-coloured mesh, plus the windows that glow at night.
@@ -1306,15 +1309,17 @@ const barnWin = new THREE.MeshStandardMaterial({color:0x2a2010, emissive:0xffc06
   B(2.3,2.3,.2,0,10.1,6.08,WHITE);
   for(const z of [-2,2.6]) B(.2,2.1,2.7,7.08,5,z,WHITE);
   const barn=new THREE.Mesh(mergeGeos(P),new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));
-  barn.castShadow=true; barn.receiveShadow=true; scene.add(barn);
+  barn.castShadow=true; barn.receiveShadow=true; const BG=new THREE.Group(); BG.add(barn); scene.add(BG);
   // windows (they light up at night) with white cross bars
-  box(1.7,1.7,.1,barnWin,bx,10.1,bz+6.2,scene);
-  box(.1,1.6,2.2,barnWin,bx+7.2,5,bz-2,scene);
-  box(.1,1.6,2.2,barnWin,bx+7.2,5,bz+2.6,scene);
+  box(1.7,1.7,.1,barnWin,bx,10.1,bz+6.2,BG);
+  box(.1,1.6,2.2,barnWin,bx+7.2,5,bz-2,BG);
+  box(.1,1.6,2.2,barnWin,bx+7.2,5,bz+2.6,BG);
   const W=mat(0xfbf1dc);
-  box(.14,1.7,.12,W,bx,10.1,bz+6.27,scene); box(1.7,.14,.12,W,bx,10.1,bz+6.27,scene);
-  for(const z of [-2,2.6]){ box(.12,1.6,.12,W,bx+7.27,5,bz+z,scene); box(.12,.12,2.2,W,bx+7.27,5,bz+z,scene); }
-  boxes.push({x0:bx-7.2,x1:bx+7.2,z0:bz-6.2,z1:bz+6.2});
+  box(.14,1.7,.12,W,bx,10.1,bz+6.27,BG); box(1.7,.14,.12,W,bx,10.1,bz+6.27,BG);
+  for(const z of [-2,2.6]){ box(.12,1.6,.12,W,bx+7.27,5,bz+z,BG); box(.12,.12,2.2,W,bx+7.27,5,bz+z,BG); }
+  BG.userData.box=[-7.2,7.2,-6.2,6.2];
+  HOME.built.barn=BG;
+  boxes.push(BARN_BOX);
 })();
 
 // pond: water, a reedy bank, lily pads and slow ripples (moved and resized each day)
@@ -2549,10 +2554,119 @@ function resetDog(){
   }
   G.flanked=false; G.saidTeam=false;
 }
+
+// ---------------- homesteads: what stands behind the pen at each stop ----------------
+// Home (Saratoga) has the barn. Out on the trail it's whatever travellers would have: a lakeside camp, a silo and
+// windmill, a ring of covered wagons, a log cabin, a tent camp, and at the end the ranch house. Hank's tall tales get
+// a fairy ring (the pen becomes a ring of glowing toadstools), a shipwreck, a moon lander and a stone hut.
+const fireMat=new THREE.MeshStandardMaterial({color:0xff8a2a,emissive:0xff7a1a,emissiveIntensity:1.2,roughness:1});
+const fairyMat=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,emissive:0xb06cff,emissiveIntensity:.35,roughness:.8});
+function homeKind(d){
+  const st=trailStop(d);
+  if(st) return ['barn','barn','lakecamp','silo','wagons','cabin','wagons','tents','tents','ranch'][d-1];
+  return {farm:'windmill',desert:'wagons',sky:'fairy',sea:'wreck',moon:'lander',volcano:'hut'}[LEVEL.theme]||'windmill';
+}
+function buildHome(kind){
+  const bx=BARN.bx, bz=BARN.bz, P=[], C=k=>new THREE.Color(k), G0=new THREE.Group(), extra=[];
+  const add=(g,m,c)=>P.push({g,m,c:C(c)});
+  const B=(w,h,d,x,y,z,c,rx,ry,rz)=>add(new THREE.BoxGeometry(w,h,d),partM(bx+x,y,bz+z,1,1,1,rx,ry,rz),c);
+  const Cy=(r0,r1,h,x,y,z,c,seg,rx,ry,rz)=>add(new THREE.CylinderGeometry(r0,r1,h,seg||12),partM(bx+x,y,bz+z,1,1,1,rx,ry,rz),c);
+  const glow=(m,w,h,d,x,y,z)=>{ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(bx+x,y,bz+z); extra.push(o); };
+  // a covered wagon facing angle a (wheels, a plank bed, a cream canvas bonnet on hoops, the tongue)
+  const wagon=(x,z,a,canvas)=>{ const ca=Math.cos(a), sa=Math.sin(a), at=(u,v)=>[x+u*ca+v*sa, z-u*sa+v*ca];
+    let q=at(0,0); add(new THREE.BoxGeometry(2.2,.7,4.6),partM(bx+q[0],1.35,bz+q[1],1,1,1,0,a,0),0x8a5a32);
+    add(new THREE.BoxGeometry(2.3,.14,4.7),partM(bx+q[0],1.02,bz+q[1],1,1,1,0,a,0),0x6a4226);
+    for(const [u,v] of [[-1.2,-1.5],[1.2,-1.5],[-1.2,1.5],[1.2,1.5]]){ q=at(u,v); add(new THREE.TorusGeometry(.62,.1,6,14),partM(bx+q[0],.72,bz+q[1],1,1,1,0,a+Math.PI/2,0),0x4a2e1a); add(new THREE.CylinderGeometry(.12,.12,.3,8),partM(bx+q[0],.72,bz+q[1],1,1,1,0,0,Math.PI/2),0x3a2414); }
+    q=at(0,0); add(new THREE.CylinderGeometry(1.25,1.25,4.4,14,1,true,-Math.PI/2,Math.PI),partM(bx+q[0],1.75,bz+q[1],1,1.15,1,Math.PI/2,a,0),canvas||0xf3e7c8);
+    for(const v of [-2.1,0,2.1]){ q=at(0,v); add(new THREE.TorusGeometry(1.26,.06,5,14,Math.PI),partM(bx+q[0],1.75,bz+q[1],1,1.15,1,0,a,0),0x8a5a32); }
+    q=at(0,3.4); add(new THREE.BoxGeometry(.14,.14,2.4),partM(bx+q[0],.85,bz+q[1],1,1,1,.12,a,0),0x6a4226); };
+  // a canvas tent (a triangular prism) facing angle a
+  const tentG=(function(){ const sh=new THREE.Shape(); sh.moveTo(-1.6,0); sh.lineTo(1.6,0); sh.lineTo(0,2.3); sh.lineTo(-1.6,0); const g=new THREE.ExtrudeGeometry(sh,{depth:3.4,bevelEnabled:false}); g.translate(0,0,-1.7); return g; })();
+  const tent=(x,z,a,c,s)=>{ s=s||1; add(tentG,partM(bx+x,0,bz+z,s,s,s,0,a,0),c||0xefe2c2);
+    add(new THREE.ShapeGeometry((()=>{ const d=new THREE.Shape(); d.moveTo(-.55,0); d.lineTo(.55,0); d.lineTo(0,1.3); d.lineTo(-.55,0); return d; })()),partM(bx+x+Math.sin(a)*1.72*s,0,bz+z+Math.cos(a)*1.72*s,s,s,s,0,a,0),0x5a3a20);
+    add(new THREE.CylinderGeometry(.06,.06,2.6*s,5),partM(bx+x+Math.sin(a)*1.78*s,1.25*s,bz+z+Math.cos(a)*1.78*s,1),0x6a4226); };
+  const fire=(x,z)=>{ for(let i=0;i<8;i++){ const k=i/8*TAU; add(blobGeo(0,i,.15),partM(bx+x+Math.cos(k)*.75,.15,bz+z+Math.sin(k)*.75,.26,.2,.26),0x8d8a80); }
+    for(const r of [0,1.1,2.2]) add(new THREE.CylinderGeometry(.11,.11,1.2,6),partM(bx+x,.22,bz+z,1,1,1,Math.PI/2,r,0),0x5a3a20);
+    const f=new THREE.Mesh(new THREE.ConeGeometry(.42,1.1,7),fireMat); f.position.set(bx+x,.75,bz+z); extra.push(f); };
+  const rowboat=(x,z,a)=>{ add(new THREE.SphereGeometry(1,14,8),partM(bx+x,.15,bz+z,.95,.55,2.2,0,a,0),0x7b4a2a); add(new THREE.SphereGeometry(1,14,8),partM(bx+x,.32,bz+z,.78,.4,1.95,0,a,0),0xb07a48); add(new THREE.BoxGeometry(1.7,.1,.34),partM(bx+x,.62,bz+z,1,1,1,0,a,0),0x6a4226); };
+  let box0=[-5,5,-4,4];
+  if(kind==='wagons'){ const desert=LEVEL.theme==='desert'; for(let i=0;i<4;i++){ const k=i/4*TAU+.4; wagon(Math.cos(k)*4.4,Math.sin(k)*3.6,k+Math.PI/2,desert?0xf0dcb4:0xf3e7c8); } fire(0,0); box0=[-6.6,6.6,-5.6,5.6]; }
+  else if(kind==='tents'){ tent(-3.2,-1.5,.3,0xefe2c2); tent(2.6,-2.2,-.4,0xd9c39a); tent(-.4,2.6,0,0xe9d7b0,.8); fire(1.4,1.6); wagon(5.2,2.2,1.4,0xf0dcb4); box0=[-5.2,6.8,-4.2,4.2]; }
+  else if(kind==='lakecamp'){ tent(-2.4,-1,.2,0xd8e6ef); tent(2.4,-1.6,-.3,0xefe2c2,.85); fire(0,1.8); rowboat(4.6,2.4,.5); B(.3,1.2,.3,-4.4,.6,2.6,0x6a4226); B(.3,1.2,.3,-3,.6,2.6,0x6a4226); B(1.8,.1,.1,-3.7,1.1,2.6,0x8a5a32); box0=[-4.6,5.8,-3.4,3.6]; }
+  else if(kind==='cabin'){ // logs stacked log-cabin style, a stone chimney, a shake roof and a lit window
+    for(let r=0;r<6;r++){ const y=.4+r*.62; for(const s of [-1,1]){ Cy(.32,.32,10.6,0,y,s*4,r%2?0x8a5a32:0x7a4c2a,8,0,0,Math.PI/2); Cy(.32,.32,8.6,s*5,y+.3,0,r%2?0x7a4c2a:0x8a5a32,8,Math.PI/2,0,0); } }
+    const sh=new THREE.Shape(); sh.moveTo(-4.3,0); sh.lineTo(4.3,0); sh.lineTo(0,3); sh.lineTo(-4.3,0);
+    for(const s of [1,-1]) add(new THREE.ShapeGeometry(sh),partM(bx+s*5.05,4.1,bz,1,1,1,0,s*Math.PI/2,0),0x7a4c2a);
+    for(const d of [-1,1]) B(11.6,.4,5.6,0,5.6,d*2.35,d>0?0x5e3a26:0x6a4226,d*.62,0,0);
+    B(1.4,7.4,1.4,4.6,3.7,-1.6,0x9a958a); B(2.2,1.1,.2,0,2.2,4.3,0x5a3a20);
+    glow(barnWin,1.4,1.2,.12,-2.8,2.4,4.33); glow(barnWin,1.4,1.2,.12,2.8,2.4,4.33); box0=[-5.4,5.4,-4.4,4.4]; }
+  else if(kind==='ranch'){ // white clapboard ranch house with a deep porch and a blue roof
+    B(12,4.4,8,0,2.4,-.5,0xf6efe0); B(12.6,.4,8.6,0,.2,-.5,0xc9bfa8);
+    for(const d of [-1,1]) B(13.4,.45,5.4,0,5.6,-.5+d*2.15,0x4f6f8f,d*.55,0,0);
+    B(12,.25,3,0,1,4.9,0xa8743e); for(const x of [-5.6,-1.9,1.9,5.6]) Cy(.16,.16,3.1,x,2.5,6.2,0xf6efe0,8); B(12.6,.3,3.4,0,4.1,4.9,0x4f6f8f,-.12,0,0);
+    B(1.3,6,1.3,-4.2,5,-2.5,0xb5584a); B(1.7,3,.14,0,2.1,3.53,0x8a5a32);
+    for(const x of [-3.8,3.8]){ glow(barnWin,1.8,1.5,.12,x,2.6,3.54); }
+    box0=[-6.4,6.4,-4.8,6.6]; }
+  else if(kind==='silo'||kind==='windmill'){ // a grain silo with a dome cap, a little red crib, and a windmill whose fan turns
+    if(kind==='silo'){ Cy(2.4,2.4,10,-2.5,5,0,0xd9d4c8,16); add(new THREE.SphereGeometry(2.45,16,8,0,TAU,0,Math.PI/2),partM(bx-2.5,10,bz,1),0x9aa3ab); for(let r=1;r<6;r++) Cy(2.45,2.45,.12,-2.5,r*1.7,0,0xb8b2a4,16);
+      B(4,3.4,3.6,2.6,1.7,1,0xc8463a); for(const d of [-1,1]) B(4.4,.3,2.4,2.6,3.9,1+d*.95,0x7c3f30,d*.7,0,0); }
+    const wx=kind==='silo'?4.2:0, wz=kind==='silo'?-2.4:0;
+    for(const [u,v] of [[-1,-1],[1,-1],[-1,1],[1,1]]) add(new THREE.CylinderGeometry(.09,.09,9.6,5),partM(bx+wx+u*.55,4.7,bz+wz+v*.55,1,1,1,v*.11,0,-u*.11),0x9a958a);
+    for(const y of [2.5,5,7.2]) B(1.6-y*.12,.1,1.6-y*.12,wx,y,wz,0x9a958a);
+    B(.6,.6,1.2,wx,9.4,wz,0x6a6f74);
+    const fan=new THREE.Group(); fan.position.set(bx+wx,9.4,bz+wz+.75);
+    for(let i=0;i<8;i++){ const bl=new THREE.Mesh(new THREE.BoxGeometry(.32,1.8,.05),mat(0xd8d2c4)); const k=i/8*TAU; bl.position.set(Math.sin(k)*1,Math.cos(k)*1,0); bl.rotation.z=-k; fan.add(bl); }
+    const vane=new THREE.Mesh(new THREE.BoxGeometry(.06,.9,1.6),mat(0xc8463a)); vane.position.set(0,0,-1.9); fan.add(vane);
+    fan.userData.spin=true; extra.push(fan);
+    if(kind==='windmill'){ B(4.6,3.4,4,-4.2,1.7,.6,0xc8463a); for(const d of [-1,1]) B(5,.3,2.7,-4.2,3.9,.6+d*1.05,0x7c3f30,d*.7,0,0); B(1.6,1.9,.14,-4.2,1,2.66,0xfbf1dc); Cy(1.3,1.3,1.4,2.6,.7,1.6,0x9aa3ab,14); }
+    box0=kind==='silo'?[-5,5,-3.6,3.4]:[-6.6,4,-2,2.8]; }
+  else if(kind==='fairy'){ // a hollow tree-stump cottage with a round door; the pen becomes a fairy ring
+    Cy(3.2,3.8,5.2,0,2.6,0,0x8a6a48,14); add(new THREE.SphereGeometry(3.4,14,8,0,TAU,0,Math.PI/2),partM(bx,5.1,bz,1,.55,1),0xd84a6a);
+    for(let i=0;i<9;i++){ const k=i/9*TAU; add(new THREE.SphereGeometry(.42,8,6),partM(bx+Math.cos(k)*2.2,6.4-Math.abs(Math.sin(k*1.7))*.3,bz+Math.sin(k)*2.2,1,.5,1),0xfff6e8); }
+    B(1.5,1.9,.3,0,.95,3.55,0x5e3a26); add(new THREE.CylinderGeometry(.75,.75,.3,14,1,false,0,Math.PI),partM(bx,1.9,bz+3.55,1,1,1,Math.PI/2,0,Math.PI/2),0x5e3a26); add(new THREE.SphereGeometry(.09,6,5),partM(bx+.45,1,bz+3.75,1),0xffd84a); glow(barnWin,.9,.9,.12,-1.8,3,3.3);
+    box0=[-3.8,3.8,-3.8,3.8]; }
+  else if(kind==='wreck'){ // half a sunken ship, keel up at a jaunty angle, a snapped mast
+    add(new THREE.SphereGeometry(1,18,10),partM(bx,.2,bz,3,2.6,6.6,0,.5,.3),0x6a4a32);
+    for(let i=-2;i<=2;i++) add(new THREE.TorusGeometry(1,.06,4,24,Math.PI),partM(bx+Math.sin(.5)*i*2.2,.2,bz+Math.cos(.5)*i*2.2,3.05,2.65,1,0,.5,.3),0x4a3222);
+    Cy(.3,.35,7,1.8,3.6,-1,0x5a3a20,8,0,0,.5); B(3.4,2.2,.08,1.2,5,-1,0xe8dcc0,0,.5,.4); box0=[-5,5,-5.6,5.6]; }
+  else if(kind==='lander'){ // a little gold-foil moon lander on four legs, with a dish
+    B(3.6,2.4,3.6,0,3.4,0,0xd9b44a); Cy(1.6,2.2,1.8,0,5.5,0,0xd8d8d0,8); Cy(.2,.2,1.2,0,6.9,0,0x9a9a9a,6);
+    for(const [u,v] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ add(new THREE.CylinderGeometry(.12,.12,3,6),partM(bx+u*2.05,1.4,bz+v*2.05,1,1,1,v*.32,0,-u*.32),0x9a9a9a); Cy(.55,.55,.12,u*2.5,.06,v*2.5,0x9a9a9a,10); }
+    add(new THREE.SphereGeometry(1,12,6,0,TAU,0,Math.PI/2),partM(bx+1.6,6.4,bz,1,.3,1,0,0,-.6),0xeeeeee); glow(barnWin,1,1,.12,0,3.6,1.82); box0=[-3.2,3.2,-3.2,3.2]; }
+  else if(kind==='hut'){ // a round stone hut with a turf roof
+    Cy(3.4,3.6,3.4,0,1.7,0,0x4a4440,14); for(let i=0;i<14;i++){ const k=i/14*TAU; add(blobGeo(0,i,.2),partM(bx+Math.cos(k)*3.5,.5+(i%3)*.9,bz+Math.sin(k)*3.5,.6,.45,.6),0x5a524c); }
+    add(new THREE.ConeGeometry(4.2,3,14),partM(bx,4.8,bz,1),0x5a6a3a); B(1.6,2.2,.2,0,1.1,3.5,0x2a2420); glow(fireMat,1,1,.12,0,1.4,3.6); box0=[-3.8,3.8,-3.8,3.8]; }
+  if(P.length){ const m=new THREE.Mesh(mergeGeos(P),kind==='fairy'?fairyMat:new THREE.MeshStandardMaterial({vertexColors:true,roughness:1})); m.castShadow=true; m.receiveShadow=true; G0.add(m); }
+  for(const o of extra){ o.castShadow=true; G0.add(o); }
+  G0.userData.box=box0; scene.add(G0); return G0;
+}
+// the fairy ring: glowing toadstools along the pen's sides stand in for the fence
+let fairyRing=null;
+function buildFairyRing(){
+  const g=new THREE.Group(), body=shroom.userData.body, ms=[mat(0xffb3e6,{vertexColors:true,emissive:0xff5ad9,emissiveIntensity:.5}),mat(0xc9b3ff,{vertexColors:true,emissive:0x8a5aff,emissiveIntensity:.5})];
+  const line=(ax,az,bx2,bz2)=>{ const L=Math.hypot(bx2-ax,bz2-az), n=Math.max(2,Math.round(L/1.1)); for(let i=0;i<=n;i++){ const u=i/n, x=ax+(bx2-ax)*u+(Math.random()-.5)*.25, z=az+(bz2-az)*u+(Math.random()-.5)*.25; const b=new THREE.Mesh(body,ms[i%2]); b.position.set(x,0,z); b.scale.setScalar(.7+Math.random()*.35); b.rotation.y=Math.random()*TAU; b.castShadow=true; g.add(b); } };
+  line(PEN.x0,PEN.z0,PEN.x1,PEN.z0); line(PEN.x0,PEN.z0,PEN.x0,PEN.z1); line(PEN.x1,PEN.z0,PEN.x1,PEN.z1); line(PEN.x0,PEN.z1,-PEN.gx-.8,PEN.z1); line(PEN.gx+.8,PEN.z1,PEN.x1,PEN.z1);
+  scene.add(g); return g;
+}
+function setHome(kind){
+  HOME.cur=kind;
+  if(!HOME.built[kind]) HOME.built[kind]=buildHome(kind);
+  for(const k in HOME.built) HOME.built[k].visible=k===kind;
+  const b=HOME.built[kind].userData.box; Object.assign(BARN_BOX,{x0:BARN.bx+b[0],x1:BARN.bx+b[1],z0:BARN.bz+b[2],z1:BARN.bz+b[3]});
+  const fairy=kind==='fairy'; if(fairy && !fairyRing) fairyRing=buildFairyRing();
+  if(fairyRing) fairyRing.visible=fairy; for(const o of PEN_DRESS) o.visible=!fairy;
+}
+function updateHome(dt,time){
+  const H=HOME.built[HOME.cur]; if(!H) return;
+  H.traverse(o=>{ if(o.userData.spin) o.rotation.z+=dt*(1.2+(G.gust>0?3:0)); });
+  fireMat.emissiveIntensity=1+Math.sin(time*13)*.25+Math.sin(time*7.3)*.2;
+  if(fairyRing && fairyRing.visible) fairyMat.emissiveIntensity=.3+.15*Math.sin(time*2);
+}
 function setupDay(){
   clearAnimals();
   applySeason(seasonOf(G.day));
   buildLevel(levelOf(G.day));
+  setHome(homeKind(G.day));
   G.t=0; G.penned=0; G.lost=0; G.drivenOff=0; G.warned={}; G.toSpawn=0; G.spawnT=0;
   G.score=0; G.combo=0; G.lastPen=-99; for(const D of ALLDOGS){ D.appleT=0; D.lanternT=0; } G.celebrate=0; clearPowers();
   for(const l of leaves){ l.target=l.openA; l.a=l.openA; l.seg.on=false; l.apply(); }
@@ -6736,7 +6850,7 @@ function drawMinimap(time){
   mx.fillStyle='rgba(242,181,68,.28)'; mx.fillRect(X(PEN.x0),Y(PEN.z0),(PEN.x1-PEN.x0)*S,(PEN.z1-PEN.z0)*S);
   mx.strokeStyle='rgba(242,181,68,.9)'; mx.lineWidth=2;
   mx.beginPath(); mx.moveTo(X(-PEN.gx),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z1)); mx.lineTo(X(PEN.x0),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z0)); mx.lineTo(X(PEN.x1),Y(PEN.z1)); mx.lineTo(X(PEN.gx),Y(PEN.z1)); mx.stroke();
-  mx.fillStyle='rgba(155,59,46,.85)'; mx.fillRect(X(BARN.bx-7.2),Y(BARN.bz-6.2),14.4*S,12.4*S);
+  mx.fillStyle=HOME.cur==='barn'?'rgba(155,59,46,.85)':HOME.cur==='fairy'?'rgba(200,110,220,.85)':'rgba(190,160,110,.85)'; mx.fillRect(X(BARN_BOX.x0),Y(BARN_BOX.z0),(BARN_BOX.x1-BARN_BOX.x0)*S,(BARN_BOX.z1-BARN_BOX.z0)*S);
   for(const c of clovers){ mx.fillStyle='rgba(90,163,54,.55)'; mx.beginPath(); for(let k=0;k<=16;k++){ const a=k/16*TAU, rr=(c.rA?c.rA(a):c.r)*S, px=X(c.x)+Math.cos(a)*rr, py=Y(c.z)+Math.sin(a)*rr; k?mx.lineTo(px,py):mx.moveTo(px,py); } mx.fill(); }
   for(const t of treeDots){ mx.fillStyle=t.rock?'rgba(160,160,150,.7)':'rgba(30,60,30,.95)'; mx.beginPath(); mx.arc(X(t.x),Y(t.z),t.rock?2.5:4,0,TAU); mx.fill(); }
   if(LEVEL.maze){ mx.strokeStyle='rgba(160,200,90,.9)'; mx.lineWidth=2.5; mx.beginPath(); for(const w of LEVEL.maze.walls){ mx.moveTo(X(w[0]),Y(w[1])); mx.lineTo(X(w[2]),Y(w[3])); } mx.stroke(); }
@@ -6923,6 +7037,7 @@ function frame(now){
   updateGun(dt,time);
   updateGoldBones(dt,time);
   updateShroom(dt,time);
+  updateHome(dt,time);
   { // a little psychedelic when a mad sheep is close to a dog
     let k=0; if(G.madN>0) for(const s of G.sheep){ if(!(s.madT>0)||s.penned||s.dead) continue; const D=nearestDog(s.x,s.z); k=Math.max(k,1-Math.hypot(D.x-s.x,D.z-s.z)/20); }
     G.trip=lerp(G.trip||0,clamp(k,0,1),1-Math.exp(-dt*2)); const el=$('trip'); if(el){ const o=(G.trip*.42).toFixed(3); if(el.style.opacity!==o) el.style.opacity=o; }

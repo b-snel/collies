@@ -51,6 +51,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Strays:** a sheep cut off from the flock by a hedge or the corn maze finds its own way round to the others, trotting and bleating as it goes.
 
+**Homesteads:** the barn is home, so it only stands in Saratoga Springs. Out on the trail the pen sits by whatever travellers would have: a lakeside camp with a rowboat at Lake Erie, a silo and windmill in corn country, a ring of covered wagons on the plains and at Moab, a log cabin in the Rockies, a tent camp at the Grand Canyon and the Columbia, and Hank's ranch house in Oregon. The tall tales get a fairy ring (the pen becomes a ring of glowing toadstools, with a stump cottage), a shipwreck under the sea, a moon lander, and a stone hut on the volcano.
+
 **Falcons:** from day 7, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
 **Seasons:** each day is the next season. Spring has blossom, extra lambs and extra clover. Summer has longer, hot days that tire the dog faster. Autumn has red and orange trees, falling leaves, wind gusts that push the flock, and mad mushrooms that regrow. Winter brings snow, a frozen and slippery pond everyone can cross, ducks gone south, shorter days, a huddling flock and hungrier coyotes.
