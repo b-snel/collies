@@ -23,7 +23,7 @@ Volume sliders for Hank's voice (up to 150%), the music and sound effects are on
 
 On phones and tablets you get an on-screen joystick and buttons. You can add it to your home screen, and it works offline after the first visit.
 
-**Grab, shake, fling:** hold R (LT on a controller) to latch on. Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
+**Grab, shake, fling:** hold R to latch on (on a controller, press X to grab and X again to let go). Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
 
 **The Long Drive:** Hank has inherited a ranch on the Oregon coast, and the flock is coming with him. Each day is a stop on the trail west, with a map card before it: Saratoga Springs, NY (days 1-2, trial gates on day 2), Lake Erie (surprises), Iowa corn country (corn maze), the Great Plains (twisters and stampedes), the Rockies (the cougar), Moab (falcons), the Grand Canyon (a rift of cliff edges across the field, crossable at a couple of necks), the Mighty Columbia, and the Oregon coast (the weigh-in at the ranch). Make it to Oregon and the game carries on with Hank's tall tales: Sky Islands, underwater, the Moon and the volcano, with everything mixed in. Only one big disruption (surprise, falcon or raid) happens at a time.
 
@@ -42,6 +42,10 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 **The cougar:** on some farm and Sky Island days a cougar lies on a branch of a tree near the flock's route, tail swishing. A faint red ring on the ground shows how close is too close. If a sheep wanders inside, the cougar leaps out, grabs it and drags it up the tree, and that sheep is lost. Bark near the tree and it hisses and holds off for a few seconds (but barking scatters the flock); punt into it while it's dragging a sheep back and it drops the sheep and bolts up the tree, dazed.
 
 **Mad mushrooms:** from day 5, little purple toadstool clumps grow out on the field. A sheep that eats one goes mad: spiral eyes, rainbow wool, and it wobbles straight at the nearest dog and head-butts it. Mad sheep pass it on to sheep they bump into (up to five at once), and the screen goes a bit psychedelic when they're close. Punt a mad sheep to snap it out of it, lure it into the pen, or wait for it to wear off. The big red mad mushroom (step on it and the whole flock turns on you) still turns up from day 9.
+
+**Controller:** left stick moves, RT runs (gas), LT lies down (brake), A barks, X grabs (X again flings), B punts or shakes whatever you're holding, Y shoots, LB whistles, the right stick zooms, Menu pauses.
+
+**Dev menu:** on the title screen, enter the Konami code: up, up, down, down, left, right, left, right, B, A (D-pad and B/A on a controller, or arrow keys then B, A on a keyboard). Jump to any day, and turn on dev tools in the pause menu (win the day, skip to night, coyotes, a surprise, a mad sheep, endless stamina).
 
 **Falcons:** from day 7, a shadow with a red ring sometimes appears under the dog. Keep moving to dodge it (+10), or the falcon grabs the dog and drops it somewhere else on the field. Bark while you're carried to wriggle free.
 
