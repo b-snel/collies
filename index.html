@@ -6732,6 +6732,18 @@ function ctArt(){
     arrow:new THREE.ConeGeometry(.5,.9,4).rotateX(Math.PI), arrowM:mat(PAL.gold,{emissive:PAL.gold,emissiveIntensity:.45})};
   return CT_ART;
 }
+// which button launches it, for whatever the player is holding: B on a controller, the Punt button on a touch screen, E on a keyboard
+const puntKey=()=>document.body.classList.contains('pad')?'B':document.body.classList.contains('touch')?'PUNT':'E';
+const PUNT_BADGE={};
+function puntBadgeMat(k){
+  if(PUNT_BADGE[k]) return PUNT_BADGE[k];
+  const c=document.createElement('canvas'); c.width=256; c.height=128; const x=c.getContext('2d'), w=k.length>1?236:120, cx=128, cy=64;
+  const pill=(hw,r)=>{ x.beginPath(); x.arc(cx-hw+r,cy,r,Math.PI/2,Math.PI*1.5); x.arc(cx+hw-r,cy,r,-Math.PI/2,Math.PI/2); x.closePath(); x.fill(); };
+  x.fillStyle='rgba(18,26,21,.85)'; pill(w/2+4,60);
+  x.fillStyle=k==='B'?'#d9443b':k==='E'?'#e84a3a':'#f2e6c8'; pill(w/2-4,52);
+  x.fillStyle=k==='PUNT'?'#1b231e':'#fff'; x.font='bold '+(k.length>1?54:76)+'px sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(k,cx,cy+4);
+  return PUNT_BADGE[k]=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true});
+}
 function makeSeesaw(x,z,ang){
   const A=ctArt(), g=new THREE.Group(), gy=groundH(x,z);
   g.position.set(x,gy,z); g.rotation.y=ang; g.scale.set(SEE_SX,SEE_SY,SEE_SZ);
@@ -6741,8 +6753,9 @@ function makeSeesaw(x,z,ang){
   addOutline(g,.03);
   addObj(g);
   const arrow=addObj(new THREE.Mesh(A.arrow,A.arrowM)); arrow.visible=false; addOutline(arrow,.03);
+  const badge=addObj(new THREE.Sprite(puntBadgeMat(puntKey()))); badge.scale.set(2.4,1.2,1); badge.renderOrder=5; badge.visible=false;
   // k: +1 with the cliff end down. The cliff end is weighted, so it always settles back that way after a launch.
-  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
+  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,badge,remT:0,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
 }
 // the rock face, the seesaw and the sign (from setupDay, once the level is built; its own seeded RNG)
 // the funnel's half-width at z: narrow beside the plank, flaring wide out in front of it (open ground, no fences)
@@ -6957,7 +6970,11 @@ function updateContraptions(dt){
     const rate=S.snap>0?16:2.2; S.snap=Math.max(0,S.snap-dt);
     S.k+=clamp(S.kT-S.k,-rate*dt,rate*dt);
     // hint: the first time a dog comes near one
-    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<12)){ CT.told.hint=1; toast('Load them on, punt the high end!','gold',3.5); }
+    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<12)){ CT.told.hint=1; S.remT=8; toast('Load them on, then press '+puntKey()+' on the high end to launch them!','gold',5); }
+    // a reminder while sheep sit waiting on the low end and a dog's close by, until the first launch
+    S.remT=Math.max(0,S.remT-dt);
+    if(playing && CT.told.hint && !S.launches && S.remT<=0 && S.k>.5 && S.on.some(o=>!o.dog && o.p>-.3) && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<10)){
+      S.remT=10; toast('Press '+puntKey()+' on the high end to launch them!','gold',4); }
   }
   // ---- bales ----
   for(const b of CT.bales){
@@ -7055,6 +7072,9 @@ function syncContraptions(dt,time){
     const ux=Math.sin(S.ang), uz=Math.cos(S.ang), load=S.on.some(o=>!o.dog && o.p>-.3);
     S.arrow.visible=G.phase!=='title' && load && S.cd<=0 && S.k>.5;
     if(S.arrow.visible){ const ex=S.x-ux*(S.L-1), ez=S.z-uz*(S.L-1); S.arrow.position.set(ex,ctPlankY(S,-(S.L-1))+1.4+Math.abs(Math.sin(time*5))*.5,ez); S.arrow.rotation.y=time*2; }
+    // and the button that launches them, floating over the arrow ("B" on a controller)
+    S.badge.visible=S.arrow.visible;
+    if(S.badge.visible){ const m=puntBadgeMat(puntKey()); if(S.badge.material!==m) S.badge.material=m; S.badge.position.set(S.arrow.position.x,S.arrow.position.y+1.6,S.arrow.position.z); }
   }
   for(const b of CT.bales){
     if(b.gone) continue;
