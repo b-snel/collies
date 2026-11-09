@@ -144,6 +144,9 @@ body.pad #keysHint .gp{display:flex}
 #dogCard4{right:calc(12px + env(safe-area-inset-right,0px))}
 body.many #dogCard,body.many #dogCard2{bottom:calc(50% + 12px);width:180px;padding:8px 12px}
 body.p3 #minimap{display:none}
+body.shared.many #dogCard{bottom:calc(12px + env(safe-area-inset-bottom,0px))} body.shared.many #dogCard2{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+body.shared #dogCard3{bottom:calc(112px + env(safe-area-inset-bottom,0px))} body.shared #dogCard4{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
+body.shared.p3 #minimap{display:block} body.shared.p4 #minimap{left:50%;top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:150px;height:150px}
 body.p4 #minimap{left:50%;top:50%;bottom:auto;right:auto;transform:translate(-50%,-50%);width:120px;height:120px}
 body.coop .who{display:block}
 body.coop #minimap{left:50%;right:auto;transform:translateX(-50%)}
@@ -392,6 +395,7 @@ button,input{touch-action:manipulation}</style>
       <span class="kb"><kbd>WASD</kbd>Move</span><span class="kb"><kbd>Shift</kbd>Run</span><span class="kb"><kbd>Space</kbd>Bark</span><span class="kb"><kbd>E</kbd>Punt</span><span class="kb"><kbd>C</kbd>Lie down</span><span class="kb"><kbd>R</kbd>Hold to grab</span>
       <span class="gp"><kbd class="pill">L stick</kbd>Move</span><span class="gp"><kbd class="pill">RT</kbd>Run</span><span class="gp"><kbd class="a">A</kbd>Bark</span><span class="gp"><kbd class="b">B</kbd>Punt</span><span class="gp"><kbd class="x">X</kbd>Lie down</span><span class="gp"><kbd class="pill">LT</kbd>Hold to grab</span>
     </div>
+    <div class="modeRow" role="group" aria-label="Camera" id="camRow" hidden><button class="seg on" id="camSplit" type="button">Split screen</button><button class="seg" id="camShared" type="button">Shared camera</button></div>
     <p class="small" id="coopHint" hidden>Player 2: arrow keys, Right Shift run, Enter bark, / pounce, . lie down, , grab. Or a second controller.</p>
     <div class="btnrow"><button class="btn" id="startBtn" type="button">Start the day</button><button class="btn ghost" id="shedBtn" type="button">Shearing shed</button></div>
     <div class="vols" id="titleVols"></div>
@@ -2033,16 +2037,29 @@ updateBestLine();
 try{ const nm=localStorage.getItem('collieDuskName'); if(nm) $('dogName').value=nm; const nm2=localStorage.getItem('collieDuskName2'); if(nm2) $('dogName2').value=nm2; for(const k of [3,4]){ const v=localStorage.getItem('collieDuskName'+k); if(v) $('dogName'+k).value=v; } }catch(e){}
 let playerChoice=1;
 try{ playerChoice=+localStorage.getItem('collieDuskPlayers')||(localStorage.getItem('collieDuskCoop')==='1'?2:1); }catch(e){}
+// co-op camera: split screen (one view per dog) or one shared camera that zooms out to fit everyone. An experiment, so it's a toggle.
+let sharedCamChoice=false; try{ sharedCamChoice=localStorage.getItem('collieDuskSharedCam')==='1'; }catch(e){}
+function setCamMode(sh){
+  sharedCamChoice=sh; try{ localStorage.setItem('collieDuskSharedCam',sh?'1':'0'); }catch(e){}
+  if($('camSplit')){ $('camSplit').classList.toggle('on',!sh); $('camShared').classList.toggle('on',sh); }   // (the title's buttons are gone once a game is running)
+  if(G.coop && (G.phase==='day'||G.phase==='night'||G.phase==='result')){
+    G.sharedCam=sh; coopView=!sh; resize(); document.body.classList.toggle('shared',sh);
+    $('splitLine').hidden=!coopView; $('splitLineH').hidden=!coopView||(G.np||2)<3; camera.userData.reset=true;
+    toast(sh?'Shared camera':'Split screen','',1.4);
+  }
+}
 function setMode(n){
   playerChoice=n; try{ localStorage.setItem('collieDuskPlayers',String(n)); }catch(e){}
   for(let k=1;k<=4;k++){ $('mode'+k).classList.toggle('on',k===n); $('mode'+k).setAttribute('aria-pressed',String(k===n)); }
   $('name2Row').hidden=n<2; $('name3Row').hidden=n<3; $('name4Row').hidden=n<4; $('coopHint').hidden=n<2;
   $('nameLbl1').textContent=n>1?"Player 1's dog":'Your dog';
-  $('sign').classList.toggle('manyNames',n>=3);
+  $('sign').classList.toggle('manyNames',n>=3); $('camRow').hidden=n<2;
   $('coopHint').textContent=n<3?'Player 1: WASD. Player 2: arrow keys, Right Shift run, Enter bark, / punt, . lie down, , grab. Or plug in controllers.'
     :'Player 1: WASD. Player 2: arrow keys (Enter bark, / punt). Players '+(n===3?'3':'3 and 4')+': plug in a controller each. With more controllers, they take over from the last player backwards.';
 }
 for(let k=1;k<=4;k++) $('mode'+k).addEventListener('click',()=>setMode(k));
+$('camSplit').addEventListener('click',()=>setCamMode(false)); $('camShared').addEventListener('click',()=>setCamMode(true));
+setCamMode(sharedCamChoice);
 setMode(Math.min(4,Math.max(1,playerChoice)));
 
 // ---- clover patches: the tastiest grass in the field ----
@@ -2284,6 +2301,7 @@ window.addEventListener('keydown',e=>{
     if(e.code==='Quote') shoot(dog2);
     if(e.code==='Semicolon') whistle(dog2);
   }
+  if(e.code==='KeyV' && G.coop) setCamMode(!G.sharedCam);
   if(e.code==='KeyM'){ muted=!muted; try{ if(muted) speechSynthesis.cancel(); }catch(err){} }
   if(e.code==='KeyP'||e.code==='Escape') togglePause();
   if(e.code==='Enter' && G.phase!=='day' && G.phase!=='night' && !(e.target && e.target.closest && e.target.closest('#shopOverlay'))) clickPrimary();
@@ -2345,9 +2363,9 @@ function startGame(fresh){
   dogs=ALLDOGS.slice(0,np);
   ALLDOGS.forEach((D,i)=>D.m.g.visible=i<np);
   ensureDogLights(np);
-  coopView=G.coop; resize();
+  G.sharedCam=sharedCamChoice; coopView=G.coop && !G.sharedCam; resize(); document.body.classList.toggle('shared',G.coop&&G.sharedCam);
   document.body.classList.toggle('coop',G.coop); document.body.classList.toggle('many',np>=3); document.body.classList.toggle('p3',np===3); document.body.classList.toggle('p4',np===4);
-  ['dogCard2','dogCard3','dogCard4'].forEach((id,i)=>$(id).hidden=i+2>np); $('splitLine').hidden=!G.coop; $('splitLineH').hidden=np<3;
+  ['dogCard2','dogCard3','dogCard4'].forEach((id,i)=>$(id).hidden=i+2>np); $('splitLine').hidden=!coopView; $('splitLineH').hidden=!coopView||np<3;
   for(let i=0;i<4;i++) $('who'+(i+1)).textContent=G.names[i];
   setupDay();
   for(const c of [camera2,camera3,camera4]) c.position.copy(camera.position);
@@ -2378,8 +2396,9 @@ function setPause(p){
   if(G.phase!=='day' && G.phase!=='night') return;
   G.paused=p;
   if(p){
-    showOverlay('<h2>Paused</h2><div class="vols" id="pauseVols"></div><div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="quitBtn" type="button">Restart from day 1</button></div>');
+    showOverlay('<h2>Paused</h2><div class="vols" id="pauseVols"></div>'+(G.coop?'<div class="btnrow"><button class="btn ghost" id="camBtn" type="button">Camera: '+(G.sharedCam?'Shared':'Split screen')+'</button></div>':'')+'<div class="btnrow"><button class="btn" id="resumeBtn" type="button">Resume</button><button class="btn ghost" id="quitBtn" type="button">Restart from day 1</button></div>');
     volSliders($('pauseVols'));
+    const cb=$('camBtn'); if(cb) cb.onclick=()=>{ setCamMode(!G.sharedCam); cb.textContent='Camera: '+(G.sharedCam?'Shared':'Split screen'); };
     $('resumeBtn').onclick=()=>setPause(false);
     $('quitBtn').onclick=()=>startGame(true);
   } else hideOverlay();
@@ -5656,7 +5675,8 @@ const CAM_PITCH=58*Math.PI/180, CAM_FOV=50*Math.PI/180;
 // fit everything into the middle ~3/4 of the view, clear of the HUD panels at the edges
 const CAM_FIT=CAM_FOV*.78, CAM_S=1/Math.tan(CAM_PITCH+CAM_FIT/2), CAM_C=1/Math.tan(CAM_PITCH), CAM_N=1/Math.tan(CAM_PITCH-CAM_FIT/2);
 function frameCam(cam,look,D,dt,aspect,first){
-  const pts=[[D.x,D.z]], near=(x,z,r)=>Math.hypot(x-D.x,z-D.z)<r;
+  const ds=Array.isArray(D)?D:[D], shared=ds.length>1; D=ds[0];
+  const pts=ds.map(d=>[d.x,d.z]), near=(x,z,r)=>ds.some(d=>Math.hypot(x-d.x,z-d.z)<r);
   if(G.phase==='day'||G.phase==='night'||G.phase==='result'){
     const reach=coopView?18:23;
     for(const s of G.sheep) if(!s.dead && !s.penned && near(s.x,s.z,reach)) pts.push([s.x,s.z]);
@@ -5664,11 +5684,11 @@ function frameCam(cam,look,D,dt,aspect,first){
     if(COUG.on && COUG.prey) pts.push([COUG.x,COUG.z]);
   }
   let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
-  for(const [x,z] of pts){ const cx=clamp(x,D.x-34,D.x+34), cz=clamp(z,D.z-34,D.z+34); x0=Math.min(x0,cx); x1=Math.max(x1,cx); z0=Math.min(z0,cz); z1=Math.max(z1,cz); }
+  for(const [x,z] of pts){ const cx=shared?x:clamp(x,D.x-34,D.x+34), cz=shared?z:clamp(z,D.z-34,D.z+34); x0=Math.min(x0,cx); x1=Math.max(x1,cx); z0=Math.min(z0,cz); z1=Math.max(z1,cz); }
   const pad=4.5; x0-=pad; x1+=pad; z0-=pad; z1+=pad+1;
   // how high the camera has to be to fit that box (depth and width), within limits
   const hz=(z1-z0)/(CAM_N-CAM_S), hx=(x1-x0)*Math.sin(CAM_PITCH)/(2*Math.tan(CAM_FIT/2)*aspect*.92);
-  const h=clamp(Math.max(hz,hx,17),17,52)*G.zoom;
+  const h=clamp(Math.max(hz,hx,17),17,shared?84:52)*G.zoom;
   // aim so the box sits in the middle of the view
   const az=(z0+z1+(CAM_S+CAM_N)*h)/2-CAM_C*h, ax=(x0+x1)/2;     // camera z is az+C*h; this splits the spare room evenly top and bottom
   const k=first?1:1-Math.exp(-dt*3), kh=first?1:1-Math.exp(-dt*1.8);
@@ -5689,7 +5709,7 @@ function updateCamera(dt,time){
     const a=time*.05; camera.position.set(Math.sin(a)*60, 30, Math.cos(a)*60);
     camLook.set(0,0,0); camera.lookAt(camLook); return;
   }
-  if(!coopView){ followCam(camera,camLook,dog,dt); }
+  if(!coopView){ followCam(camera,camLook,G.coop&&G.sharedCam?dogs:dog,dt); }
   else for(const v of viewports()){
     if(v.D) followCam(v.cam,camLooks[v.i],v.D,dt,v);
     else { overCam.position.set(0,120,62); overCam.lookAt(0,0,3); }
