@@ -4764,8 +4764,8 @@ function updateSheep(dt){
       }
       // up on the seesaw plateau: trot off to the pen on its own
       s.up=onPlateau(s.x,s.z); s.inF=!s.up && ctInFunnel(s.x,s.z);
-      if(G.phase!=='title' && (s.up&&!PZ.locked&&!s.inF&&!needsFeed(s))){ const h=s.up?homeForce(s):funnelForce(s); fx+=h[0]; fz+=h[1]; }      // (a hungry one grazes up there first)
-      else if(LEVEL.plat && G.phase!=='title'){ const h=mouthPull(s); if(h){ fx+=h[0]; fz+=h[1]; } }   // and in the seesaw's funnel: down to its low end
+      if(G.phase!=='title' && (s.up&&!PZ.locked&&!needsFeed(s) || s.inF)){ const h=s.up?homeForce(s):funnelForce(s); fx+=h[0]; fz+=h[1]; }      // (a hungry one grazes up there first)
+      else if(CT.see.length && G.phase!=='title'){ const h=mouthPull(s); if(h){ fx+=h[0]; fz+=h[1]; } }   // and in the seesaw's funnel: down to its low end
     } else {
       fx+=(pcx-s.x)*.12; fz+=(pcz-s.z)*.12;
       s.stress=Math.max(0,s.stress-dt*.3);
@@ -7055,7 +7055,7 @@ function reachable(x,z){ if(!reachGrid) return true; const i=Math.floor((x+FIELD
 // Bales: round bales lying about the field (hay on the farm; tumbleweed, coral, moon rock, basalt or a cloud elsewhere).
 // Walk into one to roll it, punt it to send it trundling, or grab it to drag it. They block sheep and coyotes alike
 // (a bale in a hedge gap turns the coyotes' path around it). placeBales puts them out.
-const CT={see:[],bales:[],told:{},navT:0};
+const CT={see:[],bales:[],told:{},navT:0,bait:null};
 const SEE_L=2.9, SEE_H=.8, BALE_R=1, PLAT_H=3.8, SKY_UP=.8, SKY_HANG=.5, SKY_TOP=9, CHUTE_V=3.4;   // (they pop off the top of the screen for a moment, then float back down into view)
 const SEE_SX=2.1, SEE_SY=1.25, SEE_SZ=1.45;                 // the cliff seesaw is a big one: room for a crowd on its low end
 const ctPlankY=(S,p)=>S.gy+SEE_SY*(SEE_H+.12)-S.k*clamp(p,-S.L,S.L)/S.L*SEE_SY*(SEE_H-.05);
@@ -7158,11 +7158,11 @@ function makeSeesaw(x,z,ang){
   const arrow=addObj(new THREE.Mesh(A.arrow,A.arrowM)); arrow.visible=false; addOutline(arrow,.03);
   const badge=addObj(new THREE.Sprite(puntBadgeMat(puntKey()))); badge.scale.set(2.4,1.2,1); badge.renderOrder=5; badge.visible=false;
   // k: +1 with the cliff end down. The cliff end is weighted, so it always settles back that way after a launch.
-  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,badge,remT:0,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
+  return {x,z,gy,ang,k:1,kT:1,snap:0,cd:0,back:0,on:[],g,pl,arrow,badge,remT:0,zc:z-.9-SEE_L*SEE_SZ,L:SEE_L*SEE_SZ,W:.98*SEE_SX,launches:0,said:0};
 }
 // the rock face, the seesaw and the sign (from setupDay, once the level is built; its own seeded RNG)
 // the funnel's half-width at z: narrow beside the plank, flaring wide out in front of it (open ground, no fences)
-const funnelHW=(S,z)=>{ const zc=LEVEL.plat.zc, a=zc+.2, b=zc+2*S.L+.2, c=zc+2*S.L+6.5; return z<b?lerp(S.W/2+.7,S.W/2+1.6,(z-a)/(b-a)):lerp(S.W/2+1.6,15,(z-b)/(c-b)); };
+const funnelHW=(S,z)=>{ const zc=S.zc, a=zc+.2, b=zc+2*S.L+.2, c=zc+2*S.L+6.5; return z<b?lerp(S.W/2+.7,S.W/2+1.6,(z-a)/(b-a)):lerp(S.W/2+1.6,15,(z-b)/(c-b)); };
 function placeSeesawCliff(){
   const P=LEVEL.plat; if(!P) return;
   const id=lvl(G.day), R=mulberry32(((daySeed(id)^Math.imul(id+7919,2246822519))>>>0)||1), zc=P.zc, L=SEE_L*SEE_SZ;
@@ -7193,8 +7193,8 @@ function placeSeesawCliff(){
   OBS.ver++;
 }
 // ---- bales: themed per world ----
-function baleMesh(){
-  const th=LEVEL.theme;
+function baleMesh(hay){
+  const th=hay?'farm':LEVEL.theme;
   if(th==='desert'){ const m=new THREE.Mesh(TUMBLE_GEO,tumbleMat); m.scale.setScalar(.98); return m; }
   if(th==='sky'){ const m=new THREE.Mesh(blobGeo(2,4,.14),mat(0xffffff,{emissive:0x3a4250})); m.scale.setScalar(.98); return m; }
   if(th==='sea'||th==='moon'||th==='volcano'){
@@ -7206,25 +7206,60 @@ function baleMesh(){
   }
   const m=new THREE.Mesh(baleGeo,baleMat); m.rotation.z=Math.PI/2; m.scale.set(.88,.86,.88); return m;
 }
-function makeBale(x,z){
-  const g=new THREE.Group(), roll=new THREE.Group(), m=baleMesh();
+function makeBale(x,z,hay){
+  const g=new THREE.Group(), roll=new THREE.Group(), m=baleMesh(hay);
   m.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
-  roll.add(m); roll.position.y=BALE_R*.97; g.add(roll); if(LEVEL.theme!=='desert') addOutline(g,.035);
+  roll.add(m); roll.position.y=BALE_R*.97; g.add(roll); if(hay || LEVEL.theme!=='desert') addOutline(g,.035);
   g.rotation.y=Math.random()*TAU; addObj(g);
   const c={x,z,r:BALE_R,level:true,bale:true};
   circles.push(c);
-  return {c,x,z,vx:0,vz:0,r:BALE_R,g,roll,head:g.rotation.y,moved:0,gone:false,sinkT:0,thrower:null,hitT:0};
+  return {c,x,z,vx:0,vz:0,r:BALE_R,g,roll,head:g.rotation.y,moved:0,gone:false,sinkT:0,thrower:null,hitT:0,hay:!!hay||!['desert','sky','sea','moon','volcano'].includes(LEVEL.theme)};
 }
 // ---- placement (from setupDay: the cliff right after the level is built, so nothing else spawns under the seesaw;
 // the bales after the day's puzzle, so they keep clear of it) ----
 function placeContraptions(){
   for(const D of ALLDOGS){ if(D.sky){ D.sky=null; D.flying=false; D.fy=0; } if(D.grab && D.grab.kind==='prop') D.grab=null; }
   CT.see.length=0; CT.bales.length=0; for(let i=circles.length-1;i>=0;i--) if(circles[i].bale) circles.splice(i,1);
+  CT.bait=null; CT.told.hayHint=CT.told.baited=0;      // (the hay hints are per seesaw day)
   placeSeesawCliff();
+  placeCanyonSeesaw();
+}
+// the Grand Canyon's seesaw: on the near (south) rim, square to the rift, well clear of its two necks. Launched sheep sail
+// right over the rift and parachute down on the far rim. The necks are still there for doing it the slow way.
+function placeCanyonSeesaw(){
+  const C=LEVEL.canyon, SD=LEVEL.riftSD; if(!C || !SD || LEVEL.plat || !C.wave) return;
+  const id=lvl(G.day), R=mulberry32(((daySeed(id)^Math.imul(id+15485863,2246822519))>>>0)||1), L=SEE_L*SEE_SZ;
+  const rim=x=>{ let z=C.wave(x); while(z<C.wave(x)+14 && sdAt(SD,x,z)<.5) z+=.25; return z; };    // the near lip of the rift at x
+  let best=null, bs=-1e9;
+  for(let t=0;t<60;t++){ const x=(R()*2-1)*22;
+    if((C.gaps||[]).some(g=>Math.abs(g-x)<14)) continue;
+    const zc=rim(x)+1.4;
+    if(Math.abs(rim(x-2.5)-rim(x+2.5))>1.2) continue;                                     // a straight bit of rim
+    if(fieldD(x,zc+2*L+6)<8 || fieldD(x-4,zc+1)<2 || fieldD(x+4,zc+1)<2) continue;
+    if(circles.some(c=>Math.hypot(c.x-x,c.z-(zc+L))<c.r+L+2)) continue;
+    let far=C.wave(x); while(far>C.wave(x)-14 && sdAt(SD,x,far)<.5) far-=.25;              // the far lip, straight across
+    if(fieldD(x,far-5)<3) continue;
+    const sc=-Math.abs(x)*.12+R()*3; if(sc>bs){ bs=sc; best={x,zc,far}; } }
+  if(!best) return;
+  const S=makeSeesaw(best.x,best.zc+.9+L,Math.PI); S.zc=best.zc; S.land=best.far-4; CT.see.push(S);
+  hideGrass((x,z)=>Math.abs(x-S.x)<S.W/2+1 && z>S.zc && z<S.zc+2*L+1.5);
+  OBS.ver++;
 }
 function placeBales(){
   const d=G.day, L=LEVEL, R=mulberry32(((daySeed(d)^Math.imul(d+104729,2246822519))>>>0)||1), r=(a,b)=>a+R()*(b-a);
   if(L.maze || L.special==='columbia' || L.special==='coast') return;
+  // a seesaw day always has a hay bale out in the field below the cliff: roll it up beside the seesaw and the whole flock
+  // comes to it, so you can load them all on and launch them at once
+  const S=CT.see[0];
+  if(S){
+    let best=null, bs=-1e9;
+    for(let t=0;t<80;t++){
+      const a=r(-1,1)*1.2, dd=r(13,22), x=S.x+Math.sin(a)*dd, z=S.zc+2*S.L+4+Math.abs(Math.cos(a))*dd*.6;
+      if(!clearOf(x,z,2.2) || (L.canyon && z<L.canyon.wave(x)+9) || G.sheep.some(s=>Math.hypot(s.x-x,s.z-z)<2.5) || fieldD(x,z)<4) continue;
+      const sc=-Math.abs(dd-16)+R()*2; if(sc>bs){ bs=sc; best=[x,z]; }
+    }
+    if(best){ CT.bales.push(makeBale(best[0],best[1],true)); OBS.ver++; }
+  }
   if(!(d>=UNLOCK.bales && (d===UNLOCK.bales || R()<.55))) return;
   const busy=(x,z,pad)=>PZ.gates.some(g=>Math.hypot(g.x-x,g.z-z)<9+pad) || (PZ.scale && Math.hypot(PZ.scale.x-x,PZ.scale.z-z)<PZ.scale.r+3+pad) || G.sheep.some(s=>Math.hypot(s.x-x,s.z-z)<pad+1.2)
     || (L.plat && z<L.plat.zc+6+pad) || CT.see.some(S=>Math.hypot(S.x-x,S.z-z)<S.L+9);
@@ -7245,10 +7280,11 @@ function placeBales(){
 }
 // ---- up into the clouds and down by parachute ----
 // where each launched thing comes down: spread out across the plateau above the seesaw, always on safe ground
+// (or, over the Grand Canyon, out across the rift on its far rim)
 function skySpot(S,i,n){
-  const zc=LEVEL.plat?LEVEL.plat.zc:S.z-10;
+  const zc=S.land!=null?S.land:LEVEL.plat?LEVEL.plat.zc-3.5:S.z-13.5, deep=LEVEL.plat?Math.min(5,LEVEL.plat.zc-PEN.z1-10):5;
   for(let t=0;t<30;t++){
-    const x=S.x+(i-(n-1)/2)*2.4+(Math.random()-.5)*(1.5+t*.6), z=zc-3.5-Math.random()*Math.min(5,zc-PEN.z1-10);
+    const x=S.x+(i-(n-1)/2)*2.4+(Math.random()-.5)*(1.5+t*.6), z=zc-Math.random()*deep;
     if(fieldD(x,z)>3 && !hazardAt(x,z) && pondD(x,z)>2 && !circles.some(c=>Math.hypot(c.x-x,c.z-z)<c.r+1)) return {x,z};
   }
   return {x:clamp(S.x*.5,-8,8),z:PEN.z1+10};
@@ -7301,6 +7337,7 @@ function skyStep(e,dt){
 function airSheep(s,dt){
   if(!skyStep(s,dt)) return;
   s.vx=s.vz=0; s.hop=.45; s.fear=.4; s.stress=Math.max(0,(s.stress||0)-.3); sBleat(1.25);
+  if(LEVEL.canyon && !LEVEL.plat && !needsFeed(s)) s.home=true;         // over the Grand Canyon: a fed one finds its own way on to the pen from the far rim
   if(!CT.told.chute){ CT.told.chute=1; setTimeout(()=>shepSay('Sheep from the sky?!',true),200); }
   if(!PZ.locked) checkGoal(s);
 }
@@ -7313,19 +7350,22 @@ function homeForce(s){
 // in the funnel in front of the seesaw: those sheep are committed. They file down onto the low end and wait there
 // (they don't wander back out to the flock), so you can load a few, fetch more, and launch them all at once
 function ctInFunnel(x,z){
-  const S=CT.see[0], P=LEVEL.plat; if(!S||!P) return false;
-  if(z<P.zc+.2 || z>P.zc+2*S.L+6.5) return false;
+  const S=CT.see[0]; if(!S) return false;
+  if(z<S.zc+.2 || z>S.zc+2*S.L+6.5) return false;
   return Math.abs(x-S.x)<funnelHW(S,z)-.4;
 }
 function funnelForce(s){
-  const S=CT.see[0], tx=S.x, tz=LEVEL.plat.zc+.9, dx=tx-s.x, dz=tz-s.z, d=Math.hypot(dx,dz)+1e-6;
+  const S=CT.see[0], tx=S.x, tz=S.zc+.9, dx=tx-s.x, dz=tz-s.z, d=Math.hypot(dx,dz)+1e-6;
   s.fear=Math.max(s.fear,.2); s.munch=0;
   return d<1.2?[0,0]:[dx/d*12,dz/d*12];
 }
 // and like the pen gate, the funnel's mouth draws in calm sheep that come near it
+// (with hay beside the seesaw, it draws in the whole flock from right across the field)
 function mouthPull(s){
   const S=CT.see[0]; if(!S || s.stress>.85) return null;
-  const mx=S.x, mz=LEVEL.plat.zc+2*S.L+5, dx=mx-s.x, dz=mz-s.z, d=Math.hypot(dx,dz)+1e-6; if(d>22 || s.z<LEVEL.plat.zc) return null;
+  const mx=S.x, mz=S.zc+2*S.L+5, dx=mx-s.x, dz=mz-s.z, d=Math.hypot(dx,dz)+1e-6; if(s.z<S.zc) return null;
+  if(CT.bait){ s.munch=0; s.fear=Math.max(s.fear,.2); const k=Math.min(13,6+d*.15); return [dx/d*k,dz/d*k]; }   // (a brisk trot: there's hay!)
+  if(d>22) return null;
   const k=1-d/22; return [dx/d*14*k,dz/d*14*k];
 }
 // ---- the per-step update ----
@@ -7395,8 +7435,8 @@ function updateContraptions(dt){
       }
       if(d<b.r+.55+.2){ const vn=D.vx*nx+D.vz*nz, bn=b.vx*nx+b.vz*nz; if(vn>.5 && bn<vn*.85){ const add=(vn*.85-bn)*Math.min(1,dt*8); b.vx+=nx*add; b.vz+=nz*add; b.thrower=D; } }
     }
-    // the flock nudges it too (gently: it takes a few of them to shift it)
-    for(const s of G.sheep){
+    // the flock nudges it too (gently: it takes a few of them to shift it). Not the hay by the seesaw: they're busy eating it
+    if(b!==CT.bait) for(const s of G.sheep){
       if(s.dead||s.penned||s.carried||s.sky) continue;
       const dx=b.x-s.x, dz=b.z-s.z, d=Math.hypot(dx,dz)+1e-6; if(d>b.r+.95) continue;
       const nx=dx/d, nz=dz/d, sp=Math.hypot(b.vx,b.vz);
@@ -7433,6 +7473,24 @@ function updateContraptions(dt){
       for(const D of dogs) if(D.grab && D.grab.t===b) releaseGrab(D,false);
     }
   }
+  // a hay bale rolled up beside the seesaw baits it: the whole flock below the cliff comes to eat, into the funnel
+  CT.bait=null;
+  { const S=CT.see[0];
+    if(S) for(const b of CT.bales){
+      if(b.gone || b.sinkT>0 || !b.hay) continue;
+      const dx=b.x-S.x, dz=b.z-S.z, ux=Math.sin(S.ang), uz=Math.cos(S.ang), p=dx*ux+dz*uz, q=-dx*uz+dz*ux;
+      if(b.z>S.zc && Math.abs(q)<S.W/2+4.5 && Math.abs(p)<S.L+4.5){ CT.bait=b; break; }
+    }
+    // and they eat it: sheep crowding in round the seesaw by the hay fill up, like grazing the clover
+    if(CT.bait && playing) for(const s of G.sheep){
+      if(s.dead||s.penned||s.sky||s.lamb||s.bonus||!(s.inF || Math.hypot(s.x-CT.bait.x,s.z-CT.bait.z)<4)) continue;
+      const was=s.full||0; s.full=Math.min(100,was+6*dt); if(was<FED && s.full>=FED) fedUp(s);
+    }
+    if(playing && S){
+      const hay=CT.bales.find(b=>b.hay && !b.gone);
+      if(hay && !CT.bait && !CT.told.hayHint && !S.launches && dogs.some(D=>Math.hypot(D.x-hay.x,D.z-hay.z)<7)){ CT.told.hayHint=1; toast('Roll the hay over to the seesaw: the flock will come running!','gold',4.5); }
+      if(CT.bait && !CT.told.baited){ CT.told.baited=1; popText(CT.bait.x,2.6,CT.bait.z,'HAY!','gold'); toast('Here they come! Press '+puntKey()+' on the high end to launch them all!','gold',5); }
+    } }
   // once a bale has rolled somewhere new and come to rest, the sheep's steering and the coyotes' paths learn where it is
   CT.navT-=dt;
   if(CT.navT<=0 && CT.bales.some(b=>b.moved>.6 && Math.hypot(b.vx,b.vz)<.2)){ CT.navT=.5; for(const b of CT.bales) b.moved=0; OBS.ver++; }
