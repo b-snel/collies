@@ -4424,7 +4424,7 @@ function updateSheep(dt){
       { const gd=Math.hypot(s.x,s.z-(PEN.z1+1)), R=12+14*pF;
         if(!PZ.locked && gd<R && s.z>PEN.z1-1 && !needsFeed(s)){ const front=Math.abs(s.x)<PEN.gx-1.2 || s.z>PEN.z1+4, k=(1-gd/R)*(10+10*pF), tx=-s.x, tz=(front?PEN.z1-4:PEN.z1+3)-s.z, td=Math.hypot(tx,tz)+1e-6; fx+=tx/td*k; fz+=tz/td*k; } }
       // sheep pressed against the front fence drift along it toward the gate, like sheep following a wall
-      if(!PZ.locked && !JR.out && s.z<PEN.z1+5 && s.z>PEN.z1-1 && Math.abs(s.x)>PEN.gx-1 && Math.abs(s.x)<PEN.x1+10){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*(4+6*pF)*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
+      if(!PZ.locked && !JR.out && !needsFeed(s) && s.z<PEN.z1+5 && s.z>PEN.z1-1 && Math.abs(s.x)>PEN.gx-1 && Math.abs(s.x)<PEN.x1+10){ const w=1-(s.z-PEN.z1)/5; fx+=-Math.sign(s.x)*(4+6*pF)*w; fz+=1.5*w*(Math.abs(s.x)<PEN.gx+3?-1:0); }
       // the leg's done and the back gate's open: through the pen, out of the back gate and on up the lane
       if(JR.out && s.z<PEN.z1-.5 && (s.press||0)<.75){
         const inP=s.z>PEN.z0-1.5, corner=inP && Math.abs(s.x)>BACK_GX-.8 && s.z<PEN.z0+4.5;      // (tucked in a back corner behind the hay: out into the middle first)
@@ -4470,10 +4470,12 @@ function updateSheep(dt){
     const steady=s.steady>0; s.steady=0;
     const eating=s.munch>0;
     // calm, pressured sheep pack tight; panicking sheep stop caring about the flock
-    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(s.roamT>0?.2:1)*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
-    if(na && !eating){ const al=(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
+    // a hungry sheep with good clover in reach puts the grass first: the flock (and the bell ewe, and the pen) can wait
+    const hungry=needsFeed(s), upF=LEVEL.plat?!!s.up:undefined, grass=hungry&&!s.penned?nearestClover(s.x,s.z,upF):null, toGrass=!!grass && grass.d<30;
+    if(n && !s.penned && !eating){ cx/=n; cz/=n; const coh=(s.regBlocked?.3:1)*(s.roamT>0?.2:1)*(toGrass?.35:1)*(.55+s.fear*2.8+(steady?1.6:0)+(1-s.stress)*.8*Math.min(1,s.fear*2)+(SEASON.frozen?.4:0)+(G.flanked?.6:0))*(1-panic*.5); fx+=(cx-s.x)*coh; fz+=(cz-s.z)*coh; }
+    if(na && !eating){ const al=(toGrass?.35:1)*(.8+s.fear*1.8+(steady?2:0))*(1-panic*.5); fx+=(ax/na-s.vx)*al; fz+=(az/na-s.vz)*al; }
     // the bell ewe: followers drift after her and match her heading
-    if(lead && !s.penned && !eating && ld>2.5){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
+    if(lead && !s.penned && !eating && ld>2.5 && !toGrass){ const w=(1-panic)*(s.trait==='stubborn'?.5:1); fx+=(lead.x-s.x)/ld*4*w; fz+=(lead.z-s.z)/ld*4*w; fx+=(lead.vx-s.vx)*.8*w; fz+=(lead.vz-s.vz)*.8*w; }
     // panic: bolt off in a random direction, mostly away from the dog
     s.boltT=Math.max(0,s.boltT-dt);
     if(panic>0 && s.threat>.2 && s.boltT<=0 && G.phase!=='title' && Math.random()<dt*.9*panic){
@@ -4486,7 +4488,7 @@ function updateSheep(dt){
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
     // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
     // (once most of the flock's in the pen, the pen is where the flock is: a fed sheep out on its own heads for its gate)
-    { const toPen=!JR.done && !PZ.locked && pF>=.5 && !needsFeed(s) && s.z>PEN.z1-1, H=toPen?PEN_HUB:G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed && !(s.roamT>0);
+    { const toPen=!JR.done && !PZ.locked && pF>=.5 && !needsFeed(s) && s.z>PEN.z1-1, H=toPen?PEN_HUB:G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed && !(s.roamT>0) && !toGrass;
       const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0, w=live?(1-(s.press||0)/.6)*(1-panic*.6):0;
       if(!live || hd<6){ s.regBlocked=false; s.stray=false; }
       else {
@@ -4525,18 +4527,17 @@ function updateSheep(dt){
           if(dd<1.4){ D.stunT=.55*stunMul(); D.vx+=s.vx*.6; D.vz+=s.vz*.6; s.charging=0; sThud(); G.shake=Math.max(G.shake,.35); rumble(.6,.4,180); popText(D.x,2.4,D.z,'OOF!','red'); shepSay('Oi! Watch it!'); } }
       }
     }
-    const hungry=needsFeed(s), upF=LEVEL.plat?!!s.up:undefined;      // (on a seesaw cliff, grass on the same level as the sheep)
     // sweet clover is a trap: walk a sheep onto a patch and it stops to eat, herded or not (unless it's panicking, or full up)
     s.munchImmune=Math.max(0,(s.munchImmune||0)-dt);
-    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && !(s.roamT>0) && ((s.full||0)<95 || munchLevel(G.day)>0) && (G.phase==='day'||G.phase==='night')){
+    if(clovers.length && !s.penned && !eating && s.munchImmune<=0 && s.flip<=0 && !(s.thrownT>0) && s.boltT<=0 && s.stress<.8 && !(G.rageT>0) && !(s.roamT>0) && (hungry || munchLevel(G.day)>0 || s.lamb) && (G.phase==='day'||G.phase==='night')){
       const cl=nearestClover(s.x,s.z,upF);
       if(cl && cl.d<cl.r-.3){ s.patch=cl.c; s.munch=5+Math.random()*3; s.munchCD=5; s.vx*=.3; s.vz*=.3; onMunch(s); }
     }
     // hungry sheep go looking for clover and stop to eat when they find it; so does a thin one, or a greedy one later on
     const ml=(s.home||JR.out||s.inBreed)?0:Math.max(hungry?1:0,(s.full||0)<95?munchLevel(G.day):0,(1-s.hp/100)*.9);
-    if(ml>0 && !s.penned && !eating && !(s.roamT>0) && (G.phase==='day'||G.phase==='night') && s.fear<.12 && !s.court){
+    if(ml>0 && !s.penned && !eating && !(s.roamT>0) && (G.phase==='day'||G.phase==='night') && s.fear<(hungry?.35:.12) && !s.court){
       const cl=nearestClover(s.x,s.z,upF), onPatch=cl && cl.d<cl.r;
-      if(cl && !onPatch && cl.d<(hungry?30:16) && !steady){ const k=(hungry?3.2:2.2)*ml; fx+=(cl.x-s.x)/cl.d*k; fz+=(cl.z-s.z)/cl.d*k; }
+      if(cl && !onPatch && cl.d<(hungry?30:16) && !steady){ const k=hungry?(cl.d<12?9:6):2.2*ml; fx+=(cl.x-s.x)/cl.d*k; fz+=(cl.z-s.z)/cl.d*k; }
       s.munchCD-=dt;
       if(s.munchCD<=0 && (onPatch || !hungry) && Math.random()<dt*.035*ml*(onPatch?6:1)){ s.munch=3.5+Math.random()*4*ml+1.5; s.munchCD=5; s.patch=onPatch?cl.c:null; onMunch(s); }
     }
