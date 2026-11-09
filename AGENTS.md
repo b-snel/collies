@@ -5,16 +5,21 @@ Guidance for AI agents working in this repo.
 ## Demo slices: prototyping an idea from scratch
 
 A **demo slice** is a clean-slate branch for trying one focused idea in
-isolation, away from the main game. Everything from `main` is deleted, the idea
-is built from nothing, and later the branch serves as a reference
+isolation, away from the main game. Nothing from `main` is carried over: the
+idea is built from nothing, and later the branch serves as a reference
 implementation when the feature is added to the main game.
+
+`template/demo-slice` is the empty starting point. It has `main`'s files
+deleted and holds only a template `AGENTS.md` (plus a `CLAUDE.md` that
+imports it). Don't build on the template itself, and change it only when the
+user asks to.
 
 ### Is this a demo slice?
 
 Treat a branch as a demo slice if either is true:
 
-- Its name starts with `demo-slice` (`demo-slice`, `demo-slice-sheepdog-ai`),
-  or one of its `/`-separated parts does (`claude/demo-slice-sheepdog-ai`).
+- Its name starts with `demo-slice/` (`demo-slice/sheepdog-ai`), or contains
+  `demo-slice` after another prefix (`claude/demo-slice-sheepdog-ai`).
 - Its root `AGENTS.md` says it is a demo slice.
 
 If you are on a demo slice, follow **Working in a demo slice** below and
@@ -27,32 +32,29 @@ from scratch" or "prototype X on its own" mean: start a new demo slice. The
 user has said that asking for a demo is their request for a new demo-slice
 branch.
 
-1. **Branch from the latest `main`**, named `demo-slice-<short-idea>`:
+1. **Branch off the template**, named `demo-slice/<short-idea>`:
 
    ```bash
-   git fetch origin main
-   git checkout -b demo-slice-<short-idea> origin/main
+   git fetch origin template/demo-slice
+   git checkout -b demo-slice/<short-idea> origin/template/demo-slice
    ```
 
-   Use a hyphen, not a slash. A `demo-slice` branch already exists, so git
-   cannot also create `demo-slice/<idea>`. If your environment only lets you
-   push to a branch it assigned you, use that branch, follow the rest of these
-   steps, and tell the user. The stub `AGENTS.md` still marks it as a demo
-   slice.
+   If your environment only lets you push to a branch it assigned you, point
+   that branch at the template instead
+   (`git checkout -B <assigned-branch> origin/template/demo-slice`), follow
+   the rest of these steps, and tell the user. The branch's `AGENTS.md` still
+   marks it as a demo slice.
 
-2. **Delete everything, without reading it first.** The point is a clean slate
-   that the main game's code does not shape:
+2. **Fill in `AGENTS.md`**: name the idea in the title and "The idea", and
+   delete the "This is the template" note.
 
-   ```bash
-   git rm -r -q .
-   ```
-
-3. **Add the stub `AGENTS.md`** (template below) at the root, with the idea
-   filled in. Also add a `CLAUDE.md` containing the single line `@AGENTS.md`
-   so Claude Code loads it.
-
-4. **Commit and push**, for example `Start demo slice: <idea>`. Then build the
+3. **Commit and push**, for example `Start demo slice: <idea>`. Then build the
    idea.
+
+If `template/demo-slice` is missing, tell the user. To rebuild it, branch from
+`main`, run `git rm -r -q .` without reading anything first, and add back an
+`AGENTS.md` (in the shape of the one an existing demo slice has) and a
+`CLAUDE.md` containing the single line `@AGENTS.md`.
 
 ### Working in a demo slice
 
@@ -66,8 +68,9 @@ branch.
 - **Keep "Notes for porting" current** in the branch's `AGENTS.md`. Record
   what worked, what didn't, key decisions and constants, and what the main
   game will need to change to take the feature.
-- **Never merge a demo slice into `main`**, and never open a PR from one into
-  `main`. Its history deletes the whole game. Features get ported by hand.
+- **Never merge a demo slice (or the template) into `main`**, and never open
+  a PR from one into `main`. Its history deletes the whole game. Features get
+  ported by hand.
 
 ### Porting a demo slice into the main game
 
@@ -77,44 +80,12 @@ When the user asks to add an idea from a demo slice to the game:
 2. Read the demo without checking it out over your work:
 
    ```bash
-   git fetch origin <demo-branch>
-   git ls-tree -r --name-only origin/<demo-branch>
-   git show origin/<demo-branch>:<path>
+   git fetch origin demo-slice/<idea>
+   git ls-tree -r --name-only origin/demo-slice/<idea>
+   git show origin/demo-slice/<idea>:<path>
    ```
 
    Start with its `AGENTS.md`, especially "Notes for porting".
 3. Re-implement the behavior in the game's existing structure and
    conventions. Port the idea, not the files. Don't merge or cherry-pick
    demo-slice commits.
-
-### Template: `AGENTS.md` for a new demo slice
-
-```markdown
-# Demo slice: <idea>
-
-This branch is a **demo slice**: a clean-slate prototype for trying one
-focused idea in isolation. Everything from `main` was deleted on purpose. See
-`AGENTS.md` on `main` for the full workflow.
-
-## Rules
-
-- Build from scratch. Don't read, copy or restore code from `main` or other
-  branches unless the user asks.
-- Stay focused on the idea below. Placeholder art and rough UI are fine.
-- Keep it easy to run, and say how below.
-- Never merge this branch into `main` or open a PR into `main`: its history
-  deletes the whole game. Features are ported to `main` by hand.
-- Keep "Notes for porting" current as you go.
-
-## The idea
-
-<one or two sentences>
-
-## How to run
-
-<e.g. open index.html, or `python3 -m http.server` and visit localhost:8000>
-
-## Notes for porting
-
-<what worked, key decisions, gotchas, what the main game needs to change>
-```
