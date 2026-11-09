@@ -293,6 +293,8 @@ const T = {
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
+  // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
+  denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -1345,6 +1347,42 @@ function collideFences(e, r) {
     m.position.set(rp.x - 40, -6, rp.z - 40); m.rotation.y = Math.PI / 4; scene.add(m);
   });
 }
+// ---------------- coyote dens: hollows tucked in against the hillside on the far side of the trail ----------------
+const DENS = [];
+{
+  const dr = mulberry32(5150), drr = (a, b) => a + dr() * (b - a);
+  const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
+  const tucked = (x, z) => { let n = 0; for (let k = 0; k < 16; k++) { const a = k / 16 * TAU; for (const r of [5, 7, 9]) if (isBlocked(x + Math.cos(a) * r, z + Math.sin(a) * r)) n++; } return n; };
+  for (const s0 of [150, 215, 352, 470, 620, 712]) {
+    let best = null, bs = -1;
+    for (let t = 0; t < 70; t++) {
+      const ss = s0 + drr(-22, 22), idx = pathIdx(ss), lat = -(hwWArr[idx] - drr(5, 13));
+      const p = pathPoint(ss, lat); if (Math.abs(lat) < 14) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30)) continue;
+      if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 16 && Math.abs(riverAlong(p.x, p.z)) < 60) continue;
+      if (!clear(p.x, p.z, 3)) continue;
+      const tk = tucked(p.x, p.z); if (tk > bs) { bs = tk; best = { x: p.x, z: p.z, s: ss, nx: p.nx, nz: p.nz }; }
+    }
+    if (!best) continue;
+    // the mouth faces the trail (east); the mound and the burrow are behind it
+    const d = best, mx = d.nx, mz = d.nz, px = -mz, pz = mx;
+    d.y = terrainH(d.x, d.z); d.mx = mx; d.mz = mz;
+    d.slots = [0, 1, 2, 3, 4].map(i => { const o = (i - 2) * 1.15, f = 1.2 + Math.abs(i - 2) * 0.35; return { x: d.x + mx * f + px * o, z: d.z + mz * f + pz * o, yaw: Math.atan2(mx, mz) + drr(-2, 2) }; });
+    const w = biomeW(d.s); let bi = 0; for (let k = 1; k < 4; k++) if (w[k] > w[bi]) bi = k;
+    const rockCol = ['#c98c5e', '#8f929c', '#a89a80', '#988e7e'][bi];
+    const g = new THREE.Group(); g.position.set(d.x, d.y, d.z); g.rotation.y = Math.atan2(mx, mz); scene.add(g);
+    const parts = [];
+    for (let k = 0; k < 7; k++) { const a = Math.PI * (0.55 + k / 6 * 0.9), r = drr(1.7, 2.3), sc = drr(0.7, 1.25); parts.push(P(ICO(1, 0), rockCol, { s: [sc, sc * drr(0.7, 1.1), sc], r: [drr(0, 3), drr(0, 3), 0], p: [Math.sin(a) * r, sc * 0.35, Math.cos(a) * r - 0.6] })); }
+    parts.push(P(ICO(1, 1), rockCol, { s: [1.9, 1.15, 1.5], p: [0, 0.35, -1.6] }));
+    part(g, merge(...parts));
+    const hole = new THREE.Mesh(SPH(12), new THREE.MeshBasicMaterial({ color: '#160f0a' })); hole.scale.set(0.95, 0.62, 0.5); hole.position.set(0, 0.18, -0.55); g.add(hole);
+    part(g, merge(...[0, 1, 2].map(i => P(CYL(0.035, 0.035, 0.42, 5), '#efe6d2', { r: [Math.PI / 2, 0, drr(0, 3)], p: [drr(-1.2, 1.2), 0.04, drr(0.6, 1.8)] })),
+      ...[0, 1].map(i => P(SPH(6), '#efe6d2', { s: [0.07, 0.06, 0.07], p: [drr(-1, 1), 0.05, drr(0.8, 1.6)] }))), { shadow: false });
+    for (let k = 0; k < 2; k++) part(g, GEO[bi === 0 ? 'deadbush' : 'bush'].clone().scale(1.1, 1.1, 1.1).translate((k ? 1 : -1) * drr(1.8, 2.4), 0, drr(-0.6, 0.4)), { outline: bi !== 0 });
+    OBSTACLES.push({ x: d.x - mx * 1.6, z: d.z - mz * 1.6, r: 1.8 }); stampObstacle(d.x - mx * 1.6, d.z - mz * 1.6, 1.8);
+    d.id = DENS.length; DENS.push(d);
+  }
+}
 buildSDF();
 
 // =====================================================================
@@ -1530,7 +1568,7 @@ const G = {
   mode: 'title', time: 0,
   clock: { hour: T.startHour, day: 1 },
   ff: false,
-  players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [],
+  players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
   stats: { start: 0, born: 0, eaten: 0, starved: 0, saved: 0 },
   nextSheepId: 1, finalArm: 0, hints: {}, visited: new Set(), lost: [],
 };
@@ -1768,7 +1806,7 @@ function ramSnort(s) { baaAt(s, 0.45, 0.62, true); burst(s.x + Math.sin(s.yaw) *
 // coyotes within T.ramCoyoteR come first (the ram defends the flock), else a dog that's leaning on it (never one lying down)
 function ramTarget(s) {
   let best = null, bd = T.ramCoyoteR;
-  for (const c of G.coyotes) { if (c.state === 'leave' || c.state === 'flee' || c.heldBy || c.gone) continue; const d = Math.hypot(c.x - s.x, c.z - s.z); if (d < bd) { bd = d; best = c; } }
+  for (const c of G.coyotes) { if (c.state === 'leave' || c.state === 'flee' || c.state === 'sleep' || c.heldBy || c.gone) continue; const d = Math.hypot(c.x - s.x, c.z - s.z); if (d < bd) { bd = d; best = c; } }
   if (best) return best;
   let tgt = null, td = T.ramDogR;
   for (const d of G.dogs) { if (d.mode === 'lie' || d.stunT > 0) continue; const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < td && (s.press > T.ramIrk || dd < 4)) { td = dd; tgt = d; } }
@@ -1836,7 +1874,7 @@ function ramStep(s, dt) {
       s.rs = 'idle'; s.rcd = rnd(T.ramCd[0], T.ramCd[1]); s.vx *= 0.2; s.vz *= 0.2; s.state = 'idle'; s.alert = 0; return false;
     }
     for (const c of G.coyotes) {
-      if ((c.state === 'leave' && c.stateT > 3) || c.heldBy || Math.hypot(c.x - s.x, c.z - s.z) > T.ramHitR + 0.4) continue;
+      if (c.state === 'sleep' || c.heldBy || Math.hypot(c.x - s.x, c.z - s.z) > T.ramHitR + 0.4) continue;
       hitCoyote(c, T.ramBonk, s.cdx * 16, s.cdz * 16, s, 'RAM BONK!'); rumble(G.players[0], 0.3, 0.5, 120); G.stats.ramBonks = (G.stats.ramBonks || 0) + 1;
       s.rs = 'idle'; s.rcd = rnd(T.ramCoyoteCd[0], T.ramCoyoteCd[1]); s.vx *= 0.2; s.vz *= 0.2; s.state = 'idle'; s.alert = 0; return false;
     }
@@ -1932,7 +1970,7 @@ function updateSheep(dt, dtH) {
     // ---- threats: coyotes (terror) and dogs (pressure with a direction)
     let fX = 0, fZ = 0, cThreat = 0, cRaw = 0, stressIn = 0, calm = false, steady = false, press = 0, pressD = null, dfX = 0, dfZ = 0;
     for (const c of G.coyotes) {
-      if (c.state === 'leave' && c.stateT > 3) continue;
+      if (c.state === 'sleep' || (c.state === 'leave' && c.stateT > 3)) continue;
       const dx = s.x - c.x, dz = s.z - c.z, dd = Math.hypot(dx, dz) + 1e-4;
       if (dd < 11) {
         const raw = 1 - dd / 11, safe = s.pen && s.pen.gateT < 0.1, k = raw * (safe ? 0.6 : 1.8) * (s.ram ? 0.3 : 1);   // rams stand their ground
@@ -2502,7 +2540,7 @@ function startPounce(d, wx, wz, mag) {
 // what a lunge runs into: a coyote, the launcher's high end, or a sheep (which gets punted)
 function pounceHits(d) {
   for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    if (c.air || c.heldBy || c.gone) continue;   // coyotes can always be bonked, even running home or asleep in the den
     if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
   }
   if (launcherPounce(d)) return;
@@ -2622,7 +2660,7 @@ function landSheep(s, impact) {
 // a flying sheep caroms into other sheep, bowls over coyotes and knocks over dogs
 function airHitsFromSheep(s, a, sv) {
   if (sv > 4) for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    if (c.air || c.heldBy || c.gone) continue;
     if (Math.hypot(c.x - s.x, c.z - s.z) > 1.6) continue;
     const B = T.coyoteBowl, k = Math.max(B.kick, sv * 0.8) / sv;
     hitCoyote(c, B.courage, s.vx * k, s.vz * k, s, 'BOWLED!');
@@ -2706,7 +2744,7 @@ function updateAirborneCoyote(c, dt) {
   a.spin += dt * 10; c.y = a.h; c.leg += dt * 22;
   const sv = Math.hypot(c.vx, c.vz);
   if (sv > 5 && a.h - groundY(c.x, c.z) < 1.6) for (const o of G.coyotes) {   // a flying coyote bowls over its packmates
-    if (o === c || o.air || o.heldBy || o.gone || (o.state === 'leave' && o.stateT > 3)) continue;
+    if (o === c || o.air || o.heldBy || o.gone) continue;
     if (Math.hypot(o.x - c.x, o.z - c.z) > 1.7) continue;
     const B = T.coyoteBowl;
     hitCoyote(o, B.courage, c.vx * 0.7, c.vz * 0.7, c, 'BOWLED!'); launchCoyote(o, c.vx * 0.7, c.vz * 0.7, B.up * 0.8, a.by);
@@ -2776,7 +2814,7 @@ function tryGrab(d) {
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), mx = d.x + fx * 1.1, mz = d.z + fz * 1.1;   // the dog's mouth
   let best = null, bd = T.grabReach, kind = null, grip = 0;
   for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone || (c.state === 'leave' && c.stateT > 3)) continue;
+    if (c.air || c.heldBy || c.gone) continue;
     const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3;
     if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
   }
@@ -3364,6 +3402,73 @@ const penShut = p => p.gateT < 0.3;
 const huntable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && !(s.pen && penShut(s.pen));   // coyotes never go for a ram
 function guarded(s, r = 9) { for (const d of G.dogs) if (Math.hypot(d.x - s.x, d.z - s.z) < r) return true; return false; }
 let packIds = 0;
+function newCoyote(x, z, pack, alpha, yaw = 0, state = 'pack') {
+  const c = { x, z, vx: 0, vz: 0, y: groundY(x, z), yaw, state, stateT: 0, role: 'follow', side: 0, pack, alpha,
+    prey: null, courage: coyoteCourage(alpha), leg: 0, tumble: 0, crouch: 0, howlT: rnd(2, 8), growlT: 0, models: makeCoyote(alpha) };
+  G.coyotes.push(c); return c;
+}
+const coyoteCourage = alpha => (alpha ? 1.5 : 1) + (G.clock.day - 1) * 0.1;
+
+// ---------------- dens: every pack lives somewhere ----------------
+// Each den keeps a pack (its size grows night by night). By day they sleep curled up at the den mouth; at
+// nightfall the nearest den wakes and hunts; a coyote that's run off, a pack that's made a kill, and everyone
+// at dawn walk home and go back to sleep. Their models only exist while the den is near the action.
+function initDens() {
+  for (const D of G.dens || []) for (const c of D.coyotes) { scene.remove(c.models.root); c.gone = true; }
+  G.coyotes = G.coyotes.filter(c => !c.gone);
+  G.dens = DENS.map(d => {
+    const D = { ...d, count: T.denStart, coyotes: [], woke: 0 };
+    D.pack = { id: 1000 + d.id, den: D, members: [], phase: 'den', phaseT: 0, target: null, homeX: d.x, homeZ: d.z, fails: 0, stageT: 0, sx: d.x, sz: d.z, feinted: false, carrier: null, leader: null };
+    return D;
+  });
+  G.packs = G.packs.filter(p => !p.den).concat(G.dens.map(D => D.pack));
+}
+function denFill(D) {   // make sure the den has its whole pack (asleep at the mouth unless told otherwise)
+  while (D.coyotes.length < D.count) {
+    const i = D.coyotes.length, sl = D.slots[i % D.slots.length];
+    const c = newCoyote(sl.x + rnd(-0.2, 0.2), sl.z + rnd(-0.2, 0.2), D.pack, i === 0, sl.yaw, 'sleep');
+    c.den = D; c.slot = i; D.coyotes.push(c);
+  }
+  D.pack.leader = D.coyotes[0];
+}
+function denCull(D) {   // far away and everyone asleep: drop the models, keep the pack
+  for (const c of D.coyotes) { scene.remove(c.models.root); c.gone = true; }
+  D.coyotes = []; D.pack.members = []; D.pack.leader = null;
+  G.coyotes = G.coyotes.filter(c => !c.gone);
+}
+function updateDens() {
+  const fc = flockCenter();
+  for (const D of G.dens) {
+    const near = Math.min(Math.hypot(D.x - fc.x, D.z - fc.z), Math.hypot(D.x - cam.x, D.z - cam.z), ...G.dogs.map(d => Math.hypot(D.x - d.x, D.z - d.z)));
+    const asleep = D.pack.phase === 'den' && D.coyotes.every(c => c.state === 'sleep');
+    if (near < T.denShow && D.coyotes.length < D.count && D.pack.phase === 'den') denFill(D);
+    else if (near > T.denHide && D.coyotes.length && asleep) denCull(D);
+  }
+}
+function wakeDen(D, size) {
+  D.count = clamp(Math.max(D.count, size), T.denStart, T.denMax);
+  denFill(D);
+  const p = D.pack;
+  for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); if (c.state === 'sleep' || c.state === 'leave') { c.state = 'pack'; c.stateT = 0; } }
+  p.members = D.coyotes.slice(); p.leader = D.coyotes[0]; p.fails = 0; p.feinted = false; p.target = null; p.carrier = null; p.stageT = 0;
+  setPhase(p, 'gather'); D.woke = G.clock.day;
+  packHowl(p);
+  return p;
+}
+// nightfall (and the 00:30 wave): the nearest sleeping den wakes. With no den in reach, a roaming pack turns up instead.
+function wakeDens(size, wave = 1) {
+  const fc = flockCenter();
+  const near = G.dens.filter(D => D.pack.phase === 'den' || D.pack.phase === 'retreat').map(D => ({ D, d: Math.hypot(D.x - fc.x, D.z - fc.z) }))
+    .filter(o => o.d < T.denRange).sort((a, b) => a.d - b.d);
+  if (near.length) return wakeDen(near[0].D, size);
+  if (wave > 1) {   // no second den in reach: the pack that's out gets its second wind, and one more joins it
+    const out = G.packs.find(p => p.den && !['den', 'retreat'].includes(p.phase));
+    if (out) { out.den.count = Math.min(T.denMax, out.den.count + 1); denFill(out.den); const c = out.den.coyotes[out.den.coyotes.length - 1]; if (c.state === 'sleep') c.state = 'pack'; out.members = out.den.coyotes.filter(c => !c.alone);
+      for (const c of out.members) c.courage = Math.max(c.courage, coyoteCourage(c.alpha) * 0.7); packHowl(out); return out; }
+  }
+  spawnCoyotes(size);
+  return null;
+}
 function spawnPack(n, opts = {}) {
   if (n <= 0) return null;
   const fc = flockCenter(), dc = dogCentroid();
@@ -3372,12 +3477,7 @@ function spawnPack(n, opts = {}) {
     if (sdfAt(x, z) < 3 || penAt(x, z) || (t < 100 && onScreen(x, groundY(x, z), z, 0.15))) continue;
     if (dc && t < 90 && Math.hypot(x - dc.x, z - dc.z) < 34) continue;
     const pack = { id: ++packIds, members: [], phase: 'gather', phaseT: 0, target: null, homeX: x, homeZ: z, fails: 0, stageT: 0, sx: x, sz: z, feinted: false, carrier: null };
-    for (let i = 0; i < n; i++) {
-      const alpha = i === 0, cx = x + rnd(-2.5, 2.5), cz = z + rnd(-2.5, 2.5);
-      const c = { x: cx, z: cz, vx: 0, vz: 0, y: groundY(cx, cz), yaw: Math.atan2(fc.x - x, fc.z - z), state: 'pack', stateT: 0, role: 'follow', side: 0, pack, alpha,
-        prey: null, courage: (alpha ? 1.5 : 1) + (G.clock.day - 1) * 0.1, leg: 0, tumble: 0, crouch: 0, howlT: rnd(2, 8), growlT: 0, models: makeCoyote(alpha) };
-      pack.members.push(c); G.coyotes.push(c);
-    }
+    for (let i = 0; i < n; i++) pack.members.push(newCoyote(x + rnd(-2.5, 2.5), z + rnd(-2.5, 2.5), pack, i === 0, Math.atan2(fc.x - x, fc.z - z)));
     pack.leader = pack.members[0];
     G.packs.push(pack);
     if (opts.howl !== false) packHowl(pack);
@@ -3414,7 +3514,7 @@ function setPhase(p, ph) {
     ms.forEach((c, i) => { c.role = i === 0 ? 'driver' : i < 3 ? 'ambush' : 'decoy'; c.side = i === 1 ? 1 : i === 2 ? -1 : (i === 0 ? (Math.random() < 0.5 ? 1 : -1) : 0); });
     if (ms.length === 1) ms[0].role = 'solo';
   }
-  if (ph === 'retreat') for (const c of p.members) { if (c.state !== 'drag') { c.state = 'leave'; c.stateT = 0; } }
+  if (ph === 'retreat') for (const c of p.den ? p.den.coyotes : p.members) { if (c.state !== 'drag' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; } }
 }
 function scareCoyote(c, amt, dog, bump = false) {
   if (c.state === 'leave' || c.state === 'dead') return;
@@ -3442,7 +3542,6 @@ function scareCoyote(c, amt, dog, bump = false) {
 }
 // SHARED HOOK: something hit a coyote hard (a pounce, a ram, a flung sheep). src needs x/z (and .player if it's a dog)
 function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
-  if (c.state === 'leave' && c.stateT > 3) return;
   floatText(label, c.x, c.y + 1.7, c.z, '#ffd36b', 1.2);
   scareCoyote(c, amt, src || { x: c.x - vx, z: c.z - vz }, true);
   c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
@@ -3466,8 +3565,15 @@ function dropPrey(c, saved) {
 }
 // the pack's brain: phases and posts. Members read their goal from c.gx/c.gz/c.spd.
 function updatePack(p, dt, fc) {
-  p.members = p.members.filter(c => !c.gone && !c.alone);
-  if (!p.members.length) { p.done = true; return; }
+  if (p.den) {
+    if (p.phase === 'den') return;
+    if (p.phase === 'retreat') { if (p.den.coyotes.every(c => c.state === 'sleep')) { p.phase = 'den'; p.members = []; } return; }
+    p.members = p.den.coyotes.filter(c => !c.gone && !c.alone && c.state !== 'sleep');
+    if (!p.members.length) { setPhase(p, 'retreat'); return; }
+  } else {
+    p.members = p.members.filter(c => !c.gone && !c.alone);
+    if (!p.members.length) { p.done = true; return; }
+  }
   if (!p.members.includes(p.leader)) p.leader = p.members[0];
   p.phaseT += dt;
   const L = p.leader, dc = dogCentroid();
@@ -3492,9 +3598,9 @@ function updatePack(p, dt, fc) {
       }
       const lx = L.x, lz = L.z, lyaw = L.yaw;
       p.members.forEach((c, i) => {
-        if (c === L) { post(c, p.sx, p.sz, T.coyoteTrot, 0); return; }
+        if (c === L) { post(c, p.sx, p.sz, Math.hypot(L.x - p.sx, L.z - p.sz) > 40 ? T.denTravel : T.coyoteTrot, 0); return; }
         const back = 2 + i * 1.2, side = (i % 2 ? 1 : -1) * 1.4;
-        post(c, lx - Math.sin(lyaw) * back + Math.cos(lyaw) * side, lz - Math.cos(lyaw) * back - Math.sin(lyaw) * side, T.coyoteTrot * 1.15, 0);
+        post(c, lx - Math.sin(lyaw) * back + Math.cos(lyaw) * side, lz - Math.cos(lyaw) * back - Math.sin(lyaw) * side, Math.max(T.coyoteTrot * 1.15, Math.hypot(L.vx, L.vz) * 1.1), 0);
       });
       if (Math.hypot(L.x - p.sx, L.z - p.sz) < 8 || p.phaseT > 22) { p.target = pickPackTarget(p); if (p.target) { setPhase(p, 'stalk'); Sound.growl(panOf(L.x, L.z), 0.08); } }
       break;
@@ -3576,6 +3682,7 @@ function updatePack(p, dt, fc) {
 }
 function updateCoyotes(dt) {
   const fc = flockCenter();
+  updateDens();
   for (const p of G.packs) updatePack(p, dt, fc);
   G.packs = G.packs.filter(p => !p.done);
   for (const c of G.coyotes) {
@@ -3583,6 +3690,12 @@ function updateCoyotes(dt) {
     if (c.air) { updateAirborneCoyote(c, dt); continue; }   // knocked flying / flung / swimming out (dog-moves section owns this)
     c.stateT += dt; c.tumble = Math.max(0, c.tumble - dt); c.growlT -= dt;
     const { dog: nd, d: ndd } = nearestDog(c.x, c.z);
+    if (c.state === 'sleep') {   // curled up at the den: a dog nosing too close wakes it, and it slinks off and comes back later
+      c.vx = c.vz = 0; c.crouch = 0;
+      if (c.tumble > 0) { c.state = 'flee'; c.stateT = 0; c.fleeDur = rnd(1.5, 2.5); c.fx = c.x - Math.sin(c.yaw); c.fz = c.z - Math.cos(c.yaw); continue; }
+      if (nd && ndd < T.denWake) { if (c.growlT <= 0) { c.growlT = 2; Sound.growl(panOf(c.x, c.z), 0.12); } c.state = 'flee'; c.stateT = 0; c.fleeDur = rnd(1.4, 2.2); c.fx = nd.x; c.fz = nd.z; }
+      continue;
+    }
     if (nd && c.state !== 'flee' && c.state !== 'leave') {
       const fearR = nd.mode === 'sprint' ? 8 : nd.mode === 'creep' ? 4 : 6;
       if (ndd < 1.4) scareCoyote(c, 0.5, nd, true);
@@ -3603,7 +3716,7 @@ function updateCoyotes(dt) {
       case 'drag': {
         const s = c.prey; if (!s) { c.state = 'pack'; break; }
         // away from the flock and the dogs, toward where the pack came from
-        let ax = c.x - fc.x + (c.pack ? (c.pack.homeX - c.x) * 0.3 : 0), az = c.z - fc.z + (c.pack ? (c.pack.homeZ - c.z) * 0.3 : 0);
+        let ax = c.x - fc.x + (c.pack ? (c.pack.homeX - c.x) * 0.3 : 0), az = c.z - fc.z + (c.pack ? (c.pack.homeZ - c.z) * 0.3 : 0);   // toward its den
         if (nd) { ax += (c.x - nd.x) * 2; az += (c.z - nd.z) * 2; }
         const al = Math.hypot(ax, az) || 1; dX = ax / al; dZ = az / al; spd = T.coyoteDrag;
         if ((c.stateT > T.coyoteDragTime && ndd > 14) || c.stateT > T.coyoteDragTime * 1.8) {
@@ -3615,10 +3728,15 @@ function updateCoyotes(dt) {
       }
       case 'flee': {
         const dx = c.x - c.fx, dz = c.z - c.fz, d = Math.hypot(dx, dz) || 1; dX = dx / d; dZ = dz / d; spd = T.coyoteFlee;
-        if (c.stateT > c.fleeDur) { c.state = c.courage > 0 ? 'pack' : 'leave'; c.stateT = 0; }
+        if (c.stateT > c.fleeDur) { const hunting = c.pack && !['den', 'retreat'].includes(c.pack.phase) && !c.alone; c.state = c.courage > 0 && hunting ? 'pack' : 'leave'; c.stateT = 0; }
         break;
       }
       case 'leave': {
+        if (c.den) {   // home to the den, then sleep
+          const sl = c.den.slots[c.slot % c.den.slots.length], d = Math.hypot(sl.x - c.x, sl.z - c.z);
+          if (d < 1.1) { c.state = 'sleep'; c.stateT = 0; c.x = sl.x; c.z = sl.z; c.yaw = sl.yaw; c.vx = c.vz = 0; c.alone = false; break; }
+          const n = navSteer(c, sl.x, sl.z); dX = n.x; dZ = n.z; spd = d < 3 ? 2.5 : d > 30 ? T.denTravel : 5; break;
+        }
         const hx = c.pack ? c.pack.homeX : c.x * 2 - fc.x, hz = c.pack ? c.pack.homeZ : c.z * 2 - fc.z;
         const dx = c.x - fc.x, dz = c.z - fc.z, d = Math.hypot(dx, dz) || 1;
         const n = c.stateT < 4 ? (dX = dx / d, dZ = dz / d, null) : navSteer(c, hx, hz); if (n) { dX = n.x; dZ = n.z; }
@@ -3700,17 +3818,17 @@ function stepClock(dt) {
   if (crossed(prev, now, T.nightStart)) {
     const fc = flockCenter();
     const n = Math.min(T.coyoteMax, T.coyoteBase + (G.clock.day - 1) * T.coyotePerDay + Math.floor(fc.n / 18));
-    spawnCoyotes(n); Sound.howl(-0.6, 0.18); setTimeout(() => Sound.howl(0.5, 0.14), 900);
+    wakeDens(Math.min(T.denMax, n)); Sound.howl(-0.6, 0.18); setTimeout(() => Sound.howl(0.5, 0.14), 900);
     const allIn = living().every(s => s.pen && s.pen.gateT < 0.05);
     toast(allIn ? 'Coyotes are out — but your flock is safe.' : 'Coyotes are on the prowl!', allIn ? 'good' : 'bad');
     if (!allIn) hint('night');
   }
   if (crossed(prev, now, 23)) for (const s of G.sheep) s.breedOK = !!(s.pen && s.pen.gateT < 0.1 && s.hunger < T.breedHunger && !s.lamb);
-  if (crossed(prev, now, 0.5)) spawnCoyotes(Math.ceil((T.coyoteBase + (G.clock.day - 2) * T.coyotePerDay) / 2));
+  if (crossed(prev, now, 0.5)) wakeDens(Math.min(T.denMax, Math.max(T.denStart, Math.ceil((T.coyoteBase + (G.clock.day - 2) * T.coyotePerDay) / 2) + 1)), 2);
   if (crossed(prev, now, T.nightEnd)) {
     for (const c of G.coyotes) if (c.prey) dropPrey(c, true);
     for (const p of G.packs) setPhase(p, 'retreat');
-    for (const c of G.coyotes) if (c.state !== 'leave') { c.state = 'leave'; c.stateT = 0; }
+    for (const c of G.coyotes) if (c.state !== 'leave' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; }
   }
   hankClock(prev, now);   // HANK: morning, dusk and nightfall lines
   return dtH;
@@ -3888,6 +4006,14 @@ function syncDog(d) {
 function syncCoyote(c) {
   const M = c.models, sp = Math.hypot(c.vx, c.vz);
   M.root.position.set(c.x, c.y, c.z); M.root.rotation.y = c.yaw;
+  if (c.state === 'sleep') {   // curled up nose to tail, breathing
+    const br = 1 + Math.sin(G.time * 1.6 + c.x) * 0.03;
+    M.root.rotation.z = 0; M.body.position.y = lerp(M.body.position.y, -0.38, 0.2); M.body.scale.set(1, br, 1);
+    M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -1.35 : 1.35; });
+    M.head.rotation.x = 0.55; M.head.rotation.y = 0.5; M.tail.rotation.x = 1.4; M.tail.rotation.y = -1.1;
+    return;
+  }
+  M.body.scale.set(1, 1, 1); M.head.rotation.y = 0; M.tail.rotation.y = 0;
   M.root.rotation.z = c.tumble > 0 ? Math.sin(c.tumble * 12) * 0.6 : 0;
   const stalk = c.crouch || 0;
   M.body.position.y = lerp(M.body.position.y, -0.14 * stalk + Math.abs(Math.sin(c.leg * 2)) * 0.05 * Math.min(1, sp / 6), 0.2);
@@ -4004,9 +4130,15 @@ function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x 
 // red arrows at the screen edge for coyotes you can't see; they pulse when one's carrying a sheep off
 function drawCoyoteArrows() {
   if (G.mode !== 'play') return;
+  for (const c of G.coyotes) {
+    if (c.state !== 'sleep' || c.slot % 2) continue;
+    const [px, py, pz] = proj(c.x, c.y + 0.9, c.z); if (px < 0 || px > W || py < 0 || py > H || pz > 1) continue;
+    const t = (G.time * 0.5 + c.slot * 0.37) % 1; ctx.globalAlpha = 1 - t; ctx.font = `600 ${13 + t * 7}px Fredoka, sans-serif`; ctx.fillStyle = '#ffe9b0';
+    ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 3; ctx.strokeText('z', px + 10 + t * 8, py - 8 - t * 20); ctx.fillText('z', px + 10 + t * 8, py - 8 - t * 20); ctx.globalAlpha = 1;
+  }
   const pad = 40, cx = W / 2, cy = H / 2;
   for (const c of G.coyotes) {
-    if (c.state === 'leave' && !c.prey) continue;
+    if ((c.state === 'leave' && !c.prey) || c.state === 'sleep') continue;
     const [px, py, pz] = proj(c.x, c.y + 0.8, c.z);
     if (px > 0 && px < W && py > 0 && py < H && pz < 1) continue;
     const dx = px - cx, dy = py - cy, k = Math.min((W / 2 - pad) / Math.abs(dx || 1e-3), (H / 2 - pad) / Math.abs(dy || 1e-3));
@@ -5117,6 +5249,7 @@ function joinPlayer(dev) {
 }
 function startGame(dev) {
   G.mode = 'play';
+  if (!G.dens.length) initDens();   // every den's pack, asleep
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   joinPlayer(dev);
   G.visited.add(CAMPS[0].name); banner(CAMPS[0].name, `Day ${G.clock.day} — the journey begins`);
@@ -5140,7 +5273,7 @@ function finishGame(n) {
   onJourneyEnd(n);   // HANK + FLOCK SAVE: "That'll do", fondly remembered, the flock saved for next time
 }
 function resetGame() {
-  for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = [];
+  for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens();
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
   for (const p of pens) resetGate(p);
@@ -5226,7 +5359,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { G, T, pens, CAMPS, cam, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { G, T, pens, CAMPS, cam, DENS, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND,
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats };
