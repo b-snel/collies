@@ -71,6 +71,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **1–4 players:** pick 1, 2, 3 or 4 on the title screen and name each player's dog. Player 1 uses WASD, player 2 the arrow keys; controllers fill in from the last player backwards (4 players with 2 controllers: players 3 and 4 on controllers; 4 controllers: everyone). Two players split the screen down the middle; three or four get quadrants (with three, the spare quarter shows the whole field from above). Each dog has its own coat and colour, used for its name, its HUD card and its minimap dot.
 
+**Online co-op:** play with friends on their own computers or phones, up to 4 of you. On the title screen, pick **Play online** and **Host a game**: you get a five-letter room code and an invite link (`collies.bsnel.com/?join=CODE`). Friends open the link, or pick Play online and type the code, name their dog and press Join. Start a journey whenever you're ready, and more friends can join at any time, even halfway to Oregon: their dog trots in beside yours. You can also open a room mid-journey from the pause menu (**Invite friends online**). The game runs on the host's computer, and each friend sees their own dog's view, with its own camera, streamed to them live as video with the game's sound; the HUD and menus come across separately so they stay sharp. Friends play with their keyboard (WASD or arrows, the same keys as player 1), a controller or the touch controls, and can press the main button on the host's menus (Resume, Try again, Keep herding). Either player pausing pauses the game. If a friend's connection drops, their dog lies down and waits, and they can press Rejoin to pick it up again. The journey, the wool and the upgrades are the host's. The host's computer does the work for everyone, so a good connection and a reasonably quick machine help, and the host's tab needs to stay in front (the game pauses when it's in the background). Browsers connect directly using [PeerJS](https://peerjs.com); its free public server only introduces them, and relays the video when there's no direct route.
+
 **Co-op extras:** run over to a stunned partner to help them up; both dogs grabbing the same animal pins it (it can't wriggle free, and shakes do double damage, even on the wolf); fling something to a partner who's holding grab and they catch it (+10); dogs on opposite sides of the flock flank it, keeping it calm and tight; arrows point to your partner when they're off your half of the screen; the results screen shows each player's pens, coyotes, rescues, catches and help-ups, with a star for the MVP.
 
 **Around the farm:** a duck pond (dogs can swim, sheep go around it) with a mother duck and ducklings you can herd into the pen for a bonus; Rascal, the neighbour's terrier, who sneaks in from leg 2 to chase the flock until you bark or pounce him home; crows that scatter when you run through them; and Hank's cat asleep on a hay bale.
@@ -85,6 +87,7 @@ It's a static site with no build step:
 
 - `index.html`: the whole game (three.js r128, plain JavaScript, recorded audio plus a few sounds synthesized with Web Audio)
 - `vendor/three.min.js`: a local copy of three.js so the game works offline
+- `vendor/peerjs.min.js`: PeerJS 1.5.5 (MIT), for online co-op; it's only loaded when someone hosts or joins a game. To test online play against your own PeerJS server, add `?peerserver=localhost:9000` to the URL on both browsers
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
 - `vercel.json`: caching headers
 - `audio/`: recorded dog barks and Hank's voice clips (see [CREDITS.md](CREDITS.md) for sources and licenses)
@@ -101,4 +104,4 @@ This repo is meant to be deployed on Vercel as a static project with framework p
 
 Custom domain: `collies.bsnel.com` is added to the Vercel project, and DNS has a `CNAME` record from `collies` to `cname.vercel-dns.com`.
 
-When `index.html`, `vendor/three.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.
+When `index.html`, `vendor/three.min.js`, `vendor/peerjs.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.

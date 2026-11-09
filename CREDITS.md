@@ -14,3 +14,7 @@ The music is synthesized in the browser.
 Hank's whistles are his own: come bye, away to me, walk up, lie down and that'll do, recorded by Hank with Sage barking along. The barks were taken out by following the whistle's pitch and keeping only that, so the notes and timing are exactly as he whistled them. "That'll do. That'll do." at the end of a day is Hank too.
 
 The rest of Hank's lines are a synthetic copy of Hank's voice, cloned from that recording of him saying "That'll do" with [Chatterbox](https://github.com/resemble-ai/chatterbox) by Resemble AI (MIT license). They're not recordings of him saying those lines, and with only a couple of seconds of him to go on they're an approximation. If a clip hasn't loaded, the line just shows in his speech bubble.
+
+## Code
+- [three.js](https://threejs.org) r128 (MIT) draws the game.
+- [PeerJS](https://peerjs.com) 1.5.5 (MIT) connects browsers for online co-op, using the free PeerJS server to introduce them.
