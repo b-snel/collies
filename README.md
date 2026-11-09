@@ -61,6 +61,8 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Dev menu:** on the title screen, enter the Konami code: up, up, down, down, left, right, left, right, B, A (D-pad and B/A on a controller, or arrow keys then B, A on a keyboard). Jump to any leg (the flock starts in the lane in, bigger the further along you start), and turn on dev tools in the pause menu (pen them all, skip to night or morning, every ewe due, weaken the flock, coyotes, a surprise, a mad sheep, endless stamina).
 
+**Which build:** the bottom of the title screen and of the pause menu says which build you're playing: the commit, the pull request it came from and when it was built, for example "Build 1aa6d71 · PR #7 · Nov 9, 5:50 PM". On the title screen it links to the commit on GitHub. Run straight from the repo, it says "Dev build".
+
 **Losing the flock:** the journey only ends if every last sheep is lost. Then you can try that leg again with the flock you set out on it with (or, on Hardcore, start the journey over).
 
 **Strays:** a sheep cut off from the flock by a hedge or the corn maze finds its own way round to the others, trotting and bleating as it goes.
@@ -85,13 +87,14 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 ## How it's built
 
-It's a static site with no build step:
+It's a static site. The only build step stamps it with the commit it was built from:
 
 - `index.html`: the whole game (three.js r128, plain JavaScript, recorded audio plus a few sounds synthesized with Web Audio)
 - `vendor/three.min.js`: a local copy of three.js so the game works offline
 - `vendor/peerjs.min.js`: PeerJS 1.5.5 (MIT), for online co-op; it's only loaded when someone hosts or joins a game. To test online play against your own PeerJS server, add `?peerserver=localhost:9000` to the URL on both browsers
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline
-- `vercel.json`: caching headers
+- `build.js`: the build step. It copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html` (Vercel provides them; locally it asks git)
+- `vercel.json`: the build command and output directory, and caching headers
 - `audio/`: recorded dog barks and Hank's voice clips (see [CREDITS.md](CREDITS.md) for sources and licenses)
 
 To run it locally:
@@ -102,7 +105,7 @@ npx serve .
 
 ## Deploying
 
-This repo is meant to be deployed on Vercel as a static project with framework preset **Other** and no build command. Every push to `main` deploys automatically.
+This repo is meant to be deployed on Vercel as a static project with framework preset **Other**. `vercel.json` sets the build command (`node build.js`) and the output directory (`dist`), so there's nothing to set in the Vercel dashboard. Every push to `main` deploys automatically. Vercel's system environment variables must be exposed to the build (they are by default), or the build stamp falls back to git and then to "Dev build".
 
 Custom domain: `collies.bsnel.com` is added to the Vercel project, and DNS has a `CNAME` record from `collies` to `cname.vercel-dns.com`.
 
