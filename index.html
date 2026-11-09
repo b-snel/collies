@@ -7646,14 +7646,22 @@ const goalRing=new THREE.Mesh(new THREE.PlaneGeometry(5.6,5.6),new THREE.MeshBas
   return new THREE.CanvasTexture(c);
 })(),transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide}));
 goalRing.rotation.x=-Math.PI/2; goalRing.visible=false; scene.add(goalRing);
+const beamU={uTime:{value:0}};
 const goalBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,40,20,1,true),goldGlow); goalBeam.visible=false; scene.add(goalBeam);
-(function(){
-  const u={uTime:{value:0}}, core=new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,40,16,1,true),new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
-    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader:'uniform float uTime; varying vec2 vUv; void main(){ float h=1.0-vUv.y, fade=h*h*h; float st=smoothstep(.55,1.0,sin(vUv.x*37.7)*.5+.5)*smoothstep(.2,.9,fract(vUv.y*9.0-uTime*.9+sin(vUv.x*12.57)*.3)); gl_FragColor=vec4(vec3(1.0,.86,.45)*(fade*.18+st*fade*.55),1.0); }'}));
-  core.onBeforeRender=()=>{ u.uTime.value=performance.now()*.001; };
-  goalBeam.add(core);
-})();
+goalBeam.add(new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,40,16,1,true),new THREE.ShaderMaterial({uniforms:beamU,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+  vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader:'uniform float uTime; varying vec2 vUv; void main(){ float h=1.0-vUv.y, fade=h*h*h; float st=smoothstep(.55,1.0,sin(vUv.x*37.7)*.5+.5)*smoothstep(.2,.9,fract(vUv.y*9.0-uTime*.9+sin(vUv.x*12.57)*.3)); gl_FragColor=vec4(vec3(1.0,.86,.45)*(fade*.18+st*fade*.55),1.0); }'})));
+// while the flock's hungry, every clover patch with grass left gets a beam of its own (a patch grazed bare loses it);
+// a pool of copies of the goal beam, sharing its materials
+const cloverBeams=[];
+function syncCloverBeams(on){
+  let n=0;
+  if(on) for(const c of clovers){ if(!cloverOK(c)) continue;
+    if(!cloverBeams[n]){ cloverBeams[n]=goalBeam.clone(); scene.add(cloverBeams[n]); }
+    const b=cloverBeams[n];
+    b.visible=true; b.position.set(c.x,groundH(c.x,c.z)+20,c.z); n++; }
+  for(let i=n;i<cloverBeams.length;i++) cloverBeams[i].visible=false;
+}
 const penBlock={ax:-PEN.gx,az:PEN.z1,bx:PEN.gx,bz:PEN.z1,kind:'perim'};
 const padlock=(function(){
   // a chunky round storybook padlock: gold drum with a rolled rim, steel shackle, keyhole and a painted shine
@@ -7822,7 +7830,7 @@ function objective(){
   if(PZ.type==='scale' && PZ.chal) return {x:PZ.scale.x,z:PZ.scale.z,ring:false};
   // anyone still hungry: the nearest good clover to them
   if(!JR.done){ let n=0, cx=0, cz=0; for(const s of G.sheep) if(needsFeed(s) && !s.penned && !s.carried && !s.inBreed && !s.sky){ n++; cx+=s.x; cz+=s.z; }
-    if(n){ const cl=nearestClover(cx/n,cz/n); if(cl) return {x:cl.x,z:cl.z,ring:false}; } }
+    if(n){ const cl=nearestClover(cx/n,cz/n); if(cl) return {x:cl.x,z:cl.z,ring:false,clover:true}; } }
   if(PZ.type==='seesaw' && CT.see[0] && G.sheep.some(s=>!s.dead&&!s.penned&&!s.bonus&&!s.sky&&!onPlateau(s.x,s.z))) return {x:CT.see[0].x,z:CT.see[0].z,ring:false};
   if(JR.out) return dogs.every(D=>D.z<PEN.z0-3) ? null : {x:XL,z:PEN.z0-5,ring:false};     // out the back gate (and up the lane, the way on is plain)
   if(JR.done) return null;
@@ -7864,8 +7872,9 @@ function updatePuzzle(dt){
 }
 function syncPuzzle(time){
   const ob=objective(), show=!!ob && (G.phase==='day'||G.phase==='night');
-  goalBeam.visible=show; goalRing.visible=show && ob.ring;
-  if(show){ const gy=groundH(ob.x,ob.z); goalBeam.position.set(ob.x,gy+20,ob.z); goalBeam.material.opacity=.12+.06*Math.sin(time*3);
+  goalBeam.visible=show && !ob.clover; goalRing.visible=show && ob.ring; syncCloverBeams(show && ob.clover);
+  beamU.uTime.value=performance.now()*.001; goldGlow.opacity=.12+.06*Math.sin(time*3);
+  if(show){ const gy=groundH(ob.x,ob.z); goalBeam.position.set(ob.x,gy+20,ob.z);
     goalRing.position.set(ob.x,gy+.1,ob.z); goalRing.scale.setScalar(1.6+.1*Math.sin(time*5)); goalRing.material.opacity=.55+.3*Math.sin(time*5); }
   if(padlock.visible){ padlock.rotation.y=Math.sin(time*2)*.4; padlock.position.y=2.6+Math.sin(time*3)*.12; }
   for(const g of PZ.gates){ const cur=PZ.gates[PZ.cur]===g && PZ.chal; g.num.scale.setScalar(cur?1.6+.25*Math.sin(time*6):g.done?1.1:1.3); g.num.material.opacity=g.done?.45:1; }
