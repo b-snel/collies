@@ -873,8 +873,8 @@ let SEASON=SEASONS.spring;
 const dayLen = d => Math.max(50, 80 - (d-1)*6) + lv('days')*8 + (seasonOf(d)==='summer'?10:seasonOf(d)==='winter'?-10:0);
 const flockSize = d => Math.min(24, 11 + (d-1)*2);
 // the game starts simple and adds one new thing a day, then gets crazier
-const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,rabid:5,scale:10,worlds:11,hazards:11,wild:11};
-const NEW_ON={2:'Trial gates',3:'Surprises',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
+const UNLOCK={gates:2,ram:2,power:2,surprise:3,raid:3,bones:3,maze:4,twist:5,munch:5,storm:5,cougar:6,boss:6,falcon:7,rascal:7,shroom:9,rabid:5,scale:10,worlds:11,hazards:11,wild:11,seesaw:3,bales:6};
+const NEW_ON={2:'Trial gates',3:'Surprises and the seesaw',4:'Corn maze',5:'Twisters and mad mushrooms',6:'The cougar and hay bales to roll',7:'Falcons',8:'Cliff edges',9:'The Mighty Columbia',10:'The weigh-in',11:"Hank's tall tales"};
 // The Long Drive: Hank has inherited a ranch on the Oregon coast and the flock is coming with him.
 // Each day is a stop on the trail west; after Oregon the game carries on with Hank's tall tales (every world, at random).
 const TRAIL=[
@@ -2676,6 +2676,7 @@ function setupDay(){
   spawnFlock(flockSize(G.day)+(G.twist==='tiny'?4:0));
   setupPuzzle();
   setupCougar();
+  placeContraptions();
   resetDog();
   if(G.day>=UNLOCK.power) spawnPower('bone'); G.powerT=12;
   resetShepherd();
@@ -3050,7 +3051,7 @@ function bark(D){
 // ---- grab, drag, shake and fling ----
 // how fast the dog can move while holding each thing, how hard it pulls back, and how quickly it tires the dog
 const GRAB={
-  sheep:{speed:.75,pull:2.5,grip:7}, lamb:{speed:.9,pull:1.5,grip:5}, ram:{speed:.5,pull:4.5,grip:12},
+  prop:{speed:.6,pull:0,grip:4}, sheep:{speed:.75,pull:2.5,grip:7}, lamb:{speed:.9,pull:1.5,grip:5}, ram:{speed:.5,pull:4.5,grip:12},
   coyote:{speed:.6,pull:5.5,grip:12}, rascal:{speed:.7,pull:4,grip:9}, wolf:{speed:.4,pull:11,grip:18}
 };
 function grabKind(T){ return T.isRascal?'rascal':T.boss?'wolf':T.hp!==undefined&&T.alpha!==undefined?'coyote':T.ram?'ram':T.lamb?'lamb':'sheep'; }
@@ -3058,10 +3059,10 @@ function tryGrab(D){
   const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*1.1, mz=D.z+fz*1.1;
   let best=null, bd=1.9;
   const consider=(T,extra)=>{ if(T.grabbedBy && (!G.coop || T.grabbedBy===D || T.grabbedBy2)) return; if(crossesWall(D.x,D.z,T.x,T.z,{gate:false,perim:true})) return; const d=Math.hypot(T.x-mx,T.z-mz)-(extra||0); if(d<bd){ bd=d; best=T; } };
-  for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried) consider(s);
+  for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried && !s.sky) consider(s);
   for(const c of G.coyotes) if(!c.gone && c.state!=='retreat') consider(c, c.boss?1:0);
   if(rascal.active && rascal.state==='run') consider(rascal);
-  if(!best) return;
+  if(!best){ ctTryGrab(D); return; }        // nothing alive to grab: a seesaw end or a hay bale
   const kind=grabKind(best);
   if(best.grabbedBy){
     // co-op: the partner already has hold of it. Both dogs together pin it down.
@@ -3083,6 +3084,7 @@ function tryGrab(D){
 }
 function releaseGrab(D,fling){
   const g=D.grab; D.grab=null; if(!g||!g.t) return;
+  if(g.kind==='prop'){ ctRelease(D,g,fling); return; }
   const T=g.t;
   if(g.second){ if(T.grabbedBy2===D) T.grabbedBy2=null; return; }
   if(T.grabbedBy2){ const D2=T.grabbedBy2; T.grabbedBy=D2; T.grabbedBy2=null; if(D2.grab){ D2.grab.second=false; D2.grab.wob=Math.random()*TAU; } return; }   // the partner takes over
@@ -3110,6 +3112,7 @@ function shakeGrab(D){
 }
 function updateGrab(D,dt){
   const g0=D.grab;
+  if(g0.kind==='prop'){ ctUpdateGrab(D,dt); return; }
   if(g0.second){
     const T=g0.t;
     if(!T || T.dead || T.gone || T.penned || T.grabbedBy2!==D || !T.grabbedBy){ releaseGrab(D,false); return; }
@@ -3170,6 +3173,7 @@ function whistle(D){
 function pounce(D){
   D=D||dog;
   if(G.phase!=='day' && G.phase!=='night') return;
+  if(D.grab && D.grab.kind==='prop') releaseGrab(D,false);     // let go of the seesaw or bale and pounce
   if(D.grab){ shakeGrab(D); return; }        // pounce while holding on = shake
   if(G.paused || D.pounceCD>0 || D.lying || D.stunT>0 || D.flying) return;
   const il=Math.hypot(D.inX,D.inZ);
@@ -3514,6 +3518,14 @@ function updateSheep(dt){
         if(s.deadT>2.5) s.m.g.position.y-=dt*.5;
         if(s.deadT>5) scene.remove(s.m.g);
       }
+      continue;
+    }
+    if(s.sky){ airSheep(s,dt); continue; }          // launched off a seesaw
+    if(s.dazeT>0 && !s.carried && !s.grabbedBy){
+      // a bad landing: sits in a heap seeing stars for a moment
+      s.dazeT-=dt; const k=Math.exp(-dt*5); s.vx*=k; s.vz*=k; s.x+=s.vx*dt; s.z+=s.vz*dt; s.attacked=Math.max(0,s.attacked-dt);
+      collide(s,s.lamb?.45:.7,{gate:s.penned,perim:onField(s.x,s.z)});
+      if(!s.penned && G.phase!=='title'){ const hz=hazardAt(s.x,s.z); if(hz){ hazardKill(s,hz); continue; } checkGoal(s); }
       continue;
     }
     if(s.dance){ s.vx*=.8; s.vz*=.8; s.x+=s.vx*dt; s.z+=s.vz*dt; continue; }   // disco!
@@ -3864,7 +3876,7 @@ function ramUpdate(s,dt){
 }
 function nearestSheep(c){
   let best=null, bd=1e9;
-  for(const s of G.sheep){ if(s.dead||s.penned||s.carried||s.ram||s.grabbedBy) continue; const d=Math.hypot(s.x-c.x,s.z-c.z); if(d<bd){ bd=d; best=s; } }
+  for(const s of G.sheep){ if(s.dead||s.penned||s.carried||s.ram||s.grabbedBy||s.sky) continue; const d=Math.hypot(s.x-c.x,s.z-c.z); if(d<bd){ bd=d; best=s; } }
   return best;
 }
 // the wolf: stalks like a coyote, but every few seconds crouches and lunges at the nearest dog
@@ -4025,7 +4037,7 @@ function updateCoyotes(dt){
       continue;
     }
     if(c.boss && wolfUpdate(c,dt)) continue;
-    if(c.state==='stalk' && (!c.target||c.target.dead||c.target.penned||c.target.carried||c.target.grabbedBy)){
+    if(c.state==='stalk' && (!c.target||c.target.dead||c.target.penned||c.target.carried||c.target.grabbedBy||c.target.sky)){
       c.target=nearestSheep(c); if(!c.target) c.state='retreat';
     }
     const ND=nearestDog(c.x,c.z), ddx=c.x-ND.x, ddz=c.z-ND.z, dd=Math.hypot(ddx,ddz)+1e-6;
@@ -5167,6 +5179,7 @@ function syncAll(dt,time){
     }
   }
   for(const l of leaves){ l.a=lerp(l.a,l.target,1-Math.exp(-dt*2.5)); l.apply(); }
+  syncContraptions(dt,time);
   for(let i=rings.length-1;i>=0;i--){
     const r=rings[i]; r.t+=dt; const k=r.t/.55;
     r.m.scale.setScalar(1+k*20); r.m.material.opacity=.75*(1-k);
@@ -5843,6 +5856,412 @@ function computeReach(){
 }
 function reachable(x,z){ if(!reachGrid) return true; const i=Math.floor((x+FIELD)/RC), j=Math.floor((z+FIELD)/RC); if(i<0||j<0||i>=RN||j>=RN) return false; return !!reachGrid[j*RN+i]; }
 
+// ---------------- contraptions: the seesaw and hay bales you can roll ----------------
+// The seesaw: a plank on a trestle. Sheep that walk onto it tip it their way; pounce (punt) onto the high end and
+// everything on the low end is flung in an arc out past it, over hedges, rivers and chasms, or right into the pen.
+// Grab either end to swing it round and aim; a ring on the ground shows where they'll come down.
+// Hay bales: round bales lying on their side. Walk into one to roll it, punt it to send it trundling, or grab it to drag it.
+// They block sheep and coyotes alike (a bale in a hedge gap turns the coyotes' path around it), and one rolled hard
+// into the high end of a seesaw sets it off. Everything here is placed by placeContraptions(), called once from setupDay.
+const CT={see:[],bales:[],told:{},navT:0};
+const SEE_L=2.9, SEE_H=.8, SEE_RANGE=20, SEE_VY=14, AIR_G=24, BALE_R=1;
+const CT_KW=new Float32Array(NK);
+const ctW=e=>e.isDog?1.5:e.ram?2.5:e.lamb?.5:1;            // how heavy each thing is on the plank
+const ctPlankY=(S,p)=>S.gy+SEE_H+.12-S.k*clamp(p,-SEE_L,SEE_L)/SEE_L*(SEE_H-.05);
+function ctRange(W){ return SEE_RANGE*clamp(1/(1+.03*(W-1)),.8,1); }
+// where something launched from (x,z) along (dx,dz) comes down (straight flight, no jitter): for the aiming ring
+function ctLanding(x,z,y,dx,dz,range){
+  const T=2*SEE_VY/AIR_G, vh=range/T; let vy=SEE_VY;
+  for(let i=0;i<120;i++){ const st=1/40; x+=dx*vh*st; z+=dz*vh*st; vy-=AIR_G*st; y+=vy*st; if(vy<0 && y<=Math.max(groundH(x,z),WALK_FLOOR)) break; }
+  return {x,z};
+}
+function sCreak(p){
+  if(!ok()) return; const t=AC.currentTime, o=AC.createOscillator(), f=AC.createBiquadFilter();
+  o.type='sawtooth'; o.frequency.setValueAtTime(95*(p||1),t); o.frequency.linearRampToValueAtTime(140*(p||1),t+.18); o.frequency.linearRampToValueAtTime(80*(p||1),t+.3);
+  f.type='bandpass'; f.frequency.value=900; f.Q.value=3; o.connect(f).connect(envG(t,.02,.09,.32)); o.start(t); o.stop(t+.34);
+}
+// ---- art ----
+let CT_ART=null;
+function ctArt(){
+  if(CT_ART) return CT_ART;
+  const wood=new THREE.Color(PAL.wood), woodD=new THREE.Color(PAL.woodDark), red=new THREE.Color(PAL.red), cream=new THREE.Color(PAL.cream), woodL=new THREE.Color(0xd09a5e);
+  // trestle: two A-frames on skids with a red axle across the top
+  const T=[];
+  for(const sx of [-.52,.52]){
+    for(const sz of [-1,1]) T.push({g:new THREE.BoxGeometry(.16,1.02,.18),m:partM(sx,.42,sz*.26,1,1,1,sz*.55,0,0),c:woodD});
+    T.push({g:new THREE.BoxGeometry(.2,.14,1.5),m:partM(sx,.07,0,1),c:woodD});
+    T.push({g:new THREE.BoxGeometry(.14,.12,.62),m:partM(sx,.36,0,1),c:wood});
+  }
+  T.push({g:new THREE.CylinderGeometry(.13,.13,1.32,12),m:partM(0,SEE_H,0,1,1,1,0,0,Math.PI/2),c:red});
+  for(const sx of [-.68,.68]) T.push({g:new THREE.CylinderGeometry(.19,.19,.08,12),m:partM(sx,SEE_H,0,1,1,1,0,0,Math.PI/2),c:red});
+  // plank: three boards with dark seams, a raised lip at each end, a cream target to stand on and a red handle
+  const P=[], len=SEE_L*2;
+  P.push({g:new THREE.BoxGeometry(.98,.2,len),m:partM(0,0,0,1),c:wood});
+  for(const x of [-.17,.17]) P.push({g:new THREE.BoxGeometry(.04,.03,len-.1),m:partM(x,.1,0,1),c:woodD});
+  for(const sd of [-1,1]){
+    P.push({g:new THREE.BoxGeometry(1.04,.2,.16),m:partM(0,.14,sd*(SEE_L-.08),1),c:woodD});
+    P.push({g:new THREE.CircleGeometry(.36,18),m:partM(0,.112,sd*(SEE_L-.75),1,1,1,-Math.PI/2,0,0),c:cream});
+    P.push({g:new THREE.CircleGeometry(.2,14),m:partM(0,.116,sd*(SEE_L-.75),1,1,1,-Math.PI/2,0,0),c:red});
+    P.push({g:new THREE.CylinderGeometry(.06,.06,.42,8),m:partM(0,.31,sd*(SEE_L-1.55),1),c:woodD});
+    P.push({g:new THREE.CylinderGeometry(.075,.075,.62,8),m:partM(0,.52,sd*(SEE_L-1.55),1,1,1,0,0,Math.PI/2),c:red});
+  }
+  P.push({g:new THREE.BoxGeometry(.5,.08,.5),m:partM(0,-.13,0,1),c:woodL});
+  const VC={vertexColors:true};
+  CT_ART={trestle:mergeGeos(T),plank:mergeGeos(P),m:mat(0xffffff,VC),
+    ring:new THREE.RingGeometry(.8,1.15,32).rotateX(-Math.PI/2), dot:new THREE.CircleGeometry(.22,12).rotateX(-Math.PI/2),
+    ringOK:new THREE.MeshBasicMaterial({color:0xfff2a8,transparent:true,opacity:.8,depthWrite:false}),
+    ringBad:new THREE.MeshBasicMaterial({color:0xff6b5a,transparent:true,opacity:.8,depthWrite:false}),
+    arrow:new THREE.ConeGeometry(.32,.6,4).rotateX(Math.PI), arrowM:mat(PAL.gold,{emissive:PAL.gold,emissiveIntensity:.45})};
+  return CT_ART;
+}
+function makeSeesaw(x,z,ang,k){
+  const A=ctArt(), g=new THREE.Group(), gy=groundH(x,z);
+  g.position.set(x,gy,z); g.rotation.y=ang;
+  const tr=new THREE.Mesh(A.trestle,A.m); tr.castShadow=true; tr.receiveShadow=true; g.add(tr);
+  const pl=new THREE.Group(); pl.position.y=SEE_H+.12; g.add(pl);
+  const pm=new THREE.Mesh(A.plank,A.m); pm.castShadow=true; pm.receiveShadow=true; pl.add(pm);
+  addOutline(g,.035);
+  addObj(g);
+  // the aiming ring (with a dotted trail) and the bouncing "pounce here" arrow live in the world, not on the seesaw
+  const ring=addObj(new THREE.Mesh(A.ring,A.ringOK)); ring.visible=false; ring.renderOrder=2;
+  const dots=[]; for(let i=0;i<7;i++){ const d=addObj(new THREE.Mesh(A.dot,A.ringOK)); d.visible=false; d.renderOrder=2; dots.push(d); }
+  const arrow=addObj(new THREE.Mesh(A.arrow,A.arrowM)); arrow.visible=false; addOutline(arrow,.03);
+  return {x,z,gy,ang,k,kT:k,snap:0,cd:0,on:[],g,pl,ring,dots,arrow,aimT:0,creakT:0,launches:0};
+}
+function makeBale(x,z){
+  const g=new THREE.Group(), roll=new THREE.Group(), m=new THREE.Mesh(baleGeo,baleMat);
+  m.rotation.z=Math.PI/2; m.scale.set(.88,.86,.88); m.castShadow=true; m.receiveShadow=true;
+  roll.add(m); roll.position.y=BALE_R*.97; g.add(roll); addOutline(g,.035);
+  g.rotation.y=Math.random()*TAU; addObj(g);
+  const c={x,z,r:BALE_R,level:true,bale:true};
+  circles.push(c);
+  return {c,x,z,vx:0,vz:0,r:BALE_R,g,roll,head:g.rotation.y,moved:0,gone:false,sinkT:0,thrower:null,hitT:0};
+}
+// ---- placement (one call from setupDay, after the level is built; its own seeded RNG so a day always lays out the same) ----
+function placeContraptions(){
+  for(const S of CT.see) for(const D of dogs) if(D.grab && D.grab.t===S) D.grab=null;
+  for(const b of CT.bales) for(const D of dogs) if(D.grab && D.grab.t===b) D.grab=null;
+  for(const D of ALLDOGS) if(D.sky){ D.sky=null; D.flying=false; D.fy=0; }
+  CT.see.length=0; CT.bales.length=0; for(let i=circles.length-1;i>=0;i--) if(circles[i].bale) circles.splice(i,1);
+  const d=G.day, L=LEVEL, R=mulberry32(((RUN_SEED^Math.imul(d+7919,2246822519))>>>0)||1), r=(a,b)=>a+R()*(b-a);
+  if(L.maze || L.special==='columbia' || L.special==='coast') return;
+  // clear of the day's trial gates, the scales and the flock
+  const busy=(x,z,pad)=>PZ.gates.some(g=>Math.hypot(g.x-x,g.z-z)<9+pad) || (PZ.scale && Math.hypot(PZ.scale.x-x,PZ.scale.z-z)<PZ.scale.r+3+pad) || G.sheep.some(s=>Math.hypot(s.x-x,s.z-z)<pad+1.2);
+  const penOpen=(x,z)=>x>PEN.x0+1.2 && x<PEN.x1-1.2 && z>PEN.z0+1.2 && z<PEN.z1-1.2;
+  // the seesaw: on its first day always, then on about half the levels
+  if(d>=UNLOCK.seesaw && (d===UNLOCK.seesaw || R()<.6)){
+    let best=null, bs=-1e9;
+    for(let t=0;t<260;t++){
+      const x=r(-40,40), z=r(PEN.z1+12,42);
+      if(Math.abs(x)<15 && z<PEN.z1+16) continue;           // not in the gate funnel where the dogs start
+      const pcx=r(PEN.x0+3,PEN.x1-3), pcz=r(PEN.z0+3,PEN.z1-3);
+      const ang=R()<.55 ? Math.atan2(pcx-x,pcz-z)+r(-.12,.12) : r(0,TAU), ux=Math.sin(ang), uz=Math.cos(ang);
+      const ax=x+ux*SEE_L, az=z+uz*SEE_L, bx=x-ux*SEE_L, bz=z-uz*SEE_L, gy=groundH(x,z);
+      if(!clearOf(x,z,2) || !clearOf(ax,az,.9) || !clearOf(bx,bz,.9) || busy(x,z,SEE_L)) continue;
+      if(Math.abs(groundH(ax,az)-gy)>.45 || Math.abs(groundH(bx,bz)-gy)>.45) continue;
+      if(crossesWall(ax,az,bx,bz,{gate:true,perim:true})) continue;
+      // how good a shot each way is: into the pen, over a hedge or the river or a chasm, or at least onto open ground
+      let sc=R()*2, bestDir=1, bestD=-1e9;
+      for(const sd of [1,-1]){
+        const ex=x+ux*sd*SEE_L, ez=z+uz*sd*SEE_L, lp=ctLanding(ex,ez,gy+.3,ux*sd,uz*sd,SEE_RANGE);
+        let v=(Math.hypot(ex,ez-PEN.z1)-Math.hypot(lp.x,lp.z-PEN.z1))/8;      // a shot that gains ground toward the gate
+        if(penOpen(lp.x,lp.z)) v+=r(1,5);
+        else if(!clearOf(lp.x,lp.z,.5) || hazardAt(lp.x,lp.z)) v-=6;
+        else { let over=crossesWall(ex,ez,lp.x,lp.z,{gate:false,perim:true}); for(let q=1;q<10 && !over;q++){ const f=q/10, px=lerp(ex,lp.x,f), pz=lerp(ez,lp.z,f); if(inRiver(px,pz)||hazardAt(px,pz)||pondD(px,pz)<0) over=true; } if(over) v+=r(1,5); }
+        if(v>bestD){ bestD=v; bestDir=sd; }
+      }
+      sc+=bestD;
+      if(sc>bs){ bs=sc; best={x,z,ang,k:bestDir}; }
+    }
+    if(best && bs>-2) CT.see.push(makeSeesaw(best.x,best.z,best.ang,best.k));
+  }
+  // hay bales: a few lying about, some of them handy for plugging a gap in a hedge
+  if(d>=UNLOCK.bales && (d===UNLOCK.bales || R()<.55)){
+    const n=d===UNLOCK.bales?3:2+((R()*3)|0), ends=[];
+    for(const w of L.walls){ ends.push([w.seg[0],w.seg[1]],[w.seg[2],w.seg[3]]); }
+    for(let k=0;k<n;k++){
+      let best=null, bs=-1e9;
+      for(let t=0;t<60;t++){
+        const x=r(-40,40), z=r(PEN.z1+12,42);
+        if(Math.abs(x)<12 && z<PEN.z1+14) continue;
+        if(!clearOf(x,z,2.2) || busy(x,z,1.5) || CT.bales.some(b=>Math.hypot(b.x-x,b.z-z)<6) || CT.see.some(S=>Math.hypot(S.x-x,S.z-z)<SEE_L+4)) continue;
+        let sc=R()*3; for(const [ex,ez] of ends){ const e=Math.hypot(ex-x,ez-z); if(e>3 && e<9){ sc+=3; break; } }
+        if(sc>bs){ bs=sc; best=[x,z]; }
+      }
+      if(best) CT.bales.push(makeBale(best[0],best[1]));
+    }
+    if(CT.bales.length) OBS.ver++;
+  }
+}
+// ---- flight ----
+function ctLaunchSheep(s,x,z,y,dx,dz,range,by){
+  const T=2*SEE_VY/AIR_G, vh=range/T;
+  s.sky={y,vy:SEE_VY*(.94+Math.random()*.1),t:0,by,bounces:0,doom:null};
+  s.vx=dx*vh; s.vz=dz*vh; s.thrownT=0; s.flip=0; s.dazeT=0; s.munch=0; s.munchImmune=6; s.fear=1; s.boltT=0; s.corner=0; s.charging=0;
+  s.stress=Math.min(1,(s.stress||0)+.2); if(s.ram){ s.rs='idle'; s.rt=0; }
+  sBleat(s.lamb?1.9:s.ram?.85:1.35+Math.random()*.2);
+}
+function ctLaunchDog(D,dx,dz,range){
+  if(D.grab) releaseGrab(D,false);
+  const T=2*SEE_VY/AIR_G, vh=range/T;
+  D.sky={y:groundH(D.x,D.z)+.5,vy:SEE_VY*.95,vx:dx*vh,vz:dz*vh,t:0}; D.flying=true; D.fy=0; D.lying=false; D.pounceT=0;
+  popText(D.x,2.6,D.z,'WHEEE!','gold'); sYip(1.3);
+}
+// a sheep in the air: it sails over everything, bonks the pen fence if the pen's shut, and lands (well or badly)
+function airSheep(s,dt){
+  const A=s.sky; A.t+=dt;
+  const px=s.x, pz=s.z;
+  s.x+=s.vx*dt; s.z+=s.vz*dt; A.vy-=AIR_G*dt; A.y+=A.vy*dt;
+  s.x=clamp(s.x,-FIELD-4,FIELD+4); s.z=clamp(s.z,-FIELD-4,FIELD+4);
+  // the pen and the yard behind it: only an open pen can be landed in, and nothing comes down in the barn yard
+  const penX=s.x>PEN.x0+.3 && s.x<PEN.x1-.3;
+  if(s.z<PEN.z1+.6 && pz>=PEN.z1+.6 && (PZ.locked || !penX)){ s.z=PEN.z1+.6; s.vz=Math.abs(s.vz)*.3; s.vx*=.5; if(A.y-groundH(s.x,s.z)<3){ sThud(); popText(s.x,2.2,s.z,'BONK!','red'); } }
+  if(penX && s.z<PEN.z0+.7 && pz>=PEN.z0+.7){ s.z=PEN.z0+.7; s.vz=Math.abs(s.vz)*.2; }
+  if(s.z<PEN.z1 && !penX && (px>PEN.x0+.3 && px<PEN.x1-.3)){ s.x=clamp(s.x,PEN.x0+.4,PEN.x1-.4); s.vx*=-.3; }
+  // out past the edge of the land: woods, cliffs and reefs knock it back; off a sky island or into lava it's gone
+  if(!A.doom && fieldD(s.x,s.z)<-.6){
+    const S=LEVEL.shape; if(S) kindWeights(S.K,s.x,s.z,CT_KW); else { CT_KW.fill(0); CT_KW[KF]=1; }
+    if(CT_KW[KD]>.5 || LEVEL.theme==='sky') A.doom='chasm'; else if(CT_KW[KL]>.5) A.doom='lava';
+    else { const n=fieldN(s.x,s.z), vn=s.vx*n.x+s.vz*n.z; if(vn<0){ s.vx-=vn*n.x*1.5; s.vz-=vn*n.z*1.5; s.vx*=.6; s.vz*=.6; } intoField(s,.4); }
+  }
+  // coming down on a coyote: BONK
+  if(A.vy<0 && A.y-groundH(s.x,s.z)<1.8) for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.hitCD>0||c.grabbedBy) continue; if(Math.hypot(c.x-s.x,c.z-s.z)<1.6){ hitCoyote(c,2,14,s,'BOMBS AWAY!'); s.vx*=.4; s.vz*=.4; } }
+  const gy=Math.max(groundH(s.x,s.z),WALK_FLOOR);
+  if(A.doom && A.y<gy-.5){ s.sky=null; hazardKill(s,A.doom); return; }
+  // landing on a hay bale is soft and springy: up it goes again
+  if(A.vy<0 && A.bounces<2) for(const b of CT.bales){ if(b.gone) continue; if(Math.hypot(b.x-s.x,b.z-s.z)<b.r+.35 && A.y<gy+b.r*2+.2 && A.y>gy+b.r){ A.vy=9.5; A.bounces++; s.vx*=.75; s.vz*=.75; sBoing(); popText(s.x,3.2,s.z,'BOING!','gold'); burst(s.x,2.2,s.z,10,[0xf2c850,0xfff0b0,0xdcaa40],3,4); return; } }
+  if(A.vy>=0 || A.y>gy || A.doom) return;
+  // down it comes
+  s.sky=null; s.punted=G.elapsed;
+  const sp=Math.hypot(s.vx,s.vz);
+  if(!PZ.locked && insidePen(s.x,s.z)){
+    s.vx*=.15; s.vz*=.15; burst(s.x,1,s.z,14,PC.dust,3,2); checkGoal(s);
+    if(G.elapsed-(CT.saidPen||-99)>20 && !s.golden && !s.ram){ CT.saidPen=G.elapsed; setTimeout(()=>popText(s.x,3.8,s.z,'SPECIAL DELIVERY!','gold'),150); }
+    return;
+  }
+  const hz=hazardAt(s.x,s.z); if(hz){ hazardKill(s,hz); return; }
+  if((!SEASON.frozen && pondD(s.x,s.z)<0) || (inRiver(s.x,s.z) && !lavaRiver())){
+    // a splash, then it scrambles out on the side it was heading for
+    sSplash(); burst(s.x,.4,s.z,30,[0xcfe9ff,0x8fc7ec,0xffffff],4,5,10); popText(s.x,2.2,s.z,'SPLOSH!','');
+    if(inRiver(s.x,s.z)){ const R=LEVEL.river, zc=riverZ(R,s.x), sd=Math.sign(s.vz)||1; let nz=zc+sd*(R.w/2+1.1); if(fieldD(s.x,nz)<1) nz=zc-sd*(R.w/2+1.1); s.z=nz; }
+    s.vx*=.2; s.vz*=.2; s.stress=Math.min(1,s.stress+.3); s.dazeT=.8; sBleat(1.1);
+    return;
+  }
+  // landed on another sheep: a boing, and both of them get a fright
+  if(A.bounces<1) for(const o of G.sheep){ if(o===s||o.dead||o.penned||o.carried||o.sky) continue; if(Math.hypot(o.x-s.x,o.z-s.z)<1.1){ o.flip=.6; o.fear=1; o.vx+=s.vx*.3; o.vz+=s.vz*.3; s.sky={y:gy+.2,vy:6.5,t:A.t,by:A.by,bounces:A.bounces+1,doom:null}; s.vx*=.5; s.vz*=.5; sBoing(); popText(s.x,2.6,s.z,'BOING!','gold'); return; } }
+  const hard=sp>13 && Math.random()<.3;
+  if(hard){
+    // a bad landing: in a heap, seeing stars for a moment
+    s.dazeT=1.6; s.vx*=.1; s.vz*=.1; s.stress=Math.min(1,s.stress+.25); sThud(); popText(s.x,2.4,s.z,'OOF!','red'); burst(s.x,.6,s.z,16,PC.dust,4,3);
+    G.shake=Math.max(G.shake,.15);
+    if(G.elapsed-(CT.saidOof||-99)>25){ CT.saidOof=G.elapsed; setTimeout(()=>shepSay("Easy! Ye'll scatter them!"),400); }
+  } else { s.vx*=.3; s.vz*=.3; s.hop=.45; s.dazeT=.35; burst(s.x,.5,s.z,10,PC.dust,3,2); sThud(); }
+  collide(s,s.lamb?.45:.7,{gate:false,perim:true});
+  keepOnField(s,1);
+}
+// ---- the per-step update ----
+function updateContraptions(dt){
+  if(!CT.see.length && !CT.bales.length && !dogs.some(D=>D.sky)) return;
+  const playing=G.phase==='day'||G.phase==='night';
+  // dogs in the air
+  for(const D of dogs){
+    const A=D.sky; if(!A) continue;
+    A.t+=dt; D.x+=A.vx*dt; D.z+=A.vz*dt; A.vy-=AIR_G*dt; A.y+=A.vy*dt;
+    D.x=clamp(D.x,-FIELD-2,FIELD+2); D.z=clamp(D.z,PEN.z0,FIELD+2);
+    const gy=Math.max(groundH(D.x,D.z),WALK_FLOOR); D.fy=Math.max(0,A.y-gy); D.yaw=Math.atan2(A.vx,A.vz);
+    if(fieldD(D.x,D.z)<-.5){ const n=fieldN(D.x,D.z), vn=A.vx*n.x+A.vz*n.z; if(vn<0){ A.vx-=vn*n.x*1.5; A.vz-=vn*n.z*1.5; } }
+    if(A.vy<0 && A.y<=gy){
+      D.sky=null; D.flying=false; D.fy=0; D.vx=A.vx*.25; D.vz=A.vz*.25; D.stunT=Math.max(D.stunT,.25);
+      // never let a dog land in lava or a chasm: back up along the way it came until it's on solid ground
+      const vl=Math.hypot(A.vx,A.vz)||1; for(let q=0;q<30 && hazardAt(D.x,D.z);q++){ D.x-=A.vx/vl; D.z-=A.vz/vl; }
+      keepOnField(D); collide(D,.55,{gate:false,perim:true,swim:true}); D.px=D.x; D.pz=D.z;
+      sThud(); burst(D.x,.5,D.z,12,PC.dust,3,2); popText(D.x,2.4,D.z,'TA-DA!','gold');
+    }
+  }
+  // ---- seesaws ----
+  for(const S of CT.see){
+    const ux=Math.sin(S.ang), uz=Math.cos(S.ang);
+    S.on.length=0; let tq=0;
+    const consider=(e,isDog)=>{ const dx=e.x-S.x, dz=e.z-S.z, p=dx*ux+dz*uz, q=-dx*uz+dz*ux; if(Math.abs(q)<(isDog?1.2:.9) && Math.abs(p)<SEE_L+.3){ S.on.push({e,p,dog:isDog}); if(!isDog) tq+=ctW(e)*p; } };
+    for(const s of G.sheep) if(!s.dead && !s.penned && !s.carried && !s.grabbedBy && !s.sky) consider(s,false);
+    for(const D of dogs) if(!D.sky && !D.flying) consider(D,true);
+    S.cd=Math.max(0,S.cd-dt); S.creakT=Math.max(0,S.creakT-dt);
+    // the heavier side goes down, slowly, with a creak
+    if(S.snap<=0 && Math.abs(tq)>.6 && Math.sign(tq)!==Math.sign(S.kT)){ S.kT=Math.sign(tq); if(S.creakT<=0){ S.creakT=.8; sCreak(1); } }
+    // the trigger: a dog pouncing onto the high end (or a bale rolled into it)
+    const upSd=-Math.sign(S.k||S.kT)||-1;
+    let trig=null;
+    if(playing && S.cd<=0 && Math.abs(S.k)>.5){
+      for(const o of S.on) if(o.dog && o.e.pounceT>0 && o.p*upSd>SEE_L*.3){ trig=o.e; break; }
+      if(!trig) for(const b of CT.bales){ if(b.gone) continue; const sp=Math.hypot(b.vx,b.vz), ex=S.x+ux*upSd*(SEE_L-.4), ez=S.z+uz*upSd*(SEE_L-.4); if(sp>5 && Math.hypot(b.x-ex,b.z-ez)<b.r+.6){ trig=b; b.vx*=-.2; b.vz*=-.2; break; } }
+    }
+    if(trig){
+      const dsd=-upSd, dx=ux*dsd, dz=uz*dsd, load=S.on.filter(o=>o.e!==trig && o.p*dsd>SEE_L*.12);
+      const W=load.reduce((a,o)=>a+ctW(o.e),0), range=ctRange(Math.max(1,W));
+      S.kT=-dsd; S.snap=.14; S.cd=.6;
+      if(trig.isDog){ trig.pounceT=0; trig.vx*=.1; trig.vz*=.1; trig.stunT=Math.max(trig.stunT,.12); }
+      sThud(); G.shake=Math.max(G.shake,load.length?.3:.12); rumble(.5,.4,140);
+      burst(S.x+dx*SEE_L,S.gy+.4,S.z+dz*SEE_L,14,PC.dust,4,3);
+      if(load.length){
+        sBoing(); S.launches++;
+        const by=trig.isDog?trig:trig.thrower||null;
+        load.forEach((o,i)=>{
+          const j=(Math.random()-.5)*.2+(load.length>1?(i/(load.length-1)-.5)*.16:0), cs=Math.cos(j), sn=Math.sin(j), lx=dx*cs-dz*sn, lz=dx*sn+dz*cs;
+          const rr=range*(o.e.ram?.75:o.e.lamb?1.1:1)*(.92+Math.random()*.16), y=ctPlankY(S,o.p)+.2;
+          if(o.dog) ctLaunchDog(o.e,lx,lz,rr); else ctLaunchSheep(o.e,o.e.x,o.e.z,y,lx,lz,rr,by);
+        });
+        const pts=load.filter(o=>!o.dog).length;
+        popText(S.x+dx*SEE_L,3,S.z+dz*SEE_L,pts>2?'LAUNCH x'+pts+'!':'LAUNCH!','gold');
+        burst(S.x+dx*SEE_L,S.gy+1.2,S.z+dz*SEE_L,22,PC.confetti,5,6);
+        if(!CT.told.launch){ CT.told.launch=1; setTimeout(()=>shepSay("That's it!"),900); }
+      } else popText(S.x-dx*SEE_L*.6,2.4,S.z-dz*SEE_L*.6,'THUNK','');
+    }
+    // the plank: snaps over fast on a launch, eases over when walked on
+    const rate=S.snap>0?16:1.8; S.snap=Math.max(0,S.snap-dt);
+    S.k+=clamp(S.kT-S.k,-rate*dt,rate*dt);
+    // hint: the first time a dog comes near one
+    if(playing && !CT.told.hint && dogs.some(D=>Math.hypot(D.x-S.x,D.z-S.z)<9)){ CT.told.hint=1; toast('Seesaw! Punt onto the high end to launch. Grab an end to aim it.','gold',4); }
+  }
+  // ---- hay bales ----
+  for(const b of CT.bales){
+    if(b.gone) continue;
+    if(b.sinkT>0){ b.sinkT+=dt; if(b.sinkT>1.6){ b.gone=true; b.g.visible=false; } continue; }
+    let held=null; for(const D of dogs) if(D.grab && D.grab.t===b) held=D;
+    // pushed by a dog walking into it, or punted
+    for(const D of dogs){
+      if(D.sky || D.flying || held===D) continue;
+      const dx=b.x-D.x, dz=b.z-D.z, d=Math.hypot(dx,dz)+1e-6, nx=dx/d, nz=dz/d;
+      if(D.pounceT>0 && d<b.r+1.1){
+        b.vx=D.pdx*15+nx*2; b.vz=D.pdz*15+nz*2; b.thrower=D; D.pounceT=0; D.vx*=.15; D.vz*=.15;
+        sThud(); popText(b.x,2.6,b.z,'THWUMP!','gold'); burst(b.x,1,b.z,12,[0xf2c850,0xfff0b0,0xdcaa40],3,3); G.shake=Math.max(G.shake,.12);
+        continue;
+      }
+      if(d<b.r+.55+.2){ const vn=D.vx*nx+D.vz*nz, bn=b.vx*nx+b.vz*nz; if(vn>.5 && bn<vn*.85){ const add=(vn*.85-bn)*Math.min(1,dt*8); b.vx+=nx*add; b.vz+=nz*add; b.thrower=D; } }
+    }
+    // the flock nudges it too (gently: it takes a few of them to shift it)
+    for(const s of G.sheep){
+      if(s.dead||s.penned||s.carried||s.sky) continue;
+      const dx=b.x-s.x, dz=b.z-s.z, d=Math.hypot(dx,dz)+1e-6; if(d>b.r+.95) continue;
+      const nx=dx/d, nz=dz/d, sp=Math.hypot(b.vx,b.vz);
+      if(sp>5.5){
+        // a fast bale bowls a sheep aside (it's only hay: a fright, no harm)
+        const bn=b.vx*nx+b.vz*nz; if(bn<-1 && !(s.boingCD>0)){ s.vx+=b.vx*.6-nx*4; s.vz+=b.vz*.6-nz*4; s.flip=.6; s.boingCD=.8; s.fear=1; b.vx*=.7; b.vz*=.7; sBoing(); sBleat(1.3); }
+      } else { const vn=s.vx*nx+s.vz*nz; if(vn>.4){ b.vx+=nx*vn*.35*dt*6; b.vz+=nz*vn*.35*dt*6; } }
+    }
+    // a rolling bale bowls over coyotes
+    const spd=Math.hypot(b.vx,b.vz); b.hitT=Math.max(0,b.hitT-dt);
+    if(spd>5) for(const c of G.coyotes){ if(c.gone||c.state==='retreat'||c.hitCD>0||c.grabbedBy) continue; if(Math.hypot(c.x-b.x,c.z-b.z)<b.r+.8){ hitCoyote(c,1,14,b,'BOWLED!'); b.vx*=.6; b.vz*=.6; } }
+    // dragged in a dog's jaws
+    if(held){
+      const fx=Math.sin(held.yaw), fz=Math.cos(held.yaw), tx=held.x+fx*(b.r+.75), tz=held.z+fz*(b.r+.75);
+      b.vx=clamp((tx-b.x)*10,-14,14); b.vz=clamp((tz-b.z)*10,-14,14);
+    } else {
+      // rolling: friction, and a little help (or hindrance) from the slope once it's moving
+      const k=Math.exp(-dt*1.25); b.vx*=k; b.vz*=k;
+      if(spd>.6){ const gx=(groundH(b.x+.5,b.z)-groundH(b.x-.5,b.z)), gz=(groundH(b.x,b.z+.5)-groundH(b.x,b.z-.5)); b.vx-=gx*6*dt; b.vz-=gz*6*dt; }
+      if(spd<.15){ b.vx=0; b.vz=0; }
+    }
+    const ox=b.x, oz=b.z, vb=Math.hypot(b.vx,b.vz);
+    b.x+=b.vx*dt; b.z+=b.vz*dt; b.c.x=b.x; b.c.z=b.z;   // (its own circle moves with it, so collide() skips it)
+    // bales knock into each other, and round the seesaw's trestle
+    for(const o of CT.bales){ if(o===b||o.gone) continue; const dx=b.x-o.x, dz=b.z-o.z, d=Math.hypot(dx,dz); if(d<b.r+o.r && d>1e-6){ const nx=dx/d, nz=dz/d, pen=(b.r+o.r-d)/2; b.x+=nx*pen; b.z+=nz*pen; o.x-=nx*pen; o.z-=nz*pen; o.c.x=o.x; o.c.z=o.z; const rel=(b.vx-o.vx)*nx+(b.vz-o.vz)*nz; if(rel<0){ b.vx-=rel*nx*.8; b.vz-=rel*nz*.8; o.vx+=rel*nx*.8; o.vz+=rel*nz*.8; if(-rel>3) sThud(); } } }
+    for(const S of CT.see){ const dx=b.x-S.x, dz=b.z-S.z, d=Math.hypot(dx,dz), m=b.r+.8; if(d<m && d>1e-6){ b.x=S.x+dx/d*m; b.z=S.z+dz/d*m; const vn=(b.vx*dx+b.vz*dz)/d; if(vn<0){ b.vx-=vn*dx/d*1.4; b.vz-=vn*dz/d*1.4; } } }
+    // walls, trees, the pond, the river banks, the edge (it can't go in the pen: the gate stops it too)
+    collide(b,b.r,{gate:true,perim:true,walls:true,edge:true});
+    keepOnField(b,b.r+.2);
+    // keep the mouth of the pen clear so a bale can never shut the flock out
+    if(b.z<PEN.z1+b.r+3 && Math.abs(b.x)<PEN.x1+2){ b.z=PEN.z1+b.r+3; if(b.vz<0) b.vz=-b.vz*.3; }
+    const mv=Math.hypot(b.x-ox,b.z-oz);
+    if(vb>4 && mv<vb*dt*.5){ sThud(); }
+    b.moved+=mv; b.c.x=b.x; b.c.z=b.z;
+    // into the lava, or off into a chasm
+    const hz=hazardAt(b.x,b.z);
+    if(hz){ b.sinkT=.01; b.vx=b.vz=0; const i=circles.indexOf(b.c); if(i>=0) circles.splice(i,1); OBS.ver++;
+      if(hz==='lava'){ sSizzle(); burst(b.x,groundH(b.x,b.z)+1,b.z,30,[0xff7a2a,0xffb14a,0x6a625c],3,5,3); popText(b.x,2.4,b.z,'TOASTED!','red'); }
+      else { popText(b.x,2.4,b.z,'BYE BYE!',''); }
+      for(const D of dogs) if(D.grab && D.grab.t===b) releaseGrab(D,false);
+    }
+  }
+  // once a bale has rolled somewhere new and come to rest, the sheep's steering and the coyotes' paths learn where it is
+  CT.navT-=dt;
+  if(CT.navT<=0 && CT.bales.some(b=>b.moved>.6 && Math.hypot(b.vx,b.vz)<.2)){ CT.navT=.5; for(const b of CT.bales) b.moved=0; OBS.ver++; }
+}
+// the dog grabs a seesaw end (to swing it round) or a bale (to drag it): tryGrab's fallback when there's no animal to grab
+function ctTryGrab(D){
+  const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*1.1, mz=D.z+fz*1.1;
+  let best=null, bd=1.9, bp=0;
+  for(const b of CT.bales){ if(b.gone||b.sinkT>0) continue; const d=Math.hypot(b.x-mx,b.z-mz)-b.r+.6; if(d<bd){ bd=d; best=b; } }
+  for(const S of CT.see){ const ux=Math.sin(S.ang), uz=Math.cos(S.ang), dx=mx-S.x, dz=mz-S.z, p=dx*ux+dz*uz, q=-dx*uz+dz*ux;
+    if(Math.abs(p)>1.2 && Math.abs(p)<SEE_L+1 && Math.abs(q)<1.3){ const d=Math.abs(q)*.5; if(d<bd){ bd=d; best=S; bp=Math.sign(p); } } }
+  if(!best) return false;
+  D.grab={t:best,kind:'prop',hold:0,shakeCD:0,lastShake:9,wob:0,end:bp};
+  sGrowl(); rumble(.2,.3,90);
+  if(best.ang!==undefined && !CT.told.aim){ CT.told.aim=1; popText(best.x,2.8,best.z,'Swing it round to aim!','gold'); }
+  return true;
+}
+function ctUpdateGrab(D,dt){
+  const g=D.grab, T=g.t; g.hold+=dt;
+  if(T.ang!==undefined){
+    // swing the seesaw round: the end you're holding follows your mouth
+    const fx=Math.sin(D.yaw), fz=Math.cos(D.yaw), mx=D.x+fx*.9, mz=D.z+fz*.9, dl=Math.hypot(mx-T.x,mz-T.z);
+    if(dl>SEE_L+3){ releaseGrab(D,false); return; }
+    if(dl>.8){ let want=Math.atan2(mx-T.x,mz-T.z); if(g.end<0) want+=Math.PI; let da=((want-T.ang+Math.PI)%TAU+TAU)%TAU-Math.PI; da=clamp(da,-2.2*dt,2.2*dt);
+      if(Math.abs(da)>1e-3){ T.ang+=da; T.aimT=.6; if(T.creakT<=0){ T.creakT=.45; sCreak(1.25); } } }
+    // keep the dog near the end it's holding
+    const ux=Math.sin(T.ang)*g.end, uz=Math.cos(T.ang)*g.end, ex=T.x+ux*(SEE_L-.3), ez=T.z+uz*(SEE_L-.3), ddx=D.x-ex, ddz=D.z-ez, dd=Math.hypot(ddx,ddz);
+    if(dd>1.8){ D.x=ex+ddx/dd*1.8; D.z=ez+ddz/dd*1.8; }
+  } else {
+    const dd=Math.hypot(T.x-D.x,T.z-D.z); if(dd>T.r+2.6){ releaseGrab(D,false); return; }
+    D.stamina=Math.max(0,D.stamina-4*dt); if(D.stamina<=0) releaseGrab(D,false);
+  }
+}
+function ctRelease(D,g,fling){
+  const T=g.t; if(T.ang!==undefined) return;
+  const sp=Math.hypot(D.vx,D.vz), fx=Math.sin(D.yaw), fz=Math.cos(D.yaw);
+  if(fling && sp>2){ T.vx=D.vx*1.25+fx*4; T.vz=D.vz*1.25+fz*4; T.thrower=D; sWhoosh(); }
+  else { T.vx*=.3; T.vz*=.3; }
+}
+// ---- drawing ----
+function syncContraptions(dt,time){
+  for(const s of G.sheep){
+    if(s.dead) continue;
+    if(s.sky){ const g=s.m.g; g.position.y=s.sky.y; g.rotation.x=-s.sky.t*6.5; g.rotation.z=Math.sin(s.sky.t*9)*.3; const f=Math.sin(time*28)*1.1; s.m.legs.forEach((l,i)=>l.rotation.x=i%2?f:-f); if(Math.random()<dt*20) burst(s.x,s.sky.y+.8,s.z,1,[0xffffff,0xf6f1e3],.4,.5,1); }
+    else if(s.dazeT>0){ s.dz=1; s.m.head.rotation.z=Math.sin(time*12)*.35; if(Math.random()<dt*8) burst(s.x,groundH(s.x,s.z)+1.9,s.z,1,PC.gold,.8,.3,0); }
+    else if(s.dz){ s.dz=0; if(!(s.madT>0)) s.m.head.rotation.z=0; }
+  }
+  for(const S of CT.see){
+    S.g.rotation.y=S.ang; S.pl.rotation.x=Math.asin(clamp(S.k*(SEE_H-.05)/SEE_L,-1,1));
+    // riders go up and down with the plank
+    for(const o of S.on){ const e=o.e; if(e.sky) continue; const lift=ctPlankY(S,o.p)-.12-Math.max(groundH(e.x,e.z),WALK_FLOOR); if(lift>0) e.m.g.position.y+=lift; }
+    // the aiming ring: while someone's swinging it round, or when sheep are loaded and a dog is close
+    const dsd=Math.sign(S.k)||1, ux=Math.sin(S.ang)*dsd, uz=Math.cos(S.ang)*dsd;
+    const load=S.on.filter(o=>!o.dog && o.p*dsd>SEE_L*.12), near=dogs.some(D=>!D.sky && Math.hypot(D.x-S.x,D.z-S.z)<16);
+    S.aimT=Math.max(0,S.aimT-dt);
+    const show=G.phase!=='title' && (S.aimT>0 || (load.length && near)) && Math.abs(S.k)>.5;
+    S.ring.visible=show; S.arrow.visible=G.phase!=='title' && load.length>0 && near && S.cd<=0 && Math.abs(S.k)>.5;
+    if(show){
+      const W=load.reduce((a,o)=>a+ctW(o.e),0), ex=S.x+ux*(SEE_L-.6), ez=S.z+uz*(SEE_L-.6), lp=ctLanding(ex,ez,S.gy+.3,ux,uz,ctRange(Math.max(1,W)));
+      const bad=!!hazardAt(lp.x,lp.z) || (PZ.locked && lp.x>PEN.x0 && lp.x<PEN.x1 && lp.z<PEN.z1) || fieldD(lp.x,lp.z)<-.5;
+      S.ring.material=bad?CT_ART.ringBad:CT_ART.ringOK; S.ring.position.set(lp.x,Math.max(groundH(lp.x,lp.z),WALK_FLOOR)+.12,lp.z); S.ring.scale.setScalar(1+Math.sin(time*6)*.08);
+      S.dots.forEach((d,i)=>{ const f=(i+1)/(S.dots.length+1), x=lerp(ex,lp.x,f), z=lerp(ez,lp.z,f), h=Math.max(groundH(x,z),WALK_FLOOR); d.visible=true; d.material=S.ring.material; d.position.set(x,Math.max(h+.1,lerp(S.gy+.4,h,f)+4*f*(1-f)*SEE_VY*SEE_VY/(2*AIR_G)),z); });
+    } else S.dots.forEach(d=>d.visible=false);
+    if(S.arrow.visible){ const ex=S.x-ux*(SEE_L-.75), ez=S.z-uz*(SEE_L-.75); S.arrow.position.set(ex,ctPlankY(S,-dsd*(SEE_L-.75))+1.1+Math.abs(Math.sin(time*5))*.45,ez); S.arrow.rotation.y=time*2; }
+  }
+  for(const b of CT.bales){
+    if(b.gone) continue;
+    const gy=Math.max(groundH(b.x,b.z),WALK_FLOOR);
+    b.g.position.set(b.x,gy-(b.sinkT>0?b.sinkT*b.sinkT*1.4:0),b.z);
+    const sp=Math.hypot(b.vx,b.vz);
+    if(sp>.1){
+      // face across the way it's rolling (whichever way round is nearer), and turn as it goes
+      let h=Math.atan2(b.vx,b.vz), sgn=1, dh=((h-b.head+Math.PI)%TAU+TAU)%TAU-Math.PI;
+      if(Math.abs(dh)>Math.PI/2){ h+=Math.PI; sgn=-1; dh=((h-b.head+Math.PI)%TAU+TAU)%TAU-Math.PI; }
+      b.head+=dh*Math.min(1,dt*8); b.g.rotation.y=b.head; b.roll.rotation.x+=sgn*sp*dt/b.r;
+      if(sp>3 && Math.random()<dt*10) burst(b.x-b.vx/sp*b.r,.2,b.z-b.vz/sp*b.r,1,[0xf2c850,0xdcaa40,0xe6d4ad],1,1.5,6);
+    }
+  }
+}
+
 // ---------------- hazards ----------------
 function hazardBounce(e,kind,isDog){
   e.x=e.px; e.z=e.pz; const v=Math.hypot(e.vx,e.vz)+1e-6; e.vx=-e.vx/v*8; e.vz=-e.vz/v*8;
@@ -6372,7 +6791,7 @@ function startSurprise(kind){
   toast(info[0],kind==='wolf'||kind==='twister'||kind==='bales'?'bad':'gold',2.2); sTaDa(); setTimeout(()=>shepSay(info[1],true),450);
   const mid=flockMid();
   if(kind==='wolf'){
-    const pool=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy&&!s.golden&&!s.ram&&!s.lamb&&!s.leader&&!s.rainbow);
+    const pool=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy&&!s.sky&&!s.golden&&!s.ram&&!s.lamb&&!s.leader&&!s.rainbow);
     if(!pool.length){ G.ev=null; return; }
     ev.s=pool[(Math.random()*pool.length)|0]; popText(ev.s.x,2.6,ev.s.z,'?','red');
   } else if(kind==='twister'){
@@ -6409,7 +6828,7 @@ function startSurprise(kind){
       scene.add(SX.ball);
     }
     SX.ball.visible=true; ev.x=mid.x; ev.z=mid.z;
-    for(const s of G.sheep) if(!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy) s.dance=true;
+    for(const s of G.sheep) if(!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy&&!s.sky) s.dance=true;
     ev.spots=[]; ev.beams=[]; const A=surpriseArt();
     for(let k=0;k<5;k++){ const c=sxAdd(new THREE.Mesh(A.spot,A.spotM[k])); c.rotation.x=-Math.PI/2; ev.spots.push(c); ev.beams.push(sxAdd(new THREE.Mesh(A.beam,A.beamM[k]))); }
   } else if(kind==='bales'){
@@ -6463,7 +6882,7 @@ function updateSurprise(dt){
   if(ev.kind==='twister'){
     ev.x+=ev.dx*7*dt; ev.z+=ev.dz*7*dt;
     for(const s of G.sheep){
-      if(s.dead||s.penned||s.carried||s.grabbedBy||ev.hits.has(s)) continue;
+      if(s.dead||s.penned||s.carried||s.grabbedBy||s.sky||ev.hits.has(s)) continue;
       const dx=s.x-ev.x, dz=s.z-ev.z, d=Math.hypot(dx,dz);
       if(d<3.6){ ev.hits.add(s); safeLaunch(s,Math.atan2(dz,dx)+(Math.random()-.5)*1.5,13+Math.random()*5); s.air=1; sBleat(1.3+Math.random()*.3); }
       else if(d<9){ s.vx-=dx/d*dt*6; s.vz-=dz/d*dt*6; }
@@ -6500,7 +6919,7 @@ function updateSurprise(dt){
       b.x+=b.vx*dt; b.z+=b.vz*dt; b.cyl.rotation.x+=dt*7*(b.vx+b.vz>0?1:-1);
       if(b.vz<0 && b.z<PEN.z1+2){ b.gone=true; b.g.visible=false; burst(b.x,1,b.z,30,[0xd8b65a,0xeeda8a],5,4); sThud(); continue; }
       for(const s of G.sheep){
-        if(s.dead||s.penned||s.carried||s.grabbedBy||b.hits.has(s)) continue;
+        if(s.dead||s.penned||s.carried||s.grabbedBy||s.sky||b.hits.has(s)) continue;
         if(Math.hypot(s.x-b.x,s.z-b.z)<2.4){ b.hits.add(s); const ux=b.vx/12, uz=b.vz/12, px=-uz, pz=ux, sd=((s.x-b.x)*px+(s.z-b.z)*pz)>=0?1:-1; safeLaunch(s,Math.atan2(uz*.7+pz*sd,ux*.7+px*sd),14); s.air=1; sBoing(); ev.bowled=(ev.bowled||0)+1; if(ev.bowled===5) popText(s.x,3,s.z,'STRIKE!','gold'); }
       }
       for(const D of dogs){ if(D.flying||D.stunT>0||b.hits.has(D)) continue; if(Math.hypot(D.x-b.x,D.z-b.z)<2.3){ b.hits.add(D); D.stunT=.6; D.vx=b.vx*.8; D.vz=b.vz*.8; sThud(); popText(D.x,2.4,D.z,'BONK!','red'); } }
@@ -6631,7 +7050,7 @@ function cougarBark(D){
 function updateCougar(dt){
   const C=COUG; if(!C.on) return;
   const playing=G.phase==='day'||G.phase==='night'; C.t+=dt;
-  const flock=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy);
+  const flock=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried&&!s.grabbedBy&&!s.sky);
   let near=null, nd=1e9; for(const s of flock){ const d=Math.hypot(s.x-C.tx,s.z-C.tz); if(d<nd){ nd=d; near=s; } }
   C.nearD=nd;
   if(playing && !C.warned && nd<C.R+7){ C.warned=true; shepSay("Mind that tree! There's a cougar in it!",true); }
@@ -6964,7 +7383,7 @@ function step(dt){
     }
   }
   for(const D of dogs) updateDog(D,dt);
-  if(G.phase!=='title'){ keepOnField(shep); for(const D of dogs) keepOnField(D); for(const sh of G.sheep) if(!sh.dead && !sh.penned && !sh.carried && !sh.grabbedBy) keepOnField(sh,1); }
+  if(G.phase!=='title'){ keepOnField(shep); for(const D of dogs) if(!D.sky) keepOnField(D); for(const sh of G.sheep) if(!sh.dead && !sh.penned && !sh.carried && !sh.grabbedBy && !sh.sky) keepOnField(sh,1); }
   if(G.coop && (G.phase==='day'||G.phase==='night')){
     const out=G.sheep.filter(s=>!s.dead&&!s.penned&&!s.carried);
     let fl=false;
@@ -6978,6 +7397,7 @@ function step(dt){
     G.flanked=fl;
   } else G.flanked=false;
   updateSheep(dt);
+  updateContraptions(dt);
   updateCoyotes(dt);
   hazardSweep();
   updateFalcon(dt);
