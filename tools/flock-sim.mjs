@@ -17,7 +17,7 @@ if (!names.length || names.includes('all')) names = ALL;
 
 const h = await open({ query: '?sim&debug' });
 await h.page.evaluate(() => {
-  const { G, T, step, pens, CAMPS, pathPoint, sAt, sdfAt, toggleGate } = GAME;
+  const { G, T, step, pens, CAMPS, pathPoint, sAt, sdfAt, toggleGate, setGate } = GAME;
   const R = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }, F = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 };
   const P = () => G.players[0], D = () => G.dogs[0];
   const live = () => G.sheep.filter(s => !s.dead && !s.grabbed);
@@ -77,7 +77,7 @@ await h.page.evaluate(() => {
   }
   function pressGate(pen, want) {
     const d = D(); goTo(pen.gx + Math.cos(pen.camp.gateA) * 2.2, pen.gz + Math.sin(pen.camp.gateA) * 2.2, { stop: 1 });
-    if (Math.hypot(d.x - pen.gx, d.z - pen.gz) < 3.6 && pen.open !== want) P().bot.gate = true;
+    if (Math.hypot(d.x - pen.gx, d.z - pen.gz) < 3.6 && pen.open !== want) setGate(pen, want);   // stands in for a shove (moves-sim tests real pushing)
     return pen.open === want;
   }
   const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
@@ -120,7 +120,7 @@ await h.page.evaluate(() => {
   };
   // 1b. dumb "drive at the gate" bot at the valley camp
   SCN.gatebot = () => {
-    reset(15); const pen = pens[1]; pen.open = true; pen.gateT = 0.99;
+    reset(15); const pen = pens[1]; setGate(pen, true);
     const n = Math.cos(pen.camp.gateA), m = Math.sin(pen.camp.gateA), sh = live();
     place(sh, pen.gx + n * 16, pen.gz + m * 16, 5);
     D().x = pen.gx + n * 30; D().z = pen.gz + m * 30;
@@ -130,7 +130,7 @@ await h.page.evaluate(() => {
   };
   // 4. with half the flock penned, do the rest drift in on their own?
   SCN.critical = ({ hunger = 0.1, inside = 0.5, dur = 45 } = {}) => {
-    reset(15); const pen = pens[1]; pen.open = true; pen.gateT = 0.99;
+    reset(15); const pen = pens[1]; setGate(pen, true);
     const n = Math.cos(pen.camp.gateA), m = Math.sin(pen.camp.gateA), sh = live().filter(s => !s.lamb);
     for (const s of G.sheep) if (s.lamb) { s.dead = true; }
     G.sheep = G.sheep.filter(s => !s.dead);
@@ -168,7 +168,7 @@ await h.page.evaluate(() => {
   SCN.criticalHungry = () => SCN.critical({ hunger: 0.7 });      // half in, but the rest are hungry
   // 3. a sheep pinned against a fence by the dog breaks out
   SCN.corner = () => {
-    reset(15); const pen = pens[0]; pen.open = false; pen.gateT = 0.01;
+    reset(15); const pen = pens[0]; setGate(pen, false);
     const sh = live(); const far = pathPoint(160); place(sh, far.x, far.z, 4);
     const s = sh.find(o => !o.ram && !o.lamb && !o.bell) || sh[0];
     // the V between the funnel wing and the pen fence beside the hinge post: a real corner
@@ -219,7 +219,7 @@ await h.page.evaluate(() => {
   // 1c. day 1: corral at 7:00 -> valley camp, penned before nightfall at 20:30
   SCN.day1 = () => {
     reset(7); const c0 = pens[0], c1 = pens[1]; let t = 0, phase = 'open0', arrive = -1, allIn = -1, closed = -1, restaged = 0, stageT = 0;
-    c1.open = true; c1.gateT = 0.99;   // a second player opened the valley gate ahead of time
+    setGate(c1, true);   // a second player opened the valley gate ahead of time
     // the endgame, like a player: fetch the stragglers a group at a time, bringing each round to the front of the gate first
     const n1 = Math.cos(c1.camp.gateA), m1 = Math.sin(c1.camp.gateA), stX = c1.gx + n1 * 12, stZ = c1.gz + m1 * 12;
     let fetchStage = true;

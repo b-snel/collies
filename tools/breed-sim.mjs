@@ -12,7 +12,7 @@ const r = await h.page.evaluate(({ days, noRams }) => {
   for (const s of G.sheep) { s.x = pen.exitX + (Math.random() - 0.5) * 8; s.z = pen.exitZ + (Math.random() - 0.5) * 8; }
   const d = G.dogs[0]; d.x = pen.x - 40; d.z = pen.z; G.clock.hour = 7;
   const log = []; let lastH = 7, courted = 0, hearts = 0;
-  const setGate = open => { if (pen.open !== open) { pen.open = open; if (!open) { pen.gateT = Math.min(pen.gateT, 0.05); } } };
+  const setGate = open => { if (pen.open !== open) GAME.setGate(pen, open); };
   while (G.clock.day <= days) {
     for (let i = 0; i < 4; i++) step(0.025);
     const hr = G.clock.hour;
