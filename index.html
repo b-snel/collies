@@ -1115,7 +1115,7 @@ function tuftGeo(){
 }
 (function(){
   const N=3600, IN=2700;
-  const im=new THREE.InstancedMesh(tuftGeo(), new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1}), N);
+  const im=new THREE.InstancedMesh(tuftGeo(), new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,stencilWrite:true,stencilRef:1,stencilFunc:THREE.AlwaysStencilFunc,stencilZPass:THREE.ReplaceStencilOp}), N);
   const d=new THREE.Object3D(), c=new THREE.Color();
   let i=0;
   grassBase=[];
@@ -1469,6 +1469,26 @@ function clearOf(x,z,pad){
   return true;
 }
 // the woods past the edge: a few instanced meshes instead of hundreds of little trees (laid out for each level by layoutRingTrees)
+// edge-wood trees between the camera and a dog thin out to a stipple so you can always see yourself
+const RING_FADE={uDogs:{value:[0,1,2,3].map(()=>new THREE.Vector4(0,0,0,0))}};
+function ringFadeMat(m){
+  m.onBeforeCompile=sh=>{
+    sh.uniforms.uDogs=RING_FADE.uDogs;
+    sh.vertexShader='uniform vec4 uDogs[4];\nvarying float vRF;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+      vRF=0.0;
+      #ifdef USE_INSTANCING
+        vec3 ic=(modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xyz; float isc=length(instanceMatrix[0].xyz);
+        for(int i=0;i<4;i++){ vec4 d=uDogs[i]; if(d.w>0.5){
+          float dx=abs(ic.x-d.x), dz=ic.z-d.z;
+          float h=(1.0-smoothstep(2.6*isc,3.6*isc+.8,dx))*smoothstep(-2.2,-.6,dz)*(1.0-smoothstep(6.0*isc,7.5*isc+1.5,dz));
+          vRF=max(vRF,h); } }
+      #endif`);
+    sh.fragmentShader='varying float vRF;\n'+sh.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>
+      if(vRF>0.01){ float n=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715)))); if(n<vRF*0.82) discard; }`);
+  };
+  m.customProgramCacheKey=()=>'ringfade';
+  m.needsUpdate=true;
+}
 const ringTrees=[], RING_NEAR=120, RING_FAR=300;   // near: the front row (detailed, casting shadows); far: everything behind
 const ringMesh=(function(){
   const tg=mergeGeos([{g:new THREE.CylinderGeometry(.3,.46,2.9,7,1,true),m:partM(0,1.45,0,1)},{g:new THREE.CylinderGeometry(.46,.78,.55,7,1,true),m:partM(0,.27,0,1)}]);
@@ -1477,6 +1497,7 @@ const ringMesh=(function(){
     const im=new THREE.InstancedMesh(crownGeosLo[f][sh],leafMs[l],Math.ceil((f?RING_FAR:RING_NEAR)/6)+1); im.userData.key=f+'_'+l+'_'+sh; im.castShadow=!f; im.count=0; crowns.push(im); }
   trunks.castShadow=true; trunks.count=0;
   for(const im of [trunks,...crowns]){ im.frustumCulled=false; scene.add(im); }
+  [trunkM,...leafMs].forEach(ringFadeMat);
   return {trunks,crowns};
 })();
 // place the ring for a world: trees, or (no trunks) squashed crowns sitting on the ground as shrubs, coral or boulders
@@ -2314,7 +2335,29 @@ dog2.m.g.visible=false; dog3.m.g.visible=false; dog4.m.g.visible=false;
 const ALLDOGS=[dog,dog2,dog3,dog4];
 // in co-op each dog also gets a faint ring on the ground in its player's colour, readable from the gameplay camera
 ALLDOGS.forEach((D,i)=>{ D.pring=new THREE.Mesh(new THREE.RingGeometry(.8,1.02,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:['#ffb31f','#2f9cff','#a35cff','#3fd040'][i],transparent:true,opacity:.6,depthWrite:false})); D.pring.visible=false; scene.add(D.pring); });
-ALLDOGS.forEach((D,i)=>{ if(D.m.collar){ const c=['#ffb31f','#2f9cff','#a35cff','#3fd040'][i]; D.m.collar.material.color.set(c); D.m.collar.material.emissive.set(c).multiplyScalar(.25); } });   // collar = the player's colour
+// The dog's own pixels mark the stencil; the silhouette draws only where the dog is behind something (and the
+// stencil is still clear, so overlapping parts don't double up). Legs are left out so grass doesn't light them up.
+// A dog hidden behind something shows a soft silhouette in its player's colour. After all the solid stuff is drawn,
+// a mask pass re-draws the dog (and anything it wears) where it's actually the visible surface, marking the stencil;
+// then the silhouette draws only where the dog is behind something and the stencil is clear (so parts don't double up).
+// Legs and gear get the mask but no silhouette, so grass round the paws doesn't light them up.
+const DOG_MASK=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false,depthFunc:THREE.LessEqualDepth,transparent:true,
+  polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-4,
+  stencilWrite:true,stencilRef:1,stencilFunc:THREE.AlwaysStencilFunc,stencilZPass:THREE.ReplaceStencilOp});
+function stencilMark(root){ const list=[]; root.traverse(o=>{ if(o.isMesh && !o.userData.isSil && !o.userData.isMask && !o.userData.isOutline) list.push(o); });
+  for(const o of list){ const m=new THREE.Mesh(o.geometry,DOG_MASK); m.userData.isMask=true; m.renderOrder=59; o.add(m); } }
+function addSilhouette(D,col){
+  const sil=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.62,depthWrite:false,depthFunc:THREE.GreaterDepth,
+    stencilWrite:true,stencilRef:0,stencilFunc:THREE.EqualStencilFunc,stencilFail:THREE.KeepStencilOp,stencilZFail:THREE.KeepStencilOp,stencilZPass:THREE.IncrementStencilOp});
+  const legSet=new Set(); (D.m.legs||[]).forEach(l=>l.traverse(o=>legSet.add(o)));
+  const list=[]; D.m.g.traverse(o=>{ if(o.isMesh && !o.userData.isOutline && !o.userData.isSil && !o.userData.isMask) list.push(o); });
+  stencilMark(D.m.g);
+  for(const o of list){
+    if(legSet.has(o)) continue;
+    const s=new THREE.Mesh(o.geometry,sil); s.userData.isSil=true; s.renderOrder=60; o.add(s);
+  }
+}
+ALLDOGS.forEach((D,i)=>{ if(D.m.collar){ const c=['#ffb31f','#2f9cff','#a35cff','#3fd040'][i]; D.m.collar.material.color.set(c); D.m.collar.material.emissive.set(c).multiplyScalar(.25); } addSilhouette(D,['#f2b544','#8fd3ff','#c79bff','#8fe07a'][i]); });   // collar = the player's colour
 const PCOL=['#f2b544','#8fd3ff','#c79bff','#8fe07a'];          // each player's colour: name, minimap dot, title swatch
 const DEFAULT_NAMES=['Bramble','Moss','Pip','Juniper'];
 const dogIdx=D=>Math.max(0,ALLDOGS.indexOf(D));
@@ -2330,6 +2373,8 @@ let best=0; try{ best=+localStorage.getItem('collieDuskBest')||0; }catch(e){}
 function updateBestLine(){ $('bestLine').textContent = best>0 ? 'Best: '+best : ''; }
 updateBestLine();
 try{ const nm=localStorage.getItem('collieDuskName'); if(nm) $('dogName').value=nm; const nm2=localStorage.getItem('collieDuskName2'); if(nm2) $('dogName2').value=nm2; for(const k of [3,4]){ const v=localStorage.getItem('collieDuskName'+k); if(v) $('dogName'+k).value=v; } }catch(e){}
+// names stick as soon as you type them, not just when a game starts
+['dogName','dogName2','dogName3','dogName4'].forEach((id,i)=>{ const el=$(id); if(el) el.addEventListener('input',()=>{ const v=el.value.trim().slice(0,14); try{ if(v) localStorage.setItem('collieDuskName'+(i?i+1:''),v); }catch(e){} }); });
 let playerChoice=1;
 try{ playerChoice=+localStorage.getItem('collieDuskPlayers')||(localStorage.getItem('collieDuskCoop')==='1'?2:1); }catch(e){}
 // co-op camera: split screen (one view per dog) or one shared camera that zooms out to fit everyone. An experiment, so it's a toggle.
@@ -3757,7 +3802,7 @@ function makeGun(){
   return g;
 }
 const groundGun=makeGun(); groundGun.scale.setScalar(1.3); groundGun.rotation.set(0,.7,1.45); groundGun.visible=false; scene.add(groundGun);
-for(const D of ALLDOGS){ const g=makeGun(); g.scale.setScalar(.75); g.position.set(.16,-.14,.42); g.visible=false; D.m.head.add(g); D.gunMesh=g; }
+for(const D of ALLDOGS){ const g=makeGun(); g.scale.setScalar(.75); g.position.set(.16,-.14,.42); g.visible=false; D.m.head.add(g); D.gunMesh=g; stencilMark(g); }
 const bullets=[];
 const bulletGeo=new THREE.SphereGeometry(.14,8,6), bulletMat=new THREE.MeshBasicMaterial({color:0xffe27a});
 function updateGun(dt,time){
@@ -3872,7 +3917,7 @@ function setHat(id){
   hatSel=id; try{ localStorage.setItem('collieDuskHat',id); }catch(e){}
   for(const D of ALLDOGS){
     const h=buildHat(id);
-    if(h){ h.g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); (h.onBody?D.m.body:D.m.head).add(h.g); hatObjs.push(h); }
+    if(h){ h.g.traverse(o=>{ if(o.isMesh) o.castShadow=true; }); (h.onBody?D.m.body:D.m.head).add(h.g); stencilMark(h.g); hatObjs.push(h); }
   }
   refreshHatUI();
 }
@@ -6249,6 +6294,7 @@ const bubbles=(function(){
 })();
 // trees between the camera and an animal you need to see turn see-through
 function updateTreeFade(dt){
+  RING_FADE.uDogs.value.forEach((v,i)=>{ const D=dogs[i]; if(D && (G.phase==='day'||G.phase==='night')) v.set(D.x,0,D.z,1); else v.w=0; });
   if(!fadeTrees.length) return;
   const subj=[...dogs.filter(D=>D===dog||G.coop)], k=1-Math.exp(-dt*8);
   for(const s of G.sheep) if(!s.dead && !s.penned && Math.hypot(s.x-dog.x,s.z-dog.z)<34) subj.push(s);
