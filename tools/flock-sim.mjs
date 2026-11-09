@@ -249,7 +249,7 @@ await h.page.evaluate(() => {
       if (Math.round(t * 40) % (40 * 10) === 0) log.push(`${G.clock.hour.toFixed(1)}h ${phase} s=${Math.round(sAt(st.x, st.z))} rms=${st.rms.toFixed(1)} str=${st.stress.toFixed(2)}`);
       if (phase === 'done' && G.clock.hour > 20.4) break;
     }
-    return { fetched: restaged, arriveHour: r2(arrive), allInHour: r2(allIn), closedHour: r2(closed), penned: live().filter(s => s.pen === c1).length, of: live().length, spareSec: closed > 0 ? Math.round((20.5 - closed) * T.hourSec) : null, log: log.filter((_, i) => i % 3 === 0) };
+    return { fetched: restaged, arriveHour: r2(arrive), allInHour: r2(allIn), closedHour: r2(closed), penned: live().filter(s => s.pen === c1).length, of: live().length, spareSec: closed > 0 ? Math.round((T.nightStart - closed) * (T.day1HourSec || T.hourSec)) : null, log: log.filter((_, i) => i % 3 === 0) };
   };
   window.SCN = SCN; window.H = { reset, move, goTo, tick, stats, place, pressGate, gateBot, driveBot, live, free, P, D };
 });
