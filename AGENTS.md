@@ -25,6 +25,10 @@ push-gates, Hank, the barn and online co-op.
   `window.GAME` exposes the state and most functions.
 - `?sim` stops the render loop so headless tests can call `GAME.step(dt)`
   themselves.
+- Online: the title's "Play online" hosts a room (5-letter code, invite link
+  `?join=CODE`) or joins one. PeerJS (`vendor/peerjs.min.js`, loaded on
+  demand) uses the public 0.peerjs.com for signalling; `?peerserver=host:port`
+  points at your own (`npx peer --port 9000 --host 127.0.0.1`).
 
 ### Code layout (`index.html`, top to bottom)
 
@@ -56,6 +60,14 @@ that touch what you changed, and report their numbers.
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
 | `node tools/breed-sim.mjs` | a flock parked at a camp for days: lambs, overgrazing, starvation |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
+| `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
+
+**Online co-op** (the ONLINE CO-OP section): the host runs the game; guests only
+draw it. New state that's drawn needs a line in `NET_TYPES`, a new one-shot
+button goes in `NET_EDGES`, and a new feedback function called from game code
+(confetti, a popup, a synth sound) needs `name = fxDef('name', name)` at the
+end of that section, or friends online never see or hear it. The section header
+explains the rest.
 
 Bots are players with `kind: 'bot'`: `readInput` merges `player.bot` into the
 input. Inputs are screen-space, so to move along world direction (dx, dz) use
