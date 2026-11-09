@@ -4191,6 +4191,8 @@ function bpInside(x,z,pad){ if(!BP.on) return false; const q=bpLocal(x,z), u=Mat
 // the pen's footprint and the apron in front of its gate: nothing else gets put down here
 function bpNear(x,z,pad){ if(!BP.on) return false; if(Math.hypot(x-BP.cx,z-BP.cz)<BP.R+pad) return true; const q=bpLocal(x,z); return Math.abs(q[0])<BP.gw/2+1.5+pad && q[1]>0 && q[1]<BP.hd+4+pad; }
 // a ewe in the pen that's ready for the ram: grown, healthy, and not already lambed (or due) this leg
+// a sheep that'd get something out of the breeding pen: fed, grown, and (for a ewe) not bred yet this leg or already expecting
+const bpWant=o=>!o.lamb && !o.bonus && !o.rainbow && !needsFeed(o) && o.hp>=45 && (o.ram || (!o.due && o.bredLeg!==G.day && !(o.expect>0)));
 const bpEwe=o=>!!o && !o.dead && !o.lamb && !o.ram && o.inBreed && !o.carried && !o.grabbedBy && !o.bonus && !o.rainbow && !o.due && o.hp>=45 && o.bredLeg!==G.day && !(o.expect>0);
 // the gate, a sign with a big pink heart, and a hay rack: made once, moved to wherever the pen is on each leg
 function bpArt(){
@@ -4780,12 +4782,15 @@ function updateSheep(dt){
         const inP=s.z>PEN.z0-1.5, corner=inP && Math.abs(s.x)>BACK_GX-.8 && s.z<PEN.z0+4.5;      // (tucked in a back corner behind the hay: out into the middle first)
         const tx=corner?s.x*.45:inP?clamp(s.x,-BACK_GX+1.7,BACK_GX-1.7):XL, tz=corner?PEN.z0+6:inP?PEN.z0-4:s.z-10, dx=tx-s.x, dz=tz-s.z, d=Math.hypot(dx,dz)+1e-6, k=inP?6.5:3.6;
         fx+=dx/d*k; fz+=dz/d*k; }
-      // the breeding pen: calm sheep by its open gate wander in, and once in they settle (with no dog on them, they stay put)
+      // the breeding pen: a fed sheep that's still got breeding to do gravitates to its open gate and wanders in; a hungry one
+      // wants the clover first and pays it no mind. Once in they settle (with no dog on them, they stay put), but a hungry one
+      // isn't held: it'll drift back out to graze
+      s.toBP=false;
       if(BP.on){
-        if(s.inBreed){ const k=.35*(1-Math.min(1,(s.press||0)*1.5)); fx-=(s.x-BP.cx)*k; fz-=(s.z-BP.cz)*k; }
-        else if(!BP.latched && BP.phi>.5 && s.stress<.55 && !s.home && !JR.out){ const g=bpWorld(0,BP.hd+1.5), gd=Math.hypot(s.x-g[0],s.z-g[1]), R=8+10*bF;      // (the more in there, the stronger the pull)
+        if(s.inBreed){ const k=.35*(1-Math.min(1,(s.press||0)*1.5))*(needsFeed(s)?.25:1); fx-=(s.x-BP.cx)*k; fz-=(s.z-BP.cz)*k; }
+        else if(!BP.latched && BP.phi>.3 && s.stress<.7 && !s.home && !JR.out && bpWant(s)){ const g=bpWorld(0,BP.hd+1.5), gd=Math.hypot(s.x-g[0],s.z-g[1]), R=20+12*bF;      // (the more in there, the further off they feel it)
           if(gd<R){ const q=bpLocal(s.x,s.z), front=q[1]>BP.hd-.5 && Math.abs(q[0])<BP.gw/2+.6, t=front?bpWorld(0,BP.hd-3):bpWorld(clamp(q[0],-1.2,1.2),BP.hd+2.6);      // round to the front of the gap, then in
-            const dx=t[0]-s.x, dz=t[1]-s.z, d=Math.hypot(dx,dz)+1e-6, k=(7+7*bF)*(1-gd/R); fx+=dx/d*k; fz+=dz/d*k; } }
+            const dx=t[0]-s.x, dz=t[1]-s.z, d=Math.hypot(dx,dz)+1e-6, k=(8+8*bF)*(.35+.65*(1-gd/R))*(1-s.stress*.6); fx+=dx/d*k; fz+=dz/d*k; s.toBP=true; } }
       }
       if(s.home && !(LEVEL.plat && !onPlateau(s.x,s.z))){      // (below a seesaw cliff the only way home is the seesaw: its funnel does the rest)
         const hx=0, hz=PEN.z1+3, dx=hx-s.x, dz=hz-s.z, d=Math.hypot(dx,dz)+1e-6;
@@ -4841,7 +4846,7 @@ function updateSheep(dt){
     // separated from the flock with a hedge or maze wall in the way: find a way round to the others (A* on the coyotes' grid)
     // and out in the open a stray is drawn back to the bulk of the flock too, harder the further it's strayed
     // (once most of the flock's in the pen, the pen is where the flock is: a fed sheep out on its own heads for its gate)
-    { const toPen=!JR.done && !PZ.locked && pF>=.5 && !needsFeed(s) && s.z>PEN.z1-1, H=toPen?PEN_HUB:G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed && !(s.roamT>0) && !toGrass;
+    { const toPen=!JR.done && !PZ.locked && pF>=.5 && !needsFeed(s) && s.z>PEN.z1-1, H=toPen?PEN_HUB:G.hub, live=(G.phase==='day'||G.phase==='night') && H && H!==s && !s.up && !s.inF && !s.penned && !eating && s.boltT<=0 && !(s.madT>0) && (s.press||0)<.6 && !s.home && !JR.out && !s.inBreed && !s.toBP && !(s.roamT>0) && !toGrass;
       const hd=live?Math.hypot(H.x-s.x,H.z-s.z):0, w=live?(1-(s.press||0)/.6)*(1-panic*.6):0;
       if(!live || hd<6){ s.regBlocked=false; s.stray=false; }
       else {
