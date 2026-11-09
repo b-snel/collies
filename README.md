@@ -13,7 +13,7 @@ Live at **https://collies.bsnel.com**
 | Space | Bark: scatters sheep, scares coyotes |
 | E | Pounce: punts a sheep flying (it bowls over other sheep and coyotes), knocks coyotes over |
 | C | Lie down: calms the flock |
-| R (hold) | Grab the nearest sheep, coyote or Rascal. Drag it, press E to shake it, let go while moving to fling it |
+| R (hold) | Grab the nearest sheep, coyote or Rascal. Drag it, press E to shake it, let go while moving to fling it. With nothing alive in reach, grab a seesaw end (to aim it) or a hay bale (to drag it) |
 | P / Esc | Pause |
 | M | Sound on/off |
 
@@ -25,7 +25,7 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 
 **Grab, shake, fling:** hold R to latch on (on a controller, press X to grab and X again to let go). Things you hold fight back and tug you around, and holding on burns stamina. Shake (E / B) to hurt a coyote or make it drop a sheep, send Rascal home, or make the ram buck you off and charge. Let go while moving to fling: a sheep flung into the pen counts as penned, a flung sheep bowls over coyotes, a coyote flung into another bowls it over, and a coyote flung into the pond gets soaked and goes home.
 
-**The Long Drive:** Hank has inherited a ranch on the Oregon coast, and the flock is coming with him. Each day is a stop on the trail west, with a map card before it: Saratoga Springs, NY (days 1-2, trial gates on day 2), Lake Erie (surprises), Iowa corn country (corn maze), the Great Plains (twisters and stampedes), the Rockies (the cougar), Moab (falcons), the Grand Canyon (a rift of cliff edges across the field, crossable at a couple of necks), the Mighty Columbia, and the Oregon coast (the weigh-in at the ranch). Make it to Oregon and the game carries on with Hank's tall tales: Sky Islands, underwater, the Moon and the volcano, with everything mixed in. Only one big disruption (surprise, falcon or raid) happens at a time.
+**The Long Drive:** Hank has inherited a ranch on the Oregon coast, and the flock is coming with him. Each day is a stop on the trail west, with a map card before it: Saratoga Springs, NY (days 1-2, trial gates on day 2), Lake Erie (surprises and the seesaw), Iowa corn country (corn maze), the Great Plains (twisters and stampedes), the Rockies (the cougar, and hay bales to roll), Moab (falcons), the Grand Canyon (a rift of cliff edges across the field, crossable at a couple of necks), the Mighty Columbia, and the Oregon coast (the weigh-in at the ranch). Make it to Oregon and the game carries on with Hank's tall tales: Sky Islands, underwater, the Moon and the volcano, with everything mixed in. Only one big disruption (surprise, falcon or raid) happens at a time.
 
 **Levels:** every day is generated from the run's seed: hills, a pond that moves, rivers with bridges, hedges with gaps, paddocks, copses and boulders. Day 1 is always Home Farm; after that you might get the farm, the desert, Sky Islands, an underwater meadow, the Moon or a Volcano, plus a daily twist (bouncy, giant, tiny or speedy sheep, fog, a gold rush, stampedes).
 
@@ -36,6 +36,10 @@ On phones and tablets you get an on-screen joystick and buttons. You can add it 
 **Lava and cliffs:** volcano days have lava pools and lava rivers; Sky Islands have holes straight down to the clouds. Sheep stop at the edge on their own, but run at them, bark or pounce near the edge and they'll go over. Lost sheep count against the day's limit. Dogs just get singed and bounce off. Fling a coyote in for 40 points.
 
 **Punting:** pounce into a sheep and it goes flying the way you pounced. A flying sheep knocks into others like billiard balls (CAROM, CHAIN x3), bowls over coyotes, and a punt straight into the pen is a HOLE IN ONE (+25). Careful near lava.
+
+**The seesaw:** from day 3 (and on about half the days after), a wooden seesaw sits out on the field. Sheep that walk onto it tip it their way. Pounce onto the high end and everything on the low end is launched in an arc out past it: over a hedge, across the river or the canyon, or straight into the pen (a HOLE IN ONE, +25). Grab either end (R / X) and walk it round to aim it; while you're aiming, or when sheep are on it and a dog is close, a dotted arc and a ring show where they'll come down (red means trouble: lava, a drop, or a pen that's still locked). It's not a sure thing: a big load flies a bit shorter, sheep spread out in the air, some land in a heap seeing stars, a locked pen bounces them off its fence, and lava or a sky-island edge is just as deadly from above. A sheep that lands on a coyote bowls it over; one that lands on another sheep or a hay bale boings up again. In co-op, stand on the low end and let your partner pounce.
+
+**Hay bales:** from day 6, a few round bales lie about the field, often near a gap in a hedge. Walk into one to roll it, punt it to send it trundling (it bowls over coyotes and knocks sheep aside), or grab it to drag it into place. A bale blocks sheep and coyotes, so you can make a wall, narrow a funnel, or plug a gap so the coyotes have to go the long way round. They can't be rolled into the pen or its gateway. Roll one hard into the high end of a seesaw to set it off.
 
 **Surprises:** every 20 seconds or so something happens: a sheep turns out to be a coyote in disguise, a twister tears across the field flinging sheep about, sheep parachute in, a rainbow sheep appears (catch it for +150 before it runs off), a sugar rush sends the flock bouncing, giant hay bales come rolling through, or golden hour makes every sheep worth triple. Day 1 only gets the friendly ones.
 
