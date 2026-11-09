@@ -27,10 +27,12 @@ ignore guidance that only applies to the main game.
 
 ### When the user asks for one
 
-Phrases like "create a demo", "make a demo slice", "I want to try out an idea
-from scratch" or "prototype X on its own" mean: start a new demo slice. The
-user has said that asking for a demo is their request for a new demo-slice
-branch.
+Start a demo slice **only when the user explicitly asks for a demo slice**
+("make a demo slice", "do this as a demo slice"). Every other feature request
+goes into the main game on a normal branch from `main`. That includes "try
+out", "prototype" or "add" requests, and garbled voice-dictated messages that
+might mean "demo". If you're unsure, ask; don't guess. Starting a demo slice
+by mistake resets the branch to an empty template and throws away the game.
 
 1. **Branch off the template**, named `demo-slice/<short-idea>`:
 
