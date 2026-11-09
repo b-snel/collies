@@ -39,7 +39,9 @@ terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
 river launcher) → FORAGE (plants, buckets, troughs, Hank's twilight run) → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
-lighting → camera → visual sync → HUD and overlay → HANK, HANK'S BARN and the
+lighting → camera (frames the dogs and the sheep and coyotes near them) → visual sync → ART & PACE
+(comic popups, confetti and hearts, squash and stretch, the late-afternoon push, music cues) →
+HUD and overlay → HANK, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
 Sections are delimited by `// ===` headers. The comments marked `SHARED HOOK`

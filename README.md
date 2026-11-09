@@ -55,7 +55,7 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
 
 The grass is real: sheep eat it down as they graze, and it grows back slowly. A hungry flock wanders off looking for food, and a pasture grazed bare sends them roaming. Stay too long and you run out of grass; push on too soon and you're on the trail at dusk.
 
-Each camp has a round pen with a gate and funnel wings. Pen the flock and shut the gate before nightfall (20:30). When the whole flock is safe behind a shut gate at night, time runs fast till morning. Penned, well-fed ewes with a ram have lambs at dawn. Lambs follow their mothers and grow up in a couple of days, some of them into rams.
+Each camp has a round pen with a gate and funnel wings. Pen the flock and shut the gate before nightfall (20:30). From 15:30, if the flock isn't penned yet, the music picks up, a gold beacon rises over tonight's pen, the compass points at it and a countdown starts. The first day runs a little slower, to give new players time. When the whole flock is safe behind a shut gate at night, time runs fast till morning. Penned, well-fed ewes with a ram have lambs at dawn. Lambs follow their mothers and grow up in a couple of days, some of them into rams.
 
 ## Foraging and the trough
 
@@ -76,7 +76,9 @@ Red arrows at the screen edge point at coyotes you can't see. Closed pens are co
 
 ## Hank
 
-Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
+Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150%, and sits next to the music's volume on the title screen and in the barn.
+
+The music is synthesized in the browser: a cheerful whistle tune by day, a driving one for the late-afternoon push, tension at dusk and when a coyote has a sheep, a lullaby once the flock is penned, and a sparse, spooky bed at night that ducks out of the way whenever the coyotes howl.
 
 ## Hank's barn: making the flock yours
 
