@@ -67,7 +67,8 @@
   #journey .me { position:absolute; top:-6px; margin-left:-11px; font-size:20px; transition:left .4s; filter:drop-shadow(0 2px 0 rgba(0,0,0,.5)); }
   #sound { position:fixed; left:12px; bottom:12px; background:rgba(27,26,40,.7); color:var(--cream); border-radius:10px; padding:4px 10px; font-size:14px; pointer-events:none; }
   #ctlBar { position:absolute; bottom:6px; left:50%; transform:translateX(-50%); display:flex; gap:4px 12px; flex-wrap:nowrap; white-space:nowrap;
-    font-size:13px; opacity:.85; text-shadow:0 1px 0 rgba(0,0,0,.6); }
+    font-size:13px; opacity:0; transition:opacity .8s; text-shadow:0 1px 0 rgba(0,0,0,.6); }
+  #ctlBar.show { opacity:.85; }
   #ctlBar .cdCap { font-size:11px; padding:0 5px; min-width:16px; }
   @media (max-width:760px) { #ctlBar { display:none; } }
   #joins { position:absolute; bottom:16px; right:16px; display:flex; flex-direction:column; gap:4px; align-items:flex-end; font-size:14px; }
@@ -4046,14 +4047,11 @@ function pounceGateSlam(d, ox, oz) {
 initGates();
 // the prompt over a gate when a dog is near: what a shove will do, and which way it'll swing
 function drawGatePrompt(p, d) {
-  const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0;
-  // one short word or two: the arrow below shows which way it'll swing
-  const line = finalArm ? 'Lean on it!' : held ? (Math.abs(p.phi) < 0.35 ? 'Clack it shut!' : `Let go: ${keyLabel(d.player, 'grab')}`) :
-    p.latched ? (p.fresh ? 'Push' : 'Shut') : p.gateT > 0.5 ? 'Push to shut' : 'Push';
-  const [gx, gy] = proj(p.gx, p.y + 3.6, p.gz);   // above the gate, so it never covers the dog
-  ctx.font = '600 14px Fredoka, sans-serif'; const w = ctx.measureText(line).width + 20;
-  ctx.fillStyle = 'rgba(255,248,232,.9)'; rr(gx - w / 2, gy - 12, w, 24, 11); ctx.fill(); ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#1b1a22'; ctx.fillText(line, gx, gy + 1);
+  const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0, g = keyLabel(d.player, 'grab');
+  // one short line, once each (HUD: nudge); the arrow below shows which way it'll swing
+  const [key, line] = finalArm ? ['gate-lean', 'Lean on it!'] : held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
+    p.latched ? (p.fresh ? ['gate-push', `Push · ${g} drag`] : ['gate-latched', '🔒 Back off, shove again']) : p.gateT > 0.5 ? ['gate-shut', 'Push to shut'] : ['gate-push', `Push · ${g} drag`];
+  nudge(key, p.gx, p.y + 3.6, p.gz, line, d.color);   // above the gate, so it never covers the dog
   if (held || (p.latched && !p.fresh)) return;
   // an arrow round the hinge: the way it swings if you shove it from where you stand
   const side = Math.sign(wrapA(gatePsi(p, d.x, d.z) - p.phi)) || 1, to = clamp(p.phi - side * 1.0, -T.gate.maxIn, T.gate.maxOut);
@@ -4289,6 +4287,14 @@ const SALT_GEO = {
   crystals: merge(...[[0, 0.5, 0, 0.42, 0], [0.2, 0.4, 0.15, 0.32, 0.4], [-0.22, 0.42, -0.1, 0.36, -0.35], [0.1, 0.38, -0.25, 0.28, 0.6], [-0.1, 0.36, 0.26, 0.3, -0.5], [0.45, 0.3, 0.12, 0.24, 0.3]]
     .map(([x, y, z, h, r], i) => P(CONE(0.15 + (i % 2) * 0.04, h * 1.5, 5), i % 3 === 1 ? '#ffb8cb' : '#ffffff', { r: [r * 0.6, i, r], p: [x, y + h * 0.75 - 0.05, z] }))),
 };
+// a soft glow over things worth finding (dig spots, salt rocks): unlit, additive, no lights
+const FIND_GLOW = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), gr = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = gr; c.fillRect(0, 0, 64, 64); const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const mk = (col, op) => new THREE.SpriteMaterial({ map: tex, color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+  return { dig: mk('#ffd56a', 0.55), salt: mk('#e6f2ff', 0.4) };
+})();
 const SALT_ROCKS = [];
 {
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 9 })), L0 = LAUNCHERS[0];
@@ -4308,6 +4314,7 @@ const SALT_ROCKS = [];
   for (const r of SALT_ROCKS) {
     const g = new THREE.Group(); g.position.set(r.x, r.y, r.z); g.rotation.y = r.rot; g.scale.setScalar(1.5); scene.add(g);
     part(g, SALT_GEO.rock); const cr = new THREE.Group(); g.add(cr); part(cr, SALT_GEO.crystals);
+    const glow = new THREE.Sprite(FIND_GLOW.salt); glow.position.y = 0.5; glow.scale.setScalar(1.4); cr.add(glow); r.glow = glow;   // shrinks away with the crystals
     r.root = g; r.crystals = cr;
   }
 }
@@ -4467,7 +4474,7 @@ function makeDogPack() {   // what a dog is carrying, on its back: a bundle of g
 }
 function syncForage(dt) {
   for (const p of PLANTS) if (!p.picked && G.time - p.growT < 1.2) { const k = clamp((G.time - p.growT) / 1.2, 0, 1); setPlantMatrix(p, k < 1 ? 1 - Math.pow(1 - k, 3) * Math.cos(k * 9) : 1); }   // pops back up with a wobble
-  for (const r of SALT_ROCKS) { const k = r.taken ? 0 : clamp((G.time - r.growT) / 1.2, 0, 1); r.crystals.visible = k > 0.01; r.crystals.scale.setScalar(Math.max(0.01, k)); }
+  for (const r of SALT_ROCKS) { const k = r.taken ? 0 : clamp((G.time - r.growT) / 1.2, 0, 1); r.crystals.visible = k > 0.01; r.crystals.scale.setScalar(Math.max(0.01, k)); r.glow.scale.setScalar(1.3 + 0.2 * Math.sin(G.time * 1.8 + r.rot * 5)); }
   for (const p of pens) {   // the troughs fill (and empty) visibly; the salt block wears down
     for (const tr of p.troughs) { tr.shown = lerp(tr.shown, tr.food, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k); }
     const L = p.lick; L.shown = lerp(L.shown, L.salt, Math.min(1, dt * 2.5)); const k = clamp(L.shown / T.salt.lump, 0, 1.4);
@@ -4514,10 +4521,13 @@ function drawForageOverlay() {
     if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
     const dogNear = (x, z, r = 8) => G.dogs.some(d => Math.hypot(d.x - x, d.z - z) < r);
     for (const tr of p.troughs) {
+      if (tr.food < tr.cap - 0.01 && G.dogs.some(d => (d.greens || 0) >= 0.01 && Math.hypot(d.x - tr.x, d.z - tr.z) < 9)) nudge('trough', tr.x, p.y + 1.9, tr.z, '🌿 Walk up: tip in', '#7ed957');
       if (tr.shown < 0.02 || !dogNear(tr.x, tr.z)) continue;
       const [px, py, pz] = proj(tr.x, p.y + 1.25, tr.z); if (vis(px, py, pz)) forageChip(px, py, `🌾 ${Math.round(tr.shown / tr.cap * 100)}%`, 'rgba(110,140,40,.85)');
     }
-    const L = p.lick, [px, py, pz] = proj(L.x, p.y + 1.45, L.z); if (!vis(px, py, pz)) continue;
+    const L = p.lick, [px, py, pz] = proj(L.x, p.y + 1.45, L.z);
+    if (G.dogs.some(d => d.salt && Math.hypot(d.x - L.x, d.z - L.z) < 9)) nudge('lick', L.x, p.y + 2.1, L.z, '🧂 Walk up: in the lick', '#e8e2f0');
+    if (!vis(px, py, pz)) continue;
     if (L.shown > 0.05) { if (dogNear(L.x, L.z)) forageChip(px, py, `🧂 ${Math.round(L.shown / L.cap * 100)}%`, 'rgba(120,110,130,.88)'); }
     else if (saltAvg < T.salt.want && dogNear(L.x, L.z, 16) && live.some(s => Math.hypot(s.x - p.x, s.z - p.z) < p.R + 25)) forageChip(px, py, '🧂 empty', 'rgba(170,70,60,.85)');   // the flock's here and needs it
   }
@@ -4559,7 +4569,8 @@ const DIGS = [];
   for (const d of DIGS) {
     const g = new THREE.Group(); g.position.set(d.x, d.y, d.z); g.rotation.y = d.rot; g.scale.setScalar(1.35); scene.add(g);
     d.mound = part(g, mound); d.hole = part(g, hole); d.hole.visible = false;
-    d.glintM = new THREE.Mesh(glint, MAT.vc); d.glintM.position.y = 0.6; g.add(d.glintM);
+    d.glintM = new THREE.Mesh(glint, MAT.basic); d.glintM.position.y = 0.6; g.add(d.glintM);   // unlit: it catches the eye at night too
+    d.glow = new THREE.Sprite(FIND_GLOW.dig); d.glow.position.y = 0.45; d.glow.scale.setScalar(1.6); g.add(d.glow);
   }
 }
 const DIG_JUNK = ['AN OLD BOOT!', 'A BONE!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
@@ -4575,7 +4586,7 @@ function updateDigs(dt) {
       const dd = Math.hypot(d.x - sp.x, d.z - sp.z); if (dd < 9) near = true;
       if (dd < T.dig.r && !d.air && !d.holding && d.stunT <= 0 && d.pounceT <= 0 && d.hopT <= 0 && Math.hypot(d.vx, d.vz) < T.dig.maxSpeed) { dog = d; break; }
     }
-    if (near && !G.hints.dig) { hint('dig'); sayOnce('dig', null, "Somethin' buried there! Have a wee dig."); }
+    if (near && !G.hints.dig) { G.hints.dig = true; sayOnce('dig', null, "Somethin' buried there! Have a wee dig."); }
     if (!dog) { sp.prog = Math.max(0, sp.prog - dt * 0.5); continue; }
     const was = sp.prog; sp.prog += dt / T.dig.time; dog.digK = 1;
     if (Math.floor(was * 8) !== Math.floor(sp.prog * 8)) { burst(sp.x, sp.y + 0.25, sp.z, 3, '#8a6440', { speed: 2, up: 3, size: 0.13, life: 0.6, grav: -9 }); SFX.dig(panOf(sp.x, sp.z)); }
@@ -4589,26 +4600,32 @@ function digUp(sp, d) {
   if (left.length && (!DOGS.found.length || Math.random() < T.dig.treasure)) {
     const it = pick(left); foundDogItem(it.id, d);
     confetti(sp.x, sp.y + 1, sp.z, 30); Sound.chime([0, 4, 7, 12], 660, 0.12);
-    floatText(`${it.icon} ${it.name.toUpperCase()}!`, sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.5);
+    burst(sp.x, sp.y + 0.6, sp.z, 16, '#ffe27a', { speed: 4, up: 2.5, size: 0.12, life: 0.7, grav: -2 });   // a gold flash out of the hole
+    floatText(`${it.icon} ${it.name.toUpperCase()}!`, sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
     toast(`${d.player.name || PCOL[d.player.slot].name} dug up a ${it.name.toLowerCase()}! ` + (DOGS.found.length === 1 ? 'Try it on in Hank’s barn.' : `(${DOGS.found.length}/${DOG_ITEMS.length})`), 'good');
   } else {
-    floatText(pick(DIG_JUNK), sp.x, sp.y + 1.5, sp.z, '#e8dcc0', 1.1); Sound.chime([0, 3], 330, 0.1);
+    floatText(pick(DIG_JUNK), sp.x, sp.y + 1.5, sp.z, '#e8dcc0', 1.25); Sound.chime([0, 3], 330, 0.1);
+    burst(sp.x, sp.y + 0.6, sp.z, 6, '#fff6c0', { speed: 2.5, up: 2, size: 0.1, life: 0.5, grav: -3 });
   }
 }
 // in frame(): mound or hole, and the glint that catches your eye
 function syncDigs(dt) {
   for (const sp of DIGS) {
-    sp.mound.visible = !sp.dug; sp.hole.visible = sp.dug; sp.glintM.visible = !sp.dug;
+    sp.mound.visible = !sp.dug; sp.hole.visible = sp.dug; sp.glintM.visible = sp.glow.visible = !sp.dug;
     if (sp.dug) continue;
     const t = (G.time * 0.5 + sp.glint) % 2.4, k = t < 0.5 ? Math.sin(t / 0.5 * Math.PI) : 0;   // a twinkle every few seconds
-    sp.glintM.scale.setScalar(0.4 + k * 0.9); sp.glintM.rotation.y = G.time * 1.5; sp.glintM.rotation.z = Math.PI / 4 * k;
+    sp.glow.scale.setScalar(1.5 + 0.25 * Math.sin(G.time * 2.2 + sp.glint * 3) + k * 0.5);   // a soft breathing glow
+    if (k > 0 && (sp.sparkT || 0) < G.time - 1 && Math.hypot(sp.x - cam.x, sp.z - cam.z) < 60) { sp.sparkT = G.time; burst(sp.x, sp.y + 0.8, sp.z, 1, '#ffe27a', { speed: 0.5, up: 1.4, size: 0.1, life: 0.9, grav: 0 }); }   // one gold mote per twinkle
+    sp.glintM.scale.setScalar(0.5 + k * 1.1); sp.glintM.rotation.y = G.time * 1.5; sp.glintM.rotation.z = Math.PI / 4 * k;
     sp.mound.scale.set(1 + sp.prog * 0.15, 1 - sp.prog * 0.45, 1 + sp.prog * 0.15);
   }
 }
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
   for (const sp of DIGS) {
-    if (sp.dug || sp.prog <= 0.02) continue;
+    if (sp.dug) continue;
+    if (sp.prog <= 0.02 && G.dogs.some(d => Math.hypot(d.x - sp.x, d.z - sp.z) < 8)) nudge('dig', sp.x, sp.y + 1.5, sp.z, '⬇ Stand here: dig');
+    if (sp.prog <= 0.02) continue;
     const [px, py, pz] = proj(sp.x, sp.y + 1.2, sp.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
     ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px, py, 11, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(px, py, 11, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, sp.prog)); ctx.stroke();
@@ -5825,7 +5842,6 @@ const HINTS = {
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
   barn: 'The flock is safe for the night. Press <b>Tab</b> / <b>View</b> to visit <b>Hank’s barn</b>.',
-  dig: 'A <b>dig spot</b>! Stand on the mound to dig it up. Some hold hats and kit for your dog.',
 };
 // on a touch screen: the same, shorter, with the on-screen buttons
 const TOUCH_HINTS = {
@@ -5853,8 +5869,20 @@ const TOUCH_HINTS = {
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   launcher: 'Sheep on the low end, 💥 the red target',
   barn: '🏚️ Hank\'s barn',
-  dig: 'Dig spot! Stand on the mound',
 };
+// proximal button prompts: each pops up over the thing the first few seconds it applies, then retires (G.hints['n-' + key])
+const NUDGE_DUR = 4.5; let nudgeDt = 0;
+function nudge(key, x, y, z, txt, col = '#ffd36b') {
+  const k = 'n-' + key, t = G.hints[k] || 0; if (t >= NUDGE_DUR || G.mode !== 'play') return false;
+  const [px, py, pz] = proj(x, y, z); if (pz > 1 || px < 0 || px > W || py < 0 || py > H) return false;   // only counts while on screen
+  G.hints[k] = t + nudgeDt;
+  const u = Math.min(1, t / 0.3), sc = 1 + 2.7 * (u - 1) ** 3 + 1.7 * (u - 1) ** 2, a = Math.min(1, (NUDGE_DUR - t) / 0.6);   // pop in, fade out
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(px, py + Math.sin(t * 4) * 2); ctx.scale(sc, sc);
+  ctx.font = '700 16px Fredoka, sans-serif'; const w = ctx.measureText(txt).width + 24;
+  ctx.fillStyle = 'rgba(255,248,232,.95)'; rr(-w / 2, -15, w, 30, 14); ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke();
+  ctx.fillStyle = '#1b1a22'; ctx.fillText(txt, 0, 1); ctx.restore();
+  return true;
+}
 const hintQ = []; let hintT = 0;
 function hint(key) {
   if (key === 'gate-opened') { if (!G.hints.herd) { hint('herd'); [['modes', 9], ['bark', 18], ['pounce', 27], ['grab', 36], ['travel', 45], ['lie', 54]].forEach(([k, s]) => setTimeout(() => hint(k), s * 1000)); } return; }
@@ -5876,7 +5904,7 @@ function updateHUD(dt) {
     $('tBarnBtn').style.display = NET.role === 'guest' ? 'none' : '';
     if (playing && NET.role !== 'guest' && innerHeight > innerWidth) setPause(true, netLocalName());   // turned to portrait: wait
   }
-  updateHints(dt); ctlBar();
+  updateHints(dt); ctlBar(dt);
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
@@ -5975,6 +6003,7 @@ function drawDogHealth(d, px, py, dt) {
   }
 }
 function drawOverlay(dt) {
+  nudgeDt = dt;
   ctx.setTransform(ovScale, 0, 0, ovScale, 0, 0); ctx.clearRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   const pad = 30;
@@ -6018,6 +6047,10 @@ function drawOverlay(dt) {
     }
     const near = G.mode === 'play' && G.dogs.find(d => !d.air && Math.hypot(d.x - p.gx, d.z - p.gz) < 6.5);
     if (near) drawGatePrompt(p, near);   // teaches the push (dog-moves section)
+  }
+  for (const S of LAUNCHERS) {   // the launcher's red target
+    const tx = S.x - S.ux * S.L * 0.6, tz = S.z - S.uz * S.L * 0.6, d = G.dogs.find(d => Math.hypot(d.x - tx, d.z - tz) < 9);
+    if (d) nudge('launch', tx, S.y + 2.2, tz, `Pounce: ${keyLabel(d.player, 'pounce')}`, '#e8473f');
   }
   drawForageOverlay();   // what the dogs carry, trough and salt-lick levels, salt rocks (FORAGE section)
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
@@ -7352,7 +7385,7 @@ function resetGame() {
   resetDigs();     // DIG SPOTS: every mound back for the new journey
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; G.lost = [];
+  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = [];
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -7766,10 +7799,13 @@ function controlsHTML(dev) {
   return `<div class="kbDiagram">${col(two ? 'Player 1' : 'Keyboard', P1.concat(SYS))}${two ? col('Player 2', P2) : ''}</div><div class="ctrlNote">${gates}${two ? '' : ' A friend can join on the arrow keys, or with a controller.'}</div>`;
 }
 // bottom bar: the buttons of whatever was touched last
-let ctlBarKey = '';
-function ctlBar() {
+// it fades after T_CTLBAR s of play, and comes back for a while when someone picks up another device (or pauses)
+let ctlBarKey = '', ctlBarT = 0, ctlBarOn = null; const T_CTLBAR = 45;
+function ctlBar(dt = 0) {
+  if (G.mode === 'play' && !G.paused) ctlBarT += dt;
+  const on = ctlBarT < T_CTLBAR || !!G.paused; if (on !== ctlBarOn) { ctlBarOn = on; $('ctlBar').classList.toggle('show', on); }
   const key = INPUT_DEV + INPUT_KB;
-  if (key === ctlBarKey) return; ctlBarKey = key;
+  if (key === ctlBarKey) return; if (ctlBarKey) ctlBarT = Math.min(ctlBarT, T_CTLBAR - 8); ctlBarKey = key;
   const cap = k => `<kbd class="cdCap">${k}</kbd>`;
   const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['Ⓨ', 'lie'], ['☰', 'pause']]
     : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['P', 'pause']]
