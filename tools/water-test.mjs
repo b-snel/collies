@@ -103,6 +103,20 @@ const r3b = await h.page.evaluate(() => {
 });
 ok('let go of grab: set down (water kept); hold grab on it: picked up again', r3b.picked && r3b.heldKept && r3b.dropped && r3b.stillDown && r3b.repicked, r3b);
 
+// 3c. a lying bucket: running into it shoves it along (not picked up without grab); a pounce sends it flying, spilling
+const r3c = await h.page.evaluate(() => {
+  const { BUCKETS, bucketOf } = GAME; H.reset(); const d = H.d(), b = BUCKETS[1], out = {};
+  b.w = 4; const x0 = b.x, z0 = b.z;
+  H.place(d, b.x - 6, b.z); H.walkTo(b.x + 4, b.z, 4, 0.4, { sprint: true }); H.run(1);
+  out.pushed = H.r(Math.hypot(b.x - x0, b.z - z0)); out.notPicked = !bucketOf(d);
+  const x1 = b.x, z1 = b.z, w1 = b.w; H.place(d, b.x - 3, b.z); d.yaw = Math.atan2(b.x - d.x, b.z - d.z);
+  let maxH = 0; H.p.bot = H.to(1, 0, { pounce: true }); H.run(0.1); H.p.bot = {}; H.run(3, () => { maxH = Math.max(maxH, b.h || 0); });
+  out.flew = H.r(Math.hypot(b.x - x1, b.z - z1)); out.maxH = H.r(maxH); out.spilt = b.w < w1; out.landed = b.h === 0;
+  H.g = true; H.walkTo(b.x, b.z, 10, 0.3); H.run(0.3); out.pickable = bucketOf(d) === b;
+  return out;
+});
+ok('running into a bucket shoves it; a pounce sends it flying (spilling); then it can be picked up', r3c.pushed > 1.5 && r3c.notPicked && r3c.flew > 5 && r3c.maxH > 0.8 && r3c.spilt && r3c.landed && r3c.pickable, r3c);
+
 // 4. penned, thirsty, water in the trough: they drink till quenched, three at a time, the rest waiting and shoving
 const r4 = await h.page.evaluate(() => {
   const { G, T, pens } = GAME; H.reset(14); const pen = pens[1]; GAME.setGate(pen, false);
