@@ -132,8 +132,8 @@ Then open http://localhost:8000. Add `?debug` for an FPS readout and cheat keys.
 
 ## Deploying
 
-The repo deploys to Vercel as a static project with the **Other** framework preset. `vercel.json` sets the build command (`node build.js`) and the output directory (`dist`). Every push to `main` deploys, and every pull request gets a preview. Vercel's system environment variables must be exposed to the build (they are by default); without them the build stamp falls back to git, then to "Dev build".
+**Cloudflare Workers** (production, `collies.app`): `wrangler.jsonc` serves `dist/` (built by `node build.js`), with headers from `_headers`. `collies.app` is a Workers custom domain (its `routes` entry), so Cloudflare makes the DNS record and certificate itself. Pushes to `main` deploy; branches get preview URLs.
 
-The custom domain `collies.bsnel.com` has a `CNAME` record to `cname.vercel-dns.com`.
+**Vercel** (old domain, `collies.bsnel.com`): the **Other** framework preset; `vercel.json` sets the build command and the output directory (`dist`). `collies.bsnel.com` has a `CNAME` record to `cname.vercel-dns.com`. Saved dogs and flocks live in each domain's `localStorage`, so they don't move across.
 
 When `index.html`, anything in `vendor/` or the icons change, bump `CACHE` in `sw.js` so installed copies pick up the new files.
