@@ -61,7 +61,7 @@ that touch what you changed, and report their numbers.
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
 | `node tools/forage-sim.mjs` | forage plants and salt rocks, a dog gathering greens by running over them and tipping them into troughs (inside the pen and over the fence), several sheep feeding at once overnight, salt to the lick and licked, salt running down, slowing and killing, regrowth, every camp's troughs and lick |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
-| `node tools/cougar-sim.mjs [day\|hunt\|rescue\|penned] [--trials N]` | the cougar: gone by day and up its tree at night, takes a lamb first, the sheep dies only once it's up the tree (stone at the foot), a bot dog's pounce saves it, a shut pen keeps it out |
+| `node tools/cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard] [--trials N]` | the cougar: gone by day and up its tree at night, takes a lamb first, the sheep dies only once it's up the tree (stone at the foot), a bot dog's pounce saves it, it jumps into a shut pen and out again with a lamb, a dog in the pen keeps it off |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
@@ -197,7 +197,11 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   ram. A pounce or bumping into it (even low on the trunk) makes it drop the
   sheep; a bark spooks a stalking one. It gives up after `T.cougar.tries`.
   A grabbed sheep's `s.grabbed` is the cougar (`k.isCougar`), so code that
-  assumes a coyote there must check. Closed pens keep cougars out.
+  assumes a coyote there must check. Shut pens don't stop it: it bounds over
+  the fence (`cougarVault`, `T.cougar.vaultT`/`vaultH`), takes its sheep and
+  bounds back out with it in its jaws. Only a dog with the flock keeps it
+  off, so an unguarded penned flock can lose a lamb a night (`breed-sim`
+  prints cougar losses). The night doesn't fast-forward while one is out.
 - **Hank only calls out what he sees** (`hankSees`: within `T.hankSight`, less
   at night, no hill in between; `hankSpotPredators` in `hankWatch`). A pack
   gets one line per sighting ("Here they come!" the first tonight, "Coyotes!

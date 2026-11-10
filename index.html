@@ -431,7 +431,8 @@ const T = {
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
   cougar: { range: 80, chance: 0.6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
-    climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5 },
+    climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
+    vaultT: 0.75, vaultH: 2.2 },   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -4842,7 +4843,16 @@ function updateCoyotes(dt) {
 const COUGARS = LAIRS.map((L, i) => ({ i, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
   state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, models: makeCougar() }));
 function perchCougar(k) { const L = k.lair; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
-const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && !(s.pen && penShut(s.pen));
+const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;   // a shut pen doesn't stop it: it jumps the fence
+// the pen the cougar is standing in (open or shut), if any
+const cougarPen = k => penAt(k.x, k.z);
+// a point just inside (in < 0) or outside (in > 0) a pen's fence, on the side facing (x, z)
+function fencePoint(pen, x, z, off) { const dx = x - pen.x, dz = z - pen.z, d = Math.hypot(dx, dz) || 1; return { x: pen.x + dx / d * (pen.R + off), z: pen.z + dz / d * (pen.R + off) }; }
+// a bound over the fence (in or out, with or without a sheep in its jaws); then on to state `after`
+function cougarVault(k, tx, tz, after) {
+  k.state = 'vault'; k.t = 0; k.lx = k.x; k.lz = k.z; k.ltx = tx; k.ltz = tz; k.after = after;
+  Sound.growl(panOf(k.x, k.z), 0.12);
+}
 function cougarTarget(k, exclude = null) {
   const L = k.lair; let best = null, bs = 1e9;
   for (const s of G.sheep) {
@@ -4883,7 +4893,7 @@ function cougarWarn(k) {
   G.cougarHeard = true; k.hankSaw = false;   // (Hank calls it out only once he sees it: hankSpotPredators)
 }
 function cougarGrab(k, s) {
-  s.grabbed = k; k.prey = s; k.target = null; s.state = 'flee'; k.state = 'drag'; k.t = 0; k.cryT = 0.3;
+  s.grabbed = k; s.pen = null; k.prey = s; k.target = null; s.state = 'flee'; k.state = 'drag'; k.t = 0; k.cryT = 0.3;
   burst(s.x, s.y + 0.7, s.z, 12, '#f7f3e8', { speed: 2.5, up: 2.5 });
   Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); Sound.growl(panOf(k.x, k.z), 0.2);
   toast(`A cougar has ${s.name || 'a sheep'} — stop it before it gets up its tree!`, 'bad');
@@ -4935,6 +4945,13 @@ function cougarsAtDawn() {
   }
 }
 function resetCougars() { for (const k of COUGARS) { if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+// standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
+function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
+  const pen = cougarPen(k); if (!pen) return false;
+  const i = fencePoint(pen, tx, tz, -1.6);
+  if (Math.hypot(i.x - k.x, i.z - k.z) < 1.2) { const o = fencePoint(pen, tx, tz, 2.6); cougarVault(k, o.x, o.z, after); return true; }
+  moveCougar(k, i.x, i.z, spd, dt); return true;
+}
 function updateCougars(dt) {
   const C = T.cougar;
   for (const k of COUGARS) {
@@ -4943,7 +4960,7 @@ function updateCougars(dt) {
       case 'away': break;
       case 'perch': case 'fed': {
         if (!isNight() && !onScreen(L.x, L.y + 3, L.z, 0.1)) { k.state = 'away'; break; }   // gone by day, when nobody's looking
-        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt) <= 0) {
+        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0) {
           k.target = cougarTarget(k);
           if (k.target) { k.state = 'down'; k.t = 0; k.huntT = 0; k.holdT = 0; cougarWarn(k); }
           else k.wait = 20;   // nothing out in reach: it watches a while longer
@@ -4968,9 +4985,14 @@ function updateCougars(dt) {
         if (nd.dog && nd.d < C.shyR) { cougarSpooked(k, 0.5); break; }
         const ds = Math.hypot(s.x - k.x, s.z - k.z);
         let gx = s.x, gz = s.z;
+        const inPen = cougarPen(k);
+        if (inPen && s.pen !== inPen) { cougarOut(k, 'stalk', C.stalk * 1.5, dt, s.x, s.z); break; }   // its sheep isn't in this pen: back out
         if (guarded(s, C.guardR)) {   // a dog's by it: wait out in the dark, then try another
           const ox = k.x - s.x, oz = k.z - s.z, ol = Math.hypot(ox, oz) || 1; gx = s.x + ox / ol * 16; gz = s.z + oz / ol * 16;
           if ((k.holdT += dt) > C.hold) { k.holdT = 0; const o = cougarTarget(k, s); if (o) k.target = o; }
+        } else if (s.pen && !insidePen(s.pen, k.x, k.z)) {   // penned: up to the fence, then over it
+          const o = fencePoint(s.pen, k.x, k.z, 2.2); gx = o.x; gz = o.z;
+          if (Math.hypot(o.x - k.x, o.z - k.z) < 1.4) { const i = fencePoint(s.pen, k.x, k.z, -2.2); cougarVault(k, i.x, i.z, 'stalk'); break; }
         } else if (ds < C.leapR) {
           k.state = 'leap'; k.t = 0; k.lx = k.x; k.lz = k.z; k.ltx = s.x + s.vx * C.leapT * 0.5; k.ltz = s.z + s.vz * C.leapT * 0.5;
           Sound.growl(panOf(k.x, k.z), 0.14); break;
@@ -4993,6 +5015,7 @@ function updateCougars(dt) {
       case 'drag': {
         const s = k.prey; if (!s) { k.state = 'retreat'; k.t = 0; break; }
         if (cougarHitBy(k, C.hitR)) { cougarDrop(k, true); break; }
+        if (cougarOut(k, 'drag', C.drag, dt)) { holdCougarPrey(k); break; }   // in a pen: over the fence with it
         moveCougar(k, L.bx, L.bz, C.drag, dt); holdCougarPrey(k);
         if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.45, 0.85); Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); }   // it cries all the way
         if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6) { k.state = 'climb'; k.t = 0; }
@@ -5017,7 +5040,19 @@ function updateCougars(dt) {
         perchCougar(k); k.state = 'fed'; k.t = 0; k.hunts = false;
         break;
       }
+      case 'vault': {   // over the fence: a high bound, the sheep (if any) swinging from its jaws
+        const f = clamp(k.t / C.vaultT, 0, 1);
+        k.x = lerp(k.lx, k.ltx, f); k.z = lerp(k.lz, k.ltz, f);
+        k.h = Math.sin(f * Math.PI) * C.vaultH; k.y = groundY(k.x, k.z) + k.h; k.yaw = Math.atan2(k.ltx - k.lx, k.ltz - k.lz);
+        k.vx = (k.ltx - k.lx) / C.vaultT; k.vz = (k.ltz - k.lz) / C.vaultT;
+        if (k.prey) { holdCougarPrey(k); k.prey.y = k.y - 0.15; }
+        if (f < 1) break;
+        k.h = 0; k.y = groundY(k.x, k.z); k.vx *= 0.3; k.vz *= 0.3; k.state = k.after; k.t = 0;
+        if (k.prey) holdCougarPrey(k);
+        break;
+      }
       case 'retreat': {
+        if (cougarOut(k, 'retreat', C.run, dt)) break;
         moveCougar(k, L.bx, L.bz, C.run, dt);
         if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6 || k.t > 15) { k.state = 'up'; k.t = 0; }
         break;
@@ -5319,7 +5354,7 @@ function syncCougar(k) {
       pitch = (st === 'down' ? 1.25 : -1.3) * up; bodyY = lerp(-0.55, -0.9, up);    // belly against the bark
       M.legs.forEach((g, i) => { g.rotation.x = (i === 0 || i === 3 ? f : -f) + (i < 2 ? -0.6 : 0.4) * up; });
       t0 = -0.9; headX = st === 'climb' ? 0.4 : 0;
-    } else if (st === 'leap') {
+    } else if (st === 'leap' || st === 'vault') {
       pitch = -0.25 * clamp(k.h / 1.3, 0, 1);
       M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -1.15 : 1.05; }); t0 = 0.1; t2 = 0.2;
     } else {   // stalking low and slow, or running
@@ -7857,7 +7892,7 @@ function step(dt) {
   if (G.mode === 'play') {
     // fast-forward the night when the whole flock is penned behind a closed gate
     const live = living();
-    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05) && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey);
+    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05) && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state));   // (watch it come over the fence)
     const dtH = stepClock(dt);
     regrowAcc += dtH; regrowT();   // in step, not frame, so headless tests (?sim) regrow the grass too
     for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
