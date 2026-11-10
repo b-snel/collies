@@ -481,6 +481,7 @@ const T = {
   startRams: 2, ramScale: 1.32, ramRadius: 0.66, ramPressR: 0.8, ramPressK: 0.7, ramIrk: 0.2, ramDogR: 10,
   ramDogFromDay: 2,      // on day 1 a ram only charges a dog that provokes it (punt, shake, holding on): new players learn the drive first
   ramCoyoteR: 7, ramBonk: 0.8, ramCoyoteCd: [12, 18],   // rams defend the flock, but they don't win the night on their own
+  brave: { ramMin: 0.3, cougar: 0.7, sire: 0.65, dam: 0.15 },   // s.brave 0…1: a ram under ramMin never fights; over cougar he takes on cougars too. Lambs: sire/dam weights, rest luck
   ramWindup: 0.9, ramWindupProvoked: 0.6, ramCharge: 14, ramChargeT: 1, ramHitR: 1.5, ramHitStun: 1.1, ramDazed: 1.8, ramCd: [10, 15], ramBarkCd: 8,
   ramPuntDazed: 2.2, ramGrudgeCd: [5, 8],   // a punted ram lands seeing stars, then bears a grudge: it comes for that dog (with a full windup) only after the cooldown, if it's still near
   courtHour: 16, wooTime: 2.0, courtCd: 1.0, lambChance: 0.5, twinChance: 0.15,
@@ -509,6 +510,7 @@ const T = {
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
+  coyoteMaul: { time: 14, every: 0.9 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
@@ -2107,7 +2109,7 @@ function ageWord(s) {
   return s.age < T.adultDays ? 'yearling' : k <= 0 ? `in ${her} prime` : k < 0.5 ? 'getting on' : 'very old';
 }
 const rollTrait = () => { const r = Math.random(); return r < 0.2 ? 'skittish' : r < 0.35 ? 'stubborn' : null; };
-function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 0.1, hunger = 0.25, ram = false, bell = false, age = lamb ? 0 : Math.round(rnd(...T.startAge)) } = {}) {
+function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 0.1, hunger = 0.25, ram = false, bell = false, age = lamb ? 0 : Math.round(rnd(...T.startAge)), brave = (Math.random() + Math.random()) / 2 } = {}) {
   ram = ram && !lamb;
   return {
     id: G.nextSheepId++, name: sheepName({ ram }), x, z, vx: 0, vz: 0, y: groundY(x, z), yaw: Math.random() * TAU,
@@ -2117,7 +2119,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
     hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(5, 40),
     pitch: lamb ? 1.45 + Math.random() * 0.2 : ram ? 0.66 + Math.random() * 0.14 : 0.85 + Math.random() * 0.3,
     // the mind
-    ram, bell, trait: bell ? null : rollTrait(), jumpy: false, goal: null, goalHold: 0, press: 0,
+    ram, bell, brave, trait: bell ? null : rollTrait(), jumpy: false, goal: null, goalHold: 0, press: 0,
     corner: 0, cWarn: 0, breakT: 0, breakCd: 0, bowlT: 0, bdx: 0, bdz: 0, cpx: x, cpz: z, boltT: 0, boltA: 0, strayBaa: rnd(2, 4), bellT: 0,
     // rams: idle -> windup -> charge -> dazed; and courting in the pen
     rs: 'idle', rcd: rnd(6, 10), rt: 0, rtar: null, cdx: 0, cdz: 0, pawT: 0, sparkT: 0, court: null, courtT: 0, courtCD: rnd(0, 2), wooT: 0, heartT: 0,
@@ -2576,9 +2578,15 @@ const RAMV = { x: 0, z: 0, spd: 0, acc: 8, straight: false };
 const isDogT = t => !!(t && t.player);
 function ramSnort(s) { baaAt(s, 0.45, 0.62, true); burst(s.x + Math.sin(s.yaw) * 0.8 * s.scale, s.y + 0.7 * s.scale, s.z + Math.cos(s.yaw) * 0.8 * s.scale, 3, '#ffffff', { speed: 1.2, up: 0.4, size: 0.1, life: 0.35, grav: 0 }); }
 // coyotes within T.ramCoyoteR come first (the ram defends the flock), else a dog that's leaning on it (never one lying down)
+// bravery (s.brave) decides it: a flighty ram never fights, an average one only now and then and close, a brave one takes on cougars too
+const ramFoe = t => t.isCougar ? ['stalk', 'drag', 'leap'].includes(t.state) && t.h < 0.3 : !(t.state === 'leave' || t.state === 'flee' || t.state === 'sleep' || t.heldBy || t.gone);
 function ramTarget(s) {
-  let best = null, bd = T.ramCoyoteR;
-  for (const c of G.coyotes) { if (c.state === 'leave' || c.state === 'flee' || c.state === 'sleep' || c.heldBy || c.gone) continue; const d = Math.hypot(c.x - s.x, c.z - s.z); if (d < bd) { bd = d; best = c; } }
+  const b = s.brave ?? 0.5;
+  let best = null, bd = T.ramCoyoteR * lerp(0.5, 1.6, b);
+  if (b >= T.brave.ramMin && Math.random() < b) {
+    for (const c of G.coyotes) { if (!ramFoe(c)) continue; const d = Math.hypot(c.x - s.x, c.z - s.z); if (d < bd) { bd = d; best = c; } }
+    if (b >= T.brave.cougar) for (const k of COUGARS) { if (!ramFoe(k)) continue; const d = Math.hypot(k.x - s.x, k.z - s.z); if (d < bd) { bd = d; best = k; } }
+  }
   if (best) return best;
   let tgt = null, td = T.ramDogR;
   if (G.clock.day < T.ramDogFromDay) return null;
@@ -2611,7 +2619,7 @@ function ramStep(s, dt) {
     if (s.rs === 'idle') return false;
   }
   const t = s.rtar;
-  if (s.rs !== 'dazed' && (!t || t.gone || (!isDogT(t) && (t.state === 'leave' || t.heldBy)))) { s.rs = 'idle'; s.rcd = 3; s.state = 'idle'; return false; }
+  if (s.rs !== 'dazed' && (!t || t.gone || (!isDogT(t) && (t.isCougar ? !ramFoe(t) : t.state === 'leave' || t.heldBy)))) { s.rs = 'idle'; s.rcd = 3; s.state = 'idle'; return false; }
   RAMV.x = RAMV.z = RAMV.spd = 0; RAMV.acc = 8; RAMV.straight = false; s.state = 'ram'; s.eating = false;
   if (s.rs === 'windup') {
     s.yaw = lerpA(s.yaw, Math.atan2(t.x - s.x, t.z - s.z), 1 - Math.exp(-dt * 10));   // squares up to it
@@ -2655,6 +2663,13 @@ function ramStep(s, dt) {
       hitCoyote(c, T.ramBonk, s.cdx * 16, s.cdz * 16, s, 'RAM BONK!'); rumble(G.players[0], 0.3, 0.5, 120); G.stats.ramBonks = (G.stats.ramBonks || 0) + 1;
       s.rs = 'idle'; s.rcd = rnd(T.ramCoyoteCd[0], T.ramCoyoteCd[1]); s.vx *= 0.2; s.vz *= 0.2; s.state = 'idle'; s.alert = 0; return false;
     }
+    for (const k of COUGARS) {   // a brave ram's horns: the cougar drops what it has and bolts
+      if (!ramFoe(k) || Math.hypot(k.x - s.x, k.z - s.z) > T.ramHitR + 0.5) continue;
+      floatText('RAM BONK!', k.x, k.y + 1.9, k.z, '#ffd36b', 1.2); SFX.bonk(panOf(k.x, k.z), 0.35); starBurst(k.x, k.y + 0.9, k.z, 10, undefined, { speed: 5, up: 4 });
+      if (k.state === 'drag') cougarDrop(k, true); else cougarSpooked(k, 1);
+      G.stats.ramBonks = (G.stats.ramBonks || 0) + 1;
+      s.rs = 'idle'; s.rcd = rnd(T.ramCoyoteCd[0], T.ramCoyoteCd[1]); s.vx *= 0.2; s.vz *= 0.2; s.state = 'idle'; s.alert = 0; return false;
+    }
     s.rt -= dt; if (s.rt <= 0) daze(s, T.ramDazed, null);   // missed!
     return true;
   }
@@ -2689,7 +2704,7 @@ function courtStep(s, dt) {
   s.wooT += dt; e.vx *= 0.9; e.vz *= 0.9;
   if (s.heartT <= 0) { s.heartT = 0.45; floatText('♥', (s.x + e.x) / 2, s.y + 1.6, (s.z + e.z) / 2, '#ff6fb0', 1.3); burst((s.x + e.x) / 2, s.y + 1.2, (s.z + e.z) / 2, 2, '#ff8fc4', { speed: 0.6, up: 1.4, size: 0.12, life: 0.7, grav: 0.5 }); }
   if (s.wooT > T.wooTime) {
-    s.court = null; s.courtCD = T.courtCd; s.state = 'idle'; e.bred = true; s.hopV = 2.5; e.hopV = 2.5;
+    s.court = null; s.courtCD = T.courtCd; s.state = 'idle'; e.bred = true; e.sireBrave = s.brave ?? 0.5; s.hopV = 2.5; e.hopV = 2.5;
     burst(e.x, e.y + 1, e.z, 10, '#ff8fb8', { speed: 1.4, up: 2.4, size: 0.13, grav: 1.5 }); Sound.chime([0, 4, 7], 988, 0.1, 0.07);
   }
 }
@@ -2763,12 +2778,12 @@ function updateSheep(dt, dtH) {
       const hunting = !!c.prey || c.state === 'pack' || c.state === 'drag', cR = hunting || (isNight() && c.state !== 'leave') ? 11 : 4.5;
       const dx = s.x - c.x, dz = s.z - c.z, dd = Math.hypot(dx, dz) + 1e-4;
       if (dd < cR) {
-        const raw = 1 - dd / cR, safe = s.pen && s.pen.gateT < 0.1, k = raw * (safe ? 0.6 : 1.8) * (s.ram ? 0.3 : 1);   // rams stand their ground
+        const raw = 1 - dd / cR, safe = s.pen && s.pen.gateT < 0.1, rs = s.ram ? clamp(1.1 - (s.brave ?? 0.5), 0.2, 1) : 1, k = raw * (safe ? 0.6 : 1.8) * rs;   // brave rams stand their ground
         fX += dx / dd * k; fZ += dz / dd * k; if (k > cThreat) cThreat = k; if (raw > cRaw) cRaw = raw;
-        stressIn += raw * T.stressCoyote * (safe ? 0.2 : 1) * (s.ram ? 0.3 : 1);
+        stressIn += raw * T.stressCoyote * (safe ? 0.2 : 1) * rs;
       }
     }
-    if (cRaw > 0.12 && !s.ram) { const nd = nearestDog(s.x, s.z); if (nd.dog && nd.d > 3 && nd.d < 30) { fX += (nd.dog.x - s.x) / nd.d * cRaw * 0.9; fZ += (nd.dog.z - s.z) / nd.d * cRaw * 0.9; } }   // huddle to the dog
+    if (cRaw > 0.12 && !(s.ram && s.brave >= T.brave.ramMin)) { const nd = nearestDog(s.x, s.z); if (nd.dog && nd.d > 3 && nd.d < 30) { fX += (nd.dog.x - s.x) / nd.d * cRaw * 0.9; fZ += (nd.dog.z - s.z) / nd.d * cRaw * 0.9; } }   // huddle to the dog
     const trR = s.trait === 'skittish' ? 1.13 : s.trait === 'stubborn' ? 0.87 : 1;
     for (const d of G.dogs) {
       const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4;
@@ -2819,7 +2834,7 @@ function updateSheep(dt, dtH) {
     // ---- stress: only recovers once the pressure eases; spreads up fast and down slowly
     if (MIND.flanked) { calm = true; stressIn *= 0.6; }
     if ((s.pen && s.pen.gateT < 0.1) || s.eating || s.state === 'sleep') calm = true;
-    const tg = (s.trait === 'skittish' ? 1.6 : s.trait === 'stubborn' ? 0.55 : 1) * (s.jumpy ? 1.5 : 1) * (s.bell ? 0.8 : 1) * (s.ram ? 0.75 : 1);
+    const tg = (s.trait === 'skittish' ? 1.6 : s.trait === 'stubborn' ? 0.55 : 1) * (s.jumpy ? 1.5 : 1) * (s.bell ? 0.8 : 1) * (s.ram ? 0.75 : 1) * (1.3 - 0.6 * (s.brave ?? 0.5));
     const leak = (calm ? T.stressLeakCalm : T.stressLeak) * Math.max(0, 1 - stressIn / T.stressHold);
     s.stress = clamp(s.stress + (stressIn * tg - leak) * dt, 0, 1);
     // separated: nobody near and no knot near it → anxiety builds, and with it stress (never quite to panic)
@@ -3194,7 +3209,7 @@ function growUp(s) {
 function ageAtDawn() {
   for (const s of [...G.sheep]) {
     if (s.dead) continue;
-    s.age++;
+    s.age++; s.maulHp = null;   // mauling wounds mend overnight
     if (s.lamb) { if (s.age >= T.lambGrowDays) growUp(s); continue; }
     if (s.age === T.oldDays && s.age < s.life) toast(`${s.name} is getting on in years: ${s.ram ? 'his' : 'her'} fleece is greying.`, '');
     if (s.age >= s.life && !s.grabbed && !s.heldBy && !s.air) killSheep(s, 'old');
@@ -3211,7 +3226,8 @@ function lambsAtDawn() {
       for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
         let lx = s.x + rnd(-0.6, 0.6), lz = s.z + rnd(-0.6, 0.6);
         if (s.pen && !insidePen(s.pen, lx, lz, 1.2)) { lx = lerp(lx, s.pen.x, 0.15); lz = lerp(lz, s.pen.z, 0.15); }   // born by the fence: on the pen side of it
-        const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2 });
+        const B = T.brave, brave = clamp(B.sire * (s.sireBrave ?? 0.5) + B.dam * (s.brave ?? 0.5) + (1 - B.sire - B.dam) * Math.random(), 0, 1);   // like father, like lamb
+        const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2, brave });
         G.sheep.push(l); born++;
         burst(l.x, l.y + 0.8, l.z, 6, '#ff8fb8', { speed: 0.8, up: 2, size: 0.12, grav: 1.5 });
         floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
@@ -5031,7 +5047,7 @@ function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
   c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
 }
 function grab(c, s) {
-  s.grabbed = c; c.prey = s; c.state = 'drag'; c.stateT = 0; s.state = 'flee';
+  s.grabbed = c; c.prey = s; c.state = 'drag'; c.stateT = 0; s.state = 'flee'; c.fromPen = s.pen || penAt(s.x, s.z);
   if (c.pack) { c.pack.carrier = c; setPhase(c.pack, 'escape'); for (const o of c.pack.members) if (o !== c && o.state !== 'leave') o.role = 'screen'; }
   burst(s.x, s.y + 0.7, s.z, 10, '#f7f3e8', { speed: 2.5, up: 2.5 });
   Sound.baa(s.pitch * 1.1, 0.45, 0, true);
@@ -5189,6 +5205,21 @@ function updatePack(p, dt, fc) {
   }
 }
 const canNip = (c, d) => G.time >= (c.nipAt || 0) && !c.prey && !d.air && !d.maul && !d.ko && (c.bold || c.role === 'screen' || (c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'defend')));
+// a coyote inside a pen: c.inPen is that pen; c.trap too while its gate is shut (it can't get out with a catch)
+const penPrey = (c, pen) => { let b = null, bd = 1e9; for (const s of G.sheep) { if (s.dead || s.grabbed || s.air || s.heldBy || s.pen !== pen) continue; const d = Math.hypot(s.x - c.x, s.z - c.z); if (d < bd) { bd = d; b = s; } } return b; };
+// shut in with its catch: it mauls it where it stands. The sheep's done for unless a dog gets there (scareCoyote drops it: saved)
+function coyoteMaul(c, dt) {
+  const s = c.prey, M = T.coyoteMaul;
+  if (!c.mauling) { c.mauling = true; c.maulT = 0; s.maulHp = s.maulHp ?? 1; toast(`🐺 ${s.name || ''} 🔒`, 'bad'); for (const p of G.players) rumble(p, 0.7, 0.5, 250); Sound.growl(panOf(c.x, c.z), 0.25); }
+  c.maulT -= dt; c.yaw += Math.sin(G.time * 22) * dt * 6;   // shaking it
+  if (c.maulT <= 0) {
+    c.maulT = M.every * rnd(0.8, 1.2); s.maulHp -= M.every / M.time;
+    burst(s.x, s.y + 0.6, s.z, 7, '#f7f3e8', { speed: 2.4, up: 2.2, size: 0.14, life: 0.7 }); Sound.growl(panOf(c.x, c.z), 0.14);
+    if (Math.random() < 0.5) Sound.baa(s.pitch * 1.2, 0.45, panOf(s.x, s.z), true);
+    floatText(`${Math.max(0, Math.round(s.maulHp * 100))}%`, s.x, s.y + 1.5, s.z, '#ff7a6b', 0.7);
+  }
+  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; killSheep(s, 'eaten'); c.state = 'leave'; c.stateT = 0; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+}
 function updateCoyotes(dt) {
   const fc = flockCenter();
   updateDens();
@@ -5214,6 +5245,12 @@ function updateCoyotes(dt) {
       else if (ndd < fearR && !c.bold && !(c.pack && c.pack.phase === 'defend')) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
     }
     let dX = 0, dZ = 0, spd = 0, crouchW = 0;
+    c.inPen = penAt(c.x, c.z); c.trap = c.inPen && penShut(c.inPen) ? c.inPen : null;
+    if (c.state !== 'drag') c.mauling = false;
+    if (c.state === 'pack' && c.trap && c.courage > 0 && !(c.pack && c.pack.phase === 'retreat')) {   // shut in: whatever's in here with it
+      const s = penPrey(c, c.trap);
+      if (s) { c.gx = s.x; c.gz = s.z; c.spd = T.coyoteRun; c.crouchW = 0; if (Math.hypot(s.x - c.x, s.z - c.z) < 1.05) grab(c, s); }
+    }
     switch (c.state) {
       case 'pack': {
         if (c.gx === undefined) { c.gx = c.x; c.gz = c.z; c.spd = 0; }
@@ -5227,6 +5264,15 @@ function updateCoyotes(dt) {
       }
       case 'drag': {
         const s = c.prey; if (!s) { c.state = 'pack'; break; }
+        if (c.trap) { coyoteMaul(c, dt); spd = 0; break; }   // can't get out: mauls it here
+        c.mauling = false;
+        if (c.fromPen && Math.hypot(c.x - c.fromPen.x, c.z - c.fromPen.z) > c.fromPen.R + 4) c.fromPen = null;   // out and away
+        const q = c.fromPen;
+        if (q) {   // caught in a pen: out by the gateway first (line up inside it, then straight through)
+          const inside = Math.hypot(c.x - q.x, c.z - q.z) < q.R, aligned = Math.abs(wrapA(Math.atan2(c.z - q.z, c.x - q.x) - q.gateA)) < q.gapHalf * 0.55;
+          const tx = !inside || aligned ? q.exitX : lerp(q.x, q.gx, 0.7), tz = !inside || aligned ? q.exitZ : lerp(q.z, q.gz, 0.7);
+          const ex = tx - c.x, ez = tz - c.z, el = Math.hypot(ex, ez) || 1; dX = ex / el; dZ = ez / el; spd = T.coyoteDrag; c.stateT = Math.min(c.stateT, 2); break;
+        }
         // away from the flock and the dogs, toward where the pack came from
         let ax = c.x - fc.x + (c.pack ? (c.pack.homeX - c.x) * 0.3 : 0), az = c.z - fc.z + (c.pack ? (c.pack.homeZ - c.z) * 0.3 : 0);   // toward its den
         if (nd) { ax += (c.x - nd.x) * 2; az += (c.z - nd.z) * 2; }
@@ -5244,6 +5290,7 @@ function updateCoyotes(dt) {
         break;
       }
       case 'leave': {
+        if (c.inPen) { const q = c.inPen, tx = c.trap ? lerp(q.x, q.gx, 0.8) : q.exitX, tz = c.trap ? lerp(q.z, q.gz, 0.8) : q.exitZ, n = navSteer(c, tx, tz); dX = n.x; dZ = n.z; spd = Math.hypot(tx - c.x, tz - c.z) < 1 ? 0 : 5; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: waits by the gate
         if (c.den) {   // home to the den, then sleep
           const sl = c.den.slots[c.slot % c.den.slots.length], d = Math.hypot(sl.x - c.x, sl.z - c.z);
           if (d < 1.1) { c.state = 'sleep'; c.stateT = 0; c.x = sl.x; c.z = sl.z; c.yaw = sl.yaw; c.vx = c.vz = 0; c.alone = false; break; }
@@ -7338,7 +7385,9 @@ function barnInfo() {
   if (BARN.tab === 'dogs') { el.textContent = dogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
-  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger].join(' · ');
+  const b = s.brave ?? 0.5;
+  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger, b >= 0.66 ? '🦁' : b <= 0.33 ? '🐇' : ''].filter(Boolean).join(' · ');
+  el.title = b >= 0.66 ? 'Brave' : b <= 0.33 ? 'Flighty' : '';
 }
 function barnRefresh() {
   barnList(); barnInfo();
@@ -7466,13 +7515,13 @@ const cleanName = n => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 14);
 function readFlockSave() {
   try {
     const j = JSON.parse(localStorage.getItem(FLOCK_KEY) || 'null'); if (!j || j.v !== 1) return null;
-    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999) } : null).filter(Boolean).slice(0, 80);
+    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999), brave: typeof r.brave === 'number' ? clamp(r.brave, 0, 1) : null } : null).filter(Boolean).slice(0, 80);
     const memorial = (Array.isArray(j.memorial) ? j.memorial : []).map(m => m && cleanName(m.name) ? { name: cleanName(m.name), why: cleanWhy(m.why), day: m.day | 0, journey: m.journey | 0, words: String(m.words || '').slice(0, 120), look: cleanLook(m.look), ram: !!m.ram, lamb: !!m.lamb } : null).filter(Boolean).slice(0, 60);
     return { flock, memorial, journeys: j.journeys | 0 };
   } catch (e) { return null; }
 }
 const customised = r => r.renamed || r.look.hat !== 'none' || r.look.acc.length > 0 || !!r.look.wool || r.look.paint.length > 0 ? 1 : 0;
-function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0 }; }
+function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2) }; }
 function saveFlock() {
   if (NET.role === 'guest') return false;   // ONLINE: a guest is drawing the host's flock; this browser's own saved flock stays as it was
   const flock = G.sheep.filter(s => !s.dead).map(sheepRecord).concat(FLOCK.home).slice(0, 80);
@@ -7494,7 +7543,7 @@ function applySavedFlock() {
     if (s.lamb) continue;
     const i = roster.findIndex((r, k) => !used.has(k) && !!r.ram === !!s.ram); if (i < 0) continue;
     used.add(i); const r = roster[i];
-    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true;
+    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true; if (r.brave !== null) s.brave = r.brave;
     if (r.life > 0) { s.age = Math.max(T.lambGrowDays, r.age); s.life = Math.max(r.life, s.age + 1); }   // AGE: they're as old as they were (older saves keep the age they drew)
   }
   FLOCK.home = roster.filter((r, k) => !used.has(k));
