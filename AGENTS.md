@@ -147,9 +147,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
 - **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
-  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Run
-  over a bucket to carry it (one per dog), wade/swim to fill, walk up to any
-  water trough to tip in (empty: set down there). Penned thirsty sheep drink;
+  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Hold
+  grab on a bucket to carry it (one per dog, mouth full); let go: set down
+  (`dropBucket`). A lying one gets shoved by dogs running into it, flies (spilling)
+  when pounced (`bucketPhysics`, `T.water.kick`). Wade/swim to fill, walk up to any water trough to tip in.
+  Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
 - **Coyote packs** flank and strike together; chase off the alpha to break
   them. Shut pens stop them.

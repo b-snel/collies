@@ -61,7 +61,7 @@ Each camp has a round pen with a gate and funnel wings. Pen the flock and shut t
 
 Run over **daisies** and **alfalfa** to carry greens, then walk up to a pen's trough (either side of the fence) to tip them in. Salt rocks are the same: break off a lump, take it to the pen's salt lick. Penned sheep eat and lick till full, shoving the weak ones aside.
 
-Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: run over the bucket, wade into a river or the sea to fill it, walk up to the water trough to tip it in. Left parched too long, a sheep dies. The desert has no water.
+Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: hold grab on the bucket to carry it (let go and it's set down), wade into a river or the sea to fill it, walk up to the water trough to tip it in. Left parched too long, a sheep dies. The desert has no water.
 
 ## Shearing and the Trading Post
 
