@@ -53,6 +53,22 @@ const tests = {
       return out;
     });
   },
+  // 1b. punting a ram: it lands dazed and only comes back for the dog after a cooldown, not the moment it lands
+  async ramPunt() {
+    return h.page.evaluate(() => {
+      const { G, pathPoint, T } = GAME; H.reset(); G.clock.day = 1;
+      const d = H.d(), P = pathPoint(330, 0), s = G.sheep.find(o => o.ram && !o.lamb);
+      for (const o of G.sheep) if (o !== s) H.place(o, P.x - P.tx * 40, P.z - P.tz * 40);
+      H.place(d, P.x, P.z); H.place(s, P.x + P.tx * 2.2, P.z + P.tz * 2.2); d.yaw = Math.atan2(P.tx, P.tz); s.rs = 'idle'; s.rcd = 99;
+      H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
+      const landT = H.run(6, () => !s.air);
+      const stateOnLanding = s.rs;
+      // the dog trots up next to it and stands there
+      const windupAt = H.run(20, () => { H.place(d, s.x - P.tx * 4, s.z - P.tz * 4); return s.rs === 'windup' || s.rs === 'charge'; });
+      return { punted: GAME.MV.punts, landT: H.r(landT), stateOnLanding, windupAfterLanding: H.r(windupAt), target: s.rtar === d ? 'dog' : String(s.rtar && s.rtar.id),
+        ok: stateOnLanding === 'dazed' && windupAt > T.ramPuntDazed + T.ramGrudgeCd[0] - 0.1 && windupAt < 19 && s.rtar === d };
+    });
+  },
   // 2. a punted sheep caroms down a line of sheep
   async caroms() {
     return h.page.evaluate(() => {
