@@ -99,6 +99,8 @@
   #buildLine { position:fixed; right:10px; bottom:8px; font-size:12px; color:rgba(255,248,232,.7); text-shadow:0 1px 0 rgba(0,0,0,.5); transition:opacity .6s; }
   #buildLine a { color:inherit; }
   #title.hidden ~ #buildLine { opacity:0; pointer-events:none; }
+  #tUpdate { position:fixed; top:12px; left:0; right:0; margin:0 auto; width:max-content; animation:pulse 0.9s infinite alternate; }
+  #tUpdate[hidden], #title.hidden ~ #tUpdate { display:none; }
   #loading { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; color:var(--cream); font-size:28px; background:#0d1633; transition:opacity .6s; }
   /* ===== ONLINE CO-OP + PAUSE ===== */
   .net [hidden], .net[hidden] { display:none !important; }
@@ -185,6 +187,7 @@
   #eMem b { color:var(--barn-ink); }
   #eMem { max-width:min(720px, 92vw); margin:-6px 0 18px; font-size:16px; line-height:1.5; color:var(--barn-muted); }
   #barn.hidden { display:none; }
+  #barn.watch .barnCard button, #barn.watch .barnCard input { pointer-events:none; }
   #barn { position:fixed; inset:0; z-index:6; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--barn-backdrop);
     color:var(--barn-ink); text-shadow:none; transition:opacity .25s; overflow-y:auto; }
   .barnCard { width:min(1100px, 100%); max-height:100%; overflow-y:auto; background:var(--barn-card); border:3px solid var(--barn-edge); border-radius:var(--barn-radius);
@@ -392,6 +395,7 @@
   </div>
 </div>
 <div id="buildLine"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener">Audio credits</a> · <span id="buildText">Dev build</span></div>
+<button id="tUpdate" class="nbtn" type="button" hidden>🔄 Update</button>
 <div id="end" class="screen">
   <h1 id="eTitle">🏖️ Cabo! 🌴</h1>
   <div class="stars" id="eStars">★★★</div>
@@ -434,7 +438,7 @@ import * as THREE from 'three';
 
 const DEBUG = /debug/.test(location.search + location.hash);
 const SIM = /[?&]sim\b/.test(location.search);
-// Which build this is. build.js stamps in the commit and PR when Cloudflare deploys; run straight from the repo it stays blank ("Dev build").
+// Which build this is. build.js stamps in the commit and PR when Cloudflare deploys (and writes version.json, see checkBuild); run straight from the repo it stays blank ("Dev build").
 const BUILD={sha:'',pr:'',env:'',at:''};
 function buildText() {
   if (!BUILD.sha) return 'Dev build';
@@ -450,7 +454,8 @@ const T = {
   graveScale: 0.9,       // tombstone size (keep small: they sit on the trail)
   graveTagR: 3,          // a dog this close shows the grave's name
   // clock
-  hourSec: 10,           // real seconds per in-game hour
+  hourSec: 10,           // real seconds per in-game hour at night
+  dayHourSec: 13,        // ... and by day (dawn → nightfall): a leg to the next camp ends around twilight
   startHour: 7.0,
   nightStart: 20.5, nightEnd: 5.5,
   duskWarn: 17.5,
@@ -468,7 +473,7 @@ const T = {
   readyLose: 0.6,        // a ready ewe stays ready all night unless she gets this hungry
   lambHunger: 0.6,       // a courted ewe lambs at dawn unless she's hungrier than this
   lambGrowDays: 2,
-  // ageing, in days (one day = 24 x hourSec = 4 real minutes; ages tick at dawn and carry over between journeys in the saved flock):
+  // ageing, in days (one day ≈ 4.6 real minutes; ages tick at dawn and carry over between journeys in the saved flock):
   // a lamb grows up at lambGrowDays, a yearling fills out by adultDays, and from oldDays a sheep greys, stoops and slows
   // until it dies peacefully in its sleep at an age drawn from lifeDays (so a sheep lives some 3-4 hours of play)
   adultDays: 8, oldDays: 32, lifeDays: [46, 62],
@@ -509,7 +514,8 @@ const T = {
   penFedDay: 0.5, penFedDusk: 0.35,   // hunger above which the pen stops pulling: 0.5 by day, 0.85 at nightfall
   penHome: { from: 13, r: 0.8, w: 1.2, stress: 0.75, bark: 0.85, flee: 1.5 },   // afternoon → night (0…1): pen pull reaches r× further, w× stronger, stress counts less; a bark/flight bends toward the gate
   penTroughPull: 0.8,    // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
-  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12, starve: 0.7 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in (troughs only past starve hunger)
+  troughDraw: { r: 40, w: 2, hunger: 0.35, water: 3 },   // ...and one hungrier than hunger (or thirstier than water.want: water × thirst) from r m, any time of day: w × hunger vs grazing
+  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in but hungry or thirsty ones (troughDraw)
   bellR: 25,
   cornerPress: 0.5, cornerSpd: 1.2, cornerWarn: 0.45, cornerT: 0.75, breakSpd: 11, breakT: 0.6, breakCd: 1.8, cornerStun: 0.55,
   startRams: 2, ramScale: 1.32, ramRadius: 0.66, ramPressR: 0.8, ramPressK: 0.7, ramIrk: 0.2, ramDogR: 10,
@@ -2472,12 +2478,16 @@ function penPull(s) {
   if (calmK < 0.05) return null;
   let best = null, bw = 0;
   for (const p of pens) {
-    if (p.gateT < 0.5 || penRush(p) || morningOut(p)) continue;
-    const fedK = troughHas(p) ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
-    if (fedK <= 0) continue;
+    if (p.gateT < 0.5 || penRush(p)) continue;
+    const food = troughHas(p), eat = food && s.hunger > T.troughDraw.hunger, mOut = morningOut(p);   // alfalfa in the troughs: hungry ones come for it any time of day
+    const drink = waterHas(p) && s.thirst > T.water.want;   // WATER: so do thirsty ones
+    if (mOut && !eat && !drink) continue;
+    const fedK = food ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
+    if (fedK <= 0 && !drink) continue;
     const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = (T.penPullR + T.penPullRF * pF) * (1 + T.penHome.r * hk);
-    if (gd > R) continue;
-    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk);
+    let w = gd < R && !mOut ? (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk) : 0;
+    if (eat && gd < T.troughDraw.r) w = Math.max(w, (1 - 0.6 * gd / T.troughDraw.r) * T.troughDraw.w * s.hunger * calmK);   // the hungrier, the stronger (beats grazing)
+    if (drink && gd < T.troughDraw.r) w = Math.max(w, (1 - 0.6 * gd / T.troughDraw.r) * T.troughDraw.water * s.thirst * calmK);   // the thirstier, the stronger
     if (w > bw) { bw = w; best = p; }
   }
   if (!best) return null;
@@ -2748,12 +2758,14 @@ function waitBy(s, Cs, crowd = 0) {
 }
 function decideCalm(s, nb, night) {
   s.rush = false;
-  if (s.pen && penRush(s.pen)) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
+  const eatIn = s.pen && troughHas(s.pen) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull);   // food in the trough: eat first, then out
+  const drinkIn = s.pen && waterHas(s.pen) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full);   // WATER: same for a drink
+  if (s.pen && penRush(s.pen) && !eatIn && !drinkIn) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
   // WATER: penned and thirsty with water in the trough: drink, first if it's thirstier than hungry (a sleeping one gets up now and then to)
-  const drink = s.pen && waterHas(s.pen) && (!morningOut(s.pen) || s.thirst > T.morningRush.starve) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full) && (s.state !== 'sleep' || Math.random() < T.troughWake);
+  const drink = drinkIn && (s.state !== 'sleep' || Math.random() < T.troughWake);
   if (drink && s.thirst >= s.hunger && claimWater(s)) return;
   // penned and hungry with food in the trough: feed (a sleeping one gets up now and then to)
-  if (s.pen && troughHas(s.pen) && troughTime(s.pen) && (!morningOut(s.pen) || s.hunger > T.morningRush.starve) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
+  if (eatIn && troughTime(s.pen) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
     if (claimTrough(s)) return;
     if (drink && claimWater(s)) return;   // no place free at the trough: drink meanwhile
     if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // ...or lick the salt
@@ -4077,7 +4089,7 @@ function swimSheep(s, a, dt) {
   if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
   s.y = Math.max(groundY(s.x, s.z), WATER_Y - 0.45) + Math.sin(a.t * 5 + s.id) * 0.05;   // paddling: just the back and head above water
   s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
-  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / T.hourSec);   // WATER: a few gulps on the way
+  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / hourLen());   // WATER: a few gulps on the way
   if (Math.random() < dt * 1.5) spawnRing(s.x, WATER_Y, s.z, 1.3, '#e8f8ff', 0.7);
 }
 function launchCoyote(c, vx, vz, vy, by = null) {
@@ -6586,8 +6598,9 @@ function collideGraves(e, r) {
 // CLOCK, EVENTS, DAY/NIGHT LIGHTING
 // =====================================================================
 function crossed(prev, now, h) { return prev <= now ? (prev < h && now >= h) : (prev < h || now >= h); }
+const hourLen = (h = G.clock.hour) => isNight(h) ? T.hourSec : T.dayHourSec;   // real s per in-game hour
 function stepClock(dt) {
-  const mul = G.ff ? T.ffMul : 1, dtH = dt / T.hourSec * mul;
+  const mul = G.ff ? T.ffMul : 1, dtH = dt / hourLen() * mul;
   const prev = G.clock.hour; let now = prev + dtH;
   if (now >= 24) { now -= 24; G.clock.day++; }
   G.clock.hour = now;
@@ -7181,7 +7194,7 @@ function updateHUD(dt) {
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
   const nn = $('hNight');
   if (!isNight() && h >= 6) {
-    const secs = (T.nightStart - h) * T.hourSec;
+    const secs = (T.nightStart - h) * T.dayHourSec;
     nn.textContent = secs < 75 ? `Nightfall in ${Math.ceil(secs)}s` : ''; nn.className = secs < 30 ? 'urgent' : '';
   } else { nn.textContent = G.ff ? 'Safe & sound…' : 'Night'; nn.className = ''; }
   updateFedHUD(live);
@@ -8419,6 +8432,8 @@ loadDogs();
 const BARN = { open: false, tab: 'sheep', sel: null, dog: 0, col: PAINT_SWATCH[0], erase: false, size: 0.05, rot: -0.7, drag: null, fresh: 0, outfit: 0, kit: 0, mem: false, w: 0, h: 0 };
 const ACC_OUTFITS = [[], ['scarf'], ['bowtie'], ['shades'], ['flower'], ['scarf', 'shades'], ['bowtie', 'flower'], ['scarf', 'flower'], ['bowtie', 'shades']];
 const barnFlock = () => G.sheep.filter(s => !s.dead);
+// ONLINE: a guest watches the host's barn (BARN.watch, read only); dogs' looks come from the host (BARN.wv.dl)
+const barnDogLook = slot => BARN.watch && BARN.wv && Array.isArray(BARN.wv.dl) ? cleanDogLook(BARN.wv.dl[slot], slot) : dogLook(slot);
 function barnStage() {
   if (BARN.r) return BARN;
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: true }); r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -8454,7 +8469,7 @@ function barnModel() {
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; }
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
-    const M = buildDog(dogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
+    const M = buildDog(barnDogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2;
     B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail;
     return;
@@ -8511,7 +8526,7 @@ function barnDown(e) {
   const B = BARN; if (!B.sel && B.tab === 'sheep') return;
   B.r.domElement.setPointerCapture(e.pointerId);
   const uv = barnUV(e);
-  if (uv && B.tab === 'sheep') { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
+  if (uv && B.tab === 'sheep' && !B.watch) { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
   else B.drag = { x: e.clientX };
 }
 function barnMove(e) {
@@ -8553,17 +8568,18 @@ const barnIcons = (list, kind, locked = () => false) => list.map(it => locked(it
   : `<button type="button" class="ico" data-${kind}="${it.id}" title="${it.name}" aria-label="${it.name}">${ICONS[it.id] || '•'}</button>`).join('');
 const barnSec = (label, id, body, cls = 'swatches') => `<div class="sec"><span class="eyebrow">${label}<i id="${id}Pick"></i></span><div class="${cls}" id="${id}">${body}</div></div>`;
 function openBarn(sel) {
-  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || NET.role === 'guest') return false;   // ONLINE: the barn is the host's
+  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || (NET.role === 'guest' && !BARN.watch)) return false;   // ONLINE: the barn is the host's (guests only watch)
   const flock = barnFlock();
   BARN.open = true; BARN.fromTitle = G.mode === 'title'; BARN.fresh = 0; BARN.mem = false; keys.clear();
   BARN.sel = sel && flock.includes(sel) ? sel : flock.includes(BARN.sel) ? BARN.sel : flock[0] || null;
   if (sel) BARN.tab = 'sheep';
   if (!BARN.sel) BARN.tab = 'dogs';
   const el = document.getElementById('barn');
+  el.classList.toggle('watch', !!BARN.watch);
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Hank's barn">
     <div class="barnHead"><h2>Hank’s barn</h2>
       <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button></div>
-      <button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button></div>
+      ${BARN.watch ? '' : '<button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button>'}</div>
     <div class="barnGrid">
       <div class="barnList" id="barnList"></div>
       <div class="barnStage">
@@ -8581,12 +8597,12 @@ function openBarn(sel) {
       <button type="button" class="bbtn" id="barnMemBtn" hidden></button>
       <span class="hankVol"></span>
       ${BARN.fromTitle ? '<button type="button" class="bbtn" id="barnFresh">Start a fresh flock</button>' : ''}
-      <button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button></div>
+      ${BARN.watch ? `<span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span>` : `<button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button>`}</div>
     <div class="barnPad" id="barnPad"></div>
   </div>`;
   barnStage(); document.getElementById('barnViewWrap').appendChild(BARN.r.domElement); BARN.w = BARN.h = 0;
   hankVolumeUI(el.querySelector('.hankVol'));
-  const nm = document.getElementById('barnName');
+  const nm = document.getElementById('barnName'); nm.readOnly = !!BARN.watch;
   nm.addEventListener('input', () => {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
     if (BARN.tab === 'dogs') { dogSet(BARN.dog, { name: v.trim() }); barnList(); return; }
@@ -8619,13 +8635,13 @@ function barnTab(tab) {
       + barnSec('Kit', 'barnKit', barnIcons(DOG_KIT, 'kit', lock), 'chips')
       + `<span class="note" id="barnNote"></span>`;
   }
-  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep';
+  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep' || !!BARN.watch;
   document.getElementById('barnViewWrap').classList.toggle('dogs', BARN.tab === 'dogs');
   barnModel(); barnRefresh();
   return true;
 }
 function barnClick(e) {
-  const b = e.target.closest('button'); if (!b) return;
+  const b = e.target.closest('button'); if (!b || BARN.watch) return;
   const s = BARN.sel, d = b.dataset;
   if (b.id === 'barnBack' || b.id === 'barnX') { closeBarn(); return; }
   if (d.tab) { barnTab(d.tab); return; }
@@ -8658,18 +8674,18 @@ const dogLabel = slot => dogLook(slot).name || (liveDog(slot) && liveDog(slot).p
 function barnList() {
   const el = document.getElementById('barnList'); if (!el) return;
   if (BARN.tab === 'dogs') {
-    el.innerHTML = [0, 1, 2, 3].map(i => `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${dogLook(i).coat};border-color:${PCOL[i].ui}"></i>${escHTML(dogLabel(i))}<small>${dogLook(i).name ? PCOL[i].name : ''}</small></button>`).join('');
+    el.innerHTML = [0, 1, 2, 3].map(i => `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${barnDogLook(i).coat};border-color:${PCOL[i].ui}"></i>${escHTML(barnDogLook(i).name || dogLabel(i))}<small>${barnDogLook(i).name ? PCOL[i].name : ''}</small></button>`).join('');
     return;
   }
   const flock = barnFlock();
   el.innerHTML = flock.map(s => { const L = lookOf(s), tag = s.lamb ? '🍼' : s.ram ? '♈' : '';
     return `<button type="button" class="barnSheep${s === BARN.sel ? ' on' : ''}" data-sheep="${s.id}"><i style="background:${L.wool || (s.black ? '#4a4440' : '#f6f1e3')}"></i>${escHTML(s.name)}<small>${tag}</small></button>`; }).join('')
-    + (FLOCK.home.length ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
+    + (FLOCK.home.length && !BARN.watch ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
   const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
 }
 function barnInfo() {
   const el = document.getElementById('barnInfo'); if (!el) return;
-  if (BARN.tab === 'dogs') { el.textContent = dogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
+  if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
@@ -8683,7 +8699,7 @@ function barnRefresh() {
   document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = b.dataset.tab === 'sheep' && !BARN.sel; });
   const nm = document.getElementById('barnName'), note = document.getElementById('barnNote');
   if (BARN.tab === 'dogs') {
-    const L = dogLook(BARN.dog);
+    const L = barnDogLook(BARN.dog);
     if (nm && document.activeElement !== nm) { nm.value = L.name; nm.placeholder = dogLabel(BARN.dog); }
     on('#barnCoat .swatch', 'coat', v => v === L.coat); on('#barnCollar .swatch', 'collar', v => v === L.collar);
     on('#barnDogHat button', 'dhat', v => v === L.hat); on('#barnKit button', 'kit', v => L.acc.includes(v));
@@ -8713,19 +8729,30 @@ function barnRefresh() {
   const fr = document.getElementById('barnFresh'); if (fr) { fr.textContent = BARN.fresh ? 'Really? Forget this flock' : 'Start a fresh flock'; fr.classList.toggle('warn', !!BARN.fresh); }
   // the fallen: a button with the count; the list only when it's asked for
   const M = FLOCK.memorial, mem = document.getElementById('barnMem'), mb = document.getElementById('barnMemBtn');
-  if (mb) { mb.hidden = !M.length; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
-  if (mem) { mem.hidden = !M.length || !BARN.mem; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
+  if (mb) { mb.hidden = !M.length || !!BARN.watch; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
+  if (mem) { mem.hidden = !M.length || !BARN.mem || !!BARN.watch; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [], pad = document.getElementById('barnPad');
-  if (pad) pad.textContent = pads.length ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras · Ⓑ back' : '';
+  if (pad) pad.textContent = pads.length && !BARN.watch ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras · Ⓑ back' : '';
 }
 function closeBarn() {
   if (!BARN.open) return;
-  BARN.open = false; BARN.drag = null;
+  BARN.open = false; BARN.drag = null; const watched = BARN.watch; BARN.watch = false; BARN.wv = null; BARN.wKey = '';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   document.getElementById('barn').classList.add('hidden'); document.body.classList.remove('inBarn');
-  keys.clear();
+  keys.clear(); if (watched) return;
   saveFlock();   // the saved flock keeps the new names and outfits
   saveDogs();    // and the dogs theirs
+}
+// ONLINE: what a guest needs to watch the host's barn (NET_TYPES.game.barn), and opening / following / closing it there
+function barnWatchView() { return { tab: BARN.tab, sel: BARN.sel ? BARN.sel.id : -1, dog: BARN.dog, dl: BARN.tab === 'dogs' ? [0, 1, 2, 3].map(dogLook) : null }; }
+function barnWatch(v) {
+  if (!v || typeof v !== 'object') { if (BARN.open && BARN.watch) closeBarn(); return; }
+  if (NET.role !== 'guest' || (BARN.open && !BARN.watch)) return;
+  BARN.wv = v; BARN.dog = clamp(v.dog | 0, 0, 3);
+  const sel = barnFlock().find(s => s.id === v.sel) || null, tab = v.tab === 'dogs' || !sel ? 'dogs' : 'sheep';
+  if (!BARN.open) { BARN.watch = true; BARN.tab = tab; if (!openBarn(sel)) { BARN.watch = false; return; } if (BARN.tab !== tab) barnTab(tab); }
+  else { BARN.sel = sel || BARN.sel; if (BARN.tab !== tab) barnTab(tab); }
+  BARN.wKey = '';
 }
 // called first thing in frame(): opens on the pad's View button; while open, runs the barn and tells frame() to skip the world
 function barnFrame(dt) {
@@ -8734,6 +8761,11 @@ function barnFrame(dt) {
     if (G.mode === 'play' || G.mode === 'title') for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (gp && padEdge(i, gp, 8)) { Sound.init(); openBarn(); break; } }
     if (!BARN.open) return false;
     endInputFrame(); return true;
+  }
+  if (BARN.watch) {   // ONLINE: a guest watching: the game frame runs on (inputs, pause); only the turntable here
+    const s = BARN.sel, key = BARN.tab + '|' + BARN.dog + '|' + (BARN.tab === 'dogs' ? JSON.stringify(BARN.wv && BARN.wv.dl) : s ? s.id + s.name + netLookJSON(s) + (s.wool ?? 1).toFixed(2) : '');
+    if (key !== BARN.wKey) { BARN.wKey = key; barnModel(); barnRefresh(); }
+    barnRender(dt); return false;
   }
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
@@ -8767,6 +8799,7 @@ function barnFrame(dt) {
 }
 // Tab opens and closes the barn; while it's open no key reaches the game (typing a name included)
 addEventListener('keydown', e => {
+  if (BARN.open && BARN.watch) return;   // watching the host's barn: keys go to the game as usual
   if (BARN.open) {
     if (e.code === 'Tab' || e.code === 'Escape') { e.preventDefault(); if (!e.repeat) closeBarn(); }
     e.stopImmediatePropagation(); return;
@@ -9232,7 +9265,7 @@ function resetGame() {
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 };
   G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null);
+  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -9295,7 +9328,7 @@ function checkLose() {
 // own clock. Per-frame trails (single-particle bursts) aren't sent: guests make their own in `animate`.
 // The host records an effect when it's made outside drawing code (NET.vis) and not inside another effect;
 // guests replay it locally, with the pan recomputed for their own camera when it came from panOf(x, z).
-// HANK'S BARN is the host's: guests can't open it; while the host is in it mid-journey, friends see a pause.
+// HANK'S BARN is the host's: guests can't open it; while the host is in it mid-journey, friends watch it (read only).
 // =====================================================================
 const NET_VER = 1;
 const NETT = { hz: 20, grassMs: 330, staleIn: 1000, dropMs: 60000, joinMs: 20000, reclaimMs: 120000, maxGuests: 3, fxCap: 250 };
@@ -9415,6 +9448,7 @@ const NET_TYPES = {
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
       ff: 'b', paused: 'b', pauseWho: 's',
+      barn: { c: 'j', get: () => BARN.open && !BARN.fromTitle && G.mode === 'play' ? barnWatchView() : null, set: (o, v) => barnWatch(G.mode === 'play' ? v : null) },   // HANK'S BARN: guests watch the host in it
       dawn: { c: 'j', get: o => DAWN.open ? dawnView() : null, set: (o, v) => dawnGuest(G.mode === 'play' ? v : null) },   // DAWN REPORT: guests see the host's card
       wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
@@ -10260,7 +10294,7 @@ function netGuestLost(msg) {
   if (NET.role !== 'guest' || NET.dead) return;
   if (!NET.inRoom) { netGuestFail(msg || 'Lost the connection to the game.'); return; }
   NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = '';
-  dawnGuest(null);
+  dawnGuest(null); if (BARN.watch) closeBarn();
   const p = NET.peer; NET.peer = null; NET.conn = null; if (p) try { p.destroy(); } catch (e) {}
   NET.uiKey = '';
 }
@@ -10304,7 +10338,7 @@ function netFromHost(m) {
     case 'hb': NET.hostHid = !!m.hid; break;
     case 'pong': NET.rtt = performance.now() - (+m.ts || 0); break;
     case 'r': { const L = NET.locals[m.p | 0]; if (L && L.kind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: L.index }, ...m.a.map(v => +v || 0)); break; }
-    case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); break;
+    case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); checkBuild(); break;
     case 'full': netGuestFail('That game is full: there are 4 dogs already.'); break;
     case 'bye': netGuestLost('Your friend closed the game.'); break;
   }
@@ -10719,6 +10753,16 @@ updateLighting(0);
 $('loading').style.opacity = 0; setTimeout(() => $('loading').remove(), 700);
 $('title').classList.remove('hidden');
 if (BUILD.sha) $('buildText').innerHTML = `<a href="https://github.com/b-snel/collies/commit/${BUILD.sha}" target="_blank" rel="noopener">${buildText()}</a>`;
+// A different build is live (build.js writes version.json beside the page): 🔄 on the title screen reloads into it.
+function checkBuild() {
+  if (!BUILD.sha || SIM || document.hidden) return;
+  fetch('version.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !/^[0-9a-f]{7,40}$/.test(j.sha || '') || j.sha === BUILD.sha) return;
+    const b = $('tUpdate'); b.hidden = false; b.title = 'Build ' + j.sha.slice(0, 7) + (j.pr ? ' · PR #' + j.pr : '');
+  }).catch(() => {});
+}
+$('tUpdate').onclick = () => location.reload();
+if (BUILD.sha && !SIM) { setTimeout(checkBuild, 3000); setInterval(checkBuild, 5 * 60e3); document.addEventListener('visibilitychange', checkBuild); }
 initHankUI();   // HANK / BARN: the title's barn button and Hank's volume slider
 if (!SIM) requestAnimationFrame(frame);
 // installable + offline after the first visit (not on file:// or under test)

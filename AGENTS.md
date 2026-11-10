@@ -22,6 +22,9 @@ troughs for wool; the Trading Post also sells Cabo 🏖️, which wins.
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
+- Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
+  else "Dev build"). `build.js` also writes `version.json`; a different live
+  build → 🔄 on the title reloads (`checkBuild`).
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
   `?peerserver=host:port` for your own server.
 - Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊
@@ -114,7 +117,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   reaches further, beats stress, and a bark bends flight toward the gate.
 - **Morning rush.** Gate opened dawn–13:00 (or open at 06:00): for
   `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`);
-  then till 13:00 no pen or trough pull, nobody goes back in (`morningOut`).
+  then till 13:00 no pen pull, nobody goes back in (`morningOut`). Trough food
+  and water beat both: hungry/thirsty penned sheep eat or drink first, ones
+  outside come in for it any time of day (`T.troughDraw`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
   leaf's free end; pressed ones slide along, not into it. Lambs follow a
   penned mum in.
@@ -128,7 +133,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Calm but brisk** (`T.calmBrisk`); grazing stays slow.
 - **Rams** charge coyotes, then leaning dogs; bark cancels; punted → dazed +
   grudge. Lambs need a ram penned overnight.
-- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 10 s.
+- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 13 s by day, 10 s at night (`hourLen`).
   0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
@@ -184,7 +189,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   nags till then, `T.shear.think`). Awake, no predator near, he climbs into a
   shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
   time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
-- **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
+- **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
   fills `G.dawnReport`.
