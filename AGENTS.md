@@ -19,7 +19,7 @@ buys supplies, and Cabo 🏖️, which wins.
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
-  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, +50 🧶). `window.GAME` exposes
+  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
