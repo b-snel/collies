@@ -30,7 +30,7 @@ const run = (scen) => h.page.evaluate(async (scen) => {
   let t = 0, grabbed = false, maxH = 0, saved0 = G.stats.saved, lost0 = G.stats.falcon || 0, states = {}, dropAt = null, atNest = false, landed = null;
   while (t < 90) {
     if (scen === 'bark' && F.state === 'carry' && F.prey && F.t > 2.5) { d.x = F.x + 2; d.z = F.z; p.bot = { bark: true }; }
-    else if (scen === 'nest' && F.state === 'nest' && F.t > 3) { d.x = N.x + 5; d.z = N.z; p.bot = { bark: true }; }
+    else if (scen === 'nest' && F.state === 'nest' && F.t > 2) { d.x = N.x + 5; d.z = N.z; p.bot = { bark: true }; }
     else p.bot = {};
     step(0.025); t += 0.025; states[F.state] = (states[F.state] || 0) + 1;
     if (F.prey === target || F.dog === target) { grabbed = true; maxH = Math.max(maxH, target.y - groundY(target.x, target.z)); }
