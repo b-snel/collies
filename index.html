@@ -603,8 +603,8 @@ const T = {
   salt: { perDay: 0.1, start: [0.8, 1], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, campStock: 10, rockR: 3, rockRate: 0.6, deathHours: [72, 120], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
   // water (WATER section): s.thirst 0 just drank … 1 parched, +perDay a day; parched deathHours → dies. Penned sheep over want
-  // drink at the pen's water trough (cap units; 1 unit = one sheep parched → quenched) till under full. A dog runs over a bucket
-  // to pick it up, wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
+  // drink at the pen's water trough (cap units; 1 unit = one sheep parched → quenched) till under full. A dog holds grab on a bucket
+  // to carry it (lets go: set down), wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
   // startFill: the first camp's trough starts this full. wade: thirst/h off a sheep swimming or with its nose in water. low: Hank/toast
   water: { perDay: 0.25, start: [0.05, 0.2], want: 0.25, full: 0.03, drinkRate: 3, cap: 12, bucket: 6, startFill: 1, deathHours: [36, 60],
     slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, tipR: 1.9, hold: 1.5, crowd: 4 },   // hold: s drinking before it can be barged off; crowd: how many jostle behind it
@@ -3518,7 +3518,10 @@ function updateDog(d, inp, dt) {
   // grab: hold the button to bite and keep hold; let go while moving to fling it
   if (d.holding && !inp.grab) releaseHold(d, true);
   if (!inp.grab) d.grabLock = false;
-  else if (!d.holding && !d.grabLock && !inp.lie && d.hopT <= 0 && d.pounceT <= 0) tryGrab(d);
+  else if (!d.holding && !d.grabLock && !inp.lie && d.hopT <= 0 && d.pounceT <= 0 && !bucketOf(d)) tryGrab(d);   // (a bucket in its mouth: nothing else)
+  // WATER: a bucket is carried in the mouth while grab is held; let go and it's set down
+  d.grabHeld = !!inp.grab;
+  if (!inp.grab && bucketOf(d)) dropBucket(d);
   // pounce, or shake whatever is in your mouth
   if (inp.pounce) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
@@ -4914,10 +4917,10 @@ function drawForageOverlay() {
 // =====================================================================
 // WATER — every pen has a water trough at the back (pen.water = { w, cap,
 // x, z, yaw, len, tx, tz }) and a bucket lies outside it at the start
-// (BUCKETS: b.w water in it, b.by the dog carrying it). A dog runs over a
-// bucket to pick it up (one each), wades or swims into water to fill it,
-// and tips it into any pen's water trough by going up to it (either side
-// of the fence), setting it down there once it's empty. Penned sheep drink
+// (BUCKETS: b.w water in it, b.by the dog carrying it). A dog holds grab
+// on a bucket to carry it in its mouth (one each; let go: set down, water
+// and all), wades or swims into water to fill it, and tips it into any
+// pen's water trough by going up to it (either side of the fence). Penned sheep drink
 // (drinkWater) when thirsty: see the sheep mind. Anyone can add water
 // (fillWater). Thirst, drinking and dying of it: sheepThirst.
 // =====================================================================
@@ -4990,6 +4993,7 @@ function dogAtWater(d) {
 function waterFx(kind, x, z, k = 1) {
   const y = groundY(x, z);
   if (kind === 'pick') { floatText('+🪣', x, y + 1.4, z, '#dff4ff', 1); SFX.clack(panOf(x, z), 0.25); }
+  else if (kind === 'drop') { floatText('🪣 ↓', x, y + 1.4, z, '#dff4ff', 1); SFX.clack(panOf(x, z), 0.2); }
   else if (kind === 'fill') {
     for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8']) burst(x, Math.max(y, WATER_Y) + 0.4, z, 6, c, { speed: 2, up: 4, size: 0.13, life: 0.7, grav: -12 });
     spawnRing(x, Math.max(y, WATER_Y) + 0.05, z, 2.2, '#e8f8ff', 0.5); SFX.splash(panOf(x, z), 0.3); Sound.chime([0, 4, 7], 784, 0.12, 0.05);
@@ -5001,8 +5005,14 @@ function waterFx(kind, x, z, k = 1) {
   }
 }
 function pickBucket(b, d) {
-  b.by = d; b.drop = null; WATER.picks++;
+  b.by = d; WATER.picks++;
   waterFx('pick', b.x, b.z); rumble(d.player, 0.2, 0.35, 80); hint('bucket');
+}
+// SHARED HOOK: the dog sets its bucket down where it stands, water and all (grab let go)
+function dropBucket(d) {
+  const b = bucketOf(d); if (!b || d.air) return false;
+  b.by = null; b.x = d.x; b.z = d.z;
+  waterFx('drop', b.x, b.z); rumble(d.player, 0.15, 0.25, 60); return true;
 }
 function fillBucket(b, d) {
   b.w = T.water.bucket; WATER.fills++;
@@ -5013,15 +5023,15 @@ function tipBucket(b, d, p) {
   b.w -= amt; WATER.tips++; WATER.tipped += amt;
   waterFx('tip', tr.x, tr.z, amt / tr.cap); rumble(d.player, 0.3, 0.5, 120); hint('water');
   if (WATER.tips === 1) hank(null, 'Fresh water! Good dog.', { force: true });
-  if (b.w < 0.01) { b.w = 0; b.by = null; b.x = d.x; b.z = d.z; b.drop = d; }   // empty: set down here (it picks it up again once it's been away)
+  if (b.w < 0.01) b.w = 0;   // (still in its mouth: back to the water for more)
   return true;
 }
 function updateDogWater(d) {
   if (G.mode !== 'play') return;
   let b = bucketOf(d);
   if (!b) {
-    if (d.air) return;
-    for (const o of BUCKETS) if (!o.by && o.drop !== d && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; break; }
+    if (d.air || !d.grabHeld || d.holding) return;   // grab held, mouth free: it picks one up
+    for (const o of BUCKETS) if (!o.by && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; break; }
     if (!b) return;
   }
   if (b.w < T.water.bucket - 0.01 && dogAtWater(d)) fillBucket(b, d);
@@ -5035,7 +5045,6 @@ function updateWater(dt) {
   if (G.mode !== 'play') return;
   for (const b of BUCKETS) {
     if (b.by && !G.dogs.includes(b.by)) { b.x = b.by.x; b.z = b.by.z; b.by = null; }   // its dog left: down it goes
-    if (b.drop && (!G.dogs.includes(b.drop) || Math.hypot(b.drop.x - b.x, b.drop.z - b.z) > 2.5)) b.drop = null;
   }
   for (const d of G.dogs) updateDogWater(d);
   let n = 0, t = 0, pa = 0; for (const s of G.sheep) if (!s.dead) { n++; t += s.thirst || 0; if (s.thirst >= 1) pa++; }
@@ -5085,7 +5094,7 @@ function drawWaterOverlay() {
   for (const b of BUCKETS) {
     if (b.by || !G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 40)) continue;
     const y = groundY(b.x, b.z), [px, py, pz] = proj(b.x, y + 1.3, b.z); if (vis(px, py, pz)) forageChip(px, py, '🪣', 'rgba(27,26,40,.6)');
-    if (G.dogs.some(d => !bucketOf(d) && Math.hypot(d.x - b.x, d.z - b.z) < 9)) nudge('bucket', b.x, y + 2.1, b.z, '🪣 Run over it', '#6fc3ff');
+    const nd = G.dogs.find(d => !bucketOf(d) && Math.hypot(d.x - b.x, d.z - b.z) < 9); if (nd) nudge('bucket', b.x, y + 2.1, b.z, `🪣 Hold ${keyLabel(nd.player, 'grab')}`, '#6fc3ff');
   }
   const dry = WATER.avg > T.water.want;
   for (const p of pens) {   // under the pen's 🐑 badge
@@ -6794,7 +6803,7 @@ const HINTS = {
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
   bramble: '🌿 Stuck in the brambles! <b>Pounce</b> into it to bonk it free.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
-  bucket: 'A <b>bucket</b> 🪣! Wade into a river, lake or the sea to fill it.',
+  bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
   thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
@@ -6827,7 +6836,7 @@ const TOUCH_HINTS = {
   'salt-lick': 'Salt in the lick! Peppy sheep',
   bramble: '🌿 Stuck! 💥 it free',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
-  bucket: '🪣! Wade into water to fill it',
+  bucket: '🪣! Hold ✊ to carry · wade in to fill',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
   thirst: 'Thirsty! 🪣 → water → 💧 trough',
@@ -9414,6 +9423,7 @@ const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes;
 function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : ''; }
 function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko; }
 function netPredPick(d) {   // what tryGrab would bite
+  if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
   const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
   let o = null, bd = T.grabReach, grip = 0;
   for (const c of G.coyotes) { if (c.air || c.heldBy || c.gone) continue; const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3; if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; o = c; } }
@@ -10295,7 +10305,7 @@ window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
 Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
-Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
+Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);

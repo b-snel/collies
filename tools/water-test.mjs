@@ -1,6 +1,6 @@
 // Headless checks for pen water: `node tools/water-test.mjs`. Prints ok/FAIL per check, exits 1 on a failure.
-// Every pen has a water trough and a bucket; a bot dog picks a bucket up (one each), fills it at the river and by
-// swimming, and tips it in from outside the fence; it's set down empty and picked up again; penned thirsty sheep
+// Every pen has a water trough and a bucket; a bot dog holding grab picks a bucket up (one each), fills it at the river and
+// by swimming, and tips it in from outside the fence; letting go of grab sets it down; penned thirsty sheep
 // drink till quenched, three at a time, shoving (a ram barges lambs off); parched sheep slow, then die of thirst
 // (tombstone, stats, eulogy); fillWater / drinkWater; swimming sheep drink; the thirsty-flock warning.
 import { open } from './harness.mjs';
@@ -12,12 +12,13 @@ await h.page.evaluate(() => {
   startGame({ kind: 'bot', index: 0 });
   const H = window.H = {};
   H.p = G.players[0]; H.d = () => G.dogs[0];
-  H.to = (dx, dz, extra = {}) => { const R = GAME.CAM_R, F = GAME.CAM_F, l = Math.hypot(dx, dz) || 1; return Object.assign({ mx: (dx * R.x + dz * R.z) / l, my: -(dx * F.x + dz * F.z) / l }, extra); };
-  H.reset = (hour = 10) => { resetGame(); G.clock.hour = hour; for (const c of G.coyotes) GAME.scene.remove(c.models.root); G.coyotes.length = 0; G.packs.length = 0; for (const c of G.coyotes) c.gone = true; H.p.bot = {}; };
+  H.to = (dx, dz, extra = {}) => { const R = GAME.CAM_R, F = GAME.CAM_F, l = Math.hypot(dx, dz) || 1; return Object.assign({ mx: (dx * R.x + dz * R.z) / l, my: -(dx * F.x + dz * F.z) / l }, H.g ? { grab: true } : {}, extra); };
+  H.idle = () => { H.p.bot = H.g ? { grab: true } : {}; };   // H.g: grab held (carrying a bucket)
+  H.reset = (hour = 10) => { resetGame(); G.clock.hour = hour; for (const c of G.coyotes) GAME.scene.remove(c.models.root); G.coyotes.length = 0; G.packs.length = 0; for (const c of G.coyotes) c.gone = true; H.p.bot = {}; H.g = false; };
   H.place = (e, x, z) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = GAME.groundY(x, z); };
   H.run = (sec, fn) => { let t = 0; for (; t < sec; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return t; };
   H.r = v => Math.round(v * 100) / 100;
-  H.walkTo = (x, z, sec = 30, r = 0.8, extra = {}) => { const d = H.d(); const t = H.run(sec, () => { const dx = x - d.x, dz = z - d.z; if (Math.hypot(dx, dz) < r) return true; H.p.bot = H.to(dx, dz, extra); }); H.p.bot = {}; return t; };
+  H.walkTo = (x, z, sec = 30, r = 0.8, extra = {}) => { const d = H.d(); const t = H.run(sec, () => { const dx = x - d.x, dz = z - d.z; if (Math.hypot(dx, dz) < r) return true; H.p.bot = H.to(dx, dz, extra); }); H.idle(); return t; };
   H.penSheep = (pen, n) => { const S = G.sheep.slice(0, n ?? G.sheep.length); for (const s of S) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (pen.R - 2.5); H.place(s, pen.x + Math.cos(a) * r, pen.z + Math.sin(a) * r); } return S; };
   H.atRiver = (al, ac) => { const R = GAME.RIVER; return { x: R.x + R.nx * al + R.tx * ac, z: R.z + R.nz * al + R.tz * ac }; };
   H.outside = (p, o, r) => { const a = Math.atan2(o.z - p.z, o.x - p.x); return { x: p.x + Math.cos(a) * (p.R + r), z: p.z + Math.sin(a) * (p.R + r) }; };
@@ -37,37 +38,35 @@ ok('open ground outside each trough', r1.every(c => c.roomOutside > 0.6), r1.map
 ok('a bucket on open ground by each', r1.every(c => c.bucket > 1 && c.bucketFromTrough < 4), r1.map(c => [c.bucket, c.bucketFromTrough]));
 ok('first camp full, the rest empty', r1[0].w === r1[0].cap && r1.slice(1).every(c => c.w === 0), r1.map(c => c.w));
 
-// 2. pick up by running over it (one per dog), fill at the river bank, tip in over the fence, set down, picked up again
+// 2. running over it does nothing; holding grab picks it up (one per dog), fill at the river bank, tip in over the fence
 const r2 = await h.page.evaluate(() => {
   const { G, T, pens, BUCKETS, WATER, bucketOf } = GAME; H.reset(11); const d = H.d(), pen = pens[1], b = BUCKETS[1], out = {};
-  H.place(d, b.x + 6, b.z); H.walkTo(b.x, b.z, 10, 0.3); H.run(0.1);
+  H.place(d, b.x + 6, b.z); H.walkTo(b.x, b.z, 10, 0.3); H.run(0.1); out.notWithoutGrab = !bucketOf(d);
+  H.g = true; H.idle(); H.run(0.2);
   out.picked = bucketOf(d) === b;
   const b2 = BUCKETS[2], x2 = b2.x, z2 = b2.z; H.place(b2, d.x + 0.5, d.z); H.run(0.2); out.secondLeft = !b2.by && bucketOf(d) === b; H.place(b2, x2, z2);
   // to the river (100 m up the trail), straight at the water
   const bank = H.atRiver(-15, -12), into = H.atRiver(-15, 0);
   out.toRiver = H.r(H.walkTo(bank.x, bank.z, 40, 1.5));
   out.fillSecs = H.r(H.run(6, () => { if (b.w >= T.water.bucket - 0.01) return true; H.p.bot = H.to(into.x - d.x, into.z - d.z); }));
-  H.p.bot = {}; out.full = b.w; out.dry = !d.air;
+  H.idle(); out.full = b.w; out.dry = !d.air;
   // back to the pen, up to the fence behind its water trough
   const o3 = H.outside(pen, pen.water, 3), o0 = H.outside(pen, pen.water, 0.45);
   out.back = H.r(H.walkTo(o3.x, o3.z, 40, 1));
   H.walkTo(o0.x, o0.z, 8, 0.3); H.run(0.2);
-  out.trough = H.r(pen.water.w); out.setDown = !b.by && b.w === 0 && !bucketOf(d); out.tips = WATER.tips;
-  H.run(1); out.notRepicked = !bucketOf(d);
-  const o6 = H.outside(pen, pen.water, 6); H.walkTo(o6.x, o6.z, 5, 0.5); H.walkTo(b.x, b.z, 8, 0.3); H.run(0.1); out.repicked = bucketOf(d) === b;
+  out.trough = H.r(pen.water.w); out.keptEmpty = bucketOf(d) === b && b.w === 0; out.tips = WATER.tips;
   return out;
 });
-ok('running over a bucket picks it up', r2.picked, r2);
+ok('running over a bucket without grab leaves it; holding grab picks it up', r2.notWithoutGrab && r2.picked, r2);
 ok('one bucket per dog', r2.secondLeft, r2);
 ok(`wading in at the river bank fills it (${r2.fillSecs} s)`, r2.full === 6 && r2.fillSecs < 3 && r2.dry, r2);
 ok('going up to the water trough from outside tips it in', r2.trough === 6 && r2.tips === 1, r2);
-ok('empty: set down there, not picked straight back up', r2.setDown && r2.notRepicked, r2);
-ok('…picked up again after going away', r2.repicked, r2);
+ok('empty: still in its mouth for the next trip', r2.keptEmpty, r2);
 
-// 3. swimming fills it too; tipping from inside the pen; carrying it doesn't stop barking, pouncing or grabbing
+// 3. swimming fills it too; tipping from inside the pen; barking and pouncing with it; no grabbing a sheep (mouth full)
 const r3 = await h.page.evaluate(() => {
   const { G, T, pens, BUCKETS, bucketOf, RIVER } = GAME; H.reset(11); const d = H.d(), b = BUCKETS[1], out = {};
-  b.by = d; b.w = 0;
+  H.g = true; H.idle(); b.by = d; b.w = 0;
   const mid = H.atRiver(-20, 0); H.place(d, mid.x, mid.z); d.air = { swim: true, kind: 'swim', t: 0, h: -3, vy: 0, spin: 0 };
   H.run(0.2); out.swimFull = b.w; out.swimming = !!(d.air && d.air.swim);
   H.run(20, () => !d.air);
@@ -75,22 +74,34 @@ const r3 = await h.page.evaluate(() => {
   H.walkTo(pen.water.x + (pen.x - pen.water.x) * 0.2, pen.water.z + (pen.z - pen.water.z) * 0.2, 10, 0.4); H.run(0.2);
   out.inside = H.r(pen.water.w - w0); out.carrying = !!bucketOf(d);
   b.by = d; b.w = 3; H.place(d, pen.exitX + 6, pen.exitZ + 6);
-  H.p.bot = { bark: true }; H.run(0.1); H.p.bot = { pounce: true, mx: 1 }; H.run(0.5); H.p.bot = {};
+  H.p.bot = { bark: true, grab: true }; H.run(0.1); H.p.bot = { pounce: true, mx: 1, grab: true }; H.run(0.5); H.idle();
   out.afterMoves = bucketOf(d) === b && b.w === 3;
   const s = G.sheep.find(o => !o.ram && !o.lamb); H.place(s, d.x + Math.sin(d.yaw) * 1.2, d.z + Math.cos(d.yaw) * 1.2);
-  H.p.bot = { grab: true }; H.run(0.5); out.grabbed = d.holding === s; H.p.bot = {}; H.run(0.3);
+  H.run(0.5); out.grabbed = d.holding === s;
   out.afterGrab = bucketOf(d) === b && b.w === 3;
   // the sea by Oceanside: from the camp straight to the nearest water
   const c = GAME.CAMPS[2]; let sea = null, sd = 1e9;
   for (let lat = 0; lat < 100; lat++) for (let ds = -60; ds <= 60; ds += 3) { const q = GAME.pathPoint(c.s + ds, lat); if (GAME.wetAt(q.x, q.z)) { const dd = Math.hypot(q.x - c.x, q.z - c.z); if (dd < sd) { sd = dd; sea = q; } } }
   b.w = 0; H.place(d, c.x + Math.cos(c.gateA) * (c.R + 5), c.z + Math.sin(c.gateA) * (c.R + 5));
-  out.seaSecs = H.r(H.run(30, () => { if (b.w > 0) return true; H.p.bot = H.to(sea.x - d.x, sea.z - d.z); })); H.p.bot = {}; out.sea = b.w; out.seaFromCamp = Math.round(sd);
+  out.seaSecs = H.r(H.run(30, () => { if (b.w > 0) return true; H.p.bot = H.to(sea.x - d.x, sea.z - d.z); })); H.idle(); out.sea = b.w; out.seaFromCamp = Math.round(sd);
   return out;
 });
 ok('swimming fills it', r3.swimFull === 6, r3);
 ok(`so does the sea by Oceanside Camp (${r3.seaFromCamp} m off)`, r3.sea === 6 && r3.seaSecs < 10, r3);
 ok('tipping from inside the pen', r3.inside === 6, r3);
-ok('barking, pouncing and grabbing with a bucket on', r3.afterMoves && r3.afterGrab, r3);
+ok('barking and pouncing with a bucket; no grabbing a sheep with it', r3.afterMoves && !r3.grabbed && r3.afterGrab, r3);
+
+// 3b. let go of grab: set down where it stands, water and all; hold grab on it again: back in its mouth, water still in
+const r3b = await h.page.evaluate(() => {
+  const { BUCKETS, bucketOf } = GAME; H.reset(); const d = H.d(), b = BUCKETS[1], out = {};
+  H.place(d, b.x, b.z); H.g = true; H.idle(); H.run(0.3); out.picked = bucketOf(d) === b; b.w = 3;
+  H.run(1); out.heldKept = bucketOf(d) === b;
+  H.g = false; H.idle(); H.run(0.1); out.dropped = !b.by && b.w === 3 && Math.hypot(b.x - d.x, b.z - d.z) < 0.5;
+  H.run(1); out.stillDown = !b.by;
+  H.g = true; H.idle(); H.run(0.2); out.repicked = bucketOf(d) === b && b.w === 3;
+  return out;
+});
+ok('let go of grab: set down (water kept); hold grab on it: picked up again', r3b.picked && r3b.heldKept && r3b.dropped && r3b.stillDown && r3b.repicked, r3b);
 
 // 4. penned, thirsty, water in the trough: they drink till quenched, three at a time, the rest waiting and shoving
 const r4 = await h.page.evaluate(() => {
