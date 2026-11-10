@@ -496,6 +496,10 @@ const T = {
   pressR: { walk: 9, creep: 5.5, sprint: 12, lie: 3.5 },
   pressK: { walk: 1.0, creep: 0.5, sprint: 1.5, lie: 0.15 },
   barkR: 13, barkCd: 0.6,
+  barkWise: 3,           // a coyote or cougar barked off this many times in a night stops falling for it (and comes at the dogs)
+  // dog health (d.hp 0..1): back after `wait` s unhurt at regen/s (x lieRegen lying down); under limp it limps; at 0 it's out for koT s, up again at revive
+  dogHp: { regen: 0.012, lieRegen: 3, wait: 5, limp: 0.3, koT: 6, revive: 0.25 },
+  nip: { r: 1.7, dmg: 0.07, cd: [1.6, 2.6], knock: 5, stun: 0.3 },   // a coyote's nip (bold ones, screens and strikers)
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
@@ -508,7 +512,10 @@ const T = {
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
   cougar: { range: 80, chance: 0.6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
-    vaultT: 0.75, vaultH: 2.2 },   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
+    vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
+    // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
+    // Mauling: a swipe every `every` s (a bite each third), up to `max` hp in all; mashing pounce `mash` times throws it off
+    maulR: 4, maulCd: 10, maul: { leapT: 0.38, every: 0.3, swipe: 0.045, bite: 0.08, max: 0.5, mash: 10, decay: 0.35, kick: 9 } },
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -719,6 +726,15 @@ const Sound = (() => {
         const t = now + k * 0.13, o = ac.createOscillator(); o.type = 'triangle';
         o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(1500, t + 0.05); o.frequency.exponentialRampToValueAtTime(600, t + 0.12);
         const g = ac.createGain(); env(g, t, 0.01, 0.5, 0.11); o.connect(g); g.connect(out(0.35, pan)); o.start(t); o.stop(t + 0.15);
+      }
+    },
+    whimper(pan = 0, p = 1) {   // a hurt dog: a high whine that sags, then a softer one
+      if (!ac) return; const now = ac.currentTime;
+      for (let k = 0; k < 2; k++) {
+        const t = now + k * 0.32, dur = 0.28 - k * 0.06, f = (1250 - k * 180) * p, o = ac.createOscillator(); o.type = 'triangle';
+        o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.12, t + dur * 0.3); o.frequency.exponentialRampToValueAtTime(f * 0.62, t + dur);
+        const v = ac.createOscillator(); v.frequency.value = 11; const vg = ac.createGain(); vg.gain.value = 35; v.connect(vg); vg.connect(o.frequency);
+        const g = ac.createGain(); env(g, t, 0.03, 0.4 - k * 0.15, dur); o.connect(g); g.connect(out(0.3, pan)); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
       }
     },
     gate(open, pan = 0) {
@@ -3110,7 +3126,8 @@ function spawnDog(player) {
   const a = Math.random() * TAU;
   const d = { player, x: base.x + Math.cos(a) * 2, z: base.z + Math.sin(a) * 2, vx: 0, vz: 0, y: 0, yaw: Math.PI, mode: 'walk', stamina: 1, exhausted: false,
     barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi],
-    isDog: true, greens: 0, salt: 0, pounceT: 0, pounceCD: 0, pdx: 0, pdz: 1, holding: null, holdKind: null, holdT: 0, shakeT: 0, air: null, wx: 0, wz: 0, inMag: 0, lieK: 0, leanT: 0 };
+    isDog: true, greens: 0, salt: 0, pounceT: 0, pounceCD: 0, pdx: 0, pdz: 1, holding: null, holdKind: null, holdT: 0, shakeT: 0, air: null, wx: 0, wz: 0, inMag: 0, lieK: 0, leanT: 0,
+    hp: 1, hpShow: 1, hurtAt: -99, maul: null, mauled: false, maulEsc: 0, ko: false };
   if (G.dogs[0]) { d.x = G.dogs[0].x + Math.cos(a) * 2; d.z = G.dogs[0].z + Math.sin(a) * 2; }
   collideWorld(d, T.dogR);
   G.dogs.push(d); player.dog = d; return d;
@@ -3119,6 +3136,8 @@ function updateDog(d, inp, dt) {
   d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt);
   d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt);
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
+  dogHealth(d, dt);
+  if (d.maul) { updateMauledDog(d, inp, dt); return; }
   if (d.air) { if (d.holding) releaseHold(d, false); d.mode = 'walk'; d.pounceT = 0; updateAirborneDog(d, inp, dt); return; }
   if (d.stunT > 0) {   // bowled over: no control until it wears off
     if (d.holding) releaseHold(d, false);
@@ -3160,6 +3179,7 @@ function updateDog(d, inp, dt) {
   d.mode = mode;
   let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
   if (hk) max *= hk.speed;
+  if (d.hp < T.dogHp.limp) max *= lerp(0.7, 1, d.hp / T.dogHp.limp);   // hurt: it limps
   if (d.pounceT > 0) {   // the lunge: fixed speed, no steering
     d.pounceT -= dt; d.vx = d.pdx * T.pounceSpeed; d.vz = d.pdz * T.pounceSpeed;
     if (Math.random() < dt * 40) burst(d.x, d.y + 0.15, d.z, 1, '#e8dcc0', { speed: 0.8, up: 0.8, size: 0.24, life: 0.45, grav: 0 });
@@ -3204,6 +3224,69 @@ function knockDog(d, vx, vz, t, label = 'OOF!') {
   burst(d.x, d.y + 0.5, d.z, 8, '#fff3c0', { speed: 2.5, up: 2.5, size: 0.14 }); Sound.yelp(panOf(d.x, d.z));
   starBurst(d.x, d.y + 1, d.z, 5, undefined, { speed: 3, up: 3 }); dizzy(d, t, 1.6); shakeCam(0.3);
 }
+// ---------------- health: nips, maulings, getting knocked out, healing ----------------
+function dogHealth(d, dt) {
+  const H = T.dogHp;
+  if (d.ko && d.stunT <= 0) { d.ko = false; d.hp = Math.max(d.hp, H.revive); d.hurtAt = G.time; }   // back on its feet (or nosed up by a partner)
+  if (!d.maul && !d.ko && G.time - d.hurtAt > H.wait) d.hp = Math.min(1, d.hp + H.regen * (d.mode === 'lie' ? H.lieRegen : 1) * dt);
+}
+// SHARED HOOK: something hurt the dog (amt in hp, 1 = all of it). At 0 it's knocked out a while (never dies).
+function hurtDog(d, amt) {
+  if (d.ko || amt <= 0) return;
+  d.hp = Math.max(0, d.hp - amt); d.hurtAt = G.time;
+  if (d.hp > 0) return;
+  if (d.maul) endMaul(d.maul, 'done');
+  if (d.holding) releaseHold(d, false);
+  d.ko = true; d.stunT = Math.max(d.stunT, T.dogHp.koT); d.pounceT = d.hopT = 0;
+  koFx(d);
+}
+function koFx(d) {
+  if (!d) return;
+  Sound.whimper(panOf(d.x, d.z), d.pitch * 0.8); dizzy(d, T.dogHp.koT, 1.2); shakeCam(0.35);
+  starBurst(d.x, d.y + 1, d.z, 8, undefined, { speed: 3, up: 3 }); rumble(d.player, 1, 1, 400);
+}
+// pinned under a cougar: no control; mash pounce to throw it off
+function updateMauledDog(d, inp, dt) {
+  const M = T.cougar.maul;
+  if (d.holding) releaseHold(d, false);
+  d.pounceT = d.hopT = 0; d.vx = d.vz = 0; d.mode = 'walk'; d.mauled = true;
+  d.maulEsc = Math.max(0, d.maulEsc - M.decay * dt);
+  d.leg += dt * 30; d.y = groundY(d.x, d.z);
+  if (inp.pounce) {
+    d.maulEsc += 1 / M.mash; mashFx(d);
+    if (d.maulEsc >= 1) endMaul(d.maul, 'thrown', d);
+  }
+}
+function mashFx(d) {
+  if (!d) return;
+  d.mashAt = G.time; rumble(d.player, 0.5, 0.3, 60);
+  burst(d.x, d.y + 0.4, d.z, 4, '#e8dcc0', { speed: 2.5, up: 1.5, size: 0.22, life: 0.4, grav: 0 });
+}
+// a coyote's nip: a quick bite and it darts back
+function coyoteNip(c, d) {
+  const N = T.nip, dx = d.x - c.x, dz = d.z - c.z, dl = Math.hypot(dx, dz) || 1;
+  c.nipAt = G.time + rnd(N.cd[0], N.cd[1]); c.state = 'flee'; c.stateT = 0; c.fleeDur = 0.5; c.fx = d.x; c.fz = d.z;
+  c.yaw = Math.atan2(dx, dz);
+  if (!d.air) { d.vx = dx / dl * N.knock; d.vz = dz / dl * N.knock; d.stunT = Math.max(d.stunT, N.stun); }
+  hurtDog(d, N.dmg);
+  nipFx(d, c);
+}
+function nipFx(d, c) {
+  if (!d) return;
+  d.slashAt = G.time; d.slashA = Math.random() * TAU; d.slashBite = true;
+  floatText('NIP!', d.x, d.y + 1.9, d.z, '#ff8a6b', 1.1);
+  Sound.whimper(panOf(d.x, d.z), d.pitch); if (c) Sound.growl(panOf(c.x, c.z), 0.12);
+  burst(d.x, d.y + 0.6, d.z, 7, '#f2efe6', { speed: 2.4, up: 2, size: 0.13, life: 0.6 }); burst(d.x, d.y + 0.6, d.z, 4, '#2a2522', { speed: 2.4, up: 2, size: 0.12, life: 0.6 });
+  shakeCam(0.14); rumble(d.player, 0.7, 0.5, 160);
+}
+// a bark at a coyote or a cougar: true while it still works on that one (each one learns after T.barkWise)
+function barkWorks(e) {
+  e.barks = (e.barks || 0) + 1;
+  if (e.barks <= T.barkWise) return true;
+  if (!e.wiseShown) { e.wiseShown = true; floatText('😾', e.x, (e.y || 0) + 2, e.z, '#fff', 1.4); }
+  Sound.growl(panOf(e.x, e.z), 0.14);
+  return false;
+}
 function bark(d) {
   d.barkCd = T.barkCd; G.barks = (G.barks || 0) + 1;
   barkFx(d);
@@ -3215,7 +3298,11 @@ function bark(d) {
     s.vx += dx / dd * k * 4; s.vz += dz / dd * k * 4; s.fdx = dx / dd; s.fdz = dz / dd;
     s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, 0.3 + k * 0.6); s.hopV = Math.max(s.hopV, 2 + k * 2);
   }
-  for (const c of G.coyotes) if (!c.air && !c.heldBy && Math.hypot(c.x - d.x, c.z - d.z) < T.barkR + 2) scareCoyote(c, 0.45, d);
+  for (const c of G.coyotes) {
+    if (c.air || c.heldBy || Math.hypot(c.x - d.x, c.z - d.z) >= T.barkR + 2) continue;
+    if (['pack', 'flee', 'drag'].includes(c.state) && !barkWorks(c)) { c.bold = true; continue; }   // wise to it: it comes on anyway
+    scareCoyote(c, 0.45, d);
+  }
   cougarBark(d);
   hint('bark-used');
 }
@@ -3322,6 +3409,10 @@ const SFX = (() => {
     dig(pan = 0, vol = 0.22) {   // paws scrabbling in dirt (dig spots)
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
       for (let k = 0; k < 2; k++) { const t = t0 + k * 0.06, [n, f] = noise(A, t, 'lowpass', 900 + Math.random() * 500, 0.8), g = A.ac.createGain(); A.env(g, t, 0.004, 0.9, 0.07); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.1); }
+    },
+    scratch(pan = 0, vol = 0.3) {   // claws raking fur
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (let k = 0; k < 3; k++) { const t = t0 + k * 0.025, [n, f] = noise(A, t, 'bandpass', 3200 + k * 700, 3), g = A.ac.createGain(); A.env(g, t, 0.002, 0.9, 0.06); f.frequency.exponentialRampToValueAtTime(1400, t + 0.06); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.08); }
     },
     rustle(pan = 0, vol = 0.3) {   // greens tipped into a trough (forage)
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
@@ -4699,7 +4790,7 @@ function wakeDen(D, size) {
   D.count = clamp(Math.max(D.count, size), T.denStart, T.denMax);
   denFill(D);
   const p = D.pack;
-  for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); if (c.state === 'sleep' || c.state === 'leave') { c.state = 'pack'; c.stateT = 0; } }
+  for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); c.barks = 0; c.bold = c.wiseShown = false; if (c.state === 'sleep' || c.state === 'leave') { c.state = 'pack'; c.stateT = 0; } }
   p.members = D.coyotes.slice(); p.leader = D.coyotes[0]; p.fails = 0; p.feinted = false; p.target = null; p.carrier = null; p.stageT = 0;
   setPhase(p, 'gather'); D.woke = G.clock.day; p.hankSeen = false;
   packHowl(p);
@@ -4930,6 +5021,7 @@ function updatePack(p, dt, fc) {
     }
   }
 }
+const canNip = (c, d) => G.time >= (c.nipAt || 0) && !c.prey && !d.air && !d.maul && !d.ko && (c.bold || c.role === 'screen' || (c.pack && c.pack.phase === 'strike'));
 function updateCoyotes(dt) {
   const fc = flockCenter();
   updateDens();
@@ -4946,10 +5038,11 @@ function updateCoyotes(dt) {
       if (nd && ndd < T.denWake) { if (c.growlT <= 0) { c.growlT = 2; Sound.growl(panOf(c.x, c.z), 0.12); } c.state = 'flee'; c.stateT = 0; c.fleeDur = rnd(1.4, 2.2); c.fx = nd.x; c.fz = nd.z; }
       continue;
     }
-    if (nd && c.state !== 'flee' && c.state !== 'leave') {
+    if (nd && c.state === 'pack' && ndd < T.nip.r && canNip(c, nd)) coyoteNip(c, nd);   // bold, screening or striking: it bites
+    else if (nd && c.state !== 'flee' && c.state !== 'leave') {
       const fearR = nd.mode === 'sprint' ? 8 : nd.mode === 'creep' ? 4 : 6;
       if (ndd < 1.4) scareCoyote(c, 0.5, nd, true);
-      else if (ndd < fearR) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);
+      else if (ndd < fearR && !c.bold) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
     }
     let dX = 0, dZ = 0, spd = 0, crouchW = 0;
     switch (c.state) {
@@ -4960,7 +5053,7 @@ function updateCoyotes(dt) {
         crouchW = c.crouchW || 0;
         // wary of dogs unless it's go time
         const bold = c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'escape' || (c.pack.phase === 'feint' && c.role === 'decoy'));
-        if (!bold) for (const d of G.dogs) { const ex = c.x - d.x, ez = c.z - d.z, e = Math.hypot(ex, ez); if (e < 11 && e > 0) { dX += ex / e * (11 - e) / 11 * 1.6; dZ += ez / e * (11 - e) / 11 * 1.6; spd = Math.max(spd, 3.5); } }
+        if (!bold && !c.bold) for (const d of G.dogs) { const ex = c.x - d.x, ez = c.z - d.z, e = Math.hypot(ex, ez); if (e < 11 && e > 0) { dX += ex / e * (11 - e) / 11 * 1.6; dZ += ez / e * (11 - e) / 11 * 1.6; spd = Math.max(spd, 3.5); } }
         break;
       }
       case 'drag': {
@@ -5103,14 +5196,82 @@ function cougarSpooked(k, hit) {
   if (k.state === 'climb' || k.state === 'down') { const u = k.state === 'climb' ? clamp(k.t / T.cougar.climbT, 0, 1) : 1 - clamp(k.t / T.cougar.climbDown, 0, 1); k.state = 'up'; k.t = u * T.cougar.climbT * 0.6; }
   else { k.state = 'retreat'; k.t = 0; }
 }
-function cougarBark(d) {   // spotted: a bark close by sends a stalking cougar back up its tree
-  for (const k of COUGARS) if ((k.state === 'stalk' || k.state === 'down') && Math.hypot(k.x - d.x, k.z - d.z) < T.barkR + 6) cougarSpooked(k, 0.5);
+function cougarBark(d) {   // spotted: a bark close by sends a stalking cougar back up its tree (till it's wise to it: then it may come for the dog)
+  for (const k of COUGARS) {
+    if ((k.state !== 'stalk' && k.state !== 'down') || Math.hypot(k.x - d.x, k.z - d.z) >= T.barkR + 6) continue;
+    if (barkWorks(k)) cougarSpooked(k, 0.5);
+    else if (k.state === 'stalk' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.shyR + 2 && canMaul(k, d)) cougarLeapDog(k, d);
+  }
+}
+// ---------------- the cougar and the dogs ----------------
+const canMaul = (k, d) => G.time >= (k.maulAt || 0) && !d.air && !d.maul && !d.ko && !(d.hopT > 0) && G.mode === 'play';
+// a dog close while it stalks: it stands its ground, hissing, and leaps on it if it comes closer. True while it's busy with the dog.
+function cougarFaceOff(k, d, dd, dt) {
+  const C = T.cougar;
+  if (d.pounceT > 0 && dd < C.hitR) { cougarBonked(k, d); return true; }   // pounced on first: the dog wins
+  if (!canMaul(k, d)) { cougarSpooked(k, 0.5); return true; }
+  if (dd < C.maulR) { cougarLeapDog(k, d); return true; }
+  k.faceT = (k.faceT || 0) + dt;
+  if (k.faceT > 5) { k.faceT = 0; cougarSpooked(k, 0.5); return true; }   // a long stand-off: it gives up and slinks off
+  k.vx *= 0.8; k.vz *= 0.8; k.yaw = lerpA(k.yaw, Math.atan2(d.x - k.x, d.z - k.z), Math.min(1, dt * 8));
+  if (G.time >= (k.hissAt || 0)) { k.hissAt = G.time + rnd(1.2, 2); Sound.hiss(panOf(k.x, k.z), 0.2); floatText('HSSS!', k.x, k.y + 1.9, k.z, '#ffd36b'); }
+  return true;
+}
+function cougarLeapDog(k, d) {
+  k.state = 'leapDog'; k.t = 0; k.dog = d; k.lx = k.x; k.lz = k.z; k.ltx = d.x; k.ltz = d.z; k.faceT = 0;
+  Sound.growl(panOf(k.x, k.z), 0.22);
+}
+function cougarBonked(k, d) {
+  SFX.bonk(panOf(k.x, k.z), 0.35); starBurst(k.x, k.y + 0.9, k.z, 10, undefined, { speed: 5, up: 4 }); shakeCam(0.4); hitStop(0.07); rumble(d.player, 0.9, 0.6, 220);
+  cougarSpooked(k, 1);
+}
+function startMaul(k, d) {
+  if (d.holding) releaseHold(d, false);
+  const dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz);
+  k.mux = dl > 0.1 ? dx / dl : -Math.sin(d.yaw); k.muz = dl > 0.1 ? dz / dl : -Math.cos(d.yaw);
+  k.state = 'maul'; k.t = 0; k.dog = d; k.dealt = 0; k.swN = 0; k.swT = 0.2; k.target = null;
+  d.maul = k; d.mauled = true; d.maulEsc = 0; d.pounceT = d.hopT = 0; d.vx = d.vz = 0; d.mode = 'walk'; d.yaw = Math.atan2(dx, dz);
+  maulStartFx(d, k);
+}
+// it lets the dog go: 'thrown' (mashed off, or a partner's pounce: by) or 'done' (had its fill, or the dog's out cold)
+function endMaul(k, how, by) {
+  const d = k.dog; k.dog = null; k.h = 0; k.maulAt = G.time + T.cougar.maulCd;
+  if (d) { d.maul = null; d.mauled = false; d.maulEsc = 0; d.hurtAt = G.time; if (!d.ko) d.stunT = Math.max(d.stunT, how === 'thrown' ? 0.25 : 0.9); }
+  if (k.state !== 'maul') return;
+  k.y = groundY(k.x, k.z);
+  if (how === 'thrown') {
+    const kk = T.cougar.maul.kick; k.vx = k.mux * kk; k.vz = k.muz * kk;
+    maulEndFx(d || by, k, by || d);
+  }
+  cougarSpooked(k, how === 'thrown' ? 1 : 0.5);
+}
+function maulStartFx(d, k) {
+  if (!d) return;
+  Sound.growl(panOf(d.x, d.z), 0.3); Sound.yelp(panOf(d.x, d.z)); if (k) Sound.hiss(panOf(k.x, k.z), 0.25);
+  burst(d.x, d.y + 0.4, d.z, 16, '#e8dcc0', { speed: 3.5, up: 2, size: 0.3, life: 0.8, grav: 0 });
+  starBurst(d.x, d.y + 1, d.z, 6, undefined, { speed: 3, up: 3 }); shakeCam(0.5); hitStop(0.1); rumble(d.player, 1, 1, 300);
+}
+// one swipe (or a bite): fur flies, claw marks, a yelp
+function maulHitFx(d, k, bite) {
+  if (!d) return;
+  d.slashAt = G.time; d.slashA = Math.random() * TAU; d.slashBite = !!bite;
+  const pan = panOf(d.x, d.z);
+  SFX.scratch(pan, bite ? 0.25 : 0.32); if (bite) { Sound.growl(pan, 0.22); Sound.whimper(pan, d.pitch * 1.05); } else if (Math.random() < 0.5) Sound.yelp(pan);
+  burst(d.x, d.y + 0.5, d.z, bite ? 9 : 6, '#f2efe6', { speed: 3.2, up: 2.6, size: 0.14, life: 0.7 }); burst(d.x, d.y + 0.5, d.z, bite ? 6 : 4, '#2a2522', { speed: 3.2, up: 2.6, size: 0.13, life: 0.7 });
+  burst(d.x, d.y + 0.2, d.z, 5, '#e8dcc0', { speed: 2.5, up: 1, size: 0.3, life: 0.6, grav: 0 });   // the dust of the scrap
+  shakeCam(bite ? 0.35 : 0.2); if (bite) hitStop(0.05); rumble(d.player, bite ? 1 : 0.6, 0.8, bite ? 200 : 110);
+}
+function maulEndFx(d, k, by) {
+  if (!k) return;
+  floatText('FREE!', d ? d.x : k.x, (d ? d.y : k.y) + 2, d ? d.z : k.z, '#7ed957', 1.4);
+  SFX.bonk(panOf(k.x, k.z), 0.4); starBurst(k.x, k.y + 0.9, k.z, 12, undefined, { speed: 5, up: 4 }); shakeCam(0.45); hitStop(0.08);
+  if (by) rumble(by.player, 1, 0.8, 250);
 }
 function cougarsAtNightfall() {
   const fc = flockCenter(); let best = null, bd = T.cougar.range + 30;
   for (const k of COUGARS) {
     if (k.prey) continue;
-    perchCougar(k); k.state = 'perch'; k.t = 0; k.hunts = false; k.driven = 0; k.target = null;
+    perchCougar(k); k.state = 'perch'; k.t = 0; k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.wiseShown = false;
     const d = Math.hypot(k.lair.x - fc.x, k.lair.z - fc.z); if (d < bd) { bd = d; best = k; }
   }
   if (best && Math.random() < T.cougar.chance) cougarHunt(best, rnd(T.cougar.delay[0], T.cougar.delay[1]));
@@ -5122,11 +5283,12 @@ function cougarHunt(k, hours = 0) {   // (also the debug key J, and tests)
 function cougarsAtDawn() {
   for (const k of COUGARS) {
     k.hunts = false;
+    if (k.state === 'maul') endMaul(k, 'done');
     if (k.state === 'drag') cougarDrop(k, true);
-    else if (k.state === 'stalk' || k.state === 'leap') { k.state = 'retreat'; k.t = 0; k.target = null; }
+    else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -5164,7 +5326,8 @@ function updateCougars(dt) {
         if (!s || !cougarPrey(s)) s = k.target = isNight() ? cougarTarget(k) : null;
         if (!s || k.huntT > C.giveUp) { k.state = 'retreat'; k.t = 0; k.target = null; break; }
         const nd = nearestDog(k.x, k.z);
-        if (nd.dog && nd.d < C.shyR) { cougarSpooked(k, 0.5); break; }
+        if (nd.dog && nd.d < C.shyR && cougarFaceOff(k, nd.dog, nd.d, dt)) break;
+        k.faceT = 0;
         const ds = Math.hypot(s.x - k.x, s.z - k.z);
         let gx = s.x, gz = s.z;
         const inPen = cougarPen(k);
@@ -5196,7 +5359,8 @@ function updateCougars(dt) {
       }
       case 'drag': {
         const s = k.prey; if (!s) { k.state = 'retreat'; k.t = 0; break; }
-        if (cougarHitBy(k, C.hitR)) { cougarDrop(k, true); break; }
+        const hd = cougarHitBy(k, C.hitR);
+        if (hd) { cougarDrop(k, true); if (!(hd.pounceT > 0) && canMaul(k, hd)) startMaul(k, hd); break; }   // pounced: it drops it and runs. Just run into: it drops it and goes for you
         if (cougarOut(k, 'drag', C.drag, dt)) { holdCougarPrey(k); break; }   // in a pen: over the fence with it
         moveCougar(k, L.bx, L.bz, C.drag, dt); holdCougarPrey(k);
         if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.45, 0.85); Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); }   // it cries all the way
@@ -5231,6 +5395,36 @@ function updateCougars(dt) {
         if (f < 1) break;
         k.h = 0; k.y = groundY(k.x, k.z); k.vx *= 0.3; k.vz *= 0.3; k.state = k.after; k.t = 0;
         if (k.prey) holdCougarPrey(k);
+        break;
+      }
+      case 'leapDog': {   // at a dog: a short bound that homes in on it
+        const d = k.dog, f = clamp(k.t / C.maul.leapT, 0, 1);
+        if (!d || !G.dogs.includes(d)) { k.dog = null; k.state = 'stalk'; k.t = 0; k.h = 0; break; }
+        if (d.pounceT > 0 && Math.hypot(d.x - k.x, d.z - k.z) < C.hitR) { k.dog = null; k.h = 0; cougarBonked(k, d); break; }   // met mid-air by a pounce: the dog wins
+        k.ltx = d.x; k.ltz = d.z;
+        k.x = lerp(k.lx, k.ltx, f); k.z = lerp(k.lz, k.ltz, f); collideWorld(k, C.r);
+        k.h = Math.sin(f * Math.PI) * 1.1; k.y = groundY(k.x, k.z) + k.h; k.yaw = Math.atan2(k.ltx - k.lx, k.ltz - k.lz);
+        k.vx = (k.ltx - k.lx) / C.maul.leapT; k.vz = (k.ltz - k.lz) / C.maul.leapT;
+        if (f < 1) break;
+        k.h = 0; k.y = groundY(k.x, k.z); k.vx = k.vz = 0; k.dog = null;
+        if (Math.hypot(d.x - k.x, d.z - k.z) < 2.2 && canMaul(k, d)) startMaul(k, d);
+        else { k.state = 'stalk'; k.t = 0; }
+        break;
+      }
+      case 'maul': {   // on top of the dog, raking and biting
+        const d = k.dog;
+        if (!d || !G.dogs.includes(d) || d.maul !== k) { endMaul(k, 'done'); break; }
+        for (const o of G.dogs) if (o !== d && o.pounceT > 0 && Math.hypot(o.x - k.x, o.z - k.z) < C.hitR) { endMaul(k, 'thrown', o); break; }   // a partner pounces it off
+        if (k.state !== 'maul') break;
+        const sh = Math.sin(G.time * 41) * 0.07;
+        k.x = d.x + k.mux * 0.5 + sh * k.muz; k.z = d.z + k.muz * 0.5 - sh * k.mux; k.h = 0.3 + Math.abs(Math.sin(G.time * 19)) * 0.12;
+        k.y = groundY(k.x, k.z) + k.h; k.yaw = Math.atan2(-k.mux, -k.muz); k.vx = k.vz = 0;
+        if ((k.swT -= dt) > 0) break;
+        k.swN++; k.swT = C.maul.every * rnd(0.8, 1.2);
+        const bite = k.swN % 3 === 0, dmg = Math.min(bite ? C.maul.bite : C.maul.swipe, C.maul.max - k.dealt);
+        k.dealt += dmg; maulHitFx(d, k, bite);
+        hurtDog(d, dmg);   // (at 0 the dog's out: hurtDog ends the mauling)
+        if (k.state === 'maul' && k.dealt >= C.maul.max - 1e-6) endMaul(k, 'done');
         break;
       }
       case 'retreat': {
@@ -5495,7 +5689,19 @@ function syncDog(d) {
   M.head.position.z = 0.46 + crouch * 0.06;
   d.wag += (sp < 1 ? 14 : 6) * (1 / 60);
   M.tail.rotation.y = Math.sin(d.wag) * (sp < 1 ? 0.6 : 0.25); M.tail.rotation.x = d.lieK > 0.5 ? -1.0 : crouch ? -0.5 : d.mode === 'sprint' || d.pounceT > 0 ? 0.5 : 0;
-  M.tongue.visible = d.mode === 'sprint' || d.stamina < 0.6 || d.pounceT > 0;
+  M.tongue.visible = d.mode === 'sprint' || d.stamina < 0.6 || d.pounceT > 0 || d.mauled || d.ko;
+  if (d.mauled) {   // pinned on its side under the cat: kicking, twisting, jolted by every swipe
+    const jolt = Math.max(0, 1 - (t - (d.slashAt || -9)) / 0.18), mash = Math.max(0, 1 - (t - (d.mashAt || -9)) / 0.15);
+    M.root.position.y += 0.18; M.root.rotation.z = 1.2 + Math.sin(t * 27) * 0.18 + jolt * 0.35 - mash * 0.3;
+    M.body.position.y = -0.1; M.body.rotation.x = Math.sin(t * 13) * 0.2;
+    M.legs.forEach((g, i) => { g.rotation.x = Math.sin(t * 34 + i * 1.7) * 1.1; });
+    M.head.rotation.x = -0.4 + Math.sin(t * 17) * 0.3; M.head.rotation.y = Math.sin(t * 23) * 0.7;
+    M.tail.rotation.x = -0.9; M.tail.rotation.y = Math.sin(t * 30) * 0.5;
+  } else if (d.ko) {   // out cold on its side, legs stuck out
+    M.root.position.y += 0.15; M.root.rotation.z = 1.35; M.body.rotation.x = 0;
+    M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -0.5 : 0.5; });
+    M.head.rotation.x = 0.2; M.head.rotation.y = 0; M.tail.rotation.x = -1.0;
+  }
 }
 function syncCoyote(c) {
   const M = c.models, sp = Math.hypot(c.vx, c.vz);
@@ -5536,7 +5742,14 @@ function syncCougar(k) {
       pitch = (st === 'down' ? 1.25 : -1.3) * up; bodyY = lerp(-0.55, -0.9, up);    // belly against the bark
       M.legs.forEach((g, i) => { g.rotation.x = (i === 0 || i === 3 ? f : -f) + (i < 2 ? -0.6 : 0.4) * up; });
       t0 = -0.9; headX = st === 'climb' ? 0.4 : 0;
-    } else if (st === 'leap' || st === 'vault') {
+    } else if (st === 'maul') {   // on top of the dog: raking with both forepaws in turn, biting, lashing its tail
+      pitch = 0.3 + Math.sin(t * 21) * 0.08; bodyY = -0.18 + Math.abs(Math.sin(t * 19)) * 0.08;
+      M.legs.forEach((g, i) => {
+        if (i < 2) { const ph = t * 15 + i * Math.PI; g.rotation.x = -1.3 + Math.sin(ph) * 1.0; g.rotation.z = (i ? -1 : 1) * (0.25 + Math.max(0, Math.cos(ph)) * 0.35); }
+        else g.rotation.x = 0.55;
+      });
+      headX = 0.55 + Math.max(0, Math.sin(t * 9)) * 0.45; headY = Math.sin(t * 13) * 0.45; t0 = 0.2; t1 = 0.4; t2 = 0.5; tSway = Math.sin(t * 9) * 1.0;
+    } else if (st === 'leap' || st === 'vault' || st === 'leapDog') {
       pitch = -0.25 * clamp(k.h / 1.3, 0, 1);
       M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -1.15 : 1.05; }); t0 = 0.1; t2 = 0.2;
     } else {   // stalking low and slow, or running
@@ -5721,6 +5934,36 @@ function drawCoyoteArrows() {
   }
   ctx.globalAlpha = 1;
 }
+// a dog's health bar under its name (the chunk just lost lingers in red), claw marks when it's hit, and the mash prompt under a cougar
+function drawDogHealth(d, px, py, dt) {
+  const hp = clamp(d.hp ?? 1, 0, 1);
+  if (hp < (d._hpPrev ?? 1) - 1e-3) { d._flash = 0.15; d._hpHold = 0.45; }
+  d._hpPrev = hp; d._flash = Math.max(0, (d._flash || 0) - dt); d._hpHold = Math.max(0, (d._hpHold || 0) - dt);
+  d.hpShow = (d.hpShow ?? 1) > hp ? (d._hpHold > 0 ? d.hpShow : Math.max(hp, d.hpShow - dt * 0.6)) : hp;
+  const w = 38, h = 6, x = px - w / 2, y = py + 10, shake = d._flash > 0 ? (Math.random() - 0.5) * 3 : 0;
+  ctx.fillStyle = 'rgba(0,0,0,.6)'; rr(x - 2 + shake, y - 2, w + 4, h + 4, 4); ctx.fill();
+  ctx.fillStyle = '#c0392b'; ctx.fillRect(x + shake, y, w * d.hpShow, h);
+  ctx.fillStyle = d._flash > 0 ? '#ffffff' : hp > 0.5 ? '#7ed957' : hp > 0.25 ? '#ffd36b' : '#ff5a4a'; ctx.fillRect(x + shake, y, w * hp, h);
+  if (G.time - (d.slashAt ?? -9) < 0.25) {   // claw marks across the dog
+    const [sx, sy] = proj(d.x, d.y + 0.6, d.z), k = (G.time - d.slashAt) / 0.25, a = d.slashA || 0, n = d.slashBite ? 2 : 3;
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(a); ctx.globalAlpha = 1 - k; ctx.lineCap = 'round';
+    for (const [lw, col] of [[7, 'rgba(0,0,0,.6)'], [3.5, d.slashBite ? '#ff3b2f' : '#fff']]) {
+      ctx.lineWidth = lw; ctx.strokeStyle = col;
+      for (let i = 0; i < n; i++) { const o = (i - (n - 1) / 2) * 9; ctx.beginPath(); ctx.moveTo(-20, o - 6); ctx.quadraticCurveTo(0, o + 4, 20 + k * 6, o - 2); ctx.stroke(); }
+    }
+    ctx.restore(); ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+  }
+  if (d.mauled) {   // mash the pounce button: a big pulsing button and how close it is to breaking free
+    const bx = px, by = py - 34, pop = Math.max(0, 1 - (G.time - (d.mashAt ?? -9)) / 0.12), r = 19 * (1 + Math.sin(G.time * 24) * 0.1 + pop * 0.25);
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.beginPath(); ctx.arc(bx, by, r + 6, 0, TAU); ctx.fill();
+    ctx.lineWidth = 5; ctx.strokeStyle = '#7ed957'; ctx.beginPath(); ctx.arc(bx, by, r + 3, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(d.maulEsc || 0, 0, 1)); ctx.stroke();
+    ctx.fillStyle = '#e8473c'; ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    const key = keyLabel(d.player.kind === 'remote' ? null : d.player, 'pounce');
+    ctx.font = `700 ${key.length > 2 ? 13 : 22}px Fredoka, sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText(key, bx, by + 1);
+    ctx.font = '700 15px Fredoka, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)';
+    const xs = '×' + Math.max(1, Math.ceil((1 - (d.maulEsc || 0)) * T.cougar.maul.mash)); ctx.strokeText(xs, bx + r + 18, by); ctx.fillText(xs, bx + r + 18, by);
+  }
+}
 function drawOverlay(dt) {
   ctx.setTransform(ovScale, 0, 0, ovScale, 0, 0); ctx.clearRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
@@ -5778,6 +6021,7 @@ function drawOverlay(dt) {
       ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px + 20, py, 7, 0, TAU); ctx.stroke();
       ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(px + 20, py, 7, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
     }
+    drawDogHealth(d, px, py, dt);
   }
   drawCoyoteArrows();
   // floating texts
@@ -6217,6 +6461,8 @@ function hankSpotPredators() {
     if (k.prey && k.hankGrab !== k.prey && hankSees(k.x, k.z, k.y)) {
       k.hankGrab = k.prey; k.hankSaw = true; const s = k.prey;
       hank(null, pick([`Cougar! It's got ${s.name}! After it!`, `The big cat's got ${s.name}! Don't let it reach the tree!`]), { force: true });
+    } else if (k.state === 'maul' && k.dog && k.hankMaul !== k.dog && hankSees(k.x, k.z)) {
+      k.hankMaul = k.dog; hank(null, pick(['Shake it off! Fight, dog!', 'Get it off ye!']), { force: true });
     } else if (!k.hankSaw && (k.state === 'stalk' || k.state === 'leap') && hankSees(k.x, k.z)) {
       k.hankSaw = true; hank(null, pick(['Cougar! Creepin\' up on the flock! Mind the lambs!', 'There! A cougar, low in the grass! See it off!']), { force: true });
     } else if (night && k.state === 'perch' && hk.eyesKey !== key && hankSees(L.px, L.pz, L.py, 1.3)) {
@@ -7098,7 +7344,7 @@ function resetGame() {
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; G.lost = [];
   spawnFlock();
-  G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; });
+  G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
   G.mode = 'play'; banner(CAMPS[0].name, 'Day 1 — the journey begins'); updateCamera(0, true);
   resetHank(); hankGameStart();   // HANK
@@ -7206,6 +7452,7 @@ const NET_TYPES = {
       look: { c: 's', get: d => d.models.lookKey, set: (d, v) => netDogLook(d, v) },   // DOG WARDROBE: coat, collar and kit (the host's barn)
       holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote or a gate
       greens: .02, salt: 'i',   // FORAGE: what it's carrying
+      hp: .01, mauled: 'b', maulEsc: .05, ko: 'b',   // health, pinned under a cougar (and how close to breaking free), out cold
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -7383,7 +7630,7 @@ function netScreens() {
 // ---- effects: one hook for every sound and bit of feedback ----------------------------------------------
 const FXR = {};                                // name -> local function (wrapped)
 const FXPOS = { x: 0, z: 0, on: false };      // where the last panOf() pointed (so guests can pan for their own camera)
-const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0 };   // which argument of Sound.x is the pan
+const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0 };   // which argument of Sound.x is the pan
 let fxDepth = 0;
 function fx(name, ...a) { const f = FXR[name]; return f ? f(...a) : undefined; }
 // opt: keep(args) = send it at all · pan = which argument is the stereo pan · after(result) = send only if the call
@@ -7634,7 +7881,7 @@ function netAnimCoyote(c, dt) {
 // Airborne, stunned or hopping: the host's state, smoothed.
 const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
 function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : ''; }
-function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0); }
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko; }
 function netPredPick(d) {   // what tryGrab would bite
   const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
   let o = null, bd = T.grabReach, grip = 0;
@@ -7665,7 +7912,7 @@ function netPredDir(d, h) {   // startPounce's heading
 }
 // a press here: the host will do the same once it hears; until then this screen plays it
 function netPredPress(L, d, r, now) {
-  if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0) return;
+  if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0 || d.mauled) return;
   if (r.bark && now - (L.barkAt || -1e9) >= T.barkCd * 1000) { L.barkAt = now; barkFx(d); d._pBark = now; }
   if (r.pounce && !r.lie && !d._hold && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {
     L.pounceAt = now; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t: now, dx, dz });
@@ -7686,6 +7933,7 @@ function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
   let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
   if (hk) max *= hk.speed;
+  if (d.hp < T.dogHp.limp) max *= lerp(0.7, 1, d.hp / T.dogHp.limp);   // hurt: it limps
   if (d.pounceT > 0) {   // the lunge
     d.pounceT -= dt; d.vx = d.pdx * T.pounceSpeed; d.vz = d.pdz * T.pounceSpeed;
     if (d.pounceT <= 0) { d.pounceT = 0; d.vx *= 0.4; d.vz *= 0.4; }
@@ -8395,7 +8643,13 @@ hank = fxDef('hank', hank, { keep: a => !(a[2] && a[2].delay > 0), after: said =
 baaAt = fxDef('baaAt', baaAt);                                       // (by the sheep: each screen judges distance and pan for itself)
 bellDing = fxDef('bellDing', bellDing);
 barkFx = fxDef('barkFx', barkFx);
-landDog = fxDef('landDog', landDog);                                 // stamps the landing squash with this screen's clock
+landDog = fxDef('landDog', landDog);
+nipFx = fxDef('nipFx', nipFx);                                       // dog health: nips, maulings, knock-outs
+maulStartFx = fxDef('maulStartFx', maulStartFx);
+maulHitFx = fxDef('maulHitFx', maulHitFx);
+maulEndFx = fxDef('maulEndFx', maulEndFx);
+mashFx = fxDef('mashFx', mashFx);
+koFx = fxDef('koFx', koFx);                                 // stamps the landing squash with this screen's clock
 dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
@@ -8491,7 +8745,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,

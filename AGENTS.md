@@ -40,7 +40,7 @@ TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK
 DOG WARDROBE, BARN, saved flock → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
-every caller: `knockDog`, `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
+every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`, `p.gateT` (0 shut…1
 open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`.
 
@@ -55,6 +55,7 @@ Run the ones touching your change; report the numbers.
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
+| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
@@ -123,6 +124,13 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
   `localStorage['collies.dogs.v1']`.
+- **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
+  down); at 0 knocked out a while, never dies. Cougar close (`maulR`, or bumped
+  while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
+  `maul.max`; mash pounce to throw it off, or a partner pounces it. Coyotes nip
+  (`T.nip`) when bold, screening or striking.
+- **Barks wear off**: each coyote/cougar falls for `T.barkWise` barks a night,
+  then turns bold (`barkWorks`).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas
