@@ -354,7 +354,7 @@
 <div id="touch"><div id="tZone"><div id="tStick"><i></i></div></div>
   <div id="tBtns"><div class="tb big" data-act="bark" style="right:0;bottom:0">📣</div><div class="tb" data-act="pounce" style="right:86px;bottom:2px">💥</div>
     <div class="tb" data-act="grab" style="right:8px;bottom:86px">✊</div><div class="tb" data-act="lie" style="right:150px;bottom:2px">💤</div>
-    <div class="tb" data-act="sprint" style="right:76px;bottom:70px">⚡</div></div>
+    <div class="tb" data-act="sprint" style="right:76px;bottom:70px">⚡</div><div class="tb" data-act="jump" style="right:150px;bottom:70px">⤴</div></div>
   <div id="tSys"><div class="tb" id="tPause">⏸</div><div class="tb" id="tBarnBtn">🏚️</div></div></div>
 <div id="rotate"><span>📱</span></div>
 <div id="sound" style="display:none">🔇 Click anywhere to turn on sound</div>
@@ -368,7 +368,8 @@
     <span>Bark</span><span>Ⓐ</span><span>Space · /</span>
     <span>Pounce (shake when holding)</span><span>Ⓑ</span><span>E · .</span>
     <span>Grab &amp; drag (let go to fling)</span><span>hold Ⓧ</span><span>R · ,</span>
-    <span>Lie down</span><span>hold Ⓨ or LT</span><span>C · '</span>
+    <span>Lie down</span><span>hold LT</span><span>C · '</span>
+    <span>Jump (sprint: vault)</span><span>Ⓨ</span><span>X · [</span>
     <span>Sprint</span><span>RT or RB</span><span>L-Shift · R-Shift</span>
     <span>Creep (gentle)</span><span>LB</span><span>Q · ;</span>
     <span>Gates</span><span>walk into them to push</span><span>sprint to slam</span>
@@ -578,6 +579,7 @@ const T = {
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
+  jump: { dur: 0.5, h: 1.4, cd: 0.2, vault: { dur: 0.62, h: 1.9, v: 16, stamina: 0.08 } },   // Ⓨ: a hop on the spot (over rams, pouncing dogs); sprinting: a long vault
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
   airGrav: 28,                 // everything that flies falls at this (m/s²)
   punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2, dogK: 0.7, dogUp: 11 },   // dogK/dogUp: a pounced dog
@@ -926,16 +928,16 @@ const Sound = (() => {
 // =====================================================================
 const keys = new Set(), keyEdge = new Set();
 const KB = [
-  { id: 'kb1', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], bark: ['Space'], pounce: ['KeyE'], grab: ['KeyR'], lie: ['KeyC'], sprint: ['ShiftLeft'], creep: ['KeyQ'],
+  { id: 'kb1', up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], bark: ['Space'], pounce: ['KeyE'], grab: ['KeyR'], lie: ['KeyC'], jump: ['KeyX'], sprint: ['ShiftLeft'], creep: ['KeyQ'],
     join: ['Space', 'Enter', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE'] },
   { id: 'kb2', up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], bark: ['Slash', 'Numpad0'], pounce: ['Period', 'NumpadDecimal'],
-    grab: ['Comma', 'Numpad1'], lie: ['Quote', 'ControlRight'], sprint: ['ShiftRight'], creep: ['Semicolon'], join: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Numpad0'] },
+    grab: ['Comma', 'Numpad1'], lie: ['Quote', 'ControlRight'], jump: ['BracketLeft', 'Numpad2'], sprint: ['ShiftRight'], creep: ['Semicolon'], join: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Numpad0'] },
 ];
 // what to print for a player's buttons in hints and prompts
-const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'" } };
-KEY_LABEL.touch = { bark: '📣', pounce: '💥', grab: '✊', lie: '💤' };
+const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'LT', jump: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C', jump: 'X' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'", jump: '[' } };
+KEY_LABEL.touch = { bark: '📣', pounce: '💥', grab: '✊', lie: '💤', jump: '⤴' };
 const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + INPUT_KB] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
-const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.sprint, ...k.creep, 'Enter']));
+const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.jump, ...k.sprint, ...k.creep, 'Enter']));
 let INPUT_DEV = 'kb';   // the last thing anyone touched here: 'kb' or 'pad' (the pause screen draws its controls)
 let INPUT_KB = 0;       // which keyboard side was touched last (the bottom bar)
 const KB2_KEYS = new Set(Object.values(KB[1]).flat().filter(c => c !== 'Enter'));
@@ -1031,16 +1033,16 @@ function rumble(player, strong = 0.4, weak = 0.6, ms = 120) {
   try { gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }); } catch (e) {}
 }
 
-// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie}
-// bark and pounce are one-shot (edge) presses; sprint, creep, grab and lie are held.
+// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie,jump}
+// bark, pounce and jump are one-shot (edge) presses; sprint, creep, grab and lie are held.
 function readInput(p) {
-  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false };
+  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false, jump: false };
   if (p.kind === 'bot') return Object.assign(r, p.bot || {});   // scripted player for automated tests
   if (p.kind === 'net') return netReadInput(p, r);              // ONLINE: a friend's dog, driven by what their browser sends
   if (p.kind === 'touch') {   // a light push creeps; ⚡ sprints
     const m = Math.hypot(TOUCH.mx, TOUCH.my);
     if (m > 0.12) { const k = m < 0.5 ? (0.35 + 0.65 * (m - 0.12) / 0.38) / m : 1; r.mx = TOUCH.mx * k; r.my = TOUCH.my * k; r.creep = m < 0.5 && !TOUCH.held.sprint; }
-    r.sprint = !!TOUCH.held.sprint; r.lie = !!TOUCH.held.lie; r.grab = !!TOUCH.held.grab; r.bark = !!TOUCH.edge.bark; r.pounce = !!TOUCH.edge.pounce;
+    r.sprint = !!TOUCH.held.sprint; r.lie = !!TOUCH.held.lie; r.grab = !!TOUCH.held.grab; r.bark = !!TOUCH.edge.bark; r.pounce = !!TOUCH.edge.pounce; r.jump = !!TOUCH.edge.jump;
     return r;
   }
   if (p.kind === 'pad') {
@@ -1052,7 +1054,8 @@ function readInput(p) {
     r.mx = x; r.my = y;
     r.sprint = padPressed(gp, 7) || padPressed(gp, 5) || padPressed(gp, 10);   // RT, RB, L3
     r.creep = padPressed(gp, 4);                                              // LB
-    r.lie = padPressed(gp, 3) || padPressed(gp, 6);                           // Y or LT
+    r.lie = padPressed(gp, 6);                                                // LT
+    r.jump = padEdge(p.index, gp, 3);                                         // Y
     r.grab = padPressed(gp, 2);                                               // X (hold)
     r.bark = padEdge(p.index, gp, 0);                                         // A
     r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
@@ -1061,7 +1064,7 @@ function readInput(p) {
       r.mx += (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
       r.my += (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
       r.sprint ||= anyKey(k.sprint); r.creep ||= anyKey(k.creep); r.lie ||= anyKey(k.lie); r.grab ||= anyKey(k.grab);
-      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce);
+      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce); r.jump ||= anyEdge(k.jump);
     }
     r.mx = clamp(r.mx, -1, 1); r.my = clamp(r.my, -1, 1);
     const m = Math.hypot(r.mx, r.my); if (m > 1) { r.mx /= m; r.my /= m; }
@@ -3522,7 +3525,7 @@ function spawnDog(player) {
   const base = G.dogs[0] || { x: pens[0].exitX + 3, z: pens[0].exitZ + 2 };
   const a = Math.random() * TAU;
   const d = { player, x: base.x + Math.cos(a) * 2, z: base.z + Math.sin(a) * 2, vx: 0, vz: 0, y: 0, yaw: Math.PI, mode: 'walk', stamina: 1, exhausted: false,
-    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi],
+    barkCd: 0, barkAnim: 0, hopT: 0, hopDur: 0.42, hopH: 1.25, jumpCd: 0, jumped: false, stunT: 0, leg: 0, wag: 0, models, pitch: PCOL[pi].pitch, color: PCOL[pi].ui, light: dogLights[pi],
     isDog: true, greens: 0, salt: 0, pounceT: 0, pounceCD: 0, pdx: 0, pdz: 1, holding: null, holdKind: null, holdT: 0, shakeT: 0, air: null, wx: 0, wz: 0, inMag: 0, lieK: 0, leanT: 0,
     hp: 1, hpShow: 1, hurtAt: -99, maul: null, mauled: false, maulEsc: 0, ko: false };
   if (G.dogs[0]) { d.x = G.dogs[0].x + Math.cos(a) * 2; d.z = G.dogs[0].z + Math.sin(a) * 2; }
@@ -3530,7 +3533,7 @@ function spawnDog(player) {
   G.dogs.push(d); player.dog = d; return d;
 }
 function updateDog(d, inp, dt) {
-  d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt);
+  d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt); d.jumpCd = Math.max(0, d.jumpCd - dt);
   d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt);
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
   dogHealth(d, dt);
@@ -3565,6 +3568,7 @@ function updateDog(d, inp, dt) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
     if (d.holding) shakeHold(d); else if (!inp.lie) startPounce(d, wx, wz, mag);
   }
+  if (inp.jump) startJump(d);
   let mode = 'walk';
   if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
   else if (inp.creep) mode = 'creep';
@@ -3585,13 +3589,14 @@ function updateDog(d, inp, dt) {
     d.pounceT -= dt; d.vx = d.pdx * T.pounceSpeed; d.vz = d.pdz * T.pounceSpeed;
     if (Math.random() < dt * 40) burst(d.x, d.y + 0.15, d.z, 1, '#e8dcc0', { speed: 0.8, up: 0.8, size: 0.24, life: 0.45, grav: 0 });
     if (d.pounceT <= 0) { d.vx *= 0.4; d.vz *= 0.4; landDog(d, 0.22); }
-  } else if (d.hopT > 0) { d.hopT -= dt; if (d.hopT <= 0) landDog(d, 0.2); }
+  } else if (d.hopT > 0) { d.hopT -= dt; if (d.hopT <= 0) { d.jumped = false; landDog(d, d.hopH > 1.6 ? 0.3 : 0.2); } }
   else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
   const ox = d.x, oz = d.z;
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideDog(d);
   if (overWater(d.x, d.z) && inRiver(d.x, d.z)) { startSwim(d); return; }   // walked into the river: paddling now (drops what it holds)
   if (d.pounceT > 0) pounceGateSlam(d, ox, oz);
+  if (d.hopT > 0 && d.jumped && byTrough(d)) collideFences(d, T.dogR);   // a jump clears fences, not the one by the troughs
   if (d.hopT <= 0 && collideFences(d, T.dogR) && freeToHop(d)) {
     // pushing into a fence hops it (and a pounce sails over); holding something, you just stop
     const lunge = d.pounceT > 0, dx = lunge ? d.pdx : wx, dz = lunge ? d.pdz : wz, m = lunge ? 1 : mag;
@@ -3614,9 +3619,24 @@ function barkFx(d) {   // what a bark looks and sounds like (a guest plays its o
   floatText('WOOF!', d.x, d.y + 1.6, d.z, d.color);
 }
 function startHop(d, nx, nz, v) {   // (nx, nz) points from the fence back to the dog; it leaps the other way
+  d.hopDur = 0.42; d.hopH = 1.25; d.jumped = false;
   d.hopT = d.hopDur; d.pounceT = 0; d.vx = -nx * v; d.vz = -nz * v; d.leanT = 0;
   burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 });
 }
+// Ⓨ: up in the air a moment (rams, pouncing dogs and flying sheep miss); sprinting, a long low-to-high vault forward
+function startJump(d) {
+  if (d.jumpCd > 0 || d.hopT > 0 || d.pounceT > 0 || d.holding || bucketOf(d)) return false;
+  const J = T.jump, sp = Math.hypot(d.vx, d.vz), vault = d.mode === 'sprint' && sp > T.dogWalk * 0.8;
+  if (vault) {
+    const v = Math.max(sp, J.vault.v); d.vx *= v / sp; d.vz *= v / sp;
+    d.hopDur = J.vault.dur; d.hopH = J.vault.h; d.stamina = Math.max(0, d.stamina - J.vault.stamina);
+  } else { d.hopDur = J.dur; d.hopH = J.h; }
+  d.hopT = d.hopDur; d.jumped = true; d.jumpCd = d.hopDur + J.cd; d.leanT = 0; d.mode = 'walk';
+  burst(d.x, d.y + 0.2, d.z, vault ? 7 : 4, '#e8dcc0', { speed: vault ? 1.6 : 1, up: 1.2, size: 0.16 });
+  jumpFx(d, vault);
+  return true;
+}
+function jumpFx(d, vault) { SFX.boing(panOf(d.x, d.z), vault ? 0.12 : 0.08, vault ? 1.5 : 1.8); }
 function freeToHop(d) { return !d.holding && !byTrough(d); }   // holding an animal or a gate, or at the troughs, you stop at fences
 function byTrough(d) {   // the fence by a pen's troughs can't be hopped (refill over it)
   for (const p of pens) {
@@ -3900,7 +3920,7 @@ function pounceHits(d) {
   for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
   if (launcherPounce(d)) return;
   for (const o of G.dogs) {   // another dog: punted like a sheep (not one under a cougar: that pounce frees it)
-    if (o === d || o.air || o.maul || o.mauled) continue;
+    if (o === d || o.air || o.maul || o.mauled || o.hopT > 0) continue;   // (jumped over it)
     const bx = o.x - d.x, bz = o.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
     if (bd < T.pounceHitR && !fenceBetween(d.x, d.z, o.x, o.z)) { puntDog(o, d, bx / bd, bz / bd); return; }
   }
@@ -6954,7 +6974,7 @@ function syncDog(d) {
   const M = d.models, sp = Math.hypot(d.vx, d.vz), t = G.time;
   const hopK = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) : 0;
   const pk = d.pounceT > 0 ? 1 - d.pounceT / T.pounceTime : 0, pounceK = d.pounceT > 0 ? Math.sin(pk * Math.PI) : 0;   // the lunge is a low leap
-  const lift = hopK * 1.25 + pounceK * 0.7;
+  const lift = hopK * (d.hopH || 1.25) + pounceK * 0.7;
   M.root.position.set(d.x, d.y + lift, d.z); M.root.rotation.y = d.yaw;
   M.root.rotation.z = d.stunT > 0 ? Math.sin(t * 16) * 0.35 * Math.min(1, d.stunT * 2) : 0;
   M.root.rotation.x = d.air && !d.air.swim ? -d.air.spin : 0;                       // backflips off the launcher
@@ -7092,7 +7112,7 @@ const HINTS = {
   bark: 'Press <b>Ⓐ</b> / <b>Space</b> to bark — it spooks sheep and scares coyotes off.',
   pounce: 'Tap <b>Ⓑ</b> / <b>E</b> to <b>pounce</b>: a quick dash to get round the flock. Pounce into a sheep and it goes flying!',
   grab: 'Hold <b>Ⓧ</b> / <b>R</b> to <b>grab</b> a stubborn sheep and drag it along. Let go while running to <b>fling</b> it — even over a fence.',
-  lie: 'Hold <b>Ⓨ</b> / <b>C</b> to <b>lie down</b>. A dog lying still settles the flock.',
+  lie: 'Hold <b>LT</b> / <b>C</b> to <b>lie down</b>. A dog lying still settles the flock.',
   travel: 'Follow the trail to the next camp and pen the flock before nightfall.',
   grass: 'The grass here is getting thin. Hungry sheep wander off — <b>move on</b> to greener pasture.',
   dusk: 'Dusk is coming! Drive the flock into a pen and <b>push the gate shut</b> behind them — it clacks when it latches.',
@@ -9339,7 +9359,7 @@ const NET_BUILD = (() => {
   return (h >>> 0).toString(36) + '.' + t.length;
 })();
 // one-shot buttons (fire once per press): guests send them as events, the host applies each exactly once
-const NET_EDGES = new Set(['bark', 'pounce']);
+const NET_EDGES = new Set(['bark', 'pounce', 'jump']);
 const NET = {
   role: null,                 // null offline · 'host' · 'guest'
   peer: null, conn: null, code: '', myName: '', cid: '', status: '', statusErr: false,
@@ -9370,7 +9390,7 @@ const NET_TYPES = {
   dog: {
     tag: 'd', all: () => G.dogs, id: d => d.player.slot,
     fields: {
-      x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', mode: 's', stamina: .02, exhausted: 'b', hopT: .02, stunT: .02, barkAnim: .02,
+      x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', mode: 's', stamina: .02, exhausted: 'b', hopT: .02, hopDur: .02, hopH: .05, stunT: .02, barkAnim: .02,
       name: { c: 's', get: d => d.player.name, set: (d, v) => { d.player.name = v; } },
       pounceT: .02, shakeT: .02, digK: .05,
       look: { c: 's', get: d => d.models.lookKey, set: (d, v) => netDogLook(d, v) },   // DOG WARDROBE: coat, collar and kit (the host's barn)
@@ -9708,9 +9728,9 @@ function ctlBar(dt = 0) {
   const key = INPUT_DEV + INPUT_KB;
   if (key === ctlBarKey) return; if (ctlBarKey) ctlBarT = Math.min(ctlBarT, T_CTLBAR - 8); ctlBarKey = key;
   const cap = k => `<kbd class="cdCap">${k}</kbd>`;
-  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['Ⓨ', 'lie'], ['☰', 'pause']]
-    : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['P', 'pause']]
-    : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['P', 'pause']];
+  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['LT', 'lie'], ['Ⓨ', 'jump'], ['☰', 'pause']]
+    : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['[', 'jump'], ['P', 'pause']]
+    : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['X', 'jump'], ['P', 'pause']];
   $('ctlBar').innerHTML = L.map(([k, t]) => `<span>${cap(k)}${t}</span>`).join('');
 }
 // pause: local dogs, ✕ drops one (click, or ←/→ + Ⓧ / Delete)
