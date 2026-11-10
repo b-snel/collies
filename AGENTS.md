@@ -37,7 +37,7 @@ buys supplies, and Cabo 🏖️, which wins.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → NAVIGATION → COYOTES → COUGARS → FALCON →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -77,6 +77,7 @@ Run the ones touching your change; report the numbers.
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
 | `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
+| `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
@@ -200,6 +201,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   pen; ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
   (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark twice: those go,
   `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
+- **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
+  sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
+  stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
+  Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

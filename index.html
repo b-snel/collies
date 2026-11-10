@@ -613,6 +613,9 @@ const T = {
   // quenched, 🌾 hunger, 🧂 salt); refused if it has under `room` of a batch free. 🏖️ Cabo: base + per sheep penned there, bark twice (confirm s)
   vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, clippers: { price: 0 }, water: { price: 3, amt: 8 }, food: { price: 4, amt: 8 }, salt: { price: 2, amt: 10 },
     cabo: { base: 20, per: 2 } },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
+  // BRAMBLES: thorny patches off the trail. A sheep that walks (snagWalk/s) or runs (snagRun/s, above runSpd m/s) into
+  // a bush is snagged till a dog pounces it out. Calm sheep steer round them (avoid m). Off in ?sim (tests turn it on).
+  bramble: { on: !SIM, every: 22, chance: [0.6, 0.75, 0.5, 0.45], lat: [6, 17], snagWalk: 0.3, snagRun: 2.2, runSpd: 3, avoid: 1.8, stress: 0.05, stressCap: 0.6, struggle: [1.5, 3.5] },
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
@@ -2948,6 +2951,7 @@ function updateSheep(dt, dtH) {
   const bellR2 = T.bellR * T.bellR, gSp = T.grazeSpace, kSp = T.knotSpace, mvMin = T.moveMin;   // (hoisted for the neighbour loop)
   for (let i = 0; i < N; i++) {
     const s = S[i]; if (s.dead) continue;
+    if (s.snag && (s.grabbed || s.air || s.heldBy)) unsnag(s);   // BRAMBLES: carried or flung out
     if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.wasGrabbed = true; continue; }
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
@@ -3058,7 +3062,7 @@ function updateSheep(dt, dtH) {
     const run = (s.lamb ? T.lambRun : T.sheepRun) * (s.hunger >= 1 ? 0.7 : 1) * (s.trait === 'stubborn' ? 0.88 : 1) * (1 - T.oldSlow * oldK(s)) + pk * T.panicRun;
     const pp = penPull(s);
     if (s.ram && (s.pen || !play)) { s.grudge = null; if (s.rs !== 'idle') { s.rs = 'idle'; s.rcd = 4; s.state = 'idle'; } }   // charged into a pen: penned
-    if (s.ram && !s.lamb && play && !s.pen && ramStep(s, dt)) { dX = RAMV.x; dZ = RAMV.z; spd = RAMV.spd; acc = RAMV.acc; straight = RAMV.straight; }
+    if (s.ram && !s.lamb && play && !s.pen && !s.snag && ramStep(s, dt)) { dX = RAMV.x; dZ = RAMV.z; spd = RAMV.spd; acc = RAMV.acc; straight = RAMV.straight; }
     else if (s.breakT > 0) { s.breakT -= dt; s.state = 'flee'; dX = s.bdx; dZ = s.bdz; spd = T.breakSpd; acc = 16; straight = true; s.alert = 3.5; }
     else if (s.fear > 0.03 || s.panic > 0.25) {
       if (s.state === 'sleep') { s.hopV = 2.5; }
@@ -3271,12 +3275,21 @@ function updateSheep(dt, dtH) {
       }
     }
     spd *= saltPep(s) * thirstPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER)
+    if (T.bramble.on && !s.snag && spd > 0 && !s.pen) {   // BRAMBLES: calm sheep go round them, bolting ones barely look
+      const b = brambleAt(s.x, s.z, T.bramble.avoid);
+      if (b) { const ox = s.x - b.x, oz = s.z - b.z, od = Math.hypot(ox, oz) || 1, k = (1 - Math.max(0, od - b.r) / T.bramble.avoid) * (s.state === 'flee' || straight ? 0.25 : 1.3); dX += ox / od * k; dZ += oz / od * k; }
+    }
     // ---- integrate
     const dl = Math.hypot(dX, dZ); let tvx = 0, tvz = 0;
     if (dl > 1e-3 && spd > 0) { tvx = dX / dl * spd; tvz = dZ / dl * spd; }
     const k = Math.min(1, acc * dt); s.vx += (tvx - s.vx) * k; s.vz += (tvz - s.vz) * k;
     s.x += s.vx * dt; s.z += s.vz * dt;
     collideWorld(s, s.r); const hitFence = collideFences(s, s.r); collideGraves(s, s.r);
+    if (s.snag) snaggedStep(s, dt);   // BRAMBLES: held fast, struggling
+    else if (T.bramble.on && play && !s.pen) {
+      const b = brambleAt(s.x, s.z, s.r * 0.3), sp0 = Math.hypot(s.vx, s.vz), B = T.bramble;
+      if (b && sp0 > 0.5 && Math.random() < dt * (sp0 > B.runSpd ? B.snagRun : B.snagWalk)) snagSheep(s, b);
+    }
     if (hitFence && s.rs === 'charge') daze(s, 1.2, 'BONK!');
     const sp = Math.hypot(s.vx, s.vz);
     if (sp > 4.2 && Math.random() < dt * 2.5) burst(s.x, s.y + 0.1, s.z, 1, '#e3d6b8', { speed: 0.5, up: 0.6, size: 0.22, life: 0.6, grav: 0 });
@@ -3286,14 +3299,14 @@ function updateSheep(dt, dtH) {
     s.y = groundY(s.x, s.z);
     s.leg += sp * dt * 7;
     // ---- stuck (nobody pressing it): wants to go somewhere but has got nowhere for a moment: path out to open ground
-    if (spd > 0.6 && press < 0.05 && s.rs === 'idle' && s.breakT <= 0 && !straight && CALM_GO.has(s.state) && s.netSpd !== undefined && s.netSpd < Math.max(0.25, spd * 0.25)) {
+    if (spd > 0.6 && press < 0.05 && !s.snag && s.rs === 'idle' && s.breakT <= 0 && !straight && CALM_GO.has(s.state) && s.netSpd !== undefined && s.netSpd < Math.max(0.25, spd * 0.25)) {
       s.stuckT = (s.stuckT || 0) + dt;
       if (s.stuckT > T.stuckT && MIND.paths < T.pathsPerStep) { s.stuckT = 0; startUnstick(s, dX, dZ); }
     } else s.stuckT = Math.max(0, (s.stuckT || 0) - dt);
     // ---- cornered: pressed hard but going nowhere
     s.cpT = (s.cpT || 0) + dt;   // net speed over a short window (a sheep jittering against a fence is going nowhere)
     if (s.cpT >= 0.3) { s.netSpd = Math.hypot(s.x - s.cpx, s.z - s.cpz) / s.cpT; s.cpx = s.x; s.cpz = s.z; s.cpT = 0; }
-    if (play && !s.pen && s.state !== 'sleep' && s.rs === 'idle' && s.breakT <= 0) {
+    if (play && !s.pen && !s.snag && s.state !== 'sleep' && s.rs === 'idle' && s.breakT <= 0) {
       const moved = s.netSpd ?? 9;
       s.breakCd -= dt;
       if (s.breakCd <= 0 && press > T.cornerPress && moved < T.cornerSpd && pressD && pressD.mode !== 'lie') {
@@ -3848,6 +3861,7 @@ function pounceHits(d) {
 function endLunge(d, k = 0.15) { d.pounceT = 0; d.vx *= k; d.vz *= k; landDog(d, 0.28); }   // the dog stops dead: all the energy goes into what it hit
 function punt(s, d, rx, rz) {
   const P = T.punt;
+  if (s.snag) unsnag(s, d);   // BRAMBLES: bonked free
   launchSheep(s, d.pdx * P.speed + rx * P.radial, d.pdz * P.speed + rz * P.radial, s.lamb ? P.lambUp : P.up, 'punt', d);
   s.air.bounces = P.bounces; if (s.ram) s.air.provoke = d;
   endLunge(d); MV.punts++;
@@ -4118,7 +4132,7 @@ function tryGrab(d) {
     if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
   }
   for (const s of G.sheep) {
-    if (s.dead || s.heldBy || s.grabbed) continue;
+    if (s.dead || s.heldBy || s.grabbed || s.snag) continue;   // (a snagged sheep only comes out with a bonk)
     if (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8)) continue;
     const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0);   // easier to snatch one flying at you
     if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; best = s; kind = s.ram ? 'ram' : s.lamb ? 'lamb' : 'sheep'; }
@@ -5195,6 +5209,83 @@ function drawDigOverlay() {
     const [px, py, pz] = proj(sp.x, sp.y + 1.2, sp.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
     ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px, py, 11, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(px, py, 11, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, sp.prog)); ctx.stroke();
+  }
+}
+
+// =====================================================================
+// BRAMBLES — thorny patches off the trail (own rng, same on every screen).
+// A sheep that blunders into a bush is snagged (s.snag): it struggles and
+// bleats, stuck, till a dog pounces it out (punt → unsnag). Calm sheep
+// steer round them; bolting ones don't.
+// =====================================================================
+const BRAMBLES = [];
+{
+  const BR = mulberry32(240617), brr = (a, b) => a + BR() * (b - a), B = T.bramble, L0 = LAUNCHERS[0];
+  const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 20 }));
+  const okAt = (x, z) => sdfAt(x, z) > 2.2 && !wetAt(x, z) && Math.abs(trailInfo(x, z).lat) > 5 && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 6) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 12)
+    && !PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 6) && !SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) && !DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 4)
+    && !BRAMBLES.some(o => Math.hypot(o.x - x, o.z - z) < 1.6);
+  for (let s = 30; s < PATH_LEN - 25; s += B.every * brr(0.7, 1.3)) {
+    if (BR() > dot4(biomeW(s), B.chance)) continue;
+    const k = pathIdx(s);
+    for (let t = 0; t < 12; t++) {
+      const side = BR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.85;
+      const p = pathPoint(s + brr(-5, 5), side * brr(B.lat[0], Math.max(B.lat[0] + 0.5, Math.min(B.lat[1], room))));
+      if (!okAt(p.x, p.z)) continue;
+      const n = 3 + Math.floor(BR() * 4);
+      for (let i = 0; i < n; i++) {
+        const a = BR() * TAU, r = i ? brr(1.2, 3) : 0, x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r, sc = brr(0.85, 1.3);
+        if (okAt(x, z)) BRAMBLES.push({ i: BRAMBLES.length, x, z, y: terrainH(x, z), rot: BR() * TAU, sc, r: 0.95 * sc });
+      }
+      break;
+    }
+  }
+  const cane = (a, len, tilt, col) => { const g = P(CYL(0.035, 0.05, len, 4), col, { r: [0, 0, tilt], p: [len / 2 * Math.sin(-tilt), len / 2 * Math.cos(tilt), 0] }); g.rotateY(a); return g; };
+  const geo = merge(
+    P(ICO(1, 1), '#355d27', { s: [0.95, 0.5, 0.9], p: [0, 0.38, 0] }), P(ICO(1, 0), '#43712f', { s: [0.6, 0.42, 0.55], p: [0.42, 0.5, 0.22] }),
+    P(ICO(1, 0), '#2f5323', { s: [0.55, 0.4, 0.6], p: [-0.38, 0.46, -0.3] }), P(ICO(1, 0), '#3b6a2b', { s: [0.45, 0.35, 0.45], p: [-0.1, 0.72, 0.2] }),
+    ...[0, 1, 2, 3, 4, 5, 6].map(i => cane(i / 7 * TAU + 0.3, 1.05 + (i % 3) * 0.18, 0.85 + (i % 2) * 0.3, '#7b3a2a')),   // arching thorny canes
+    ...[[0.5, 0.75, 0.1], [-0.3, 0.85, 0.35], [0.1, 0.95, -0.4], [-0.6, 0.6, -0.1], [0.3, 0.6, 0.6], [0.65, 0.45, -0.35]].map(([x, y, z], i) =>
+      P(ICO(1, 0), i % 3 ? '#2a1733' : '#b3283c', { s: [0.08, 0.08, 0.08], p: [x, y, z] })));   // blackberries (and a red one)
+  instanced(geo, BRAMBLES);
+}
+const brGrid = new Map(), BCELL = 4, bkey = (cx, cz) => (cx + 512) * 4096 + (cz + 2048);
+for (const b of BRAMBLES) { const k = bkey(Math.floor(b.x / BCELL), Math.floor(b.z / BCELL)); if (!brGrid.has(k)) brGrid.set(k, []); brGrid.get(k).push(b); }
+function brambleAt(x, z, pad = 0) {   // the bush (x, z) is in, within pad m of its edge
+  const cx = Math.floor(x / BCELL), cz = Math.floor(z / BCELL);
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const l = brGrid.get(bkey(cx + i, cz + j)); if (!l) continue;
+    for (const b of l) if ((b.x - x) ** 2 + (b.z - z) ** 2 < (b.r + pad) ** 2) return b;
+  }
+  return null;
+}
+const leaves = (x, y, z, n) => burst(x, y, z, n, '#43712f', { speed: 2.5, up: 2.5, size: 0.14, life: 0.7, grav: -6 });
+function snagSheep(s, b) {
+  s.snag = b; s.snagX = s.x; s.snagZ = s.z; s.snagT = rnd(0.6, 1.2); s.vx *= 0.1; s.vz *= 0.1; s.breakT = 0; s.corner = 0;
+  baaAt(s, 0.55, 1.3, true); floatText('🌿!', s.x, s.y + 1.5 * s.scale, s.z, '#c8e07a', 1.2); leaves(s.x, s.y + 0.5, s.z, 8);
+  G.stats.snags = (G.stats.snags || 0) + 1; hint('bramble');
+  if (hankSees(s.x, s.z)) sayOnce('bramble', null, "One's caught in the brambles! Bonk it out.");
+}
+function unsnag(s, d = null) {
+  if (!s.snag) return; s.snag = null;
+  if (d) { floatText('FREE!', s.x, s.y + 1.6, s.z, '#c8e07a', 1.2); leaves(s.x, s.y + 0.5, s.z, 12); G.stats.unsnags = (G.stats.unsnags || 0) + 1; }
+}
+function snaggedStep(s, dt) {   // in updateSheep, after it moved: pinned where it caught, struggling every few s
+  const B = T.bramble, ox = s.x - s.snagX, oz = s.z - s.snagZ, od = Math.hypot(ox, oz);
+  if (od > 0.2) { s.x = s.snagX + ox / od * 0.2; s.z = s.snagZ + oz / od * 0.2; }
+  s.vx *= 0.2; s.vz *= 0.2;
+  if (s.stress < B.stressCap) s.stress = Math.min(B.stressCap, s.stress + B.stress * dt);
+  s.snagT -= dt;
+  if (s.snagT <= 0) { s.snagT = rnd(B.struggle[0], B.struggle[1]); s.hopV = 2.4; s.yaw += rnd(-0.6, 0.6); baaAt(s, 0.4, 1.25); leaves(s.x, s.y + 0.5, s.z, 3); }
+}
+function drawBrambleOverlay() {   // a thorn tag over every snagged sheep, and the first time, what to press
+  if (G.mode !== 'play') return;
+  for (const s of G.sheep) {
+    if (s.dead || !s.snag) continue;   // (host only: not synced)
+    const [px, py, pz] = proj(s.x, s.y + 1.7 * s.scale, s.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
+    const d = G.dogs.find(d => Math.hypot(d.x - s.x, d.z - s.z) < 10);
+    if (d && nudge('bramble', s.x, s.y + 2.2 * s.scale, s.z, `🌿 Pounce: ${keyLabel(d.player, 'pounce')}`, '#7ed957')) continue;
+    ctx.font = '600 18px Fredoka, sans-serif'; ctx.fillText('🌿', px, py + Math.sin(G.time * 6 + s.id) * 2);
   }
 }
 
@@ -6697,6 +6788,7 @@ const HINTS = {
   trough: 'In the trough! Penned sheep eat from the <b>troughs</b> from late afternoon and through the night. Fill all of them so more can feed at once.',
   'salt-found': 'A lump of <b>salt</b>! Take it to a pen\'s <b>salt lick</b> (the post on the far side from the troughs).',
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
+  bramble: '🌿 Stuck in the brambles! <b>Pounce</b> into it to bonk it free.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! Wade into a river, lake or the sea to fill it.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
@@ -6729,6 +6821,7 @@ const TOUCH_HINTS = {
   trough: 'In the trough! Penned sheep eat at night',
   'salt-found': '🧂 Salt! To a pen\'s <b>salt lick</b>',
   'salt-lick': 'Salt in the lick! Peppy sheep',
+  bramble: '🌿 Stuck! 💥 it free',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   bucket: '🪣! Wade into water to fill it',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
@@ -6934,6 +7027,7 @@ function drawOverlay(dt) {
   drawWaterOverlay();    // WATER: buckets, each pen's water
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
   drawVendorOverlay();   // VENDOR: prices over the mats
+  drawBrambleOverlay();  // BRAMBLES: snagged sheep
   // dog labels + stamina
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
@@ -10162,7 +10256,7 @@ function renderOnce(dt = 1 / 60) {
   syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
-Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
+Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
