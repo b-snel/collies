@@ -146,14 +146,19 @@ const tests = {
     });
   },
   // 5c. a held sheep can't be carried in through an open gateway (you have to fling it)
-  async carryBlocked() {
+  async carryThrough() {   // a sheep in the dog's mouth goes in through an open gate and back out, but not through a shut one
     return h.page.evaluate(() => {
       const { G, pens, toggleGate } = GAME; H.reset(); const d = H.d(), pen = pens[1], s = G.sheep[0], nx = Math.cos(pen.gateA), nz = Math.sin(pen.gateA);
       toggleGate(pen); H.run(1.2);
       H.place(d, pen.gx + nx * 4, pen.gz + nz * 4); d.yaw = Math.atan2(-nx, -nz); H.place(s, d.x - nx * 1.2, d.z - nz * 1.2);
       H.p.bot = { grab: true }; GAME.step(0.025);
-      H.p.bot = H.to(-nx, -nz, { grab: true }); H.run(3);
-      const r = { gateT: H.r(pen.gateT), held: d.holding === s, sheepInPen: s.pen === pen, dogFromMouth: H.r(Math.hypot(d.x - pen.gx, d.z - pen.gz)) };
+      H.p.bot = H.to(-nx, -nz, { grab: true }); H.run(1.5);
+      const r = { gateT: H.r(pen.gateT), held: d.holding === s, carriedIn: s.pen === pen };
+      H.p.bot = H.to(nx, nz, { grab: true }); H.run(2.5);
+      r.carriedOut = !s.pen && d.holding === s;
+      toggleGate(pen); H.run(1.5);
+      H.p.bot = H.to(-nx, -nz, { grab: true }); H.run(2);
+      r.shutGate = { gateT: H.r(pen.gateT), held: d.holding === s, sheepInPen: s.pen === pen };
       H.p.bot = {}; GAME.step(0.025);
       return r;
     });

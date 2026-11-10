@@ -58,13 +58,14 @@ that touch what you changed, and report their numbers.
 | script | what it checks |
 | --- | --- |
 | `node tools/flock-sim.mjs [scenario] [--trials N]` | driving, sprint-scatter, the gate bot, critical mass, cornering, rams, calming, day 1 |
-| `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
+| `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, carrying a sheep through an open gate, push-gates, the launcher, swimming, lie-down, the final pen |
 | `node tools/forage-sim.mjs` | forage plants and salt rocks, a dog gathering greens by running over them and tipping them into troughs (inside the pen and over the fence), several sheep feeding at once overnight, salt to the lick and licked, salt running down, slowing and killing, regrowth, every camp's troughs and lick |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
 | `node tools/cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard] [--trials N]` | the cougar: gone by day and up its tree at night, takes a lamb first, the sheep dies only once it's up the tree (stone at the foot), a bot dog's pounce saves it, it jumps into a shut pen and out again with a lamb, a dog in the pen keeps it off |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
+| `node tools/rush-test.mjs` | the morning rush (a fed, sleeping, penned flock with stocked troughs pours out when the gate's opened in the morning, not in the evening), and carrying a sheep in and out through an open gate but not a shut one |
 | `node tools/gateway-sim.mjs` | driving the flock into a pen and out again through a gate swung in or out: does anyone stall at the gate? |
 | `node tools/cluster-sim.mjs [structure\|merge\|corner\|cost] [--trials N]` | how a grazing flock breaks into knots (sizes, share alone, spacing, gaps), calm walking speeds, a loner and a small knot drifting to the big group, sheep getting out of a rock corner, off a river bank and out of the back of a pen, the cost of 60 sheep per step |
 | `node tools/age-sim.mjs` | ageing: the first flock's ages, how old sheep look (fleece, face, size, words), a lifetime of dawns (nobody dies of old age early, everyone by `T.lifeDays[1]`), ages kept in the saved flock |
@@ -103,6 +104,14 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
 - **Critical mass.** An open pen pulls calm, fed sheep in, and the pull grows
   with the share already inside. Food in a pen's troughs pulls
   hungry sheep in too (`T.penTroughPull`), even in the morning.
+- **The morning rush.** Open a pen's gate between dawn and 13:00 (or have it
+  open at 06:00) and for `T.morningRush.dur` s every sheep in it, fed or not,
+  asleep, at the trough or at the lick, trots out (`penRush`, `rushOut`) and
+  spills out past the gate; the pen doesn't pull anyone back in meanwhile.
+- **Carrying.** A dog can carry a sheep in its mouth through an open gateway,
+  in or out of a pen (`mouthOf`: the gateway blocks a held animal only while
+  the gate's shut, otherwise the open leaf does). It still can't hop a fence
+  holding one: fling it over instead.
 - **Cornered sheep break out.** Pressed hard but not moving → a warning bleat →
   a burst past the dog.
 - **Knots and sheep gravity.** Every 0.5 s the free sheep are clustered into
