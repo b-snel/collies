@@ -447,7 +447,8 @@ const T = {
   graveScale: 0.9,       // tombstone size (keep small: they sit on the trail)
   graveTagR: 3,          // a dog this close shows the grave's name
   // clock
-  hourSec: 10,           // real seconds per in-game hour
+  hourSec: 10,           // real seconds per in-game hour at night
+  dayHourSec: 13,        // ... and by day (dawn → nightfall): a leg to the next camp ends around twilight
   startHour: 7.0,
   nightStart: 20.5, nightEnd: 5.5,
   duskWarn: 17.5,
@@ -465,7 +466,7 @@ const T = {
   readyLose: 0.6,        // a ready ewe stays ready all night unless she gets this hungry
   lambHunger: 0.6,       // a courted ewe lambs at dawn unless she's hungrier than this
   lambGrowDays: 2,
-  // ageing, in days (one day = 24 x hourSec = 4 real minutes; ages tick at dawn and carry over between journeys in the saved flock):
+  // ageing, in days (one day ≈ 4.6 real minutes; ages tick at dawn and carry over between journeys in the saved flock):
   // a lamb grows up at lambGrowDays, a yearling fills out by adultDays, and from oldDays a sheep greys, stoops and slows
   // until it dies peacefully in its sleep at an age drawn from lifeDays (so a sheep lives some 3-4 hours of play)
   adultDays: 8, oldDays: 32, lifeDays: [46, 62],
@@ -4047,7 +4048,7 @@ function swimSheep(s, a, dt) {
   if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
   s.y = Math.max(groundY(s.x, s.z), WATER_Y - 0.45) + Math.sin(a.t * 5 + s.id) * 0.05;   // paddling: just the back and head above water
   s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
-  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / T.hourSec);   // WATER: a few gulps on the way
+  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / hourLen());   // WATER: a few gulps on the way
   if (Math.random() < dt * 1.5) spawnRing(s.x, WATER_Y, s.z, 1.3, '#e8f8ff', 0.7);
 }
 function launchCoyote(c, vx, vz, vy, by = null) {
@@ -6509,8 +6510,9 @@ function collideGraves(e, r) {
 // CLOCK, EVENTS, DAY/NIGHT LIGHTING
 // =====================================================================
 function crossed(prev, now, h) { return prev <= now ? (prev < h && now >= h) : (prev < h || now >= h); }
+const hourLen = (h = G.clock.hour) => isNight(h) ? T.hourSec : T.dayHourSec;   // real s per in-game hour
 function stepClock(dt) {
-  const mul = G.ff ? T.ffMul : 1, dtH = dt / T.hourSec * mul;
+  const mul = G.ff ? T.ffMul : 1, dtH = dt / hourLen() * mul;
   const prev = G.clock.hour; let now = prev + dtH;
   if (now >= 24) { now -= 24; G.clock.day++; }
   G.clock.hour = now;
@@ -7104,7 +7106,7 @@ function updateHUD(dt) {
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
   const nn = $('hNight');
   if (!isNight() && h >= 6) {
-    const secs = (T.nightStart - h) * T.hourSec;
+    const secs = (T.nightStart - h) * T.dayHourSec;
     nn.textContent = secs < 75 ? `Nightfall in ${Math.ceil(secs)}s` : ''; nn.className = secs < 30 ? 'urgent' : '';
   } else { nn.textContent = G.ff ? 'Safe & sound…' : 'Night'; nn.className = ''; }
   updateFedHUD(live);
