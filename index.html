@@ -120,6 +120,21 @@
   #pause, #netLost { background:rgba(10,15,40,.62); gap:12px; }
   #pause h1, #netLost h1 { font-size:clamp(40px, 7vw, 76px); margin:0; }
   .nsub { font-size:clamp(16px, 2.2vw, 22px); opacity:.92; max-width:min(640px, 92vw); }
+  /* the controls on the pause screen: a controller drawing, or the keys */
+  #pauseCtrls { width:min(640px, 94vw); text-shadow:none; }
+  .ctrlDiagram { width:100%; height:auto; max-height:46vh; display:block; margin:0 auto; }
+  .cdBody { fill:#3a3f48; stroke:#14161a; stroke-width:4; } .cdPart { fill:#262a31; stroke:#14161a; stroke-width:3; }
+  .cdStick { fill:#1c1f24; } .cdStickTop { fill:#4a505a; } .cdBtn { stroke:#14161a; stroke-width:3; }
+  .cdKey { font:700 15px 'Fredoka', system-ui, sans-serif; fill:#14161a; text-anchor:middle; }
+  .cdKeyS { font:700 11px 'Fredoka', system-ui, sans-serif; fill:#e8e2d0; text-anchor:middle; }
+  .cdLine { stroke:#ffd36b; stroke-width:2; opacity:.75; } .cdTxt { font:600 16px 'Fredoka', system-ui, sans-serif; fill:var(--cream); }
+  .ctrlNote { font-size:14px; opacity:.85; margin-top:2px; }
+  .kbDiagram { display:flex; gap:12px 26px; flex-wrap:wrap; justify-content:center; background:var(--panel); border:2px solid rgba(255,248,232,.6); border-radius:16px; padding:10px 18px; text-align:left; }
+  .kbDiagram > div { min-width:230px; } .kbDiagram .h { font-weight:700; opacity:.8; margin-bottom:3px; }
+  .kbRow { display:flex; align-items:center; gap:10px; margin:3px 0; font-size:15px; } .kbRow > span { min-width:118px; }
+  .cdCap { display:inline-block; min-width:22px; padding:1px 6px; margin-right:3px; border-radius:5px; background:var(--c, #e8e2d0); color:#14161a;
+    font:700 13px 'Fredoka', system-ui, sans-serif; text-align:center; box-shadow:0 2px 0 rgba(0,0,0,.4); }
+  @media (max-height:560px) { #pauseCtrls { display:none; } }
   body.modal #hint, body.modal #banner { opacity:0; }
 
   /* ===== HANK + HANK'S BARN — every colour/shape the art pass may want to push lives in these variables ===== */
@@ -300,6 +315,7 @@
   <h1>Paused</h1>
   <div id="pauseWhy" class="nsub"></div>
   <div class="press">Press P / Esc / Start to carry on</div>
+  <div id="pauseCtrls"></div>
   <div id="pauseNet" class="npanel" hidden>
     <div class="row"><span>Online room</span><span id="pauseCode" class="ncode"></span><button id="pauseCopy" class="nbtn" type="button">Copy invite link</button></div>
     <div id="pauseLink" class="nlink"></div>
@@ -710,7 +726,8 @@ const KB = [
 const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'" } };
 const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + player.index] : KEY_LABEL.pad)[act];
 const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.sprint, ...k.creep, 'Enter']));
-addEventListener('keydown', e => { if (GAME_KEYS.has(e.code)) e.preventDefault(); if (!e.repeat) keyEdge.add(e.code); keys.add(e.code); Sound.init(); });
+let INPUT_DEV = 'kb';   // the last thing anyone touched here: 'kb' or 'pad' (the pause screen draws its controls)
+addEventListener('keydown', e => { INPUT_DEV = 'kb'; if (GAME_KEYS.has(e.code)) e.preventDefault(); if (!e.repeat) keyEdge.add(e.code); keys.add(e.code); Sound.init(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 addEventListener('pointerdown', () => Sound.init());
@@ -774,7 +791,11 @@ function pollJoins(players) {
 function endInputFrame() {
   keyEdge.clear();
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (gp) padPrev[i] = gp.buttons.map(b => b.pressed || b.value > 0.4); }
+  for (let i = 0; pads && i < pads.length; i++) {
+    const gp = pads[i]; if (!gp) continue;
+    padPrev[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
+    if (padPrev[i].some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5)) INPUT_DEV = 'pad';
+  }
 }
 function anyConfirm() { // any device pressing A/Start/Enter/Space
   if (keyEdge.has('Enter') || keyEdge.has('Space')) return true;
@@ -7236,6 +7257,45 @@ function netGuestEndMem() {
 }
 
 // ---- pause (works offline too) ---------------------------------------------------------------------------
+// the controls, drawn for whatever was used last: an Xbox-style controller, or the keyboard (both layouts when two share it)
+function controlsHTML(dev) {
+  const gates = 'Gates: walk into them to push, sprint to vault.';
+  if (dev === 'pad') {
+    const L = (x, y, tx, ty, txt, a) => `<line x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" class="cdLine"/><text x="${tx + (a === 'end' ? -6 : 6)}" y="${ty + 5}" class="cdTxt" text-anchor="${a}">${txt}</text>`;
+    const btn = (x, y, c, l) => `<circle cx="${x}" cy="${y}" r="13" fill="${c}" class="cdBtn"/><text x="${x}" y="${y + 5}" class="cdKey">${l}</text>`;
+    const pads = G.players.filter(p => p.kind === 'pad').length;
+    return `<svg class="ctrlDiagram" viewBox="-40 0 720 280" role="img" aria-label="Controller layout">
+      <rect x="206" y="14" width="58" height="20" rx="8" class="cdPart"/><text x="235" y="29" class="cdKeyS">LT</text>
+      <rect x="376" y="14" width="58" height="20" rx="8" class="cdPart"/><text x="405" y="29" class="cdKeyS">RT</text>
+      <rect x="196" y="40" width="82" height="16" rx="7" class="cdPart"/><text x="237" y="52" class="cdKeyS">LB</text>
+      <rect x="362" y="40" width="82" height="16" rx="7" class="cdPart"/><text x="403" y="52" class="cdKeyS">RB</text>
+      <path d="M190,78 C190,62 230,58 320,58 C410,58 450,62 450,78 L492,196 C506,248 458,268 432,236 L398,198 L242,198 L208,236 C182,268 134,248 148,196 Z" class="cdBody"/>
+      <circle cx="232" cy="112" r="22" class="cdStick"/><circle cx="232" cy="112" r="13" class="cdStickTop"/>
+      <circle cx="372" cy="160" r="22" class="cdStick"/><circle cx="372" cy="160" r="13" class="cdStickTop"/>
+      <path d="M262,150 h14 v-14 h14 v14 h14 v14 h-14 v14 h-14 v-14 h-14 Z" class="cdPart"/>
+      <rect x="296" y="102" width="16" height="10" rx="5" class="cdPart"/><rect x="330" y="102" width="16" height="10" rx="5" class="cdPart"/>
+      ${btn(412, 90, '#ffcf3f', 'Y')}${btn(388, 114, '#2f9cff', 'X')}${btn(436, 114, '#e84a3a', 'B')}${btn(412, 138, '#5fd35a', 'A')}
+      ${L(206, 24, 140, 24, 'Lie down (hold)', 'end')}${L(196, 48, 140, 56, 'Creep (gentle)', 'end')}${L(210, 112, 140, 110, 'Move · click to sprint', 'end')}${L(262, 164, 140, 170, 'Move', 'end')}${L(304, 107, 140, 230, 'Hank’s barn', 'end')}
+      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 230, 'Pause', 'start')}
+    </svg><div class="ctrlNote">Let go of Grab to fling. ${gates}${pads > 1 ? ' Every controller works the same way.' : ''}</div>`;
+  }
+  const cap = (k, c) => `<kbd class="cdCap" style="--c:${c || '#e8e2d0'}">${k}</kbd>`;
+  const row = (k, t) => `<div class="kbRow"><span>${k}</span><b>${t}</b></div>`;
+  const col = (h, rows) => `<div><div class="h">${h}</div>${rows.map(r => row(...r)).join('')}</div>`;
+  const G1 = '#5fd35a', Y = '#ffcf3f', R = '#e84a3a', B = '#2f9cff', O = '#ff9a3a', P = '#c79bff';
+  const P1 = [[cap('W', G1) + cap('A', G1) + cap('S', G1) + cap('D', G1), 'Move'], [cap('L-Shift', G1), 'Sprint'], [cap('Q', P), 'Creep (gentle)'], [cap('Space', Y), 'Bark'],
+    [cap('E', R), 'Pounce (shake when holding)'], [cap('R', O) + ' hold', 'Grab (let go to fling)'], [cap('C', B) + ' hold', 'Lie down']];
+  const P2 = [[cap('↑', G1) + cap('←', G1) + cap('↓', G1) + cap('→', G1), 'Move'], [cap('R-Shift', G1), 'Sprint'], [cap(';', P), 'Creep (gentle)'], [cap('/', Y), 'Bark'],
+    [cap('.', R), 'Pounce (shake when holding)'], [cap(',', O) + ' hold', 'Grab (let go to fling)'], [cap("'", B) + ' hold', 'Lie down']];
+  const SYS = [[cap('P') + cap('Esc'), 'Pause'], [cap('Tab'), 'Hank’s barn']];
+  const two = G.players.some(p => p.kind === 'kb' && p.index === 1);
+  return `<div class="kbDiagram">${col(two ? 'Player 1' : 'Keyboard', P1.concat(SYS))}${two ? col('Player 2', P2) : ''}</div><div class="ctrlNote">${gates}${two ? '' : ' A friend can join on the arrow keys, or with a controller.'}</div>`;
+}
+let pauseCtrlsKey = '';
+function pauseControls() {   // redrawn only when what it would show changes
+  const key = INPUT_DEV + G.players.map(p => p.kind + p.index).join();
+  if (key !== pauseCtrlsKey) { pauseCtrlsKey = key; $('pauseCtrls').innerHTML = controlsHTML(INPUT_DEV); }
+}
 function setPause(on, who = '') {
   on = !!on && G.mode === 'play';
   if (!!G.paused === on) return;
@@ -7770,6 +7830,7 @@ function netGuestInput(now) {
 // ---- screens: the title's online panel, the HUD chip, pause, "lost the connection" ---------------------
 function netUI(now) {
   if (now < NET.uiAt) return; NET.uiAt = now + 120;
+  if (G.paused && G.mode === 'play') pauseControls();   // follows whichever device was touched last
   const host = NET.role === 'host', guest = NET.role === 'guest', title = G.mode === 'title';
   const quiet = guest && NET.inRoom && !NET.dead && performance.now() - NET.lastMsg > 3000;
   const friends = NET.seats.filter(s => s.conn).length;
