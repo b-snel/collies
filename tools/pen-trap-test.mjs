@@ -16,7 +16,7 @@ const trap = mode => h.page.evaluate(async mode => {
   at(c, pen.x + Math.cos(pen.gateA) * (pen.R - 2), pen.z + Math.sin(pen.gateA) * (pen.R - 2));
   if (mode === 'open') GAME.grab(c, live[0]);
   let grabbed = null, outT = null, saved = false, kills = 0, moved = 0;
-  const n0 = live.length, T0 = mode === 'shut' ? 45 : 25;
+  const T0 = mode === 'shut' ? 45 : 25;
   for (let t = 0; t < T0; t += 0.05) {
     const px = c.x, pz = c.z;
     step(0.05);
@@ -25,7 +25,7 @@ const trap = mode => h.page.evaluate(async mode => {
     if (mode === 'save' && grabbed && t > 6 && !saved) { at(d, c.x + 1, c.z); saved = true; }
     if (grabbed && outT === null && Math.hypot(c.x - pen.x, c.z - pen.z) > pen.R + 0.5) outT = +t.toFixed(1);
   }
-  kills = n0 - living().length;
+  kills = live.filter(s => s.dead).length;   // deaths, not head count (lambs may come at dawn)
   return { mode, kills, moved: +moved.toFixed(1), grabbed: !!grabbed, dead: grabbed ? grabbed.dead : null, outT, everMauled: grabbed ? grabbed.maulHp !== undefined : false };
 }, mode);
 const rams = () => h.page.evaluate(() => {
