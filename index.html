@@ -68,6 +68,7 @@
   #journey .camp { position:absolute; top:10px; width:16px; height:16px; margin-left:-8px; border-radius:50%; background:#2b2a3a; border:3px solid var(--cream); }
   #journey .camp.done { background:#7ed957; }
   #journey .camp.final { background:#ffd36b; }
+  #journey .camp.pick { box-shadow:0 0 0 3px #d8473f; }
   #journey .me { position:absolute; top:-6px; margin-left:-11px; font-size:20px; transition:left .4s; filter:drop-shadow(0 2px 0 rgba(0,0,0,.5)); }
   #sound { position:fixed; left:12px; bottom:12px; background:rgba(27,26,40,.7); color:var(--cream); border-radius:10px; padding:4px 10px; font-size:14px; pointer-events:none; }
   #ctlBar { position:absolute; bottom:6px; left:50%; transform:translateX(-50%); display:flex; gap:4px 12px; flex-wrap:nowrap; white-space:nowrap;
@@ -619,9 +620,12 @@ const T = {
     kick: { r: 0.75, k: 1.1, fric: 4, pounce: 14, up: 9, spill: 0.5, bounce: 0.35 } },   // kick: a dog running into a lying bucket shoves it (k× its speed), a pounce sends it flying (spills share). hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
-  // the Trading Post's vendor: a dog on a mat (matR m; mats ring m in front of the stall, gap m apart) barks to buy with 🧶 (G.wool). Batches go into the final pen (amt: 💧 sheep
-  // quenched, 🌾 hunger, 🧂 salt); refused if it has under `room` of a batch free. 🏖️ Cabo: base + per sheep penned there, bark twice (confirm s)
-  vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, clippers: { price: 0 }, water: { price: 3, amt: 8 }, food: { price: 4, amt: 8 }, salt: { price: 2, amt: 10 },
+  // vendors (VENDOR): a stall `before` m short of the end of each leg, and the Trading Post's. A dog on a mat (matR m; mats ring m in front
+  // of the stall, gap m apart) barks to buy with 🧶 (G.wool) for the pen picked on the 📍 mat (a discovered one). 💧 🌾 🧂: one more trough
+  // (`add` 🧶, arrives stocked) till the pen has max (for a 9 m pen; × R/9), then a batch (`price` 🧶; amt: 💧 sheep quenched, 🌾 hunger,
+  // 🧂 salt), refused if it has under `room` of a batch free. 🏖️ Cabo (Trading Post): base + per sheep penned there, bark twice (confirm s)
+  vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, before: 55, clippers: { price: 0 },
+    water: { price: 3, amt: 8, add: 6 }, food: { price: 4, amt: 8, add: 6 }, salt: { price: 2, amt: 10, add: 4 }, max: { food: 5, water: 3, salt: 3 },
     cabo: { base: 20, per: 2 } },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
   // BRAMBLES: thorny patches off the trail. A sheep that walks (snagWalk/s) or runs (snagRun/s, above runSpd m/s) into
   // a bush is snagged till a dog pounces it out. Calm sheep steer round them (avoid m). Off in ?sim (tests turn it on).
@@ -1121,17 +1125,22 @@ const dot4 = (w, v) => w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3];
 
 // camps / waypoints
 const CAMPS = [
-  { name: 'Desert Corral', sub: 'The journey begins', s: 58, R: 9, lat: -17 },
-  { name: 'Mountain Valley Camp', sub: 'Lush grass — and cold, hungry nights', s: 285, R: 9, lat: -17 },
-  { name: 'Oceanside Camp', sub: 'Salt wind and sea grass', s: 545, R: 9, lat: -17 },
-  { name: 'The Promised Land', sub: 'Sweet grass — rest them up', s: 812, R: 12, lat: -15 },
-  { name: 'Trading Post', sub: '🧶 → 💧 🌾 🧂 🏖️', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
+  { name: 'Desert Corral', icon: '🌵', sub: 'The journey begins', s: 58, R: 9, lat: -17 },
+  { name: 'Mountain Valley Camp', icon: '⛰️', sub: 'Lush grass — and cold, hungry nights', s: 285, R: 9, lat: -17 },
+  { name: 'Oceanside Camp', icon: '🌊', sub: 'Salt wind and sea grass', s: 545, R: 9, lat: -17 },
+  { name: 'The Promised Land', icon: '🌈', sub: 'Sweet grass — rest them up', s: 812, R: 12, lat: -15 },
+  { name: 'Trading Post', icon: '🏪', sub: '🧶 → 💧 🌾 🧂 🏖️', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
 ];
 for (const c of CAMPS) { const p = pathPoint(c.s, c.lat); c.x = p.x; c.z = p.z; c.gateA = Math.atan2(p.nz, p.nx); c.nx = p.nx; c.nz = p.nz; c.tx = p.tx; c.tz = p.tz; }
 const FINAL = CAMPS.find(c => c.final);
-// the Trading Post's stall (VENDOR), past its pen: flat ground, nothing placed on it. It faces the camera (f = -CAM_F), mats in a row along r = CAM_R
-const MARKET = (() => { const s = FINAL.s + 28, p = pathPoint(s, -11), q = Math.SQRT1_2; return { s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: 10 }; })();
-const offMarket = (x, z, pad = 0) => Math.hypot(x - MARKET.x, z - MARKET.z) > MARKET.r + pad;
+// the vendors' stalls (VENDOR): one near the end of each leg, and the Trading Post's past its pen (MARKET). Flat ground, nothing
+// placed on them. Each faces the camera (f = -CAM_F), mats in a row along r = CAM_R
+const STALLS = [...CAMPS.slice(1).map(c => c.s - T.vendor.before), FINAL.s + 28].map((s, i, a) => {
+  const p = pathPoint(s, -11), q = Math.SQRT1_2, final = i === a.length - 1;
+  return { i, s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: final ? 11 : 10, final, sel: 0, pick: -1 };
+});
+const MARKET = STALLS[STALLS.length - 1];
+const offMarket = (x, z, pad = 0) => STALLS.every(m => Math.hypot(x - m.x, z - m.z) > m.r + pad);
 
 // the river in the mountain valley: no bridge. Dogs (and Hank) swim it, sheep only fly it (the launcher)
 const RIVER = { s: 385, hw: 12 };
@@ -1209,7 +1218,7 @@ function heightAt(x, z) {
   const ci = trailInfo(x, z), w = biomeW(ci.s);
   let h = (fbm(x * 0.022, z * 0.022, 3) - 0.5) * 2.0 + (vnoise(x * 0.18 + 40, z * 0.18) - 0.5) * 0.25;
   for (const c of CAMPS) { const d = Math.hypot(x - c.x, z - c.z); if (d < 34) h = lerp(h, 0.15, 1 - smooth(c.R + 10, c.R + 24, d)); }
-  { const d = Math.hypot(x - MARKET.x, z - MARKET.z); if (d < MARKET.r + 12) h = lerp(h, 0.15, 1 - smooth(MARKET.r, MARKET.r + 12, d)); }
+  for (const m of STALLS) { const d = Math.hypot(x - m.x, z - m.z); if (d < m.r + 12) h = lerp(h, 0.15, 1 - smooth(m.r, m.r + 12, d)); }
   if (w[2] > 0.001) h -= Math.max(0, ci.lat - 15) * 0.21 * w[2];
   const o = Math.max(ci.oW, ci.oE, ci.oC);
   if (o > -2) {
@@ -1866,20 +1875,22 @@ function collideFences(e, r) {
     m.position.set(rp.x - 40, -6, rp.z - 40); m.rotation.y = Math.PI / 4; scene.add(m);
   });
 }
-{ // the Trading Post's stall and its vendor (VENDOR section: the mats, buying). Local +z faces the camera
-  const M = MARKET, at = (lx, lz) => ({ x: M.x + M.rx * lx + M.fx * lz, z: M.z + M.rz * lx + M.fz * lz });
+// the stalls and their vendors (VENDOR section: the mats, buying). Local +z faces the camera. Each its own colours
+for (const M of STALLS) {
+  const at = (lx, lz) => ({ x: M.x + M.rx * lx + M.fx * lz, z: M.z + M.rz * lx + M.fz * lz });
+  const [aw, top, coat] = [['#4dc3ff', '#2f6e9e', '#6b4a8c'], ['#6fe06a', '#3d7a3a', '#8c3a3a'], ['#ffa64d', '#a0522d', '#2f6e5a'], ['#9a7bff', '#5a3fa0', '#8c6a2a'], ['#ff5a5a', '#d8473f', '#3a5e8c']][M.i % 5];
   const g = new THREE.Group(); g.position.set(M.x, terrainH(M.x, M.z), M.z); g.rotation.y = M.yaw; scene.add(g);
   part(g, merge(
-    P(BOX(3.4, 1.0, 0.8), '#a8743f', { p: [0, 0.5, 0.3] }), P(BOX(3.42, 0.14, 0.82), '#d8473f', { p: [0, 0.8, 0.3] }), P(BOX(3.6, 0.08, 1.0), '#7a5230', { p: [0, 1.04, 0.3] }),
+    P(BOX(3.4, 1.0, 0.8), '#a8743f', { p: [0, 0.5, 0.3] }), P(BOX(3.42, 0.14, 0.82), top, { p: [0, 0.8, 0.3] }), P(BOX(3.6, 0.08, 1.0), '#7a5230', { p: [0, 1.04, 0.3] }),
     ...[[-1.7, 0.75], [1.7, 0.75], [-1.7, -0.9], [1.7, -0.9]].map(([x, z]) => P(CYL(0.07, 0.08, 2.75, 6), '#7a5230', { p: [x, 1.37, z] })),
-    ...[0, 1, 2, 3, 4, 5].map(i => P(BOX(0.6, 0.05, 2.1), i % 2 ? '#f4ead2' : '#ff5a5a', { r: [0.25, 0, 0], p: [-1.5 + i * 0.6, 2.72, -0.05] })),   // striped awning
+    ...[0, 1, 2, 3, 4, 5].map(i => P(BOX(0.6, 0.05, 2.1), i % 2 ? '#f4ead2' : aw, { r: [0.25, 0, 0], p: [-1.5 + i * 0.6, 2.72, -0.05] })),   // striped awning
     P(CYL(0.13, 0.16, 0.34, 8), '#4aa3df', { p: [-1.3, 1.25, 0.35] }), P(CYL(0.06, 0.09, 0.14, 8), '#4aa3df', { p: [-1.3, 1.48, 0.35] }),   // a water jug
     P(BOX(0.32, 0.2, 0.3), '#f3eee6', { p: [1.2, 1.18, 0.3] }), P(BOX(0.24, 0.16, 0.24), '#f6c9d4', { r: [0, 0.4, 0], p: [1.18, 1.36, 0.28] }),   // salt
     P(BOX(0.5, 0.28, 0.34), '#e8c770', { p: [0.75, 1.22, 0.45] })));   // greens
-  // the vendor, beside his stall (under the awning the camera wouldn't see him): canvas jacket, a wide straw sun hat.
+  // the vendor, beside his stall (under the awning the camera wouldn't see him): a jacket, a wide straw sun hat.
   // He waves when you buy and shakes his head when you can't pay
   const v = new THREE.Group(); v.position.set(2.4, 0, 0.35); v.scale.setScalar(1.2); g.add(v);
-  part(v, merge(P(CYL(0.3, 0.38, 1.0, 10), '#3a5e8c', { p: [0, 0.5, 0] }), P(CYL(0.34, 0.42, 0.62, 10), '#b98a52', { p: [0, 1.25, 0] }),
+  part(v, merge(P(CYL(0.3, 0.38, 1.0, 10), coat, { p: [0, 0.5, 0] }), P(CYL(0.34, 0.42, 0.62, 10), '#b98a52', { p: [0, 1.25, 0] }),
     P(CYL(0.36, 0.36, 0.08, 10), '#5a3a22', { p: [0, 1.0, 0] })));
   const head = new THREE.Group(); head.position.y = 1.72; v.add(head);
   part(head, merge(P(SPH(12), '#c98a5e', { s: [0.25, 0.27, 0.25] }),
@@ -2659,17 +2670,19 @@ function troughLine(p, tr, spots, C) {   // the places along one trough, on its 
   for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * len / k; spots.push({ tr, x: cx + ax * a + nx * 0.95, z: cz + az * a + nz * 0.95, yaw: Math.atan2(-nx, -nz) }); }
   C.push({ x: cx, z: cz, len, ax, az, nx, nz });
 }
-function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), round the salt lick and along the water trough
-  if (p.feedSpots) return p.feedSpots;
-  const spots = [], C = [];
+function troughSpots(p) {   // per pen: the places along the troughs (spot.tr), round the salt licks and along the water troughs
+  if (p.feedSpots && p.spotsV === (p.kitV || 0)) return p.feedSpots;   // (built again when bought ones come or go: VENDOR kitSet. New ones' places go on the end)
+  const spots = [], C = [], keep = (by, n) => Array.from({ length: n }, (_, i) => (by && by[i]) || null);
   for (const tr of p.troughs || []) troughLine(p, tr, spots, C);
-  p.feedSpots = spots; p.feedBy = spots.map(() => null); p.feedC = C;
-  p.waterSpots = []; p.waterC = []; if (p.water) troughLine(p, p.water, p.waterSpots, p.waterC); p.waterBy = p.waterSpots.map(() => null);
-  const L = p.lick; p.lickSpots = []; p.lickBy = [];
-  if (L) {
+  p.feedSpots = spots; p.feedBy = keep(p.feedBy, spots.length); p.feedC = C;
+  p.waterSpots = []; p.waterC = []; if (p.water) for (const u of p.water.at || [p.water]) troughLine(p, u, p.waterSpots, p.waterC); p.waterBy = keep(p.waterBy, p.waterSpots.length);
+  p.lickSpots = [];
+  for (const L of p.lick ? p.lick.at || [p.lick] : []) {
     const a0 = Math.atan2(p.z - L.z, p.x - L.x);   // round the side toward the middle of the pen
-    for (const da of [-0.95, 0, 0.95]) { const a = a0 + da; p.lickSpots.push({ x: L.x + Math.cos(a) * 0.9, z: L.z + Math.sin(a) * 0.9, yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }); p.lickBy.push(null); }
+    for (const da of [-0.95, 0, 0.95]) { const a = a0 + da; p.lickSpots.push({ x: L.x + Math.cos(a) * 0.9, z: L.z + Math.sin(a) * 0.9, yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }); }
   }
+  p.lickBy = keep(p.lickBy, p.lickSpots.length);
+  p.spotsV = p.kitV || 0;
   return spots;
 }
 function claimTrough(s) {
@@ -4763,31 +4776,65 @@ const TROUGH_GEO = (() => {
     fill: merge(P(BOX(L - 0.12, 1, Wd - 0.08), '#9bc84a', { p: [0, 0.5, 0] }),
       ...Array.from({ length: 9 }, (_, i) => P(SPH(5), ['#ffffff', '#b48ae6', '#ffc62a'][i % 3], { s: [0.06, 0.04, 0.06], p: [-1.05 + i * 0.26, 1.0, ((i * 37) % 5 - 2) * 0.1] }))) };
 })();
-const boxFence = (cx, cz, tx, tz, hl, hw, p) => {   // sheep bump into it (and it's stamped for the coyotes' nav)
-  if (p) { let nx = -tz, nz = tx; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; } (p.solids ||= []).push({ x: cx, z: cz, tx, tz, nx, nz, hl, hw }); }   // collideFences steps anything inside back out
+const boxFence = (cx, cz, tx, tz, hl, hw, p, on = true) => {   // sheep bump into it (and it's stamped for the coyotes' nav). on false: a bought one's, for later (kitSet)
+  let nx = -tz, nz = tx; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }
   const corner = (u, v) => [cx + tx * u - tz * v, cz + tz * u + tx * v], cs = [corner(hl, hw), corner(-hl, hw), corner(-hl, -hw), corner(hl, -hw)];
-  for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; staticFences.push({ ax, az, bx, bz }); }
+  const box = { solid: { x: cx, z: cz, tx, tz, nx, nz, hl, hw }, segs: [] };   // solid: collideFences steps anything inside back out
+  for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; box.segs.push({ ax, az, bx, bz }); }
+  if (on) boxOn(p, box);
+  return box;
 };
+function boxOn(p, b) { (p.solids ||= []).push(b.solid); staticFences.push(...b.segs); }
+function boxOff(p, b) { p.solids = (p.solids || []).filter(o => o !== b.solid); for (const sg of b.segs) { const i = staticFences.indexOf(sg); if (i >= 0) staticFences.splice(i, 1); } }
+// VENDOR: a pen holds up to round(T.vendor.max × R/9) of each (troughs, water troughs, licks); every slot is built now, the bought
+// ones hidden till kitSet shows them. p.troughSlots / p.lickSlots (p.lick.at: the licks in use, p.lick the first; WATER: p.waterSlots)
+const kitMaxN = (p, k) => Math.max(1, Math.round(T.vendor.max[k] * p.R / 9));
 for (const p of pens) {
-  p.troughs = [];
+  p.troughs = []; p.troughSlots = [];
   const n = Math.max(1, Math.round(T.forage.troughs * p.R / 9)), { L, Wd } = TROUGH_GEO;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < Math.max(n, kitMaxN(p, 'food')); i++) {
     const a = troughA(p, i), c = onRing(p, a, p.R - 0.9), tx = -Math.sin(a), tz = Math.cos(a), yaw = Math.atan2(-tz, tx);
-    const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; scene.add(g);   // local x runs along the fence
+    const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; g.visible = i < n; scene.add(g);   // local x runs along the fence
     part(g, TROUGH_GEO.box);
     const fill = new THREE.Mesh(TROUGH_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
-    p.troughs.push({ i, food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill });   // yaw/len: where the sheep line up to feed
-    boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p);
+    const tr = { i, food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill, g };   // yaw/len: where the sheep line up to feed
+    tr.box = boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p, i < n);
+    p.troughSlots.push(tr); if (i < n) p.troughs.push(tr);
   }
-  // the salt lick: a block of salt on a stout post
-  const a = lickA(p), c = onRing(p, a, p.R - 0.8), g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = -a; scene.add(g);
-  part(g, merge(P(CYL(0.16, 0.2, 0.62, 7), '#7a5230', { p: [0, 0.31, 0] }), P(BOX(0.5, 0.06, 0.5), '#6b4226', { p: [0, 0.64, 0] })));
-  const block = new THREE.Group(); block.position.y = 0.67; g.add(block);
-  part(block, merge(P(BOX(0.4, 0.3, 0.4), '#f3eee6', { p: [0, 0.15, 0] }), P(BOX(0.18, 0.08, 0.2), '#f6c9d4', { p: [0.06, 0.32, -0.05] })), { shadow: false });
-  block.scale.y = 0.001; block.visible = false;
-  p.lick = { salt: 0, cap: T.salt.lickCap, x: c.x, z: c.z, shown: 0, block };
-  boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), 0.3, 0.3, p);
+  p.troughBase = n;
+  // the salt lick: a block of salt on a stout post (more along the fence, bought)
+  p.lickSlots = [];
+  for (let i = 0; i < kitMaxN(p, 'salt'); i++) {
+    const a = lickA(p) - i * 1.5 / (p.R - 0.8), c = onRing(p, a, p.R - 0.8), g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = -a; g.visible = !i; scene.add(g);
+    part(g, merge(P(CYL(0.16, 0.2, 0.62, 7), '#7a5230', { p: [0, 0.31, 0] }), P(BOX(0.5, 0.06, 0.5), '#6b4226', { p: [0, 0.64, 0] })));
+    const block = new THREE.Group(); block.position.y = 0.67; g.add(block);
+    part(block, merge(P(BOX(0.4, 0.3, 0.4), '#f3eee6', { p: [0, 0.15, 0] }), P(BOX(0.18, 0.08, 0.2), '#f6c9d4', { p: [0.06, 0.32, -0.05] })), { shadow: false });
+    block.scale.y = 0.001; block.visible = false;
+    const u = i ? { x: c.x, z: c.z, block, g } : (p.lick = { salt: 0, cap: T.salt.lickCap, x: c.x, z: c.z, shown: 0, block, g });   // p.lick: the pen's salt (all its licks), and the first
+    u.box = boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), 0.3, 0.3, p, !i);
+    p.lickSlots.push(u);
+  }
+  p.lick.at = [p.lick];
 }
+// VENDOR: the pen kit. KIT[kind](p) -> [in use, every slot, how many it came with]; water and salt are one pool per pen (p.water.w, p.lick.salt)
+const KIT = { food: p => [p.troughs, p.troughSlots, p.troughBase], water: p => [p.water.at, p.waterSlots, 1], salt: p => [p.lick.at, p.lickSlots, 1] };
+const kitN = (p, k) => KIT[k](p)[0].length, kitMax = (p, k) => KIT[k](p)[1].length;
+// SHARED HOOK: show/hide bought ones so pen p has n of kind k (host: a sale, a new journey; guests: synced). A new one comes empty
+function kitSet(p, k, n) {
+  const [on, slots, base] = KIT[k](p); n = clamp(Math.round(n) || 0, base, slots.length);
+  if (n === on.length) return;
+  let gone = false;
+  while (on.length < n) {
+    const u = slots[on.length]; on.push(u); u.g.visible = true; boxOn(p, u.box); for (const sg of u.box.segs) stampSeg(sg, 1, 0.75);
+    if (k === 'food') { u.food = u.shown = 0; u.cap = T.forage.troughCap; u.fill.visible = false; }
+  }
+  while (on.length > n) { const u = on.pop(); u.g.visible = false; boxOff(p, u.box); gone = true; }
+  if (k === 'water') { const W = p.water; W.cap = T.water.cap * on.length; W.w = Math.min(W.w, W.cap); }
+  if (k === 'salt') { const L = p.lick; L.cap = T.salt.lickCap * on.length; L.salt = Math.min(L.salt, L.cap); }
+  if (gone) stampNav();
+  p.kitV = (p.kitV || 0) + 1;   // the sheep's places at them: troughSpots
+}
+function kitReset() { for (const p of pens) for (const k in KIT) kitSet(p, k, 0); }   // a new journey: what each pen came with
 // SHARED HOOK (sheep mind): a sheep eats from one of a pen's troughs. amt in hunger units; returns what was taken.
 function troughEat(tr, amt) {
   if (!tr || !(amt > 0)) return 0;
@@ -4805,6 +4852,7 @@ function fillTroughs(pen, food) {
 const troughFood = pen => pen.troughs.reduce((a, tr) => a + tr.food, 0);
 const FORAGE = { picked: 0, tipped: 0, tips: 0, salted: 0, saltPicked: 0, regrowT: 0, lastPick: -9, saltWarnDay: 0 };
 function resetForage() {
+  kitReset();   // VENDOR: bought troughs and licks gone
   for (const p of pens) { for (const tr of p.troughs) { tr.food = 0; tr.shown = 0; tr.cap = T.forage.troughCap; } p.lick.salt = p.lick.shown = p.final ? 0 : T.salt.campStock; }
   for (const r of SALT_ROCKS) { r.taken = false; r.growT = -9; }
   for (const d of G.dogs) { d.greens = 0; d.salt = 0; }
@@ -4842,12 +4890,12 @@ function tipTrough(d, tr, pen) {
   hint('trough');
   return true;
 }
-function deliverSalt(d, pen) {
+function deliverSalt(d, pen, at = pen.lick) {   // at: the lick it's by (VENDOR: a pen can have more)
   const L = pen.lick; if (L.salt > L.cap - T.salt.lump * 0.5) return false;   // it's still mostly a whole block
   L.salt = Math.min(L.cap, L.salt + T.salt.lump); d.salt = 0; FORAGE.salted++;
-  const y = groundY(L.x, L.z);
-  burst(L.x, y + 1, L.z, 10, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 }); starBurst(L.x, y + 1.1, L.z, 5);
-  floatText('🧂 Salt lick!', L.x, y + 1.8, L.z, '#ffffff', 1.3); Sound.chime([0, 4, 7, 12, 16], 659, 0.16, 0.07); rumble(d.player, 0.3, 0.5, 120);
+  const y = groundY(at.x, at.z);
+  burst(at.x, y + 1, at.z, 10, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 }); starBurst(at.x, y + 1.1, at.z, 5);
+  floatText('🧂 Salt lick!', at.x, y + 1.8, at.z, '#ffffff', 1.3); Sound.chime([0, 4, 7, 12, 16], 659, 0.16, 0.07); rumble(d.player, 0.3, 0.5, 120);
   hint('salt-lick'); if (FORAGE.salted === 1) hank(null, "Salt! Good dog. That'll put a spring in their step.", { force: true });
   return true;
 }
@@ -4873,7 +4921,7 @@ function updateDogForage(d) {
       const near = p.troughs.filter(tr => tr.food < tr.cap - 0.01 && segDist(d.x, d.z, tr) < F.tipR).sort((a, b) => segDist(d.x, d.z, a) - segDist(d.x, d.z, b));
       for (const tr of near) if (d.greens >= 0.01) tipTrough(d, tr, p);
     }
-    if (d.salt && Math.hypot(d.x - p.lick.x, d.z - p.lick.z) < F.tipR + 0.2) deliverSalt(d, p);
+    if (d.salt) { const u = p.lick.at.find(u => Math.hypot(d.x - u.x, d.z - u.z) < F.tipR + 0.2); if (u) deliverSalt(d, p, u); }
   }
 }
 
@@ -4905,8 +4953,8 @@ function syncForage(dt) {
   for (const r of SALT_ROCKS) { const k = r.taken ? 0 : clamp((G.time - r.growT) / 1.2, 0, 1); r.crystals.visible = k > 0.01; r.crystals.scale.setScalar(Math.max(0.01, k)); r.glow.scale.setScalar(1.3 + 0.2 * Math.sin(G.time * 1.8 + r.rot * 5)); }
   for (const p of pens) {   // the troughs fill (and empty) visibly; the salt block wears down
     for (const tr of p.troughs) { tr.shown = lerp(tr.shown, tr.food, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k); }
-    const L = p.lick; L.shown = lerp(L.shown, L.salt, Math.min(1, dt * 2.5)); const k = clamp(L.shown / T.salt.lump, 0, 1.4);
-    L.block.visible = k > 0.01; L.block.scale.set(0.5 + 0.5 * Math.min(1, k), Math.max(0.001, k), 0.5 + 0.5 * Math.min(1, k));
+    const L = p.lick; L.shown = lerp(L.shown, L.salt, Math.min(1, dt * 2.5)); const k = clamp(L.shown / L.at.length / T.salt.lump, 0, 1.4);   // (VENDOR: each lick shows its share)
+    for (const u of L.at) { u.block.visible = k > 0.01; u.block.scale.set(0.5 + 0.5 * Math.min(1, k), Math.max(0.001, k), 0.5 + 0.5 * Math.min(1, k)); }
   }
   for (const d of G.dogs) {
     if (!d.models) continue;
@@ -4943,7 +4991,7 @@ function drawForageOverlay() {
       const [px, py, pz] = proj(tr.x, p.y + 1.25, tr.z); if (vis(px, py, pz)) forageChip(px, py, `🌾 ${Math.round(tr.shown / tr.cap * 100)}%`, 'rgba(110,140,40,.85)');
     }
     const L = p.lick, [px, py, pz] = proj(L.x, p.y + 1.45, L.z);
-    if (G.dogs.some(d => d.salt && Math.hypot(d.x - L.x, d.z - L.z) < 9)) nudge('lick', L.x, p.y + 2.1, L.z, '🧂 Walk up: in the lick', '#e8e2f0');
+    for (const u of L.at) if (G.dogs.some(d => d.salt && Math.hypot(d.x - u.x, d.z - u.z) < 9)) { nudge('lick', u.x, p.y + 2.1, u.z, '🧂 Walk up: in the lick', '#e8e2f0'); break; }
     if (!vis(px, py, pz)) continue;
     if (L.shown > 0.05) { if (dogNear(L.x, L.z)) forageChip(px, py, `🧂 ${Math.round(L.shown / L.cap * 100)}%`, 'rgba(120,110,130,.88)'); }
     else if (saltAvg < T.salt.want && dogNear(L.x, L.z, 16) && live.some(s => Math.hypot(s.x - p.x, s.z - p.z) < p.R + 25)) forageChip(px, py, '🧂 empty', 'rgba(170,70,60,.85)');   // the flock's here and needs it
@@ -4992,12 +5040,19 @@ function setPailWater(m, k) {   // the water's surface at fill k (0…1), as wid
 }
 const BUCKETS = [];
 for (const p of pens) {
-  const a = waterA(p), c = onRing(p, a, p.R - 0.9), tx = -Math.sin(a), tz = Math.cos(a), yaw = Math.atan2(-tz, tx), { L, Wd } = WATER_GEO;
-  const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; scene.add(g);
-  part(g, WATER_GEO.box);
-  const fill = new THREE.Mesh(WATER_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
-  p.water = { w: 0, cap: T.water.cap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill };   // (yaw/len/tx/tz: where the sheep line up, and segDist for tipping)
-  boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p);
+  const a = waterA(p), { L, Wd } = WATER_GEO;
+  p.waterSlots = [];   // VENDOR: bought ones go on round the back, toward the hinge (p.water.at: the ones in use; p.water: the pen's water, and the first)
+  for (let i = 0; i < kitMaxN(p, 'water'); i++) {
+    const ua = a + i * (L + 1) / (p.R - 0.9), c = onRing(p, ua, p.R - 0.9), tx = -Math.sin(ua), tz = Math.cos(ua), yaw = Math.atan2(-tz, tx);
+    const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; g.visible = !i; scene.add(g);
+    part(g, WATER_GEO.box);
+    const fill = new THREE.Mesh(WATER_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
+    const u = { x: c.x, z: c.z, yaw, len: L, tx, tz, fill, g };   // (yaw/len/tx/tz: where the sheep line up, and segDist for tipping)
+    if (!i) p.water = Object.assign(u, { w: 0, cap: T.water.cap, shown: 0 });
+    u.box = boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p, !i);
+    p.waterSlots.push(u);
+  }
+  p.water.at = [p.water];
   // its bucket: just outside the fence beside it (or inside, if the ground out there won't do)
   let h = onRing(p, a + 2.2 / p.R, p.R + 1.5); if (sdfAt(h.x, h.z) < 1.2) h = onRing(p, a + 2.6 / p.R, p.R - 2.2);
   const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root);
@@ -5063,10 +5118,10 @@ function fillBucket(b, d) {
   b.w = T.water.bucket; WATER.fills++;
   waterFx('fill', d.x + Math.sin(d.yaw) * 0.8, d.z + Math.cos(d.yaw) * 0.8); rumble(d.player, 0.3, 0.5, 120); hint('bucket-full');
 }
-function tipBucket(b, d, p) {
-  const tr = p.water, amt = fillWater(p, b.w); if (amt < 0.01) return false;
+function tipBucket(b, d, p, tr = p.water) {   // tr: the water trough it's by (VENDOR: a pen can have more)
+  const amt = fillWater(p, b.w); if (amt < 0.01) return false;
   b.w -= amt; WATER.tips++; WATER.tipped += amt;
-  waterFx('tip', tr.x, tr.z, amt / tr.cap); rumble(d.player, 0.3, 0.5, 120); hint('water');
+  waterFx('tip', tr.x, tr.z, amt / p.water.cap); rumble(d.player, 0.3, 0.5, 120); hint('water');
   if (WATER.tips === 1) hank(null, 'Fresh water! Good dog.', { force: true });
   if (b.w < 0.01) b.w = 0;   // (still in its mouth: back to the water for more)
   return true;
@@ -5082,8 +5137,9 @@ function updateDogWater(d) {
   if (b.w < T.water.bucket - 0.01 && dogAtWater(d)) fillBucket(b, d);
   if (b.w < 0.01 || d.air) return;
   for (const p of pens) {   // close by a pen's water trough: in it goes
-    const tr = p.water; if (tr.w > tr.cap - 0.01 || Math.abs(tr.x - d.x) > 4 || Math.abs(tr.z - d.z) > 4) continue;
-    if (segDist(d.x, d.z, tr) < T.water.tipR && tipBucket(b, d, p)) break;
+    if (p.water.w > p.water.cap - 0.01 || Math.abs(p.x - d.x) > p.R + 4 || Math.abs(p.z - d.z) > p.R + 4) continue;
+    const tr = p.water.at.find(u => Math.abs(u.x - d.x) < 4 && Math.abs(u.z - d.z) < 4 && segDist(d.x, d.z, u) < T.water.tipR);
+    if (tr && tipBucket(b, d, p, tr)) break;
   }
 }
 function updateWater(dt) {
@@ -5141,7 +5197,7 @@ function sheepThirst(s, dtH, sp) {
   else s.parchT = Math.max(0, (s.parchT || 0) - dtH * 2);
 }
 function syncWater(dt) {
-  for (const p of pens) { const tr = p.water; tr.shown = lerp(tr.shown, tr.w, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k); }
+  for (const p of pens) { const tr = p.water; tr.shown = lerp(tr.shown, tr.w, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); for (const u of tr.at) { u.fill.visible = k > 0.005; u.fill.scale.y = Math.max(0.001, 0.27 * k); } }   // (VENDOR: one pool, every trough at its level)
   for (const b of BUCKETS) {
     b.root.visible = !b.by; if (b.by) continue;
     const g = groundY(b.x, b.z), y = wetAt(b.x, b.z) ? Math.max(g, WATER_Y - 0.15) : g;   // floats
@@ -5173,7 +5229,7 @@ function drawWaterOverlay() {
   const dry = WATER.avg > T.water.want;
   for (const p of pens) {   // under the pen's 🐑 badge
     const tr = p.water; if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
-    if (tr.w < tr.cap - 0.01 && G.dogs.some(d => (bucketOf(d)?.w || 0) > 0.01 && Math.hypot(d.x - tr.x, d.z - tr.z) < 9)) nudge('water', tr.x, p.y + 1.9, tr.z, '🪣 Walk up: tip in', '#6fc3ff');
+    if (tr.w < tr.cap - 0.01) for (const u of tr.at) if (G.dogs.some(d => (bucketOf(d)?.w || 0) > 0.01 && Math.hypot(d.x - u.x, d.z - u.z) < 9)) { nudge('water', u.x, p.y + 1.9, u.z, '🪣 Walk up: tip in', '#6fc3ff'); break; }
     const [px, py, pz] = proj(p.x, p.y + 1.6, p.z); if (!vis(px, py, pz)) continue;
     const pct = Math.round(tr.shown / tr.cap * 100);
     forageChip(px, py + 28, `💧 ${pct}%`, pct > 0 ? 'rgba(40,110,170,.85)' : dry ? 'rgba(170,70,60,.85)' : 'rgba(27,26,40,.6)');
@@ -5208,7 +5264,7 @@ const DIGS = [];
   for (let t = 0; t < 120; t++) {
     const s = lerp(CAMPS[0].s, CAMPS[1].s, 0.45 + CR() * 0.3), k = pathIdx(s), side = CR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.8;
     const p = pathPoint(s, side * (6 + CR() * clamp(room - 6, 0.5, 4))), x = p.x, z = p.z;
-    if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r)) continue;
+    if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) || !offMarket(x, z, 3)) continue;
     if ((L0 && Math.hypot(x - L0.x, z - L0.z) < 10) || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 4) || SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) || DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 12)) continue;
     DIGS.push({ i: DIGS.length, x, z, y: terrainH(x, z), rot: CR() * TAU, dug: false, prog: 0, glint: CR() * 3, clip: true });
     break;
@@ -5393,9 +5449,13 @@ function stampSeg(s, val, rad) {
     if (dx * dx + dz * dz <= rad * rad) { const k = j * GX + i; if (val === 1 || navFence[k] === 0) navFence[k] = val; }
   }
 }
-for (const s of staticFences) stampSeg(s, 1, 0.75);
-pens.forEach((p, i) => { for (const s of p.segs) stampSeg(s, 1, 0.75); });
-pens.forEach((p, i) => stampSeg({ ax: p.gateSeg.ax, az: p.gateSeg.az, bx: p.gateSeg.bx, bz: p.gateSeg.bz }, 2 + i, 0.85));
+function stampNav() {   // (again after bought troughs go: VENDOR kitSet)
+  navFence.fill(0);
+  for (const s of staticFences) stampSeg(s, 1, 0.75);
+  pens.forEach((p, i) => { for (const s of p.segs) stampSeg(s, 1, 0.75); });
+  pens.forEach((p, i) => stampSeg({ ax: p.gateSeg.ax, az: p.gateSeg.az, bx: p.gateSeg.bx, bz: p.gateSeg.bz }, 2 + i, 0.85));
+}
+stampNav();
 const gateOpen = p => p.gateT > 0.45;
 function navFree(k) { const f = navFence[k]; return blk[k] === 0 && (f === 0 || (f > 1 && gateOpen(pens[f - 2]))); }
 function segX(ax, az, bx, bz, cx, cz, dx, dz) {
@@ -7160,7 +7220,8 @@ function updateHUD(dt) {
   // journey bar: camps along the trail, the flock and the dogs
   const jb = $('journey');
   if (!jb.dataset.built) { jb.dataset.built = 1; CAMPS.forEach((c, i) => { const e = document.createElement('div'); e.className = 'camp' + (c.final ? ' final' : ''); e.style.left = `calc(6px + (100% - 12px) * ${c.s / PATH_LEN})`; e.title = c.name; jb.appendChild(e); }); const me = document.createElement('div'); me.className = 'me'; me.textContent = '🐑'; jb.appendChild(me); }
-  [...jb.querySelectorAll('.camp')].forEach((e, i) => e.classList.toggle('done', CAMPS[i].s < fs - 5 || (G.visited.has(CAMPS[i].name) && i === 0)));
+  const stl = stallNear();   // VENDOR: at a stall, its pen's camp ringed
+  [...jb.querySelectorAll('.camp')].forEach((e, i) => { e.classList.toggle('done', CAMPS[i].s < fs - 5 || (G.visited.has(CAMPS[i].name) && i === 0)); e.classList.toggle('pick', !!stl && stl.sel === i); });
   jb.querySelector('.me').style.left = `calc(6px + (100% - 12px) * ${clamp(fs / PATH_LEN, 0, 1)})`;
   $('sound').style.display = Sound.running ? 'none' : 'block';
   const joins = $('joins'); const want = G.mode === 'play' && G.players.length < 4 && (NET.role !== 'guest' || (NET.inRoom && !NET.dead)) ? `<div>Press Ⓐ on another controller to join (${G.players.length}/4)</div>` : '';   // ONLINE: a guest's sofa can add dogs too
@@ -8922,28 +8983,56 @@ function freshFlock() {
 }
 
 // =====================================================================
-// VENDOR — the Trading Post at the end of the trail (its stall and the
-// vendor: MARKET, built in WORLD GENERATION). Each ware sits on its own
-// mat; a dog on a mat barks to buy it with 🧶 (G.wool, from shearing).
-// 💧 🌾 🧂 go into the final pen; ✂️ (free) only while Hank has no
-// clippers; 🏖️ Cabo takes every sheep penned there and ends the journey
+// VENDOR — a trader's stall near the end of each leg, and the Trading Post's
+// at the end of the trail (STALLS, MARKET: built in WORLD GENERATION). Each
+// ware sits on its own mat; a dog on a mat barks to buy with 🧶 (G.wool,
+// from shearing). 📍 picks the pen the wares go to (one found on the way:
+// G.visited). 🌾 💧 🧂: one more trough / water trough / salt lick there,
+// stocked, till the pen has what fits along its fence (kitSet, kitMax),
+// then a batch. The Trading Post also has ✂️ (free) while Hank has no
+// clippers, and 🏖️ Cabo: every sheep penned there goes, the journey ends
 // (finishGame). Buying runs on the host (bark); vendorFx shows it everywhere.
 // =====================================================================
 const finalPen = pens.find(p => p.final);
 const caboSheep = () => G.sheep.filter(s => !s.dead && !s.grabbed && !s.air && s.pen === finalPen);
-const WARES = [
-  { id: 'clippers', icon: '✂️', col: '#8a7aa8', show: () => !HANK.clippers },   // (shearing: never stuck without)
-  { id: 'water', icon: '💧', col: '#3a7bd5' },
-  { id: 'food', icon: '🌾', col: '#6aa84f' },
-  { id: 'salt', icon: '🧂', col: '#b9a9cc' },
-  { id: 'cabo', icon: '🏖️', col: '#f2d9a0' },
-];
-const VENDOR = { hello: false, waveAt: -9, noAt: -9, bought: {} };
+const WARE_KINDS = {
+  pen: { icon: '📍', col: '#d8473f' },
+  clippers: { icon: '✂️', col: '#8a7aa8', show: () => !HANK.clippers },   // (shearing: never stuck without)
+  water: { icon: '💧', col: '#3a7bd5' },
+  food: { icon: '🌾', col: '#6aa84f' },
+  salt: { icon: '🧂', col: '#b9a9cc' },
+  cabo: { icon: '🏖️', col: '#f2d9a0' },
+};
+const ALL_WARES = [];   // every stall's (w.gi); w.i: its place on its stall
+for (const st of STALLS) st.wares = (st.final ? ['pen', 'clippers', 'water', 'food', 'salt', 'cabo'] : ['pen', 'water', 'food', 'salt']).map((id, i) => {
+  const w = { id, ...WARE_KINDS[id], stall: st, i, gi: ALL_WARES.length }; ALL_WARES.push(w); return w;
+});
+const WARES = MARKET.wares;   // the Trading Post's
+const VENDOR = { hello: false, met: false, bought: {} };
 const wareOn = w => !w.show || w.show();
-function warePrice(w) { const V = T.vendor; return w.id === 'cabo' ? V.cabo.base + V.cabo.per * caboSheep().length : V[w.id].price; }
-{ // the mats, in a row in front of the stall, each with its ware at the back (local -z: toward the stall)
+const penFound = p => G.visited.has(p.camp.name);
+function stallPen(st) { const p = pens[st.pick]; return p && penFound(p) ? p : [...pens].reverse().find(penFound) || pens[0]; }   // picked on 📍, else the furthest found
+function pickPen(st) {   // a bark on 📍: the next pen found, along the trail
+  const found = pens.filter(penFound), p = found[(found.indexOf(pens[st.sel]) + 1) % found.length] || pens[0];
+  st.pick = st.sel = pens.indexOf(p); return p;
+}
+const KIT_FILL = { food: () => T.forage.troughCap, water: () => T.water.cap, salt: () => T.salt.lump };   // what a new one comes with
+function kitRoom(p, k) { return k === 'food' ? p.troughs.reduce((a, tr) => a + Math.max(0, tr.cap - tr.food), 0) : k === 'salt' ? p.lick.cap - p.lick.salt : p.water.cap - p.water.w; }
+function lickAdd(p, amt) { const L = p.lick, got = Math.min(amt, Math.max(0, L.cap - L.salt)); L.salt += got; return got; }
+// what a bark on w buys now, for pen p: { kind: 'add' (one more, stocked) | 'fill' (a batch) | its id, price }
+function wareDeal(w, p = pens[w.stall.sel] || finalPen) {
+  const V = T.vendor;
+  if (w.id === 'cabo') return { kind: 'cabo', price: V.cabo.base + V.cabo.per * caboSheep().length };
+  if (!KIT[w.id]) return { kind: w.id, price: (V[w.id] && V[w.id].price) || 0 };
+  const add = kitN(p, w.id) < kitMax(p, w.id);
+  return { kind: add ? 'add' : 'fill', price: add ? V[w.id].add : V[w.id].price };
+}
+const warePrice = w => wareDeal(w).price;
+{ // the mats, in a row in front of each stall, each with its ware at the back (local -z: toward the stall)
   const back = -0.72;
   const GEOS = {
+    pen: merge(P(CYL(0.05, 0.06, 1.3, 6), '#7a5230', { p: [-0.45, 0.65, back] }), P(BOX(0.75, 0.24, 0.06), '#f4ead2', { p: [-0.2, 1.1, back] }), P(CONE(0.1, 0.16, 3), '#f4ead2', { r: [0, 0, -Math.PI / 2], p: [0.25, 1.1, back] }),
+      P(CONE(0.15, 0.42, 10), '#d8473f', { r: [Math.PI, 0, 0], p: [0.35, 0.24, back] }), P(SPH(10), '#d8473f', { s: [0.2, 0.2, 0.2], p: [0.35, 0.52, back] }), P(SPH(8), '#ffffff', { s: [0.08, 0.08, 0.08], p: [0.35, 0.54, back + 0.16] })),
     clippers: merge(P(BOX(0.55, 0.3, 0.4), '#8a5a32', { p: [0, 0.18, back] }), P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, 0.45, 0], p: [0.05, 0.36, back] }),
       P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, -0.45, 0], p: [0.05, 0.38, back] }), ...[-0.12, 0.12].map(z => P(CYL(0.08, 0.08, 0.05, 10), '#d8473f', { p: [-0.3, 0.39, back + z] }))),
     water: merge(P(CYL(0.24, 0.3, 0.6, 10), '#4aa3df', { p: [-0.2, 0.32, back] }), P(CYL(0.1, 0.16, 0.18, 10), '#4aa3df', { p: [-0.2, 0.7, back] }),
@@ -8955,15 +9044,15 @@ function warePrice(w) { const V = T.vendor; return w.id === 'cabo' ? V.cabo.base
     cabo: merge(P(CYL(0.035, 0.035, 2.2, 6), '#f4f1ea', { p: [-0.75, 1.1, back] }), P(CONE(1.1, 0.45, 12), '#ff5a5a', { p: [-0.75, 2.2, back] }), P(CONE(0.55, 0.24, 12), '#ffffff', { p: [-0.75, 2.37, back] }),
       P(BOX(0.6, 0.03, 1.2), '#4dc3ff', { p: [0.4, 0.08, -0.2] }), P(BOX(0.6, 0.035, 0.15), '#ffffff', { p: [0.4, 0.09, -0.62] }), GEO.palm.clone().scale(0.5, 0.5, 0.5).translate(1.05, 0, back - 0.45)),
   };
-  WARES.forEach((w, i) => {
-    const M = MARKET, u = (i - (WARES.length - 1) / 2) * T.vendor.gap, f = T.vendor.ring;
-    w.i = i; w.x = M.x + M.fx * f + M.rx * u; w.z = M.z + M.fz * f + M.rz * u; w.y = terrainH(w.x, w.z);
+  for (const w of ALL_WARES) {
+    const M = w.stall, u = (w.i - (M.wares.length - 1) / 2) * T.vendor.gap, f = T.vendor.ring;
+    w.x = M.x + M.fx * f + M.rx * u; w.z = M.z + M.fz * f + M.rz * u; w.y = terrainH(w.x, w.z);
     w.shakeAt = w.armT = -9;
     const g = new THREE.Group(); g.position.set(w.x, w.y, w.z); g.rotation.y = M.yaw; scene.add(g); w.g = g;
     part(g, merge(P(BOX(2.5, 0.04, 2.5), w.id === 'cabo' ? '#ff8f5a' : '#5a4030', { p: [0, 0.02, 0] }), P(BOX(2.2, 0.05, 2.2), w.col, { p: [0, 0.04, 0] }),
       ...[-0.7, 0.7].map(z => P(BOX(2.2, 0.055, 0.14), '#f4ead2', { p: [0, 0.045, z] }))), { outline: false, shadow: false });
     part(g, GEOS[w.id]);
-  });
+  }
 }
 // SHARED HOOK (pen food): tip a batch into a pen's troughs, emptiest first, each up to its cap; returns what went in
 function stockTroughs(pen, amt) {
@@ -8976,91 +9065,125 @@ function stockTroughs(pen, amt) {
 }
 // host: a bark on a mat buys what's on it
 function vendorBark(d) {
-  if (G.mode !== 'play' || d.air || Math.abs(d.x - MARKET.x) > 12 || Math.abs(d.z - MARKET.z) > 12) return null;
+  if (G.mode !== 'play' || d.air) return null;
+  const st = STALLS.find(m => Math.abs(d.x - m.x) < 13 && Math.abs(d.z - m.z) < 13); if (!st) return null;
   let best = null, bd = T.vendor.matR;
-  for (const w of WARES) { const k = Math.hypot(d.x - w.x, d.z - w.z); if (k < bd && wareOn(w)) { bd = k; best = w; } }
+  for (const w of st.wares) { const k = Math.hypot(d.x - w.x, d.z - w.z); if (k < bd && wareOn(w)) { bd = k; best = w; } }
   return best ? buyWare(best) : null;
 }
-// -> 'buy' | 'poor' (not enough 🧶) | 'full' (no room in the pen) | 'none' (Cabo: nobody penned) | 'arm' (Cabo: bark again to go)
+// -> 'add' (one more, stocked) | 'buy' (a batch, ✂️, 🏖️) | 'pen' (📍: the next pen) | 'poor' (not enough 🧶) | 'full' (no room in the pen)
+//    | 'none' (Cabo: nobody penned) | 'arm' (Cabo: bark again to go)
 function buyWare(w) {
-  const V = T.vendor, wool = G.wool || 0, price = warePrice(w), pen = finalPen;
+  const V = T.vendor, wool = G.wool || 0, st = w.stall, pen = pens[st.sel] || finalPen, deal = wareDeal(w, pen), price = deal.price;
   let kind = 'buy';
-  if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
+  if (w.id === 'pen') { pickPen(st); kind = 'pen'; }
+  else if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
   else if (wool < price) kind = 'poor';
   else if (w.id === 'cabo') { if (!(w.armT > G.time)) kind = 'arm'; }
-  else if (w.id === 'food') { const room = pen.troughs.reduce((a, tr) => a + Math.max(0, tr.cap - tr.food), 0); if (room < V.food.amt * V.room) kind = 'full'; else stockTroughs(pen, V.food.amt); }
-  else if (w.id === 'salt') { const L = pen.lick, room = L.cap - L.salt; if (room < V.salt.amt * V.room) kind = 'full'; else L.salt += Math.min(room, V.salt.amt); }
-  else if (w.id === 'water') { const W = pen.water, room = W ? W.cap - W.w : 0; if (room < V.water.amt * V.room) kind = 'full'; else fillWater(pen, V.water.amt); }
+  else if (deal.kind === 'add') {
+    kind = 'add'; kitSet(pen, w.id, kitN(pen, w.id) + 1); const fill = KIT_FILL[w.id]();
+    if (w.id === 'food') pen.troughs[pen.troughs.length - 1].food = fill; else if (w.id === 'water') fillWater(pen, fill); else lickAdd(pen, fill);
+  }
+  else if (deal.kind === 'fill') {
+    if (kitRoom(pen, w.id) < V[w.id].amt * V.room) kind = 'full';
+    else if (w.id === 'food') stockTroughs(pen, V.food.amt); else if (w.id === 'water') fillWater(pen, V.water.amt); else lickAdd(pen, V.salt.amt);
+  }
   else if (w.id === 'clippers') giveHankClippers();
-  if (kind === 'buy') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
-  vendorFx(w.i, kind, price);
+  if (kind === 'buy' || kind === 'add') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
+  vendorFx(w.gi, kind, price, st.sel, KIT[w.id] ? kitN(pens[st.sel] || finalPen, w.id) : 0);
   if (kind === 'none') hank(null, 'Pen them first! Then Cabo!', { force: true });
   if (kind === 'buy' && w.id === 'cabo') { const n = caboSheep().length; hank(null, "Cabo! Sun, sand, an' nae coyotes!", { force: true, delay: 3 }); finishGame(n); }
   return kind;
 }
-// what a sale (or a no) looks and sounds like, on every screen
-function vendorFx(i, kind, price = 0) {
-  const w = WARES[i]; if (!w) return;
-  const y = w.y + 1.6;
+// what a sale (or a no) looks and sounds like, on every screen. pi: the pen it went to; n: how many of it the pen has now
+function vendorFx(i, kind, price = 0, pi = -1, n = 0) {
+  const w = ALL_WARES[i]; if (!w) return;
+  const st = w.stall, y = w.y + 1.6, p = pens[pi] || pens[st.sel] || finalPen;
   if (kind === 'arm') { w.armT = G.time + T.vendor.confirm; floatText(`${w.icon} ?`, w.x, y + 0.8, w.z, '#ffd36b', 1.4); Sound.chime([0, 7], 660, 0.16); return; }
   w.armT = -9;
-  if (kind === 'buy') {
-    VENDOR.waveAt = G.time;
+  if (kind === 'pen') { st.sel = pens.indexOf(p); floatText(`📍 ${p.camp.icon}`, w.x, y + 0.6, w.z, '#ffffff', 1.4); Sound.chime([0, 5], 587, 0.12, 0.06); burst(w.x, w.y + 0.6, w.z, 6, w.col, { speed: 1.6, up: 2.4, size: 0.12, life: 0.6 }); return; }
+  if (kind === 'buy' || kind === 'add') {
+    st.waveAt = G.time;
     Sound.chime([0, 4, 7, 12], 784, 0.2, 0.07); starBurst(w.x, y, w.z, 8);
     burst(w.x, w.y + 0.6, w.z, 10, w.col, { speed: 2, up: 3, size: 0.14, life: 0.8 });
     floatText(price ? `${w.icon} -${price}🧶` : `${w.icon} ✔`, w.x, y + 0.6, w.z, '#7ed957', 1.3);
-    const p = finalPen;
-    if (w.id === 'food') for (const tr of p.troughs) burst(tr.x, p.y + 1, tr.z, 5, '#9bdc5a', { speed: 1.4, up: 1.6, size: 0.12, life: 0.8, grav: -9 });
-    if (w.id === 'salt') burst(p.lick.x, p.y + 1, p.lick.z, 8, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 });
-    if (w.id === 'food' || w.id === 'salt' || w.id === 'water') floatText(`+${w.icon}`, p.x, p.y + 2.4, p.z, '#ffffff', 1.4);
+    if (KIT[w.id]) {
+      const [, slots] = KIT[w.id](p), at = kind === 'add' ? slots.slice(Math.max(0, n - 1), n) : slots.slice(0, n);   // the new one, or all of them
+      for (const u of at) { burst(u.x, p.y + 1, u.z, kind === 'add' ? 14 : 6, w.id === 'food' ? '#9bdc5a' : w.id === 'water' ? '#6fc3ff' : '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 }); if (kind === 'add') starBurst(u.x, p.y + 1.2, u.z, 6); }
+      floatText(kind === 'add' ? `+${w.icon} ${n}/${kitMax(p, w.id)}` : `+${w.icon}`, p.x, p.y + 2.4, p.z, '#ffffff', 1.4);
+    }
     if (w.id === 'cabo') confetti(w.x, y, w.z, 40);
     return;
   }
   // a no: the mat shakes, the vendor shakes his head
-  w.shakeAt = VENDOR.noAt = G.time;
+  w.shakeAt = st.noAt = G.time;
   floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);
   Sound.chime([0, -1], 196, 0.18, 0.12);
 }
-// sim step (host): Hank's word on arriving
+// sim step (host): each stall's pen (picked, or the furthest found); Hank's word at the first trader and at the Trading Post
 function updateVendor() {
-  if (G.mode !== 'play' || VENDOR.hello || !G.visited.has(FINAL.name)) return;
-  VENDOR.hello = true; hank(null, 'The Trading Post! Wool buys us Cabo!', { force: true, delay: 2 });
+  if (G.mode !== 'play') return;
+  for (const st of STALLS) st.sel = pens.indexOf(stallPen(st));
+  if (!VENDOR.met && STALLS.some(st => !st.final && G.dogs.some(d => Math.hypot(d.x - st.x, d.z - st.z) < T.vendor.near))) { VENDOR.met = true; hank(null, 'A trader! Wool buys troughs!', { force: true, delay: 1 }); }
+  if (!VENDOR.hello && G.visited.has(FINAL.name)) { VENDOR.hello = true; hank(null, 'The Trading Post! Wool buys us Cabo!', { force: true, delay: 2 }); }
 }
-function resetVendor() { Object.assign(VENDOR, { hello: false, waveAt: -9, noAt: -9, bought: {} }); for (const w of WARES) w.shakeAt = w.armT = -9; }
-// every frame: mats shake on a no, the Cabo mat pulses while it waits; the vendor watches the dogs, waves on a sale
+function resetVendor() {
+  Object.assign(VENDOR, { hello: false, met: false, bought: {} });
+  for (const st of STALLS) Object.assign(st, { pick: -1, sel: 0, waveAt: -9, noAt: -9 });
+  for (const w of ALL_WARES) w.shakeAt = w.armT = -9;
+}
+resetVendor();
+// every frame: mats shake on a no, the Cabo mat pulses while it waits; each vendor watches the dogs, waves on a sale
 function syncVendor(dt) {
-  const t = G.time, M = MARKET, v = M.v;
-  for (const w of WARES) {
-    const on = wareOn(w); w.g.visible = on; if (!on) continue;
-    const k = t - w.shakeAt, sh = k >= 0 && k < 0.45 ? Math.sin(k * 55) * 0.13 * (1 - k / 0.45) : 0, s = w.armT > t ? 1 + 0.06 * Math.sin(t * 10) : 1;
-    w.g.position.set(w.x + M.rx * sh, w.y, w.z + M.rz * sh); w.g.scale.set(s, 1, s);
+  const t = G.time, party = G.mode === 'end' && HANK.celebrate;
+  for (const M of STALLS) {
+    const v = M.v;
+    for (const w of M.wares) {
+      const on = wareOn(w); w.g.visible = on; if (!on) continue;
+      const k = t - w.shakeAt, sh = k >= 0 && k < 0.45 ? Math.sin(k * 55) * 0.13 * (1 - k / 0.45) : 0, s = w.armT > t ? 1 + 0.06 * Math.sin(t * 10) : 1;
+      w.g.position.set(w.x + M.rx * sh, w.y, w.z + M.rz * sh); w.g.scale.set(s, 1, s);
+    }
+    let dog = null, dd = T.vendor.near; for (const d of G.dogs) { const k = Math.hypot(d.x - M.x, d.z - M.z); if (k < dd) { dd = k; dog = d; } }
+    const look = dog ? clamp(wrapA(Math.atan2(dog.x - M.x, dog.z - M.z) - M.yaw), -0.9, 0.9) : 0;
+    const no = t - M.noAt, wave = t - M.waveAt;
+    v.root.rotation.y = lerpA(v.root.rotation.y, look, Math.min(1, dt * 4));
+    v.head.rotation.y = no >= 0 && no < 0.8 ? Math.sin(no * 22) * 0.45 : 0;
+    v.arm.rotation.z = (party && M.final) || (wave >= 0 && wave < 1.6) ? 2.5 + Math.sin(t * 14) * 0.35 : 0.25;
+    v.root.position.y = Math.abs(Math.sin(t * 1.3)) * 0.02 + (wave >= 0 && wave < 0.6 ? Math.sin(wave / 0.6 * Math.PI) * 0.18 : 0);   // a hop on a sale
   }
-  let dog = null, dd = T.vendor.near; for (const d of G.dogs) { const k = Math.hypot(d.x - M.x, d.z - M.z); if (k < dd) { dd = k; dog = d; } }
-  const look = dog ? clamp(wrapA(Math.atan2(dog.x - M.x, dog.z - M.z) - M.yaw), -0.9, 0.9) : 0;
-  const no = t - VENDOR.noAt, wave = t - VENDOR.waveAt, party = G.mode === 'end' && HANK.celebrate;
-  v.root.rotation.y = lerpA(v.root.rotation.y, look, Math.min(1, dt * 4));
-  v.head.rotation.y = no >= 0 && no < 0.8 ? Math.sin(no * 22) * 0.45 : 0;
-  v.arm.rotation.z = party || (wave >= 0 && wave < 1.6) ? 2.5 + Math.sin(t * 14) * 0.35 : 0.25;
-  v.root.position.y = Math.abs(Math.sin(t * 1.3)) * 0.02 + (wave >= 0 && wave < 0.6 ? Math.sin(wave / 0.6 * Math.PI) * 0.18 : 0);   // a hop on a sale
 }
-// the overlay: each ware's price in 🧶 (green: you can pay), Cabo with how many go; bark twice for Cabo
+// the stall a dog is at (the nearest within T.vendor.near), or null
+function stallNear() {
+  let st = null, sd = T.vendor.near;
+  for (const m of STALLS) for (const d of G.dogs) { const k = Math.hypot(d.x - m.x, d.z - m.z); if (k < sd) { sd = k; st = m; } }
+  return st;
+}
+// the overlay: each ware's price in 🧶 (green: you can pay), 🌾 💧 🧂 with how many the picked pen has of the most it holds (+: one more),
+// 📍 with the pen (and a 📍 over it), Cabo with how many go; bark twice for Cabo
 function drawVendorOverlay() {
   if (G.mode !== 'play') return;
-  const near = G.dogs.find(d => Math.hypot(d.x - MARKET.x, d.z - MARKET.z) < T.vendor.near); if (!near) return;
-  const wool = G.wool || 0, n = caboSheep().length, bk = keyLabel(near.player, 'bark');
-  nudge('vendor', MARKET.x, MARKET.v.y + 3.6, MARKET.z, `${bk} on a mat: buy`);
+  const st = stallNear(); if (!st) return;
+  const near = G.dogs.find(d => Math.hypot(d.x - st.x, d.z - st.z) < T.vendor.near) || G.dogs[0];
+  const V = T.vendor, wool = G.wool || 0, n = caboSheep().length, bk = keyLabel(near.player, 'bark'), pen = pens[st.sel] || finalPen;
+  nudge('vendor', st.x, st.v.y + 3.6, st.z, `${bk} on a mat: buy`);
   ctx.font = '600 13px Fredoka, sans-serif';
-  for (const w of WARES) {
+  for (const w of st.wares) {
     if (!wareOn(w)) continue;
-    const [px, py, pz] = proj(w.x + MARKET.fx * 1.6, w.y + 0.1, w.z + MARKET.fz * 1.6); if (pz > 1 || px < -60 || px > W + 60 || py < -40 || py > H + 40) continue;   // on the mat's front edge, clear of the dog's name
-    const price = warePrice(w), cabo = w.id === 'cabo', ok = wool >= price && (!cabo || n > 0), on = G.dogs.some(d => Math.hypot(d.x - w.x, d.z - w.z) < T.vendor.matR);
-    const txt = w.armT > G.time ? `${w.icon} ${bk} ✔` : cabo && !n ? `${w.icon} 🐑 0` : `${w.icon} ${price ? price + '🧶' : '🆓'}${cabo ? ` · 🐑${n}` : ''}`;
+    const [px, py, pz] = proj(w.x + st.fx * 1.6, w.y + 0.1, w.z + st.fz * 1.6); if (pz > 1 || px < -60 || px > W + 60 || py < -40 || py > H + 40) continue;   // on the mat's front edge, clear of the dog's name
+    const deal = wareDeal(w, pen), price = deal.price, cabo = w.id === 'cabo', kit = !!KIT[w.id], on = G.dogs.some(d => Math.hypot(d.x - w.x, d.z - w.z) < V.matR);
+    const room = !kit || deal.kind === 'add' || kitRoom(pen, w.id) >= V[w.id].amt * V.room;
+    const ok = w.id === 'pen' || (wool >= price && (!cabo || n > 0) && room);
+    const txt = w.armT > G.time ? `${w.icon} ${bk} ✔` : cabo && !n ? `${w.icon} 🐑 0` : w.id === 'pen' ? `📍 ${pen.camp.icon}`
+      : kit ? `${w.icon}${deal.kind === 'add' ? '+' : ''} ${kitN(pen, w.id)}/${kitMax(pen, w.id)} · ${room ? price + '🧶' : '100%'}`
+      : `${w.icon} ${price ? price + '🧶' : '🆓'}${cabo ? ` · 🐑${n}` : ''}`;
     const sc = w.armT > G.time ? 1.12 + 0.08 * Math.sin(G.time * 10) : on ? 1.12 : 1;
     ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
-    forageChip(0, 0, txt, ok ? 'rgba(60,140,60,.9)' : 'rgba(130,60,55,.85)');
+    forageChip(0, 0, txt, w.id === 'pen' ? 'rgba(150,50,45,.9)' : ok ? 'rgba(60,140,60,.9)' : 'rgba(130,60,55,.85)');
     if (on) { const tw = ctx.measureText(txt).width + 16; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2.5; rr(-tw / 2, -11, tw, 22, 10); ctx.stroke(); }
     ctx.restore();
   }
+  const [px, py, pz] = proj(pen.x, pen.y + 4 + Math.sin(G.time * 3) * 0.3, pen.z);   // the picked pen, if it's on screen
+  if (pz <= 1 && px > 0 && px < W && py > 0 && py < H) forageChip(px, py, `📍 ${pen.camp.icon}`, 'rgba(150,50,45,.9)');
 }
 
 // =====================================================================
@@ -9280,7 +9403,8 @@ const NET_TYPES = {
   pen: {   // push-gates: the leaf's angle (eased on guests) and whether it's latched; gateT and open follow from phi
     tag: 'p', all: () => pens, id: p => pens.indexOf(p), static: true,
     fields: { phi: 'a', latched: 'b', fresh: 'b',
-      ...Object.fromEntries([0, 1, 2, 3].map(i => ['tf' + i, { c: .02, get: p => p.troughs[i] ? p.troughs[i].food : 0, set: (p, v) => { if (p.troughs[i]) p.troughs[i].food = v; } }])),   // each forage trough's fill
+      ...Object.fromEntries(Object.keys(KIT).map(k => ['n' + k, { c: 'i', get: p => kitN(p, k), set: (p, v) => kitSet(p, k, v) }])),   // VENDOR: how many troughs, water troughs, licks (before their fills)
+      ...Object.fromEntries([...Array(Math.max(...pens.map(p => p.troughSlots.length))).keys()].map(i => ['tf' + i, { c: .02, get: p => p.troughs[i] ? p.troughs[i].food : 0, set: (p, v) => { if (p.troughs[i]) p.troughs[i].food = v; } }])),   // each forage trough's fill
       lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } },   // the salt lick
       water: { c: .02, get: p => p.water.w, set: (p, v) => { p.water.w = v; } } },   // WATER: the water trough
     animate: p => updateGateGeometry(p),
@@ -9331,6 +9455,7 @@ const NET_TYPES = {
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
     },
   },
+  stall: { tag: 'V', all: () => STALLS, id: st => st.i, static: true, fields: { sel: 'i' } },   // VENDOR: the pen each stall's wares go to
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
   stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i' } },
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
@@ -10533,7 +10658,7 @@ function step(dt) {
     updateCoyotes(dt);
     updateCougars(dt);
     updateFalcon(dt, dtH);
-    updateVendor();   // VENDOR: Hank's word at the Trading Post
+    updateVendor();   // VENDOR: each stall's pen, Hank's word at the stalls
     checkLose();
   } else {
     updateSheep(dt, 0);   // title / end: the flock still mills about
@@ -10603,7 +10728,8 @@ window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
-Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
+Object.assign(window.GAME, { FINAL, MARKET, STALLS, finalPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor,
+  KIT, kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav });   // VENDOR
 Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
