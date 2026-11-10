@@ -132,8 +132,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
-- **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
-  lumps go to the pen's lick.
+- **Salt** (`s.salt`) runs down slowly (~8 days); out too long = death. Camp
+  licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
+  the pen's lick.
 - **Coyote packs** flank and strike together; chase off the alpha to break
   them. Shut pens stop them.
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
