@@ -21,7 +21,8 @@ push-gates, Hank, the barn and online co-op.
 - `node tools/serve.mjs` and open http://localhost:8000. Any static server
   works. `file://` usually doesn't, because of the module script.
 - `?debug` shows an FPS readout and enables cheat keys (`]` +1 hour, `N` dusk,
-  `M` dawn, `K` spawn a coyote, `F` teleport to the final pen).
+  `M` dawn, `K` spawn a coyote, `O` age the flock 10 days, `F` teleport to the
+  final pen).
   `window.GAME` exposes the state and most functions.
 - `?sim` stops the render loop so headless tests can call `GAME.step(dt)`
   themselves.
@@ -64,6 +65,7 @@ that touch what you changed, and report their numbers.
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
 | `node tools/gateway-sim.mjs` | driving the flock into a pen and out again through a gate swung in or out: does anyone stall at the gate? |
 | `node tools/cluster-sim.mjs [structure\|merge\|corner\|cost] [--trials N]` | how a grazing flock breaks into knots (sizes, share alone, spacing, gaps), calm walking speeds, a loner and a small knot drifting to the big group, sheep getting out of a rock corner, off a river bank and out of the back of a pen, the cost of 60 sheep per step |
+| `node tools/age-sim.mjs` | ageing: the first flock's ages, how old sheep look (fleece, face, size, words), a lifetime of dawns (nobody dies of old age early, everyone by `T.lifeDays[1]`), ages kept in the saved flock |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
@@ -140,6 +142,17 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   she's hungrier than `T.lambHunger`, then rests `T.lambRest` days. Test:
   `node tools/lamb-sim.mjs [--hunger H]` (a 13:00 hunger of 0.97 leaves about 8 of
   12 fed at a 19:30 penning: 6–7 courted, about 3 lambs).
+- **Age.** `s.age` is in days and ticks at dawn (`ageAtDawn`, called first
+  thing in `lambsAtDawn`); `s.life` is drawn from `T.lifeDays` (46–62 days, so
+  a sheep lives some 3–4 hours of play). Lambs grow up at `T.lambGrowDays`,
+  yearlings fill out to full size by `T.adultDays`, and from `T.oldDays` (32)
+  `oldK(s)` rises 0 → 1: the fleece goes dingy grey (a black one grizzles), the
+  head tuft greys, the head hangs lower, the back sags, the stride stiffens,
+  it runs up to `T.oldSlow` slower, old ewes lamb less and coyotes favour old
+  sheep. At dawn past its span a sheep dies peacefully in its sleep
+  (`killSheep(s, 'old')`: tombstone, "Fondly remembered", `G.stats.old`). The
+  first flock is 3–24 days old (the bell ewe 26–30), so nobody greys on day 1,
+  and ages are kept in the saved flock between journeys.
 - **The trough** (`pen.trough.food`, 1 unit = 1.0 hunger): penned sheep
   hungrier than 0.18 take a place along it (one per metre), and the rest stand
   aside and wait. They feed from late afternoon and wake at night to eat. A
