@@ -14,7 +14,8 @@ const git = cmd => { try { return execSync('git ' + cmd, { cwd: ROOT, stdio: ['i
 const env = process.env;
 
 // Vercel / Cloudflare hand these over at build time; a local run asks git instead.
-const sha = (env.VERCEL_GIT_COMMIT_SHA || env.WORKERS_CI_COMMIT_SHA || env.CF_PAGES_COMMIT_SHA || git('rev-parse HEAD')).toLowerCase();
+const sha = [env.VERCEL_GIT_COMMIT_SHA, env.WORKERS_CI_COMMIT_SHA, env.CF_PAGES_COMMIT_SHA, git('rev-parse HEAD')]
+  .map(v => String(v || '').trim().toLowerCase()).find(v => /^[0-9a-f]{7,40}$/.test(v)) || '';   // first one that's a real hash
 const message = env.VERCEL_GIT_COMMIT_MESSAGE || git('log -1 --format=%B');
 const subject = message.split('\n')[0];
 // The PR a preview was built for, or on main the PR that was merged: "Merge pull request #7 from ..." or "Title (#7)".
