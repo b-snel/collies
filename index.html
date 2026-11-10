@@ -184,6 +184,7 @@
   #eMem b { color:var(--barn-ink); }
   #eMem { max-width:min(720px, 92vw); margin:-6px 0 18px; font-size:16px; line-height:1.5; color:var(--barn-muted); }
   #barn.hidden { display:none; }
+  #barn.watch .barnCard button, #barn.watch .barnCard input { pointer-events:none; }
   #barn { position:fixed; inset:0; z-index:6; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--barn-backdrop);
     color:var(--barn-ink); text-shadow:none; transition:opacity .25s; overflow-y:auto; }
   .barnCard { width:min(1100px, 100%); max-height:100%; overflow-y:auto; background:var(--barn-card); border:3px solid var(--barn-edge); border-radius:var(--barn-radius);
@@ -8360,6 +8361,8 @@ loadDogs();
 const BARN = { open: false, tab: 'sheep', sel: null, dog: 0, col: PAINT_SWATCH[0], erase: false, size: 0.05, rot: -0.7, drag: null, fresh: 0, outfit: 0, kit: 0, mem: false, w: 0, h: 0 };
 const ACC_OUTFITS = [[], ['scarf'], ['bowtie'], ['shades'], ['flower'], ['scarf', 'shades'], ['bowtie', 'flower'], ['scarf', 'flower'], ['bowtie', 'shades']];
 const barnFlock = () => G.sheep.filter(s => !s.dead);
+// ONLINE: a guest watches the host's barn (BARN.watch, read only); dogs' looks come from the host (BARN.wv.dl)
+const barnDogLook = slot => BARN.watch && BARN.wv && Array.isArray(BARN.wv.dl) ? cleanDogLook(BARN.wv.dl[slot], slot) : dogLook(slot);
 function barnStage() {
   if (BARN.r) return BARN;
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: true }); r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -8395,7 +8398,7 @@ function barnModel() {
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; }
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
-    const M = buildDog(dogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
+    const M = buildDog(barnDogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2;
     B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail;
     return;
@@ -8452,7 +8455,7 @@ function barnDown(e) {
   const B = BARN; if (!B.sel && B.tab === 'sheep') return;
   B.r.domElement.setPointerCapture(e.pointerId);
   const uv = barnUV(e);
-  if (uv && B.tab === 'sheep') { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
+  if (uv && B.tab === 'sheep' && !B.watch) { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
   else B.drag = { x: e.clientX };
 }
 function barnMove(e) {
@@ -8494,17 +8497,18 @@ const barnIcons = (list, kind, locked = () => false) => list.map(it => locked(it
   : `<button type="button" class="ico" data-${kind}="${it.id}" title="${it.name}" aria-label="${it.name}">${ICONS[it.id] || '•'}</button>`).join('');
 const barnSec = (label, id, body, cls = 'swatches') => `<div class="sec"><span class="eyebrow">${label}<i id="${id}Pick"></i></span><div class="${cls}" id="${id}">${body}</div></div>`;
 function openBarn(sel) {
-  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || NET.role === 'guest') return false;   // ONLINE: the barn is the host's
+  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || (NET.role === 'guest' && !BARN.watch)) return false;   // ONLINE: the barn is the host's (guests only watch)
   const flock = barnFlock();
   BARN.open = true; BARN.fromTitle = G.mode === 'title'; BARN.fresh = 0; BARN.mem = false; keys.clear();
   BARN.sel = sel && flock.includes(sel) ? sel : flock.includes(BARN.sel) ? BARN.sel : flock[0] || null;
   if (sel) BARN.tab = 'sheep';
   if (!BARN.sel) BARN.tab = 'dogs';
   const el = document.getElementById('barn');
+  el.classList.toggle('watch', !!BARN.watch);
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Hank's barn">
     <div class="barnHead"><h2>Hank’s barn</h2>
       <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button></div>
-      <button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button></div>
+      ${BARN.watch ? '' : '<button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button>'}</div>
     <div class="barnGrid">
       <div class="barnList" id="barnList"></div>
       <div class="barnStage">
@@ -8522,12 +8526,12 @@ function openBarn(sel) {
       <button type="button" class="bbtn" id="barnMemBtn" hidden></button>
       <span class="hankVol"></span>
       ${BARN.fromTitle ? '<button type="button" class="bbtn" id="barnFresh">Start a fresh flock</button>' : ''}
-      <button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button></div>
+      ${BARN.watch ? `<span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span>` : `<button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button>`}</div>
     <div class="barnPad" id="barnPad"></div>
   </div>`;
   barnStage(); document.getElementById('barnViewWrap').appendChild(BARN.r.domElement); BARN.w = BARN.h = 0;
   hankVolumeUI(el.querySelector('.hankVol'));
-  const nm = document.getElementById('barnName');
+  const nm = document.getElementById('barnName'); nm.readOnly = !!BARN.watch;
   nm.addEventListener('input', () => {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
     if (BARN.tab === 'dogs') { dogSet(BARN.dog, { name: v.trim() }); barnList(); return; }
@@ -8560,13 +8564,13 @@ function barnTab(tab) {
       + barnSec('Kit', 'barnKit', barnIcons(DOG_KIT, 'kit', lock), 'chips')
       + `<span class="note" id="barnNote"></span>`;
   }
-  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep';
+  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep' || !!BARN.watch;
   document.getElementById('barnViewWrap').classList.toggle('dogs', BARN.tab === 'dogs');
   barnModel(); barnRefresh();
   return true;
 }
 function barnClick(e) {
-  const b = e.target.closest('button'); if (!b) return;
+  const b = e.target.closest('button'); if (!b || BARN.watch) return;
   const s = BARN.sel, d = b.dataset;
   if (b.id === 'barnBack' || b.id === 'barnX') { closeBarn(); return; }
   if (d.tab) { barnTab(d.tab); return; }
@@ -8599,18 +8603,18 @@ const dogLabel = slot => dogLook(slot).name || (liveDog(slot) && liveDog(slot).p
 function barnList() {
   const el = document.getElementById('barnList'); if (!el) return;
   if (BARN.tab === 'dogs') {
-    el.innerHTML = [0, 1, 2, 3].map(i => `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${dogLook(i).coat};border-color:${PCOL[i].ui}"></i>${escHTML(dogLabel(i))}<small>${dogLook(i).name ? PCOL[i].name : ''}</small></button>`).join('');
+    el.innerHTML = [0, 1, 2, 3].map(i => `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${barnDogLook(i).coat};border-color:${PCOL[i].ui}"></i>${escHTML(barnDogLook(i).name || dogLabel(i))}<small>${barnDogLook(i).name ? PCOL[i].name : ''}</small></button>`).join('');
     return;
   }
   const flock = barnFlock();
   el.innerHTML = flock.map(s => { const L = lookOf(s), tag = s.lamb ? '🍼' : s.ram ? '♈' : '';
     return `<button type="button" class="barnSheep${s === BARN.sel ? ' on' : ''}" data-sheep="${s.id}"><i style="background:${L.wool || (s.black ? '#4a4440' : '#f6f1e3')}"></i>${escHTML(s.name)}<small>${tag}</small></button>`; }).join('')
-    + (FLOCK.home.length ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
+    + (FLOCK.home.length && !BARN.watch ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
   const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
 }
 function barnInfo() {
   const el = document.getElementById('barnInfo'); if (!el) return;
-  if (BARN.tab === 'dogs') { el.textContent = dogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
+  if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
@@ -8624,7 +8628,7 @@ function barnRefresh() {
   document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = b.dataset.tab === 'sheep' && !BARN.sel; });
   const nm = document.getElementById('barnName'), note = document.getElementById('barnNote');
   if (BARN.tab === 'dogs') {
-    const L = dogLook(BARN.dog);
+    const L = barnDogLook(BARN.dog);
     if (nm && document.activeElement !== nm) { nm.value = L.name; nm.placeholder = dogLabel(BARN.dog); }
     on('#barnCoat .swatch', 'coat', v => v === L.coat); on('#barnCollar .swatch', 'collar', v => v === L.collar);
     on('#barnDogHat button', 'dhat', v => v === L.hat); on('#barnKit button', 'kit', v => L.acc.includes(v));
@@ -8654,19 +8658,30 @@ function barnRefresh() {
   const fr = document.getElementById('barnFresh'); if (fr) { fr.textContent = BARN.fresh ? 'Really? Forget this flock' : 'Start a fresh flock'; fr.classList.toggle('warn', !!BARN.fresh); }
   // the fallen: a button with the count; the list only when it's asked for
   const M = FLOCK.memorial, mem = document.getElementById('barnMem'), mb = document.getElementById('barnMemBtn');
-  if (mb) { mb.hidden = !M.length; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
-  if (mem) { mem.hidden = !M.length || !BARN.mem; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
+  if (mb) { mb.hidden = !M.length || !!BARN.watch; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
+  if (mem) { mem.hidden = !M.length || !BARN.mem || !!BARN.watch; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [], pad = document.getElementById('barnPad');
-  if (pad) pad.textContent = pads.length ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras · Ⓑ back' : '';
+  if (pad) pad.textContent = pads.length && !BARN.watch ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras · Ⓑ back' : '';
 }
 function closeBarn() {
   if (!BARN.open) return;
-  BARN.open = false; BARN.drag = null;
+  BARN.open = false; BARN.drag = null; const watched = BARN.watch; BARN.watch = false; BARN.wv = null; BARN.wKey = '';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   document.getElementById('barn').classList.add('hidden'); document.body.classList.remove('inBarn');
-  keys.clear();
+  keys.clear(); if (watched) return;
   saveFlock();   // the saved flock keeps the new names and outfits
   saveDogs();    // and the dogs theirs
+}
+// ONLINE: what a guest needs to watch the host's barn (NET_TYPES.game.barn), and opening / following / closing it there
+function barnWatchView() { return { tab: BARN.tab, sel: BARN.sel ? BARN.sel.id : -1, dog: BARN.dog, dl: BARN.tab === 'dogs' ? [0, 1, 2, 3].map(dogLook) : null }; }
+function barnWatch(v) {
+  if (!v || typeof v !== 'object') { if (BARN.open && BARN.watch) closeBarn(); return; }
+  if (NET.role !== 'guest' || (BARN.open && !BARN.watch)) return;
+  BARN.wv = v; BARN.dog = clamp(v.dog | 0, 0, 3);
+  const sel = barnFlock().find(s => s.id === v.sel) || null, tab = v.tab === 'dogs' || !sel ? 'dogs' : 'sheep';
+  if (!BARN.open) { BARN.watch = true; BARN.tab = tab; if (!openBarn(sel)) { BARN.watch = false; return; } if (BARN.tab !== tab) barnTab(tab); }
+  else { BARN.sel = sel || BARN.sel; if (BARN.tab !== tab) barnTab(tab); }
+  BARN.wKey = '';
 }
 // called first thing in frame(): opens on the pad's View button; while open, runs the barn and tells frame() to skip the world
 function barnFrame(dt) {
@@ -8675,6 +8690,11 @@ function barnFrame(dt) {
     if (G.mode === 'play' || G.mode === 'title') for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (gp && padEdge(i, gp, 8)) { Sound.init(); openBarn(); break; } }
     if (!BARN.open) return false;
     endInputFrame(); return true;
+  }
+  if (BARN.watch) {   // ONLINE: a guest watching: the game frame runs on (inputs, pause); only the turntable here
+    const s = BARN.sel, key = BARN.tab + '|' + BARN.dog + '|' + (BARN.tab === 'dogs' ? JSON.stringify(BARN.wv && BARN.wv.dl) : s ? s.id + s.name + netLookJSON(s) + (s.wool ?? 1).toFixed(2) : '');
+    if (key !== BARN.wKey) { BARN.wKey = key; barnModel(); barnRefresh(); }
+    barnRender(dt); return false;
   }
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
@@ -8708,6 +8728,7 @@ function barnFrame(dt) {
 }
 // Tab opens and closes the barn; while it's open no key reaches the game (typing a name included)
 addEventListener('keydown', e => {
+  if (BARN.open && BARN.watch) return;   // watching the host's barn: keys go to the game as usual
   if (BARN.open) {
     if (e.code === 'Tab' || e.code === 'Escape') { e.preventDefault(); if (!e.repeat) closeBarn(); }
     e.stopImmediatePropagation(); return;
@@ -9111,7 +9132,7 @@ function resetGame() {
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 };
   G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null);
+  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -9174,7 +9195,7 @@ function checkLose() {
 // own clock. Per-frame trails (single-particle bursts) aren't sent: guests make their own in `animate`.
 // The host records an effect when it's made outside drawing code (NET.vis) and not inside another effect;
 // guests replay it locally, with the pan recomputed for their own camera when it came from panOf(x, z).
-// HANK'S BARN is the host's: guests can't open it; while the host is in it mid-journey, friends see a pause.
+// HANK'S BARN is the host's: guests can't open it; while the host is in it mid-journey, friends watch it (read only).
 // =====================================================================
 const NET_VER = 1;
 const NETT = { hz: 20, grassMs: 330, staleIn: 1000, dropMs: 60000, joinMs: 20000, reclaimMs: 120000, maxGuests: 3, fxCap: 250 };
@@ -9293,6 +9314,7 @@ const NET_TYPES = {
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
       ff: 'b', paused: 'b', pauseWho: 's',
+      barn: { c: 'j', get: () => BARN.open && !BARN.fromTitle && G.mode === 'play' ? barnWatchView() : null, set: (o, v) => barnWatch(G.mode === 'play' ? v : null) },   // HANK'S BARN: guests watch the host in it
       dawn: { c: 'j', get: o => DAWN.open ? dawnView() : null, set: (o, v) => dawnGuest(G.mode === 'play' ? v : null) },   // DAWN REPORT: guests see the host's card
       wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
@@ -10137,7 +10159,7 @@ function netGuestLost(msg) {
   if (NET.role !== 'guest' || NET.dead) return;
   if (!NET.inRoom) { netGuestFail(msg || 'Lost the connection to the game.'); return; }
   NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = '';
-  dawnGuest(null);
+  dawnGuest(null); if (BARN.watch) closeBarn();
   const p = NET.peer; NET.peer = null; NET.conn = null; if (p) try { p.destroy(); } catch (e) {}
   NET.uiKey = '';
 }
