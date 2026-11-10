@@ -1,9 +1,10 @@
-// <alias>.collies.app/path → <alias>-<TARGET>/path. Custom domains (collies.app,
-// original-fever-dream.collies.app) win over this route, so they never land here.
+// <alias>.collies.app/path → <alias>-<TARGET>/path. Routes run before custom
+// domains, so subdomains with their own Worker (OWN) pass straight through to it.
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const alias = url.hostname.split('.')[0];
+    if ((env.OWN || '').split(',').includes(alias)) return fetch(request);
     if (!/^[a-z0-9-]{1,63}$/.test(alias) || alias === 'www') return Response.redirect('https://collies.app' + url.pathname + url.search, 302);
     const target = new URL(url.pathname + url.search, `https://${alias}-${env.TARGET}`);
     const res = await fetch(new Request(target, request), { redirect: 'manual' });
