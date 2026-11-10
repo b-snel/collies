@@ -523,24 +523,51 @@ const Sound = (() => {
     get ctx() { return ac; }, get dest() { return master; },   // for Hank's recorded voice (HANK section)
     bark(p = 1, pan = 0) { if (!ac) return; const t = ac.currentTime; const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
-      // never a screaming chorus: at most two bleats at once (three if one matters), and even an important one waits a beat
+      // never a screaming chorus: at most two bleats at once (three if one matters), and the idle chatter is spaced out
       if (!ac) return; const now = ac.currentTime;
       baaEnds = baaEnds.filter(e => e > now);
-      if (force ? (now - lastBaa < 0.15 || baaEnds.length >= 3) : (now - lastBaa < 0.35 || baaEnds.length >= 2)) return;
+      if (force ? (now - lastBaa < 0.15 || baaEnds.length >= 3) : (now - lastBaa < 1.1 || baaEnds.length >= 2)) return;
       lastBaa = now;
       p = Math.min(p, 1.75);   // past this it's a shriek
-      const t = now + Math.random() * 0.04, dur = 0.5 + Math.random() * 0.3, f0 = 270 * p;
+      // a real bleat: a low, nasal voice that opens from a closed mouth ("m-baa"), with the
+      // fast glottal quaver (~20-30 Hz) that makes it a bleat rather than a tone, and a sag at the end
+      const t = now + Math.random() * 0.04, dur = 0.55 + Math.random() * 0.45 + (p < 1 ? 0.15 : 0);
+      const f0 = 165 * p * (0.94 + Math.random() * 0.12);
+      const src = ac.createGain(); src.gain.value = 1;
+      for (const [type, det, amp] of [['sawtooth', 1, 0.7], ['sawtooth', 1.006, 0.5], ['square', 0.5, 0.18]]) {
+        const o = ac.createOscillator(); o.type = type;
+        const f = f0 * det;
+        o.frequency.setValueAtTime(f * 0.92, t); o.frequency.linearRampToValueAtTime(f * 1.04, t + 0.12);
+        o.frequency.linearRampToValueAtTime(f, t + dur * 0.55); o.frequency.exponentialRampToValueAtTime(f * 0.8, t + dur);
+        const og = ac.createGain(); og.gain.value = amp; o.connect(og); og.connect(src);
+        o.start(t); o.stop(t + dur + 0.05);
+      }
+      // breath
+      const n = ac.createBufferSource(); n.buffer = noiseBuf; const ng = ac.createGain(); ng.gain.value = 0.22;
+      n.connect(ng); ng.connect(src); n.start(t, Math.random()); n.stop(t + dur + 0.05);
+      // the quaver: amplitude pulsing that slows a little as the breath runs out
+      const trem = ac.createGain(); trem.gain.value = 0.55; src.connect(trem);
+      const lfo = ac.createOscillator(); const lr = 22 + Math.random() * 8;
+      lfo.frequency.setValueAtTime(lr, t); lfo.frequency.linearRampToValueAtTime(lr * 0.75, t + dur);
+      const lg = ac.createGain(); lg.gain.setValueAtTime(0.15, t); lg.gain.linearRampToValueAtTime(0.45, t + dur * 0.5);
+      lfo.connect(lg); lg.connect(trem.gain); lfo.start(t); lfo.stop(t + dur + 0.05);
+      // the mouth: a lowpass that opens on the "b" and closes as the bleat dies away
+      const lip = ac.createBiquadFilter(); lip.type = 'lowpass'; lip.Q.value = 0.7;
+      lip.frequency.setValueAtTime(350, t); lip.frequency.exponentialRampToValueAtTime(3800 * Math.min(p, 1.3), t + 0.09);
+      lip.frequency.setValueAtTime(3800 * Math.min(p, 1.3), t + dur * 0.6); lip.frequency.exponentialRampToValueAtTime(700, t + dur);
+      trem.connect(lip);
+      // nasal "eh-aa" vowel: three formants plus a nasal dip around 1 kHz
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.6, t + 0.06);
+      g.gain.setValueAtTime(1.6, t + dur * 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const fm = Math.min(p, 1.4);
+      for (const [fq, q, amp] of [[650, 4, 1.0], [1750, 6, 0.55], [2600, 8, 0.25], [280, 2, 0.35]]) {
+        const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = fq * fm; bp.Q.value = q;
+        const bg = ac.createGain(); bg.gain.value = amp; lip.connect(bp); bp.connect(bg); bg.connect(g);
+      }
+      const notch = ac.createBiquadFilter(); notch.type = 'notch'; notch.frequency.value = 1050 * fm; notch.Q.value = 2;
+      const d = out(vol, pan); g.connect(notch); notch.connect(d);
       baaEnds.push(t + dur);
-      const o = ac.createOscillator(); o.type = 'sawtooth';
-      o.frequency.setValueAtTime(f0 * 1.1, t); o.frequency.linearRampToValueAtTime(f0, t + 0.1); o.frequency.linearRampToValueAtTime(f0 * 0.88, t + dur);
-      const vib = ac.createOscillator(); vib.frequency.value = 7 + Math.random() * 3; const vg = ac.createGain(); vg.gain.value = f0 * 0.07;
-      vib.connect(vg); vg.connect(o.frequency);
-      const f1 = ac.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 850 * p; f1.Q.value = 2.5;
-      const f2 = ac.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 2200 * p; f2.Q.value = 4;
-      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(2.2, t + 0.05);
-      g.gain.setValueAtTime(2.2, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      const d = out(vol, pan); o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(d);
-      o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
     },
     howl(pan = 0, vol = 0.2) {
       if (!ac) return; const t = ac.currentTime + Math.random() * 0.3, b = 400 + Math.random() * 140;
@@ -1749,7 +1776,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
     r: lamb ? 0.36 : ram ? T.ramRadius : T.sheepR, lamb, age, life: Math.round(rnd(...T.lifeDays)), grow: lamb ? 0.55 : 1, mother, black, scale: ram ? T.ramScale * rnd(0.97, 1.04) : 1.02 + Math.random() * 0.16,
     hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
     eating: false, near: 0, pen: null, wasPen: null, grabbed: null, dead: false, breedOK: false, bred: false,
-    hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(2, 12),
+    hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(5, 40),
     pitch: lamb ? 1.45 + Math.random() * 0.2 : ram ? 0.66 + Math.random() * 0.14 : 0.85 + Math.random() * 0.3,
     // the mind
     ram, bell, trait: bell ? null : rollTrait(), jumpy: false, goal: null, goalHold: 0, press: 0,
@@ -2368,7 +2395,7 @@ function updateSheep(dt, dtH) {
       s.state = 'flee'; s.eating = false; s.court = null;
       let ex = s.fdx, ez = s.fdz;
       if (pk > 0) {   // panicked: erratic bolts off the line of flight
-        s.boltT -= dt; if (s.boltT <= 0) { s.boltT = rnd(0.5, 1.2); s.boltA = rnd(-1, 1) * 1.4 * pk; if (Math.random() < 0.25) baaAt(s, 0.3, 1.15); }
+        s.boltT -= dt; if (s.boltT <= 0) { s.boltT = rnd(0.5, 1.2); s.boltA = rnd(-1, 1) * 1.4 * pk; if (Math.random() < 0.12) baaAt(s, 0.3, 1.15); }
         const ca = Math.cos(s.boltA), sa = Math.sin(s.boltA), rx = ex * ca - ez * sa; ez = ex * sa + ez * ca; ex = rx;
       }
       dX = ex; dZ = ez;
@@ -2382,7 +2409,7 @@ function updateSheep(dt, dtH) {
       dX += sepX * 1.4; dZ += sepZ * 1.4;
       s.alert = 3.5;
       spd = Math.min(run, T.fleeBase + T.fleeGain * Math.max(s.fear, s.panic * 0.85) + s.stress * T.fleeStress); acc = 7;
-      if (!s.startled && s.fear > 0.4) { s.startled = true; s.hopV = Math.max(s.hopV, 2.2); if (Math.random() < 0.35) baaAt(s, 0.35); }
+      if (!s.startled && s.fear > 0.4) { s.startled = true; s.hopV = Math.max(s.hopV, 2.2); if (Math.random() < 0.2) baaAt(s, 0.35); }
     } else {
       s.startled = false;
       if (s.state === 'flee' || s.state === 'ram') { s.state = 'idle'; s.thinkT = rnd(0.2, 0.8); }
@@ -2437,7 +2464,7 @@ function updateSheep(dt, dtH) {
           dX = hx + spX * 2.2; dZ = hz + spZ * 2.2;
           const better = clamp((s.gzNear - here) / 0.25, 0, 1);
           spd = Math.max(lerp(T.grazeStep, T.grazeNibble, poorHere * better), inGrazeFront(s) ? lerp(T.grazeStep, T.grazeMove, poor * poor) : T.grazeStep, Math.min(0.7, spl * 0.9), kn && kn.gw > T.joinMin ? kn.gw * 0.9 : 0); acc = 2.5;
-          if (poor > 0.7 && inGrazeFront(s) && Math.random() < dt * 0.12) baaAt(s, 0.2);   // moving on: the odd call to the others
+          if (poor > 0.7 && inGrazeFront(s) && Math.random() < dt * 0.05) baaAt(s, 0.2);   // moving on: the odd call to the others
           break;
         }
         case 'pen': {
@@ -2450,7 +2477,7 @@ function updateSheep(dt, dtH) {
           const n = sheepNav(s, g.x, g.z), d = n.d;
           if (d < (g.pen ? 1.5 : 0.7)) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           dX = n.x; dZ = n.z; spd = d > 12 || !s.los ? T.sheepTrot : T.sheepWalk * T.calmBrisk * 1.15; acc = 5;   // trotting, the long way round if it must
-          s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(2.5, 4.5); baaAt(s, 0.3, 1.06); }   // trotting and bleating as it goes
+          s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(5, 9); baaAt(s, 0.3, 1.06); }   // trotting and bleating as it goes
           break;
         }
         case 'trough': {   // to its place at the trough, then face it and feed
@@ -2617,7 +2644,7 @@ function updateSheep(dt, dtH) {
     }
     if (s.bell && sp > 1.2) { s.bellT -= dt * sp; if (s.bellT <= 0) { s.bellT = 1.7; bellDing(s); } }
     // ---- ambient baa
-    s.baaT -= dt; if (s.baaT <= 0) { s.baaT = rnd(6, 22); if (!sleeping) baaAt(s, 0.18); }
+    s.baaT -= dt; if (s.baaT <= 0) { s.baaT = rnd(20, 60); if (!sleeping) baaAt(s, 0.18); }
     // ---- entering a pen
     s.penH = s.pen ? (s.pen === s.wasPen ? (s.penH || 0) + dtH : 0) : 0;   // in-game hours since it came into this pen
     if (s.pen && !s.wasPen && G.mode === 'play') onSheepEnteredPen(s, s.pen);
@@ -3365,7 +3392,7 @@ function updateHeldSheep(s, dt) {
   s.y = groundY(s.x, s.z) + k.lift; s.hopY = 0; s.yaw = d.yaw + Math.PI / 2; s.leg += dt * 22;
   s.state = 'flee'; s.eating = false; s.fear = Math.max(s.fear || 0, 0.6); s.stress = Math.min(1, (s.stress || 0) + 0.22 * dt);
   s.pose = s.pose || {};
-  if (Math.random() < dt * 1.2) Sound.baa(s.pitch * 1.15, 0.25, panOf(s.x, s.z));
+  if (Math.random() < dt * 0.6) Sound.baa(s.pitch * 1.15, 0.25, panOf(s.x, s.z));
   if (d.holdKind === 'ram' && d.holdT > T.ramBuck) {   // a ram won't stand for being held
     const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
     releaseHold(d, false); knockDog(d, -fx * 12, -fz * 12, 0.6, 'BUCKED!'); provokeRam(s, d);
