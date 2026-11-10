@@ -472,6 +472,7 @@ const T = {
   resolveHunger: 0.4, resolveGain: 0.6, resolveMax: 0.25,   // a hungry grazer ignores dog pressure below (hunger-0.4)*0.6 (max 0.25) on good grass
   penPullR: 16, penPullRF: 14, penPullBase: 0.65, penPullF: 0.9,   // pen pull radius/strength grow with the fraction already in
   penFedDay: 0.5, penFedDusk: 0.35,   // hunger above which the pen stops pulling: 0.5 by day, 0.85 at nightfall
+  penHome: { from: 13, r: 0.8, w: 1.2, stress: 0.75, bark: 0.85, flee: 1.5 },   // afternoon → night (0…1): pen pull reaches r× further, w× stronger, stress counts less; a bark/flight bends toward the gate
   penTroughPull: 0.8,    // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
   morningRush: { until: 13, dur: 25, spd: 5.2, spread: 7 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate
   bellR: 25,
@@ -2187,6 +2188,7 @@ function grazeScan() {
 const inGrazeFront = s => MIND.gzOk && !s.pen && (s.x - MIND.gzCx) ** 2 + (s.z - MIND.gzCz) ** 2 < 400;
 // ---- critical mass: an open pen the flock is filling pulls calm, fed sheep in
 const duskK = () => { const h = G.clock.hour; return isNight() ? 1 : h >= 12 ? clamp((h - T.duskWarn) / (T.nightStart - T.duskWarn), 0, 1) : 0; };
+const homeK = () => { const h = G.clock.hour; return isNight() ? 1 : clamp((h - T.penHome.from) / (T.nightStart - T.penHome.from), 0, 1); };   // later = keener on the pen
 const PP = { pen: null, w: 0, tx: 0, tz: 0, dx: 0, dz: 0 };
 // only a well-fed sheep feels the pull by day; toward nightfall hungrier ones come home too (the hungriest linger)
 const penFed = (s, dusk) => clamp(1 - (s.hunger - 0.1) / (T.penFedDay + T.penFedDusk * dusk - 0.1), 0, 1);
@@ -2212,16 +2214,16 @@ function penPull(s) {
   if (s.pen || G.mode !== 'play' || s.ram && s.rs !== 'idle') return null;
   if (s.lamb && s.mother && !s.mother.dead) return null;              // lambs go where mum goes
   const h = G.clock.hour, morning = h >= 6 && h < 13 && s.hunger > 0.15;   // mornings are for grazing
-  const dusk = duskK(), fed = penFed(s, dusk), calmK = 1 - s.stress;   // hungry or frightened sheep don't want to go in...
+  const dusk = duskK(), hk = homeK(), fed = penFed(s, dusk), calmK = 1 - s.stress * (1 - T.penHome.stress * hk);   // hungry or frightened sheep don't want to go in (less so late on)...
   if (calmK < 0.05) return null;
   let best = null, bw = 0;
   for (const p of pens) {
     if (p.gateT < 0.5 || penRush(p)) continue;
     const fedK = troughHas(p) ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
     if (fedK <= 0) continue;
-    const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = T.penPullR + T.penPullRF * pF;
+    const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = (T.penPullR + T.penPullRF * pF) * (1 + T.penHome.r * hk);
     if (gd > R) continue;
-    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk);
+    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk);
     if (w > bw) { bw = w; best = p; }
   }
   if (!best) return null;
@@ -2766,7 +2768,7 @@ function updateSheep(dt, dtH) {
       if (nA) { const al = Math.hypot(aX, aZ); if (al > 0.1) { const w = 0.45 * (1 - 0.6 * pk); dX += aX / al * w; dZ += aZ / al * w; } }
       if (bell && bellD > 2.5 && pk < 1) { const w = 0.3 * (1 - pk) * (s.trait === 'stubborn' ? 0.5 : 1); dX += (bell.x - s.x) / bellD * w; dZ += (bell.z - s.z) / bellD * w; }
       if (s.lamb && s.mother && !s.mother.dead && !s.mother.grabbed) { const mx = s.mother.x - s.x, mz = s.mother.z - s.z, ml = Math.hypot(mx, mz); if (ml > 2) { dX += mx / ml * 0.5; dZ += mz / ml * 0.5; } }
-      if (pp) { dX += pp.dx * pp.w * 0.8; dZ += pp.dz * pp.w * 0.8; }
+      if (pp) { const w = pp.w * 0.8 * (1 + T.penHome.flee * homeK()); dX += pp.dx * w; dZ += pp.dz * w; }
       dX += sepX * 1.4; dZ += sepZ * 1.4;
       s.alert = 3.5;
       spd = Math.min(run, T.fleeBase + T.fleeGain * Math.max(s.fear, s.panic * 0.85) + s.stress * T.fleeStress); acc = 7;
@@ -3302,12 +3304,16 @@ function bark(d) {
   d.barkCd = T.barkCd; G.barks = (G.barks || 0) + 1;
   barkFx(d);
   rumble(d.player, 0.25, 0.5, 90);
+  const hk = homeK();
   for (const s of G.sheep) {
     if (s.dead || s.grabbed || s.air || s.heldBy) continue;
     const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd > T.barkR) continue;
     const k = 1 - dd / T.barkR;
-    s.vx += dx / dd * k * 4; s.vz += dz / dd * k * 4; s.fdx = dx / dd; s.fdz = dz / dd;
-    s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, 0.3 + k * 0.6); s.hopV = Math.max(s.hopV, 2 + k * 2);
+    let ux = dx / dd, uz = dz / dd, calmer = 1;
+    const pp = hk > 0 && penPull(s);   // late in the day a bark sends them home: off toward the gate, less of a bolt
+    if (pp) { const b = hk * T.penHome.bark * clamp((ux * pp.dx + uz * pp.dz + 1) / 1.2, 0, 1); ux += (pp.dx - ux) * b; uz += (pp.dz - uz) * b; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; calmer = 1 - 0.3 * b; }
+    s.vx += ux * k * 4; s.vz += uz * k * 4; s.fdx = ux; s.fdz = uz;
+    s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, (0.3 + k * 0.6) * calmer); s.hopV = Math.max(s.hopV, 2 + k * 2);
   }
   for (const c of G.coyotes) {
     if (c.air || c.heldBy || Math.hypot(c.x - d.x, c.z - d.z) >= T.barkR + 2) continue;

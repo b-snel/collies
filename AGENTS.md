@@ -92,6 +92,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Utility goals with hysteresis** (hunger vs safety vs flock).
 - **Critical mass.** Open pens pull calm, fed sheep, more as more are in;
   trough food pulls hungry ones (`T.penTroughPull`).
+- **Homeward.** From 13:00 to night (`homeK`, `T.penHome`) the pen pull
+  reaches further, beats stress, and a bark bends flight toward the gate.
 - **Morning rush.** Gate opened dawn–13:00 (or open at 06:00): for
   `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`).
 - **Carrying.** A held sheep passes an open gateway (`mouthOf`), not a shut
