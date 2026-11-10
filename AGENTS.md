@@ -192,6 +192,12 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   sheep; a bark spooks a stalking one. It gives up after `T.cougar.tries`.
   A grabbed sheep's `s.grabbed` is the cougar (`k.isCougar`), so code that
   assumes a coyote there must check. Closed pens keep cougars out.
+- **Hank only calls out what he sees** (`hankSees`: within `T.hankSight`, less
+  at night, no hill in between; `hankSpotPredators` in `hankWatch`). A pack
+  gets one line per sighting ("Here they come!" the first tonight, "Coyotes!
+  In broad daylight!" by day, "More of them!" after), a catch gets "Get 'im!"
+  once he can see it, a cougar gets a line stalking or with a sheep, and its
+  eyes up the tree once a night. No timed nightfall or 00:30 alarms.
 - **Hank's barn** has two tabs on one turntable: **Sheep** (name, wool, hat,
   colour, extras, paint) and **Dogs** (each player slot's collie: name, coat,
   collar, hat, kit). Keep it light on words: icon chips with the name in the

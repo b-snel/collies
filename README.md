@@ -82,7 +82,7 @@ Some nights the cougar nearest the flock hunts. You'll hear it scream. It comes 
 
 ## Hank
 
-Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
+Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He only shouts about coyotes and cougars he can actually see, so if he's quiet, that doesn't mean nothing's out there. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
 
 ## Hank's barn: making the flock yours
 

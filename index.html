@@ -467,6 +467,7 @@ const T = {
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
+  hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankCmdGap: 8,                   // s between whistled herding commands ("Come bye!")
 };
@@ -4495,7 +4496,7 @@ function wakeDen(D, size) {
   const p = D.pack;
   for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); if (c.state === 'sleep' || c.state === 'leave') { c.state = 'pack'; c.stateT = 0; } }
   p.members = D.coyotes.slice(); p.leader = D.coyotes[0]; p.fails = 0; p.feinted = false; p.target = null; p.carrier = null; p.stageT = 0;
-  setPhase(p, 'gather'); D.woke = G.clock.day;
+  setPhase(p, 'gather'); D.woke = G.clock.day; p.hankSeen = false;
   packHowl(p);
   return p;
 }
@@ -4508,7 +4509,7 @@ function wakeDens(size, wave = 1) {
   if (wave > 1) {   // no second den in reach: the pack that's out gets its second wind, and one more joins it
     const out = G.packs.find(p => p.den && !['den', 'retreat'].includes(p.phase));
     if (out) { out.den.count = Math.min(T.denMax, out.den.count + 1); denFill(out.den); const c = out.den.coyotes[out.den.coyotes.length - 1]; if (c.state === 'sleep') c.state = 'pack'; out.members = out.den.coyotes.filter(c => !c.alone);
-      for (const c of out.members) c.courage = Math.max(c.courage, coyoteCourage(c.alpha) * 0.7); packHowl(out); return out; }
+      for (const c of out.members) c.courage = Math.max(c.courage, coyoteCourage(c.alpha) * 0.7); out.hankSeen = false; packHowl(out); return out; }
   }
   spawnCoyotes(size);
   return null;
@@ -4580,7 +4581,7 @@ function scareCoyote(c, amt, dog, bump = false) {
     if (p && c.alpha && p.phase !== 'retreat') {
       setPhase(p, 'retreat');
       toast('You ran off the pack leader — the rest are slinking away!', 'good'); floatText('PACK BROKEN!', c.x, c.y + 2.2, c.z, '#7ed957', 1.4);
-      hank('calmed_down', null, { force: true, delay: 4, when: () => !G.coyotes.some(o => o.prey) });   // HANK
+      if (hankSees(c.x, c.z)) hank('calmed_down', null, { force: true, delay: 4, when: () => !G.coyotes.some(o => o.prey) });   // HANK (if he saw it)
     }
   }
 }
@@ -4596,7 +4597,7 @@ function grab(c, s) {
   burst(s.x, s.y + 0.7, s.z, 10, '#f7f3e8', { speed: 2.5, up: 2.5 });
   Sound.baa(s.pitch * 1.1, 0.45, 0, true);
   toast(`A coyote grabbed ${s.name || 'a sheep'} — chase it down!`, 'bad');
-  hank('get_im', null, { force: true });   // HANK
+  // (Hank calls "Get 'im!" once he can see it: hankSpotPredators)
   for (const p of G.players) rumble(p, 0.6, 0.4, 250);
   hint('coyote-grab');
 }
@@ -4857,14 +4858,13 @@ function cougarHitBy(k, r) { for (const d of G.dogs) { const dd = Math.hypot(d.x
 function cougarWarn(k) {
   if (G.mode !== 'play') return;
   if (Math.random() < 0.6 || !G.cougarHeard) Sound.scream(panOf(k.x, k.z), 0.15);
-  if (!G.cougarHeard) { G.cougarHeard = true; hank(null, pick(["Did ye hear that? Cougar. Keep the wee lambs close.", "That's a cougar, that scream. Mind the lambs tonight."]), { force: true, delay: 2.2 }); }
+  G.cougarHeard = true; k.hankSaw = false;   // (Hank calls it out only once he sees it: hankSpotPredators)
 }
 function cougarGrab(k, s) {
   s.grabbed = k; k.prey = s; k.target = null; s.state = 'flee'; k.state = 'drag'; k.t = 0; k.cryT = 0.3;
   burst(s.x, s.y + 0.7, s.z, 12, '#f7f3e8', { speed: 2.5, up: 2.5 });
   Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); Sound.growl(panOf(k.x, k.z), 0.2);
   toast(`A cougar has ${s.name || 'a sheep'} — stop it before it gets up its tree!`, 'bad');
-  hank(null, pick([`Cougar! It's got ${s.name}! After it!`, `The big cat's got ${s.name}! Don't let it reach the tree!`]), { force: true });
   for (const p of G.players) rumble(p, 0.7, 0.5, 300);
   for (const o of G.sheep) {   // the sheep round about scatter
     if (o === s || o.dead || o.grabbed || o.air || o.heldBy) continue;
@@ -5566,7 +5566,7 @@ const HANK = {
   buf: {}, loading: {}, missing: {}, src: null, wsrc: null, gain: null, vol: 1, mute: false, prefetched: false, bubble: null,
   // what he keeps an eye on
   cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99, starving: 0,
-  thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, lastPack: 0,
+  thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -5661,7 +5661,7 @@ function resetHank() {
   const hk = HANK, g = hankGoal();
   Object.assign(hk, { goal: null, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
-    starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, lastPack: packIds, sayT: 0, talkT: 0, line: null });
+    starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
 }
 
@@ -5861,8 +5861,7 @@ function hankClock(prev, now) {
   if (crossed(prev, now, 6) && G.clock.day > 1) { if (!HANK.lostTonight) hank('morning', null, { force: true, delay: 1 }); HANK.lostTonight = 0; }
   if (crossed(prev, now, T.duskWarn) && !allIn) hank('away_out', null, { force: true, delay: 0.8 });
   if (crossed(prev, now, 18.9) && !allIn) hank('golden_hour', null, { force: true });
-  if (crossed(prev, now, T.nightStart)) { HANK.lostTonight = 0; hank(allIn ? 'all_safe' : 'here_they_come', null, { force: true, delay: 1.8 }); }
-  if (crossed(prev, now, 0.5) && !allIn) hank('more_of_them', null, { force: true, delay: 1 });
+  if (crossed(prev, now, T.nightStart)) { HANK.lostTonight = 0; if (allIn) hank('all_safe', null, { force: true, delay: 1.8 }); }   // (coyotes: only once he sees them)
 }
 function onLambsBorn(born) {
   if (born > 0 && G.mode === 'play') {
@@ -5914,10 +5913,43 @@ function hankWatch(dt) {
     const a = G.dogs.map(d => [Math.atan2(d.z - fz, d.x - fx), Math.hypot(d.x - fx, d.z - fz)]);
     for (let i = 0; i < a.length && !hk.teamSaid; i++) for (let j = i + 1; j < a.length; j++) if (a[i][1] < 18 && a[j][1] < 18 && Math.abs(wrapA(a[i][0] - a[j][0])) > 2.5) { hk.teamSaid = hank('teamwork', null, { force: true }); break; }
   }
-  // coyotes turning up in daylight
-  if (packIds > hk.lastPack) { if (!isNight() && G.clock.hour > 6.5) hank(hk.lastPackDay === G.clock.day ? 'more_of_them' : 'broad_daylight', null, { force: true, delay: 0.7 }); hk.lastPackDay = G.clock.day; hk.lastPack = packIds; }
+  hankSpotPredators();   // coyotes and cougars, once he can see them
   // the whole flock's safe for the night: a word about the barn
   if (G.ff && !hk.barnHinted) { hk.barnHinted = true; hint('barn'); hank(null, "They're safe now. Come by the barn, if ye like, and give them names!", { force: true, delay: 5 }); }
+}
+// What Hank can see: within T.hankSight (less at night), with no hill in between (eye height 1.9 m). He only calls
+// out coyotes and cougars he can see: each pack once a sighting, a catch once, a cougar's eyes up its tree once a night.
+function hankSees(x, z, y = null, far = 1) {
+  const hk = HANK, dx = x - hk.x, dz = z - hk.z, d = Math.hypot(dx, dz);
+  if (d > (isNight() ? T.hankSightNight : T.hankSight) * far) return false;
+  const ey = groundY(hk.x, hk.z) + 1.9, ty = (y === null ? groundY(x, z) : y) + 0.6, n = Math.ceil(d / 2);
+  for (let i = 1; i < n; i++) { const f = i / n; if (terrainH(hk.x + dx * f, hk.z + dz * f) > lerp(ey, ty, f) + 0.2) return false; }
+  return true;
+}
+function hankSpotPredators() {
+  const hk = HANK, night = isNight(), key = night ? 'n' + (G.clock.hour < 12 ? G.clock.day - 1 : G.clock.day) : 'd' + G.clock.day;
+  for (const c of G.coyotes) {   // one with a sheep in its jaws: "Get 'im!"
+    if (!c.prey || c.hankGrab === c.prey || !hankSees(c.x, c.z)) continue;
+    c.hankGrab = c.prey; if (c.pack) c.pack.hankSeen = true; hank('get_im', null, { force: true });
+  }
+  for (const p of G.packs) {   // a pack he hasn't seen yet: first today/tonight, or more of them
+    if (p.hankSeen || p.phase === 'den' || p.phase === 'retreat') continue;
+    if (!p.members.some(c => c.state !== 'sleep' && c.state !== 'leave' && hankSees(c.x, c.z))) continue;
+    p.hankSeen = true;
+    if (!night && G.clock.hour < 6.5) continue;
+    hank(hk.packKey === key ? 'more_of_them' : night ? 'here_they_come' : 'broad_daylight', null, { force: true }); hk.packKey = key;
+  }
+  for (const k of COUGARS) {
+    const L = k.lair;
+    if (k.prey && k.hankGrab !== k.prey && hankSees(k.x, k.z, k.y)) {
+      k.hankGrab = k.prey; k.hankSaw = true; const s = k.prey;
+      hank(null, pick([`Cougar! It's got ${s.name}! After it!`, `The big cat's got ${s.name}! Don't let it reach the tree!`]), { force: true });
+    } else if (!k.hankSaw && (k.state === 'stalk' || k.state === 'leap') && hankSees(k.x, k.z)) {
+      k.hankSaw = true; hank(null, pick(['Cougar! Creepin\' up on the flock! Mind the lambs!', 'There! A cougar, low in the grass! See it off!']), { force: true });
+    } else if (night && k.state === 'perch' && hk.eyesKey !== key && hankSees(L.px, L.pz, L.py, 1.3)) {
+      hk.eyesKey = key; hank(null, pick(['Eyes up that tree… a cougar. Keep the wee lambs close.', "See the eyes in that tree? Cougar. Mind the lambs tonight."]), { force: true, delay: 0.6 });
+    }
+  }
 }
 // the herding commands, read off how player 1's dog moves round the flock: circling clockwise "Come bye", anticlockwise
 // "Away to me", running straight in "Walk up", lying down "Lie down" — each with his whistle first
@@ -7871,7 +7903,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { G, T, pens, CAMPS, cam, DENS, LAIRS, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
