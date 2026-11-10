@@ -378,10 +378,19 @@ try {
   await A.page.evaluate(() => GAME.openBarn());
   await until(B, () => GAME.G.paused && /barn/.test(document.getElementById('pauseWhy').textContent), null, 15000).catch(() => {});
   const barnWhy = await B.page.evaluate(() => document.getElementById('pauseWhy').textContent);
+  // …and the friends watch: the host's pick, tab and edits show on the guest's barn, read only
+  const wSheep = await A.page.evaluate(() => { const s = GAME.G.sheep.filter(s => !s.dead)[2]; GAME.barnSelect(s); GAME.barnSet(s, { hat: 'tophat' }); return s.id; });
+  await until(B, id => GAME.BARN.open && GAME.BARN.watch && GAME.BARN.sel && GAME.BARN.sel.id === id && GAME.BARN.sel.look && GAME.BARN.sel.look.hat === 'tophat', wSheep, 5000).catch(() => {});
+  const watch = await B.page.evaluate(() => ({ open: GAME.BARN.open, watch: GAME.BARN.watch, sel: GAME.BARN.sel && GAME.BARN.sel.id, hat: GAME.BARN.sel && GAME.BARN.sel.look && GAME.BARN.sel.look.hat,
+    shown: !document.getElementById('barn').classList.contains('hidden'), back: !!document.getElementById('barnBack'), tools: document.getElementById('barnTools').hidden, ro: document.getElementById('barnName').readOnly }));
+  await A.page.evaluate(() => GAME.barnTab('dogs'));
+  await until(B, () => GAME.BARN.tab === 'dogs', null, 5000).catch(() => {});
+  const wTab = await B.page.evaluate(() => GAME.BARN.tab);
   await A.page.evaluate(() => GAME.closeBarn());
-  await until(B, () => !GAME.G.paused, null, 5000).catch(() => {});
-  const barnAfter = await B.page.evaluate(() => GAME.G.paused);
-  check("Hank's barn is the host's: not on a guest, and the host in it pauses the friends", !guestBarn && /Hank's barn/.test(barnWhy) && !barnAfter, { guestBarn, barnWhy, pausedAfter: barnAfter });
+  await until(B, () => !GAME.G.paused && !GAME.BARN.open, null, 5000).catch(() => {});
+  const barnAfter = await B.page.evaluate(() => GAME.G.paused || GAME.BARN.open || !document.getElementById('barn').classList.contains('hidden'));
+  check("Hank's barn is the host's: a guest can't open it, watches the host in it (read only), and it closes with the host's", !guestBarn && /Hank's barn/.test(barnWhy) && !barnAfter
+    && watch.open && watch.watch && watch.sel === wSheep && watch.hat === 'tophat' && watch.shown && !watch.back && watch.tools && watch.ro && wTab === 'dogs', { guestBarn, barnWhy, watch, wTab, openAfter: barnAfter });
 
   // ---------------------------------------------------------------- stale input: nothing arrives for a second → zeroed
   await B.page.keyboard.down('KeyW');

@@ -56,7 +56,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs [name]` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
+| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
@@ -129,7 +129,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Calm but brisk** (`T.calmBrisk`); grazing stays slow.
 - **Rams** charge coyotes, then leaning dogs; bark cancels; punted → dazed +
   grudge. Lambs need a ram penned overnight.
-- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 10 s.
+- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 13 s by day, 10 s at night (`hourLen`).
   0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
@@ -185,7 +185,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   nags till then, `T.shear.think`). Awake, no predator near, he climbs into a
   shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
   time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
-- **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
+- **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
   fills `G.dawnReport`.
@@ -219,6 +219,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
+- **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
+  `T.punt.dogK`/`dogUp`); not one under a cougar (that pounce frees it).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

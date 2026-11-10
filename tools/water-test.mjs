@@ -89,6 +89,16 @@ const r3 = await h.page.evaluate(() => {
 ok('swimming fills it', r3.swimFull === 6, r3);
 ok(`so does the sea by Oceanside Camp (${r3.seaFromCamp} m off)`, r3.sea === 6 && r3.seaSecs < 10, r3);
 ok('tipping from inside the pen', r3.inside === 6, r3);
+// 3a. the later legs: the shore is past the trail's edge; a dog against it still fills
+const r3a = await h.page.evaluate(() => {
+  const { swimSdfAt, T, inRiver, pathPoint, PATH_LEN, dogAtWater } = GAME; const bins = {};
+  for (let s = 0; s < PATH_LEN; s += 2) for (let lat = -130; lat <= 130; lat += 0.5) {
+    const q = pathPoint(s, lat); if (inRiver(q.x, q.z) || swimSdfAt(q.x, q.z) < T.dogR + 0.05) continue;
+    if (dogAtWater({ x: q.x, z: q.z, yaw: 0 })) { const b = Math.floor(s / 100); bins[b] = (bins[b] || 0) + 1; }
+  }
+  return bins;
+});
+ok('shore reachable on the later legs (700-900 m)', r3a[7] > 10 && r3a[8] > 10, r3a);
 ok('barking and pouncing with a bucket; no grabbing a sheep with it', r3.afterMoves && !r3.grabbed && r3.afterGrab, r3);
 
 // 3b. let go of grab: set down where it stands, water and all; hold grab on it again: back in its mouth, water still in
