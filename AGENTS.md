@@ -36,7 +36,7 @@ buys supplies, and Cabo 🏖️, which wins.
 ### Layout (`index.html`, top to bottom)
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
-→ scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
+→ scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
@@ -56,7 +56,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen (no finish) |
+| `moves-sim.mjs [name]` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
@@ -205,6 +205,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
   Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
+- **River, no bridge** (`RIVER`, `inRiver`): dogs walk in and swim (`startSwim`,
+  `collideDog` / `SWIM_SDF`; drops what they hold), Hank wades. Sheep can't: a
+  splashed one swims back to its own bank (`a.side`). Only the launcher takes them over.
+- **Launcher chute** (`T.launcher.funnel`, `inChute`): long wings; driven sheep bend
+  for the mouth, slide round a wing's tip, walk on to the low end. In the chute: no breakouts.
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas
