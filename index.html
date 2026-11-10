@@ -8697,7 +8697,7 @@ addEventListener('keydown', e => {
 // =====================================================================
 // DAWN REPORT — at dawn, if anyone was born or lost since the last one:
 // new lambs (rename, 🎲, ✏️ → barn) and a short eulogy for each one lost,
-// coloured by its bravery. Host only; the world waits while it's open.
+// coloured by its bravery. Host only (guests see it read only); the world waits while it's open.
 // G.dawnReport keeps the last one (tests, ?sim never opens it).
 // =====================================================================
 const DAWN = { open: false, from: 0, born: [], dead: [], day: 0 };
@@ -8724,16 +8724,35 @@ function dawnReport(born = []) {
   if ((!born.length && !dead.length) || SIM || G.mode !== 'play' || NET.role === 'guest') return false;
   return openDawn(born, dead);
 }
+// the card as plain data: what the host's card shows, and what guests get (NET_TYPES.game.dawn)
+function dawnView() {
+  const wool = s => (lookOf(s).wool || (s.black ? '#4a4440' : '#f6f1e3'));
+  return { day: DAWN.day, born: DAWN.born.map(s => ({ id: s.id, name: s.name, wool: wool(s), mum: s.mother ? s.mother.name : '' })),
+    dead: DAWN.dead.map(m => ({ name: m.name, why: m.why, brave: m.brave, text: m.text })) };
+}
+function dawnHTML(v, edit) {
+  const { born, dead } = v;
+  return `<div class="barnCard" role="dialog" aria-label="Dawn">
+    <div class="barnHead"><h2>🌅 Day ${v.day}</h2>${edit ? `<button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button>` : ''}</div>
+    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${escHTML(s.wool)}"></i>${edit ? `<input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>` : `<b>${escHTML(s.name)}</b>`}${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
+    ${dead.length ? `<div class="dawnSec"><span class="eyebrow">🕯️ Obituaries · ${dead.length}</span>${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5); return `<div class="dawnObit">${DAWN_ICON[cleanWhy(m.why)] || '🕯️'} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic} ${w}</span><br><em>${escHTML(m.text)}</em></div>`; }).join('')}</div>` : ''}
+    ${edit ? `<div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>` : `<div class="barnFoot"><span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span></div>`}
+  </div>`;
+}
+// ONLINE: a guest shows the host's card, read only, while the host has it open
+let dawnGuestKey = '';
+function dawnGuest(v) {
+  if (v && NET.role !== 'guest') return;
+  const key = v ? JSON.stringify(v) : ''; if (key === dawnGuestKey) return; dawnGuestKey = key;
+  const el = $('dawn');
+  if (!v || typeof v !== 'object' || !Array.isArray(v.born) || !Array.isArray(v.dead)) { el.classList.add('hidden'); document.body.classList.remove('inDawn'); return; }
+  el.innerHTML = dawnHTML(v, false); el.classList.remove('hidden'); document.body.classList.add('inDawn');
+}
 function openDawn(born, dead) {
   if (BARN.open) closeBarn();
   Object.assign(DAWN, { open: true, born, dead, day: G.clock.day }); keys.clear();
-  const el = $('dawn'), wool = s => (lookOf(s).wool || (s.black ? '#4a4440' : '#f6f1e3'));
-  el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Dawn">
-    <div class="barnHead"><h2>🌅 Day ${DAWN.day}</h2><button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button></div>
-    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${wool(s)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.mother ? `<small title="Mum">mum <b>${escHTML(s.mother.name)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
-    ${dead.length ? `<div class="dawnSec"><span class="eyebrow">🕯️ Obituaries · ${dead.length}</span>${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5); return `<div class="dawnObit">${DAWN_ICON[cleanWhy(m.why)]} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic} ${w}</span><br><em>${escHTML(m.text)}</em></div>`; }).join('')}</div>` : ''}
-    <div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>
-  </div>`;
+  const el = $('dawn');
+  el.innerHTML = dawnHTML(dawnView(), true);
   const byId = row => born.find(s => s.id === +row.dataset.id);
   el.querySelectorAll('.dawnRow input').forEach(inp => {
     inp.addEventListener('input', () => barnSet(byId(inp.closest('.dawnRow')), { name: inp.value }));
@@ -9071,7 +9090,7 @@ function resetGame() {
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 };
   G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
+  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null);
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -9253,6 +9272,7 @@ const NET_TYPES = {
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
       ff: 'b', paused: 'b', pauseWho: 's',
+      dawn: { c: 'j', get: o => DAWN.open ? dawnView() : null, set: (o, v) => dawnGuest(G.mode === 'play' ? v : null) },   // DAWN REPORT: guests see the host's card
       wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
@@ -10096,6 +10116,7 @@ function netGuestLost(msg) {
   if (NET.role !== 'guest' || NET.dead) return;
   if (!NET.inRoom) { netGuestFail(msg || 'Lost the connection to the game.'); return; }
   NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = '';
+  dawnGuest(null);
   const p = NET.peer; NET.peer = null; NET.conn = null; if (p) try { p.destroy(); } catch (e) {}
   NET.uiKey = '';
 }

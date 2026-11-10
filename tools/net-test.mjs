@@ -348,6 +348,14 @@ try {
   await until(B, id => GAME.G.graves.length === 2, hatId, 5000).catch(() => {});
   const graveHat = await B.page.evaluate(() => { let h = null; const g = GAME.G.graves[GAME.G.graves.length - 1]; g && g.root.traverse(o => { if (o.userData.hat) h = o.userData.hat; }); return h; });
   check('a hat and paint from the barn show on the guest, and the hat rests on her tombstone', hat.hat === 'tophat' && hat.paint === 1 && hat.tile >= 0 && hat.tophatsDrawn >= 1 && graveHat === 'tophat', { ...hat, graveHat });
+  // the dawn report: the guest sees the host's card (read only) and it goes when the host carries on
+  const dawnName = await A.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.ram); GAME.openDawn([s], [{ name: 'Tumble', why: 'eaten', brave: 0.3, text: GAME.eulogy({ name: 'Tumble', why: 'eaten', brave: 0.3 }) }]); return s.name; });
+  await until(B, () => !document.getElementById('dawn').classList.contains('hidden'), null, 5000).catch(() => {});
+  const dawnB = await B.page.evaluate(() => { const el = document.getElementById('dawn'); return { shown: !el.classList.contains('hidden'), text: el.textContent, inputs: el.querySelectorAll('input').length, paused: GAME.G.paused }; });
+  await A.page.evaluate(() => GAME.closeDawn());
+  await until(B, () => document.getElementById('dawn').classList.contains('hidden'), null, 5000).catch(() => {});
+  const dawnGone = await B.page.evaluate(() => document.getElementById('dawn').classList.contains('hidden') && !GAME.G.paused);
+  check('the dawn report shows on the guest (read only) and closes with the host\'s', dawnB.shown && dawnB.text.includes(dawnName) && dawnB.text.includes('Tumble') && !dawnB.inputs && dawnB.paused && dawnGone, { ...dawnB, text: undefined, dawnGone });
   // the guest's own moves: pounce (a one-shot) and lie down (held)
   const gdog = () => A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { pounceT: d.pounceT, mode: d.mode }; });
   await probe(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.pounceT; });
