@@ -520,7 +520,7 @@ const T = {
   // and low, shies from dogs (shyR from it, guardR from its target), leaps from leapR, and drags its catch, crying, back
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
-  cougar: { range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
+  cougar: { range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9, bonkRun: 1.5, bonkKick: 9,   // bonked while it runs: yowls, runs bonkRun× faster after
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
@@ -797,6 +797,17 @@ const Sound = (() => {
         const og = ac.createGain(); og.gain.value = amp; o.connect(og); og.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
       }
       const n = ac.createBufferSource(); n.buffer = noiseBuf; const ng = ac.createGain(); ng.gain.value = 0.35; n.connect(ng); ng.connect(f); n.start(t, Math.random()); n.stop(t + dur);
+    },
+    yowl(pan = 0, vol = 0.22) {   // a bonked cougar: a hurt cat's "MRRAOW!"
+      if (!ac) return; const t = ac.currentTime, dur = 0.55 + Math.random() * 0.15, b = 520 + Math.random() * 80, d = out(vol, pan);
+      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(2200, t + dur * 0.35); f.frequency.linearRampToValueAtTime(1000, t + dur); f.Q.value = 2;
+      const g = ac.createGain(); env(g, t, 0.03, 0.9, dur); f.connect(g); g.connect(d);
+      for (const [mul, type] of [[1, 'sawtooth'], [1.5, 'triangle']]) {
+        const o = ac.createOscillator(); o.type = type;
+        o.frequency.setValueAtTime(b * mul, t); o.frequency.exponentialRampToValueAtTime(b * 1.8 * mul, t + dur * 0.3); o.frequency.exponentialRampToValueAtTime(b * 0.7 * mul, t + dur);
+        const v = ac.createOscillator(); v.frequency.value = 14; const vg = ac.createGain(); vg.gain.value = 30 * mul; v.connect(vg); vg.connect(o.frequency);
+        o.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
+      }
     },
     hiss(pan = 0, vol = 0.2) {
       if (!ac) return; const t = ac.currentTime, d = out(vol, pan);
@@ -3586,6 +3597,7 @@ function pounceHits(d) {
     if (c.air || c.heldBy || c.gone) continue;   // coyotes can always be bonked, even running home or asleep in the den
     if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
   }
+  for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
   if (launcherPounce(d)) return;
   for (const s of G.sheep) {
     if (s.dead || s.air || s.heldBy || s.grabbed) continue;
@@ -5381,6 +5393,9 @@ function cougarLeapDog(k, d) {
 }
 function cougarBonked(k, d) {
   SFX.bonk(panOf(k.x, k.z), 0.35); starBurst(k.x, k.y + 0.9, k.z, 10, undefined, { speed: 5, up: 4 }); shakeCam(0.4); hitStop(0.07); rumble(d.player, 0.9, 0.6, 220);
+  Sound.yowl(panOf(k.x, k.z)); floatText('BONK!', k.x, k.y + 1.9, k.z, '#ffffff', 1.3); dizzy(k, 1, 1.2);
+  const dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz) || 1; k.vx = dx / dl * T.cougar.bonkKick; k.vz = dz / dl * T.cougar.bonkKick;
+  k.bonks = (k.bonks || 0) + 1;
   cougarSpooked(k, 1);
 }
 function startMaul(k, d) {
@@ -5429,7 +5444,7 @@ function cougarsAtNightfall() {
   const fc = flockCenter(); let best = null, bd = T.cougar.range + 30;
   for (const k of COUGARS) {
     if (k.prey) continue;
-    perchCougar(k); k.state = 'perch'; k.t = 0; k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.wiseShown = false;
+    perchCougar(k); k.state = 'perch'; k.t = 0; k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.bonks = 0; k.wiseShown = false;
     const d = Math.hypot(k.lair.x - fc.x, k.lair.z - fc.z); if (d < bd) { bd = d; best = k; }
   }
   if (best && Math.random() < T.cougar.chance) cougarHunt(best, rnd(T.cougar.delay[0], T.cougar.delay[1]));
@@ -5446,7 +5461,7 @@ function cougarsAtDawn() {
     else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -5586,8 +5601,9 @@ function updateCougars(dt) {
         break;
       }
       case 'retreat': {
-        if (cougarOut(k, 'retreat', C.run, dt)) break;
-        moveCougar(k, L.bx, L.bz, C.run, dt);
+        const run = C.run * (k.bonks ? C.bonkRun : 1);
+        if (cougarOut(k, 'retreat', run, dt)) break;
+        moveCougar(k, L.bx, L.bz, run, dt);
         if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6 || k.t > 15) { k.state = 'up'; k.t = 0; }
         break;
       }
@@ -7847,7 +7863,7 @@ function netScreens() {
 // ---- effects: one hook for every sound and bit of feedback ----------------------------------------------
 const FXR = {};                                // name -> local function (wrapped)
 const FXPOS = { x: 0, z: 0, on: false };      // where the last panOf() pointed (so guests can pan for their own camera)
-const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0 };   // which argument of Sound.x is the pan
+const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0, yowl: 0 };   // which argument of Sound.x is the pan
 let fxDepth = 0;
 function fx(name, ...a) { const f = FXR[name]; return f ? f(...a) : undefined; }
 // opt: keep(args) = send it at all · pan = which argument is the stereo pan · after(result) = send only if the call

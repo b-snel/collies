@@ -56,7 +56,7 @@ Run the ones touching your change; report the numbers.
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
-| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off |
+| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
@@ -138,7 +138,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   the mouth (leash), then goes back to sleep.
 - **Cougars** (`COUGARS`, `LAIRS`, `T.cougar`): night only, nearest one hunts
   every night (held up only by a dog barking under its tree, `treedR`), lambs first,
-  never rams; pounce or bump drops the sheep; vaults pen fences. `s.grabbed`
+  never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
+  running away: bonked, yowls (`Sound.yowl`), runs `bonkRun`× faster. `s.grabbed`
   may be a cougar (`k.isCougar`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
