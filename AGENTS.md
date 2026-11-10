@@ -56,7 +56,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs [name]` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
+| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
@@ -217,6 +217,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
+- **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
+  `T.punt.dogK`/`dogUp`); not one under a cougar (that pounce frees it).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

@@ -571,7 +571,7 @@ const T = {
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
   airGrav: 28,                 // everything that flies falls at this (m/s²)
-  punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2 },
+  punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2, dogK: 0.7, dogUp: 11 },   // dogK/dogUp: a pounced dog
   bounceUp: 0.46, bounceSide: 0.8, landKeep: 0.55,
   carom: { min: 7, r: 1.45, keep: 0.6, share: 0.4, up: 6 },   // up 6 m/s peaks under fence height, so caroms never jump a pen
   fling: { mul: 1.35, add: 4, up: 8, minSpeed: 2 },
@@ -3720,7 +3720,7 @@ function onGateOpened(pen) {
 // at the river, and juice (camera shake, hit-stop, star bursts, squash).
 // Hand-rolled 2D physics with a faked vertical arc, after main's moves.
 // =====================================================================
-const MV = { punts: 0, caroms: 0, maxChain: 0, holeInOne: 0, launches: 0, launched: 0, latches: 0, splashes: 0, flings: 0, bowled: 0, said: {} };
+const MV = { punts: 0, dogPunts: 0, caroms: 0, maxChain: 0, holeInOne: 0, launches: 0, launched: 0, latches: 0, splashes: 0, flings: 0, bowled: 0, said: {} };
 function sayOnce(key, id, text) { if (MV.said[key] || G.mode !== 'play') return; MV.said[key] = true; hank(id, text); }
 // a flying, dropped or shaken sheep comes down running (sets the demo flock's fields; a newer sheep brain may read stress)
 function startleSheep(s, dx, dz, amt) {
@@ -3871,6 +3871,11 @@ function pounceHits(d) {
   }
   for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
   if (launcherPounce(d)) return;
+  for (const o of G.dogs) {   // another dog: punted like a sheep (not one under a cougar: that pounce frees it)
+    if (o === d || o.air || o.maul || o.mauled) continue;
+    const bx = o.x - d.x, bz = o.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
+    if (bd < T.pounceHitR && !fenceBetween(d.x, d.z, o.x, o.z)) { puntDog(o, d, bx / bd, bz / bd); return; }
+  }
   for (const s of G.sheep) {
     if (s.dead || s.air || s.heldBy || s.grabbed) continue;
     const bx = s.x - d.x, bz = s.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
@@ -3889,6 +3894,16 @@ function punt(s, d, rx, rz) {
   floatText(pick(['BOING!', 'PUNT!', 'WHEEE!']), s.x, s.y + 1.6, s.z, '#ffffff', 1.35);
   starBurst(s.x, s.y + 0.8, s.z, 7, undefined, { speed: 4, up: 3 }); burst(s.x, s.y + 0.3, s.z, 10, '#e8dcc0', { speed: 3, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
   shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140);
+}
+function puntDog(o, d, rx, rz) {
+  const P = T.punt;
+  launchDog(o, d.pdx * P.speed * P.dogK + rx * P.radial, d.pdz * P.speed * P.dogK + rz * P.radial, P.dogUp);
+  endLunge(d); MV.dogPunts++;
+  const pan = panOf(o.x, o.z);
+  SFX.bonk(pan, 0.3); Sound.yelp(pan); dizzy(o, 1.2, 1.6);
+  floatText(pick(['BONK!', 'YIP!', 'BOING!']), o.x, o.y + 1.8, o.z, o.color, 1.35);
+  starBurst(o.x, o.y + 0.9, o.z, 7, undefined, { speed: 4, up: 3 });
+  shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140); rumble(o.player, 0.8, 0.6, 220);
 }
 function pounceCoyote(c, d) {
   const P = T.coyotePounce, dx = c.x - d.x, dz = c.z - d.z, dd = Math.hypot(dx, dz) || 1;

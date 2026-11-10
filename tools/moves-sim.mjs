@@ -69,6 +69,20 @@ const tests = {
         ok: stateOnLanding === 'dazed' && windupAt > T.ramPuntDazed + T.ramGrudgeCd[0] - 0.1 && windupAt < 19 && s.rtar === d };
     });
   },
+  // 1c. pounce into another dog: it flies, lands, gets up
+  async dogPunt() {
+    return h.page.evaluate(() => {
+      const { G, pathPoint } = GAME; H.reset();
+      if (G.dogs.length < 2) GAME.joinPlayer({ kind: 'bot', index: 1 });
+      const d = H.d(), o = G.dogs[1], P = pathPoint(330, 0);
+      for (const s of G.sheep) H.place(s, P.x - P.tx * 40, P.z - P.tz * 40);
+      H.place(d, P.x, P.z); H.place(o, P.x + P.tx * 1.4, P.z + P.tz * 1.4); d.yaw = Math.atan2(P.tx, P.tz);
+      H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
+      const r = H.track(o, 4); r.dogPunts = GAME.MV.dogPunts; r.sheepPunts = GAME.MV.punts;
+      r.ok = r.dogPunts === 1 && r.sheepPunts === 0 && r.landedAt > 6 && r.peak > 1.5 && !r.stillFlying;
+      return r;
+    });
+  },
   // 2. a punted sheep caroms down a line of sheep
   async caroms() {
     return h.page.evaluate(() => {
