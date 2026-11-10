@@ -162,8 +162,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
   `maul.max`; mash pounce to throw it off, or a partner pounces it. Coyotes nip
   (`T.nip`) when bold, screening or striking.
-- **Barks wear off**: each coyote/cougar falls for `T.barkWise` barks a night,
-  then turns bold (`barkWorks`).
+- **Barks wear off**: each coyote/cougar falls for `T.barkWise` barks a night
+  (a lone coyote: `T.coyoteBark.soloWise`), then turns bold (`barkWorks`): only
+  a bonk moves it, and it lunges at dogs to nip. Packs lose less heart per bark
+  (`packK`).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

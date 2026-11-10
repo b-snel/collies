@@ -526,9 +526,10 @@ const T = {
   pressK: { walk: 1.0, creep: 0.5, sprint: 1.5, lie: 0.15 },
   barkR: 13, barkCd: 0.6,
   barkWise: 3,           // a coyote or cougar barked off this many times in a night stops falling for it (and comes at the dogs)
+  coyoteBark: { amt: 0.45, packK: 0.4, soloWise: 1, lungeR: 8 },   // bark scare / (1 + packK*(pack-1)); a lone one falls for soloWise barks, then needs a bonk; bold ones lunge at dogs within lungeR
   // dog health (d.hp 0..1): back after `wait` s unhurt at regen/s (x lieRegen lying down); under limp it limps; at 0 it's out for koT s, up again at revive
   dogHp: { regen: 0.012, lieRegen: 3, wait: 5, limp: 0.3, koT: 6, revive: 0.25 },
-  nip: { r: 1.7, dmg: 0.07, cd: [1.6, 2.6], knock: 5, stun: 0.3 },   // a coyote's nip (bold ones, screens and strikers)
+  nip: { r: 1.7, dmg: 0.09, cd: [1.6, 2.6], knock: 5, stun: 0.3 },   // a coyote's nip (bold ones, screens and strikers)
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
@@ -3460,9 +3461,9 @@ function nipFx(d, c) {
   shakeCam(0.14); rumble(d.player, 0.7, 0.5, 160);
 }
 // a bark at a coyote or a cougar: true while it still works on that one (each one learns after T.barkWise)
-function barkWorks(e) {
+function barkWorks(e, wise = T.barkWise) {
   e.barks = (e.barks || 0) + 1;
-  if (e.barks <= T.barkWise) return true;
+  if (e.barks <= wise) return true;
   if (!e.wiseShown) { e.wiseShown = true; floatText('😾', e.x, (e.y || 0) + 2, e.z, '#fff', 1.4); }
   Sound.growl(panOf(e.x, e.z), 0.14);
   return false;
@@ -3484,8 +3485,9 @@ function bark(d) {
   }
   for (const c of G.coyotes) {
     if (c.air || c.heldBy || Math.hypot(c.x - d.x, c.z - d.z) >= T.barkR + 2) continue;
-    if (['pack', 'flee', 'drag'].includes(c.state) && !barkWorks(c)) { c.bold = true; continue; }   // wise to it: it comes on anyway
-    scareCoyote(c, 0.45, d);
+    const n = packSize(c), B = T.coyoteBark;
+    if (['pack', 'flee', 'drag'].includes(c.state) && !barkWorks(c, n <= 1 ? B.soloWise : T.barkWise)) { c.bold = true; continue; }   // wise to it: it comes on anyway (a lone one after one bark)
+    scareCoyote(c, B.amt / (1 + B.packK * (n - 1)), d);   // a pack shrugs barks off
   }
   cougarBark(d);
   hint('bark-used');
@@ -5256,6 +5258,7 @@ function updatePack(p, dt, fc) {
     }
   }
 }
+const packSize = c => c.pack ? Math.max(1, c.pack.members.filter(o => o.state !== 'leave').length) : 1;
 const canNip = (c, d) => G.time >= (c.nipAt || 0) && !c.prey && !d.air && !d.maul && !d.ko && (c.bold || c.role === 'screen' || (c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'defend')));
 // a coyote inside a pen: c.inPen is that pen; c.trap too while its gate is shut (it can't get out with a catch)
 const penPrey = (c, pen) => { let b = null, bd = 1e9; for (const s of G.sheep) { if (s.dead || s.grabbed || s.air || s.heldBy || s.pen !== pen) continue; const d = Math.hypot(s.x - c.x, s.z - c.z); if (d < bd) { bd = d; b = s; } } return b; };
@@ -5293,7 +5296,7 @@ function updateCoyotes(dt) {
     if (nd && c.state === 'pack' && ndd < T.nip.r && canNip(c, nd)) coyoteNip(c, nd);   // bold, screening or striking: it bites
     else if (nd && c.state !== 'flee' && c.state !== 'leave') {
       const fearR = nd.mode === 'sprint' ? 8 : nd.mode === 'creep' ? 4 : 6;
-      if (ndd < 1.4) scareCoyote(c, 0.5, nd, true);
+      if (ndd < 1.4 && !c.bold) scareCoyote(c, 0.5, nd, true);   // a bold one takes a real bonk
       else if (ndd < fearR && !c.bold && !(c.pack && c.pack.phase === 'defend')) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
     }
     let dX = 0, dZ = 0, spd = 0, crouchW = 0;
@@ -5312,6 +5315,10 @@ function updateCoyotes(dt) {
         // wary of dogs unless it's go time
         const bold = c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'escape' || c.pack.phase === 'defend' || (c.pack.phase === 'feint' && c.role === 'decoy'));
         if (!bold && !c.bold) for (const d of G.dogs) { const ex = c.x - d.x, ez = c.z - d.z, e = Math.hypot(ex, ez); if (e < 11 && e > 0) { dX += ex / e * (11 - e) / 11 * 1.6; dZ += ez / e * (11 - e) / 11 * 1.6; spd = Math.max(spd, 3.5); } }
+        if (nd && ndd < T.coyoteBark.lungeR && G.time >= (c.nipAt || 0) - 0.3 && canNip(c, nd) && (c.bold || c.role === 'screen')) {   // goes for the dog
+          const n = navSteer(c, nd.x, nd.z); dX = n.x; dZ = n.z; spd = T.coyoteRun; crouchW = 0.6;
+          if (c.growlT <= 0) { c.growlT = 1.5; Sound.growl(panOf(c.x, c.z), 0.14); }
+        }
         break;
       }
       case 'drag': {
