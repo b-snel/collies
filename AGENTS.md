@@ -38,7 +38,7 @@ buys supplies, and Cabo 🏖️, which wins.
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
-TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
+TOMBSTONES → clock/lighting → camera → visual sync (RAM NADS) → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -79,6 +79,7 @@ Run the ones touching your change; report the numbers.
 | `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
+| `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 
@@ -210,6 +211,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   splashed one swims back to its own bank (`a.side`). Only the launcher takes them over.
 - **Launcher chute** (`T.launcher.funnel`, `inChute`): long wings; driven sheep bend
   for the mouth, slide round a wing's tip, walk on to the low end. In the chute: no breakouts.
+- **Ram nads** (`s.nads`, `T.nads`, drawing only): a cord and a pair on springs,
+  stepped in world space (`nadsStep`); belly, hind legs, ground and each other
+  collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
+  desert sun, age: lower (`nadsHang`).
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

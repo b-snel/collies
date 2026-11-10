@@ -627,6 +627,11 @@ const T = {
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
   shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45,
     think: { first: 10, every: 35, dur: 4.5 } },   // a dog still carrying the clippers: a thought bubble after first s, then every s, for dur s
+  // RAM NADS (drawing only): size by s.brave (× of normal); steps/s; m/s²; spring Hz and damping ratio (cord, each nut, jiggle);
+  // per s: swing damping vs the body (inner: nut vs cord), air drag (wet: in water), pull to the body's down, the bag holding the pair; cone tan
+  // (fore/aft, side); tuck/relax s (cremaster); dry s
+  nads: { size: [0.6, 1.5], hz: 240, g: 9.8, cordHz: 4.5, nutHz: 6, jigHz: 9, zeta: 0.25, jigZeta: 0.14, jig: 0.5, swing: 1.6, inner: 0.6, drag: 0.15, wetDrag: 5,
+    bend: 10, bag: 16, coneF: 3, coneS: 0.9, tuck: 0.25, relax: 2.5, dry: 30 },
 };
 const WATER_Y = -3;
 
@@ -2172,6 +2177,9 @@ const SHEEP_GEO = {
     P(CONE(0.13, 0.22, 10), '#ffd23a', { p: [0, 0.58, 0.66] }),
     P(SPH(8), '#ffd23a', { s: [0.135, 0.05, 0.135], p: [0, 0.47, 0.66] }),
     P(SPH(5), '#5a4a2a', { s: [0.04, 0.04, 0.04], p: [0, 0.43, 0.66] })),
+  // RAM NADS: the cord, unit long, hung down from y = 0; one nut (drawn twice). Instance colour: skin
+  cord: P(CYL(0.05, 0.068, 1, 10), '#a8938d', { p: [0, -0.5, 0] }),
+  nut: merge(P(SPH(14), '#bba6a0', { s: [0.085, 0.11, 0.085] }), P(SPH(8), '#a58f89', { s: [0.05, 0.03, 0.05], p: [0, 0.085, 0] })),
 };
 function sheepInstanced(geo, count) {
   const m = new THREE.InstancedMesh(geo, MAT.vc, count); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true;
@@ -2183,7 +2191,8 @@ function sheepInstanced(geo, count) {
   scene.add(m, o); return { m, o, max: count };
 }
 const SI = { body: sheepInstanced(SHEEP_GEO.body, T.maxSheep), head: sheepInstanced(SHEEP_GEO.head, T.maxSheep), leg: sheepInstanced(SHEEP_GEO.leg, T.maxSheep * 4),
-  horn: sheepInstanced(SHEEP_GEO.horn, T.maxSheep), bell: sheepInstanced(SHEEP_GEO.bell, 8) };
+  horn: sheepInstanced(SHEEP_GEO.horn, T.maxSheep), bell: sheepInstanced(SHEEP_GEO.bell, 8),
+  cord: sheepInstanced(SHEEP_GEO.cord, T.maxSheep), nut: sheepInstanced(SHEEP_GEO.nut, T.maxSheep * 2) };   // RAM NADS
 
 // ---------------- particles & effects ----------------
 const PART_MAX = 400;
@@ -6595,8 +6604,9 @@ function sheepHeadColor(s, out) {
   if (s.look && s.look.wool) headTint(s, out); else { const v = s.black ? 0.5 : 1; out.setRGB(v, v, v); }
   const k = oldK(s); return k > 0 ? out.lerp(_cAge.setRGB(0.82, 0.8, 0.78), 0.55 * k) : out;
 }
-function syncSheep() {
-  let n = 0, nl = 0, nh = 0, nb = 0;
+function syncSheep(dt = 1 / 60) {
+  let n = 0, nl = 0, nh = 0, nb = 0, nc = 0;
+  const pdt = FX.stop > 0 ? dt * 0.06 : dt;   // RAM NADS: slowed with the hit-stop
   for (const s of G.sheep) {
     if (s.dead || n >= T.maxSheep) continue;
     const grow = ageGrow(s), ok = oldK(s); s.grow = grow;   // AGE: lambs and yearlings are smaller; old sheep stoop
@@ -6612,6 +6622,7 @@ function syncSheep() {
     const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok), wf = woolFit(s, _wf);   // (wf: a shorn fleece)
     _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob - (1 - wf.y) * 0.3, 0), _qa.identity(), _s.set(thin * wf.x, breathe * (1 - 0.04 * ok) * wf.y, wf.z));
     _ml.multiplyMatrices(_mb, _mp); SI.body.m.setMatrixAt(n, _ml);
+    const nads = s.ram && !s.lamb && nc < SI.cord.max; if (nads) _mbd.copy(_ml);   // RAM NADS: they hang off the body
     SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
     (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
     if (s.bell && nb < SI.bell.max) { _mp.compose(_v.set(0, bob, 0), _qa.identity(), _s.set(1, 1, 1)); _ml.multiplyMatrices(_mb, _mp); SI.bell.m.setMatrixAt(nb++, _ml); }
@@ -6626,13 +6637,182 @@ function syncSheep() {
       const sw = lying ? 0 : Math.sin(s.leg + (l === 0 || l === 3 ? 0 : Math.PI)) * Math.min(0.8 - 0.3 * ok, Math.hypot(s.vx, s.vz) * 0.25) - paw;   // old legs: a stiffer, shorter stride
       _mp.compose(_v.set(HIP[l][0], HIP[l][1] + bob, HIP[l][2]), _q.setFromEuler(_e.set(sw, 0, 0)), _s.set(1, lying ? 0.01 : 1, 1));
       _ml.multiplyMatrices(_mb, _mp); SI.leg.m.setMatrixAt(nl++, _ml);
+      if (nads && l >= 2) { const L = NAD_LEG[l - 2]; L.h.setFromMatrixPosition(_ml); L.f.set(0, -0.46, 0).applyMatrix4(_ml); }   // RAM NADS: hind legs
     }
+    if (nads) {   // RAM NADS: step his rig, draw the cord and the pair
+      const N = s.nads || (s.nads = nadsNew());
+      nadsHang(s, N, pdt); nadsStep(N, _mbd, _mb, sc, nadsK(s), pdt, groundY(s.x, s.z), lying ? null : NAD_LEG);
+      nadsMats(N, _nCM, _nM0, _nM1); nadsSkin(s, N, _c);
+      SI.cord.m.setMatrixAt(nc, _nCM); SI.cord.m.setColorAt(nc, _c);
+      SI.nut.m.setMatrixAt(nc * 2, _nM0); SI.nut.m.setMatrixAt(nc * 2 + 1, _nM1); SI.nut.m.setColorAt(nc * 2, _c); SI.nut.m.setColorAt(nc * 2 + 1, _c);
+      nc++;
+    } else if (s.nads && !(s.ram && !s.lamb)) s.nads = null;
     n++;
   }
   for (const k of ['body', 'head']) { SI[k].m.count = SI[k].o.count = n; SI[k].m.instanceMatrix.needsUpdate = true; SI[k].m.instanceColor.needsUpdate = true; }
   SI.leg.m.count = SI.leg.o.count = nl; SI.leg.m.instanceMatrix.needsUpdate = true;
   SI.horn.m.count = SI.horn.o.count = nh; SI.horn.m.instanceMatrix.needsUpdate = true;
   SI.bell.m.count = SI.bell.o.count = nb; SI.bell.m.instanceMatrix.needsUpdate = true;
+  SI.cord.m.count = SI.cord.o.count = nc; SI.nut.m.count = SI.nut.o.count = nc * 2;
+  for (const k of ['cord', 'nut']) { SI[k].m.instanceMatrix.needsUpdate = true; SI[k].m.instanceColor.needsUpdate = true; }
+}
+// =====================================================================
+// RAM NADS — every grown ram's sack: a cord from under his tail and a pair of nuts, each a mass on springs,
+// stepped at T.nads.hz in world space from wherever his body really is (trotting, charging, punted, carried,
+// lying down, sat up to be shorn), so it swings, lags, whips, bounces and jiggles. His belly, his hind legs
+// (they bat it about as he trots), the ground and each other push them about. Bigger the braver (nadsK).
+// Cold, wet, scared or squaring up: tucked up tight; hot sun or old age: lower (nadsHang). Drawing only:
+// every screen runs its own from what it draws, never the sim.
+// =====================================================================
+const NAD_AT = new THREE.Vector3(0, -0.25, -0.42);   // body-mesh space: under the tail, just behind the hocks
+const NAD_MT = 1, NAD_MC = 0.35;                       // masses: each nut, the cord's end
+const NAD_LEG = [0, 1].map(() => ({ h: new THREE.Vector3(), f: new THREE.Vector3() }));   // hind legs this frame (hip, foot), from syncSheep
+const nadsK = s => lerp(T.nads.size[0], T.nads.size[1], clamp(s.brave ?? 0.5, 0, 1));
+const _mbd = new THREE.Matrix4(), _nCM = new THREE.Matrix4(), _nM0 = new THREE.Matrix4(), _nM1 = new THREE.Matrix4(), _nBi = new THREE.Matrix4(), _nQ = new THREE.Quaternion();
+const NV = Array.from({ length: 20 }, () => new THREE.Vector3()), NAD_UP = new THREE.Vector3(0, 1, 0), NAD_DOWN = new THREE.Vector3(0, -1, 0), NAD_0 = new THREE.Vector3();
+function nadsNew() {
+  const pv = () => ({ p: new THREE.Vector3(), v: new THREE.Vector3() });
+  return { A: new THREE.Vector3(), c: pv(), n: [0, 1].map(() => Object.assign(pv(), { w: 0, wv: 0 })), legs: [0, 1].map(() => ({ h: new THREE.Vector3(), f: new THREE.Vector3() })), legsOk: false,
+    sd: new THREE.Vector3(1, 0, 0), h: 1, wet: 0, cold: 0, swim: false, gy: 0, fresh: true,
+    D: { S: 1, cord: 0.1, link: [0.1, 0.1], sep: 0.08, rx: 0.09, ry: 0.11, legR: 0.06 } };   // D: sizes, m (nadsDims)
+}
+// sizes for size k, overall scale sc and hang N.h: lengths grow slower than girth, so a big pair hangs only a bit lower
+function nadsDims(N, k, sc) {
+  const D = N.D, h = N.h, tight = clamp((1 - h) / 0.45, 0, 1), L = sc * Math.sqrt(k), lk = 0.1 * L * (0.55 + 0.45 * h);
+  D.S = sc * k * (1 - 0.1 * tight); D.cord = 0.055 * L * h; D.link[0] = lk * 1.07; D.link[1] = lk;   // the left one hangs a touch lower
+  D.sep = 0.075 * D.S * (1 - 0.3 * tight); D.rx = 0.085 * D.S; D.ry = 0.11 * D.S; D.legR = 0.062 * sc;
+  return D;
+}
+// cremaster: how far it hangs (1 relaxed), tucking fast and dropping slowly
+function nadsHang(s, N, dt) {
+  const TN = T.nads, w = biomeW(sAt(s.x, s.z)), hr = G.clock.hour, sun = smooth(9, 12, hr) * (1 - smooth(16, 19, hr));
+  N.swim = !!(s.air && (s.air.kind === 'swim' || s.air.swim));
+  N.wet = N.swim ? 1 : Math.max(0, N.wet - dt / TN.dry);
+  N.cold = clamp(Math.max(LIGHT.night * 0.85, w[1] * 0.35, N.wet), 0, 1);   // night, the mountains, a dunking
+  const heat = w[0] * sun * (1 - N.wet), squaring = s.rs === 'windup' || s.rs === 'charge';
+  const tgt = clamp((1 + 0.18 * heat) * (1 - 0.32 * N.cold) * (1 - 0.3 * smooth(0.35, 1, s.stress || 0)) * (squaring ? 0.78 : 1) * (1 + 0.28 * oldK(s)), 0.5, 1.45);
+  if (!(dt > 0)) return;
+  N.h += (tgt - N.h) * (1 - Math.exp(-dt / (tgt < N.h ? TN.tuck : TN.relax)));
+}
+function nadsRest(N, A, dn, sd) {
+  const D = N.D; N.c.p.copy(A).addScaledVector(dn, D.cord); N.c.v.set(0, 0, 0);
+  N.n.forEach((o, j) => { o.p.copy(N.c.p).addScaledVector(dn, D.link[j]).addScaledVector(sd, (j ? -1 : 1) * D.sep); o.v.set(0, 0, 0); o.w = o.wv = 0; });
+}
+// o moved onto a surface with normal nm (unit) moving at vc: no velocity into it, bounce e, rub fr; a knock sets it jiggling
+function nadsHit(o, nm, vc, e, fr) {
+  const rv = NV[15].subVectors(o.v, vc), vn = rv.dot(nm);
+  if (vn >= 0) return;
+  o.v.addScaledVector(nm, -vn * (1 + e));
+  rv.addScaledVector(nm, -vn); o.v.addScaledVector(rv, -fr);
+  if (o.w !== undefined) o.wv += vn * T.nads.jig;
+}
+// move o to q (pushed out of something moving at vc); the push sets the normal
+function nadsPush(o, q, vc, e, fr) {
+  const nm = NV[14].subVectors(q, o.p), l = nm.length(); if (l < 1e-7) return;
+  nm.divideScalar(l); o.p.copy(q); nadsHit(o, nm, vc, e, fr);
+}
+// one frame of his rig. B: the body mesh's world matrix; R: the root's (yaw, tilt, scale); gy: the ground; legs: hind legs (null: folded)
+function nadsStep(N, B, R, sc, k, dt, gy, legs) {
+  const TN = T.nads, A = NV[0].copy(NAD_AT).applyMatrix4(B), e = R.elements;
+  const sd = N.sd.set(e[0], e[1], e[2]).normalize(), dn = NV[1].set(-e[4], -e[5], -e[6]).normalize(), fw = NV[2].set(e[8], e[9], e[10]).normalize();
+  const ND = nadsDims(N, k, sc); N.gy = gy;
+  const jump = N.A.distanceTo(A);
+  if (N.fresh || !(jump < 2 + 35 * Math.max(dt, 0))) {   // new, or he jumped (a save, a debug key): hang at rest
+    nadsRest(N, A, dn, sd); N.A.copy(A); N.fresh = false;
+    if (legs) legs.forEach((L, i) => { N.legs[i].h.copy(L.h); N.legs[i].f.copy(L.f); }); N.legsOk = !!legs; return;
+  }
+  if (!(dt > 0)) return;
+  const n = Math.min(40, Math.ceil(dt * TN.hz)), h = dt / n, g = TN.g * (N.swim ? 0.3 : 1), drag = N.swim ? TN.wetDrag : TN.drag;
+  const mAll = NAD_MC + 2 * NAD_MT, wC = TAU * TN.cordHz, kC = mAll * wC * wC, cC = 2 * TN.zeta * Math.sqrt(kC * mAll);
+  const wN = TAU * TN.nutHz, kN = NAD_MT * wN * wN, cN = 2 * TN.zeta * Math.sqrt(kN * NAD_MT), wJ = TAU * TN.jigHz;
+  const A0 = NV[3].copy(N.A), vA = NV[4].subVectors(A, A0).divideScalar(dt), Ai = NV[5], off = NV[6];
+  // leg velocities (hip, foot) for knocks; none the frame they unfold
+  const vL = [0, 1].map(i => legs && N.legsOk ? [NV[7 + i * 2].subVectors(legs[i].h, N.legs[i].h).divideScalar(dt), NV[8 + i * 2].subVectors(legs[i].f, N.legs[i].f).divideScalar(dt)] : [vA, vA]);
+  _nBi.copy(B).invert();
+  const C = N.c, Fc = NV[11], F = [NV[12], NV[13]], t0 = NV[16], t1 = NV[17], t2 = NV[18], q = NV[19];
+  const rl = ND.rx / sc * 0.7, ax = 0.44 + rl, ay = 0.38 + rl, az = 0.56 + rl;   // his belly (body-mesh space), padded by most of a nut
+  for (let i = 1; i <= n; i++) {
+    Ai.lerpVectors(A0, A, i / n); off.subVectors(Ai, A);   // the anchor (and what's round it) moves smoothly through the frame
+    // forces: the cord a spring from the anchor, a little pull toward his down, damped against his body
+    const d = t0.subVectors(C.p, Ai), len = d.length() || 1e-6; d.divideScalar(len);
+    const rv = t1.subVectors(C.v, vA);
+    Fc.set(0, -g * NAD_MC, 0).addScaledVector(d, -kC * (len - ND.cord) - cC * rv.dot(d));
+    Fc.addScaledVector(t2.copy(Ai).addScaledVector(dn, len).sub(C.p), mAll * TN.bend);
+    Fc.addScaledVector(rv, -NAD_MC * TN.swing).addScaledVector(C.v, -NAD_MC * drag);
+    const bs = t2.copy(sd).addScaledVector(d, -sd.dot(d)); if (bs.lengthSq() < 1e-8) bs.copy(fw); bs.normalize();   // the bag's side, square to the cord
+    for (let j = 0; j < 2; j++) {
+      const o = N.n[j], Fi = F[j], dj = q.subVectors(o.p, C.p), lj = dj.length() || 1e-6; dj.divideScalar(lj);
+      const rvj = t1.subVectors(o.v, C.v);
+      // inside the bag: its own spring from the cord's end, the skin holding the pair side by side, damping
+      Fi.copy(dj).multiplyScalar(-kN * (lj - ND.link[j]) - cN * rvj.dot(dj)).addScaledVector(rvj, -NAD_MT * TN.inner);
+      q.copy(C.p).addScaledVector(d, ND.link[j]).addScaledVector(bs, (j ? -1 : 1) * ND.sep).sub(o.p);
+      Fi.addScaledVector(q, NAD_MT * TN.bag);
+      Fc.sub(Fi);   // and back on the cord
+      o.v.addScaledVector(Fi, h / NAD_MT); o.v.y -= g * h; o.v.addScaledVector(t1.subVectors(o.v, vA), -TN.swing * h).multiplyScalar(Math.max(0, 1 - drag * h));   // skin and thighs: damped against him; air drag
+      o.wv += (-wJ * wJ * o.w - 2 * TN.jigZeta * wJ * o.wv) * h; o.w = clamp(o.w + o.wv * h, -0.3, 0.3);
+    }
+    C.v.addScaledVector(Fc, h / NAD_MC);
+    C.p.addScaledVector(C.v, h); for (const o of N.n) o.p.addScaledVector(o.v, h);
+    // the cord hangs from under him: inside a cone round his down, never overstretched
+    {
+      const dv = t0.subVectors(C.p, Ai), len = dv.length();
+      if (len > 1e-6) {
+        let a = dv.dot(dn), b = dv.dot(fw), c = dv.dot(sd); const L = clamp(len, 0.45 * ND.cord, 1.8 * ND.cord);
+        let moved = L !== len; if (a < 0.15 * len) { a = 0.15 * len; moved = true; }
+        const r = Math.hypot(b / (a * TN.coneF), c / (a * TN.coneS)); if (r > 1) { b /= r; c /= r; moved = true; }
+        if (moved) { t1.copy(dn).multiplyScalar(a).addScaledVector(fw, b).addScaledVector(sd, c).setLength(L).add(Ai); nadsPush(C, t1, vA, 0, 0.2); }
+      }
+      if (C.p.y < gy + 0.02) nadsPush(C, t1.copy(C.p).setY(gy + 0.02), NAD_0, 0, 0.3);
+    }
+    for (let j = 0; j < 2; j++) {
+      const o = N.n[j];
+      // his belly
+      const lp = t0.copy(o.p).sub(off).applyMatrix4(_nBi), qq = (lp.x / ax) ** 2 + (lp.y / ay) ** 2 + (lp.z / az) ** 2;
+      if (qq < 1 && qq > 1e-6) nadsPush(o, lp.multiplyScalar(1 / Math.sqrt(qq)).applyMatrix4(B).add(off), vA, 0.15, 0.3);
+      // his hind legs, swinging
+      if (legs) for (let l = 0; l < 2; l++) {
+        const hp = t1.copy(legs[l].h).add(off), sg = t2.copy(legs[l].f).add(off).sub(hp), sl = sg.lengthSq() || 1e-6;
+        const u = clamp(t0.subVectors(o.p, hp).dot(sg) / sl, 0, 1), cp = hp.addScaledVector(sg, u), dd = t0.subVectors(o.p, cp), dl = dd.length(), rr = ND.legR + ND.rx * 0.85;
+        if (dl < rr) { const vc = q.copy(vL[l][0]).lerp(vL[l][1], u); nadsPush(o, dl > 1e-6 ? cp.addScaledVector(dd, rr / dl) : cp.addScaledVector(fw, -rr), vc, 0.3, 0.1); }
+      }
+      // the ground
+      const gm = gy + ND.ry * 0.72; if (o.p.y < gm) nadsPush(o, t1.copy(o.p).setY(gm), NAD_0, 0.2, 0.25);
+    }
+    // each other: they knock together, never pass through
+    const a = N.n[0], b = N.n[1], ab = t0.subVectors(b.p, a.p), dab = ab.length(), mind = ND.rx * 1.75;
+    if (dab < mind) {
+      const nm = dab > 1e-6 ? ab.divideScalar(dab) : ab.copy(sd).negate(), push = (mind - dab) / 2;
+      a.p.addScaledVector(nm, -push); b.p.addScaledVector(nm, push);
+      const vn = t1.subVectors(b.v, a.v).dot(nm);
+      if (vn < 0) { const J = -vn * 0.6; a.v.addScaledVector(nm, -J); b.v.addScaledVector(nm, J); a.wv += vn * T.nads.jig * 0.5; b.wv += vn * T.nads.jig * 0.5; }
+    }
+    for (let j = 0; j < 2; j++) {   // last: on its cord, never torn off nor jammed up into it
+      const o = N.n[j], dj = t0.subVectors(o.p, C.p), lj = dj.length(), Lj = clamp(lj, 0.5 * ND.link[j], 1.7 * ND.link[j]);
+      if (lj > 1e-6 && Lj !== lj) nadsPush(o, t1.copy(C.p).addScaledVector(dj, Lj / lj), C.v, 0, 0);
+    }
+    for (let j = -1; j < 2; j++) { const o = j < 0 ? C : N.n[j], rvv = t1.subVectors(o.v, vA), sp = rvv.length(); if (sp > 30) o.v.copy(vA).addScaledVector(rvv, 30 / sp); }   // never flung off
+  }
+  N.A.copy(A);
+  if (legs) legs.forEach((L, i) => { N.legs[i].h.copy(L.h); N.legs[i].f.copy(L.f); }); N.legsOk = !!legs;
+}
+// world matrices: the cord (anchor to its end) and each nut, hung from the cord's end, stretched, squashed and jiggling
+function nadsMats(N, cordM, m0, m1) {
+  const ND = N.D, C = N.c.p, d = NV[0].subVectors(C, N.A), len = d.length() || 1e-6;
+  _nQ.setFromUnitVectors(NAD_DOWN, d.divideScalar(len));
+  cordM.compose(N.A, _nQ, NV[1].set(ND.S, len + 0.04 * ND.S, ND.S));
+  [m0, m1].forEach((m, j) => {
+    const o = N.n[j], up = NV[2].subVectors(C, o.p), dist = up.length() || 1e-6; up.divideScalar(dist);
+    const x = NV[3].copy(N.sd).addScaledVector(up, -N.sd.dot(up)); if (x.lengthSq() < 1e-8) x.set(1, 0, 0).addScaledVector(up, -up.x); x.normalize();
+    const z = NV[4].crossVectors(x, up);
+    const gnd = clamp((o.p.y - N.gy) / ND.ry, 0.72, 1), sy = Math.pow(clamp(dist / ND.link[j], 0.8, 1.35), 0.6) * (1 + o.w) * lerp(gnd, 1, Math.abs(up.y) < 0.5 ? 1 : 0), sxz = 1 / Math.sqrt(sy);
+    m.makeBasis(x.multiplyScalar(ND.S * sxz), up.multiplyScalar(ND.S * sy), z.multiplyScalar(ND.S * sxz)).setPosition(o.p);
+  });
+}
+// skin: dark on a black ram, a bluish tinge in the cold, greyer with age
+function nadsSkin(s, N, out) {
+  if (s.black) out.setRGB(0.5, 0.46, 0.46); else out.setRGB(1, 1, 1);
+  if (N.cold > 0) out.lerp(_cAge.setRGB(0.78, 0.76, 1), 0.5 * N.cold);
+  const k = oldK(s); return k > 0 ? out.lerp(_cAge.setRGB(0.84, 0.8, 0.78), 0.35 * k) : out;
 }
 function syncDog(d) {
   const M = d.models, sp = Math.hypot(d.vx, d.vz), t = G.time;
@@ -8149,6 +8329,7 @@ function barnPart(parent, geo, mat, pos, outline = true) {
 function barnModel() {
   const B = BARN; if (!B.r) return;
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; }
+  if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
     const M = buildDog(dogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2;
@@ -8164,6 +8345,11 @@ function barnModel() {
   sheepHeadColor(s, B.headMat.color);
   barnPart(head, SHEEP_GEO.head, B.headMat);
   for (const h of HIP) barnPart(g, SHEEP_GEO.leg, MAT.vc, h);
+  if (s.ram && !s.lamb) {   // horns, and RAM NADS: hung in the barn's world, swinging as the turntable turns
+    barnPart(head, SHEEP_GEO.horn, MAT.vc);
+    B.nadsMat = B.nadsMat || MAT.vc.clone(); B.nads = nadsNew(); B.nads.h = 1 + 0.28 * oldK(s); nadsSkin(s, B.nads, B.nadsMat.color);
+    B.nadsMs = [SHEEP_GEO.cord, SHEEP_GEO.nut, SHEEP_GEO.nut].map(geo => { const m = barnPart(B.sc, geo, B.nadsMat); m.matrixAutoUpdate = false; m.frustumCulled = false; return m; });
+  }
   const put = (geoSet, onBody) => { if (!geoSet) return; const par = onBody ? g : head; if (geoSet.fixed) barnPart(par, geoSet.fixed, MAT.vc); if (geoSet.tint) barnPart(par, geoSet.tint, tintMat(L.hatColor)); };
   if (L.hat !== 'none') put(HAT_GEO[L.hat], false);
   for (const a of L.acc) put(ACC_GEO[a], !!(ACC_GEO[a] && ACC_GEO[a].onBody));
@@ -8179,6 +8365,11 @@ function barnRender(dt = 1 / 60) {
   if (!B.drag) B.rot += dt * 0.45;   // a slow turn on the turntable, unless you've got hold of it
   const dogs = B.tab === 'dogs'; if (B.camFor !== B.tab) { B.camFor = B.tab; B.cam.position.set(0, dogs ? 1.75 : 1.55, dogs ? 5.3 : 4.6); B.cam.lookAt(0, dogs ? 0.85 : 0.62, 0); }   // a step back for a dog in a top hat
   B.stand.rotation.y = B.rot;
+  if (B.nadsMs && B.model && B.body && B.sel) {   // RAM NADS
+    const s = B.sel; B.model.updateWorldMatrix(true, true);
+    nadsStep(B.nads, B.body.matrixWorld, B.model.matrixWorld, (s.scale || 1) * ageGrow(s), nadsK(s), Math.min(dt, 0.1), 0, null);
+    nadsMats(B.nads, B.nadsMs[0].matrix, B.nadsMs[1].matrix, B.nadsMs[2].matrix); for (const m of B.nadsMs) m.matrixWorldNeedsUpdate = true;
+  }
   if (B.head) B.head.rotation.x = 0.05 + Math.sin(performance.now() / 900) * 0.06;
   if (B.tab === 'dogs' && B.dogTail) B.dogTail.rotation.y = Math.sin(performance.now() / 110) * 0.5;   // a happy wag
   B.r.render(B.sc, B.cam);
@@ -8961,6 +9152,7 @@ const NET_TYPES = {
       stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog', ready: 'b', salt: .01,
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
       wool: .02,   // HANK: shearing: its fleece (state 'shear': on its rump being shorn)
+      brave: .02,  // RAM NADS: their size
       ...NET_AIR,
     },
     make: (id, f) => netGuestSheep(id, f), kill: s => { const i = G.sheep.indexOf(s); if (i >= 0) G.sheep.splice(i, 1); }, animate: (s, dt) => netAnimSheep(s, dt),
@@ -10254,7 +10446,7 @@ function frame(now) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   syncFalcon(FALCON);
-  syncSheep();
+  syncSheep(dt);
   syncMoves(dt);
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
   syncHank(dt);           // HANK: his model, lantern and speech bubble
@@ -10294,6 +10486,7 @@ window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
 Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
+Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
@@ -10303,7 +10496,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   syncFalcon(FALCON);
-  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
