@@ -3052,6 +3052,12 @@ function updateDog(d, inp, dt) {
   if (mode === 'sprint' && sp > 8 && Math.random() < dt * 14) burst(d.x - d.vx * 0.05, d.y + 0.1, d.z - d.vz * 0.05, 1, '#e8dcc0', { speed: 0.6, up: 0.8, size: 0.2, life: 0.5, grav: 0 });
   if (inp.bark && d.barkCd <= 0) bark(d);
 }
+function barkFx(d) {   // what a bark looks and sounds like (a guest plays its own dog's at once: netPredPress)
+  d.barkAnim = 0.3;
+  Sound.bark(d.pitch, panOf(d.x, d.z));
+  spawnRing(d.x, d.y, d.z, T.barkR, d.color);
+  floatText('WOOF!', d.x, d.y + 1.6, d.z, d.color);
+}
 function startHop(d, nx, nz, v) {   // (nx, nz) points from the fence back to the dog; it leaps the other way
   d.hopT = d.hopDur; d.pounceT = 0; d.vx = -nx * v; d.vz = -nz * v; d.leanT = 0;
   burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 });
@@ -3066,11 +3072,9 @@ function knockDog(d, vx, vz, t, label = 'OOF!') {
   starBurst(d.x, d.y + 1, d.z, 5, undefined, { speed: 3, up: 3 }); dizzy(d, t, 1.6); shakeCam(0.3);
 }
 function bark(d) {
-  d.barkCd = T.barkCd; d.barkAnim = 0.3; G.barks = (G.barks || 0) + 1;
-  Sound.bark(d.pitch, panOf(d.x, d.z));
+  d.barkCd = T.barkCd; G.barks = (G.barks || 0) + 1;
+  barkFx(d);
   rumble(d.player, 0.25, 0.5, 90);
-  spawnRing(d.x, d.y, d.z, T.barkR, d.color);
-  floatText('WOOF!', d.x, d.y + 1.6, d.z, d.color);
   for (const s of G.sheep) {
     if (s.dead || s.grabbed || s.air || s.heldBy) continue;
     const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd > T.barkR) continue;
@@ -7290,6 +7294,7 @@ function netReplayFx(ev) {
   const pi = typeof name === 'string' && name.startsWith('S.') ? SND_PAN[name.slice(2)] : undefined;
   if (pi !== undefined && typeof x === 'number') args[pi] = NET.panOf0(x, z);
   if ((name === 'baaAt' || name === 'bellDing' || name === 'landDog' || name === 'dizzy') && !args[0]) return;
+  if (name === 'barkFx' && args[0] && args[0]._pBark && NET.now - args[0]._pBark < 1500) { args[0]._pBark = 0; return; }   // played it already (netPredPress)
   if (name === 'hank') { args[2] = Object.assign({}, args[2] || {}, { force: true, delay: 0 }); HANK.lastKey = null; HANK.said = {}; }   // the host already decided he says it
   try { f(...args); } catch (e) { if (DEBUG) console.warn('replay', name, e); }
   if (name === 'finishGame') netGuestEndMem();
@@ -7410,7 +7415,7 @@ function netAnimDog(d, dt) {
   const sp = Math.hypot(d.vx, d.vz);
   d.y = groundY(d.x, d.z) + (d.air ? d.lift || 0 : 0); d.leg += d.air ? dt * 9 : sp * dt * 3.2;
   if (d.air) { d.air.spin = d.airSpin || 0; d.air.vy = d.vlift || 0; }
-  if (d.hopT > 0) d.hopT -= dt; if (d.stunT > 0) d.stunT -= dt; if (d.pounceT > 0) d.pounceT -= dt; if (d.shakeT > 0) d.shakeT -= dt;
+  if (d.hopT > 0) d.hopT -= dt; if (d.stunT > 0) d.stunT -= dt; if (d.pounceT > 0 && !d._pp) d.pounceT -= dt; if (d.shakeT > 0) d.shakeT -= dt;
   d.barkAnim = Math.max(0, d.barkAnim - dt);
   if (d.pounceT > 0 && Math.random() < dt * 30) burst(d.x, d.y + 0.15, d.z, 1, '#e8dcc0', { speed: 0.8, up: 0.8, size: 0.24, life: 0.45, grav: 0 });
   else if (d.mode === 'sprint' && sp > 8 && Math.random() < dt * 14) burst(d.x - d.vx * 0.05, d.y + 0.1, d.z - d.vz * 0.05, 1, '#e8dcc0', { speed: 0.6, up: 0.8, size: 0.2, life: 0.5, grav: 0 });
@@ -7446,21 +7451,37 @@ function netAnimCoyote(c, dt) {
 // Each 'i' carries a number q; every snapshot acks, per dog, the last q the host got and ms it has run on it.
 // The guest takes the host's state, replays its own inputs since then (updateDog's walking only), and eases
 // what it draws onto that. Airborne, stunned, pouncing, hopping or on a gate: the host's state, smoothed.
-const NET_PRED = ['vx', 'vz', 'mode'];   // fields prediction writes; the host's last values wait in d._hv
+const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
 function netPredKind(d) {
   const h = d.holding; if (!h) return '';
   return G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : null;
 }
-function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.pounceT > 0) && !(d.hopT > 0) && netPredKind(d) !== null; }
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0) && netPredKind(d) !== null; }
+function netPredDir(d, h) {   // startPounce's heading
+  const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
+  const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
+  return mag > 0.1 ? [wx / mag, wz / mag] : [Math.sin(d.yaw), Math.cos(d.yaw)];
+}
+// a press here: the host will do the same once it hears; until then this screen plays it
+function netPredPress(L, d, r, now) {
+  if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0) return;
+  if (r.bark && now - (L.barkAt || -1e9) >= T.barkCd * 1000) { L.barkAt = now; barkFx(d); d._pBark = now; }
+  if (r.pounce && !r.lie && !d.holding && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {
+    L.pounceAt = now; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t: now, dx, dz });
+    while (L.pounces.length > 1 && L.pounces[0].t < now - 1500) L.pounces.shift();
+  }
+}
 function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
   const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
   const hk = d.holding ? T.grabKinds[netPredKind(d)] : null;
-  const mode = h.lie && !hk ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
+  const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
   let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
   if (hk) max *= hk.speed;
-  const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt);
-  d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k;
+  if (d.pounceT > 0) {   // the lunge
+    d.pounceT -= dt; d.vx = d.pdx * T.pounceSpeed; d.vz = d.pdz * T.pounceSpeed;
+    if (d.pounceT <= 0) { d.pounceT = 0; d.vx *= 0.4; d.vz *= 0.4; }
+  } else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideWorld(d, T.dogR); collideFences(d, T.dogR);
   d.mode = mode;
@@ -7474,23 +7495,29 @@ function netPredFrame(d, L, dt) {   // false: smooth it as usual
     a.fresh = false;
     const e = L.hist.find(e => e.q === a.q);
     let t = clamp(e ? e.t + a.ms : now - NET.rtt, now - 1000, now);
-    d.x = d._nx; d.z = d._nz; d.vx = d._hv.vx; d.vz = d._hv.vz;
-    let i = 0; while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
+    d.x = d._nx; d.z = d._nz; d.vx = d._hv.vx; d.vz = d._hv.vz; d.pounceT = d._hv.pounceT || 0;
+    if (d.pounceT > 0 && d._nyaw !== undefined) { d.pdx = Math.sin(d._nyaw); d.pdz = Math.cos(d._nyaw); }
+    let i = 0, j = 0; while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
+    while (j < L.pounces.length && L.pounces[j].t <= t) j++;   // (pressed before t: the host has it)
     while (t < now - 1) {
       const st = Math.min(1 / 60, (now - t) / 1000);
       while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
+      if (j < L.pounces.length && L.pounces[j].t <= t) { const q = L.pounces[j++]; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }
       netPredMove(d, L.hist[i].h, st); t += st * 1000;
     }
-    P = d._pp = { x: d.x, z: d.z, vx: d.vx, vz: d.vz, ex: dx - d.x, ez: dz - d.z };   // ex, ez: drawn − predicted, eased away
+    P = d._pp = { x: d.x, z: d.z, vx: d.vx, vz: d.vz, pt: d.pounceT, pdx: d.pdx, pdz: d.pdz, pj: j ? L.pounces[j - 1].t : 0, ex: dx - d.x, ez: dz - d.z };   // ex, ez: drawn − predicted, eased away
   } else {
-    d.x = P.x; d.z = P.z; d.vx = P.vx; d.vz = P.vz;
+    d.x = P.x; d.z = P.z; d.vx = P.vx; d.vz = P.vz; d.pounceT = P.pt; d.pdx = P.pdx; d.pdz = P.pdz;
+    const q = L.pounces[L.pounces.length - 1];
+    if (q && q.t > P.pj) { P.pj = q.t; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }   // pressed this frame
     netPredMove(d, L.hist[L.hist.length - 1].h, dt);
-    P.x = d.x; P.z = d.z; P.vx = d.vx; P.vz = d.vz;
+    P.x = d.x; P.z = d.z; P.vx = d.vx; P.vz = d.vz; P.pt = d.pounceT; P.pdx = d.pdx; P.pdz = d.pdz;
   }
   const k = Math.exp(-8 * dt); P.ex *= k; P.ez *= k;
   if (P.ex * P.ex + P.ez * P.ez > 16) P.ex = P.ez = 0;
   d.x = P.x + P.ex; d.z = P.z + P.ez;
-  if (Math.hypot(d.vx, d.vz) > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * (d.mode === 'lie' ? 4 : 14)));
+  if (d.pounceT > 0) d.yaw = Math.atan2(d.pdx, d.pdz);
+  else if (Math.hypot(d.vx, d.vz) > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * (d.mode === 'lie' ? 4 : 14)));
   return true;
 }
 
@@ -7953,7 +7980,7 @@ function netGuestGrave(id, f) {
 // a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
 // the same screen joins like local co-op (Ⓐ on another controller, or the other side of the keyboard) and gets
 // a dog of their own: from then on each player has just their own device.
-function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0, q: 0, hist: [], ack: null }; }
+function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0, q: 0, hist: [], ack: null, pounces: [] }; }
 function netLocalOf(slot) { if (NET.role !== 'guest' || !(slot >= 0)) return null; for (const L of NET.locals) if (L.slot === slot) return L; return null; }
 const netSameDev = (L, dev) => L.used && L.kind === dev.kind && L.index === dev.index;
 function netGuestInput(now) {
@@ -7994,6 +8021,7 @@ function netGuestInput(now) {
       netSend(p ? { t: 'i', h, q, p } : { t: 'i', h, q });
     }
     for (const e of NET_EDGES) if (r[e]) netSend(p ? { t: 'e', k: e, p } : { t: 'e', k: e });
+    netPredPress(L, G.dogs.find(d => d.player.slot === L.slot), r, now);
   }
 }
 
@@ -8095,6 +8123,7 @@ hint = fxDef('hint', hint);
 hank = fxDef('hank', hank, { keep: a => !(a[2] && a[2].delay > 0), after: said => !!said });   // only what he really says, when he says it
 baaAt = fxDef('baaAt', baaAt);                                       // (by the sheep: each screen judges distance and pan for itself)
 bellDing = fxDef('bellDing', bellDing);
+barkFx = fxDef('barkFx', barkFx);
 landDog = fxDef('landDog', landDog);                                 // stamps the landing squash with this screen's clock
 dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
