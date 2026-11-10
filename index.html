@@ -415,6 +415,8 @@ function buildText() {
 // TUNING — every gameplay number lives here
 // =====================================================================
 const T = {
+  graveScale: 0.9,       // tombstone size (keep small: they sit on the trail)
+  graveTagR: 3,          // a dog this close shows the grave's name
   // clock
   hourSec: 10,           // real seconds per in-game hour
   startHour: 7.0,
@@ -5662,30 +5664,47 @@ function updateCougars(dt) {
 // TOMBSTONES — every sheep lost gets a little grave where it fell
 // =====================================================================
 const graveMat = { stone: null };
+const GRAVE_NAME_MAX = 14;   // = rename limit; the font shrinks to fit
+const graveName = n => { n = String(n || 'Sheep').replace(/\s+/g, ' ').trim() || 'Sheep'; return n.length > GRAVE_NAME_MAX ? n.slice(0, GRAVE_NAME_MAX - 1).trimEnd() + '…' : n; };
+const graveWords = (s, why) => why === 'old' ? 'A long, good life' : s.lamb ? 'Our wee lamb' : s.ram ? 'Brave ram' : s.bell ? 'Led us home' : 'Much loved';
 function addTombstone(s, why) {
   let x = s.x, z = s.z;
   if (sdfAt(x, z) < 0.8) { const g = sdfGrad(x, z); x += g.x * (0.8 - sdfAt(x, z)); z += g.z * (0.8 - sdfAt(x, z)); }
   const y = terrainH(x, z), root = new THREE.Group(); root.position.set(x, y, z);
   root.rotation.y = Math.PI / 4 + rnd(-0.25, 0.25);   // face the camera, a little crooked
   const lean = rnd(-0.08, 0.08);
-  const stone = new THREE.Group(); stone.rotation.z = lean; root.add(stone);
+  const stone = new THREE.Group(); stone.rotation.set(-0.35, 0, lean); root.add(stone);   // leans back so the camera can read it
   part(stone, merge(
     P(BOX(0.78, 0.8, 0.2), '#a9a9b4', { p: [0, 0.4, 0] }),
     P(CYL(0.39, 0.39, 0.2, 14, 1), '#a9a9b4', { r: [Math.PI / 2, 0, 0], p: [0, 0.8, 0] }),
     P(BOX(0.95, 0.12, 0.34), '#8d8d98', { p: [0, 0.06, 0] })));
+  // mound, flowers, and a little wreath at the foot
+  const FL = ['#ff7eb6', '#ffe14d', '#ffffff', '#b98cff', '#ff9a5a'];
   part(root, merge(P(SPH(9), '#7a5a3a', { s: [0.55, 0.14, 0.85], p: [0, 0.02, 0.62] }),
-    ...[0, 1, 2].map(i => P(SPH(6), ['#ff7eb6', '#ffe14d', '#ffffff'][i], { s: [0.07, 0.06, 0.07], p: [-0.18 + i * 0.18, 0.18, 0.45 + (i % 2) * 0.2] }))), { outline: false });
-  // the name, carved on the front
-  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; const cx = cv.getContext('2d');
-  cx.fillStyle = '#a9a9b4'; cx.fillRect(0, 0, 256, 256);
-  cx.fillStyle = '#4a4a56'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-  cx.font = 'bold 38px Fredoka, sans-serif'; cx.fillText('R.I.P.', 128, 52);
-  cx.font = 'bold 46px Fredoka, sans-serif'; cx.fillText(s.name || 'Sheep', 128, 122, 236);
-  cx.font = '500 28px Fredoka, sans-serif'; cx.fillText(`Day ${G.clock.day}`, 128, 186);
-  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.66), new THREE.MeshBasicMaterial({ map: tex }));
-  face.position.set(0, 0.52, 0.105); stone.add(face);
+    ...FL.map((c, i) => P(SPH(6), c, { s: [0.07, 0.06, 0.07], p: [-0.26 + i * 0.13, 0.17, 0.42 + (i % 2) * 0.22] })),
+    ...[0, 1, 2, 3].map(i => P(SPH(5), '#5f9e48', { s: [0.09, 0.05, 0.09], p: [-0.2 + i * 0.13, 0.12, 0.5 + ((i + 1) % 2) * 0.18] }))), { outline: false });
+  const wreath = new THREE.Group(); wreath.position.set(-0.5, 0.2, 0.14); wreath.rotation.set(-0.3, 0.35, 0); root.add(wreath);
+  part(wreath, merge(P(new THREE.TorusGeometry(0.15, 0.05, 6, 14), '#4f8a3c'),
+    ...[0, 1, 2, 3, 4, 5].map(i => { const a = i / 6 * Math.PI * 2; return P(SPH(5), i % 2 ? '#ffffff' : '#ff5a7a', { s: [0.04, 0.04, 0.03], p: [Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0.04] }); })), { outline: false });
+  // the face: heart, name (fits however long), a few loving words, the day
+  const W = 256, H = 320, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d');
+  cx.fillStyle = '#a9a9b4'; cx.beginPath(); cx.arc(128, 92, 128, Math.PI, 0); cx.lineTo(256, H); cx.lineTo(0, H); cx.closePath(); cx.fill();
+  const carve = (draw) => { cx.save(); cx.translate(1, 1.5); cx.fillStyle = cx.strokeStyle = '#d4d4dc'; draw(); cx.restore(); cx.fillStyle = cx.strokeStyle = '#33333e'; draw(); };
+  carve(() => { cx.lineWidth = 3; cx.beginPath(); cx.arc(128, 96, 106, Math.PI, 0); cx.lineTo(234, 292); cx.lineTo(22, 292); cx.closePath(); cx.stroke(); });
+  cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  carve(() => { cx.save(); cx.translate(128, 46); cx.scale(1.25, 1.25); cx.beginPath(); cx.moveTo(0, 8); cx.bezierCurveTo(-14, -2, -10, -14, 0, -7); cx.bezierCurveTo(10, -14, 14, -2, 0, 8); cx.fill(); cx.restore(); });
+  const name = graveName(s.name);
+  let fs = 64; cx.font = `700 ${fs}px Fredoka, sans-serif`; while (fs > 24 && cx.measureText(name).width > 208) { fs -= 2; cx.font = `700 ${fs}px Fredoka, sans-serif`; }
+  carve(() => cx.fillText(name, 128, 118));
+  cx.font = '500 26px Fredoka, sans-serif'; carve(() => cx.fillText(graveWords(s, why), 128, 172, 196));
+  carve(() => { cx.fillRect(78, 202, 100, 2); });
+  cx.font = '600 28px Fredoka, sans-serif'; carve(() => cx.fillText(`✿ ${G.clock.day} ✿`, 128, 240));
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const fm = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, transparent: false });
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.66 * H / W), fm);
+  face.position.set(0, 1.008 - 0.33 * H / W + 0.02, 0.105); stone.add(face);
   const back = face.clone(); back.rotation.y = Math.PI; back.position.z = -0.105; stone.add(back);
+  root.scale.setScalar(T.graveScale);
   dressGrave(stone, s);   // FLOCK LOOKS: its hat rests on the stone
   scene.add(root);
   const grave = { x, z, y, name: s.name || 'Sheep', why, day: G.clock.day, root, r: 0.5, looks: describeSheep(s) };
@@ -6229,6 +6248,16 @@ function drawOverlay(dt) {
       const t = (G.time * 0.6 + s.id * 0.37) % 1; ctx.globalAlpha = 1 - t; ctx.font = `600 ${12 + t * 6}px Fredoka, sans-serif`; ctx.fillStyle = '#dfe6ff';
       ctx.fillText('z', px + 8 + t * 6, py - 6 - t * 18); ctx.globalAlpha = 1;
     }
+  }
+  // TOMBSTONES: a dog at a grave shows its name
+  const tagged = new Set(G.dogs.map(d => { let b = null, bd = T.graveTagR; for (const g of G.graves) { const k = Math.hypot(d.x - g.x, d.z - g.z); if (k < bd) { bd = k; b = g; } } return b; }));
+  for (const g of G.graves) {
+    const near = tagged.has(g);
+    g.tagA = clamp((g.tagA || 0) + (near ? dt * 4 : -dt * 3), 0, 1); if (!g.tagA) continue;
+    const [px, py, pz] = proj(g.x, g.y + 1.25 * T.graveScale, g.z); if (pz > 1 || px < -80 || px > W + 80 || py < -40 || py > H + 40) continue;
+    const txt = `♥ ${graveName(g.name)}`; ctx.font = '600 15px Fredoka, sans-serif'; const w = ctx.measureText(txt).width + 18;
+    ctx.globalAlpha = g.tagA; ctx.fillStyle = 'rgba(40,36,52,.8)'; rr(px - w / 2, py - 12 - 6 * g.tagA, w, 24, 11); ctx.fill();
+    ctx.fillStyle = '#ffe9f1'; ctx.fillText(txt, px, py - 6 * g.tagA + 1); ctx.globalAlpha = 1;
   }
   // pen badges + gate prompts
   for (const p of pens) {
