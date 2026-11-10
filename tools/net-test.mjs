@@ -489,9 +489,10 @@ try {
   await A.page.evaluate(() => { GAME.G.wool = 999; const w = GAME.WARES.find(o => o.id === 'cabo'); GAME.buyWare(w); GAME.buyWare(w); });   // Cabo (bark twice): the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
-  const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent }));
+  const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent, stars: document.getElementById('eStars').textContent, obit: document.getElementById('eMem').textContent }));
   const [endA, endB] = await Promise.all([endOf(A), endOf(B)]);
-  check("the finale shows on the guest with the host's results", endA.mode === 'end' && endB.title === endA.title && endB.line === endA.line && endB.stats === endA.stats, { host: endA.line, guest: endB.line });
+  check("the finale shows on the guest with the host's results", endA.mode === 'end' && endB.title === endA.title && endB.line === endA.line && endB.stats === endA.stats && endB.stars === endA.stars, { host: endA.line, guest: endB.line });
+  check("…and the same obituaries", endA.obit.length > 0 && endB.obit === endA.obit, { host: endA.obit.slice(0, 120), guest: endB.obit.slice(0, 120) });
   if (SHOTS) { await drawing(B, true); await sleep(1500); fs.writeFileSync(path.join(SHOTS, 'guest-finale.png'), await B.page.screenshot()); await drawing(B, false); }
   // the guest asks to herd again (the host ignores it for the finale's first 1.5 s, so press until it takes)
   for (let i = 0; i < 8 && await A.page.evaluate(() => GAME.G.mode === 'end'); i++) { await B.page.keyboard.press('Enter'); await sleep(600); }
