@@ -99,7 +99,7 @@ const tests = {
       H.walkTo(pen.x + Math.cos(a) * (pen.R + 0.45), pen.z + Math.sin(a) * (pen.R + 0.45), 10, 0.3);   // up to the fence beside the lick
       const inLick = H.r(L.salt), stillCarrying = d.salt;
       // the penned flock, short of salt, licks it
-      GAME.setGate(pen, false); H.penSheep(pen); for (const s of G.sheep) s.salt = 0.2; H.place(d, pen.exitX + 8, pen.exitZ + 8); H.p.bot = {};
+      GAME.setGate(pen, false); H.penSheep(pen); for (const s of G.sheep) s.salt = 0.6; H.place(d, pen.exitX + 8, pen.exitZ + 8); H.p.bot = {};
       let maxLicking = 0; H.run(90, () => { maxLicking = Math.max(maxLicking, G.sheep.filter(s => s.atLick).length); });
       const live = G.sheep.filter(s => !s.dead);
       return { secsToRock: H.r(toRock), picked: got, rockTaken: taken, lickSalt: inLick, carryingAfter: stillCarrying, lumps: FORAGE.salted,
