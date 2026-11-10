@@ -115,6 +115,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
   to tip in.
+- **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
+  weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
 - **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
   lumps go to the pen's lick.
 - **Coyote packs** flank and strike together; chase off the alpha to break
