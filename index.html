@@ -587,8 +587,9 @@ const T = {
   coyotePounce: { courage: 0.75, kick: 19, up: 8 },
   coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
   gate: { rate: 7, damp: 2.6, maxOut: 1.7, maxIn: 2.0, openAt: 1.25, fresh: 0.35, lean: 0.45, dogDisc: 0.62, slam: 9, whack: 6 },
-  launcher: { L: 4.2, W: 2.1, pivotH: 0.55, drop: 0.45, flight: 1.35, cd: 0.9, back: 0.9, trigger: 7 },
-  swimSpeed: 1.8, dogSwim: 3.2,
+  launcher: { L: 4.2, W: 2.5, pivotH: 0.55, drop: 0.45, flight: 1.45, cd: 0.9, back: 0.9, trigger: 7,
+    funnel: { len: 6.5, wide: 4.2, r: 14, pull: 1.1, inPull: 1.2 } },   // wings len m back, flaring wide m out; pushed sheep within r m bend for the mouth
+  swimSpeed: 1.8, dogSwim: 4.4,
   shakeDecay: 2.2,
   // forage: alfalfa and daisies along the trail, gathered just by running over them, and each pen's troughs.
   // Food is in hunger units: 1 unit takes 1.0 off one sheep's hunger. Grazing flat out takes ~0.14 an hour,
@@ -1118,12 +1119,12 @@ const FINAL = CAMPS.find(c => c.final);
 const MARKET = (() => { const s = FINAL.s + 28, p = pathPoint(s, -11), q = Math.SQRT1_2; return { s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: 10 }; })();
 const offMarket = (x, z, pad = 0) => Math.hypot(x - MARKET.x, z - MARKET.z) > MARKET.r + pad;
 
-// the river crossing (with a bridge) in the mountain valley
-const RIVER = { s: 385, hw: 5, bridgeHW: 4.5, deckY: 0.5 };
+// the river in the mountain valley: no bridge. Dogs (and Hank) swim it, sheep only fly it (the launcher)
+const RIVER = { s: 385, hw: 12 };
 { const p = pathPoint(RIVER.s); Object.assign(RIVER, { x: p.x, z: p.z, tx: p.tx, tz: p.tz, nx: p.nx, nz: p.nz }); }
 function riverAcross(x, z) { return (x - RIVER.x) * RIVER.tx + (z - RIVER.z) * RIVER.tz; }   // distance from river centreline
 function riverAlong(x, z) { return (x - RIVER.x) * RIVER.nx + (z - RIVER.z) * RIVER.nz; }    // position along the river (= offset from trail)
-function onBridge(x, z) { return Math.abs(riverAlong(x, z)) < RIVER.bridgeHW && Math.abs(riverAcross(x, z)) < RIVER.hw + 3; }
+function inRiver(x, z) { return Math.abs(riverAcross(x, z)) < RIVER.hw + 4 && riverAlong(x, z) > -90; }   // the channel (the terrain cut below)
 
 // corridor half widths per path sample
 const hwWArr = new Float32Array(PN + 1), hwEArr = new Float32Array(PN + 1);
@@ -1217,28 +1218,28 @@ function terrainH(x, z) {
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * VX + i;
   return lerp(lerp(vH[k], vH[k + 1], u), lerp(vH[k + VX], vH[k + VX + 1], u), v);
 }
-function groundY(x, z) { if (onBridge(x, z)) return RIVER.deckY; const ly = launcherY(x, z); return ly === null ? terrainH(x, z) : ly; }   // launcherY: the sheep launcher's plank (dog-moves section)
+function groundY(x, z) { const ly = launcherY(x, z); return ly === null ? terrainH(x, z) : ly; }   // launcherY: the sheep launcher's plank (dog-moves section)
 
 // ---------------- walkability + signed distance field (1 m) ----------------
-const blk = new Uint8Array(GN);
+const blk = new Uint8Array(GN), swimOK = new Uint8Array(GN);   // swimOK: blocked only by the river's water (dogs and Hank swim it)
 for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
   const k = j * GX + i, x = GMINX + i, z = GMINZ + j;
   if (gIdx[k] < 0) { blk[k] = 1; continue; }
   const ci = trailInfo(x, z);
   if (Math.max(ci.oW, ci.oE, ci.oC) > 0) { blk[k] = 1; continue; }
-  if (onBridge(x, z)) continue;
   const h = terrainH(x, z);
-  if (h > 1.6 || h < WATER_Y + 0.45) blk[k] = 1;
+  if (h > 1.6) blk[k] = 1;
+  else if (h < WATER_Y + 0.45) { blk[k] = 1; if (inRiver(x, z)) swimOK[k] = 1; }
 }
 const OBSTACLES = [];   // filled by scenery; stamped before the SDF is built
 function stampObstacle(x, z, r) {
   const i0 = Math.floor(x - r - GMINX), i1 = Math.ceil(x + r - GMINX), j0 = Math.floor(z - r - GMINZ), j1 = Math.ceil(z + r - GMINZ);
   for (let j = Math.max(0, j0); j <= Math.min(GZ - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(GX - 1, i1); i++) {
-    const dx = GMINX + i - x, dz = GMINZ + j - z; if (dx * dx + dz * dz <= r * r) blk[j * GX + i] = 1;
+    const dx = GMINX + i - x, dz = GMINZ + j - z; if (dx * dx + dz * dz <= r * r) { blk[j * GX + i] = 1; swimOK[j * GX + i] = 0; }
   }
 }
 function isBlocked(x, z) { return blk[cellIdxAt(x, z)] === 1; }
-let SDF = null;
+let SDF = null, SWIM_SDF = null;
 function chamfer(feature) {
   const d = new Float32Array(GN), D2 = Math.SQRT2, INF = 1e6;
   for (let k = 0; k < GN; k++) d[k] = feature[k] ? 0 : INF;
@@ -1256,27 +1257,39 @@ function chamfer(feature) {
   }
   return d;
 }
-function buildSDF() {
-  const free = new Uint8Array(GN); for (let k = 0; k < GN; k++) free[k] = blk[k] ? 0 : 1;
-  const toBlk = chamfer(blk), toFree = chamfer(free);
-  SDF = new Float32Array(GN);
-  for (let k = 0; k < GN; k++) SDF[k] = blk[k] ? -(toFree[k] - 0.5) : (toBlk[k] - 0.5);
+function sdfOf(b) {
+  const free = new Uint8Array(GN); for (let k = 0; k < GN; k++) free[k] = b[k] ? 0 : 1;
+  const toBlk = chamfer(b), toFree = chamfer(free), F = new Float32Array(GN);
+  for (let k = 0; k < GN; k++) F[k] = b[k] ? -(toFree[k] - 0.5) : (toBlk[k] - 0.5);
+  return F;
 }
-function sdfAt(x, z) {
+function buildSDF() {
+  SDF = sdfOf(blk);
+  const sb = new Uint8Array(GN); for (let k = 0; k < GN; k++) sb[k] = blk[k] && !swimOK[k] ? 1 : 0;
+  SWIM_SDF = sdfOf(sb);
+}
+function sdfIn(F, x, z) {
   const fx = x - GMINX, fz = z - GMINZ;
   const i = clamp(Math.floor(fx), 0, GX - 2), j = clamp(Math.floor(fz), 0, GZ - 2);
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * GX + i;
-  return lerp(lerp(SDF[k], SDF[k + 1], u), lerp(SDF[k + GX], SDF[k + GX + 1], u), v);
+  return lerp(lerp(F[k], F[k + 1], u), lerp(F[k + GX], F[k + GX + 1], u), v);
 }
+const sdfAt = (x, z) => sdfIn(SDF, x, z);
+const swimSdfAt = (x, z) => sdfIn(SWIM_SDF, x, z);   // walls for swimmers: the river's water isn't one
 const GRAD = { x: 0, z: 0 };
 function sdfGrad(x, z) {
   const e = 0.6, gx = sdfAt(x + e, z) - sdfAt(x - e, z), gz = sdfAt(x, z + e) - sdfAt(x, z - e), l = Math.hypot(gx, gz) || 1;
   GRAD.x = gx / l; GRAD.z = gz / l; return GRAD;
 }
-function collideWorld(e, r) {
+function swimGrad(x, z) {
+  const e = 0.6, gx = swimSdfAt(x + e, z) - swimSdfAt(x - e, z), gz = swimSdfAt(x, z + e) - swimSdfAt(x, z - e), l = Math.hypot(gx, gz) || 1;
+  GRAD.x = gx / l; GRAD.z = gz / l; return GRAD;
+}
+const collideDog = (e, r = T.dogR) => collideWorld(e, r, SWIM_SDF);   // dogs and Hank: walls, but they wade into the river
+function collideWorld(e, r, F = SDF) {
   for (let it = 0; it < 2; it++) {
-    const d = sdfAt(e.x, e.z); if (d >= r) return;
-    const g = sdfGrad(e.x, e.z), push = r - d;
+    const d = sdfIn(F, e.x, e.z); if (d >= r) return;
+    const g = F === SDF ? sdfGrad(e.x, e.z) : swimGrad(e.x, e.z), push = r - d;
     e.x += g.x * push; e.z += g.z * push;
     const vn = e.vx * g.x + e.vz * g.z; if (vn < 0) { e.vx -= vn * g.x; e.vz -= vn * g.z; }
   }
@@ -1680,7 +1693,7 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     const rockCol = ROCK_COL[bi];
     if (walk) {
       let nearCamp = !offMarket(px, pz, 4); for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
-      const nearRiver = Math.abs(riverAcross(px, pz)) < RIVER.hw + 9 && Math.abs(riverAlong(px, pz)) < 20;
+      const nearRiver = Math.abs(riverAcross(px, pz)) < RIVER.hw + 22 && Math.abs(riverAlong(px, pz)) < 30;   // the launcher's approach too
       if (nearCamp || nearRiver || Math.abs(lat) < 4) { if (!nearRiver && Math.abs(lat) > 3 && r < 0.12 && bi > 0) addScen('flowers', px, pz, 1, 0); continue; }
       if (bi === 0) { if (r < 0.045) addScen('cactus', px, pz, 0.8 + wr() * 0.5, 0.45); else if (r < 0.08) { const s = 0.5 + wr() * 1.1; addScen('rock', px, pz, s, s * 0.85, { col: rockCol }); } else if (r < 0.16) addScen('deadbush', px, pz, 0.8 + wr() * 0.6, 0); }
       if (bi === 1) { if (r < 0.045) addScen('pine', px, pz, 0.8 + wr() * 0.5, 0.6); else if (r < 0.075) { const s = 0.5 + wr() * 1.2; addScen('rock', px, pz, s, s * 0.85, { col: rockCol }); } else if (r < 0.13) addScen('bush', px, pz, 0.8 + wr() * 0.5, 0); else if (r < 0.3) addScen('flowers', px, pz, 1, 0); }
@@ -1699,7 +1712,7 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
 }
 
 // =====================================================================
-// FENCES: generic segment colliders used by pens and the bridge
+// FENCES: generic segment colliders used by pens and the launcher
 // =====================================================================
 const HIT = { nx: 0, nz: 0 };
 function collideSeg(e, r, s) {
@@ -1814,23 +1827,6 @@ function collideFences(e, r) {
     if (Math.abs(u) < b.hl && Math.abs(v) < b.hw) { const dv = b.hw + r + 0.02 - v; e.x += b.nx * dv; e.z += b.nz * dv; hit = true; hx = b.nx; hz = b.nz; }
   }
   HIT.nx = hx; HIT.nz = hz; return hit;
-}
-
-// ---------------- the bridge ----------------
-{
-  const len = 2 * (RIVER.hw + 3), hw = RIVER.bridgeHW, a = Math.atan2(RIVER.tz, RIVER.tx);
-  const g = new THREE.Group(); g.position.set(RIVER.x, 0, RIVER.z); g.rotation.y = -a; scene.add(g);
-  const planks = []; const n = Math.round(len / 0.55);
-  for (let i = 0; i < n; i++) planks.push(P(BOX(0.5, 0.25, hw * 2), i % 2 ? '#b98552' : '#a8743f', { p: [-len / 2 + (i + 0.5) * len / n, RIVER.deckY - 0.12, 0] }));
-  for (const side of [-1, 1]) {
-    for (let i = 0; i <= 8; i++) planks.push(P(CYL(0.09, 0.1, 1.2, 6), '#7a5230', { p: [-len / 2 + i * len / 8, RIVER.deckY + 0.5, side * (hw - 0.1)] }));
-    planks.push(P(BOX(len, 0.12, 0.1), '#c08648', { p: [0, RIVER.deckY + 1.0, side * (hw - 0.1)] }));
-    planks.push(P(BOX(len, 0.12, 0.1), '#c08648', { p: [0, RIVER.deckY + 0.55, side * (hw - 0.1)] }));
-    planks.push(P(CYL(0.25, 0.3, 6, 7), '#6b4226', { p: [-RIVER.hw + 0.5, RIVER.deckY - 3, side * (hw - 0.4)] }), P(CYL(0.25, 0.3, 6, 7), '#6b4226', { p: [RIVER.hw - 0.5, RIVER.deckY - 3, side * (hw - 0.4)] }));
-    const ax = RIVER.x + RIVER.tx * (-len / 2) + RIVER.nx * side * (hw - 0.1), az = RIVER.z + RIVER.tz * (-len / 2) + RIVER.nz * side * (hw - 0.1);
-    staticFences.push({ ax, az, bx: ax + RIVER.tx * len, bz: az + RIVER.tz * len });
-  }
-  part(g, merge(...planks));
 }
 
 // ---------------- landmarks ----------------
@@ -3234,10 +3230,18 @@ function updateSheep(dt, dtH) {
       if (s.lamb && s.state !== 'sleep' && Math.random() < dt * 0.15) s.hopV = 2.6;   // lambs pronk
     }
     if (!straight) {
-      // ---- moving sheep funnel onto the bridge like they'd follow a trail
-      if ((s.state === 'flee' || s.state === 'move') && Math.abs(riverAcross(s.x, s.z)) < RIVER.hw + 12) {
-        const al = riverAlong(s.x, s.z);
-        if (Math.abs(al) < 22 && Math.abs(al) > 1) { const k = Math.min(1, Math.abs(al) / 5) * 0.9 * -Math.sign(al); dX += RIVER.nx * k; dZ += RIVER.nz * k; }
+      // ---- driven sheep near the launcher bend for its chute's mouth, and in the chute walk on to the low end
+      if (s.state === 'flee' || s.state === 'move') for (const S of LAUNCHERS) {
+        const ex = s.x - S.x, ez = s.z - S.z, FN = T.launcher.funnel; if (ex * ex + ez * ez > (FN.r + S.L) ** 2) continue;
+        const p = ex * S.ux + ez * S.uz, q = -ex * S.uz + ez * S.ux, aq = Math.abs(q), sq = Math.sign(q) || 1, vx = -S.uz, vz = S.ux, dl = Math.hypot(dX, dZ) || 1;
+        const mx = S.x + S.ux * 0.8 - s.x, mz = S.z + S.uz * 0.8 - s.z, ml = Math.hypot(mx, mz) || 1, toM = (dX * mx + dZ * mz) / (dl * ml);
+        const half = p > 0 ? S.hw : S.hw + FN.wide * Math.min(1, -p / FN.len);   // the funnel's half width here (wings, then the chute)
+        if (p > -0.4 && p < S.L + 0.8 && aq < S.hw) { const k = FN.inPull * (p < S.L - 0.6 ? 1 : 0.3); dX += S.ux * k - vx * q * 0.6; dZ += S.uz * k - vz * q * 0.6; }
+        else if (p > -FN.len - 0.5 && p < S.L + 2 && aq >= half && aq < half + 3 && toM > 0.1) {   // outside a wing, pressed at it: slide round its tip, not into the corner by the river
+          const k = FN.pull * Math.min(1, toM * 2) * dl; dX += (-S.ux + vx * sq * 0.35) * k; dZ += (-S.uz + vz * sq * 0.35) * k;
+        } else if (p <= -0.4 && p > -FN.r && toM > 0.2 && aq < half + 2.5) {   // in front: bend for the mouth
+          const k = FN.pull * clamp(1 + p / FN.r, 0.3, 1) * Math.min(1, toM * 2); dX += mx / ml * k * dl; dZ += mz / ml * k * dl;
+        }
       }
       // ---- avoid walls and fences
       const sd = sdfAt(s.x, s.z);
@@ -3307,7 +3311,7 @@ function updateSheep(dt, dtH) {
     // ---- cornered: pressed hard but going nowhere
     s.cpT = (s.cpT || 0) + dt;   // net speed over a short window (a sheep jittering against a fence is going nowhere)
     if (s.cpT >= 0.3) { s.netSpd = Math.hypot(s.x - s.cpx, s.z - s.cpz) / s.cpT; s.cpx = s.x; s.cpz = s.z; s.cpT = 0; }
-    if (play && !s.pen && !s.snag && s.state !== 'sleep' && s.rs === 'idle' && s.breakT <= 0) {
+    if (play && !s.pen && !s.snag && s.state !== 'sleep' && s.rs === 'idle' && s.breakT <= 0 && !inChute(s)) {   // loaded on the launcher: it stays put
       const moved = s.netSpd ?? 9;
       s.breakCd -= dt;
       if (s.breakCd <= 0 && press > T.cornerPress && moved < T.cornerSpd && pressD && pressD.mode !== 'lie') {
@@ -3484,7 +3488,7 @@ function spawnDog(player) {
     isDog: true, greens: 0, salt: 0, pounceT: 0, pounceCD: 0, pdx: 0, pdz: 1, holding: null, holdKind: null, holdT: 0, shakeT: 0, air: null, wx: 0, wz: 0, inMag: 0, lieK: 0, leanT: 0,
     hp: 1, hpShow: 1, hurtAt: -99, maul: null, mauled: false, maulEsc: 0, ko: false };
   if (G.dogs[0]) { d.x = G.dogs[0].x + Math.cos(a) * 2; d.z = G.dogs[0].z + Math.sin(a) * 2; }
-  collideWorld(d, T.dogR);
+  collideDog(d);
   G.dogs.push(d); player.dog = d; return d;
 }
 function updateDog(d, inp, dt) {
@@ -3499,7 +3503,7 @@ function updateDog(d, inp, dt) {
     if (d.holding) releaseHold(d, false);
     d.pounceT = 0; d.hopT = 0;
     d.stunT -= dt; const k = Math.exp(-dt * 4); d.vx *= k; d.vz *= k;
-    d.x += d.vx * dt; d.z += d.vz * dt; collideWorld(d, T.dogR); collideFences(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
+    d.x += d.vx * dt; d.z += d.vz * dt; collideDog(d); collideFences(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
     d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt);
     // a partner nosing you gets you back on your feet
     for (const o of G.dogs) if (o !== d && !o.air && o.stunT <= 0 && d.stunT > 0.15 && Math.hypot(o.x - d.x, o.z - d.z) < 1.6) {
@@ -3544,7 +3548,8 @@ function updateDog(d, inp, dt) {
   else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
   const ox = d.x, oz = d.z;
   d.x += d.vx * dt; d.z += d.vz * dt;
-  collideWorld(d, T.dogR);
+  collideDog(d);
+  if (overWater(d.x, d.z) && inRiver(d.x, d.z)) { startSwim(d); return; }   // walked into the river: paddling now (drops what it holds)
   if (d.pounceT > 0) pounceGateSlam(d, ox, oz);
   if (d.hopT <= 0 && collideFences(d, T.dogR) && freeToHop(d)) {
     // pushing into a fence hops it (and a pounce sails over); holding something, you just stop
@@ -3883,8 +3888,8 @@ function pounceCoyote(c, d) {
 }
 
 // ---------------- things in the air (sheep, coyotes, dogs) ----------------
-function wetAt(x, z) { return !onBridge(x, z) && terrainH(x, z) < WATER_Y + 0.6; }
-function overWater(x, z) { return !onBridge(x, z) && terrainH(x, z) < WATER_Y - 0.05; }
+function wetAt(x, z) { return terrainH(x, z) < WATER_Y + 0.6; }
+function overWater(x, z) { return terrainH(x, z) < WATER_Y - 0.05; }
 // one ballistic step. Walls, rocks and trees bounce low fliers back; fences only stop low ones. → 'ground' | 'water' | null
 function airStep(e, a, r, dt) {
   const ox = e.x, oz = e.z;
@@ -3916,7 +3921,7 @@ function splashFx(x, z, big = 1) {
 // SHARED HOOK owner: s.air is set → this sheep is flying (or swimming back to shore) and updateAirborneSheep moves it
 function launchSheep(s, vx, vz, vy, kind, by = null) {
   if (s.heldBy) { const d = s.heldBy; if (d.holding === s) { d.holding = null; d.holdKind = null; } s.heldBy = null; }
-  s.air = { kind, by, h: Math.max(s.y + (s.hopY || 0), groundY(s.x, s.z)), vy, t: 0, spin: 0, bounces: 1, chain: 0, t0: G.time, from: s.pen, ghost: 0, noLand: 0.05 };
+  s.air = { kind, by, h: Math.max(s.y + (s.hopY || 0), groundY(s.x, s.z)), vy, t: 0, spin: 0, bounces: 1, chain: 0, t0: G.time, from: s.pen, ghost: 0, noLand: 0.05, side: Math.sign(riverAcross(s.x, s.z)) || -1 };   // side: the bank it swims back to
   s.vx = vx; s.vz = vz; s.hopY = 0; s.hopV = 0; s.eating = false; s.state = 'flee'; s.pose = s.pose || {};
   return s.air;
 }
@@ -4018,7 +4023,12 @@ function swimSheep(s, a, dt) {
     burst(s.x, s.y + 0.6, s.z, 10, '#9fe3ff', { speed: 1.5, up: 2, size: 0.12, life: 0.6 }); floatText('Brrr!', s.x, s.y + 1.5, s.z, '#cfefff', 0.9);
     return;
   }
-  const g = sdfGrad(s.x, s.z), k = Math.min(1, dt * 3);
+  let g = sdfGrad(s.x, s.z); const k = Math.min(1, dt * 3);
+  if (inRiver(s.x, s.z) && a.side) {   // the river: back to its own bank (only the launcher takes sheep over), off the walls
+    const ws = swimSdfAt(s.x, s.z), w = ws < 2 ? swimGrad(s.x, s.z) : null, wk = w ? (2 - ws) * 0.6 : 0;
+    let gx = RIVER.tx * a.side + (w ? w.x * wk : 0), gz = RIVER.tz * a.side + (w ? w.z * wk : 0); const gl = Math.hypot(gx, gz) || 1;
+    g = { x: gx / gl, z: gz / gl };
+  }
   s.vx += (g.x * T.swimSpeed - s.vx) * k; s.vz += (g.z * T.swimSpeed - s.vz) * k;
   s.x += s.vx * dt; s.z += s.vz * dt;
   if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
@@ -4083,19 +4093,26 @@ function launchDog(d, vx, vz, vy) {
   d.air = { h: d.y, vy, t: 0, spin: 0, bounces: 1, ghost: 0, noLand: 0.05 };
   d.vx = vx; d.vz = vz; d.pounceT = 0; d.hopT = 0;
 }
+function startSwim(d) {
+  if (d.holding) releaseHold(d, false);
+  d.air = { swim: true, h: WATER_Y, vy: 0, t: 0, spin: 0, bounces: 0, ghost: 0, noLand: 0 }; d.pounceT = 0; d.hopT = 0;
+  spawnRing(d.x, WATER_Y, d.z, 2.2, '#e8f8ff', 0.6); SFX.splash(panOf(d.x, d.z), 0.15);
+}
 function updateAirborneDog(d, inp, dt) {
   const a = d.air;
-  if (a.swim) {   // doggy paddle: steer, drifting toward the nearest bank
+  if (a.swim) {   // doggy paddle: steer (in the river, across it); with no stick, drift to the nearest bank
     a.t += dt;
-    if ((sdfAt(d.x, d.z) > T.dogR + 0.1 && !overWater(d.x, d.z)) || a.t > 20) {
-      if (a.t > 20) unstick(d, T.dogR);
+    const river = inRiver(d.x, d.z);
+    if (!overWater(d.x, d.z) || (!river && a.t > 20)) {   // out: the shallows are walkable for a dog (collideDog)
+      if (a.t > 20 && !river) unstick(d, T.dogR);
       d.air = null; d.y = groundY(d.x, d.z); landDog(d, 0.15);
       burst(d.x, d.y + 0.7, d.z, 14, '#9fe3ff', { speed: 2.5, up: 2, size: 0.12, life: 0.6 }); floatText('*shake shake*', d.x, d.y + 1.7, d.z, '#cfefff', 0.9);
       return;
     }
-    const mx = inp.mx * CAM_R.x - inp.my * CAM_F.x, mz = inp.mx * CAM_R.z - inp.my * CAM_F.z, g = sdfGrad(d.x, d.z), k = Math.min(1, dt * 4);
-    d.vx += (g.x * T.dogSwim * 0.5 + mx * T.dogSwim - d.vx) * k; d.vz += (g.z * T.dogSwim * 0.5 + mz * T.dogSwim - d.vz) * k;
-    d.x += d.vx * dt; d.z += d.vz * dt;
+    const mx = inp.mx * CAM_R.x - inp.my * CAM_F.x, mz = inp.mx * CAM_R.z - inp.my * CAM_F.z, im = Math.min(1, Math.hypot(mx, mz));
+    const g = sdfGrad(d.x, d.z), drift = T.dogSwim * 0.5 * (1 - im), k = Math.min(1, dt * 4);
+    d.vx += (g.x * drift + mx * T.dogSwim - d.vx) * k; d.vz += (g.z * drift + mz * T.dogSwim - d.vz) * k;
+    d.x += d.vx * dt; d.z += d.vz * dt; if (river) collideDog(d);
     if (Math.hypot(d.vx, d.vz) > 0.3) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * 6));
     d.y = Math.max(groundY(d.x, d.z), WATER_Y - 0.55) + Math.sin(a.t * 6) * 0.05; d.leg += dt * 9;
     d.stamina = Math.min(1, d.stamina + T.staminaRegen * 0.5 * dt);
@@ -4108,7 +4125,7 @@ function updateAirborneDog(d, inp, dt) {
     const impact = -a.vy; launcherLand(d, impact);
     if (a.bounces > 0 && impact > 8) { a.bounces--; a.vy = impact * 0.3; d.vx *= 0.5; d.vz *= 0.5; landDog(d, 0.3); }
     else {
-      d.air = null; d.y = groundY(d.x, d.z); if (sdfAt(d.x, d.z) < T.dogR) collideWorld(d, T.dogR);
+      d.air = null; d.y = groundY(d.x, d.z); if (swimSdfAt(d.x, d.z) < T.dogR) collideDog(d);
       d.vx *= 0.3; d.vz *= 0.3; d.stunT = Math.max(d.stunT, 0.25); landDog(d, 0.35);
       floatText('TA-DA!', d.x, d.y + 1.9, d.z, '#ffd36b', 1.3); SFX.thud(panOf(d.x, d.z), 0.35); rumble(d.player, 0.5, 0.4, 140);
       burst(d.x, d.y + 0.15, d.z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 });
@@ -4229,7 +4246,7 @@ function holdStep(d, e, k, r, dt) {
   const cx = e.x - ox, cz = e.z - oz, cl = Math.hypot(cx, cz);
   if (cl > 1e-4) {
     const nx = d.x + cx, nz = d.z + cz;
-    if (!fenceBetween(d.x, d.z, nx, nz)) { d.x = nx; d.z = nz; collideWorld(d, T.dogR); }
+    if (!fenceBetween(d.x, d.z, nx, nz)) { d.x = nx; d.z = nz; collideDog(d); }
     const vn = (d.vx * cx + d.vz * cz) / cl; if (vn < 0) { d.vx -= vn * cx / cl; d.vz -= vn * cz / cl; }
   }
 }
@@ -4467,12 +4484,12 @@ function makeLauncher(x, z, ux, uz, land, title) {
   // chute rails keep the load on the low end; they flare out behind so you can drive sheep in
   const loc = (p, q) => [x + p * ux - q * uz, z + p * uz + q * ux];
   const rail = (p0, q0, p1, q1) => { const [ax, az] = loc(p0, q0), [bx, bz] = loc(p1, q1); return { ax, az, bx, bz }; };
-  const hw = W / 2 + 0.6, f = L + 0.9;
-  const segs = [rail(f, -hw, f, hw), rail(0, hw, f, hw), rail(0, -hw, f, -hw), rail(0, hw, -2.6, hw + 1.8), rail(0, -hw, -2.6, -hw - 1.8)];
+  const hw = W / 2 + 0.6, f = L + 0.9, FN = K.funnel; S.hw = hw;
+  const segs = [rail(f, -hw, f, hw), rail(0, hw, f, hw), rail(0, -hw, f, -hw), rail(0, hw, -FN.len, hw + FN.wide), rail(0, -hw, -FN.len, -hw - FN.wide)];
   for (const s of segs) staticFences.push(s);
   const fg = new THREE.Group(); fg.position.y = S.y; scene.add(fg); part(fg, fenceGeo(segs));
   // the sign
-  const [sx, sz] = loc(-L - 1.4, -(hw + 2.6)), sign = new THREE.Group(); sign.position.set(sx, terrainH(sx, sz), sz); sign.rotation.y = Math.PI / 4; scene.add(sign);
+  const [sx, sz] = loc(-FN.len - 1.2, -(hw + FN.wide + 1.4)), sign = new THREE.Group(); sign.position.set(sx, terrainH(sx, sz), sz); sign.rotation.y = Math.PI / 4; scene.add(sign);
   part(sign, P(CYL(0.09, 0.1, 2.2, 6), '#7a5230', { p: [0, 1.1, 0] }));
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const cx = cv.getContext('2d');
   cx.fillStyle = '#e8c070'; cx.fillRect(0, 0, 512, 160); cx.strokeStyle = '#c0392b'; cx.lineWidth = 12; cx.strokeRect(6, 6, 500, 148);
@@ -4489,9 +4506,9 @@ function makeLauncher(x, z, ux, uz, land, title) {
   }
   return S;
 }
-{ // beside the bridge, on the near bank, upstream (west, away from the camera); it throws across the river
-  const ra = -12.5, al = -17, x = RIVER.x + RIVER.tx * ra + RIVER.nx * al, z = RIVER.z + RIVER.tz * ra + RIVER.nz * al;
-  LAUNCHERS.push(makeLauncher(x, z, RIVER.tx, RIVER.tz, 24.5, 'SHEEP EXPRESS'));
+{ // on the near bank, upstream of the trail (west, away from the camera); it throws across the river
+  const ra = -(RIVER.hw + 9.5), al = -17, x = RIVER.x + RIVER.tx * ra + RIVER.nx * al, z = RIVER.z + RIVER.tz * ra + RIVER.nz * al;
+  LAUNCHERS.push(makeLauncher(x, z, RIVER.tx, RIVER.tz, 2 * RIVER.hw + 15, 'SHEEP EXPRESS'));
 }
 function fireLauncher(S, trig) {
   if (S.cd > 0 || S.k < 0.5) return false;
@@ -4510,7 +4527,7 @@ function fireLauncher(S, trig) {
     const e = r.e, h0 = groundY(e.x, e.z), tf = K.flight + i * 0.05 + rnd(-0.06, 0.1);
     const vx = (tx - e.x) / tf, vz = (tz - e.z) / tf, vy = (groundY(tx, tz) - h0 + 0.5 * T.airGrav * tf * tf) / tf;
     let a;
-    if (r.kind === 'sheep') { a = launchSheep(e, vx, vz, vy, 'launch', trig && trig.isDog ? trig : null); a.bounces = 1; }
+    if (r.kind === 'sheep') { a = launchSheep(e, vx, vz, vy, 'launch', trig && trig.isDog ? trig : null); a.bounces = 1; a.side = Math.sign(riverAcross(tx, tz)) || 1; }   // short of the bank: it swims on over
     else if (r.kind === 'coyote') { launchCoyote(e, vx, vz, vy, trig); a = e.air; }
     else { launchDog(e, vx, vz, vy); a = e.air; floatText('WHEEE!', e.x, e.y + 2, e.z, e.color, 1.3); }
     a.h = h0; a.ghost = 0.3; a.noLand = 0.15;
@@ -4528,6 +4545,7 @@ function fireLauncher(S, trig) {
   } else floatText('THUNK!', S.x - S.ux * S.L * 0.6, S.y + 2.2, S.z - S.uz * S.L * 0.6, '#ffffff', 1.1);
   return true;
 }
+function inChute(e) { for (const S of LAUNCHERS) { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; if (p > -0.4 && p < S.L + 0.9 && Math.abs(q) < S.hw + 0.3) return S; } return null; }
 function onHighEnd(S, e, extra) { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; return p > -S.L - 0.4 && p < -S.L * 0.1 && Math.abs(q) < S.W / 2 + extra; }
 function launcherPounce(d) { for (const S of LAUNCHERS) if (onHighEnd(S, d, 0.95) && fireLauncher(S, d)) return true; return false; }
 function launcherLand(e, impact) { if (impact < T.launcher.trigger) return; for (const S of LAUNCHERS) if (onHighEnd(S, e, 0.6)) fireLauncher(S, e); }   // anything landing hard on the high end fires it too
@@ -6547,7 +6565,7 @@ function leashScreen(dogs) {
     const ox = d.x - cx, oz = d.z - cz;
     let sx = ox * CAM_R.x + oz * CAM_R.z, sy = (ox * CAM_F.x + oz * CAM_F.z) * SIN_EL;
     const csx = clamp(sx, -limX, limX), csy = clamp(sy, -limY, limY);
-    if (csx !== sx || csy !== sy) { const fx = csy / SIN_EL; d.x = cx + CAM_R.x * csx + CAM_F.x * fx; d.z = cz + CAM_R.z * csx + CAM_F.z * fx; collideWorld(d, T.dogR); }
+    if (csx !== sx || csy !== sy) { const fx = csy / SIN_EL; d.x = cx + CAM_R.x * csx + CAM_F.x * fx; d.z = cz + CAM_R.z * csx + CAM_F.z * fx; collideDog(d); }
   }
 }
 
@@ -6780,7 +6798,7 @@ const HINTS = {
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
   thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
-  launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
+  launcher: 'No bridge: dogs swim, sheep fly. Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
   barn: 'The flock is safe for the night. Press <b>Tab</b> / <b>View</b> to visit <b>Hank’s barn</b>.',
 };
 // on a touch screen: the same, shorter, with the on-screen buttons
@@ -7215,6 +7233,7 @@ const hankLight = new THREE.PointLight('#ffc27a', 0, 14, 1.4); scene.add(hankLig
 const _hv = new THREE.Vector3();
 
 // ---------------- where he wants to be ----------------
+const hankY = (x, z) => Math.max(groundY(x, z), WATER_Y - 1.05);   // wading: chest deep in the river
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
@@ -7233,7 +7252,8 @@ function hankGoal() {
   let sg = ss.length ? ss[Math.floor(ss.length * 0.2)] - T.hankBehind : 1e9;
   for (const d of G.dogs) sg = Math.min(sg, sAt(d.x, d.z) - T.hankBehind * 0.7);
   if (sg > 1e8) { const fc = flockCenter(); sg = sAt(fc.x, fc.z) - T.hankBehind; }
-  const p = pathPoint(clamp(sg, 4, PATH_LEN - 4), 2);
+  let p = pathPoint(clamp(sg, 4, PATH_LEN - 4), 2);
+  if (overWater(p.x, p.z)) { const fc = flockCenter(), dir = sAt(fc.x, fc.z) >= RIVER.s ? 1 : -1; for (let k = 1; k < 30 && overWater(p.x, p.z); k++) p = pathPoint(clamp(sg + dir * k * 2, 4, PATH_LEN - 4), 2); }   // not in the river: the bank on the flock's side
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
@@ -7254,17 +7274,17 @@ function updateHank(dt) {
   if (hk.climb) { hankClimb(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
   const g = hankCross(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence)
   if (G.mode !== 'play') hk.asleep = false;
-  const spd = hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
+  const spd = (hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4)) * (overWater(hk.x, hk.z) ? 0.45 : 1);   // wading the river: slow
   // keep clear of the flock and of walls: steer round, don't push through
   let ax = 0, az = 0;
   if (!g.noShy && !hk.asleep) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
-  const sd = sdfAt(hk.x, hk.z); if (sd < 2) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
+  const sd = swimSdfAt(hk.x, hk.z); if (sd < 2) { const gr = swimGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
   let tvx = dx / d * spd + ax * 1.5, tvz = dz / d * spd + az * 1.5;
   const tl = Math.hypot(tvx, tvz), cap = Math.max(spd, 1.5); if (tl > cap) { tvx *= cap / tl; tvz *= cap / tl; }
   const k = 1 - Math.exp(-dt * 4); hk.vx += (tvx - hk.vx) * k; hk.vz += (tvz - hk.vz) * k;
   if (hk.stumble > 0) { hk.vx *= 0.9; hk.vz *= 0.9; }
   hk.x += hk.vx * dt; hk.z += hk.vz * dt;
-  collideWorld(hk, T.hankR);
+  collideDog(hk, T.hankR);
   if (hk.hopT > 0) hk.hopT -= dt; else collideFences(hk, T.hankR);   // stuck on a fence for a while: he steps over it
   collideGraves(hk, T.hankR);
   // solid but gentle: a sheep right against him is just eased aside (no fright), and dogs bump off him
@@ -7282,7 +7302,7 @@ function updateHank(dt) {
     }
     if (e < m && e > 1e-4 && !(dg.hopT > 0)) { dg.x = hk.x + ex / e * m; dg.z = hk.z + ez / e * m; }
   }
-  hk.y = groundY(hk.x, hk.z);
+  hk.y = hankY(hk.x, hk.z);
   // fallen far behind (or stuck) and out of sight: he catches up off-screen, never popping into view
   hk.farT = d > 40 ? hk.farT + dt : 0;
   if (spd > 0 && d > 6) { hk.stuckT += dt; if (hk.stuckT > 3) { if (Math.hypot(hk.x - hk.lastX, hk.z - hk.lastZ) < 1.2) { hk.hopT = 1.5; if (!onScreen(hk.x, hk.y + 1, hk.z, 0.1)) hk.farT = 9; } hk.stuckT = 0; hk.lastX = hk.x; hk.lastZ = hk.z; } }
@@ -7462,7 +7482,7 @@ function onLambsBorn(born) {
     saveFlock();   // new arrivals join the saved flock
   }
 }
-// a few times a second while you play: the herding commands, greedy grazers, a scattered flock, the bridge...
+// a few times a second while you play: the herding commands, greedy grazers, a scattered flock, the launcher...
 function hankWatch(dt) {
   const hk = HANK;
   hankNap(dt); if (hk.asleep) return;
@@ -7498,8 +7518,8 @@ function hankWatch(dt) {
   const starving = living().filter(s => s.hunger >= 1).length;
   if (starving > hk.starving && t - hk.lastStarve > 60 && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
   hk.starving = starving;
-  // nice and steady over the bridge (once a journey)
-  if (!hk.bridgeSaid && out.length >= 3 && Math.abs(riverAcross(fx, fz)) < RIVER.hw + 7 && Math.abs(riverAlong(fx, fz)) < 14) hk.bridgeSaid = hank('nice_steady', null, { force: true });
+  // nice and steady into the launcher's chute (once a journey)
+  if (!hk.bridgeSaid && out.filter(inChute).length >= 3 && hankSees(LAUNCHERS[0].x, LAUNCHERS[0].z)) hk.bridgeSaid = hank('nice_steady', null, { force: true });
   // first sight of the Promised Land
   if (!hk.finalSaid && G.visited.has(CAMPS[3].name)) { hk.finalSaid = true; hank(null, 'There she is, the Promised Land! Fatten them up!', { force: true, delay: 1.5 }); }
   // two dogs working opposite sides of the flock
@@ -9011,7 +9031,7 @@ const NET_TYPES = {
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
       clippers: 'b', shearing: 'b', lift: .02 },   // shearing: has his clippers, clipping a sheep, over a fence
-    animate: hk => { hk.y = groundY(hk.x, hk.z); },
+    animate: hk => { hk.y = hankY(hk.x, hk.z); },
   },
 };
 function netField(name, spec) {
@@ -9450,7 +9470,7 @@ function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
     if (d.pounceT <= 0) { d.pounceT = 0; d.vx *= 0.4; d.vz *= 0.4; }
   } else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
   d.x += d.vx * dt; d.z += d.vz * dt;
-  collideWorld(d, T.dogR); collideFences(d, T.dogR);
+  collideDog(d); collideFences(d, T.dogR);
   d.mode = mode; d._pwx = wx; d._pwz = wz; d._pmag = mag;
 }
 function netPredFrame(d, L, dt) {   // false: smooth it as usual
@@ -10270,7 +10290,7 @@ function debugKeys() {
 window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
-  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
+  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
 Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR

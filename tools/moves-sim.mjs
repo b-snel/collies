@@ -296,6 +296,37 @@ const tests = {
       return { loadedBeforePounce: loaded, bestLoad: best, bestAt: H.r(bestT), dogAt: { p: H.r(pos.p), q: H.r(pos.q) }, launched: MV.launched, landedFarBank: sh.filter(s => GAME.riverAcross(s.x, s.z) > 6 && !s.air).length, splashes: MV.splashes };
     });
   },
+  // 10b. a spread-out flock, herded at the chute's mouth by a bot (stays behind the flock, on the line from the mouth through it)
+  async launcherFunnel() {
+    return h.page.evaluate(() => {
+      const { G, LAUNCHERS } = GAME, S = LAUNCHERS[0], out = [];
+      // seeds 0-3: a loose bunch behind the mouth; 4-5: spread wide, some level with the chute, beside it
+      for (const seed of [0, 1, 2, 3, 4, 5]) {
+        H.reset(); const d = H.d(), sh = [], wide = seed >= 4;
+        let r = 1 + seed * 7919; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+        for (let i = 0; i < G.sheep.length; i++) { const s = G.sheep[i], w = wide ? H.atLocal(S, 3 - rnd() * 18, (rnd() < 0.5 ? -1 : 1) * (4 + rnd() * 6)) : H.atLocal(S, -9 - rnd() * 6, (rnd() - 0.5) * 12); H.place(s, w.x, w.z); sh.push(s); }
+        const start = H.atLocal(S, -22, (seed - 1.5) * 4); H.place(d, start.x, start.z);
+        const onLoad = () => sh.filter(s => { const l = H.local(S, s); return l.p > -0.3 && l.p < S.L + 0.5 && Math.abs(l.q) < S.W / 2 + 0.45 && !s.air; }).length;
+        const mouth = H.atLocal(S, -1, 0);
+        let best = 0, bestT = 0;
+        H.run(25, t => {
+          const out = sh.filter(s => { const l = H.local(S, s); return !(l.p > -0.3 && Math.abs(l.q) < S.W / 2 + 0.6); });
+          const ld = H.local(S, d);
+          if (out.length && (ld.p < -4.6 || Math.abs(ld.q) > S.hw + 1)) {
+            let cx = 0, cz = 0; for (const s of out) { cx += s.x; cz += s.z; } cx /= out.length; cz /= out.length;
+            const far = out.reduce((a, s) => Math.hypot(s.x - cx, s.z - cz) > Math.hypot(a.x - cx, a.z - cz) ? s : a);   // spread out: fetch the farthest first
+            if (Math.hypot(far.x - cx, far.z - cz) > 5) { cx = far.x; cz = far.z; }
+            const ex = cx - mouth.x, ez = cz - mouth.z, el = Math.hypot(ex, ez) || 1, tx = cx + ex / el * 5.5, tz = cz + ez / el * 5.5;
+            const dx = tx - d.x, dz = tz - d.z, dl = Math.hypot(dx, dz);
+            H.p.bot = dl > 0.6 ? H.to(dx, dz, { creep: dl < 2.5 }) : {};
+          } else H.p.bot = {};
+          const n = onLoad(); if (n > best) { best = n; bestT = t; }
+        });
+        out.push({ seed, n: sh.length, best, bestAt: H.r(bestT), end: onLoad() });
+      }
+      return { runs: out, meanBest: H.r(out.reduce((a, o) => a + o.best, 0) / out.length), meanEnd: H.r(out.reduce((a, o) => a + o.end, 0) / out.length) };
+    });
+  },
   // 11. a sheep that lands in the river splashes and swims back to a bank, alive
   async splash() {
     return h.page.evaluate(() => {
@@ -312,6 +343,48 @@ const tests = {
       H.place(d, P.x, P.z); H.place(s, P.x + RIVER.tx * 2, P.z + RIVER.tz * 2); d.yaw = Math.atan2(RIVER.tx, RIVER.tz);
       H.p.bot = H.to(RIVER.tx, RIVER.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
       const r = H.track(s, 20); out.push({ naturalPunt: r, ...H.river(s) });
+      return out;
+    });
+  },
+  // 11b. no bridge: a dog walks in, swims across and climbs out (dropping a sheep it carried in); a sheep driven at the
+  // river stays on its bank; a punt off the bank splashes and swims back; Hank wades over
+  async river() {
+    return h.page.evaluate(() => {
+      const { G, RIVER, MV } = GAME, at = (ac, al) => ({ x: RIVER.x + RIVER.tx * ac + RIVER.nx * al, z: RIVER.z + RIVER.tz * ac + RIVER.nz * al }), out = {};
+      // a) swim over and back, carrying a sheep in
+      H.reset(); const d = H.d(), s = G.sheep[0]; let P = at(-RIVER.hw - 6, 8); H.place(d, P.x, P.z);
+      let swam = false, t = H.run(25, () => { H.p.bot = H.to(RIVER.tx, RIVER.tz); if (d.air && d.air.swim) swam = true; return GAME.riverAcross(d.x, d.z) > RIVER.hw + 4 && !d.air; });
+      out.over = { swam, secs: H.r(t), across: H.r(GAME.riverAcross(d.x, d.z)), air: !!d.air };
+      t = H.run(25, () => { H.p.bot = H.to(-RIVER.tx, -RIVER.tz); return GAME.riverAcross(d.x, d.z) < -RIVER.hw - 4 && !d.air; });
+      out.back = { secs: H.r(t), across: H.r(GAME.riverAcross(d.x, d.z)) };
+      P = at(-RIVER.hw - 4, -40); H.place(d, P.x, P.z); const Q = at(-RIVER.hw - 2.6, -40); H.place(s, Q.x, Q.z);
+      d.yaw = Math.atan2(RIVER.tx, RIVER.tz); H.p.bot = { grab: true }; GAME.step(0.025);
+      const held = d.holding === s;
+      H.run(12, () => { H.p.bot = H.to(RIVER.tx, RIVER.tz, { grab: true }); });
+      H.p.bot = {}; H.run(10);
+      out.carry = { held, dogAcross: H.r(GAME.riverAcross(d.x, d.z)), sheepAcross: H.r(GAME.riverAcross(s.x, s.z)), sheepAir: !!s.air };
+      // b) a flock pushed hard at the water from behind
+      H.reset(); const d2 = H.d(); G.sheep.forEach((o, i) => { const w = at(-RIVER.hw - 4 - (i % 4) * 1.5, 30 + (i / 4 | 0) * 1.5); H.place(o, w.x, w.z); });
+      P = at(-RIVER.hw - 14, 32); H.place(d2, P.x, P.z);
+      H.run(20, () => { const tg = at(-RIVER.hw - 2, 32); H.p.bot = H.to(tg.x - d2.x, tg.z - d2.z, { sprint: true, bark: Math.random() < 0.05 }); });
+      H.p.bot = {}; H.run(5);
+      out.pushed = { far: G.sheep.filter(o => GAME.riverAcross(o.x, o.z) > 0).length, n: G.sheep.length };
+      // c) punts off the near bank, straight across, at a run
+      out.punts = [];
+      for (const al of [-30, 10, 35]) {
+        H.reset(); MV.splashes = 0; const d3 = H.d(), sh = G.sheep[0];
+        let a = -RIVER.hw - 1, w = at(a, al); while (GAME.sdfAt(w.x, w.z) < sh.r + 0.2) { a -= 0.25; w = at(a, al); }
+        H.place(sh, w.x, w.z); const dw = at(a - 2.2, al); H.place(d3, dw.x, dw.z); d3.yaw = Math.atan2(RIVER.tx, RIVER.tz);
+        H.p.bot = H.to(RIVER.tx, RIVER.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
+        H.run(30, () => !sh.air && MV.splashes > 0);
+        out.punts.push({ from: H.r(a), splashes: MV.splashes, across: H.r(GAME.riverAcross(sh.x, sh.z)) });
+      }
+      // d) Hank wades over after a flock on the far bank
+      H.reset(); const d4 = H.d(), hk = GAME.HANK; G.sheep.forEach((o, i) => { const w = at(RIVER.hw + 8 + (i % 4) * 1.5, (i / 4 | 0) * 1.5); H.place(o, w.x, w.z); });
+      P = at(RIVER.hw + 6, -4); H.place(d4, P.x, P.z); P = at(-RIVER.hw - 6, 2); H.place(hk, P.x, P.z);
+      let wet = false; H.run(40, () => { if (GAME.overWater(hk.x, hk.z)) wet = true; });
+      out.hank = { wet, across: H.r(GAME.riverAcross(hk.x, hk.z)) };
+      out.ok = out.over.swam && out.over.across > 0 && out.back.across < 0 && out.carry.held && out.carry.sheepAcross < 0 && out.pushed.far === 0 && out.punts.every(p => p.across < 0) && out.hank.across > 0;
       return out;
     });
   },
