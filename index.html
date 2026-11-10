@@ -353,7 +353,7 @@ const T = {
   // sheep mind & rams: fear (instant) / stress (slow mood) / panic, goals, critical mass, cornering, rams, courting
   fleeBase: 2.0, fleeGain: 6.8, fleeStress: 0.8, panicRun: 1.6,   // flee speed = base + gain*fear + stress bonus (+panicRun when panicked), capped by run
   sheepTrot: 3.8, penWalk: 1.6, courtWalk: 2.2,
-  gatePocketOut: 2.2,    // a sheep caught behind an open gate (between the leaf and the fence or wing) walks out away from the hinge this hard
+  gatePocketOut: 2.2,    // a sheep caught behind an open gate (between the leaf and the fence) walks out away from the hinge this hard
   moveMin: 1.0,          // a calm sheep joins neighbours moving faster than this (m/s); scale it with sheepWalk or the flock coasts on
   pressSteer: 0.9,         // how far a moving dog's pressure bends toward its direction of travel (at 8 m/s)
   stressCalmSpd: 6,        // a dog closing on a sheep slower than this (m/s) doesn't stress it by speed alone
@@ -1354,11 +1354,7 @@ const pens = CAMPS.map(c => {
   const pts = []; for (let k = 0; k <= N; k++) { const a = lerp(a0, a1, k / N); pts.push([c.x + Math.cos(a) * c.R, c.z + Math.sin(a) * c.R]); }
   for (let k = 0; k < N; k++) pen.segs.push({ ax: pts[k][0], az: pts[k][1], bx: pts[k + 1][0], bz: pts[k + 1][1] });
   const postB = pts[0], postA = pts[N];          // B at gateA+gh, A (hinge) at gateA-gh
-  const wingLen = c.final ? 8 : 6.5;
-  const wa = c.gateA - 0.62, wb = c.gateA + 0.62;
-  const wingA = { ax: postA[0], az: postA[1], bx: postA[0] + Math.cos(wa) * wingLen, bz: postA[1] + Math.sin(wa) * wingLen };
-  const wingB = { ax: postB[0], az: postB[1], bx: postB[0] + Math.cos(wb) * wingLen, bz: postB[1] + Math.sin(wb) * wingLen };
-  pen.segs.push(wingA, wingB);
+  const wa = c.gateA - 0.62;   // no funnel wings: the gateway stands open to the field, so the flock can come and go from any side
   pen.hinge = { x: postA[0], z: postA[1] };
   pen.gateLen = Math.hypot(postB[0] - postA[0], postB[1] - postA[1]);
   pen.angClosed = Math.atan2(postB[1] - postA[1], postB[0] - postA[0]);
@@ -1408,7 +1404,7 @@ const pens = CAMPS.map(c => {
   board.position.y = 1.9; board.castShadow = true; sign.add(board);
   return pen;
 });
-// Gates swing on a hinge: pen.phi is the leaf's angle from shut (+ = swung out toward the funnel wing, - = swung into the pen).
+// Gates swing on a hinge: pen.phi is the leaf's angle from shut (+ = swung out, - = swung into the pen).
 // gateT (0 shut … 1 open) is how much of the gateway is clear, which is what the sheep, coyote and nav code read.
 function updateGateGeometry(pen) {
   const phi = pen.phi || 0, a = pen.angClosed + (pen.outSign || -1) * phi;
@@ -2523,10 +2519,10 @@ function updateSheep(dt, dtH) {
         if (r < p.R && r > p.R - 1.5) { const k = (r - (p.R - 1.5)) / 1.5; dX -= px / r * k; dZ -= pz / r * k; }
         else if (r >= p.R && r < p.R + 1.3) { const k = (p.R + 1.3 - r) / 1.3; dX += px / r * k; dZ += pz / r * k; }
       }
-      // funnel wings (and the gate leaf): keep off them, and peel along them toward the free end instead of grinding in
+      // the gate leaf: keep off it, and peel along it toward the free end instead of grinding in
       for (const p of pens) {
         if (Math.abs(s.x - p.gx) > 10 || Math.abs(s.z - p.gz) > 10) continue;
-        // behind an open gate (the pocket between the leaf and the fence or wing it swung toward): walk out, away from the hinge
+        // behind an open gate (the pocket between the leaf and the fence it swung toward): walk out, away from the hinge
         if (Math.abs(p.phi || 0) > 0.2) {
           const hx = s.x - p.hinge.x, hz = s.z - p.hinge.z, hr = Math.hypot(hx, hz), psi = gatePsi(p, s.x, s.z);
           if (hr > 0.2 && hr < p.gateLen + 1 && Math.sign(psi) === Math.sign(p.phi) && Math.abs(psi) > Math.abs(p.phi) && Math.abs(psi) < Math.abs(p.phi) + 1.2) {
@@ -2534,11 +2530,9 @@ function updateSheep(dt, dtH) {
             dX += hx / hr * k; dZ += hz / hr * k; spd = Math.max(spd, T.sheepWalk * 0.9);
           }
         }
-        const L = p.segs.length;
-        for (let q = L - 2; q <= L; q++) {
-          const g = q < L ? p.segs[q] : p.gateSeg, leafOpen = q === L && Math.abs(p.phi || 0) > 0.2;   // the gate leaf: ax/az is the hinge, bx/bz its free end
+        {
+          const g = p.gateSeg, leafOpen = Math.abs(p.phi || 0) > 0.2;   // the gate leaf: ax/az is the hinge, bx/bz its free end
           const abx = g.bx - g.ax, abz = g.bz - g.az, l2 = abx * abx + abz * abz, t = clamp(((s.x - g.ax) * abx + (s.z - g.az) * abz) / l2, 0, 1);
-          if (q < L && (t < 0.08 || s.pen)) continue;   // the gateposts themselves are the gateway's business
           const nx0 = s.x - (g.ax + abx * t), nz0 = s.z - (g.az + abz * t), dd = Math.hypot(nx0, nz0);
           if (dd > 1.4 || dd < 1e-4) continue;
           const nx = nx0 / dd, nz = nz0 / dd, into = -(dX * nx + dZ * nz);
@@ -2546,11 +2540,6 @@ function updateSheep(dt, dtH) {
           if (into > 0) {
             dX += nx * into; dZ += nz * into;   // don't push into it: slide along
             if (leafOpen) { const ll = Math.sqrt(l2); dX += abx / ll * into * 1.2; dZ += abz / ll * into * 1.2; }   // an open gate: slide off its free end, never into the hinge corner
-            else if (q < L) {   // outside a wing, peel out round its tip; inside the funnel and wanting in, slide toward the gate
-              const ll = Math.sqrt(l2), tx = abx / ll, tz = abz / ll, ix = p.gx + Math.cos(p.gateA) * 3 - g.ax, iz = p.gz + Math.sin(p.gateA) * 3 - g.az;
-              const inFunnel = (abx * iz - abz * ix) * (abx * (s.z - g.az) - abz * (s.x - g.ax)) > 0;
-              if (!inFunnel) { dX += tx * into; dZ += tz * into; } else if (pp && pp.pen === p) { dX -= tx * into; dZ -= tz * into; }
-            }
           }
         }
       }
@@ -3409,7 +3398,7 @@ function initGates() {
     resetGate(p);
   }
 }
-// tests/dev: snap a gate open (swung out, lining up with its funnel wing) or shut and latched
+// tests/dev: snap a gate open (swung out or in) or shut and latched
 function setGate(p, open, inward = false) { p.phi = open ? (inward ? -T.gate.maxIn * 0.73 : T.gate.maxOut * 0.95) : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; updateGateGeometry(p); }
 function resetGate(p) { p.phi = 0; p.w = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = false; updateGateGeometry(p); }
 function gatePsi(p, x, z) { return p.outSign * wrapA(Math.atan2(z - p.hinge.z, x - p.hinge.x) - p.angClosed); }   // a point's angle round the hinge, in phi terms
@@ -3545,16 +3534,13 @@ initGates();
 // the prompt over a gate when a dog is near: what a shove will do, and which way it'll swing
 function drawGatePrompt(p, d) {
   const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0;
-  const line1 = finalArm ? 'Lean on the gate to finish!' : held ? (Math.abs(p.phi) < 0.35 ? 'Nearly… clack it shut!' : 'Drag it round') :
-    p.latched ? (p.fresh ? 'Walk into the gate to push it' : 'SHUT! Back off, then shove to reopen') : p.gateT > 0.5 ? 'Push the gate to swing it shut' : 'Keep pushing…';
-  const line2 = held ? `let go of ${keyLabel(d.player, 'grab')} to drop it` : `hold ${keyLabel(d.player, 'grab')} to grab it · sprint to vault`;
-  const [gx, gy] = proj(p.gx, p.y + 4.2, p.gz);   // well above the gate, so it never covers the dog
-  ctx.font = '600 15px Fredoka, sans-serif'; const w1 = ctx.measureText(line1).width; ctx.font = '500 12px Fredoka, sans-serif'; const w2 = ctx.measureText(line2).width;
-  const w = Math.max(w1, w2) + 24;
-  ctx.fillStyle = 'rgba(255,248,232,.92)'; rr(gx - w / 2, gy - 22, w, 42, 13); ctx.fill(); ctx.strokeStyle = d.color; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(gx - 7, gy + 20); ctx.lineTo(gx, gy + 28); ctx.lineTo(gx + 7, gy + 20); ctx.closePath(); ctx.fillStyle = d.color; ctx.fill();
-  ctx.fillStyle = '#1b1a22'; ctx.font = '600 15px Fredoka, sans-serif'; ctx.fillText(line1, gx, gy - 7);
-  ctx.fillStyle = '#5a5566'; ctx.font = '500 12px Fredoka, sans-serif'; ctx.fillText(line2, gx, gy + 10);
+  // one short word or two: the arrow below shows which way it'll swing
+  const line = finalArm ? 'Lean on it!' : held ? (Math.abs(p.phi) < 0.35 ? 'Clack it shut!' : `Let go: ${keyLabel(d.player, 'grab')}`) :
+    p.latched ? (p.fresh ? 'Push' : 'Shut') : p.gateT > 0.5 ? 'Push to shut' : 'Push';
+  const [gx, gy] = proj(p.gx, p.y + 3.6, p.gz);   // above the gate, so it never covers the dog
+  ctx.font = '600 14px Fredoka, sans-serif'; const w = ctx.measureText(line).width + 20;
+  ctx.fillStyle = 'rgba(255,248,232,.9)'; rr(gx - w / 2, gy - 12, w, 24, 11); ctx.fill(); ctx.strokeStyle = d.color; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#1b1a22'; ctx.fillText(line, gx, gy + 1);
   if (held || (p.latched && !p.fresh)) return;
   // an arrow round the hinge: the way it swings if you shove it from where you stand
   const side = Math.sign(wrapA(gatePsi(p, d.x, d.z) - p.phi)) || 1, to = clamp(p.phi - side * 1.0, -T.gate.maxIn, T.gate.maxOut);
@@ -3974,7 +3960,7 @@ function hankForageGoal() {
   const t = R.stage === 'fetch' || R.stage === 'hang' ? forageStand(R.pen, 'hook', R.b) : forageStand(R.pen, 'trough');
   const face = R.stage === 'tip' ? R.pen.trough : null;
   if (Math.hypot(t.x - HANK.x, t.z - HANK.z) > 30) return { x: t.x, z: t.z, stop: 0.3 };   // far off: head straight there (he catches up off-screen, as he does on the trail)
-  const n = navSteer(HANK, t.x, t.z);   // round the pen's fences and wings, not into them
+  const n = navSteer(HANK, t.x, t.z);   // round the pen's fences, not into them
   if (!HANK.los && NAVDIR.d > 2) return { x: HANK.x + n.x * 4, z: HANK.z + n.z * 4, stop: 0 };
   return { x: t.x, z: t.z, stop: 0.3, face, noShy: NAVDIR.d < 4 };   // the last few metres to the fence: sheep inside don't put him off
 }
@@ -4033,11 +4019,6 @@ function drawForageOverlay() {
   for (const b of BUCKETS) {
     const k = clamp(b.fill / cap, 0, 1), o = b.state === 'held' ? b.heldBy : b, [px, py, pz] = proj(o.x, o.y + (o === b ? 1.35 : 2.4), o.z);   // carried: over the dog, above its name
     if (b.state === 'held' || b.state === 'ground') { if (vis(px, py, pz)) forageBar(px, py, k, k > 0.99); }
-    else if (b.state === 'hook' && k > 0.01 && vis(px, py, pz)) forageChip(px, py, `🪣 ✔ ${Math.round(k * 100)}%`, 'rgba(60,140,60,.88)');
-    if (b.state === 'held' || b.state === 'ground') {   // its hook says it's out
-      const p = b.home, [hx, hy, hz] = proj(p.hookX, p.y + 1.1, p.hookZ);
-      if (vis(hx, hy, hz) && Math.hypot(b.x - p.hookX, b.z - p.hookZ) > 4) forageChip(hx, hy, '🪣 out', 'rgba(150,110,30,.85)');
-    }
   }
   // carrying a bucket that's half full or more and the pen's off screen: an arrow at the edge toward it
   for (const d of G.dogs) {
@@ -4050,7 +4031,7 @@ function drawForageOverlay() {
     ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('🪣', ax, ay + 1);
   }
   for (const p of pens) {   // what's in each trough
-    const tr = p.trough; if (tr.shown < 0.02) continue;
+    const tr = p.trough; if (tr.shown < 0.02 || !G.dogs.some(d => Math.hypot(d.x - tr.x, d.z - tr.z) < 8)) continue;   // only when a dog's close by
     const [px, py, pz] = proj(tr.x, p.y + 1.25, tr.z); if (!vis(px, py, pz)) continue;
     forageChip(px, py, `🌾 ${Math.round(tr.shown / tr.cap * 100)}%`, 'rgba(110,140,40,.85)');
   }
