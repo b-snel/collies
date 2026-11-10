@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Collies: The Long Graze</title>
 <meta name="theme-color" content="#0d1633">
 <link rel="manifest" href="manifest.webmanifest">
@@ -169,6 +172,7 @@
   .tbtn:hover, .bbtn:hover, .hankVol button:hover { filter:brightness(1.15); }
   #titleExtras { margin-top:14px; display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; background:var(--panel); padding:8px 14px;
     border-radius:16px; border:2px solid rgba(255,248,232,.6); }
+  #tHome[hidden] { display:none; }
   #titleExtras .tbtn { font-size:17px; background:var(--barn-accent); color:#1b1a22; border-color:#1b1a22; }
   #titleExtras .tbtn small { font-weight:500; opacity:.75; margin-left:4px; }
   #eMem b { color:var(--barn-ink); }
@@ -247,7 +251,8 @@
   .tb.on { background:rgba(255,211,107,.85); transform:scale(.92); }
   .tb.big { width:74px; height:74px; font-size:34px; }
   #tBtns { position:absolute; right:calc(env(safe-area-inset-right) + 12px); bottom:12px; width:220px; height:200px; }
-  #tSys { position:absolute; right:calc(env(safe-area-inset-right) + 8px); top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:8px; }
+  #tSys { position:absolute; right:calc(env(safe-area-inset-right) + 220px); top:8px; display:flex; gap:8px; }   /* left of #needs (JS) */
+  @media (max-height:380px) { #tBtns { transform:scale(.8); transform-origin:100% 100%; } }
   #tSys .tb { position:static; width:42px; height:42px; font-size:20px; }
   #rotate { position:fixed; inset:0; z-index:9; background:#0d1633; color:var(--cream); align-items:center; justify-content:center; font-size:72px; }
   #rotate span { display:inline-block; animation:rot 1.6s ease-in-out infinite; }
@@ -341,7 +346,7 @@
     <span>Gates</span><span>walk into them to push</span><span>sprint to vault</span>
     <span>Hank’s barn</span><span>View ⧉</span><span>Tab</span>
   </div>
-  <div id="titleExtras"><button id="tBarn" class="tbtn" type="button">🏚️ Hank’s barn<small>Tab · View</small></button><span class="hankVol"></span></div>
+  <div id="titleExtras"><button id="tBarn" class="tbtn" type="button">🏚️ Hank’s barn<small>Tab · View</small></button><span class="hankVol"></span><button id="tHome" class="tbtn" type="button" hidden>📲</button></div>
   <div id="coopNote" style="margin-top:14px;font-size:15px;opacity:.85">Local co-op for up to 4 dogs — friends press Ⓐ anytime to join.</div>
   <div id="netBox" class="net">
     <button id="netOpen" class="nbtn" type="button">🌐 Play online</button>
@@ -868,8 +873,30 @@ function touchOn() {
 // fullscreen + landscape where the browser allows it (Android); iOS just gets the rotate prompt
 function touchFull() {
   const de = document.documentElement;
-  if (document.fullscreenElement || !de.requestFullscreen) return;
-  de.requestFullscreen({ navigationUI: 'hide' }).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  const req = de.requestFullscreen ? de.requestFullscreen({ navigationUI: 'hide' }) : de.webkitRequestFullscreen && de.webkitRequestFullscreen();   // iPad: webkit
+  Promise.resolve(req).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
+}
+// no pinch / double-tap zoom (iOS ignores user-scalable=no); snap back if zoomed anyway
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (window.visualViewport && visualViewport.scale > 1.01)) e.preventDefault(); }, { passive: false });
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+if (window.visualViewport) {
+  const vm = document.querySelector('meta[name=viewport]'), vc = vm.content;
+  visualViewport.addEventListener('resize', () => { if (visualViewport.scale > 1.01) { vm.content = vc + ',minimum-scale=1'; requestAnimationFrame(() => vm.content = vc); } });
+}
+// pause/barn buttons sit just left of the needs panel, clear of the action buttons
+{
+  const sys = document.getElementById('tSys'), needs = document.getElementById('needs');
+  const place = () => { const r = needs.getBoundingClientRect(); if (r.width) sys.style.right = (innerWidth - r.left + 8) + 'px'; };
+  addEventListener('resize', place); if (window.ResizeObserver) new ResizeObserver(place).observe(needs); place();
+}
+// iOS Safari can't go fullscreen: tip to add to Home Screen
+{
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const app = navigator.standalone || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+  const b = document.getElementById('tHome');
+  if (b && ios && !app) { b.hidden = false; b.onclick = () => { b.textContent = b.textContent === '📲' ? '📲 Share ⬆️ → Add to Home Screen' : '📲'; }; }
 }
 addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') touchOn();
