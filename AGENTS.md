@@ -11,14 +11,14 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
 drive a flock along one trail (desert → mountains → ocean → the Promised
-Land): graze it, pen it at camps by nightfall, fight off coyotes and cougars
+Land): graze it, pen it at camps by nightfall, fight off coyotes, cougars and falcons
 till dawn.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
-  cougar hunts, `O` flock +10 days, `F` to final pen). `window.GAME` exposes
+  cougar hunts, `V` falcon, `O` flock +10 days, `F` to final pen). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
@@ -35,7 +35,7 @@ till dawn.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
+DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → game flow → main loop → `window.GAME`.
 
@@ -55,6 +55,7 @@ Run the ones touching your change; report the numbers.
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
+| `falcon-test.mjs [eat\|bark\|nest\|dog\|night\|odds]` | falcon: nest kills, bark drops, dog carried, day only |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
@@ -148,6 +149,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
   running away: bonked, yowls (`Sound.yowl`), runs `bonkRun`× faster. `s.grabbed`
   may be a cougar (`k.isCougar`).
+- **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
+  (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
+  'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
+  nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it.
+  Off in `?sim` (`T.falcon.on`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
