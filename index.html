@@ -891,18 +891,25 @@ function touchFull() {
   const req = de.requestFullscreen ? de.requestFullscreen({ navigationUI: 'hide' }) : de.webkitRequestFullscreen && de.webkitRequestFullscreen();   // iPad: webkit
   Promise.resolve(req).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
 }
-// no pinch / double-tap zoom (iOS ignores user-scalable=no); snap back if zoomed anyway
-for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
-document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (window.visualViewport && visualViewport.scale > 1.01)) e.preventDefault(); }, { passive: false });
-document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+// no pinch / double-tap zoom (iOS ignores user-scalable=no); if zoomed anyway, pinching out still works and we snap back
+const zoomed = () => !!window.visualViewport && visualViewport.scale > 1.01;
+for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, e => { if (!zoomed() && !(e.scale < 1)) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 && !zoomed()) e.preventDefault(); }, { passive: false });
 if (window.visualViewport) {
   const vm = document.querySelector('meta[name=viewport]'), vc = vm.content;
-  visualViewport.addEventListener('resize', () => { if (visualViewport.scale > 1.01) { vm.content = vc + ',minimum-scale=1'; requestAnimationFrame(() => vm.content = vc); } });
+  let busy = false;
+  const unzoom = () => {
+    if (!zoomed() || busy) return; busy = true;
+    vm.content = vc.replace('initial-scale=1', 'initial-scale=1.0001') + ',minimum-scale=1';   // a changed viewport makes iOS re-fit
+    setTimeout(() => { vm.content = vc; busy = false; }, 400);
+  };
+  visualViewport.addEventListener('resize', unzoom); addEventListener('pageshow', unzoom); addEventListener('orientationchange', () => setTimeout(unzoom, 300));
+  document.addEventListener('focusout', () => setTimeout(unzoom, 100)); unzoom();
 }
 // pause/barn buttons sit just left of the needs panel, clear of the action buttons
 {
   const sys = document.getElementById('tSys'), needs = document.getElementById('needs');
-  const place = () => { const r = needs.getBoundingClientRect(); if (r.width) sys.style.right = (innerWidth - r.left + 8) + 'px'; };
+  const place = () => { const r = needs.getBoundingClientRect(); if (r.width) sys.style.right = (document.documentElement.clientWidth - r.left + 8) + 'px'; };   // clientWidth: innerWidth shrinks when zoomed
   addEventListener('resize', place); if (window.ResizeObserver) new ResizeObserver(place).observe(needs); place();
 }
 // iOS Safari can't go fullscreen: tip to add to Home Screen
