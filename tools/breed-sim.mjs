@@ -30,7 +30,7 @@ const r = await h.page.evaluate(({ days, noRams, sets, trough }) => {
     if (hr > 9 && hr < 18 && Math.random() < 0.05) for (const s of G.sheep) if (!s.dead && !s.pen) { const dd = Math.hypot(s.x - pen.x, s.z - pen.z); dSum += dd; dN++; far = Math.max(far, dd); }
     if (lastH < 6.5 && hr >= 6.5) {
       const live = G.sheep.filter(s => !s.dead);
-      log.push(`day ${G.clock.day}: ${live.length} sheep (${live.filter(s => s.ram).length} rams, ${live.filter(s => s.lamb).length} lambs), hunger ${(live.reduce((a, s) => a + s.hunger, 0) / live.length).toFixed(2)}, well fed ${live.filter(s => s.hunger < T.breedHunger).length}, born so far ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten} | pasture left: 20 m ${(pasture(20) * 100).toFixed(0)}%, 40 m ${(pasture(40) * 100).toFixed(0)}% | grazed ${dN ? (dSum / dN).toFixed(0) : '-'} m from the pen on average yesterday (furthest ${far.toFixed(0)})`);
+      log.push(`day ${G.clock.day}: ${live.length} sheep (${live.filter(s => s.ram).length} rams, ${live.filter(s => s.lamb).length} lambs), hunger ${(live.reduce((a, s) => a + s.hunger, 0) / live.length).toFixed(2)}, well fed ${live.filter(s => s.hunger < T.breedHunger).length}, born so far ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0} | pasture left: 20 m ${(pasture(20) * 100).toFixed(0)}%, 40 m ${(pasture(40) * 100).toFixed(0)}% | grazed ${dN ? (dSum / dN).toFixed(0) : '-'} m from the pen on average yesterday (furthest ${far.toFixed(0)})`);
       dSum = dN = far = 0;
       setGate(true);
     }
@@ -38,7 +38,7 @@ const r = await h.page.evaluate(({ days, noRams, sets, trough }) => {
     lastH = hr;
   }
   const live = G.sheep.filter(s => !s.dead);
-  log.push(`end: ${live.length} sheep (${live.filter(s => s.ram).length} rams), born ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}`);
+  log.push(`end: ${live.length} sheep (${live.filter(s => s.ram).length} rams), born ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0}`);
   return log;
 }, { days, noRams, sets, trough });
 console.log(r.join('\n')); if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 5));
