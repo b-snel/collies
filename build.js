@@ -1,5 +1,6 @@
 // Build step (Cloudflare Workers Builds): copy the site into dist/ and stamp index.html with the commit it was built from,
-// so the title screen and pause menu can say which build you're playing. Run locally with `node build.js`.
+// so the title screen can say which build you're playing, and write dist/version.json so an open page can spot a newer one.
+// Run locally with `node build.js`.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -45,3 +46,4 @@ if (!LINE.test(html)) {
   fs.writeFileSync(file, html.replace(LINE, () => 'const BUILD=' + JSON.stringify(BUILD) + ';'));
   console.log('build.js: stamped', JSON.stringify(BUILD));
 }
+fs.writeFileSync(path.join(OUT, 'version.json'), JSON.stringify(BUILD));

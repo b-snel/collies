@@ -22,6 +22,9 @@ buys supplies, and Cabo 🏖️, which wins.
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
+- Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
+  else "Dev build"). `build.js` also writes `version.json`; a different live
+  build → 🔄 on the title reloads (`checkBuild`).
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
   `?peerserver=host:port` for your own server.
 - Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊

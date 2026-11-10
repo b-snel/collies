@@ -98,6 +98,8 @@
   #buildLine { position:fixed; right:10px; bottom:8px; font-size:12px; color:rgba(255,248,232,.7); text-shadow:0 1px 0 rgba(0,0,0,.5); transition:opacity .6s; }
   #buildLine a { color:inherit; }
   #title.hidden ~ #buildLine { opacity:0; pointer-events:none; }
+  #tUpdate { position:fixed; top:12px; left:0; right:0; margin:0 auto; width:max-content; animation:pulse 0.9s infinite alternate; }
+  #tUpdate[hidden], #title.hidden ~ #tUpdate { display:none; }
   #loading { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; color:var(--cream); font-size:28px; background:#0d1633; transition:opacity .6s; }
   /* ===== ONLINE CO-OP + PAUSE ===== */
   .net [hidden], .net[hidden] { display:none !important; }
@@ -392,6 +394,7 @@
   </div>
 </div>
 <div id="buildLine"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener">Audio credits</a> · <span id="buildText">Dev build</span></div>
+<button id="tUpdate" class="nbtn" type="button" hidden>🔄 Update</button>
 <div id="end" class="screen">
   <h1 id="eTitle">🏖️ Cabo! 🌴</h1>
   <div class="stars" id="eStars">★★★</div>
@@ -434,7 +437,7 @@ import * as THREE from 'three';
 
 const DEBUG = /debug/.test(location.search + location.hash);
 const SIM = /[?&]sim\b/.test(location.search);
-// Which build this is. build.js stamps in the commit and PR when Cloudflare deploys; run straight from the repo it stays blank ("Dev build").
+// Which build this is. build.js stamps in the commit and PR when Cloudflare deploys (and writes version.json, see checkBuild); run straight from the repo it stays blank ("Dev build").
 const BUILD={sha:'',pr:'',env:'',at:''};
 function buildText() {
   if (!BUILD.sha) return 'Dev build';
@@ -10210,7 +10213,7 @@ function netFromHost(m) {
     case 'hb': NET.hostHid = !!m.hid; break;
     case 'pong': NET.rtt = performance.now() - (+m.ts || 0); break;
     case 'r': { const L = NET.locals[m.p | 0]; if (L && L.kind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: L.index }, ...m.a.map(v => +v || 0)); break; }
-    case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); break;
+    case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); checkBuild(); break;
     case 'full': netGuestFail('That game is full: there are 4 dogs already.'); break;
     case 'bye': netGuestLost('Your friend closed the game.'); break;
   }
@@ -10624,6 +10627,16 @@ updateLighting(0);
 $('loading').style.opacity = 0; setTimeout(() => $('loading').remove(), 700);
 $('title').classList.remove('hidden');
 if (BUILD.sha) $('buildText').innerHTML = `<a href="https://github.com/b-snel/collies/commit/${BUILD.sha}" target="_blank" rel="noopener">${buildText()}</a>`;
+// A different build is live (build.js writes version.json beside the page): 🔄 on the title screen reloads into it.
+function checkBuild() {
+  if (!BUILD.sha || SIM || document.hidden) return;
+  fetch('version.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !/^[0-9a-f]{7,40}$/.test(j.sha || '') || j.sha === BUILD.sha) return;
+    const b = $('tUpdate'); b.hidden = false; b.title = 'Build ' + j.sha.slice(0, 7) + (j.pr ? ' · PR #' + j.pr : '');
+  }).catch(() => {});
+}
+$('tUpdate').onclick = () => location.reload();
+if (BUILD.sha && !SIM) { setTimeout(checkBuild, 3000); setInterval(checkBuild, 5 * 60e3); document.addEventListener('visibilitychange', checkBuild); }
 initHankUI();   // HANK / BARN: the title's barn button and Hank's volume slider
 if (!SIM) requestAnimationFrame(frame);
 // installable + offline after the first visit (not on file:// or under test)
