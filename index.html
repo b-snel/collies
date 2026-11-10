@@ -4854,26 +4854,15 @@ function syncForage(dt) {
     pk.greens.visible = k > 0.01; pk.greens.scale.setScalar(0.5 + 0.7 * k); pk.salt.visible = !!d.salt;
   }
 }
-// the overlay: what each dog is carrying, the troughs and salt licks, nearby salt rocks, and an arrow home with a load
+// the overlay: the troughs and salt licks, nearby salt rocks, and an arrow home with a load (what a dog carries: drawDogCarry, HUD)
 function forageChip(x, y, txt, bg, fg = '#fff', w0 = 0) {
   ctx.font = '600 13px Fredoka, sans-serif'; const w = Math.max(w0, ctx.measureText(txt).width + 16);
   ctx.fillStyle = bg; rr(x - w / 2, y - 11, w, 22, 10); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(txt, x, y + 1); return w;
-}
-function forageBar(x, y, k, full, icon = '🌿', col = null) {
-  const w = 64; ctx.fillStyle = 'rgba(27,26,40,.78)'; rr(x - w / 2 - 14, y - 10, w + 28, 20, 10); ctx.fill();
-  ctx.font = '13px Fredoka, sans-serif'; ctx.fillText(icon, x - w / 2 - 3, y + 1);
-  ctx.fillStyle = 'rgba(255,255,255,.18)'; rr(x - w / 2 + 8, y - 5, w, 10, 5); ctx.fill();
-  if (k > 0) { ctx.fillStyle = col || (full ? '#7ed957' : '#b8e36b'); rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
 }
 function drawForageOverlay() {
   if (G.mode !== 'play') return;
   const cap = T.forage.carryCap, vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
   const live = G.sheep.filter(s => !s.dead), saltAvg = live.length ? live.reduce((a, s) => a + (s.salt ?? 1), 0) / live.length : 1;
-  for (const d of G.dogs) {
-    const g = d.greens || 0, [px, py, pz] = proj(d.x, d.y + 2.4, d.z); if (!vis(px, py, pz)) continue;   // over the dog, above its name
-    if (g > 0.01) forageBar(px, py, g / cap, g >= cap - 1e-6);
-    if (d.salt) forageChip(px + (g > 0.01 ? 60 : 0), py, '🧂', 'rgba(27,26,40,.78)');
-  }
   // carrying a good load and no pen on screen: an arrow at the edge toward the nearest one
   for (const d of G.dogs) {
     if (!((d.greens || 0) >= cap * 0.5 || d.salt || (bucketOf(d)?.w || 0) >= T.water.bucket * 0.5)) continue;   // (WATER: a bucket of water)
@@ -5070,14 +5059,10 @@ function updateWaterHUD() {
   if (el.textContent !== txt) { el.textContent = txt; el.style.color = col; }
   bar.style.width = `${Math.round(Math.max(0.03, 1 - t) * 100)}%`; bar.style.background = col;
 }
-// the overlay: a dog's bucket and how full, buckets lying about, each pen's water level
+// the overlay: buckets lying about, each pen's water level (a dog's bucket: drawDogCarry, HUD)
 function drawWaterOverlay() {
   if (G.mode !== 'play') return;
-  const B = T.water.bucket, vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
-  for (const d of G.dogs) {
-    const b = bucketOf(d); if (!b) continue;
-    const [px, py, pz] = proj(d.x, d.y + 2.4, d.z); if (vis(px, py, pz)) forageBar(px, py - ((d.greens || 0) > 0.01 ? 24 : 0), b.w / B, b.w >= B - 0.01, '🪣', '#5fb8f0');
-  }
+  const vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
   for (const b of BUCKETS) {
     if (b.by || !G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 40)) continue;
     const y = groundY(b.x, b.z), [px, py, pz] = proj(b.x, y + 1.3, b.z); if (vis(px, py, pz)) forageChip(px, py, '🪣', 'rgba(27,26,40,.6)');
@@ -5198,10 +5183,10 @@ function syncDigs(dt) {
 }
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
-  // HANK: shearing: ✂️ over the clippers' mound and over the dog carrying them, and over Hank (take them to him)
+  // HANK: shearing: ✂️ over the clippers' mound, and over Hank while a dog carries them (on the dog: drawDogCarry, HUD)
   const chip = (x, y, z) => { const [px, py, pz] = proj(x, y, z); if (pz <= 1 && px > -30 && px < W + 30 && py > -30 && py < H + 30) forageChip(px, py, '✂️', 'rgba(27,26,40,.7)'); };
   if (CLIP_DIG && !CLIP_DIG.dug && !clippersOut() && G.dogs.some(d => Math.hypot(d.x - CLIP_DIG.x, d.z - CLIP_DIG.z) < 30)) chip(CLIP_DIG.x, CLIP_DIG.y + 1.9, CLIP_DIG.z);
-  for (const d of G.dogs) if (d.clippers) { chip(d.x, d.y + 2.9, d.z); nudge('clippers', HANK.x, HANK.y + 3, HANK.z, '✂️ ➜ 🧓'); }
+  if (G.dogs.some(d => d.clippers)) nudge('clippers', HANK.x, HANK.y + 3, HANK.z, '✂️ ➜ 🧓');
   for (const sp of DIGS) {
     if (sp.dug) continue;
     if (sp.prog <= 0.02 && G.dogs.some(d => Math.hypot(d.x - sp.x, d.z - sp.z) < 8)) nudge('dig', sp.x, sp.y + 1.5, sp.z, '⬇ Stand here: dig');
@@ -6933,16 +6918,38 @@ function drawCoyoteArrows() {
   }
   ctx.globalAlpha = 1;
 }
-// a dog's health bar under its name (the chunk just lost lingers in red), claw marks when it's hit, and the mash prompt under a cougar
+// what a dog carries: a small pip each over its name (🌿 / 🪣 ringed by how full, 🧂, ✂️)
+function drawDogCarry(d, px, py) {
+  const cap = T.forage.carryCap, g = d.greens || 0, b = bucketOf(d), items = [];
+  if (g > 0.01) items.push(['🌿', g / cap, g >= cap - 1e-6 ? '#7ed957' : '#b8e36b']);
+  if (b) items.push(['🪣', b.w / T.water.bucket, '#5fb8f0']);
+  if (d.salt) items.push(['🧂']);
+  if (d.clippers) items.push(['✂️']);
+  const r = 8.5, y = py - 15; ctx.font = '10px Fredoka, sans-serif'; ctx.lineWidth = 2;
+  items.forEach(([icon, k, col], i) => {
+    const x = px + (i - (items.length - 1) / 2) * (2 * r + 3);
+    ctx.fillStyle = 'rgba(27,26,40,.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    if (k != null) {
+      ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(x, y, r - 1, 0, TAU); ctx.stroke();
+      if (k > 0.005) { ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r - 1, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(k, 0, 1)); ctx.stroke(); }
+    }
+    ctx.fillStyle = '#fff'; ctx.fillText(icon, x, y + 0.5);
+  });
+}
+// a dog's health: a thin bar under its name, only while hurt (the chunk just lost lingers in red); claw marks when it's hit; the mash prompt under a cougar
 function drawDogHealth(d, px, py, dt) {
   const hp = clamp(d.hp ?? 1, 0, 1);
   if (hp < (d._hpPrev ?? 1) - 1e-3) { d._flash = 0.15; d._hpHold = 0.45; }
   d._hpPrev = hp; d._flash = Math.max(0, (d._flash || 0) - dt); d._hpHold = Math.max(0, (d._hpHold || 0) - dt);
   d.hpShow = (d.hpShow ?? 1) > hp ? (d._hpHold > 0 ? d.hpShow : Math.max(hp, d.hpShow - dt * 0.6)) : hp;
-  const w = 38, h = 6, x = px - w / 2, y = py + 10, shake = d._flash > 0 ? (Math.random() - 0.5) * 3 : 0;
-  ctx.fillStyle = 'rgba(0,0,0,.6)'; rr(x - 2 + shake, y - 2, w + 4, h + 4, 4); ctx.fill();
-  ctx.fillStyle = '#c0392b'; ctx.fillRect(x + shake, y, w * d.hpShow, h);
-  ctx.fillStyle = d._flash > 0 ? '#ffffff' : hp > 0.5 ? '#7ed957' : hp > 0.25 ? '#ffd36b' : '#ff5a4a'; ctx.fillRect(x + shake, y, w * hp, h);
+  d._hpA = clamp((d._hpA || 0) + (hp < 0.999 || d.hpShow > hp + 1e-3 ? dt * 8 : -dt * 1.5), 0, 1);   // fades out once healed
+  if (d._hpA > 0) {
+    const w = 26, h = 3, x = px - w / 2, y = py + 8, shake = d._flash > 0 ? (Math.random() - 0.5) * 3 : 0;
+    ctx.globalAlpha = d._hpA; ctx.fillStyle = 'rgba(0,0,0,.55)'; rr(x - 1.5 + shake, y - 1.5, w + 3, h + 3, 3); ctx.fill();
+    ctx.fillStyle = '#c0392b'; ctx.fillRect(x + shake, y, w * d.hpShow, h);
+    ctx.fillStyle = d._flash > 0 ? '#ffffff' : hp > 0.5 ? '#7ed957' : hp > 0.25 ? '#ffd36b' : '#ff5a4a'; ctx.fillRect(x + shake, y, w * hp, h);
+    ctx.globalAlpha = 1;
+  }
   if (G.time - (d.slashAt ?? -9) < 0.25) {   // claw marks across the dog
     const [sx, sy] = proj(d.x, d.y + 0.6, d.z), k = (G.time - d.slashAt) / 0.25, a = d.slashA || 0, n = d.slashBite ? 2 : 3;
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(a); ctx.globalAlpha = 1 - k; ctx.lineCap = 'round';
@@ -7028,16 +7035,18 @@ function drawOverlay(dt) {
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
   drawVendorOverlay();   // VENDOR: prices over the mats
   drawBrambleOverlay();  // BRAMBLES: snagged sheep
-  // dog labels + stamina
+  // dog tags: name, stamina ring beside it, what it carries above, health below (only while hurt)
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
-    ctx.font = '700 13px Fredoka, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = d.color;
+    ctx.font = '700 12px Fredoka, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = d.color;
     const label = d.player.name || PCOL[d.player.slot].name;   // ONLINE: friends name their dogs
     ctx.strokeText(label, px, py); ctx.fillText(label, px, py);
     if (d.stamina < 0.999) {
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px + 20, py, 7, 0, TAU); ctx.stroke();
-      ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(px + 20, py, 7, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
+      const sx = px + ctx.measureText(label).width / 2 + 8;
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(sx, py, 4.5, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(sx, py, 4.5, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
     }
+    if (G.mode === 'play' && !d.mauled) drawDogCarry(d, px, py);   // (mauled: the mash prompt goes there)
     drawDogHealth(d, px, py, dt);
   }
   drawCoyoteArrows();
