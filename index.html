@@ -316,6 +316,7 @@
     <div class="row"><span><i class="ic">🏠</i><span class="w">Penned</span></span><b id="hPen">0</b></div>
     <div class="row"><span><i class="ic">🍼</i><span class="w">Lambs born</span></span><b id="hBorn">0</b></div>
     <div class="row"><span><i class="ic">🪦</i><span class="w">Lost</span></span><b id="hLost">0</b></div>
+    <div class="row" id="hWoolRow" style="display:none" title="Wool from shearing"><span><i class="ic">🧶</i><span class="w">Wool</span></span><b id="hWool">0</b></div>
   </div>
   <div id="clock" class="panel">
     <div id="dial"><div id="dialHand"></div></div>
@@ -608,6 +609,9 @@ const T = {
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankCmdGap: 8,                   // s between whistled herding commands ("Come bye!")
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
+  // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
+  // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
+  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45 },
 };
 const WATER_Y = -3;
 
@@ -2233,6 +2237,7 @@ const G = {
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
   stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 },
   nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
+  wool: 0,   // SHARED HOOK: the journey's wool stock 🧶 (whole skeins; shearing adds, the vendor spends)
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
@@ -2298,6 +2303,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
     corner: 0, cWarn: 0, breakT: 0, breakCd: 0, bowlT: 0, bdx: 0, bdz: 0, cpx: x, cpz: z, boltT: 0, boltA: 0, strayBaa: rnd(2, 4), bellT: 0,
     // rams: idle -> windup -> charge -> dazed; and courting in the pen
     rs: 'idle', rcd: rnd(6, 10), rt: 0, rtar: null, cdx: 0, cdz: 0, pawT: 0, sparkT: 0, court: null, courtT: 0, courtCD: rnd(0, 2), wooT: 0, heartT: 0,
+    wool: lamb ? T.shear.lamb : rnd(...T.shear.start),   // SHARED HOOK: fleece 0…1 (HANK: shearing)
   };
 }
 // flock-wide mind: the hub strays head for, co-op flanking, the mood, Hank's cooldowns
@@ -2919,6 +2925,7 @@ function updateSheep(dt, dtH) {
     if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.wasGrabbed = true; continue; }
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
+    if (s.state === 'shear') { shearHold(s, dt, dtH); continue; }   // on its rump, Hank clipping it (HANK: shearing)
     if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; }   // dropped by a coyote: shaken, and jumpy from now on
     s.goalHold -= dt; s.atTrough = false; s.atLick = false; if (s.troughCd > 0) s.troughCd -= dt;
     // ---- neighbours: only flockmates on the same side of a fence count
@@ -3276,6 +3283,7 @@ function updateSheep(dt, dtH) {
     // ---- hunger & grazing
     const sleeping = s.state === 'sleep';
     s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH * (sleeping ? T.sleepHungerMul : 1));
+    s.wool = Math.min(1, (s.wool ?? 1) + dtH / (24 * T.shear.regrowDays));   // the fleece grows back (HANK: shearing)
     if (!s.lamb && !s.ram) {   // well fed any time from late afternoon on: ready to breed tonight (a night's hunger doesn't undo it)
       if (s.hunger < T.breedHunger && (G.clock.hour >= T.courtHour || isNight())) s.ready = true;
       else if (s.hunger > T.readyLose) s.ready = false;
@@ -3731,6 +3739,13 @@ const SFX = (() => {
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
       for (let k = 0; k < 5; k++) { const t = t0 + k * 0.09 + Math.random() * 0.04, [n, f] = noise(A, t, 'bandpass', 1400 + Math.random() * 900, 1.1), g = A.ac.createGain(); A.env(g, t, 0.01, 0.8, 0.16); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.2); }
       this.thud(pan, vol * 0.5);
+    },
+    snip(pan = 0, vol = 0.2) {   // hand shears through a fleece (HANK: shearing)
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (const [dt, f] of [[0, 2600], [0.08, 2200]]) {
+        const t = t0 + dt, [n, fl] = noise(A, t, 'bandpass', f * 1.6, 2.5), g = A.ac.createGain(); A.env(g, t, 0.002, 0.9, 0.05); fl.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.07);
+        const o = osc(A, 'square', t, f, f * 0.7, 0.03), og = A.ac.createGain(); A.env(og, t, 0.002, 0.25, 0.03); o.connect(og); og.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.05);
+      }
     },
   };
 })();
@@ -4868,6 +4883,16 @@ const DIGS = [];
       break;
     }
   }
+  // HANK: shearing: one more, always the same, between the first two camps: Hank's clippers (sp.clip)
+  const CR = mulberry32(61061);
+  for (let t = 0; t < 120; t++) {
+    const s = lerp(CAMPS[0].s, CAMPS[1].s, 0.45 + CR() * 0.3), k = pathIdx(s), side = CR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.8;
+    const p = pathPoint(s, side * (6 + CR() * clamp(room - 6, 0.5, 4))), x = p.x, z = p.z;
+    if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r)) continue;
+    if ((L0 && Math.hypot(x - L0.x, z - L0.z) < 10) || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 4) || SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) || DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 12)) continue;
+    DIGS.push({ i: DIGS.length, x, z, y: terrainH(x, z), rot: CR() * TAU, dug: false, prog: 0, glint: CR() * 3, clip: true });
+    break;
+  }
   const mound = merge(P(SPH(10), '#7a5634', { s: [0.75, 0.24, 0.62] }), P(SPH(8), '#8c6440', { s: [0.42, 0.18, 0.38], p: [0.15, 0.08, -0.05] }),
     P(ICO(1, 0), '#9a948a', { s: [0.09, 0.07, 0.09], p: [-0.5, 0.05, 0.3] }), P(ICO(1, 0), '#9a948a', { s: [0.07, 0.06, 0.07], p: [0.55, 0.04, -0.25] }),
     P(BOX(0.72, 0.06, 0.1), '#4a2e1a', { r: [0, 0.75, 0], p: [0, 0.25, 0] }), P(BOX(0.72, 0.06, 0.1), '#4a2e1a', { r: [0, -0.75, 0], p: [0, 0.25, 0] }));   // an X marks the spot
@@ -4882,11 +4907,14 @@ const DIGS = [];
   }
 }
 const DIG_JUNK = ['AN OLD BOOT!', 'A BONE!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
+const CLIP_DIG = DIGS.find(sp => sp.clip) || null;   // HANK: shearing: where his clippers are buried
+const clippersOut = () => HANK.clippers || G.dogs.some(d => d.clippers);
 function resetDigs() { for (const d of DIGS) { d.dug = false; d.prog = 0; } }
 // in step(): who's digging where
 function updateDigs(dt) {
   for (const d of G.dogs) d.digK = Math.max(0, (d.digK || 0) - dt * 4);
   if (G.mode !== 'play') return;
+  if (CLIP_DIG && CLIP_DIG.dug && !clippersOut()) { CLIP_DIG.dug = false; CLIP_DIG.prog = 0; }   // the dog carrying them left: back in the ground
   for (const sp of DIGS) {
     if (sp.dug) continue;
     let dog = null, near = false;
@@ -4904,6 +4932,13 @@ function updateDigs(dt) {
 function digUp(sp, d) {
   sp.dug = true; sp.prog = 0;
   burst(sp.x, sp.y + 0.3, sp.z, 14, '#8a6440', { speed: 3, up: 4, size: 0.16, life: 0.8, grav: -9 });
+  if (sp.clip && !clippersOut()) {   // HANK: shearing: his clippers, carried in the dog's mouth till it reaches him
+    d.clippers = true;
+    confetti(sp.x, sp.y + 1, sp.z, 30); Sound.chime([0, 4, 7, 12], 660, 0.12); rumble(d.player, 0.3, 0.5, 120);
+    floatText('✂️!', sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
+    hank(null, 'My clippers! Bring them here!', { force: true });
+    return;
+  }
   const left = DOG_ITEMS.filter(it => !DOGS.found.includes(it.id));
   if (left.length && (!DOGS.found.length || Math.random() < T.dig.treasure)) {
     const it = pick(left); foundDogItem(it.id, d);
@@ -4930,6 +4965,10 @@ function syncDigs(dt) {
 }
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
+  // HANK: shearing: ✂️ over the clippers' mound and over the dog carrying them, and over Hank (take them to him)
+  const chip = (x, y, z) => { const [px, py, pz] = proj(x, y, z); if (pz <= 1 && px > -30 && px < W + 30 && py > -30 && py < H + 30) forageChip(px, py, '✂️', 'rgba(27,26,40,.7)'); };
+  if (CLIP_DIG && !CLIP_DIG.dug && !clippersOut() && G.dogs.some(d => Math.hypot(d.x - CLIP_DIG.x, d.z - CLIP_DIG.z) < 30)) chip(CLIP_DIG.x, CLIP_DIG.y + 1.9, CLIP_DIG.z);
+  for (const d of G.dogs) if (d.clippers) { chip(d.x, d.y + 2.9, d.z); nudge('clippers', HANK.x, HANK.y + 3, HANK.z, '✂️ ➜ 🧓'); }
   for (const sp of DIGS) {
     if (sp.dug) continue;
     if (sp.prog <= 0.02 && G.dogs.some(d => Math.hypot(d.x - sp.x, d.z - sp.z) < 8)) nudge('dig', sp.x, sp.y + 1.5, sp.z, '⬇ Stand here: dig');
@@ -6229,8 +6268,13 @@ function sheepWoolColor(s, out) {
   else if (s.ram && !s.lamb) out.setRGB(0.93 * st, 0.88 * st, 0.78 * st);   // rams: a creamier, older fleece
   else { const tint = s.lamb ? 1.0 : 0.97; out.setRGB(tint * st, tint * st, tint * st); }
   const k = oldK(s);   // AGE: old fleece goes a dingy grey (and a black one grizzles)
-  return k > 0 ? out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k) : out;
+  if (k > 0) out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k);
+  const w = clamp((1 - (s.wool ?? 1)) / 0.8, 0, 1);   // HANK: shearing: shorn, the skin shows through, pinker the less fleece
+  return w > 0 ? out.lerp(s.black ? _cAge.setRGB(0.36 * st, 0.29 * st, 0.27 * st) : _cAge.setRGB(0.93 * st, 0.66 * st, 0.6 * st), 0.6 * w * w) : out;
 }
+// fleece size: shorn, a sheep's body is slimmer (x, y, z scale)
+const woolFit = (s, out) => { const w = s.wool ?? 1; return out.set(lerp(0.8, 1, w), lerp(0.88, 1, w), lerp(0.93, 1, w)); };
+const _wf = new THREE.Vector3();
 // the head's instance colour: white, a black face, or a dyed tuft; greying round the muzzle with age
 const _cAge = new THREE.Color();
 function sheepHeadColor(s, out) {
@@ -6246,12 +6290,13 @@ function syncSheep() {
     // tells: a stressed sheep trembles; a ram squaring up rocks on its feet
     const shiver = s.stress > 0.5 && !lying ? Math.sin(G.time * 47 + s.id * 3.1) * 0.12 * (s.stress - 0.5) : 0;
     const rock = s.rs === 'windup' ? Math.sin(G.time * 17) * 0.08 : s.rs === 'charge' ? 0.12 : 0;
-    _e.set(rock, s.yaw + shiver, s.grabbed ? 1.4 : 0, 'YXZ');
-    _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0), s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
+    const shk = s.shK = clamp((s.shK || 0) + (s.state === 'shear' ? 0.08 : -0.08), 0, 1);   // HANK: shearing: sat back on its rump
+    _e.set(rock - 0.95 * shk, s.yaw + shiver, s.grabbed ? 1.4 : 0, 'YXZ');
+    _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0) + 0.14 * shk * sc, s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
     if (s.pose) poseSheep(s, _mb, sc);   // flying, held, squashed on landing (dog-moves section)
     const bob = s.state === 'flee' || s.rs === 'charge' ? Math.abs(Math.sin(s.leg)) * 0.08 : 0, breathe = 1 + Math.sin(G.time * 2 + s.id) * 0.02;
-    const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok);
-    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob, 0), _qa.identity(), _s.set(thin, breathe * (1 - 0.04 * ok), 1));
+    const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok), wf = woolFit(s, _wf);   // (wf: a shorn fleece)
+    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob - (1 - wf.y) * 0.3, 0), _qa.identity(), _s.set(thin * wf.x, breathe * (1 - 0.04 * ok) * wf.y, wf.z));
     _ml.multiplyMatrices(_mb, _mp); SI.body.m.setMatrixAt(n, _ml);
     SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
     (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
@@ -6503,6 +6548,7 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
+  const wr = $('hWoolRow'), wv = HANK.clippers || G.wool > 0 ? '' : 'none'; if (wr.style.display !== wv) wr.style.display = wv; $('hWool').textContent = G.wool;   // HANK: shearing
   $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.cougar || 0) + (G.stats.falcon || 0);
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
@@ -6737,6 +6783,8 @@ const HANK = {
   thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
   // asleep on his mat (sim); lieK 0 standing…1 lying (render)
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
+  // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
+  clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -6818,6 +6866,7 @@ const _hv = new THREE.Vector3();
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
+  const shg = shearGoal(); if (shg) return shg;   // shearing: in the pen, by the sheep he's after
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
   // evening and night: warming himself at the campfire of the pen the flock's in
@@ -6836,7 +6885,8 @@ function hankGoal() {
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
-  const hk = HANK, g = hankGoal();
+  const hk = HANK; shearStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
+  const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
@@ -6849,7 +6899,8 @@ function updateHank(dt) {
   // lines said "in a moment" (game time, so they wait while the game does)
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
-  const g = hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;
+  if (hk.climb) { hankClimb(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
+  const g = hankCross(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence)
   if (G.mode !== 'play') hk.asleep = false;
   const spd = hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
   // keep clear of the flock and of walls: steer round, don't push through
@@ -6866,7 +6917,7 @@ function updateHank(dt) {
   collideGraves(hk, T.hankR);
   // solid but gentle: a sheep right against him is just eased aside (no fright), and dogs bump off him
   for (const s of G.sheep) {
-    if (s.dead || s.grabbed || s.air || s.heldBy) continue;
+    if (s.dead || s.grabbed || s.air || s.heldBy || s.state === 'shear') continue;
     const ex = s.x - hk.x, ez = s.z - hk.z, m = T.hankR + s.r, e2 = ex * ex + ez * ez; if (e2 >= m * m || e2 < 1e-8) continue;
     const e = Math.sqrt(e2), push = m - e; s.x += ex / e * push * 0.7; s.z += ez / e * push * 0.7; hk.x -= ex / e * push * 0.3; hk.z -= ez / e * push * 0.3;
   }
@@ -6894,6 +6945,7 @@ function updateHank(dt) {
   else if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
   else { const f = (hk.talkT > 0 || !g.face) && G.dogs.length ? nearestDog(hk.x, hk.z).dog : g.face; hk.yaw = lerpA(hk.yaw, f ? Math.atan2(f.x - hk.x, f.z - hk.z) : Math.PI / 4, 1 - Math.exp(-dt * 2)); }
   hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt);
+  updateShear(dt);   // shearing: clippers handed over, picking a sheep, clipping it
   if (G.mode === 'play') hankWatch(dt);
 }
 
@@ -6991,12 +7043,13 @@ function syncHank(dt) {
   const mk = clamp(hk.lieK * 2.5, 0, 1), lie = clamp((hk.lieK - 0.35) / 0.65, 0, 1), tip = lie * lie * (3 - 2 * lie);
   M.mat.visible = mk > 0.01;
   if (M.mat.visible) { M.mat.position.set(hk.x, groundY(hk.x, hk.z), hk.z); M.mat.rotation.y = hk.yaw; M.roll.scale.z = mk; M.pillow.scale.setScalar(clamp(mk * 5 - 4, 0.01, 1)); }
-  M.root.position.set(hk.x, hk.y + 0.3 * tip, hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
+  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing: bent over a sheep; a leg over a fence
+  M.root.position.set(hk.x, hk.y + 0.3 * tip + (hk.lift || 0), hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
   hk.phase += dt * sp * 2.4;
   const k = Math.min(1, sp / 1.6), sw = Math.sin(hk.phase);
-  M.legs[0].rotation.x = sw * 0.55 * k; M.legs[1].rotation.x = -sw * 0.55 * k;
-  M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7;
-  M.armL.rotation.x = -sw * 0.3 * k;
+  M.legs[0].rotation.x = sw * 0.55 * k - 1.3 * lf; M.legs[1].rotation.x = -sw * 0.55 * k + 0.4 * lf;
+  M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7 + 0.55 * shk;
+  M.armL.rotation.x = lerp(-sw * 0.3 * k, -1.15 + Math.sin(G.time * 15) * 0.2, shk);
   M.body.position.y = Math.abs(sw) * 0.05 * k;
   hk.talkT = Math.max(0, hk.talkT - dt);
   let cx = -0.35 + sw * 0.12 * k, cz = 0;
@@ -7004,11 +7057,12 @@ function syncHank(dt) {
   else if (tip > 0) cx = lerp(cx, 0.05, tip);                                      // crook laid along him asleep
   if (G.mode === 'end' && hk.celebrate) { cx = -2.7; cz = Math.sin(G.time * 8) * 0.35; }   // and waves it when you make it
   M.armR.rotation.x = lerp(M.armR.rotation.x, cx, 1 - Math.exp(-dt * 10)); M.armR.rotation.z = cz;
-  M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0;
+  M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0.35 * shk;
   // the lantern glows from dusk
   const n = LIGHT.night; M.glassMat.color.setRGB(lerp(0.32, 1, n), lerp(0.27, 0.8, n), lerp(0.16, 0.4, n));
   // the light hangs a little out in front (right at the glass it would bleach his coat): a warm pool on the ground round him
   M.glass.getWorldPosition(_hv); hankLight.position.set(_hv.x + Math.sin(hk.yaw) * 1.1, hk.y + 2.1, _hv.z + Math.cos(hk.yaw) * 1.1); hankLight.intensity = n * 5;
+  syncShears();   // shearing: his clippers (belt or hand) and a dog carrying them
   // the speech bubble: over his hat, or pinned to the screen edge with an arrow toward him
   const b = hk.bubble; if (!b) return;
   if (hk.sayT > 0) hk.sayT -= dt;
@@ -7123,7 +7177,7 @@ function hankNap(dt) {
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;
+  const atFire = isNight() && g && g.face && !hk.job && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -7204,6 +7258,140 @@ function initHankUI() {
   const tb = document.getElementById('tBarn'); if (tb) tb.addEventListener('click', () => { Sound.init(); openBarn(); });
   document.querySelectorAll('.hankVol').forEach(hankVolumeUI);
   resetHank();
+}
+
+// ---------------- shearing ----------------
+// His clippers lie in one mound between the first two camps (DIG SPOTS: sp.clip); a dog digs them up and takes them to
+// him. With them, awake and nothing prowling near for T.shear.calm s, he shears the flock penned behind a shut gate:
+// over the fence (clear of the gate and the troughs), woolliest first, each sat on its rump a few s. s.wool 0…1 regrows
+// over T.shear.regrowDays; each fleece adds to G.wool (🧶, whole skeins). HANK.clippers lasts the journey (not saved).
+// SHARED HOOK: Hank gets his clippers (from dog d, or from anywhere with d null), with his line and fx; no-op if he has them.
+function giveHankClippers(d = null) {
+  const hk = HANK; if (hk.clippers) return false;
+  hk.clippers = true; for (const o of G.dogs) o.clippers = false;
+  if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
+  starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText('✂️', hk.x, hk.y + 2.9, hk.z, '#ffd36b', 1.6); Sound.chime([0, 4, 7, 12, 16], 659, 0.14, 0.07);
+  if (d) rumble(d.player, 0.3, 0.5, 120);
+  hank(null, "Grand! I'll shear them in a shut pen.", { force: true });
+  return true;
+}
+const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
+const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm;
+const shearable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !!s.pen && s.pen.gateT < 0.05 && G.sheep.includes(s);
+function shearPick() {   // the woolliest penned sheep (near ones first), not one panicking, squaring up or feeding
+  const hk = HANK; let best = null, bs = -1e9;
+  for (const s of G.sheep) {
+    if (!shearable(s) || (s.wool ?? 1) < T.shear.min || (s.shearSkip || 0) > G.time || s.panic > 0.5 || (s.rs && s.rs !== 'idle')) continue;
+    const sc = s.wool - 0.015 * Math.hypot(s.x - hk.x, s.z - hk.z) - (s.state === 'trough' || s.state === 'lick' ? 0.3 : 0);
+    if (sc > bs) { bs = sc; best = s; }
+  }
+  return best;
+}
+function shearStop() {
+  const hk = HANK, j = hk.job;
+  if (j && j.s.state === 'shear') { j.s.state = 'idle'; j.s.thinkT = 0; }
+  hk.job = null; hk.shearing = false; hk.goal = null;
+}
+// hankGoal: next to the sheep, on the pen's middle side (g.pen: hankCross gets him over the fence first)
+function shearGoal() {
+  const hk = HANK, j = hk.job; if (!j || G.mode !== 'play') return null;
+  const s = j.s, p = j.pen;
+  if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: s };
+  let ux = p.x - s.x, uz = p.z - s.z, l = Math.hypot(ux, uz);
+  if (l < 1.5) { ux = hk.x - s.x; uz = hk.z - s.z; l = Math.hypot(ux, uz) || 1; }
+  const r = s.r + T.hankR + 0.15;
+  return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
+}
+// in updateHank (the host's sim): clippers handed over, picking a sheep, clipping it
+function updateShear(dt) {
+  const hk = HANK, S = T.shear;
+  if (G.mode === 'play' && !hk.clippers) for (const d of G.dogs) if (d.clippers && !d.air && Math.hypot(d.x - hk.x, d.z - hk.z) < S.giveR) { giveHankClippers(d); break; }
+  let j = hk.job;
+  if (j && (!shearCan() || !shearable(j.s) || j.s.pen !== j.pen)) { shearStop(); j = null; }
+  if (!j) {
+    if (!shearCan() || (hk.pickT = (hk.pickT || 0) - dt) > 0) return;
+    hk.pickT = 0.5; if (!(j = shearNext())) return;
+  }
+  const s = j.s, inPen = !hk.climb && penAt(hk.x, hk.z) === j.pen;
+  if (!j.on) {   // on his way: in reach (and in its pen) he sits it down; can't get to it in the pen for giveUp s: another
+    if (inPen && (j.t += dt) > S.giveUp) { s.shearSkip = G.time + S.skip; shearStop(); return; }
+    if (!inPen || Math.hypot(s.x - hk.x, s.z - hk.z) > s.r + T.hankR + S.reach) return;
+    Object.assign(j, { on: true, k: 0, w0: s.wool ?? 1 }); hk.shearing = true; hk.goal = null;
+    s.state = 'shear'; s.vx = s.vz = 0; s.shX = s.x; s.shZ = s.z; s.fear = 0; s.stress = Math.min(1, s.stress + S.stress);
+    if (hk.shearDay !== G.clock.day) { hk.shearDay = G.clock.day; hank(null, "Shearin' time!"); }
+  }
+  // clipping: the fleece comes off as he goes (held where it sat: the flock's jostling doesn't shift it)
+  hk.vx = hk.vz = 0; s.x = s.shX; s.z = s.shZ;
+  j.k = Math.min(1, j.k + dt / S.time); s.wool = j.w0 * (1 - j.k);
+  if ((j.snipT -= dt) <= 0) { j.snipT = 0.3; shearFx(s); }
+  if (j.k < 1) return;
+  const n = Math.max(1, Math.round(S.yield * j.w0 * shearSize(s)));
+  G.wool += n; s.wool = 0;
+  floatText(`+${n} 🧶`, s.x, s.y + 1.7, s.z, '#fff8e8', 1.25); Sound.chime([0, 4, 7], 784, 0.12, 0.06);
+  shearStop(); shearNext();   // straight on to the next (no climbing out and back in between)
+}
+function shearNext() { const s = shearPick(); return s ? (HANK.goal = null, HANK.job = { s, pen: s.pen, t: 0, on: false, k: 0, w0: 1, snipT: 0 }) : null; }
+// in updateSheep: the one being shorn sits still, rump to Hank
+function shearHold(s, dt, dtH) {
+  const j = HANK.job;
+  if (!j || j.s !== s || !j.on) { s.state = 'idle'; return; }
+  s.x = s.shX; s.z = s.shZ; s.vx = s.vz = 0; s.fear = 0;
+  s.yaw = lerpA(s.yaw, Math.atan2(s.x - HANK.x, s.z - HANK.z), Math.min(1, dt * 8));
+  s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH);
+}
+// a goal in a pen he isn't in (or out of the one he's in): over the fence, clear of the gate's swing and the troughs
+function crossAt(p, a0) {
+  const ring = (a, r) => ({ x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r });
+  for (let k = 0; k < 53; k++) {
+    const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.12, i = ring(a, p.R - 1.2), o = ring(a, p.R + 1.1);
+    if (Math.abs(wrapA(a - p.gateA)) < p.gapHalf + (p.gateLen + 1) / p.R || sdfAt(o.x, o.z) < 1.2) continue;
+    if ((p.solids || []).some(b => Math.hypot(i.x - b.x, i.z - b.z) < b.hl + 1.2)) continue;
+    return { in: i, out: o };
+  }
+  return { in: ring(a0, p.R - 1.2), out: ring(a0, p.R + 1.1) };
+}
+function hankCross(g) {
+  const hk = HANK, inP = penAt(hk.x, hk.z), gP = g.pen || null;
+  if (inP === gP) { hk.cross = null; return null; }
+  const p = inP || gP, out = !!inP;
+  let c = hk.cross;
+  if (!c || c.p !== p || c.out !== out) c = hk.cross = { p, out, ...crossAt(p, out ? Math.atan2(g.z - p.z, g.x - p.x) : Math.atan2(hk.z - p.z, hk.x - p.x)) };
+  const from = out ? c.in : c.out, to = out ? c.out : c.in;
+  if (Math.hypot(hk.x - from.x, hk.z - from.z) < 0.6) { hk.climb = { ax: hk.x, az: hk.z, bx: to.x, bz: to.z, t: 0 }; hk.cross = null; }
+  return { x: from.x, z: from.z, stop: 0.1, noShy: true };
+}
+function hankClimb(dt) {   // a leg over the top rail and down the other side
+  const hk = HANK, c = hk.climb, k = Math.min(1, (c.t += dt / T.shear.climbT));
+  hk.x = lerp(c.ax, c.bx, k); hk.z = lerp(c.az, c.bz, k); hk.vx = hk.vz = 0; hk.y = groundY(hk.x, hk.z);
+  hk.lift = Math.sin(Math.PI * k) * 0.8; hk.yaw = lerpA(hk.yaw, Math.atan2(c.bx - c.ax, c.bz - c.az), 1 - Math.exp(-dt * 10));
+  if (k >= 1) { hk.climb = null; hk.lift = 0; }
+}
+// a snip and a puff of fleece (ONLINE: fxDef)
+function shearFx(s) {
+  if (!s) return;
+  const L = s.look, hs = s.scale * (s.grow || 1);
+  burst(s.x, s.y + 0.7 * hs, s.z, 4, L && L.wool ? L.wool : s.black ? '#4a4642' : '#f6f1e3', { speed: 1.6, up: 2.2, size: 0.16, life: 0.9, grav: -3 });
+  SFX.snip(panOf(s.x, s.z));
+}
+// hand shears: two blades and a spring bow; on his belt, in his hand while he clips, in a dog's mouth
+const SHEARS_GEO = merge(
+  ...[-1, 1].flatMap(sd => [P(CONE(0.034, 0.27, 4), '#dfe4ea', { s: [1, 1, 0.4], r: [Math.PI / 2, 0, 0], p: [sd * 0.022, 0, 0.135] }),
+    P(BOX(0.045, 0.04, 0.13), '#c0392b', { p: [sd * 0.032, 0, -0.07] })]),
+  P(new THREE.TorusGeometry(0.035, 0.012, 6, 12, Math.PI), '#aab2bc', { r: [-Math.PI / 2, 0, 0], p: [0, 0, -0.135] }));
+function syncShears() {
+  const hk = HANK, M = hk.model;
+  if (!M.shears) {
+    const belt = part(M.torso, SHEARS_GEO, { shadow: false }), hand = part(M.armL, SHEARS_GEO, { shadow: false });
+    belt.position.set(0.42, 0, 0.38); belt.rotation.set(Math.PI / 2, 0, 0.3); belt.scale.setScalar(1.5);
+    hand.position.set(0.05, -0.85, 0.12); hand.rotation.set(Math.PI / 2, 0, 0); hand.scale.setScalar(1.5);
+    M.shears = { belt, hand };
+  }
+  M.shears.belt.visible = !!hk.clippers && !hk.shearing; M.shears.hand.visible = !!hk.shearing;
+  for (const d of G.dogs) {
+    const m = d.models; if (!m) continue;
+    if (!m.shears) { m.shears = part(m.head, SHEARS_GEO, { shadow: false }); m.shears.position.set(-0.05, -0.13, 0.27); m.shears.rotation.y = Math.PI / 2; m.shears.scale.setScalar(1.05); }
+    m.shears.visible = !!d.clippers;
+  }
 }
 
 // =====================================================================
@@ -7599,7 +7787,7 @@ function barnModel() {
   const L = lookOf(s), g = new THREE.Group(), grow = ageGrow(s);
   g.scale.setScalar((s.scale || 1) * grow);
   sheepWoolColor(s, B.bodyMat.color);
-  B.body = barnPart(g, SHEEP_GEO.body, B.bodyMat, [0, 0.66, 0]);
+  B.body = barnPart(g, SHEEP_GEO.body, B.bodyMat, [0, 0.66, 0]); woolFit(s, B.body.scale);   // (shorn: slimmer)
   const head = new THREE.Group(); head.position.set(0, 0.8, 0.5); g.add(head); B.head = head;
   sheepHeadColor(s, B.headMat.color);
   barnPart(head, SHEEP_GEO.head, B.headMat);
@@ -7799,7 +7987,7 @@ function barnInfo() {
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
-  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger, b >= 0.66 ? '🦁' : b <= 0.33 ? '🐇' : ''].filter(Boolean).join(' · ');
+  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger, b >= 0.66 ? '🦁' : b <= 0.33 ? '🐇' : '', `🧶 ${Math.round((s.wool ?? 1) * 100)}%`].filter(Boolean).join(' · ');
   el.title = b >= 0.66 ? 'Brave' : b <= 0.33 ? 'Flighty' : '';
 }
 function barnRefresh() {
@@ -8004,13 +8192,13 @@ const cleanName = n => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 14);
 function readFlockSave() {
   try {
     const j = JSON.parse(localStorage.getItem(FLOCK_KEY) || 'null'); if (!j || j.v !== 1) return null;
-    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999), brave: typeof r.brave === 'number' ? clamp(r.brave, 0, 1) : null } : null).filter(Boolean).slice(0, 80);
+    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999), brave: typeof r.brave === 'number' ? clamp(r.brave, 0, 1) : null, wool: typeof r.wool === 'number' ? clamp(r.wool, 0, 1) : null } : null).filter(Boolean).slice(0, 80);
     const memorial = (Array.isArray(j.memorial) ? j.memorial : []).map(m => m && cleanName(m.name) ? { name: cleanName(m.name), why: cleanWhy(m.why), day: m.day | 0, journey: m.journey | 0, words: String(m.words || '').slice(0, 120), look: cleanLook(m.look), ram: !!m.ram, lamb: !!m.lamb } : null).filter(Boolean).slice(0, 60);
     return { flock, memorial, journeys: j.journeys | 0 };
   } catch (e) { return null; }
 }
 const customised = r => r.renamed || r.look.hat !== 'none' || r.look.acc.length > 0 || !!r.look.wool || r.look.paint.length > 0 ? 1 : 0;
-function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2) }; }
+function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2), wool: +(s.wool ?? 1).toFixed(2) }; }
 function saveFlock() {
   if (NET.role === 'guest') return false;   // ONLINE: a guest is drawing the host's flock; this browser's own saved flock stays as it was
   const flock = G.sheep.filter(s => !s.dead).map(sheepRecord).concat(FLOCK.home).slice(0, 80);
@@ -8032,7 +8220,7 @@ function applySavedFlock() {
     if (s.lamb) continue;
     const i = roster.findIndex((r, k) => !used.has(k) && !!r.ram === !!s.ram); if (i < 0) continue;
     used.add(i); const r = roster[i];
-    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true; if (r.brave !== null) s.brave = r.brave;
+    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true; if (r.brave !== null) s.brave = r.brave; if (r.wool !== null) s.wool = r.wool;
     if (r.life > 0) { s.age = Math.max(T.lambGrowDays, r.age); s.life = Math.max(r.life, s.age + 1); }   // AGE: they're as old as they were (older saves keep the age they drew)
   }
   FLOCK.home = roster.filter((r, k) => !used.has(k));
@@ -8274,6 +8462,7 @@ function resetGame() {
   resetVendor();   // VENDOR
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 };
+  G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -8309,8 +8498,8 @@ function checkLose() {
 //                e: [[fxName, args, x?, z?], …] effects to replay, kf: 1 on a keyframe (anything unlisted is gone) }.
 // Per guest the host remembers the last value it sent of every field and sends only what changed: `mask` has
 // bit i set for each field i sent, in order. Positions and angles go as the change since the last value sent
-// (small integers); a record with a negative mask (-mask) carries absolute values instead (a thing new to
-// that guest, or any keyframe). The channel is reliable and ordered, so each delta lands on top of the one
+// (small integers); a record whose mask comes in an array ([mask]) carries absolute values instead (a thing new to
+// that guest, or any keyframe; up to 53 fields). The channel is reliable and ordered, so each delta lands on top of the one
 // before; a (re)join gets a keyframe.
 //
 // HOW TO SYNC A NEW PROPERTY: add ONE line to its entity's `fields` in NET_TYPES, e.g.
@@ -8385,6 +8574,7 @@ const NET_TYPES = {
       holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote or a gate
       greens: .02, salt: 'i',   // FORAGE: what it's carrying
       hp: .01, mauled: 'b', maulEsc: .05, ko: 'b',   // health, pinned under a cougar (and how close to breaking free), out cold
+      clippers: 'b',   // HANK: shearing: Hank's clippers in its mouth
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -8396,6 +8586,7 @@ const NET_TYPES = {
       lamb: 'b', age: 'i', life: 'i', black: 'b', scale: .01, pitch: .01, name: 's', pen: '@pen', grabbed: { c: 's', get: s => netRefStr(s.grabbed), set: (s, v) => { s.grabbed = netRefFind(v); } },   // a coyote ('c…') or a cougar ('Q…')
       stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog', ready: 'b', salt: .01,
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
+      wool: .02,   // HANK: shearing: its fleece (state 'shear': on its rump being shorn)
       ...NET_AIR,
     },
     make: (id, f) => netGuestSheep(id, f), kill: s => { const i = G.sheep.indexOf(s); if (i >= 0) G.sheep.splice(i, 1); }, animate: (s, dt) => netAnimSheep(s, dt),
@@ -8448,6 +8639,7 @@ const NET_TYPES = {
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
       ff: 'b', paused: 'b', pauseWho: 's',
+      wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
     },
@@ -8457,7 +8649,8 @@ const NET_TYPES = {
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b' },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
+      clippers: 'b', shearing: 'b', lift: .02 },   // shearing: has his clippers, clipping a sheep, over a fence
     animate: hk => { hk.y = groundY(hk.x, hk.z); },
   },
 };
@@ -9020,7 +9213,7 @@ function netSnapTick() {
           if (old && old[i] === vals[i]) continue;
           mask += 2 ** i; (rec || (rec = [id, 0])).push(old && T.F[i].delta ? vals[i] - old[i] : vals[i]);
         }
-        if (rec) { rec[1] = old ? mask : -mask; (out || (out = c[tag] = [])).push(rec); any = true; }
+        if (rec) { rec[1] = old ? mask : [mask]; (out || (out = c[tag] = [])).push(rec); any = true; }   // ([mask]: absolute; not -mask, BinaryPack garbles negatives past 31 bits)
         sent.set(id, vals);
       }
       for (const id of sent.keys()) if (!now.has(id)) { sent.delete(id); (r[tag] || (r[tag] = [])).push(id); anyR = true; }
@@ -9352,7 +9545,7 @@ function netApplySnap(m) {
     const T = NET_TAGS[tag]; if (!T || !T.make || !Array.isArray(c[tag])) continue;
     const ids = NET.ids[tag] || (NET.ids[tag] = new Map());
     for (const rec of c[tag]) {
-      const id = rec[0]; if (ids.has(id) || !(rec[1] < 0)) continue;
+      const id = rec[0]; if (ids.has(id) || !Array.isArray(rec[1])) continue;
       const f = {}; netEachField(T, rec, (F, w) => { if (F.kind !== '@') f[F.name] = F.dec(w); });
       let o = null; NET.quiet = true;
       try { o = T.make(id, f); } catch (e) { if (DEBUG) console.warn('net make', tag, e); } finally { NET.quiet = false; }
@@ -9364,7 +9557,7 @@ function netApplySnap(m) {
     const T = NET_TAGS[tag]; if (!T || !Array.isArray(c[tag])) continue;
     for (const rec of c[tag]) {
       const o = netFind(T, rec[0]); if (!o) continue;
-      const created = made.has(o), abs = rec[1] < 0;
+      const created = made.has(o), abs = Array.isArray(rec[1]);
       netEachField(T, rec, (F, w, i) => {
         if (F.delta) { const q = o._nq || (o._nq = []); w = abs ? w : (q[i] || 0) + w; q[i] = w; }   // positions and angles arrive as changes
         const v = F.dec(w);
@@ -9389,9 +9582,9 @@ function netApplySnap(m) {
   // 5. the game's mode last (the host's finale arrives as an effect just before it)
   if (NET.wantMode != null) { netGuestMode(NET.wantMode); NET.wantMode = null; }
 }
-// walk one record: [id, mask, values in field order] (mask < 0 = absolute values)
+// walk one record: [id, mask, values in field order] ([mask] = absolute values)
 function netEachField(T, rec, fn) {
-  let mask = Math.abs(+rec[1] || 0), j = 2;
+  let mask = +(Array.isArray(rec[1]) ? rec[1][0] : rec[1]) || 0, j = 2;
   for (let i = 0; mask > 0 && i < T.F.length; i++) {
     const bit = mask % 2; mask = (mask - bit) / 2;
     if (bit) { if (j >= rec.length) return; fn(T.F[i], rec[j++], i); }
@@ -9604,6 +9797,7 @@ baaAt = fxDef('baaAt', baaAt);                                       // (by the 
 bellDing = fxDef('bellDing', bellDing);
 barkFx = fxDef('barkFx', barkFx);
 landDog = fxDef('landDog', landDog);
+shearFx = fxDef('shearFx', shearFx);                                 // HANK: shearing: a snip and a puff of fleece
 nipFx = fxDef('nipFx', nipFx);                                       // dog health: nips, maulings, knock-outs
 maulStartFx = fxDef('maulStartFx', maulStartFx);
 maulHitFx = fxDef('maulHitFx', maulHitFx);
@@ -9718,6 +9912,7 @@ window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
 Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
+Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);

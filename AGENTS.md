@@ -44,7 +44,9 @@ DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main l
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`, `p.gateT` (0 shut…1
-open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`.
+open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
+`giveHankClippers()` (no-op if he has them), `HANK.clippers`, `s.wool` (0…1),
+`G.wool` (🧶, whole number).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -72,6 +74,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
+| `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
@@ -161,6 +164,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
+- **Shearing** (`T.shear`): Hank's clippers are always in one dig spot between
+  the first two camps (`CLIP_DIG`); a dog carries them to him. Awake, no
+  predator near, he climbs into a shut pen (`hankCross`) and shears the
+  woolliest (`s.wool` ≥ `min`) one at a time on its rump (`s.state 'shear'`):
+  `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only, world waits; `?sim` only
