@@ -427,6 +427,7 @@ const T = {
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
   troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
+  penStillSpd: 1.2, penStillR: 3,   // a dog slower than this in a pen only shoos penned sheep within penStillR (they keep feeding)
   troughWake: 0.08,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
   flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
   // dogs
@@ -2551,6 +2552,11 @@ function updateSheep(dt, dtH) {
       // a dog on the other side of the fence (tipping greens in, say) doesn't move penned sheep that are shut in or
       // feeding, unless it sprints or pounces at them
       if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
+      // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding
+      if (s.pen && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
+        if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
+        continue;
+      }
       const k = (1 - dd / R) * K;
       // walking onto the flock drives it the way the dog walks, so you can steer it
       let ux = dx / dd, uz = dz / dd; const dv = Math.hypot(d.vx, d.vz);
@@ -2565,8 +2571,8 @@ function updateSheep(dt, dtH) {
       if (pounce) stressIn += T.stressPounce;
     }
     // a hungry sheep with its head down in good grass needs more fear to be moved
-    if ((s.state === 'graze' && s.eating || s.state === 'trough') && press > 0 && cRaw === 0 && !steady) {
-      const resolve = s.state === 'trough' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
+    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick') && press > 0 && cRaw === 0 && !steady) {
+      const resolve = s.state === 'trough' || s.state === 'lick' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
     s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
