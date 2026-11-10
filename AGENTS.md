@@ -28,8 +28,9 @@ till dawn.
   rotate prompt in portrait. Compact HUD under 520 px tall (icons, no
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
-  joins with Ⓐ on another controller or the other keyboard side and gets
-  their own dog. 4 dogs in all.
+  joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
+- One keyboard player: WASD and arrows drive the same dog.
+- Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 
 ### Layout (`index.html`, top to bottom)
 

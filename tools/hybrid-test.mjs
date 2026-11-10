@@ -24,6 +24,10 @@ const r2 = v => Math.round(v * 100) / 100;
 async function openPage(query) {
   const ctx = await browser.newContext({ viewport: { width: 640, height: 400 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage(), errors = [];
+  await page.addInitScript(() => {   // a fake controller the test can plug in and press
+    const pad = window.__pad = { on: false, index: 0, id: 'test pad', mapping: 'standard', connected: true, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+    navigator.getGamepads = () => [pad.on ? pad : null];
+  });
   page.on('pageerror', e => errors.push(String(e.stack || e)));
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
   await page.goto(`http://localhost:${port}/index.html${query}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
@@ -34,6 +38,7 @@ async function openPage(query) {
 const drawing = (P, on) => P.page.evaluate(on => { GAME.renderer.render = on ? window.__render : () => {}; }, on);
 const until = (P, fn, arg, ms = 20000) => P.page.waitForFunction(fn, arg, { timeout: ms, polling: 50 });
 async function hold(P, key, ms) { await P.page.keyboard.down(key); await sleep(ms); await P.page.keyboard.up(key); }
+const padSet = (P, fn) => P.page.evaluate(fn);
 
 try {
   // ---------------------------------------------------------------- host opens a room
@@ -47,12 +52,17 @@ try {
   await B.page.fill('#netName', 'Moss'); await B.page.click('#netJoinBtn');
   await until(B, () => NET.inRoom && NET.roster.length === 2, null, 30000);
   await B.page.evaluate(() => document.activeElement && document.activeElement.blur());
-  await hold(B, 'KeyW', 120);                 // player one touches WASD: that side is theirs
-  await hold(B, 'ArrowUp', 120);              // the other side of the keyboard: a second player
+  await hold(B, 'KeyW', 120);                 // player one touches the keyboard: it's theirs
+  await hold(B, 'ArrowUp', 120);              // the arrows are the same keyboard: no second player
+  await sleep(400);
+  const kbOnly = await B.page.evaluate(() => NET.locals.length);
+  check('the arrows don\'t add a second keyboard player', kbOnly === 1, { locals: kbOnly });
+  await padSet(B, () => { __pad.on = true; }); await sleep(200);
+  await padSet(B, () => { __pad.buttons[0].pressed = true; }); await sleep(150); await padSet(B, () => { __pad.buttons[0].pressed = false; });   // Ⓐ on a controller: a second player
   await until(B, () => NET.roster.length === 3 && NET.locals.length === 2, null, 8000);
   const lobby = await B.page.evaluate(() => ({ roster: NET.roster.map(r => r.n), you: NET.you, locals: NET.locals.map(L => L.kind + L.index) }));
   const hostLobby = await A.page.evaluate(() => NET.seats.map(s => s.subs.length));
-  check('a second person on the guest\'s keyboard joins in the lobby', lobby.roster.length === 3 && lobby.you.join() === '1,2' && lobby.locals.join() === 'kb0,kb1' && hostLobby.join() === '2', { ...lobby, hostSubs: hostLobby });
+  check('a second person on a controller joins in the lobby', lobby.roster.length === 3 && lobby.you.join() === '1,2' && lobby.locals.join() === 'kb0,pad0' && hostLobby.join() === '2', { ...lobby, hostSubs: hostLobby });
 
   // ---------------------------------------------------------------- the host starts (two on its sofa): 2 + 2
   await A.page.evaluate(() => { GAME.startGame({ kind: 'bot', index: 0 }); GAME.G.players[0].bot = {}; });
@@ -65,14 +75,14 @@ try {
   const camB = await B.page.evaluate(() => { const d = GAME.G.dogs.filter(d => NET.locals.some(L => L.slot === d.player.slot)); return d.length; });
   check('two on the host\'s screen + two on the guest\'s = 4 dogs; the guest\'s camera follows its two', hostView.dogs === 4 && hostView.local === 2 && hostView.net.length === 2 && slots.length === 2 && slots.every(s => hostView.net.includes(s)) && camB === 2, { slots, hostView, guestCamDogs: camB });
 
-  // ---------------------------------------------------------------- each side of the guest's keyboard drives only its own dog
+  // ---------------------------------------------------------------- the guest's keyboard and controller each drive only their own dog
   const pos = () => A.page.evaluate(sl => sl.map(s => { const d = GAME.G.dogs.find(d => d.player.slot === s); return [d.x, d.z]; }), slots);
   const moved = (a, b) => a.map((p, i) => r2(Math.hypot(b[i][0] - p[0], b[i][1] - p[1])));
   await A.page.evaluate(sl => { const [a, b] = sl.map(s => GAME.G.dogs.find(d => d.player.slot === s)); b.x = a.x - GAME.CAM_R.x * 6; b.z = a.z - GAME.CAM_R.z * 6; }, slots);   // apart, so one doesn't nudge the other
   await sleep(300);
   let p0 = await pos(); await hold(B, 'KeyD', 900); await sleep(500); let m1 = moved(p0, await pos());
-  p0 = await pos(); await hold(B, 'ArrowLeft', 900); await sleep(500); let m2 = moved(p0, await pos());
-  check('WASD moves the first guest dog only; the arrows move the second only', m1[0] > 1.5 && m1[1] < 0.5 && m2[1] > 1.5 && m2[0] < 0.5, { wasd: m1, arrows: m2 });
+  p0 = await pos(); await padSet(B, () => { __pad.axes[0] = -1; }); await sleep(900); await padSet(B, () => { __pad.axes[0] = 0; }); await sleep(500); let m2 = moved(p0, await pos());
+  check('the keyboard moves the first guest dog only; the controller the second only', m1[0] > 1.5 && m1[1] < 0.5 && m2[1] > 1.5 && m2[0] < 0.5, { kb: m1, pad: m2 });
 
   // ---------------------------------------------------------------- the guest's two dogs share one screen: leashed together on the host
   const leash = await A.page.evaluate(sl => {

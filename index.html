@@ -117,6 +117,8 @@
   .nroster { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
   .nroster span { background:rgba(0,0,0,.28); border-radius:10px; padding:2px 10px; font-size:15px; }
   .nroster span.off { opacity:.55; text-decoration:line-through; }
+  #pauseDogs button { font:600 16px 'Fredoka', system-ui, sans-serif; color:var(--cream); background:rgba(0,0,0,.28); border:2px solid transparent; border-radius:10px; padding:2px 10px; cursor:pointer; }
+  #pauseDogs button.sel { border-color:#ffd36b; }
   .nstatus { min-height:20px; font-size:15px; color:#ffd36b; }
   .nstatus.err { color:#ff8a6b; }
   #netChip { position:absolute; right:14px; bottom:14px; padding:4px 10px 4px 12px; font-size:15px; display:flex; gap:8px; align-items:center; border-width:2px; border-radius:14px; pointer-events:auto; }
@@ -395,6 +397,7 @@
   <div id="pauseWhy" class="nsub"></div>
   <div class="press">Press P / Esc / Start to carry on</div>
   <div id="pauseCtrls"></div>
+  <div id="pauseDogs" class="nroster"></div>
   <div id="pauseNet" class="npanel" hidden>
     <div class="row"><span>Online room</span><span id="pauseCode" class="ncode"></span><button id="pauseCopy" class="nbtn" type="button">Copy invite link</button></div>
     <div id="pauseLink" class="nlink"></div>
@@ -877,7 +880,7 @@ const Sound = (() => {
 })();
 
 // =====================================================================
-// INPUT — gamepads (standard mapping) + two keyboard players
+// INPUT — gamepads (standard mapping) + one keyboard player (WASD or arrows)
 // =====================================================================
 const keys = new Set(), keyEdge = new Set();
 const KB = [
@@ -889,7 +892,7 @@ const KB = [
 // what to print for a player's buttons in hints and prompts
 const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'" } };
 KEY_LABEL.touch = { bark: '📣', pounce: '💥', grab: '✊', lie: '💤' };
-const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + player.index] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
+const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + INPUT_KB] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
 const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.sprint, ...k.creep, 'Enter']));
 let INPUT_DEV = 'kb';   // the last thing anyone touched here: 'kb' or 'pad' (the pause screen draws its controls)
 let INPUT_KB = 0;       // which keyboard side was touched last (the bottom bar)
@@ -1012,12 +1015,14 @@ function readInput(p) {
     r.bark = padEdge(p.index, gp, 0);                                         // A
     r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
   } else {
-    const k = KB[p.index];
-    r.mx = (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
-    r.my = (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
+    for (const k of KB) {   // one keyboard player: WASD and arrows both drive it
+      r.mx += (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
+      r.my += (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
+      r.sprint ||= anyKey(k.sprint); r.creep ||= anyKey(k.creep); r.lie ||= anyKey(k.lie); r.grab ||= anyKey(k.grab);
+      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce);
+    }
+    r.mx = clamp(r.mx, -1, 1); r.my = clamp(r.my, -1, 1);
     const m = Math.hypot(r.mx, r.my); if (m > 1) { r.mx /= m; r.my /= m; }
-    r.sprint = anyKey(k.sprint); r.creep = anyKey(k.creep); r.lie = anyKey(k.lie); r.grab = anyKey(k.grab);
-    r.bark = anyEdge(k.bark); r.pounce = anyEdge(k.pounce);
   }
   return r;
 }
@@ -1030,7 +1035,7 @@ function pollJoins(players) {
     const gp = pads[i]; if (!gp) continue;
     if ((padEdge(i, gp, 0) || padEdge(i, gp, 9)) && !players.some(p => p.kind === 'pad' && p.index === i)) out.push({ kind: 'pad', index: i });
   }
-  KB.forEach((k, i) => { if (anyEdge(k.join) && !players.some(p => p.kind === 'kb' && p.index === i)) out.push({ kind: 'kb', index: i }); });
+  if (KB.some(k => anyEdge(k.join)) && !players.some(p => p.kind === 'kb')) out.push({ kind: 'kb', index: 0 });   // one keyboard player
   if (TOUCH.tap && !players.some(p => p.kind === 'touch')) out.push({ kind: 'touch', index: 0 });
   return out;
 }
@@ -8035,6 +8040,22 @@ function joinPlayer(dev) {
   if (NET.role === 'host') netRoster();   // ONLINE: friends see who's playing
   return p;
 }
+// a local dog leaves (pause screen ✕). Keeps at least one local player.
+function dropPlayer(p) {
+  if (!p || p.kind === 'net' || G.players.filter(q => q.kind !== 'net').length < 2) return false;
+  const d = p.dog;
+  if (d) {
+    if (d.holding) releaseHold(d, false);
+    if (d.maul) endMaul(d.maul, 'done');
+    if (FALCON.dog === d) falconDrop(FALCON, false);
+    for (const k of COUGARS) if (k.dog === d) k.dog = null;
+  }
+  netRemovePlayer(p);
+  Sound.chime([7, 0], 660, 0.12);
+  if (NET.role === 'host') netRoster();
+  PAUSE_DOGS.sel = -1;
+  return true;
+}
 function startGame(dev) {
   G.mode = 'play';
   if (dev.kind === 'touch') touchFull();
@@ -8503,6 +8524,22 @@ function ctlBar(dt = 0) {
     : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['P', 'pause']]
     : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['P', 'pause']];
   $('ctlBar').innerHTML = L.map(([k, t]) => `<span>${cap(k)}${t}</span>`).join('');
+}
+// pause: local dogs, ✕ drops one (click, or ←/→ + Ⓧ / Delete)
+const PAUSE_DOGS = { sel: -1, key: '' };
+function pauseDogs() {
+  const list = G.players.filter(p => p.kind !== 'net'), el = $('pauseDogs');
+  if (list.length < 2 || NET.role === 'guest') { if (PAUSE_DOGS.key !== '-') { PAUSE_DOGS.key = '-'; el.innerHTML = ''; } return; }
+  if (!(PAUSE_DOGS.sel >= 0 && PAUSE_DOGS.sel < list.length)) PAUSE_DOGS.sel = list.length - 1;   // the newest: most likely the accident
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let mv = (keyEdge.has('ArrowRight') ? 1 : 0) - (keyEdge.has('ArrowLeft') ? 1 : 0), x = keyEdge.has('Delete') || keyEdge.has('Backspace');
+  for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (!gp) continue; mv += (padEdge(i, gp, 15) ? 1 : 0) - (padEdge(i, gp, 14) ? 1 : 0); if (padEdge(i, gp, 2)) x = true; }
+  if (mv) PAUSE_DOGS.sel = (PAUSE_DOGS.sel + mv + list.length) % list.length;
+  if (x && dropPlayer(list[PAUSE_DOGS.sel])) { PAUSE_DOGS.key = ''; return; }   // redrawn next frame
+  const ico = p => p.kind === 'pad' ? '🎮' : p.kind === 'kb' ? '⌨️' : p.kind === 'touch' ? '📱' : '🤖';
+  const key = list.map(p => p.slot + p.kind + p.name).join() + '|' + PAUSE_DOGS.sel + INPUT_DEV;
+  if (key === PAUSE_DOGS.key) return; PAUSE_DOGS.key = key;
+  el.innerHTML = list.map((p, i) => `<button type="button" data-slot="${p.slot}" class="${i === PAUSE_DOGS.sel ? 'sel' : ''}" style="color:${PCOL[p.slot].ui}">${ico(p)} ${netCleanName(p.name)} ${i === PAUSE_DOGS.sel ? (INPUT_DEV === 'pad' ? 'Ⓧ' : '⌦') : ''}✕</button>`).join('');
 }
 let pauseCtrlsKey = '';
 function pauseControls() {   // redrawn only when what it would show changes
@@ -9095,7 +9132,7 @@ function netFromHost(m) {
       NET.slot = NET.locals[0].slot;
       if (first) netGuestWipe();          // (a rejoin keeps what it has: the keyframe that follows sorts it out)
       NET.dead = false; NET.lostMsg = '';
-      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on another controller, or the other side of the keyboard.` : '');
+      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on a controller.` : '');
       break;
     }
     case 's': {
@@ -9236,14 +9273,14 @@ function netGuestGrave(id, f) {
   return g;
 }
 // a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
-// the same screen joins like local co-op (Ⓐ on another controller, or the other side of the keyboard) and gets
+// the same screen joins like local co-op (Ⓐ on another controller; the keyboard is one player) and gets
 // a dog of their own: from then on each player has just their own device.
 function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0, q: 0, hist: [], ack: null, pounces: [] }; }
 function netLocalOf(slot) { if (NET.role !== 'guest' || !(slot >= 0)) return null; for (const L of NET.locals) if (L.slot === slot) return L; return null; }
 const netSameDev = (L, dev) => L.used && L.kind === dev.kind && L.index === dev.index;
 function netGuestInput(now) {
   const locals = NET.locals.length ? NET.locals : (NET.locals = [netLocal()]);
-  const devs = [{ kind: 'kb', index: 0 }, { kind: 'kb', index: 1 }];
+  const devs = [{ kind: 'kb', index: 0 }];   // one keyboard player
   if (TOUCH.on) devs.push({ kind: 'touch', index: 0 });
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) if (pads[i]) devs.push({ kind: 'pad', index: i });
@@ -9253,7 +9290,7 @@ function netGuestInput(now) {
   if (live && locals[0].used && (G.mode === 'title' || G.mode === 'play') && locals.length < 4 && NET.roster.length < 4) {
     for (const dev of devs) {
       if (locals.some(L => netSameDev(L, dev))) continue;
-      const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : dev.kind === 'touch' ? TOUCH.tap : anyEdge(KB[dev.index].join);
+      const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : dev.kind === 'touch' ? TOUCH.tap : KB.some(k => anyEdge(k.join));
       if (!hit) continue;
       const L = netLocal(); Object.assign(L, dev, { used: true }); locals.push(L); fresh.add(L);
       netSend({ t: 'j', n: locals.length });
@@ -9360,6 +9397,7 @@ async function netCopyLink(btn) {
   on('netJoinBtn', () => netJoin(codeEl.value, nameEl.value));
   on('netBack', () => { if (NET.role === 'host') { netStopHosting(); netRoster(); NET.roster = []; } else if (NET.role === 'guest') netLeave(); else { $('netPanel').hidden = true; netStatus(''); } });
   on('netCopy', b => netCopyLink(b)); on('netChipCopy', b => netCopyLink(b)); on('pauseCopy', b => netCopyLink(b));
+  $('pauseDogs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) dropPlayer(G.players.find(p => p.kind !== 'net' && p.slot === +b.dataset.slot)); });
   on('pauseResume', () => { if (NET.role === 'guest') netSend({ t: 'e', k: 'pause' }); else setPause(false); });
   on('pauseHost', () => netHost());
   on('pauseStop', () => { netStopHosting(); NET.roster = []; });
@@ -9443,7 +9481,8 @@ function frame(now) {
   if (netFrameStart(now, dt)) {   // ONLINE: false on a guest, which never runs the game (the host's snapshots move everything). Body left at its old indent.
   // joining / confirming
   if (G.mode === 'title') { const j = pollJoins(G.players); if (j.length) { Sound.init(); startGame(j[0]); } }
-  else if (G.mode === 'play') { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
+  else if (G.mode === 'play' && !G.paused) { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
+  if (G.mode === 'play' && G.paused) pauseDogs();
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
   for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = false; p.skipInput = false; } }
