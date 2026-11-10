@@ -490,6 +490,8 @@ const T = {
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
   troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
   shove: { r: 4.2, cd: 1, win: 0.85, kick: 3.2, bumpCd: 1.2 },   // a sheep without a place barges a weaker one (smaller, older, a lamb, less hungry; rams win) off the trough/lick within r m
+  grassShove: { hunger: 0.5, gap: 0.2, r: 2.6, better: 0.08, cd: 2.5, desp: 2.5, kick: 2.4 },   // a hungry grazer (≥hunger, ≥gap hungrier) barges a fuller one off better grass within r m; desperation scales its push
+  lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35 },   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   penStillSpd: 1.2, penStillR: 3,   // a dog slower than this in a pen only shoos penned sheep within penStillR (they keep feeding)
   troughWake: 0.2,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
@@ -2324,10 +2326,12 @@ function flockKnots() {
 // edge of the bigger knot it's drawn to. A sheep left alone in an open pen by day goes out to the biggest knot.
 const SG = { x: 0, z: 0, pen: null };
 function strayGoal(s) {
-  if (G.mode === 'play' && s.hunger < 0.5 && !s.pen) for (const p of pens) {
+  const anx = s.anx || 0;
+  if (G.mode === 'play' && (s.hunger < 0.5 || anx > 0.5) && !s.pen) for (const p of pens) {
     if ((p.frac || 0) >= 0.5 && !morningOut(p) && Math.hypot(p.gx - s.x, p.gz - s.z) < 60) { penTarget(p, s, SG); SG.x = SG.tx; SG.z = SG.tz; SG.pen = p; return SG; }
   }
   let k = s.knot && s.knot.gw > T.joinMin - 0.1 * s.stress ? s.knot.tgt : null;
+  if (!k && anx > T.lonely.anyAt && !s.pen && KN.big && KN.big.m >= 2 && KN.big !== s.knot) k = KN.big;   // lost: off to the main flock, however far
   if (!k && s.pen && s.pen.gateT > 0.6 && (s.pen.frac || 0) < 0.25 && KN.big && KN.big.m >= 3 && G.clock.hour < T.duskWarn && !isNight()) k = KN.big;
   if (!k) return null;
   // up to its nearest sheep in that knot, stopping a grazing distance short of it
@@ -2452,12 +2456,34 @@ function barge(s, spots, by, key, state) {   // SHARED-ish: no free place → pu
   s.shoveCd = G.time + T.shove.cd * rnd(0.6, 1.4);
   if (shoveStr(s) * rnd(0.7, 1.3) < bv * T.shove.win) return false;
   G.shoves = (G.shoves || 0) + 1;
-  const o = by[bi], dx = o.x - s.x, dz = o.z - s.z, dl = Math.hypot(dx, dz) || 1;
-  o.vx += dx / dl * T.shove.kick; o.vz += dz / dl * T.shove.kick; o.hopV = Math.max(o.hopV || 0, 1.6);
-  o.state = 'idle'; o.thinkT = rnd(0.6, 1.4); o.troughCd = T.shove.bumpCd; o.shoveCd = G.time + rnd(0.5, 1.5);   // shoved off: it'll be back, shoving
+  const o = by[bi]; bump(s, o, T.shove.kick);
+  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+  return true;
+}
+// s shoves o aside: o is knocked off, bleats, and thinks again
+function bump(s, o, kick) {
+  const dx = o.x - s.x, dz = o.z - s.z, dl = Math.hypot(dx, dz) || 1;
+  o.vx += dx / dl * kick; o.vz += dz / dl * kick; o.hopV = Math.max(o.hopV || 0, 1.6);
+  o.state = 'idle'; o.thinkT = rnd(0.6, 1.4); o.troughCd = T.shove.bumpCd; o.shoveCd = G.time + rnd(0.5, 1.5); o.gzLook = 0;   // shoved off: it'll be back, shoving
   if (Math.random() < 0.6) baaAt(o, 0.4, o.lamb ? 1.3 : 1.12);
   s.hopV = Math.max(s.hopV || 0, 1.2);
-  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+}
+// out on the grass: a hungry sheep on poor grass barges a fuller one off the good tuft next to it (the hungrier, the harder)
+function grassShove(s) {
+  const C = T.grassShove;
+  if (s.hunger < C.hunger || s.pen || (s.shoveCd || 0) > G.time) return false;
+  const here = grassAt(s.x, s.z); let bo = null, bv = 0;
+  for (const o of NBL) {
+    if (o.state !== 'graze' || o.pen || o.heldBy || o.air || o.grabbed) continue;
+    const need = s.hunger - o.hunger, g = grassAt(o.x, o.z);
+    if (need < C.gap || g < here + C.better || g < T.grazeMin || Math.hypot(o.x - s.x, o.z - s.z) > C.r) continue;
+    const v = (g - here) * need / shoveStr(o); if (v > bv) { bv = v; bo = o; }
+  }
+  if (!bo) return false;
+  s.shoveCd = G.time + C.cd * rnd(0.7, 1.3);
+  if (shoveStr(s) * (1 + C.desp * (s.hunger - bo.hunger)) * rnd(0.7, 1.3) < shoveStr(bo) * T.shove.win) return false;
+  G.grassShoves = (G.grassShoves || 0) + 1;
+  s.tx = bo.x; s.tz = bo.z; bump(s, bo, C.kick); s.state = 'seek';
   return true;
 }
 function claimLick(s) {
@@ -2500,7 +2526,7 @@ function decideCalm(s, nb, night) {
   const uGraze = s.hunger > need ? (0.35 + 0.65 * s.hunger) * clamp(1.2 - s.stress * (1.5 - s.hunger), 0, 1) : 0;
   // sheep gravity: a knot drawn to a bigger group (or a sheep on its own) wants to go over to it; a worked-up one sooner
   const kn = s.knot, lone = !kn || kn.m === 1, stray = strayGoal(s);
-  const uFlock = 0.3 + s.stress * 0.3 + (stray ? 0.15 + (kn ? kn.gw : 0) * 0.4 + (lone || s.pen ? 0.25 : 0) : 0) + (steady ? 0.3 : 0);   // on its own, it wants its flock more than an empty pen
+  const uFlock = 0.3 + s.stress * 0.3 + (stray ? 0.15 + (kn ? kn.gw : 0) * 0.4 + (lone || s.pen ? 0.25 : 0) : 0) + (steady ? 0.3 : 0) + (s.anx || 0) * T.lonely.flock;   // on its own, it wants its flock more than an empty pen
   // inside an open pen the same pull holds a fed sheep in (outside the morning graze)
   const h = G.clock.hour, inOpen = s.pen && s.pen.gateT > 0.5 && G.mode === 'play' && !morningOut(s.pen) && (troughHas(s.pen) || !(h >= 6 && h < 13 && s.hunger > 0.15));
   const uPen = pp ? pp.w : inOpen ? (T.penPullBase + T.penPullF * (s.pen.frac || 0)) * (troughHas(s.pen) ? Math.max(penFed(s, dusk), T.penTroughPull) : penFed(s, dusk)) * (1 + dusk) : 0;
@@ -2509,7 +2535,7 @@ function decideCalm(s, nb, night) {
   if (best !== s.goal && (cur <= 0 || (s.goalHold <= 0 && bs > cur + T.goalHyst))) { s.goal = best; s.goalHold = T.goalHold; }
   if (s.goal === 'pen' && pp) { s.state = 'pen'; return; }
   if (s.goal === 'pen' && s.pen) { s.state = Math.random() < 0.3 ? 'wander' : 'idle'; s.tx = s.pen.x + rnd(-3, 3); s.tz = s.pen.z + rnd(-3, 3); return; }   // in, and staying in
-  if (stray && (s.goal !== 'graze' || (lone && s.hunger < 0.5))) { s.state = 'stray'; return; }   // a hungry knot grazes its way over instead
+  if (stray && (s.goal !== 'graze' || (lone && s.hunger < 0.5) || s.anx > 0.5)) { s.state = 'stray'; return; }   // a hungry knot grazes its way over instead
   // stay in touch with the flock (cohesive grazing): hungry sheep tolerate a bit more distance, scared ones less
   // (a grazer's cohesion comes from the graze state's own gentle pull, so a hungry one can step out to good grass at
   // the edge of the flock instead of being dragged back onto the stubble in the middle; only a properly isolated one rejoins)
@@ -2518,6 +2544,7 @@ function decideCalm(s, nb, night) {
   // nothing to eat in here and the gate's open: once it's been in a while (and it's not evening), out by the gate to graze
   if (grazing && s.pen && s.pen.gateT > 0.6 && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
   if (s.goal === 'graze') {
+    if (grassShove(s)) return;
     // good grass under its nose, or the flock is grazing on together (the graze state walks it on): graze
     if (grassAt(s.x + Math.sin(s.yaw) * 0.6, s.z + Math.cos(s.yaw) * 0.6) > T.grazeMin || inGrazeFront(s)) { s.state = 'graze'; return; }
     if (kn && kn.m > 1 ? findGrass(s, kn.cx, kn.cz) : findGrass(s, nC ? cX / nC : undefined, nC ? cZ / nC : undefined)) { s.state = 'seek'; return; }   // fresh grass near its own knot
@@ -2781,6 +2808,10 @@ function updateSheep(dt, dtH) {
     const tg = (s.trait === 'skittish' ? 1.6 : s.trait === 'stubborn' ? 0.55 : 1) * (s.jumpy ? 1.5 : 1) * (s.bell ? 0.8 : 1) * (s.ram ? 0.75 : 1);
     const leak = (calm ? T.stressLeakCalm : T.stressLeak) * Math.max(0, 1 - stressIn / T.stressHold);
     s.stress = clamp(s.stress + (stressIn * tg - leak) * dt, 0, 1);
+    // separated: nobody near and no knot near it → anxiety builds, and with it stress (never quite to panic)
+    const lost = play && !s.pen && nearest > T.lonely.far && !(s.knot && s.knot.groupM > 1) && !(s.lamb && s.state === 'follow') && N >= 4 && !S.some(o => o !== s && !o.dead && (o.x - s.x) ** 2 + (o.z - s.z) ** 2 < T.lonely.far ** 2);   // (flockmates over a fence still count)
+    s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : -1 / T.lonely.fade) * dt, 0, 1);
+    if (s.anx > 0) { const cap = T.lonely.cap * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
     if (nsN && !s.pen) { const avg = nsS / nsN; s.stress = clamp(s.stress + (avg - s.stress) * (avg > s.stress ? T.stressUp : T.stressDown) * dt, 0, 1); }
     const pk = s.pen ? 0 : clamp((s.stress - T.panicAt) / (1 - T.panicAt), 0, 1);
     if (pk > 0) s.panic = Math.max(s.panic, 0.3 + 0.6 * pk);
@@ -2890,8 +2921,9 @@ function updateSheep(dt, dtH) {
           const g = strayGoal(s); if (!g) { s.state = 'idle'; break; }
           const n = sheepNav(s, g.x, g.z), d = n.d;
           if (d < (g.pen ? 1.5 : 0.7)) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
-          dX = n.x; dZ = n.z; spd = d > 12 || !s.los ? T.sheepTrot : T.sheepWalk * T.calmBrisk * 1.15; acc = 5;   // trotting, the long way round if it must
-          s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(5, 9); baaAt(s, 0.3, 1.06); }   // trotting and bleating as it goes
+          const anx = s.anx || 0;
+          dX = n.x; dZ = n.z; spd = (d > 12 || !s.los ? T.sheepTrot : T.sheepWalk * T.calmBrisk * 1.15) * (1 + T.lonely.run * anx); acc = 5;   // trotting, the long way round if it must (lost: hurrying)
+          s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(5, 9) * (1 - 0.6 * anx); baaAt(s, 0.3 + 0.2 * anx, 1.06 + 0.1 * anx); if (anx > 0.5) floatText('?', s.x, s.y + 1.6 * s.scale, s.z, '#fff8e8', 0.9); }   // trotting and bleating as it goes (lost: calling out)
           break;
         }
         case 'trough': {   // to its place at the trough, then face it and feed

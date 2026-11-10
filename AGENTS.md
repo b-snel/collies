@@ -63,7 +63,7 @@ Run the ones touching your change; report the numbers.
 | `straggler-sim.mjs [--trials N]` | stragglers behind the pen / the open leaf get in |
 | `morning-sim.mjs [--trials N]` | penned flock leaves at dawn and stays out |
 | `rush-test.mjs` | morning rush out of the pen; carrying a sheep in/out through an open gate |
-| `cluster-sim.mjs [structure\|merge\|corner\|cost]` | knots, regrouping, unsticking, cost |
+| `cluster-sim.mjs [structure\|merge\|lost\|shove\|corner\|cost]` | knots, regrouping, lost sheep, grass shoves, unsticking, cost |
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
@@ -123,6 +123,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   to tip in.
 - **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
   weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
+- **Hungry shove on grass.** A hungry grazer barges a fuller one off better
+  grass next to it, harder the hungrier (`grassShove`, `T.grassShove`).
+- **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
+  count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
+  main flock however far.
 - **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
   lumps go to the pen's lick.
 - **Coyote packs** flank and strike together; chase off the alpha to break
