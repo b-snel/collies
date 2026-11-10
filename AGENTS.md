@@ -23,6 +23,9 @@ till dawn.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
   `?peerserver=host:port` for your own server.
+- Hybrid co-op: both screens can have a sofa. On a guest, a second person
+  joins with Ⓐ on another controller or the other keyboard side and gets
+  their own dog. 4 dogs in all.
 
 ### Layout (`index.html`, top to bottom)
 
@@ -58,6 +61,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
+| `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 
 All are `node tools/<script>`.
 
@@ -65,7 +69,9 @@ All are `node tools/<script>`.
 
 Host simulates, guests draw. New drawn state → `NET_TYPES`; new one-shot
 button → `NET_EDGES`; new feedback fn (fx, popup, sound) → `name =
-fxDef('name', name)` at the end of ONLINE CO-OP.
+fxDef('name', name)` at the end of ONLINE CO-OP. A seat is one guest browser;
+`s.subs` has one `{player, held, edges}` per person on that screen (`p.seat`,
+`p.sub`; `p` in `i`/`e` messages).
 
 Bots: players with `kind: 'bot'`, `player.bot` merged into input. Inputs are
 screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
