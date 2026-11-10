@@ -452,11 +452,11 @@ try {
   }
 
   // ---------------------------------------------------------------- the end of the journey, and a new one
-  await A.page.evaluate(() => { const p = GAME.pens[3]; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
+  await A.page.evaluate(() => { const p = GAME.finalPen; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
   await sleep(500);
-  await A.page.evaluate(() => GAME.setGate(GAME.pens[3], false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
+  await A.page.evaluate(() => GAME.setGate(GAME.finalPen, false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
   await sleep(300);
-  await A.page.evaluate(() => GAME.onGateClosed(GAME.pens[3]));
+  await A.page.evaluate(() => { GAME.G.wool = 99; const w = GAME.WARES.find(o => o.id === 'cabo'); GAME.buyWare(w); GAME.buyWare(w); });   // Cabo (bark twice): the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
   const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent }));

@@ -1,6 +1,6 @@
 # Collies
 
-A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, to the Promised Land. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
+A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies and, at last, Cabo. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
 Live at **https://collies.app**
 

@@ -2,7 +2,7 @@
 // Pounce/punt distance, carom chains, pouncing a coyote off its prey, grab-drag, fling over a fence into a pen,
 // pushing a gate open and shut (latch → gateT 0 → onGateClosed), vaulting a gate, grab-dragging a gate shut,
 // the river launcher (pounce-fired, and loaded by driving sheep into its chute), splash-and-swim, shaking a coyote,
-// a flung sheep bowling a coyote, lying down, and the final pen's finish.
+// a flung sheep bowling a coyote, lying down, and the final pen (shutting it no longer ends the game: Cabo does).
 import { open } from './harness.mjs';
 const only = process.argv.slice(2);
 const h = await open({ query: '?sim' });
@@ -348,10 +348,10 @@ const tests = {
       return r;
     });
   },
-  // 15. the final pen: whole flock inside, push the gate shut → the game ends
+  // 15. the final pen: whole flock inside, push the gate shut → it latches and the journey goes on (only Cabo ends it: vendor-test)
   async finalPen() {
     return h.page.evaluate(() => {
-      const { G, pens, toggleGate } = GAME; H.reset(); const d = H.d(), pen = pens[3];
+      const { G, finalPen, toggleGate } = GAME; H.reset(); const d = H.d(), pen = finalPen;
       toggleGate(pen); H.run(1.2);   // open it
       for (const s of G.sheep) { const a = Math.random() * 6.283, r = Math.random() * (pen.R - 2.5); H.place(s, pen.x + Math.cos(a) * r, pen.z + Math.sin(a) * r); }
       H.run(0.2);
@@ -362,9 +362,11 @@ const tests = {
       const t = H.run(5, () => {
         const psi = GAME.gatePsi(pen, d.x, d.z), aa = pen.angClosed + pen.outSign * psi;
         H.p.bot = H.to(Math.sin(aa) * pen.outSign, -Math.cos(aa) * pen.outSign);
-        return G.mode !== 'play';
+        return pen.latched;
       });
-      return { mode: G.mode, secs: H.r(t), latched: pen.latched, inside: G.sheep.filter(s => s.pen === pen).length, total: G.sheep.length };
+      H.p.bot = {}; H.run(1.5);
+      return { mode: G.mode, secs: H.r(t), latched: pen.latched, closedCalls: G.gateClosedN, inside: G.sheep.filter(s => s.pen === pen).length, total: G.sheep.length,
+        ok: G.mode === 'play' && pen.latched && G.gateClosedN === 1 };
     });
   },
 };

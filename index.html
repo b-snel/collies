@@ -88,6 +88,7 @@
   #end { background:rgba(10,15,40,.6); opacity:0; pointer-events:none; }
   #end h1 { font-size:clamp(40px, 7vw, 80px); margin:0; }
   #end .stars { font-size:56px; letter-spacing:6px; color:#ffd36b; margin:8px 0; }
+  #end.cabo { background:linear-gradient(180deg, rgba(255,140,90,.7), rgba(255,200,110,.55) 55%, rgba(40,170,200,.7)); }
   #end .stats { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 22px; font-size:24px; margin:10px 0 18px; }
   .hidden { opacity:0 !important; pointer-events:none !important; }
   #fps { position:fixed; left:8px; bottom:8px; color:#fff; font:12px monospace; text-shadow:0 1px 0 #000; }
@@ -346,7 +347,7 @@
 <div id="sound" style="display:none">🔇 Click anywhere to turn on sound</div>
 <div id="title" class="screen hidden">
   <h1>COLLIES</h1>
-  <h2>Herd your flock across the wilds to the Promised Land</h2>
+  <h2>Herd your flock across the wilds, all the way to Cabo 🏖️</h2>
   <div class="press">Press Ⓐ on a controller — or Space / Enter</div>
   <div class="controls">
     <span class="h"></span><span class="h">🎮 Controller</span><span class="h">⌨ Keys (P1 · P2)</span>
@@ -382,7 +383,7 @@
 </div>
 <div id="buildLine"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener">Audio credits</a> · <span id="buildText">Dev build</span></div>
 <div id="end" class="screen">
-  <h1 id="eTitle">The Promised Land</h1>
+  <h1 id="eTitle">🏖️ Cabo! 🌴</h1>
   <div class="stars" id="eStars">★★★</div>
   <div id="eLine" style="font-size:34px;font-weight:700"></div>
   <div class="stats" id="eStats"></div>
@@ -586,7 +587,11 @@ const T = {
   salt: { perDay: 0.17, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, deathHours: [30, 54], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
-  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
+  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
+  // the Trading Post's vendor: a dog on a mat (matR m; mats ring m in front of the stall, gap m apart) barks to buy with 🧶 (G.wool). Batches go into the final pen (amt: 💧 sheep
+  // quenched, 🌾 hunger, 🧂 salt); refused if it has under `room` of a batch free. 🏖️ Cabo: base + per sheep penned there, bark twice (confirm s)
+  vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, clippers: { price: 0 }, water: { price: 3, amt: 8 }, food: { price: 3, amt: 8 }, salt: { price: 2, amt: 10 },
+    cabo: { base: 10, per: 1 } },
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
@@ -1032,13 +1037,14 @@ function anyConfirm() { // any device pressing A/Start/Enter/Space
 
 // =====================================================================
 // WORLD GENERATION — one continuous winding valley.
-// A trail (Catmull-Rom path) runs from the desert to the Promised Land.
+// A trail (Catmull-Rom path) runs from the desert past the Promised Land,
+// back into the desert to the Trading Post (the end: Cabo).
 // Everything (biomes, corridor walls, grass, scenery) is keyed off the
 // distance along that trail ("s") and the signed offset from it ("lat",
 // positive = east = the side nearest the camera, kept low so it never hides play).
 // =====================================================================
 const PATH_PTS = [[0, 75], [0, 35], [6, -15], [-4, -70], [-26, -125], [-38, -185], [-30, -240], [-8, -290], [22, -335], [44, -390],
-  [46, -440], [28, -495], [2, -545], [-12, -600], [-6, -655], [0, -710], [0, -770]];
+  [46, -440], [28, -495], [2, -545], [-12, -600], [-6, -655], [0, -710], [0, -770], [14, -825], [36, -875], [44, -930], [30, -985], [16, -1040]];
 const curve = new THREE.CatmullRomCurve3(PATH_PTS.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal');
 const PATH_LEN = curve.getLength();
 const PN = Math.round(PATH_LEN), PS = PATH_LEN / PN;
@@ -1051,8 +1057,8 @@ for (let i = 0; i <= PN; i++) {
 const pathIdx = s => clamp(Math.round(s / PS), 0, PN);
 function pathPoint(s, lat = 0) { const i = pathIdx(s); return { x: pX[i] - tZ[i] * lat, z: pZ[i] + tX[i] * lat, tx: tX[i], tz: tZ[i], nx: -tZ[i], nz: tX[i] }; }
 
-// biome weights [desert, valley, ocean, promised] along the trail
-function biomeW(s) { const a = smooth(165, 215, s), b = smooth(425, 470, s), c = smooth(640, 690, s); return [1 - a, a * (1 - b), b * (1 - c), c]; }
+// biome weights [desert, valley, ocean, promised] along the trail (desert again past the Promised Land)
+function biomeW(s) { const a = smooth(165, 215, s), b = smooth(425, 470, s), c = smooth(640, 690, s), d = smooth(870, 930, s); return [1 - a + d, a * (1 - b), b * (1 - c), c - d]; }
 const dot4 = (w, v) => w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3];
 
 // camps / waypoints
@@ -1060,9 +1066,14 @@ const CAMPS = [
   { name: 'Desert Corral', sub: 'The journey begins', s: 58, R: 9, lat: -17 },
   { name: 'Mountain Valley Camp', sub: 'Lush grass — and cold, hungry nights', s: 285, R: 9, lat: -17 },
   { name: 'Oceanside Camp', sub: 'Salt wind and sea grass', s: 545, R: 9, lat: -17 },
-  { name: 'The Promised Land', sub: 'Pen the flock and close the gate to finish', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
+  { name: 'The Promised Land', sub: 'Sweet grass — rest them up', s: 812, R: 12, lat: -15 },
+  { name: 'Trading Post', sub: '🧶 → 💧 🌾 🧂 🏖️', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
 ];
 for (const c of CAMPS) { const p = pathPoint(c.s, c.lat); c.x = p.x; c.z = p.z; c.gateA = Math.atan2(p.nz, p.nx); c.nx = p.nx; c.nz = p.nz; c.tx = p.tx; c.tz = p.tz; }
+const FINAL = CAMPS.find(c => c.final);
+// the Trading Post's stall (VENDOR), past its pen: flat ground, nothing placed on it. It faces the camera (f = -CAM_F), mats in a row along r = CAM_R
+const MARKET = (() => { const s = FINAL.s + 28, p = pathPoint(s, -11), q = Math.SQRT1_2; return { s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: 10 }; })();
+const offMarket = (x, z, pad = 0) => Math.hypot(x - MARKET.x, z - MARKET.z) > MARKET.r + pad;
 
 // the river crossing (with a bridge) in the mountain valley
 const RIVER = { s: 385, hw: 5, bridgeHW: 4.5, deckY: 0.5 };
@@ -1140,13 +1151,14 @@ function heightAt(x, z) {
   const ci = trailInfo(x, z), w = biomeW(ci.s);
   let h = (fbm(x * 0.022, z * 0.022, 3) - 0.5) * 2.0 + (vnoise(x * 0.18 + 40, z * 0.18) - 0.5) * 0.25;
   for (const c of CAMPS) { const d = Math.hypot(x - c.x, z - c.z); if (d < 34) h = lerp(h, 0.15, 1 - smooth(c.R + 10, c.R + 24, d)); }
+  { const d = Math.hypot(x - MARKET.x, z - MARKET.z); if (d < MARKET.r + 12) h = lerp(h, 0.15, 1 - smooth(MARKET.r, MARKET.r + 12, d)); }
   if (w[2] > 0.001) h -= Math.max(0, ci.lat - 15) * 0.21 * w[2];
   const o = Math.max(ci.oW, ci.oE, ci.oC);
   if (o > -2) {
     const oo = o + 2;
     if (o === ci.oW) h += westProfile(oo, x, z, w);
     else if (o === ci.oE) h += eastProfile(oo, x, z, w);
-    else h += ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [0, 0, 0, 1]);
+    else h += ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [1, 0, 0, 0]);   // both ends desert: low ridge, mesas
   }
   // river channel
   const ra = Math.abs(riverAcross(x, z));
@@ -1624,7 +1636,7 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     const walk = !isBlocked(px, pz);
     const rockCol = ROCK_COL[bi];
     if (walk) {
-      let nearCamp = false; for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
+      let nearCamp = !offMarket(px, pz, 4); for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
       const nearRiver = Math.abs(riverAcross(px, pz)) < RIVER.hw + 9 && Math.abs(riverAlong(px, pz)) < 20;
       if (nearCamp || nearRiver || Math.abs(lat) < 4) { if (!nearRiver && Math.abs(lat) > 3 && r < 0.12 && bi > 0) addScen('flowers', px, pz, 1, 0); continue; }
       if (bi === 0) { if (r < 0.045) addScen('cactus', px, pz, 0.8 + wr() * 0.5, 0.45); else if (r < 0.08) { const s = 0.5 + wr() * 1.1; addScen('rock', px, pz, s, s * 0.85, { col: rockCol }); } else if (r < 0.16) addScen('deadbush', px, pz, 0.8 + wr() * 0.6, 0); }
@@ -1794,12 +1806,37 @@ function collideFences(e, r) {
   part(barn, merge(P(BOX(7, 4.5, 9), '#c0392b', { p: [0, 2.25, 0] }), P(CYL(4.4, 4.4, 9.4, 3), '#7a2a20', { s: [1, 0.55, 1], r: [Math.PI / 2, 0, Math.PI / 2], p: [0, 5.1, 0] }),
     P(BOX(2.6, 3, 0.1), '#f4f1ea', { p: [0, 1.5, 4.52] }), P(BOX(1.2, 1.2, 0.1), '#f4f1ea', { p: [0, 5.0, 4.52] })));
   OBSTACLES.push({ x: bp.x, z: bp.z, r: 5.5 }); stampObstacle(bp.x, bp.z, 5.5);
-  const rp = pathPoint(PATH_LEN - 5, -30);
+  const rp = pathPoint(c.s + 67, -30);
   const cols = ['#ff5a5a', '#ffa64d', '#ffe14d', '#6fe06a', '#4dc3ff', '#9a7bff'];
   cols.forEach((col, i) => {
     const m = new THREE.Mesh(new THREE.TorusGeometry(70 - i * 2.2, 1.1, 6, 64, Math.PI), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false }));
     m.position.set(rp.x - 40, -6, rp.z - 40); m.rotation.y = Math.PI / 4; scene.add(m);
   });
+}
+{ // the Trading Post's stall and its vendor (VENDOR section: the mats, buying). Local +z faces the camera
+  const M = MARKET, at = (lx, lz) => ({ x: M.x + M.rx * lx + M.fx * lz, z: M.z + M.rz * lx + M.fz * lz });
+  const g = new THREE.Group(); g.position.set(M.x, terrainH(M.x, M.z), M.z); g.rotation.y = M.yaw; scene.add(g);
+  part(g, merge(
+    P(BOX(3.4, 1.0, 0.8), '#a8743f', { p: [0, 0.5, 0.3] }), P(BOX(3.42, 0.14, 0.82), '#d8473f', { p: [0, 0.8, 0.3] }), P(BOX(3.6, 0.08, 1.0), '#7a5230', { p: [0, 1.04, 0.3] }),
+    ...[[-1.7, 0.75], [1.7, 0.75], [-1.7, -0.9], [1.7, -0.9]].map(([x, z]) => P(CYL(0.07, 0.08, 2.75, 6), '#7a5230', { p: [x, 1.37, z] })),
+    ...[0, 1, 2, 3, 4, 5].map(i => P(BOX(0.6, 0.05, 2.1), i % 2 ? '#f4ead2' : '#ff5a5a', { r: [0.25, 0, 0], p: [-1.5 + i * 0.6, 2.72, -0.05] })),   // striped awning
+    P(CYL(0.13, 0.16, 0.34, 8), '#4aa3df', { p: [-1.3, 1.25, 0.35] }), P(CYL(0.06, 0.09, 0.14, 8), '#4aa3df', { p: [-1.3, 1.48, 0.35] }),   // a water jug
+    P(BOX(0.32, 0.2, 0.3), '#f3eee6', { p: [1.2, 1.18, 0.3] }), P(BOX(0.24, 0.16, 0.24), '#f6c9d4', { r: [0, 0.4, 0], p: [1.18, 1.36, 0.28] }),   // salt
+    P(BOX(0.5, 0.28, 0.34), '#e8c770', { p: [0.75, 1.22, 0.45] })));   // greens
+  // the vendor, beside his stall (under the awning the camera wouldn't see him): poncho, moustache, a big straw sombrero.
+  // He waves when you buy and shakes his head when you can't pay
+  const v = new THREE.Group(); v.position.set(2.4, 0, 0.35); v.scale.setScalar(1.2); g.add(v);
+  part(v, merge(P(CYL(0.3, 0.38, 1.0, 10), '#3a5e8c', { p: [0, 0.5, 0] }), P(CONE(0.72, 0.7, 12), '#e0663a', { p: [0, 1.2, 0] }),
+    P(CYL(0.6, 0.66, 0.1, 12), '#ffd36b', { p: [0, 1.02, 0] }), P(CYL(0.42, 0.47, 0.08, 12), '#2f8a4a', { p: [0, 1.22, 0] })));
+  const head = new THREE.Group(); head.position.y = 1.72; v.add(head);
+  part(head, merge(P(SPH(12), '#c98a5e', { s: [0.25, 0.27, 0.25] }), P(SPH(8), '#3a2416', { s: [0.17, 0.045, 0.06], p: [0, -0.07, 0.22] }),
+    P(CYL(0.72, 0.72, 0.05, 20), '#e8c070', { p: [0, 0.2, 0] }), P(CONE(0.27, 0.42, 14), '#e8c070', { p: [0, 0.42, 0] }), P(CYL(0.26, 0.28, 0.07, 14), '#d8473f', { p: [0, 0.27, 0] })));
+  part(head, merge(...[-1, 1].map(sd => P(SPH(6), '#1c120c', { s: [0.03, 0.036, 0.02], p: [0.08 * sd, 0.05, 0.23] }))), { outline: false, shadow: false });
+  const arm = new THREE.Group(); arm.position.set(0.42, 1.38, 0); v.add(arm);
+  part(arm, merge(P(CYL(0.08, 0.07, 0.6, 6), '#e0663a', { p: [0, -0.3, 0] }), P(SPH(8), '#c98a5e', { s: [0.09, 0.09, 0.09], p: [0, -0.64, 0] })));
+  arm.rotation.z = 0.25;
+  M.v = { root: v, head, arm, y: g.position.y };
+  for (const [lx, lz, r] of [[-1, 0.2, 1.3], [1, 0.2, 1.3], [2.4, 0.35, 0.6]]) { const p = at(lx, lz); OBSTACLES.push({ x: p.x, z: p.z, r }); stampObstacle(p.x, p.z, r); }
 }
 // ---------------- coyote dens: hollows tucked in against the hillside on the far side of the trail ----------------
 const DENS = [];
@@ -1807,12 +1844,12 @@ const DENS = [];
   const dr = mulberry32(5150), drr = (a, b) => a + dr() * (b - a);
   const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
   const tucked = (x, z) => { let n = 0; for (let k = 0; k < 16; k++) { const a = k / 16 * TAU; for (const r of [5, 7, 9]) if (isBlocked(x + Math.cos(a) * r, z + Math.sin(a) * r)) n++; } return n; };
-  for (const s0 of [150, 215, 352, 470, 620, 712]) {
+  for (const s0 of [150, 215, 352, 470, 620, 712, 905, 1012]) {
     let best = null, bs = -1;
     for (let t = 0; t < 70; t++) {
       const ss = s0 + drr(-22, 22), idx = pathIdx(ss), lat = -(hwWArr[idx] - drr(5, 13));
       const p = pathPoint(ss, lat); if (Math.abs(lat) < 14) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30) || !offMarket(p.x, p.z, 20)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 16 && Math.abs(riverAlong(p.x, p.z)) < 60) continue;
       if (!clear(p.x, p.z, 3)) continue;
       const tk = tucked(p.x, p.z); if (tk > bs) { bs = tk; best = { x: p.x, z: p.z, s: ss, nx: p.nx, nz: p.nz }; }
@@ -1844,14 +1881,14 @@ const LAIRS = [];
 {
   const kr = mulberry32(80812), krr = (a, b) => a + kr() * (b - a);
   const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
-  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }]) {
+  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }, { s: FINAL.s, camp: FINAL }]) {
     let best = null, bs = -1e9;
     for (let t = 0; t < 160; t++) {
       const ss = sp.s + krr(-34, 34), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
       if (hw < 15) continue;
       const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
       if (!clear(p.x, p.z, 3)) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15) || !offMarket(p.x, p.z, 8)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50) continue;
       if (DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) || LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < 45)) continue;
       const sc = (sp.camp ? -Math.abs(Math.hypot(p.x - sp.camp.x, p.z - sp.camp.z) - 30) : -Math.abs(ss - sp.s) * 0.2) + Math.abs(lat) * 0.2 + kr();
@@ -2109,7 +2146,7 @@ const G = {
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
   stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 },
-  nextSheepId: 1, finalArm: 0, hints: {}, visited: new Set(), lost: [],
+  nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
@@ -2290,7 +2327,7 @@ function penTarget(p, s, out) {
   return out;
 }
 // MORNING RUSH: the gate's opened in the morning and the whole pen pours out to graze (troughs, lick and sleep can wait)
-const morningOut = p => !!p && !p.final && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
+const morningOut = p => !!p && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
 const penRush = p => !!p && p.gateT > 0.6 && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
 function startRush(p) {
   p.rushUntil = G.time + T.morningRush.dur;
@@ -3490,6 +3527,7 @@ function bark(d) {
     scareCoyote(c, B.amt / (1 + B.packK * (n - 1)), d);   // a pack shrugs barks off
   }
   cougarBark(d);
+  vendorBark(d);   // VENDOR: on a mat at the Trading Post it buys
   hint('bark-used');
 }
 // Tests and debug: swing a gate open or shut as if a dog had shoved it (players push gates for real: updateGate)
@@ -3500,13 +3538,6 @@ function toggleGate(pen, d) {
 function onGateClosed(pen) {
   G.gateClosedN = (G.gateClosedN || 0) + 1;
   const live = living().filter(s => !s.grabbed), inside = live.filter(s => s.pen === pen).length;
-  if (pen.final && inside > 0) {
-    const out = live.length - inside;
-    if (out === 0 || G.finalArm > 0) { finishGame(inside); return; }
-    G.finalArm = 6;
-    toast(`${out} sheep still outside! Lean on the gate to finish with ${inside}.`, 'warn');
-    return;
-  }
   if (inside > 0 && inside === live.length) { toast('The whole flock is safe in the pen ✔', 'good'); Sound.chime([0, 4, 7], 784); }
   else if (inside > 0 && isNight()) toast(`${live.length - inside} sheep still out in the dark!`, 'warn');
   hankGateClosed(pen, inside, live.length);   // HANK: "That'll do" at the end of the day
@@ -4157,7 +4188,6 @@ function updateGate(p, dt) {
     const into = d.inMag > 0.5 ? -(HIT.nx * d.wx + HIT.nz * d.wz) : 0;
     if (into < 0.45 || !freeToHop(d)) continue;
     d.leaning = true; d.leanT += dt;
-    if (p.final && p.latched && G.finalArm > 0 && d.leanT > 0.3) { onGateClosed(p); continue; }
     if (d.leanT > K.lean) { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
   }
 }
@@ -4223,9 +4253,9 @@ function pounceGateSlam(d, ox, oz) {
 initGates();
 // the prompt over a gate when a dog is near: what a shove will do, and which way it'll swing
 function drawGatePrompt(p, d) {
-  const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0, g = keyLabel(d.player, 'grab');
+  const held = d.holding === p, g = keyLabel(d.player, 'grab');
   // one short line, once each (HUD: nudge); the arrow below shows which way it'll swing
-  const [key, line] = finalArm ? ['gate-lean', 'Lean on it!'] : held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
+  const [key, line] = held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
     p.latched ? (p.fresh ? ['gate-push', `Push · ${g} drag`] : ['gate-latched', '🔒 Back off, shove again']) : p.gateT > 0.5 ? ['gate-shut', 'Push to shut'] : ['gate-push', `Push · ${g} drag`];
   nudge(key, p.gx, p.y + 3.6, p.gz, line, d.color);   // above the gate, so it never covers the dog
   if (held || (p.latched && !p.fresh)) return;
@@ -4426,7 +4456,7 @@ const PLANTS = [];
     for (let t = 0; t < 8 && !ok; t++) {
       const lat = frr(-hwWArr[k] * 0.85, hwEArr[k] * 0.85); if (Math.abs(lat) < 6) continue;   // never on the worn trail
       const p = pathPoint(s + frr(-3, 3), lat); cx = p.x; cz = p.z;
-      ok = sdfAt(cx, cz) > 2.5 && !wetAt(cx, cz) && camps.every(c => Math.hypot(cx - c.x, cz - c.z) > c.r) && (!L0 || Math.hypot(cx - L0.x, cz - L0.z) > 10);
+      ok = sdfAt(cx, cz) > 2.5 && !wetAt(cx, cz) && camps.every(c => Math.hypot(cx - c.x, cz - c.z) > c.r) && offMarket(cx, cz, 3) && (!L0 || Math.hypot(cx - L0.x, cz - L0.z) > 10);
     }
     if (!ok) continue;
     const n = kind === 'alfalfa' ? 3 + Math.floor(FR() * 4) : 5 + Math.floor(FR() * 5);
@@ -4474,7 +4504,7 @@ const FIND_GLOW = (() => {
 const SALT_ROCKS = [];
 {
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 9 })), L0 = LAUNCHERS[0];
-  const okAt = (x, z) => sdfAt(x, z) > 2.5 && !wetAt(x, z) && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 10)
+  const okAt = (x, z) => sdfAt(x, z) > 2.5 && !wetAt(x, z) && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 4) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 10)
     && Math.abs(trailInfo(x, z).lat) > 5 && PLANTS.every(o => (o.x - x) ** 2 + (o.z - z) ** 2 > 4) && SALT_ROCKS.every(o => Math.hypot(o.x - x, o.z - z) > 30);
   const place = (s0, spread) => {
     for (let t = 0; t < 24; t++) {
@@ -4730,7 +4760,7 @@ const DIGS = [];
       const side = DR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.8;
       const lat = side * drr(T.dig.lat[0], Math.max(T.dig.lat[0] + 0.5, Math.min(T.dig.lat[1], room)));
       const p = pathPoint(s + drr(-4, 4), lat), x = p.x, z = p.z;
-      if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r)) continue;
+      if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) || !offMarket(x, z, 3)) continue;
       if ((L0 && Math.hypot(x - L0.x, z - L0.z) < 10) || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 4) || SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5)) continue;
       DIGS.push({ i: DIGS.length, x, z, y: terrainH(x, z), rot: DR() * TAU, dug: false, prog: 0, glint: DR() * 3 });
       break;
@@ -6334,6 +6364,7 @@ function drawOverlay(dt) {
   }
   drawForageOverlay();   // what the dogs carry, trough and salt-lick levels, salt rocks (FORAGE section)
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
+  drawVendorOverlay();   // VENDOR: prices over the mats
   // dog labels + stamina
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
@@ -6768,7 +6799,7 @@ function hankWatch(dt) {
   // nice and steady over the bridge (once a journey)
   if (!hk.bridgeSaid && out.length >= 3 && Math.abs(riverAcross(fx, fz)) < RIVER.hw + 7 && Math.abs(riverAlong(fx, fz)) < 14) hk.bridgeSaid = hank('nice_steady', null, { force: true });
   // first sight of the Promised Land
-  if (!hk.finalSaid && G.visited.has(CAMPS[3].name)) { hk.finalSaid = true; hank(null, 'There she is, the Promised Land! Bring them home!', { force: true, delay: 1.5 }); }
+  if (!hk.finalSaid && G.visited.has(CAMPS[3].name)) { hk.finalSaid = true; hank(null, 'There she is, the Promised Land! Fatten them up!', { force: true, delay: 1.5 }); }
   // two dogs working opposite sides of the flock
   if (!hk.teamSaid && G.dogs.length >= 2 && out.length >= 4) {
     const a = G.dogs.map(d => [Math.atan2(d.z - fz, d.x - fx), Math.hypot(d.x - fx, d.z - fz)]);
@@ -7728,6 +7759,148 @@ function freshFlock() {
 }
 
 // =====================================================================
+// VENDOR — the Trading Post at the end of the trail (its stall and the
+// vendor: MARKET, built in WORLD GENERATION). Each ware sits on its own
+// mat; a dog on a mat barks to buy it with 🧶 (G.wool, from shearing).
+// 💧 🌾 🧂 go into the final pen; ✂️ (free) only while Hank has no
+// clippers; 🏖️ Cabo takes every sheep penned there and ends the journey
+// (finishGame). Buying runs on the host (bark); vendorFx shows it everywhere.
+// =====================================================================
+const finalPen = pens.find(p => p.final);
+const caboSheep = () => G.sheep.filter(s => !s.dead && !s.grabbed && !s.air && s.pen === finalPen);
+const WARES = [
+  { id: 'clippers', icon: '✂️', col: '#8a7aa8', show: () => typeof giveHankClippers === 'function' && !HANK.clippers },   // (shearing: never stuck without)
+  { id: 'water', icon: '💧', col: '#3a7bd5', show: () => typeof fillWater === 'function' },   // (pen water)
+  { id: 'food', icon: '🌾', col: '#6aa84f' },
+  { id: 'salt', icon: '🧂', col: '#b9a9cc' },
+  { id: 'cabo', icon: '🏖️', col: '#f2d9a0' },
+];
+const VENDOR = { hello: false, waveAt: -9, noAt: -9, bought: {} };
+const wareOn = w => !w.show || w.show();
+function warePrice(w) { const V = T.vendor; return w.id === 'cabo' ? V.cabo.base + V.cabo.per * caboSheep().length : V[w.id].price; }
+{ // the mats, in a row in front of the stall, each with its ware at the back (local -z: toward the stall)
+  const back = -0.72;
+  const GEOS = {
+    clippers: merge(P(BOX(0.55, 0.3, 0.4), '#8a5a32', { p: [0, 0.18, back] }), P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, 0.45, 0], p: [0.05, 0.36, back] }),
+      P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, -0.45, 0], p: [0.05, 0.38, back] }), ...[-0.12, 0.12].map(z => P(CYL(0.08, 0.08, 0.05, 10), '#d8473f', { p: [-0.3, 0.39, back + z] }))),
+    water: merge(P(CYL(0.24, 0.3, 0.6, 10), '#4aa3df', { p: [-0.2, 0.32, back] }), P(CYL(0.1, 0.16, 0.18, 10), '#4aa3df', { p: [-0.2, 0.7, back] }),
+      P(CYL(0.17, 0.2, 0.42, 10), '#2f86c8', { p: [0.38, 0.23, back + 0.05] }), P(SPH(8), '#bfe6ff', { s: [0.12, 0.04, 0.12], p: [-0.2, 0.8, back] })),
+    food: merge(P(BOX(0.9, 0.48, 0.55), '#e8c770', { p: [0, 0.28, back] }), ...[-0.22, 0.22].map(x => P(BOX(0.05, 0.5, 0.57), '#8a5a32', { p: [x, 0.28, back] })),
+      ...[0, 1, 2].map(i => P(CONE(0.06, 0.2, 5), i % 2 ? '#9b6ad8' : '#b48ae6', { p: [-0.3 + i * 0.3, 0.6, back] }))),
+    salt: merge(P(BOX(0.45, 0.3, 0.45), '#f3eee6', { p: [-0.2, 0.19, back] }), P(BOX(0.4, 0.28, 0.4), '#ece6dc', { r: [0, 0.5, 0], p: [0.3, 0.18, back + 0.05] }),
+      P(BOX(0.36, 0.26, 0.36), '#f3eee6', { r: [0, 0.3, 0], p: [0.05, 0.47, back] }), P(BOX(0.14, 0.06, 0.16), '#f6c9d4', { p: [0.08, 0.62, back - 0.02] })),
+    cabo: merge(P(CYL(0.035, 0.035, 2.2, 6), '#f4f1ea', { p: [-0.75, 1.1, back] }), P(CONE(1.1, 0.45, 12), '#ff5a5a', { p: [-0.75, 2.2, back] }), P(CONE(0.55, 0.24, 12), '#ffffff', { p: [-0.75, 2.37, back] }),
+      P(BOX(0.6, 0.03, 1.2), '#4dc3ff', { p: [0.4, 0.08, -0.2] }), P(BOX(0.6, 0.035, 0.15), '#ffffff', { p: [0.4, 0.09, -0.62] }), GEO.palm.clone().scale(0.5, 0.5, 0.5).translate(1.05, 0, back - 0.45)),
+  };
+  WARES.forEach((w, i) => {
+    const M = MARKET, u = (i - (WARES.length - 1) / 2) * T.vendor.gap, f = T.vendor.ring;
+    w.i = i; w.x = M.x + M.fx * f + M.rx * u; w.z = M.z + M.fz * f + M.rz * u; w.y = terrainH(w.x, w.z);
+    w.shakeAt = w.armT = -9;
+    const g = new THREE.Group(); g.position.set(w.x, w.y, w.z); g.rotation.y = M.yaw; scene.add(g); w.g = g;
+    part(g, merge(P(BOX(2.5, 0.04, 2.5), w.id === 'cabo' ? '#ff8f5a' : '#5a4030', { p: [0, 0.02, 0] }), P(BOX(2.2, 0.05, 2.2), w.col, { p: [0, 0.04, 0] }),
+      ...[-0.7, 0.7].map(z => P(BOX(2.2, 0.055, 0.14), '#f4ead2', { p: [0, 0.045, z] }))), { outline: false, shadow: false });
+    part(g, GEOS[w.id]);
+  });
+}
+// SHARED HOOK (pen food): tip a batch into a pen's troughs, emptiest first, each up to its cap; returns what went in
+function stockTroughs(pen, amt) {
+  let left = amt;
+  for (let it = 0; it < 40 && left > 1e-4; it++) {
+    const tr = pen.troughs.filter(t => t.food < t.cap - 1e-4).sort((a, b) => a.food - b.food)[0]; if (!tr) break;
+    const k = Math.min(left, tr.cap - tr.food, amt / pen.troughs.length); tr.food += k; left -= k;
+  }
+  return amt - left;
+}
+// host: a bark on a mat buys what's on it
+function vendorBark(d) {
+  if (G.mode !== 'play' || d.air || Math.abs(d.x - MARKET.x) > 12 || Math.abs(d.z - MARKET.z) > 12) return null;
+  let best = null, bd = T.vendor.matR;
+  for (const w of WARES) { const k = Math.hypot(d.x - w.x, d.z - w.z); if (k < bd && wareOn(w)) { bd = k; best = w; } }
+  return best ? buyWare(best) : null;
+}
+// -> 'buy' | 'poor' (not enough 🧶) | 'full' (no room in the pen) | 'none' (Cabo: nobody penned) | 'arm' (Cabo: bark again to go)
+function buyWare(w) {
+  const V = T.vendor, wool = G.wool || 0, price = warePrice(w), pen = finalPen;
+  let kind = 'buy';
+  if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
+  else if (wool < price) kind = 'poor';
+  else if (w.id === 'cabo') { if (!(w.armT > G.time)) kind = 'arm'; }
+  else if (w.id === 'food') { const room = pen.troughs.reduce((a, tr) => a + Math.max(0, tr.cap - tr.food), 0); if (room < V.food.amt * V.room) kind = 'full'; else stockTroughs(pen, V.food.amt); }
+  else if (w.id === 'salt') { const L = pen.lick, room = L.cap - L.salt; if (room < V.salt.amt * V.room) kind = 'full'; else L.salt += Math.min(room, V.salt.amt); }
+  else if (w.id === 'water') { const got = typeof fillWater === 'function' ? fillWater(pen, V.water.amt) : 0; if (!(got > 0.01)) kind = 'full'; }
+  else if (w.id === 'clippers' && typeof giveHankClippers === 'function') giveHankClippers();
+  if (kind === 'buy') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
+  vendorFx(w.i, kind, price);
+  if (kind === 'none') hank(null, 'Pen them first! Then Cabo!', { force: true });
+  if (kind === 'buy' && w.id === 'cabo') { const n = caboSheep().length; hank(null, "Cabo! Sun, sand, an' nae coyotes!", { force: true, delay: 3 }); finishGame(n); }
+  return kind;
+}
+// what a sale (or a no) looks and sounds like, on every screen
+function vendorFx(i, kind, price = 0) {
+  const w = WARES[i]; if (!w) return;
+  const y = w.y + 1.6;
+  if (kind === 'arm') { w.armT = G.time + T.vendor.confirm; floatText(`${w.icon} ?`, w.x, y + 0.8, w.z, '#ffd36b', 1.4); Sound.chime([0, 7], 660, 0.16); return; }
+  w.armT = -9;
+  if (kind === 'buy') {
+    VENDOR.waveAt = G.time;
+    Sound.chime([0, 4, 7, 12], 784, 0.2, 0.07); starBurst(w.x, y, w.z, 8);
+    burst(w.x, w.y + 0.6, w.z, 10, w.col, { speed: 2, up: 3, size: 0.14, life: 0.8 });
+    floatText(price ? `${w.icon} -${price}🧶` : `${w.icon} ✔`, w.x, y + 0.6, w.z, '#7ed957', 1.3);
+    const p = finalPen;
+    if (w.id === 'food') for (const tr of p.troughs) burst(tr.x, p.y + 1, tr.z, 5, '#9bdc5a', { speed: 1.4, up: 1.6, size: 0.12, life: 0.8, grav: -9 });
+    if (w.id === 'salt') burst(p.lick.x, p.y + 1, p.lick.z, 8, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 });
+    if (w.id === 'food' || w.id === 'salt' || w.id === 'water') floatText(`+${w.icon}`, p.x, p.y + 2.4, p.z, '#ffffff', 1.4);
+    if (w.id === 'cabo') confetti(w.x, y, w.z, 40);
+    return;
+  }
+  // a no: the mat shakes, the vendor shakes his head
+  w.shakeAt = VENDOR.noAt = G.time;
+  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);
+  Sound.chime([0, -1], 196, 0.18, 0.12);
+}
+// sim step (host): Hank's word on arriving
+function updateVendor() {
+  if (G.mode !== 'play' || VENDOR.hello || !G.visited.has(FINAL.name)) return;
+  VENDOR.hello = true; hank(null, 'The Trading Post! Wool buys us Cabo!', { force: true, delay: 2 });
+}
+function resetVendor() { Object.assign(VENDOR, { hello: false, waveAt: -9, noAt: -9, bought: {} }); for (const w of WARES) w.shakeAt = w.armT = -9; }
+// every frame: mats shake on a no, the Cabo mat pulses while it waits; the vendor watches the dogs, waves on a sale
+function syncVendor(dt) {
+  const t = G.time, M = MARKET, v = M.v;
+  for (const w of WARES) {
+    const on = wareOn(w); w.g.visible = on; if (!on) continue;
+    const k = t - w.shakeAt, sh = k >= 0 && k < 0.45 ? Math.sin(k * 55) * 0.13 * (1 - k / 0.45) : 0, s = w.armT > t ? 1 + 0.06 * Math.sin(t * 10) : 1;
+    w.g.position.set(w.x + M.rx * sh, w.y, w.z + M.rz * sh); w.g.scale.set(s, 1, s);
+  }
+  let dog = null, dd = T.vendor.near; for (const d of G.dogs) { const k = Math.hypot(d.x - M.x, d.z - M.z); if (k < dd) { dd = k; dog = d; } }
+  const look = dog ? clamp(wrapA(Math.atan2(dog.x - M.x, dog.z - M.z) - M.yaw), -0.9, 0.9) : 0;
+  const no = t - VENDOR.noAt, wave = t - VENDOR.waveAt, party = G.mode === 'end' && HANK.celebrate;
+  v.root.rotation.y = lerpA(v.root.rotation.y, look, Math.min(1, dt * 4));
+  v.head.rotation.y = no >= 0 && no < 0.8 ? Math.sin(no * 22) * 0.45 : 0;
+  v.arm.rotation.z = party || (wave >= 0 && wave < 1.6) ? 2.5 + Math.sin(t * 14) * 0.35 : 0.25;
+  v.root.position.y = Math.abs(Math.sin(t * 1.3)) * 0.02 + (wave >= 0 && wave < 0.6 ? Math.sin(wave / 0.6 * Math.PI) * 0.18 : 0);   // a hop on a sale
+}
+// the overlay: each ware's price in 🧶 (green: you can pay), Cabo with how many go; bark twice for Cabo
+function drawVendorOverlay() {
+  if (G.mode !== 'play') return;
+  const near = G.dogs.find(d => Math.hypot(d.x - MARKET.x, d.z - MARKET.z) < T.vendor.near); if (!near) return;
+  const wool = G.wool || 0, n = caboSheep().length, bk = keyLabel(near.player, 'bark');
+  nudge('vendor', MARKET.x, MARKET.v.y + 3.6, MARKET.z, `${bk} on a mat: buy`);
+  ctx.font = '600 13px Fredoka, sans-serif';
+  for (const w of WARES) {
+    if (!wareOn(w)) continue;
+    const [px, py, pz] = proj(w.x + MARKET.fx * 1.6, w.y + 0.1, w.z + MARKET.fz * 1.6); if (pz > 1 || px < -60 || px > W + 60 || py < -40 || py > H + 40) continue;   // on the mat's front edge, clear of the dog's name
+    const price = warePrice(w), cabo = w.id === 'cabo', ok = wool >= price && (!cabo || n > 0), on = G.dogs.some(d => Math.hypot(d.x - w.x, d.z - w.z) < T.vendor.matR);
+    const txt = w.armT > G.time ? `${w.icon} ${bk} ✔` : cabo && !n ? `${w.icon} 🐑 0` : `${w.icon} ${price ? price + '🧶' : '🆓'}${cabo ? ` · 🐑${n}` : ''}`;
+    const sc = w.armT > G.time ? 1.12 + 0.08 * Math.sin(G.time * 10) : on ? 1.12 : 1;
+    ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
+    forageChip(0, 0, txt, ok ? 'rgba(60,140,60,.9)' : 'rgba(130,60,55,.85)');
+    if (on) { const tw = ctx.measureText(txt).width + 16; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2.5; rr(-tw / 2, -11, tw, 22, 10); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
+// =====================================================================
 // GAME FLOW
 // =====================================================================
 function resize() {
@@ -7764,12 +7937,13 @@ function finishGame(n) {
   G.mode = 'end';
   const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.cougar || 0), ratio = n / Math.max(1, st.start);
   const stars = ratio >= 1.8 ? 3 : ratio >= 1.2 ? 2 : ratio >= 0.7 ? 1 : 0;
-  $('eTitle').textContent = n > 0 ? 'The Promised Land!' : 'The flock is gone…';
+  $('eTitle').textContent = n > 0 ? '🏖️ Cabo! 🌴' : 'The flock is gone…';   // n > 0: only Cabo ends a journey well (VENDOR)
+  $('end').classList.toggle('cabo', n > 0);
   $('eStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('eLine').textContent = `🐑 ${st.start} → ${n}`;
+  $('eLine').textContent = n > 0 ? `🐑 ${st.start} → 🏖️ ${n} 🍹` : `🐑 ${st.start} → 0`;
   $('eStats').innerHTML = [[st.born, 'lambs'], [st.saved, 'rescued'], [G.clock.day, 'days']].filter(([v]) => v > 0).map(([v, t]) => `<span>${v} ${t}</span>`).join('');
   $('end').style.opacity = 1; $('end').style.pointerEvents = 'auto'; $('hud').classList.add('hidden');
-  if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = pens[3]; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
+  if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = finalPen; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
   else Sound.sad();
   G.endT = 0;
   onJourneyEnd(n);   // HANK + FLOCK SAVE: "That'll do", fondly remembered, the flock saved for next time
@@ -7783,7 +7957,8 @@ function resetGame() {
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
   resetForage();   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
   resetDigs();     // DIG SPOTS: every mound back for the new journey
-  G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
+  resetVendor();   // VENDOR
+  G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
@@ -7954,7 +8129,7 @@ const NET_TYPES = {
     tag: 'G', one: () => G,
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
-      ff: 'b', paused: 'b', pauseWho: 's', finalArm: .1,
+      ff: 'b', paused: 'b', pauseWho: 's',
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
     },
@@ -9103,6 +9278,7 @@ dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
 finishGame = fxDef('finishGame', finishGame);
+vendorFx = fxDef('vendorFx', vendorFx);   // VENDOR: a sale, a no, Cabo's second bark
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
   if (!d || typeof d.value !== 'function' || k === 'init' || k === 'ambience' || k === 'raw') continue;
@@ -9135,7 +9311,7 @@ function step(dt) {
     updateSheep(dt, dtH);
     updateCoyotes(dt);
     updateCougars(dt);
-    if (G.finalArm > 0) G.finalArm -= dt;
+    updateVendor();   // VENDOR: Hank's word at the Trading Post
     checkLose();
   } else {
     updateSheep(dt, 0);   // title / end: the flock still mills about
@@ -9170,6 +9346,7 @@ function frame(now) {
   syncHank(dt);           // HANK: his model, lantern and speech bubble
   syncForage(dt);         // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
+  syncVendor(dt);         // VENDOR: mats and the vendor
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   renderer.render(scene, camera);
@@ -9191,7 +9368,7 @@ function debugKeys() {
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
-  if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
+  if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 50); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
 window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
@@ -9200,13 +9377,14 @@ window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pen
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
+Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
-  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncDigs(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,

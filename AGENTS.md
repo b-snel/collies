@@ -11,14 +11,15 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
 drive a flock along one trail (desert → mountains → ocean → the Promised
-Land): graze it, pen it at camps by nightfall, fight off coyotes and cougars
-till dawn.
+Land → desert → the Trading Post): graze it, pen it at camps by nightfall,
+fight off coyotes and cougars till dawn. At the Trading Post wool buys
+supplies, and Cabo 🏖️, which wins.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
-  cougar hunts, `O` flock +10 days, `F` to final pen). `window.GAME` exposes
+  cougar hunts, `O` flock +10 days, `F` to the Trading Post, +50 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
@@ -37,12 +38,12 @@ till dawn.
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
-DOG WARDROBE, BARN, DAWN REPORT, saved flock → game flow → main loop → `window.GAME`.
+DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`, `p.gateT` (0 shut…1
-open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`.
+open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`.
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -51,7 +52,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen |
+| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
@@ -68,6 +69,7 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
+| `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
@@ -166,6 +168,12 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (a lone coyote: `T.coyoteBark.soloWise`), then turns bold (`barkWorks`): only
   a bonk moves it, and it lunges at dogs to nip. Packs lose less heart per bark
   (`packK`).
+- **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`, `T.vendor`): the
+  end of the trail, desert, no water. A dog on a mat barks (`vendorBark`, host)
+  to buy with `G.wool`: 💧 (`fillWater`), 🌾 (`stockTroughs`), 🧂 into the final
+  pen; ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
+  (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark twice: those go,
+  `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
 - **Nobody dies to physics.** Deaths leave a named tombstone.
 
 ### Gotchas

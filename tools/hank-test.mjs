@@ -87,9 +87,9 @@ const r3 = await h.page.evaluate(async () => {
   const R = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }, F = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 };
   const run = (dir) => { let a = 0; const fc0 = flockCenter(); d.x = fc0.x + 12; d.z = fc0.z;
     for (let i = 0; i < 60; i++) { const fc = flockCenter(); a = Math.atan2(d.z - fc.z, d.x - fc.x); const tx = -Math.sin(a) * dir, tz = Math.cos(a) * dir;
-      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastBare = HANK.lastStarve = G.time; step(0.05);
+      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastBare = HANK.lastStarve = HANK.lastGreedy = G.time; step(0.05);
       const b = Math.atan2(d.z - fc.z, d.x - fc.x); d.x = fc.x + Math.cos(b) * 12; d.z = fc.z + Math.sin(b) * 12; } G.players[0].bot = {}; };
-  HANK.lastSay = -99; HANK.said = {}; HANK.lastKey = null; HANK.cmd = '';
+  HANK.lastSay = -99; HANK.said = {}; HANK.lastKey = null; HANK.cmd = ''; G.hints.dig = true;   // (no other lines crowding the commands out: dig spots, greedy grazers)
   run(1); out.cw = HANK.log.slice(-3).map(l => `${l.id}:${l.said ? 'said' : l.why}`);
   await new Promise(r => setTimeout(r, 400));
   out.cwPlayed = HANK.played.slice(-2).map(p => p.kind + ':' + p.id);
