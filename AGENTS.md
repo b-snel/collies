@@ -44,7 +44,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs` | punts, pounce/grab/fling, gates, launcher, swimming, final pen |
+| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
@@ -52,6 +52,7 @@ Run the ones touching your change; report the numbers.
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
 | `gateway-sim.mjs` | stalls at gates |
+| `rush-test.mjs` | morning rush out of the pen; carrying a sheep in/out through an open gate |
 | `cluster-sim.mjs [structure\|merge\|corner\|cost]` | knots, regrouping, unsticking, cost |
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
@@ -80,6 +81,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Utility goals with hysteresis** (hunger vs safety vs flock).
 - **Critical mass.** Open pens pull calm, fed sheep, more as more are in;
   trough food pulls hungry ones (`T.penTroughPull`).
+- **Morning rush.** Gate opened dawn–13:00 (or open at 06:00): for
+  `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`).
+- **Carrying.** A held sheep passes an open gateway (`mouthOf`), not a shut
+  gate or a fence.
 - **Cornered sheep break out** past the dog after a warning bleat.
 - **Knots.** Every 0.5 s sheep cluster (link 3.6 m); lone knots are pulled to
   groups (`T.grav*`).
