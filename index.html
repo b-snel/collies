@@ -7403,7 +7403,8 @@ function netFrameStart(now, dt) {
   const adt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // the host's hit-stop, felt here too
   if (!G.paused) { G.time += adt; U.uTime.value = G.time; }
   const k = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-20 * dt);
-  for (const ty of NET_LIST) for (const o of ty.one ? [ty.one()] : ty.all()) { if (!(ty === NET_TYPES.dog && netPredFrame(o, netLocalOf(o.player.slot), dt))) netSmooth(o, ty, k, ka); if (ty.animate && !G.paused) ty.animate(o, adt); }
+  for (const ty of NET_LIST) for (const o of ty.one ? [ty.one()] : ty.all()) { if (!(ty === NET_TYPES.dog ? netPredFrame(o, netLocalOf(o.player.slot), dt) : o._lp)) netSmooth(o, ty, k, ka); if (ty.animate && !G.paused) ty.animate(o, adt); }
+  netPredPost(dt);
   return false;
 }
 function netFrameEnd(now) {
@@ -7471,13 +7472,34 @@ function netAnimCoyote(c, dt) {
 // ---- guest: its own dogs answer at once ------------------------------------------------------------------
 // Each 'i' carries a number q; every snapshot acks, per dog, the last q the host got and ms it has run on it.
 // The guest takes the host's state, replays its own inputs since then (updateDog's walking only), and eases
-// what it draws onto that. Airborne, stunned, pouncing, hopping or on a gate: the host's state, smoothed.
+// what it draws onto that. Bark, pounce, grab and gates it pushes go the same way (netPredPress, netPredPost).
+// Airborne, stunned or hopping: the host's state, smoothed.
 const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
-function netPredKind(d) {
-  const h = d.holding; if (!h) return '';
-  return G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : null;
+function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : ''; }
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0); }
+function netPredPick(d) {   // what tryGrab would bite
+  const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
+  let o = null, bd = T.grabReach, grip = 0;
+  for (const c of G.coyotes) { if (c.air || c.heldBy || c.gone) continue; const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3; if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; o = c; } }
+  for (const s of G.sheep) {
+    if (s.dead || s.heldBy || s.grabbed || (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8))) continue;
+    const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0); if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; o = s; }
+  }
+  for (const p of pens) {
+    if (Math.abs(p.hinge.x - d.x) > 9 || Math.abs(p.hinge.z - d.z) > 9) continue;
+    const q = distSeg(mx, mz, p.gateSeg), r = q.t * p.gateLen; if (r < 0.8 || q.d > 1.3) continue;
+    if (q.d - 0.2 < bd) { bd = q.d - 0.2; o = p; grip = r; }
+  }
+  return o ? { o, grip } : null;
 }
-function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.hopT > 0) && netPredKind(d) !== null; }
+// what this dog holds at time t: our own bite or let-go the host hasn't run yet, else what the host says
+function netPredHeldAt(d, L, t) { const e = L.grabEv; return e && e.t > L.ackT && t >= e.t ? e : null; }
+function netPredSetHold(d, L, t) {
+  const e = netPredHeldAt(d, L, t), o = e ? e.o : d.holding;
+  if (o === d._hold) return;
+  d._hold = o; d._hk = netKindOf(o);
+  if (d._hk === 'gate') { d.holdR = clamp(e && e.grip || Math.hypot(d.x - o.hinge.x, d.z - o.hinge.z), 0.9, o.gateLen); d.holdOff = wrapA(o.phi - gatePsi(o, d.x, d.z)); }
+}
 function netPredDir(d, h) {   // startPounce's heading
   const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
   const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
@@ -7487,15 +7509,22 @@ function netPredDir(d, h) {   // startPounce's heading
 function netPredPress(L, d, r, now) {
   if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0) return;
   if (r.bark && now - (L.barkAt || -1e9) >= T.barkCd * 1000) { L.barkAt = now; barkFx(d); d._pBark = now; }
-  if (r.pounce && !r.lie && !d.holding && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {
+  if (r.pounce && !r.lie && !d._hold && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {
     L.pounceAt = now; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t: now, dx, dz });
     while (L.pounces.length > 1 && L.pounces[0].t < now - 1500) L.pounces.shift();
   }
+  // grab: bite while the button's held (once per press after letting go), drop on release
+  const g = !!r.grab;
+  if (!g) L.grabLock = false;
+  else if (!d._hold && !L.grabLock && !(netPredHeldAt(d, L, now) || {}).o && !r.lie && !(d.hopT > 0) && !(d.pounceT > 0)) { const k = netPredPick(d); if (k) { L.grabEv = { t: now, o: k.o, grip: k.grip }; L.grabLock = true; } }
+  if (!g && L.grabWas && d._hold) { L.grabEv = { t: now, o: null }; }
+  if (g && d._hold) L.grabLock = true;
+  L.grabWas = g;
 }
 function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
   const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
-  const hk = d.holding ? T.grabKinds[netPredKind(d)] : null;
+  const hk = d._hold ? T.grabKinds[d._hk] : null;
   const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
   let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
   if (hk) max *= hk.speed;
@@ -7505,17 +7534,17 @@ function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   } else { const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt); d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k; }
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideWorld(d, T.dogR); collideFences(d, T.dogR);
-  d.mode = mode;
+  d.mode = mode; d._pwx = wx; d._pwz = wz; d._pmag = mag;
 }
 function netPredFrame(d, L, dt) {   // false: smooth it as usual
   const a = L && L.ack;
-  if (!a || !L.hist.length || !d._hv || !netPredOK(d)) { if (d._pp) { d._pp = null; for (const f of NET_PRED) d[f] = d._hv[f]; } return false; }
+  if (!a || !L.hist.length || !d._hv || !netPredOK(d)) { if (d._pp) { d._pp = null; d._hold = null; d._hk = ''; for (const f of NET_PRED) d[f] = d._hv[f]; } return false; }
   const now = NET.now, dx = d.x, dz = d.z;
   let P = d._pp;
   if (!P || a.fresh) {   // the host's word, then our inputs since
     a.fresh = false;
     const e = L.hist.find(e => e.q === a.q);
-    let t = clamp(e ? e.t + a.ms : now - NET.rtt, now - 1000, now);
+    let t = L.ackT = clamp(e ? e.t + a.ms : now - NET.rtt, now - 1000, now);
     d.x = d._nx; d.z = d._nz; d.vx = d._hv.vx; d.vz = d._hv.vz; d.pounceT = d._hv.pounceT || 0;
     if (d.pounceT > 0 && d._nyaw !== undefined) { d.pdx = Math.sin(d._nyaw); d.pdz = Math.cos(d._nyaw); }
     let i = 0, j = 0; while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
@@ -7524,22 +7553,84 @@ function netPredFrame(d, L, dt) {   // false: smooth it as usual
       const st = Math.min(1 / 60, (now - t) / 1000);
       while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
       if (j < L.pounces.length && L.pounces[j].t <= t) { const q = L.pounces[j++]; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }
-      netPredMove(d, L.hist[i].h, st); t += st * 1000;
+      netPredSetHold(d, L, t); netPredMove(d, L.hist[i].h, st); t += st * 1000;
     }
     P = d._pp = { x: d.x, z: d.z, vx: d.vx, vz: d.vz, pt: d.pounceT, pdx: d.pdx, pdz: d.pdz, pj: j ? L.pounces[j - 1].t : 0, ex: dx - d.x, ez: dz - d.z };   // ex, ez: drawn − predicted, eased away
   } else {
     d.x = P.x; d.z = P.z; d.vx = P.vx; d.vz = P.vz; d.pounceT = P.pt; d.pdx = P.pdx; d.pdz = P.pdz;
     const q = L.pounces[L.pounces.length - 1];
     if (q && q.t > P.pj) { P.pj = q.t; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }   // pressed this frame
-    netPredMove(d, L.hist[L.hist.length - 1].h, dt);
+    netPredSetHold(d, L, now); netPredMove(d, L.hist[L.hist.length - 1].h, dt);
     P.x = d.x; P.z = d.z; P.vx = d.vx; P.vz = d.vz; P.pt = d.pounceT; P.pdx = d.pdx; P.pdz = d.pdz;
   }
   const k = Math.exp(-8 * dt); P.ex *= k; P.ez *= k;
   if (P.ex * P.ex + P.ez * P.ez > 16) P.ex = P.ez = 0;
   d.x = P.x + P.ex; d.z = P.z + P.ez;
-  if (d.pounceT > 0) d.yaw = Math.atan2(d.pdx, d.pdz);
+  if (d._hk === 'gate') { const g = gateGrip(d._hold, d); d.yaw = lerpA(d.yaw, Math.atan2(g.x - d.x, g.z - d.z), Math.min(1, dt * 14)); }
+  else if (d.pounceT > 0) d.yaw = Math.atan2(d.pdx, d.pdz);
   else if (Math.hypot(d.vx, d.vz) > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * (d.mode === 'lie' ? 4 : 14)));
+  else if (d._nyaw !== undefined) d.yaw = lerpA(d.yaw, d._nyaw, 1 - Math.exp(-20 * dt));   // standing: the host's heading
   return true;
+}
+// after the frame's smoothing: gates our dogs push or hold swing here at once (updateGate's dog parts), and what
+// they hold rides at their mouths. A gate goes back to the host's angle a moment after our dogs leave it.
+function netPredPost(dt) {
+  const mine = G.dogs.filter(d => d._pp), now = NET.now;
+  for (const d of mine) { d.x -= d._pp.ex; d.z -= d._pp.ez; }   // (the predicted spot, not the eased one)
+  for (const p of pens) {
+    let near = false;
+    for (const d of mine) if (d._hold === p || Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1.5) near = true;
+    if (near) { if (!p._lp) p._lp = { w: 0, latched: p.latched, fresh: p.fresh, noTouch: 1 }; p._lp.until = now + 600 + NET.rtt; }
+    else if (p._lp && now > p._lp.until) p._lp = null;
+    if (p._lp && !G.paused) { netPredGate(p, p._lp, mine, dt); updateGateGeometry(p); }
+    for (const d of mine) if (p !== d._hold && Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1) collideSeg(d, T.dogR + 0.05, p.gateSeg);   // the leaf stops a dog
+  }
+  for (const d of mine) { d._pp.x = d.x; d._pp.z = d.z; d.x += d._pp.ex; d.z += d._pp.ez; }
+  for (const d of mine) for (const e of [...G.sheep, ...G.coyotes]) {
+    if (e !== d._hold && e.heldBy !== d) continue;   // ours, or the host's and we've let go of it but it hasn't heard yet
+    const k = T.grabKinds[netKindOf(e)] || T.grabKinds.sheep, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+    e.x = d.x + fx * k.reach; e.z = d.z + fz * k.reach; e.y = groundY(e.x, e.z) + k.lift; e.yaw = d.yaw + Math.PI / 2;
+  }
+}
+function netPredGate(p, S, mine, dt) {   // keep in step with updateGate (no sounds: the host's come along)
+  const K = T.gate, prev = p.phi, L = p.gateLen, hx = p.hinge.x, hz = p.hinge.z;
+  let touch = false, want = null;
+  for (const d of mine) {
+    if (d._hold !== p) continue;
+    const g = gateGrip(p, d); touch = true;
+    if (Math.hypot(g.x - d.x, g.z - d.z) > 2.6 || Math.hypot(d.x - hx, d.z - hz) < 0.7) continue;
+    const psi = wrapA(gatePsi(p, d.x, d.z) + d.holdOff);
+    if (S.latched) { if (Math.abs(psi) < 0.15) continue; S.latched = false; }
+    want = Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;
+  }
+  const nP = gateNormal(p);
+  for (const d of mine) {
+    if (d.hopT > 0 || d._hold === p) continue;
+    const r = Math.hypot(d.x - hx, d.z - hz); if (r > L + K.dogDisc || r < 0.25) continue;
+    const psi = gatePsi(p, d.x, d.z), del = Math.asin(Math.min(1, K.dogDisc / Math.max(r, K.dogDisc))), diff = wrapA(psi - p.phi);
+    if (Math.abs(diff) > del + 0.03) continue;
+    touch = true;
+    const side = diff > 0 ? 1 : -1, into = d._pmag > 0.5 ? -(d._pwx * nP.x + d._pwz * nP.z) / d._pmag * side : 0;
+    if (d.mode === 'sprint' && into > 0.45) continue;   // a vault: the host's
+    if (r < 0.9 || (S.latched && !S.fresh)) continue;
+    S.latched = false;
+    const w = side > 0 ? Math.min(p.phi, psi - del) : Math.max(p.phi, psi + del);
+    want = want === null ? w : (side > 0 ? Math.min(want, w) : Math.max(want, w));
+  }
+  if (want !== null) {
+    want = p.phi + wrapA(want - p.phi);
+    const lim = K.rate * dt, np = clamp(clamp(want, p.phi - lim, p.phi + lim), -K.maxIn, K.maxOut);
+    S.w = (np - p.phi) / Math.max(dt, 1e-4); p.phi = np;
+  } else if (!S.latched && S.w) {
+    p.phi += S.w * dt; S.w *= Math.exp(-dt * K.damp); if (Math.abs(S.w) < 0.05) S.w = 0;
+    if (p.phi > K.maxOut || p.phi < -K.maxIn) { p.phi = clamp(p.phi, -K.maxIn, K.maxOut); S.w = -S.w * 0.25; }
+  }
+  if (!S.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) { p.phi = 0; S.w = 0; S.latched = true; S.fresh = false; S.noTouch = 0; }
+  if (touch) S.noTouch = 0; else if ((S.noTouch += dt) > K.fresh) S.fresh = true;
+  // untouched by us for longer than the host takes to hear: the host's gate again
+  if (touch || S.w) S.idle = 0; else if ((S.idle = (S.idle || 0) + dt) > NET.rtt / 1000 + 0.25 && p._nphi !== undefined) {
+    p.phi = lerpA(p.phi, p._nphi, 1 - Math.exp(-10 * dt)); S.latched = p.latched; S.fresh = p.fresh;
+  }
 }
 
 // ---- host: snapshots ----------------------------------------------------------------------------------
