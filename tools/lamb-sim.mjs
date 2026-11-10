@@ -24,7 +24,7 @@ for (let k = 0; k < trials; k++) {
     run(19.5); out.fedAtPenning = `${fed()}/${adults().length}`;
     // pen everyone (as a player would) and shut the gate
     G.sheep.filter(s => !s.dead).forEach((s, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.6; s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; });
-    setGate(pen, false); if (pen.trough) pen.trough.food = trough;
+    setGate(pen, false); GAME.fillTroughs(pen, trough);
     let bred = new Set(), fedLog = {};
     const watch = until => { let guard = 0; while (!(G.clock.hour >= until && G.clock.hour < until + 1) && guard++ < 20000) { step(0.05); for (const s of ewes()) if (s.bred) bred.add(s.id); } };
     watch(20.5); fedLog['20:30'] = fed();

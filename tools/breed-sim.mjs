@@ -3,7 +3,7 @@
 // closed pen in the evening; bred ewes lamb at dawn. Prints the flock each morning (the demo's "14 -> 22 by day 4").
 import { open } from './harness.mjs';
 const days = +process.argv.find(a => /^\d+$/.test(a)) || 4, noRams = process.argv.includes('--norams');
-const tri = process.argv.indexOf('--trough'), trough = tri >= 0 ? +process.argv[tri + 1] : 0;   // --trough N: N units of feed tipped in the pen's trough every evening
+const tri = process.argv.indexOf('--trough'), trough = tri >= 0 ? +process.argv[tri + 1] : 0;   // --trough N: N units of feed spread over the pen's troughs every evening
 // --set key=value (repeatable) overrides a T number, e.g. --set foodValue=0.075
 const sets = {}; process.argv.forEach((a, i) => { if (a === '--set') { const [k, v] = process.argv[i + 1].split('='); sets[k] = +v; } });
 const h = await open({ query: '?sim&debug' });
@@ -25,7 +25,7 @@ const r = await h.page.evaluate(({ days, noRams, sets, trough }) => {
     if (lastH < 19 && hr >= 19) {   // bring them all in and shut the gate
       for (const s of G.sheep) if (!s.dead && !s.grabbed) { const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * (pen.R - 2); s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; }
       setGate(false);
-      if (trough) pen.trough = { food: trough, cap: 12 };
+      if (trough) GAME.fillTroughs(pen, trough);
     }
     if (hr > 9 && hr < 18 && Math.random() < 0.05) for (const s of G.sheep) if (!s.dead && !s.pen) { const dd = Math.hypot(s.x - pen.x, s.z - pen.z); dSum += dd; dN++; far = Math.max(far, dd); }
     if (lastH < 6.5 && hr >= 6.5) {

@@ -3,7 +3,7 @@
 //   sprint           walking behind vs sprinting behind; walking vs sprinting straight at the flock (peak stress, scatter, regroup)
 //   gatebot          a dumb "drive at the gate" bot pens the flock from in front of the valley camp gate
 //   critical(+Control, +Hungry)   half the flock penned: do the rest drift in on their own? (vs an empty pen, vs hungry stragglers)
-//   corner           a sheep pinned in the V of a funnel wing and the pen fence breaks out past the dog
+//   corner           a sheep pinned in a rock corner breaks out past the dog
 //   ram              a dog leaning on a ram gets charged; a bark calls a windup off; a ram goes for a coyote
 //   calm             a worked-up flock alone vs by a dog lying down vs flanked by two dogs
 //   day1             7:00 at the corral -> the valley camp before nightfall at 20:30 (a scripted bot, not a good player)
@@ -171,14 +171,22 @@ await h.page.evaluate(() => {
   SCN.criticalHungry = () => SCN.critical({ hunger: 0.7 });      // half in, but the rest are hungry
   // 3. a sheep pinned against a fence by the dog breaks out
   SCN.corner = () => {
-    reset(15); const pen = pens[0]; setGate(pen, false);
+    reset(15);
     const sh = live(); const far = pathPoint(160); place(sh, far.x, far.z, 4);
     const s = sh.find(o => !o.ram && !o.lamb && !o.bell) || sh[0];
-    // the V between the funnel wing and the pen fence beside the hinge post: a real corner
-    const a1 = pen.camp.gateA - pen.gapHalf, wa = pen.camp.gateA - 0.62;
-    let bx = Math.cos(wa) + Math.sin(a1), bz = Math.sin(wa) - Math.cos(a1); const bl = Math.hypot(bx, bz); bx /= bl; bz /= bl;
-    s.x = pen.hinge.x + bx * 1.5; s.z = pen.hinge.z + bz * 1.5; s.hunger = 0.1; s.state = 'idle';
-    const d = D(); d.x = pen.hinge.x + bx * 6.5; d.z = pen.hinge.z + bz * 6.5;
+    // a real corner: the tightest walkable nook between a rock and the valley wall (or another rock); the dog comes in from its open side
+    let c = null;
+    for (const o of GAME.OBSTACLES) {
+      if (o.r < 0.8 || o.r > 3 || sAt(o.x, o.z) < 200 || sAt(o.x, o.z) > 420) continue;
+      for (let x = o.x - o.r - 2; x <= o.x + o.r + 2; x += 0.5) for (let z = o.z - o.r - 2; z <= o.z + o.r + 2; z += 0.5) {
+        const sd = sdfAt(x, z); if (sd < 0.8 || sd > 1.3 || GAME.penAt(x, z)) continue;
+        let b = 0, ox = 0, oz = 0; for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283, ux = Math.cos(a), uz = Math.sin(a); if (sdfAt(x + ux * 1.8, z + uz * 1.8) < 0.4) { b++; ox += ux; oz += uz; } }
+        if (!c || b > c.b) c = { x, z, b, ox, oz };
+      }
+    }
+    let bx = -c.ox, bz = -c.oz; const bl = Math.hypot(bx, bz) || 1; bx /= bl; bz /= bl;   // out of the nook
+    s.x = c.x; s.z = c.z; s.hunger = 0.1; s.state = 'idle';
+    const d = D(); d.x = c.x + bx * 5; d.z = c.z + bz * 5;
     let t = 0, broke = -1, warned = -1, knocked = -1, minD = 1e9; const x0 = s.x, z0 = s.z;
     while (t < 4) {
       // the dog keeps pressing in on the sheep, stopping 2 m short of it

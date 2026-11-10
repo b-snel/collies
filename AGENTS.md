@@ -40,14 +40,14 @@ world gen (trail, 1 m grid, heights, signed distance field, grass) → renderer,
 terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
-river launcher) → FORAGE (plants, buckets, troughs, Hank's twilight run) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
+river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
 lighting → camera → visual sync → HUD and overlay → HANK, FLOCK LOOKS, DOG WARDROBE, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
 Sections are delimited by `// ===` headers. The comments marked `SHARED HOOK`
 are the seams between systems: `knockDog`, `hitCoyote`, `provokeRam`, `hank`,
 `sheepWoolColor`, `s.headM` / `s.bodyM`, `s.air` / `s.heldBy` / `c.heldBy`,
-`p.gateT` (0 shut … 1 open, derived from the gate's hinge angle), and `pen.trough` / `troughEat(pen, amt)` (food in hunger units: 1 takes 1.0 off one sheep's hunger; returns what was eaten). Keep
+`p.gateT` (0 shut … 1 open, derived from the gate's hinge angle), `pen.troughs[i]` / `troughEat(tr, amt)` (food in hunger units: 1 takes 1.0 off one sheep's hunger; returns what was eaten), and `pen.lick` / `lickSalt(pen, amt)` (1 takes one sheep from no salt to full). Keep
 them stable, or update every caller.
 
 ### Tests
@@ -59,7 +59,7 @@ that touch what you changed, and report their numbers.
 | --- | --- |
 | `node tools/flock-sim.mjs [scenario] [--trials N]` | driving, sprint-scatter, the gate bot, critical mass, cornering, rams, calming, day 1 |
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
-| `node tools/forage-sim.mjs` | forage plants, filling and delivering a bucket, Hank's twilight run to the trough, sheep eating from it overnight, regrowth |
+| `node tools/forage-sim.mjs` | forage plants and salt rocks, a dog gathering greens by running over them and tipping them into troughs (inside the pen and over the fence), several sheep feeding at once overnight, salt to the lick and licked, salt running down, slowing and killing, regrowth, every camp's troughs and lick |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
@@ -155,10 +155,25 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   (`killSheep(s, 'old')`: tombstone, "Fondly remembered", `G.stats.old`). The
   first flock is 3–24 days old (the bell ewe 26–30), so nobody greys on day 1,
   and ages are kept in the saved flock between journeys.
-- **The trough** (`pen.trough.food`, 1 unit = 1.0 hunger): penned sheep
-  hungrier than 0.18 take a place along it (one per metre), and the rest stand
-  aside and wait. They feed from late afternoon and wake at night to eat. A
+- **Foraging.** A dog gathers alfalfa and daisies just by running over them
+  (up to `T.forage.carryCap`, shown on its back) and tips them into a trough
+  by going up to it, from inside the pen or over the fence beside it
+  (`T.forage.tipR`). No bucket, no Hank run.
+- **The troughs** (`pen.troughs[i].food`, 1 unit = 1.0 hunger): each pen has
+  `T.forage.troughs` along the fence past the gate's latch post (four in the
+  bigger final pen). Penned sheep hungrier than 0.18 take a place along one
+  (one per metre, about 7 feeding at once) and the rest step back toward the
+  middle and wait. They feed from late afternoon and wake at night to eat. A
   ewe fed there the night she's courted is likelier to lamb (and twin).
+- **Salt** (`s.salt`, 0–1, `T.salt`). It runs down `T.salt.perDay`, so the
+  starting flock (0.55–0.8) runs out on day 3–4. Salty sheep are peppy
+  (`saltPep(s)`: +12% at full, normal at 0.5, −30% at none, applied to every
+  sheep speed); a sheep out of salt for `T.salt.deathHours` (30–54 h) dies of
+  it (`killSheep(s, 'salt')`). Salt rocks lie off the trail (one about 30 m
+  up the trail from each camp but the last, more in the desert and by the
+  ocean) and regrow in 2–3 days: run over one to pick up a lump, take it to
+  the pen's salt lick on the hinge side (`T.salt.lump` = enough for 10 sheep).
+  Penned sheep under `T.salt.want` go and lick it, three at a time.
 - **Coyote packs** gather out of sight on the far side of the flock and pick
   the loneliest or weakest sheep. A driver, ambushers and a decoy take up
   posts, then strike together. The carrier drags its catch off while the rest
