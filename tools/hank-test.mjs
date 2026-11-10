@@ -231,6 +231,25 @@ const r8 = await h.page.evaluate(() => {
 ok('Hank calls out a pack only once he can see it', r8.packUnseen === 0 && r8.packSeen === 1, r8);
 ok('…a coyote with a sheep only once he can see it', r8.grabUnseen === 0 && r8.grabSeen === 1, r8);
 ok('…and a cougar\'s eyes up its tree only from near enough', r8.eyesFar === 0 && r8.eyesNear === 1, r8);
+// Hank beds down by the campfire at night, and a coyote or cougar near him wakes him, shouting
+const r9 = await h.page.evaluate(() => {
+  const { G, HANK, T, step, pens, living, spawnPack, COUGARS } = GAME;
+  const run = s => { for (let i = 0; i < Math.round(s / 0.05); i++) step(0.05); };
+  const p = pens[0]; G.clock.day = 3; G.clock.hour = 21; HANK.asleep = false; HANK.upT = -99;
+  for (const c of [...G.coyotes]) { c.state = 'leave'; c.x = c.z = 1e4; }
+  for (const k of COUGARS) if (k.state !== 'perch' && k.state !== 'away') { k.state = 'away'; }
+  for (const s of living()) { s.pen = p; s.x = p.x + (Math.random() - 0.5) * 4; s.z = p.z + (Math.random() - 0.5) * 4; }
+  const g = (HANK.goal = null, GAME.step(0.05), HANK.goal); HANK.x = g.x; HANK.z = g.z;
+  let slept = false; for (let i = 0; i < 400 && !slept; i++) { G.clock.hour = 21; run(0.05); slept = HANK.asleep; }
+  const quiet = GAME.hank('good_dog', null, { force: true });
+  HANK.log.length = 0;
+  const pk = spawnPack(2, { howl: false }); for (const c of pk.members) { c.x = HANK.x + 8; c.z = HANK.z + 1; c.gx = c.x; c.gz = c.z; }
+  for (let i = 0; i < 20; i++) { G.clock.hour = 21; run(0.05); }
+  const yelled = HANK.log.filter(e => e.said && (e.id === 'here_they_come' || e.id === 'more_of_them')).length;
+  return { slept, quiet, woke: !HANK.asleep, yelled };
+});
+ok('Hank beds down at the campfire at night, quiet asleep', r9.slept && r9.quiet === false, r9);
+ok('…a coyote near him wakes him, shouting', r9.woke && r9.yelled === 1, r9);
 ok('no page errors', h.errors.length === 0, h.errors.slice(0, 5));
 await h.close();
 

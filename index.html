@@ -562,6 +562,7 @@ const T = {
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankCmdGap: 8,                   // s between whistled herding commands ("Come bye!")
+  hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
 };
 const WATER_Y = -3;
 
@@ -6108,7 +6109,8 @@ function drawOverlay(dt) {
 // HANK — the old shepherd. He ambles along the trail behind the dogs and
 // the flock (never in the way: a sheep standing right against him just
 // gets eased aside, no fright), warms himself at the campfire at night
-// with his lantern lit, and points his crook when he talks.
+// with his lantern lit, beds down on a mat by it at night (a predator near
+// wakes him, shouting), and points his crook when he talks.
 // His voice: recorded clips in audio/voice/<id>.mp3 (fetched the first
 // time they're needed, and warmed up once a journey starts), his real
 // whistles in audio/whistle/. A speech bubble over his head (pinned to the
@@ -6154,6 +6156,8 @@ const HANK = {
   // what he keeps an eye on
   cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99, starving: 0,
   thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
+  // asleep on his mat (sim); lieK 0 standing…1 lying (render)
+  asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -6215,8 +6219,16 @@ function makeHank() {
     P(inHand(CYL(0.09, 0.085, 0.04, 12).translate(0, -0.31, 0), -1, 0, -0.84, 0, 0.2), METAL)));
   const glassMat = new THREE.MeshBasicMaterial({ color: '#5a4a2a' });
   const glass = new THREE.Mesh(inHand(CYL(0.075, 0.075, 0.16, 12).translate(0, -0.21, 0), -1, 0, -0.84, 0, 0.2), glassMat); armL.add(glass);
+  root.rotation.order = 'YXZ';   // yaw, then tipped back onto the mat
   scene.add(root);
-  return { root, body, legs, torso, head, armL, armR, glass, glassMat };
+  // his bedroll and pillow: rolled out from his feet toward where his head goes
+  const mat = new THREE.Group(); mat.visible = false; scene.add(mat);
+  const roll = new THREE.Group(); mat.add(roll);
+  part(roll, merge(P(BOX(1.0, 0.06, 2.3), '#3f6e8c', { p: [0, 0.03, -1.05] }),
+    ...[-0.25, 0.25].map(x => P(BOX(0.09, 0.065, 2.3), '#d8473f', { p: [x, 0.035, -1.05] }))), { shadow: false });
+  const pillow = new THREE.Group(); pillow.position.set(0, 0.1, -1.95); mat.add(pillow);
+  part(pillow, P(SPH(10), '#f4ead2', { s: [0.42, 0.11, 0.24] }), { shadow: false });
+  return { root, body, legs, torso, head, armL, armR, glass, glassMat, mat, roll, pillow };
 }
 HANK.model = makeHank();
 // his lantern's light: added once, now, so the scene's light count never changes mid-game (no shader recompiles)
@@ -6246,7 +6258,7 @@ function hankGoal() {
 }
 function resetHank() {
   const hk = HANK, g = hankGoal();
-  Object.assign(hk, { goal: null, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
+  Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
@@ -6259,10 +6271,11 @@ function updateHank(dt) {
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
   const g = hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;
-  const spd = d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
+  if (G.mode !== 'play') hk.asleep = false;
+  const spd = hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
   // keep clear of the flock and of walls: steer round, don't push through
   let ax = 0, az = 0;
-  if (!g.noShy) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
+  if (!g.noShy && !hk.asleep) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
   const sd = sdfAt(hk.x, hk.z); if (sd < 2) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
   let tvx = dx / d * spd + ax * 1.5, tvz = dz / d * spd + az * 1.5;
   const tl = Math.hypot(tvx, tvz), cap = Math.max(spd, 1.5); if (tl > cap) { tvx *= cap / tl; tvz *= cap / tl; }
@@ -6281,7 +6294,7 @@ function updateHank(dt) {
   for (const dg of G.dogs) {
     const ex = dg.x - hk.x, ez = dg.z - hk.z, e = Math.hypot(ex, ez), m = T.hankR + T.dogR;
     if (dg.pounceT > 0 && e < 1.5 && hk.bumpCD <= 0 && G.mode === 'play') {   // pounced on: he staggers and grumbles
-      hk.stumble = 0.6; hk.bumpCD = 1.5; dg.pounceT = 0; dg.vx *= -0.3; dg.vz *= -0.3;
+      hk.stumble = 0.6; hk.bumpCD = 1.5; dg.pounceT = 0; if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }   // (woken up, too) dg.vx *= -0.3; dg.vz *= -0.3;
       burst(hk.x, hk.y + 1.6, hk.z, 10, '#fff3c0', { speed: 2.5, up: 2.5, size: 0.14 }); rumble(dg.player, 0.5, 0.5, 160);
       hank(pick(['watch_it', 'manners', 'not_me']), null, { force: true });
     }
@@ -6298,7 +6311,8 @@ function updateHank(dt) {
   }
   // which way he faces: where he's going, else toward the nearest dog (or the fire, or the camera on the title)
   const sp = Math.hypot(hk.vx, hk.vz);
-  if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
+  if (hk.asleep) { if ((hk.zzzT -= dt) <= 0) { hk.zzzT = T.hankNap.zzz; floatText('z', hk.x - Math.sin(hk.yaw) * 1.9, hk.y + 0.9, hk.z - Math.cos(hk.yaw) * 1.9, '#cfe3ff', 0.8); } }
+  else if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
   else { const f = (hk.talkT > 0 || !g.face) && G.dogs.length ? nearestDog(hk.x, hk.z).dog : g.face; hk.yaw = lerpA(hk.yaw, f ? Math.atan2(f.x - hk.x, f.z - hk.z) : Math.PI / 4, 1 - Math.exp(-dt * 2)); }
   hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt);
   if (G.mode === 'play') hankWatch(dt);
@@ -6313,6 +6327,7 @@ function hank(id, text, opts = {}) {
   if (opts.delay > 0) { hk.pending.push({ at: G.time + opts.delay, id, text, opts: Object.assign({}, opts, { delay: 0 }) }); return true; }
   const key = id || text, t = G.time;
   if (G.mode === 'title') return hankLog(id, text, false, 'title');
+  if (hk.asleep && NET.role !== 'guest') return hankLog(id, text, false, 'asleep');
   if (!opts.force && t - hk.lastSay < T.hankGap) return hankLog(id, text, false, 'gap');                     // he chats, but not constantly
   if (G.mode !== 'end') {
     if (key === hk.lastKey) return hankLog(id, text, false, 'again');                                         // never the same line twice in a row
@@ -6392,16 +6407,22 @@ function hankVolumeUI(el) {
 // ---------------- his model, lantern and bubble (every rendered frame) ----------------
 function syncHank(dt) {
   const hk = HANK, M = hk.model, sp = Math.hypot(hk.vx, hk.vz);
-  M.root.position.set(hk.x, hk.y, hk.z); M.root.rotation.y = hk.yaw;
+  // bedding down: the mat rolls out, then he lies back on it; startled awake he's up fast and rolls it away
+  hk.lieK = clamp(hk.lieK + (hk.asleep ? dt * 0.6 : -dt * 2), 0, 1);
+  const mk = clamp(hk.lieK * 2.5, 0, 1), lie = clamp((hk.lieK - 0.35) / 0.65, 0, 1), tip = lie * lie * (3 - 2 * lie);
+  M.mat.visible = mk > 0.01;
+  if (M.mat.visible) { M.mat.position.set(hk.x, groundY(hk.x, hk.z), hk.z); M.mat.rotation.y = hk.yaw; M.roll.scale.z = mk; M.pillow.scale.setScalar(clamp(mk * 5 - 4, 0.01, 1)); }
+  M.root.position.set(hk.x, hk.y + 0.3 * tip, hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
   hk.phase += dt * sp * 2.4;
   const k = Math.min(1, sp / 1.6), sw = Math.sin(hk.phase);
   M.legs[0].rotation.x = sw * 0.55 * k; M.legs[1].rotation.x = -sw * 0.55 * k;
-  M.torso.rotation.x = 0.14 + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7;
+  M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7;
   M.armL.rotation.x = -sw * 0.3 * k;
   M.body.position.y = Math.abs(sw) * 0.05 * k;
   hk.talkT = Math.max(0, hk.talkT - dt);
   let cx = -0.35 + sw * 0.12 * k, cz = 0;
   if (hk.talkT > 0) cx = -1.5;                                                     // points his crook while he talks
+  else if (tip > 0) cx = lerp(cx, 0.05, tip);                                      // crook laid along him asleep
   if (G.mode === 'end' && hk.celebrate) { cx = -2.7; cz = Math.sin(G.time * 8) * 0.35; }   // and waves it when you make it
   M.armR.rotation.x = lerp(M.armR.rotation.x, cx, 1 - Math.exp(-dt * 10)); M.armR.rotation.z = cz;
   M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0;
@@ -6459,6 +6480,7 @@ function onLambsBorn(born) {
 // a few times a second while you play: the herding commands, greedy grazers, a scattered flock, the bridge...
 function hankWatch(dt) {
   const hk = HANK;
+  hankNap(dt); if (hk.asleep) return;
   hankCommand(dt);
   hk.watchT -= dt; if (hk.watchT > 0) return; hk.watchT = 0.25;
   const t = G.time, out = []; for (const s of G.sheep) if (!s.dead && !s.grabbed && !s.pen) out.push(s);
@@ -6503,6 +6525,28 @@ function hankWatch(dt) {
   hankSpotPredators();   // coyotes and cougars, once he can see them
   // the whole flock's safe for the night: a word about the barn
   if (G.ff && !hk.barnHinted) { hk.barnHinted = true; hint('barn'); hank(null, "They're safe now. Come by the barn, if ye like, and give them names!", { force: true, delay: 5 }); }
+}
+// Night at the campfire: a quiet spell there and he beds down. Asleep he says nothing, until a coyote or cougar
+// he can see comes within T.hankNap.wakeR: up he gets and shouts it (hankSpotPredators), awake a while after.
+const HANK_COUGAR_UP = new Set(['down', 'stalk', 'leap', 'leapDog', 'maul', 'drag', 'vault', 'retreat']);
+function hankThreats(r) {
+  const hk = HANK, out = [], near = (x, z) => Math.hypot(x - hk.x, z - hk.z) < r;
+  for (const c of G.coyotes) if (c.state !== 'sleep' && c.state !== 'leave' && near(c.x, c.z) && hankSees(c.x, c.z)) out.push(c);
+  for (const k of COUGARS) if (HANK_COUGAR_UP.has(k.state) && near(k.x, k.z) && hankSees(k.x, k.z, k.y)) out.push(k);
+  return out;
+}
+function hankNap(dt) {
+  const hk = HANK, N = T.hankNap, g = hk.goal, near = hankThreats(N.wakeR);
+  if (near.length) hk.upT = G.time;
+  if (hk.asleep) {
+    if (!near.length && isNight()) return;
+    hk.asleep = false; hk.restT = 0; hk.watchT = 0;
+    for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
+    return;
+  }
+  const atFire = isNight() && g && g.face && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;
+  hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
+  if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
 // What Hank can see: within T.hankSight (less at night), with no hill in between (eye height 1.9 m). He only calls
 // out coyotes and cougars he can see: each pack once a sighting, a catch once, a cougar's eyes up its tree once a night.
@@ -7591,7 +7635,7 @@ const NET_TYPES = {
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b' },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b' },
     animate: hk => { hk.y = groundY(hk.x, hk.z); },
   },
 };
@@ -8818,7 +8862,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
-window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
