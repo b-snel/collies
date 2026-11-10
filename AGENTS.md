@@ -139,8 +139,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
-- **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
-  lumps go to the pen's lick.
+- **Salt** (`s.salt`) runs down slowly (~8 days); out too long = death. Camp
+  licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
+  the pen's lick.
 - **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
   death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Run
   over a bucket to carry it (one per dog), wade/swim to fill, walk up to any
