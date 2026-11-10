@@ -6,7 +6,7 @@
 //  --moveon: the flock (hunger 0.55) stands in the middle of a 16 m disc grazed bare, lush grass all round. Does it drift
 //    on as a group to better grass? Prints how far the centroid has moved, how spread it is (p90 distance from the
 //    centroid), how many are eating or have good grass within 2.5 m ("fed"), and how aligned the moving sheep's headings are (1 = all one way).
-//  --trough FOOD: a hungry flock shut in the valley pen at 18:30 with FOOD units in its trough (0 = none): how many feed
+//  --trough FOOD: a hungry flock shut in the valley pen at 18:30 with FOOD units over its troughs (0 = none): how many feed
 //    at once, how many wait, whether the feeders crowd, hunger and well-fed ewes at 21:00 and dawn, lambs born.
 import { open } from './harness.mjs';
 const args = process.argv.slice(2), moveon = args.includes('--moveon');
@@ -38,7 +38,7 @@ for (const v of variants) for (let k = 0; k < trials; k++) {
     const out = { v };
     if (trough !== null) {
       // a hungry flock shut in the valley pen at 18:30, with (or without) a trough of feed: who eats, how they queue, lambs at dawn
-      const pen = GAME.pens[1]; GAME.setGate(pen, false); if (pen.trough) pen.trough.food = trough || 0; else if (trough) pen.trough = { food: trough, cap: 12 };   // the pen's real trough
+      const pen = GAME.pens[1]; GAME.setGate(pen, false); GAME.fillTroughs(pen, trough || 0);   // spread over the pen's real troughs
       for (const s of G.sheep) { const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * (pen.R - 2); s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.hunger = s.lamb ? 0.3 : 0.35 + Math.random() * 0.3; }
       G.clock.hour = 18.5; d.x = pen.x + 30;
       const food0 = trough || 0; let maxAt = 0, maxWait = 0, close = 0, samples = 0, hunger21 = null, wellFed21 = null;
@@ -49,9 +49,9 @@ for (const v of variants) for (let k = 0; k < trials; k++) {
         for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) { samples++; if (Math.hypot(at[i].x - at[j].x, at[i].z - at[j].z) < 0.85) close++; }
         if (hunger21 === null && G.clock.hour >= 21 && G.clock.hour < 22) { hunger21 = +(adults().reduce((x, s) => x + s.hunger, 0) / adults().length).toFixed(2); wellFed21 = ewes().filter(s => s.hunger < T.breedHunger).length + '/' + ewes().length; }
       }
-      Object.assign(out, { trough: food0, foodLeft: pen.trough ? +pen.trough.food.toFixed(2) : 0, maxAtTrough: maxAt, maxWaiting: maxWait, troughPairsTouching: samples ? +(close / samples).toFixed(3) : 0,
+      Object.assign(out, { trough: food0, foodLeft: +GAME.troughFood(pen).toFixed(2), maxAtTrough: maxAt, maxWaiting: maxWait, troughPairsTouching: samples ? +(close / samples).toFixed(3) : 0,
         hunger21h: hunger21, ewesWellFed21h: wellFed21, hungerDawn: +(adults().reduce((x, s) => x + s.hunger, 0) / adults().length).toFixed(2), lambsBorn: G.stats.born });
-      pen.trough = undefined; Object.assign(T, keep); return out;
+      GAME.fillTroughs(pen, 0); Object.assign(T, keep); return out;
     }
     if (!moveon) {
       for (const s of G.sheep) { s.x = p.x + (Math.random() - .5) * 8; s.z = p.z + (Math.random() - .5) * 8; s.hunger = s.lamb ? 0.3 : 0.7; }
