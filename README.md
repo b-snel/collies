@@ -48,7 +48,7 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
   - Let go while moving to fling it, over a fence into a pen if you like.
   - A stubborn sheep can be hauled where it won't be driven.
   - You can grab a gate and drag it round.
-- **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to vault it. Dogs hop fences when they push into them; sheep and coyotes can't.
+- **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to slam it open or shut. Dogs hop fences when they push into them; sheep and coyotes can't.
 - **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
 
 ## Grazing, camps and nightfall

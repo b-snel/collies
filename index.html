@@ -360,7 +360,7 @@
     <span>Lie down</span><span>hold Ⓨ or LT</span><span>C · '</span>
     <span>Sprint</span><span>RT or RB</span><span>L-Shift · R-Shift</span>
     <span>Creep (gentle)</span><span>LB</span><span>Q · ;</span>
-    <span>Gates</span><span>walk into them to push</span><span>sprint to vault</span>
+    <span>Gates</span><span>walk into them to push</span><span>sprint to slam</span>
     <span>Hank’s barn</span><span>View ⧉</span><span>Tab</span>
   </div>
   <div id="titleExtras"><button id="tBarn" class="tbtn" type="button">🏚️ Hank’s barn<small>Tab · View</small></button><span class="hankVol"></span><button id="tHome" class="tbtn" type="button" hidden>📲</button></div>
@@ -4218,7 +4218,7 @@ function updateGate(p, dt) {
     if (Math.abs(diff) > del + 0.03) continue;
     touch = true;
     const side = diff > 0 ? 1 : -1, into = d.inMag > 0.5 ? -(d.wx * nP.x + d.wz * nP.z) * side : 0;
-    if (d.mode === 'sprint' && into > 0.45 && freeToHop(d)) { startHop(d, nP.x * side, nP.z * side, Math.max(7, T.dogSprint * 0.75)); vaultFx(d); continue; }   // sprinting: vault it
+    if (d.mode === 'sprint' && into > 0.45 && !d.holding && !(p.slamT > G.time)) { sprintGateSlam(p, d, side, r); continue; }   // sprinting: slam it open or shut
     if (r < 0.9 || (p.latched && !p.fresh)) continue;   // too near the hinge to swing, or just latched (needs a fresh shove)
     if (p.latched) { p.latched = false; SFX.creak(panOf(hx, hz), 0.24, 0.95); }
     p.pushedBy = d;
@@ -4254,7 +4254,7 @@ function updateGate(p, dt) {
     if (into < 0.45 || !freeToHop(d)) continue;
     d.leaning = true; d.leanT += dt;
     if (p.final && p.latched && G.finalArm > 0 && d.leanT > 0.3) { onGateClosed(p); continue; }
-    if (d.leanT > K.lean) { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
+    if (d.leanT > K.lean && d.mode !== 'sprint') { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
   }
 }
 function sweepGate(p, prev) {
@@ -4301,6 +4301,12 @@ function latchGate(p, speed) {
   shakeCam(0.1 + Math.min(0.2, speed * 0.03));
   for (const d of G.dogs) if (Math.hypot(d.x - p.gx, d.z - p.gz) < 8) rumble(d.player, 0.3, 0.5, 90);
   if (G.mode === 'play') onGateClosed(p);
+}
+// a sprint into the leaf slams it away from the dog: open, or shut (it latches as it swings through)
+function sprintGateSlam(p, d, side, r) {
+  p.w = -side * Math.min(T.gate.slam, T.dogSprint * 0.8 / Math.max(r, 0.9)); p.latched = false; p.auto = undefined; p.pushedBy = d; p.slamT = G.time + 0.5;
+  floatText('SLAM!', p.gx, p.y + 2.2, p.gz, '#ffd36b', 1.4); SFX.bonk(panOf(p.gx, p.gz), 0.3); SFX.creak(panOf(p.gx, p.gz), 0.25, 1.2);
+  shakeCam(0.2); rumble(d.player, 0.5, 0.4, 120);
 }
 // a pounce is too quick to push a gate: it slams it
 function pounceGateSlam(d, ox, oz) {
@@ -8479,7 +8485,7 @@ function netGuestEndMem() {
 // ---- pause (works offline too) ---------------------------------------------------------------------------
 // the controls, drawn for whatever was used last: an Xbox-style controller, or the keyboard (both layouts when two share it)
 function controlsHTML(dev) {
-  const gates = 'Gates: walk into them to push, sprint to vault.';
+  const gates = 'Gates: walk into them to push, sprint to slam.';
   if (dev === 'pad') {
     const L = (x, y, tx, ty, txt, a) => `<line x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" class="cdLine"/><text x="${tx + (a === 'end' ? -6 : 6)}" y="${ty + 5}" class="cdTxt" text-anchor="${a}">${txt}</text>`;
     const btn = (x, y, c, l) => `<circle cx="${x}" cy="${y}" r="13" fill="${c}" class="cdBtn"/><text x="${x}" y="${y + 5}" class="cdKey">${l}</text>`;
