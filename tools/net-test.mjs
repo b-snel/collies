@@ -44,7 +44,11 @@ async function openPage(query, { mutate = false } = {}) {
 const drawing = (P, on) => P.page.evaluate(on => { GAME.renderer.render = on ? window.__render : () => {}; }, on);
 const until = (P, fn, arg, ms = 20000) => P.page.waitForFunction(fn, arg, { timeout: ms, polling: 50 });
 async function joinAs(P, name, code) {
-  if (code) { await P.page.click('#netOpen'); await P.page.fill('#netCode', code); }
+  if (code) {
+    await P.page.click('#netOpen');
+    await P.page.waitForFunction(() => ['netName', 'netCode'].includes(document.activeElement && document.activeElement.id));   // the panel's autofocus lands first, or it steals fill's focus
+    await P.page.fill('#netCode', code);
+  }
   await P.page.fill('#netName', name);
   await P.page.click('#netJoinBtn');
 }
