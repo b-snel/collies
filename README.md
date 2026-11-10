@@ -2,7 +2,7 @@
 
 A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, to the Promised Land. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
-Live at **https://collies.bsnel.com**
+Live at **https://collies.app**
 
 ## Controls
 
@@ -118,7 +118,7 @@ It's a static site with one build step, which stamps in the commit it was built 
 - `vendor/peerjs.min.js`: PeerJS 1.5.5, loaded only when someone hosts or joins an online game. `?peerserver=host:port` points both browsers at your own PeerJS server.
 - `manifest.webmanifest`, `sw.js`, `icons/`: what makes it an installable app that works offline.
 - `build.js`: copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html`.
-- `vercel.json`: the build command, the output directory and the caching headers.
+- `wrangler.jsonc`, `_headers`: the Cloudflare Worker that serves `dist/`, and its caching headers.
 - `audio/`: Hank's voice clips and whistles. See [CREDITS.md](CREDITS.md).
 - `tools/`: a tiny static server and headless Playwright tests that drive the game through `window.GAME`. `AGENTS.md` lists them.
 
@@ -132,8 +132,6 @@ Then open http://localhost:8000. Add `?debug` for an FPS readout and cheat keys.
 
 ## Deploying
 
-**Cloudflare Workers** (production, `collies.app`): `wrangler.jsonc` serves `dist/` (built by `node build.js`), with headers from `_headers`. `collies.app` is a Workers custom domain (its `routes` entry), so Cloudflare makes the DNS record and certificate itself. Pushes to `main` deploy; branches get preview URLs.
-
-**Vercel** (old domain, `collies.bsnel.com`): the **Other** framework preset; `vercel.json` sets the build command and the output directory (`dist`). `collies.bsnel.com` has a `CNAME` record to `cname.vercel-dns.com`. Saved dogs and flocks live in each domain's `localStorage`, so they don't move across.
+**Cloudflare Workers** (production, `collies.app`): `wrangler.jsonc` serves `dist/` (built by `node build.js`), with headers from `_headers`. `collies.app` is a Workers custom domain (its `routes` entry), so Cloudflare makes the DNS record and certificate itself. Pushes to `main` deploy; branches get preview URLs (`<branch>-collies.<account>.workers.dev`). A branch that needs its own subdomain gets its own Worker: on that branch, rename the Worker in `wrangler.jsonc` and give it its own custom domain, then import the repo as a new Worker with that branch as production (see `original-fever-dream`). Its first build runs `main`, whose config claims `collies.app`: set the production branch before the first build, or move `collies.app` back to `collies` after.
 
 When `index.html`, anything in `vendor/` or the icons change, bump `CACHE` in `sw.js` so installed copies pick up the new files.
