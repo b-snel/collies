@@ -123,7 +123,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Age** (`s.age` days, `ageAtDawn`, `oldK(s)` from `T.oldDays`); dies of age
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
-  to tip in.
+  to tip in. The fence by the troughs can't be hopped (`byTrough`); tip over it.
 - **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
   weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
 - **Hungry shove on grass.** A hungry grazer barges a fuller one off better
