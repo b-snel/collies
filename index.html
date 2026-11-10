@@ -86,10 +86,12 @@
   .controls { margin-top:26px; display:grid; grid-template-columns:auto auto auto; gap:4px 18px; font-size:15px; background:var(--panel);
     padding:12px 20px; border-radius:16px; border:2px solid rgba(255,248,232,.6); text-align:left; }
   .controls .h { font-weight:700; opacity:.8; }
-  #end { background:rgba(10,15,40,.6); opacity:0; pointer-events:none; }
+  #end { background:rgba(10,15,40,.6); opacity:0; pointer-events:none; text-shadow:0 2px 0 rgba(0,0,0,.45), 0 0 18px rgba(0,0,0,.35); }
+  #eStars, #eStats, #eMem { display:none !important; }   /* end screen: just the flock count */
+  #eLine { font-size:clamp(56px, 10vw, 120px); font-weight:800; margin:14px 0 26px; }
   #end h1 { font-size:clamp(40px, 7vw, 80px); margin:0; }
   #end .stars { font-size:56px; letter-spacing:6px; color:#ffd36b; margin:8px 0; }
-  #end.cabo { background:linear-gradient(180deg, rgba(255,140,90,.7), rgba(255,200,110,.55) 55%, rgba(40,170,200,.7)); }
+  #end.cabo { background:linear-gradient(180deg, rgba(220,100,60,.88), rgba(225,150,70,.82) 55%, rgba(20,120,160,.88)); }
   #end .stats { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 22px; font-size:24px; margin:10px 0 18px; }
   .hidden { opacity:0 !important; pointer-events:none !important; }
   #fps { position:fixed; left:8px; bottom:8px; color:#fff; font:12px monospace; text-shadow:0 1px 0 #000; }
@@ -392,7 +394,7 @@
 <div id="end" class="screen">
   <h1 id="eTitle">🏖️ Cabo! 🌴</h1>
   <div class="stars" id="eStars">★★★</div>
-  <div id="eLine" style="font-size:34px;font-weight:700"></div>
+  <div id="eLine"></div>
   <div class="stats" id="eStats"></div>
   <div id="eMem"></div>
   <div class="press">Ⓐ / Enter ↻</div>
@@ -607,7 +609,7 @@ const T = {
   // to carry it (lets go: set down), wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
   // startFill: the first camp's trough starts this full. wade: thirst/h off a sheep swimming or with its nose in water. low: Hank/toast
   water: { perDay: 0.25, start: [0.05, 0.2], want: 0.25, full: 0.03, drinkRate: 3, cap: 12, bucket: 6, startFill: 1, deathHours: [36, 60],
-    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, tipR: 1.9, hold: 1.5, crowd: 4,
+    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, shore: [3, 5], shoreWall: 1.2, tipR: 1.9, hold: 1.5, crowd: 4,
     kick: { r: 0.75, k: 1.1, fric: 4, pounce: 14, up: 9, spill: 0.5, bounce: 0.35 } },   // kick: a dog running into a lying bucket shoves it (k× its speed), a pounce sends it flying (spills share). hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
@@ -5012,6 +5014,8 @@ function dogAtWater(d) {
   if (d.air) return !!d.air.swim;
   if (wetAt(d.x, d.z)) return true;
   for (let k = 0, r = T.water.reach; k < 8; k++) { const a = d.yaw + k * TAU / 8; if (wetAt(d.x + Math.sin(a) * r, d.z + Math.cos(a) * r)) return true; }
+  if (swimSdfAt(d.x, d.z) > T.water.shoreWall) return false;   // against the trail's edge: the shore can be a few m past it
+  for (const r of T.water.shore) for (let k = 0; k < 16; k++) { const a = d.yaw + k * TAU / 16; if (wetAt(d.x + Math.sin(a) * r, d.z + Math.cos(a) * r)) return true; }
   return false;
 }
 // what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
@@ -9082,7 +9086,7 @@ function finishGame(n) {
   $('eTitle').textContent = n > 0 ? '🏖️ Cabo! 🌴' : 'The flock is gone…';   // n > 0: only Cabo ends a journey well (VENDOR)
   $('end').classList.toggle('cabo', n > 0);
   $('eStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('eLine').textContent = n > 0 ? `🐑 ${st.start} → 🏖️ ${n} 🍹` : `🐑 ${st.start} → 0`;
+  $('eLine').textContent = `🐑 ${n}`;
   $('eStats').innerHTML = [[st.born, 'lambs'], [st.saved, 'rescued'], [G.clock.day, 'days']].filter(([v]) => v > 0).map(([v, t]) => `<span>${v} ${t}</span>`).join('');
   $('end').style.opacity = 1; $('end').style.pointerEvents = 'auto'; $('hud').classList.add('hidden');
   if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = finalPen; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
