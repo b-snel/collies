@@ -7377,7 +7377,7 @@ function netFrameStart(now, dt) {
   const adt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // the host's hit-stop, felt here too
   if (!G.paused) { G.time += adt; U.uTime.value = G.time; }
   const k = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-20 * dt);
-  for (const ty of NET_LIST) for (const o of ty.one ? [ty.one()] : ty.all()) { netSmooth(o, ty, k, ka); if (ty.animate && !G.paused) ty.animate(o, adt); }
+  for (const ty of NET_LIST) for (const o of ty.one ? [ty.one()] : ty.all()) { if (!(ty === NET_TYPES.dog && netPredFrame(o, netLocalOf(o.player.slot), dt))) netSmooth(o, ty, k, ka); if (ty.animate && !G.paused) ty.animate(o, adt); }
   return false;
 }
 function netFrameEnd(now) {
@@ -7442,6 +7442,58 @@ function netAnimCoyote(c, dt) {
   if (c.air) { c.air.spin = c.airSpin || 0; c.air.vy = c.vlift || 0; }
 }
 
+// ---- guest: its own dogs answer at once ------------------------------------------------------------------
+// Each 'i' carries a number q; every snapshot acks, per dog, the last q the host got and ms it has run on it.
+// The guest takes the host's state, replays its own inputs since then (updateDog's walking only), and eases
+// what it draws onto that. Airborne, stunned, pouncing, hopping or on a gate: the host's state, smoothed.
+const NET_PRED = ['vx', 'vz', 'mode'];   // fields prediction writes; the host's last values wait in d._hv
+function netPredKind(d) {
+  const h = d.holding; if (!h) return '';
+  return G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : null;
+}
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !(d.stunT > 0) && !(d.pounceT > 0) && !(d.hopT > 0) && netPredKind(d) !== null; }
+function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
+  const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
+  const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
+  const hk = d.holding ? T.grabKinds[netPredKind(d)] : null;
+  const mode = h.lie && !hk ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
+  let max = mode === 'sprint' ? T.dogSprint : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk;
+  if (hk) max *= hk.speed;
+  const k = Math.min(1, (mode === 'lie' ? 22 : T.dogAccel) * dt);
+  d.vx += (wx * max - d.vx) * k; d.vz += (wz * max - d.vz) * k;
+  d.x += d.vx * dt; d.z += d.vz * dt;
+  collideWorld(d, T.dogR); collideFences(d, T.dogR);
+  d.mode = mode;
+}
+function netPredFrame(d, L, dt) {   // false: smooth it as usual
+  const a = L && L.ack;
+  if (!a || !L.hist.length || !d._hv || !netPredOK(d)) { if (d._pp) { d._pp = null; for (const f of NET_PRED) d[f] = d._hv[f]; } return false; }
+  const now = NET.now, dx = d.x, dz = d.z;
+  let P = d._pp;
+  if (!P || a.fresh) {   // the host's word, then our inputs since
+    a.fresh = false;
+    const e = L.hist.find(e => e.q === a.q);
+    let t = clamp(e ? e.t + a.ms : now - NET.rtt, now - 1000, now);
+    d.x = d._nx; d.z = d._nz; d.vx = d._hv.vx; d.vz = d._hv.vz;
+    let i = 0; while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
+    while (t < now - 1) {
+      const st = Math.min(1 / 60, (now - t) / 1000);
+      while (i + 1 < L.hist.length && L.hist[i + 1].t <= t) i++;
+      netPredMove(d, L.hist[i].h, st); t += st * 1000;
+    }
+    P = d._pp = { x: d.x, z: d.z, vx: d.vx, vz: d.vz, ex: dx - d.x, ez: dz - d.z };   // ex, ez: drawn − predicted, eased away
+  } else {
+    d.x = P.x; d.z = P.z; d.vx = P.vx; d.vz = P.vz;
+    netPredMove(d, L.hist[L.hist.length - 1].h, dt);
+    P.x = d.x; P.z = d.z; P.vx = d.vx; P.vz = d.vz;
+  }
+  const k = Math.exp(-8 * dt); P.ex *= k; P.ez *= k;
+  if (P.ex * P.ex + P.ez * P.ez > 16) P.ex = P.ez = 0;
+  d.x = P.x + P.ex; d.z = P.z + P.ez;
+  if (Math.hypot(d.vx, d.vz) > 0.4) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * (d.mode === 'lie' ? 4 : 14)));
+  return true;
+}
+
 // ---- host: snapshots ----------------------------------------------------------------------------------
 function netSnapTick() {
   const live = NET.seats.filter(s => s.conn && s.conn.open);
@@ -7472,6 +7524,7 @@ function netSnapTick() {
     }
     if (!any && !anyR && !fxq.length && !kf) continue;
     const m = { t: 's', c }; if (anyR) m.r = r; if (fxq.length) m.e = fxq; if (kf) m.kf = 1;
+    const a = s.subs.filter(u => u.player && u.q).map(u => [u.player.slot, u.q, Math.round(performance.now() - u.inAt)]); if (a.length) m.a = a;   // acks for prediction
     netSendSeat(s, m, 'snap');
   }
 }
@@ -7640,7 +7693,7 @@ function netFromGuest(s, m) {
       const h = m.h; if (!h || typeof h !== 'object' || !u) break;
       const o = {}; for (const k in NET_HELD) if (k in h) o[k] = typeof NET_HELD[k] === 'number' ? clamp(+h[k] || 0, -1, 1) : !!h[k];
       const l = Math.hypot(o.mx || 0, o.my || 0); if (l > 1) { o.mx /= l; o.my /= l; }
-      u.held = o; u.inAt = performance.now(); break;
+      u.held = o; u.inAt = performance.now(); u.q = +m.q || 0; break;
     }
     case 'e': {
       const k = String(m.k);
@@ -7760,7 +7813,14 @@ function netFromHost(m) {
       netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on another controller, or the other side of the keyboard.` : '');
       break;
     }
-    case 's': if (NET.inRoom) netApplySnap(m); break;
+    case 's': {
+      if (!NET.inRoom) break;
+      for (const d of G.dogs) if (d._hv) for (const f of NET_PRED) d[f] = d._hv[f];   // the host's values, for deltas to land on
+      netApplySnap(m);
+      for (const d of G.dogs) { d._hv = {}; for (const f of NET_PRED) d._hv[f] = d[f]; }
+      if (Array.isArray(m.a)) for (const [slot, q, ms] of m.a) { const L = netLocalOf(slot); if (L) L.ack = { q, ms: +ms || 0, fresh: true }; }
+      break;
+    }
     case 'g': netGrassDelta(m); break;
     case 'G': netGrassDump(m); break;
     case 'l': NET.roster = Array.isArray(m.list) ? m.list.slice(0, 5) : []; NET.you = Array.isArray(m.you) ? m.you.map(v => v | 0) : [m.you | 0]; NET.uiKey = ''; break;
@@ -7893,7 +7953,7 @@ function netGuestGrave(id, f) {
 // a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
 // the same screen joins like local co-op (Ⓐ on another controller, or the other side of the keyboard) and gets
 // a dog of their own: from then on each player has just their own device.
-function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0 }; }
+function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0, q: 0, hist: [], ack: null }; }
 function netLocalOf(slot) { if (NET.role !== 'guest' || !(slot >= 0)) return null; for (const L of NET.locals) if (L.slot === slot) return L; return null; }
 const netSameDev = (L, dev) => L.used && L.kind === dev.kind && L.index === dev.index;
 function netGuestInput(now) {
@@ -7928,7 +7988,11 @@ function netGuestInput(now) {
     if (!live) continue;
     const h = {}; for (const key in NET_HELD) { const v = r[key]; h[key] = typeof NET_HELD[key] === 'number' ? Math.round((+v || 0) * 100) / 100 : !!v; }
     const hk = JSON.stringify(h), p = k || undefined;
-    if (hk !== L.inKey ? now - L.inAt >= 16 : now - L.inAt >= 400) { L.inKey = hk; L.inAt = now; netSend(p ? { t: 'i', h, p } : { t: 'i', h }); }
+    if (hk !== L.inKey ? now - L.inAt >= 16 : now - L.inAt >= 400) {
+      L.inKey = hk; L.inAt = now; const q = L.q = (L.q || 0) + 1;
+      L.hist.push({ q, t: now, h }); while (L.hist.length > 2 && L.hist[1].t < now - 1500) L.hist.shift();   // for netPredFrame
+      netSend(p ? { t: 'i', h, q, p } : { t: 'i', h, q });
+    }
     for (const e of NET_EDGES) if (r[e]) netSend(p ? { t: 'e', k: e, p } : { t: 'e', k: e });
   }
 }
