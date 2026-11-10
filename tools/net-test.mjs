@@ -229,18 +229,17 @@ try {
   const sleepers = await Promise.all([A, B].map(X => X.page.evaluate(() => GAME.G.coyotes.filter(c => c.state === 'sleep').length)));
   check('coyotes asleep in their dens show asleep on the guest too', sleepers[0] === sleepers[1], { host: sleepers[0], guest: sleepers[1] });
 
-  // ---------------------------------------------------------------- forage: picked plants, the bucket and the trough reach the guest
+  // ---------------------------------------------------------------- forage: picked plants, salt, what a dog carries, the troughs and lick reach the guest
   await A.page.evaluate(() => {
-    const { PLANTS, BUCKETS, pens } = GAME;
+    const { PLANTS, SALT_ROCKS, pens, G } = GAME;
     for (const p of PLANTS.slice(0, 5)) { p.picked = true; p.regrowAt = 1e9; }
-    const b = BUCKETS[1]; b.state = 'ground'; b.x += 3; b.z += 2; b.fill = 2.5;
-    pens[1].trough.food = 3.2;
+    SALT_ROCKS[0].taken = true; SALT_ROCKS[0].regrowAt = 1e9;
+    G.dogs[0].greens = 2.5; G.dogs[0].salt = 1;
+    pens[1].troughs[0].food = 3.2; pens[1].troughs[2].food = 1.5; pens[1].lick.salt = 7;
   });
   await sleep(1200);
-  const fg = await B.page.evaluate(() => { const { PLANTS, BUCKETS, pens } = GAME; const b = BUCKETS[1]; return { picked: PLANTS.slice(0, 5).filter(p => p.picked).length, bState: b.state, fill: b.fill, trough: pens[1].trough.food }; });
-  const fh = await A.page.evaluate(() => { const b = GAME.BUCKETS[1]; return { x: b.x, z: b.z }; });
-  const fgPos = await B.page.evaluate(() => { const b = GAME.BUCKETS[1]; return { x: b.x, z: b.z }; });
-  check('forage reaches the guest: picked plants, a bucket set down (and how full), the trough', fg.picked === 5 && fg.bState === 'ground' && Math.abs(fg.fill - 2.5) < 0.05 && Math.abs(fg.trough - 3.2) < 0.05 && Math.hypot(fh.x - fgPos.x, fh.z - fgPos.z) < 0.2, { ...fg, posErr: r3(Math.hypot(fh.x - fgPos.x, fh.z - fgPos.z)) });
+  const fg = await B.page.evaluate(() => { const { PLANTS, SALT_ROCKS, pens, G } = GAME, d = G.dogs.find(o => o.player.slot === 0); return { picked: PLANTS.slice(0, 5).filter(p => p.picked).length, salt: SALT_ROCKS[0].taken, greens: d && d.greens, carriesSalt: d && d.salt, troughs: pens[1].troughs.map(t => t.food), lick: pens[1].lick.salt }; });
+  check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 2.5) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
 
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });
