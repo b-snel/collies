@@ -131,7 +131,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   every night (held up only by a dog barking under its tree, `treedR`), lambs first,
   never rams; pounce or bump drops the sheep; vaults pen fences. `s.grabbed`
   may be a cougar (`k.isCougar`).
-- **Hank calls out only what he sees** (`hankSees`).
+- **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
+  sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
+  him shouting.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
   `localStorage['collies.dogs.v1']`.
