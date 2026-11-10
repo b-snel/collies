@@ -485,12 +485,13 @@ const T = {
   courtHour: 16, wooTime: 2.0, courtCd: 1.0, lambChance: 0.5, twinChance: 0.15,
   lambRest: 3,           // days a ewe rests after lambing before she can be courted again
   // the troughs (pen.troughs[i].food: 1 unit takes 1.0 off one sheep's hunger): penned sheep feed there from late afternoon and through the night
-  troughWant: 0.18, troughFull: 0.06,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
+  troughWant: 0.1, troughFull: 0.01,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
   troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
+  shove: { r: 4.2, cd: 1, win: 0.85, kick: 3.2, bumpCd: 1.2 },   // a sheep without a place barges a weaker one (smaller, older, a lamb, less hungry; rams win) off the trough/lick within r m
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   penStillSpd: 1.2, penStillR: 3,   // a dog slower than this in a pen only shoos penned sheep within penStillR (they keep feeding)
-  troughWake: 0.08,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
+  troughWake: 0.2,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
   flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
   // dogs
   dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
@@ -551,7 +552,7 @@ const T = {
   // salt: rocks of it along the trail. Run over one to pick up a lump, take it to a pen's salt lick. s.salt (0..1) runs
   // down every day; salty sheep are peppy (boost at 1, normal at mid), a sheep out of salt slows (slow at 0) and, left
   // without for deathHours, dies of it. Penned sheep under want go and lick till they're at full.
-  salt: { perDay: 0.22, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.85, full: 0.95, lickRate: 0.8,
+  salt: { perDay: 0.17, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, deathHours: [30, 54], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
@@ -2419,8 +2420,26 @@ function claimTrough(s) {
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
   spots.forEach((q, i) => { if (p.feedBy[i] || q.tr.food <= 0.01) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return false;
+  if (best < 0) return barge(s, spots, p.feedBy, 'slot', 'trough');
   p.feedBy[best] = s; s.slot = best; s.state = 'trough'; s.troughT = 0; s.troughBest = 1e9; return true;
+}
+// how hard a sheep shoves at the trough: size, rams, hunger; lambs and old ones lose
+const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3);
+function barge(s, spots, by, key, state) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place
+  if ((s.shoveCd || 0) > G.time) return false;
+  let bi = -1, bv = 1e9;
+  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
+  if (bi < 0) return false;
+  s.shoveCd = G.time + T.shove.cd * rnd(0.6, 1.4);
+  if (shoveStr(s) * rnd(0.7, 1.3) < bv * T.shove.win) return false;
+  G.shoves = (G.shoves || 0) + 1;
+  const o = by[bi], dx = o.x - s.x, dz = o.z - s.z, dl = Math.hypot(dx, dz) || 1;
+  o.vx += dx / dl * T.shove.kick; o.vz += dz / dl * T.shove.kick; o.hopV = Math.max(o.hopV || 0, 1.6);
+  o.state = 'idle'; o.thinkT = rnd(0.6, 1.4); o.troughCd = T.shove.bumpCd; o.shoveCd = G.time + rnd(0.5, 1.5);   // shoved off: it'll be back, shoving
+  if (Math.random() < 0.6) baaAt(o, 0.4, o.lamb ? 1.3 : 1.12);
+  s.hopV = Math.max(s.hopV || 0, 1.2);
+  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+  return true;
 }
 function claimLick(s) {
   const p = s.pen; troughSpots(p);
@@ -2428,7 +2447,7 @@ function claimLick(s) {
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
   p.lickSpots.forEach((q, i) => { if (p.lickBy[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return false;
+  if (best < 0) return barge(s, p.lickSpots, p.lickBy, 'lslot', 'lick');
   p.lickBy[best] = s; s.lslot = best; s.state = 'lick'; s.troughT = 0; s.troughBest = 1e9; return true;
 }
 function decideCalm(s, nb, night) {
@@ -2443,7 +2462,7 @@ function decideCalm(s, nb, night) {
     s.state = 'wait'; s.tx = s.x; s.tz = s.z;
     const rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
     if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
-      s.tx = c.x + c.ax * u * 0.6 + c.nx * 4.2; s.tz = c.z + c.az * u * 0.6 + c.nz * 4.2;
+      const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
       if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
     }
     return;
