@@ -513,7 +513,8 @@ const T = {
   penFedDay: 0.5, penFedDusk: 0.35,   // hunger above which the pen stops pulling: 0.5 by day, 0.85 at nightfall
   penHome: { from: 13, r: 0.8, w: 1.2, stress: 0.75, bark: 0.85, flee: 1.5 },   // afternoon → night (0…1): pen pull reaches r× further, w× stronger, stress counts less; a bark/flight bends toward the gate
   penTroughPull: 0.8,    // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
-  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12, starve: 0.7 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in (troughs only past starve hunger)
+  troughDraw: { r: 40, w: 2, hunger: 0.35, water: 3 },   // ...and one hungrier than hunger (or thirstier than water.want: water × thirst) from r m, any time of day: w × hunger vs grazing
+  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in but hungry or thirsty ones (troughDraw)
   bellR: 25,
   cornerPress: 0.5, cornerSpd: 1.2, cornerWarn: 0.45, cornerT: 0.75, breakSpd: 11, breakT: 0.6, breakCd: 1.8, cornerStun: 0.55,
   startRams: 2, ramScale: 1.32, ramRadius: 0.66, ramPressR: 0.8, ramPressK: 0.7, ramIrk: 0.2, ramDogR: 10,
@@ -2466,12 +2467,16 @@ function penPull(s) {
   if (calmK < 0.05) return null;
   let best = null, bw = 0;
   for (const p of pens) {
-    if (p.gateT < 0.5 || penRush(p) || morningOut(p)) continue;
-    const fedK = troughHas(p) ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
-    if (fedK <= 0) continue;
+    if (p.gateT < 0.5 || penRush(p)) continue;
+    const food = troughHas(p), eat = food && s.hunger > T.troughDraw.hunger, mOut = morningOut(p);   // alfalfa in the troughs: hungry ones come for it any time of day
+    const drink = waterHas(p) && s.thirst > T.water.want;   // WATER: so do thirsty ones
+    if (mOut && !eat && !drink) continue;
+    const fedK = food ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
+    if (fedK <= 0 && !drink) continue;
     const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = (T.penPullR + T.penPullRF * pF) * (1 + T.penHome.r * hk);
-    if (gd > R) continue;
-    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk);
+    let w = gd < R && !mOut ? (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk) : 0;
+    if (eat && gd < T.troughDraw.r) w = Math.max(w, (1 - 0.6 * gd / T.troughDraw.r) * T.troughDraw.w * s.hunger * calmK);   // the hungrier, the stronger (beats grazing)
+    if (drink && gd < T.troughDraw.r) w = Math.max(w, (1 - 0.6 * gd / T.troughDraw.r) * T.troughDraw.water * s.thirst * calmK);   // the thirstier, the stronger
     if (w > bw) { bw = w; best = p; }
   }
   if (!best) return null;
@@ -2740,12 +2745,14 @@ function waitBy(s, Cs, crowd = 0) {
 }
 function decideCalm(s, nb, night) {
   s.rush = false;
-  if (s.pen && penRush(s.pen)) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
+  const eatIn = s.pen && troughHas(s.pen) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull);   // food in the trough: eat first, then out
+  const drinkIn = s.pen && waterHas(s.pen) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full);   // WATER: same for a drink
+  if (s.pen && penRush(s.pen) && !eatIn && !drinkIn) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
   // WATER: penned and thirsty with water in the trough: drink, first if it's thirstier than hungry (a sleeping one gets up now and then to)
-  const drink = s.pen && waterHas(s.pen) && (!morningOut(s.pen) || s.thirst > T.morningRush.starve) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full) && (s.state !== 'sleep' || Math.random() < T.troughWake);
+  const drink = drinkIn && (s.state !== 'sleep' || Math.random() < T.troughWake);
   if (drink && s.thirst >= s.hunger && claimWater(s)) return;
   // penned and hungry with food in the trough: feed (a sleeping one gets up now and then to)
-  if (s.pen && troughHas(s.pen) && troughTime(s.pen) && (!morningOut(s.pen) || s.hunger > T.morningRush.starve) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
+  if (eatIn && troughTime(s.pen) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
     if (claimTrough(s)) return;
     if (drink && claimWater(s)) return;   // no place free at the trough: drink meanwhile
     if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // ...or lick the salt
