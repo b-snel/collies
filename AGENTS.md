@@ -118,6 +118,8 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
 - **Rams** are stubborn and charge. They target coyotes first, otherwise a dog
   leaning on them. A bark during the windup calls it off. Coyotes never take a
   ram, and lambs need a ram penned with the ewes overnight.
+  A punted ram lands dazed (`T.ramPuntDazed`) and holds a grudge: it comes
+  back for that dog only after `T.ramGrudgeCd`, and only if the dog's still near.
 - **Grass** lives on the 2 m vertex grid, uploaded as an R8 texture that both
   the terrain and the tufts sample: that texture is the whole overgrazing
   visual. One in-game hour is 10 real seconds. Staying too long overgrazes the

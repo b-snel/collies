@@ -387,6 +387,7 @@ const T = {
   ramDogFromDay: 2,      // on day 1 a ram only charges a dog that provokes it (punt, shake, holding on): new players learn the drive first
   ramCoyoteR: 7, ramBonk: 0.8, ramCoyoteCd: [12, 18],   // rams defend the flock, but they don't win the night on their own
   ramWindup: 0.9, ramWindupProvoked: 0.6, ramCharge: 14, ramChargeT: 1, ramHitR: 1.5, ramHitStun: 1.1, ramDazed: 1.8, ramCd: [10, 15], ramBarkCd: 8,
+  ramPuntDazed: 2.2, ramGrudgeCd: [5, 8],   // a punted ram lands seeing stars, then bears a grudge: it comes for that dog (with a full windup) only after the cooldown, if it's still near
   courtHour: 16, wooTime: 2.0, courtCd: 1.0, lambChance: 0.5, twinChance: 0.15,
   lambRest: 3,           // days a ewe rests after lambing before she can be courted again
   // the trough (pen.trough.food: 1 unit takes 1.0 off one sheep's hunger): penned sheep feed there from late afternoon and through the night
@@ -2176,6 +2177,10 @@ function provokeRam(s, dog) {
 function ramStep(s, dt) {
   if (s.rs === 'idle') {
     s.rcd -= dt;
+    if (s.rcd <= 0 && s.grudge) {   // punted earlier: settle the score now, if that dog's still about
+      const g = s.grudge; s.grudge = null;
+      if (s.state !== 'sleep' && !g.gone && Math.hypot(g.x - s.x, g.z - s.z) < T.ramDogR) { startWindup(s, g, T.ramWindup); return true; }
+    }
     if (s.rcd <= 0 && s.state !== 'sleep' && s.breakT <= 0) { const t = ramTarget(s); if (t) startWindup(s, t, isDogT(t) ? T.ramWindup : T.ramWindupProvoked); else s.rcd = 1.2; }
     if (s.rs === 'idle') return false;
   }
@@ -2230,7 +2235,7 @@ function ramStep(s, dt) {
   if (s.rs === 'dazed') {
     RAMV.acc = 6;
     s.sparkT -= dt; if (s.sparkT <= 0) { s.sparkT = 0.2; const a = G.time * 6; burst(s.x + Math.cos(a) * 0.4, s.y + 1.45 * s.scale, s.z + Math.sin(a) * 0.4, 1, '#ffe14d', { speed: 0.5, up: 0.6, size: 0.12, life: 0.45, grav: 0 }); }
-    s.rt -= dt; if (s.rt <= 0) { s.rs = 'idle'; s.rcd = rnd(7, 12); s.state = 'idle'; s.alert = 0; return false; }
+    s.rt -= dt; if (s.rt <= 0) { s.rs = 'idle'; s.rcd = s.grudge ? rnd(T.ramGrudgeCd[0], T.ramGrudgeCd[1]) : rnd(7, 12); s.state = 'idle'; s.alert = 0; return false; }
     return true;
   }
   s.rs = 'idle'; return false;
@@ -2387,7 +2392,7 @@ function updateSheep(dt, dtH) {
     let dX = 0, dZ = 0, spd = 0, acc = 4, straight = false;
     const run = (s.lamb ? T.lambRun : T.sheepRun) * (s.hunger >= 1 ? 0.7 : 1) * (s.trait === 'stubborn' ? 0.88 : 1) * (1 - T.oldSlow * oldK(s)) + pk * T.panicRun;
     const pp = penPull(s);
-    if (s.ram && s.rs !== 'idle' && (s.pen || !play)) { s.rs = 'idle'; s.rcd = 4; s.state = 'idle'; }   // charged into a pen: penned
+    if (s.ram && (s.pen || !play)) { s.grudge = null; if (s.rs !== 'idle') { s.rs = 'idle'; s.rcd = 4; s.state = 'idle'; } }   // charged into a pen: penned
     if (s.ram && !s.lamb && play && !s.pen && ramStep(s, dt)) { dX = RAMV.x; dZ = RAMV.z; spd = RAMV.spd; acc = RAMV.acc; straight = RAMV.straight; }
     else if (s.breakT > 0) { s.breakT -= dt; s.state = 'flee'; dX = s.bdx; dZ = s.bdz; spd = T.breakSpd; acc = 16; straight = true; s.alert = 3.5; }
     else if (s.fear > 0.03 || s.panic > 0.25) {
@@ -3116,7 +3121,7 @@ function landSheep(s, impact) {
       if (a.kind === 'punt' || a.kind === 'carom') sayOnce('hole-in-one', 'what_shot', 'What a shot!');
     }
   }
-  if (a.provoke) provokeRam(s, a.provoke);   // a punted ram gets up and comes for you
+  if (a.provoke && s.ram && !s.lamb && !s.pen && !s.dead) { daze(s, T.ramPuntDazed, null); s.grudge = a.provoke; }   // a punted ram lands seeing stars, then comes for you a while later (not straight away)
   if (a.kind === 'launch') sayOnce('from-sky', 'from_sky', 'Sheep from the sky?!');
 }
 // a flying sheep caroms into other sheep, bowls over coyotes and knocks over dogs
