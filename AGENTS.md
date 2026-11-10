@@ -63,6 +63,7 @@ that touch what you changed, and report their numbers.
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
 | `node tools/gateway-sim.mjs` | driving the flock into a pen and out again through a gate swung in or out: does anyone stall at the gate? |
+| `node tools/cluster-sim.mjs [structure\|merge\|corner\|cost] [--trials N]` | how a grazing flock breaks into knots (sizes, share alone, spacing, gaps), calm walking speeds, a loner and a small knot drifting to the big group, sheep getting out of a rock corner, off a river bank and out of the back of a pen, the cost of 60 sheep per step |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
@@ -98,6 +99,20 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   with the share already inside.
 - **Cornered sheep break out.** Pressed hard but not moving → a warning bleat →
   a burst past the dog.
+- **Knots and sheep gravity.** Every 0.5 s the free sheep are clustered into
+  knots (single link at 3.6 m, split above 6). Grazers keep their knot loosely
+  together and knots keep a gap from each other. Knots within 7 m of each other
+  form a group with no pull inside it; a knot off on its own is pulled toward
+  each other group by its whole size over the distance (`T.grav*`), and a lone
+  sheep heads for the nearest knot. This replaced the old hub/stray regrouping.
+- **Sheep find their way.** A calm sheep that's trying to go somewhere but has
+  barely moved for 0.7 s (no dog on it) picks reachable open ground and walks
+  an A* path there (`startUnstick`). Walking to grass, rejoining, moving on and
+  walking into the pen use A* too when the target isn't in line of sight
+  (`sheepNav`, at most one search per step, paths cached).
+- **Calm but brisk.** Walking to grass, rejoining, moving on and walking to the
+  pen go at a brisk walk (`T.calmBrisk` × walk) or a trot when far off or out
+  of sight. Grazing itself stays slow.
 - **Rams** are stubborn and charge. They target coyotes first, otherwise a dog
   leaning on them. A bark during the windup calls it off. Coyotes never take a
   ram, and lambs need a ram penned with the ewes overnight.
