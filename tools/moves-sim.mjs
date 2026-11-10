@@ -83,6 +83,34 @@ const tests = {
       return r;
     });
   },
+  // 1d. Ⓨ: a dog jumping as another pounces into it isn't punted; a sprinting jump is a long vault
+  async jump() {
+    return h.page.evaluate(() => {
+      const { G, pathPoint } = GAME; H.reset();
+      if (G.dogs.length < 2) GAME.joinPlayer({ kind: 'bot', index: 1 });
+      const d = H.d(), o = G.dogs[1], P = pathPoint(330, 0), p2 = G.players[1];
+      for (const s of G.sheep) H.place(s, P.x - P.tx * 40, P.z - P.tz * 40);
+      H.place(d, P.x, P.z); H.place(o, P.x + P.tx * 3, P.z + P.tz * 3); d.yaw = Math.atan2(P.tx, P.tz);
+      p2.bot = { jump: true }; GAME.step(0.025); p2.bot = {};
+      H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
+      H.run(1.5);
+      const dodged = GAME.MV.dogPunts === 0 && !o.air;
+      // standing hop: stays put; sprint + Ⓨ: a vault
+      H.reset(); H.place(d, P.x, P.z);
+      p2.bot = {}; H.place(o, P.x - P.tx * 30, P.z - P.tz * 30);
+      H.p.bot = { jump: true }; GAME.step(0.025); H.p.bot = {};
+      const hopDur = d.hopT; let x0 = d.x, z0 = d.z; H.run(0.7);
+      const hop = H.r(Math.hypot(d.x - x0, d.z - z0));
+      H.place(d, P.x, P.z); H.run(0.3);
+      H.p.bot = H.to(P.tx, P.tz, { sprint: true }); H.run(1.2);
+      H.p.bot = H.to(P.tx, P.tz, { sprint: true, jump: true }); GAME.step(0.025);
+      const vaultDur = d.hopT, vaultH = d.hopH; x0 = d.x; z0 = d.z;
+      H.p.bot = {}; H.run(vaultDur);
+      const vault = H.r(Math.hypot(d.x - x0, d.z - z0));
+      return { dodged, hop, hopDur: H.r(hopDur), vault, vaultDur: H.r(vaultDur), vaultH,
+        ok: dodged && hop < 0.5 && hopDur > 0.4 && vault > 8 && vaultH > 1.6 };
+    });
+  },
   // 2. a punted sheep caroms down a line of sheep
   async caroms() {
     return h.page.evaluate(() => {
