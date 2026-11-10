@@ -14,7 +14,7 @@ const r1 = await h.page.evaluate(() => {
   return { n: DIGS.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, minSdf: Math.min(...DIGS.map(d => sdfAt(d.x, d.z))),
     nearCamp: DIGS.filter(d => CAMPS.some(c => Math.hypot(d.x - c.x, d.z - c.z) < c.R + 5)).length };
 });
-ok(`${r1.n} dig spots along the trail`, r1.n >= 10 && r1.n <= 22, r1);
+ok(`${r1.n} dig spots along the trail`, r1.n >= r1.len / 90 && r1.n <= r1.len / 40, r1);   // about one every T.dig.every m
 ok('they run from the start to the end', r1.first < 100 && r1.last > r1.len - 150, r1);
 ok('none in a rock or a camp', r1.minSdf > 2 && r1.nearCamp === 0, r1);
 

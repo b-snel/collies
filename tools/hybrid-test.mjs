@@ -94,7 +94,8 @@ try {
 
   // ---------------------------------------------------------------- full: no third browser, and no fifth dog from the guest's sofa
   const C = await openPage(`?debug${PS}`);
-  await C.page.click('#netOpen'); await C.page.fill('#netCode', code); await C.page.fill('#netName', 'Pip'); await C.page.click('#netJoinBtn');
+  await C.page.click('#netOpen'); await C.page.waitForFunction(() => ['netName', 'netCode'].includes(document.activeElement && document.activeElement.id));   // after the panel's autofocus
+  await C.page.fill('#netCode', code); await C.page.fill('#netName', 'Pip'); await C.page.click('#netJoinBtn');
   await until(C, () => NET.statusErr, null, 25000);
   check('a third browser is turned away at 4 dogs', await C.page.evaluate(() => /full/.test(NET.status)), { msg: await C.page.evaluate(() => NET.status) });
   await C.ctx.close();

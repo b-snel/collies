@@ -2,7 +2,7 @@
 //   node tools/net-test.mjs [--shots DIR] [--quick]
 // PEERSERVER=host:port uses your own PeerJS server (e.g. `npx peer --port 9000`) instead of the public 0.peerjs.com.
 // Checks: connect + lobby, the guest's keys move its dog on the host, the flock matches on both screens (time-aligned),
-// grass grazed on the host reaches the guest, coyotes and tombstones appear/vanish, a silent guest's input is zeroed,
+// grass grazed on the host reaches the guest, buckets and pen water too, coyotes and tombstones appear/vanish, a silent guest's input is zeroed,
 // a dropped guest's dog waits and Rejoin takes it back, host-hidden pauses, wrong code / other build / full are
 // reported, a second friend drops in mid-journey, and the traffic in bytes per second with 14 and with 60 sheep.
 // WebGL drawing is switched off while checking (SwiftShader would starve the CPU and slow the game clock) and back
@@ -44,7 +44,11 @@ async function openPage(query, { mutate = false } = {}) {
 const drawing = (P, on) => P.page.evaluate(on => { GAME.renderer.render = on ? window.__render : () => {}; }, on);
 const until = (P, fn, arg, ms = 20000) => P.page.waitForFunction(fn, arg, { timeout: ms, polling: 50 });
 async function joinAs(P, name, code) {
-  if (code) { await P.page.click('#netOpen'); await P.page.fill('#netCode', code); }
+  if (code) {
+    await P.page.click('#netOpen');
+    await P.page.waitForFunction(() => ['netName', 'netCode'].includes(document.activeElement && document.activeElement.id));   // the panel's autofocus lands first, or it steals fill's focus
+    await P.page.fill('#netCode', code);
+  }
   await P.page.fill('#netName', name);
   await P.page.click('#netJoinBtn');
 }
@@ -255,6 +259,13 @@ try {
   const fg = await B.page.evaluate(() => { const { PLANTS, SALT_ROCKS, pens, G } = GAME, d = G.dogs.find(o => o.player.slot === 0); return { picked: PLANTS.slice(0, 5).filter(p => p.picked).length, salt: SALT_ROCKS[0].taken, greens: d && d.greens, carriesSalt: d && d.salt, troughs: pens[1].troughs.map(t => t.food), lick: pens[1].lick.salt }; });
   check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 2.5) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
 
+  // ---------------------------------------------------------------- water: a bucket on a dog, a pen's water trough, the flock's thirst reach the guest
+  const wh = await A.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, b = BUCKETS[2]; b.by = G.dogs[0]; b.w = 4.5; pens[2].water.w = 7.5; return { avg: WATER.avg }; });
+  await sleep(1200);
+  const wg = await B.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, d = G.dogs.find(o => o.player.slot === 0), b = BUCKETS[2]; return { carried: !!d && b.by === d, w: b.w, trough: pens[2].water.w, avg: WATER.avg }; });
+  check('water reaches the guest: a bucket on a dog (and how full), a pen\'s water trough, the flock\'s thirst', wg.carried && Math.abs(wg.w - 4.5) < 0.06 && Math.abs(wg.trough - 7.5) < 0.03 && Math.abs(wg.avg - wh.avg) < 0.03, { ...wg, hostAvg: wh.avg });
+  await A.page.evaluate(() => { const b = GAME.BUCKETS[2]; b.by = null; b.w = 0; b.x = b.hx; b.z = b.hz; GAME.pens[2].water.w = 0; });
+
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });
   await until(B, () => GAME.G.graves.length === 1, null, 5000);
@@ -452,11 +463,11 @@ try {
   }
 
   // ---------------------------------------------------------------- the end of the journey, and a new one
-  await A.page.evaluate(() => { const p = GAME.pens[3]; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
+  await A.page.evaluate(() => { const p = GAME.finalPen; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
   await sleep(500);
-  await A.page.evaluate(() => GAME.setGate(GAME.pens[3], false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
+  await A.page.evaluate(() => GAME.setGate(GAME.finalPen, false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
   await sleep(300);
-  await A.page.evaluate(() => GAME.onGateClosed(GAME.pens[3]));
+  await A.page.evaluate(() => { GAME.G.wool = 999; const w = GAME.WARES.find(o => o.id === 'cabo'); GAME.buyWare(w); GAME.buyWare(w); });   // Cabo (bark twice): the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
   const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent }));

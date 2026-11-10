@@ -1,6 +1,6 @@
 # Collies
 
-A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, to the Promised Land. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
+A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies and, at last, Cabo. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
 Live at **https://collies.app**
 
@@ -57,11 +57,17 @@ The grass is real: sheep eat it down as they graze, and it grows back slowly. A 
 
 Each camp has a round pen with a gate and funnel wings. Pen the flock and shut the gate before nightfall (20:30). When the whole flock is safe behind a shut gate at night, time runs fast till morning. Penned, well-fed ewes with a ram have lambs at dawn. Lambs follow their mothers and grow up in a couple of days, some of them into rams.
 
-## Foraging and the trough
+## Troughs, salt and water
 
-Every camp's pen has a bucket hanging on the fence by its gate and a wooden trough just inside. While the flock grazes, grab the bucket (X / R / `,`) and carry it about. Walk over **daisies** (white, everywhere but the desert) and **alfalfa** (purple-flowered clumps, more filling) and they go in the bucket, with a pop and a fill bar over your dog. A full bucket takes about fifteen plants. You can still bark and pounce, and hop fences, with it in your mouth, but you're away from the flock, and a dog charging into a bucket on the ground spills some.
+Run over **daisies** and **alfalfa** to carry greens, then walk up to a pen's trough (either side of the fence) to tip them in. Salt rocks are the same: break off a lump, take it to the pen's salt lick. Penned sheep eat and lick till full, shoving the weak ones aside.
 
-Bring it back and let go anywhere in the pen, by its gate or by its hook, and it's delivered: it hangs back up, heaped with greens (a green ✔ over it). From 19:00 Hank comes over, takes it down, tips it into the trough over the fence and hangs it back up for tomorrow. Penned sheep eat from the trough through the night. A full bucket is a few hours' grazing each for most of the flock, which helps, but it won't replace good grass. Picked plants grow back in a day or two.
+Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: run over the bucket, wade into a river or the sea to fill it, walk up to the water trough to tip it in. Left parched too long, a sheep dies. The desert has no water.
+
+## Shearing and the Trading Post
+
+Hank's ✂️ clippers are buried in a dig spot between the first two camps. Dig them up and bring them to him. When the flock is penned with the gate shut, Hank climbs in and shears the woolliest sheep, one by one, for 🧶. Wool grows back in a few days.
+
+At the end of the trail, the Trading Post sells 💧 🌾 🧂 for wool: stand on a mat and bark. 🏖️ Cabo takes every sheep penned there, Hank and the dogs too, and wins the journey (bark twice).
 
 ## Coyotes
 

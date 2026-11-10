@@ -39,10 +39,13 @@ const run = (scen) => h.page.evaluate(async (scen) => {
       p.bot = { mx: (dx * R.x + dz * R.z) / l, my: -(dx * F.x + dz * F.z) / l, sprint: true, pounce: l < 5 };
     } else if (scen !== 'penguard') p.bot = {};
     const lost0 = G.stats.cougar || 0;
-    for (let i = 0; i < 4; i++) { step(0.025); if (k.prey) maxH = Math.max(maxH, k.prey.y - GAME.groundY(k.prey.x, k.prey.z)); }
+    for (let i = 0; i < 4; i++) {
+      step(0.025); if (k.prey) maxH = Math.max(maxH, k.prey.y - GAME.groundY(k.prey.x, k.prey.z));
+      if (k.prey && grabbedInPen === null) grabbedInPen = Math.hypot(k.prey.x - pen.x, k.prey.z - pen.z) < pen.R;   // where it was caught: inside the fence (a lamb at the fence is dragged past penAt's margin in a step)
+    }
     p.inp && (p.inp.pounce = false);
     t += 0.1; states[k.state] = (states[k.state] || 0) + 1;
-    if (k.prey && !grabbed) { grabbed = k.prey.name; grabbedLamb = !!k.prey.lamb; grabbedInPen = GAME.penAt(k.prey.x, k.prey.z) === pen; }
+    if (k.prey && !grabbed) { grabbed = k.prey.name; grabbedLamb = !!k.prey.lamb; }
     if (k.state === 'vault' && lastSt !== 'vault') vaults++; lastSt = k.state;
     if ((G.stats.cougar || 0) > lost0 && !diedWhen) diedWhen = { state: k.state, t: +t.toFixed(1), upTree: +(k.y - L.y).toFixed(2), maxH: +maxH.toFixed(2) };
     if (diedWhen || (scen === 'rescue' && G.stats.saved > saved0 && !k.prey && k.state === 'perch')) break;

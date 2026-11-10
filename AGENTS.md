@@ -11,14 +11,15 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
 drive a flock along one trail (desert → mountains → ocean → the Promised
-Land): graze it, pen it at camps by nightfall, fight off coyotes, cougars and falcons
-till dawn.
+Land → desert → the Trading Post): graze it, pen it at camps by nightfall,
+fight off coyotes, cougars and falcons till dawn. At the Trading Post wool
+buys supplies, and Cabo 🏖️, which wins.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
-  cougar hunts, `V` falcon, `O` flock +10 days, `F` to final pen). `window.GAME` exposes
+  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
@@ -36,14 +37,17 @@ till dawn.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
-DOG WARDROBE, BARN, DAWN REPORT, saved flock → game flow → main loop → `window.GAME`.
+DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`, `p.gateT` (0 shut…1
-open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`.
+open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
+`fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched →
+quenched; return what went in / out), `giveHankClippers()` (no-op if he has
+them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -52,8 +56,9 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen |
+| `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
+| `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|night\|odds]` | falcon: nest kills, bark drops, dog carried, day only |
@@ -70,6 +75,8 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
+| `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
+| `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
@@ -92,6 +99,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 
 - **Pressure, not collision.** Radius: walk 9, creep 5.5, sprint 12 m, bent
   toward the dog's heading.
+- **Penned sheep ignore dogs outside the pen** (no press, no bump, no
+  stress) unless one barks; a dog or predator inside: as normal.
 - **Momentum and contagion.** Pushed sheep walk on ~3.5 s; calm sheep join
   movers at 0.88× (≥1.0 = runaway).
 - **Fear / stress / panic.** Stress spreads 0.4/s, calms 0.15/s, panic >0.75.
@@ -136,6 +145,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Salt** (`s.salt`) runs down slowly (~8 days); out too long = death. Camp
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
+- **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
+  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Run
+  over a bucket to carry it (one per dog), wade/swim to fill, walk up to any
+  water trough to tip in (empty: set down there). Penned thirsty sheep drink;
+  a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
 - **Coyote packs** flank and strike together; chase off the alpha to break
   them. Shut pens stop them.
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
@@ -161,6 +175,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
+- **Shearing** (`T.shear`): Hank's clippers are always in one dig spot between
+  the first two camps (`CLIP_DIG`); a dog carries them to him. Awake, no
+  predator near, he climbs into a shut pen (`hankCross`) and shears the
+  woolliest (`s.wool` ≥ `min`) one at a time on its rump (`s.state 'shear'`):
+  `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only, world waits; `?sim` only
@@ -176,6 +195,12 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (a lone coyote: `T.coyoteBark.soloWise`), then turns bold (`barkWorks`): only
   a bonk moves it, and it lunges at dogs to nip. Packs lose less heart per bark
   (`packK`).
+- **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`, `T.vendor`): the
+  end of the trail, desert, no water. A dog on a mat barks (`vendorBark`, host)
+  to buy with `G.wool`: 💧 (`fillWater`), 🌾 (`stockTroughs`), 🧂 into the final
+  pen; ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
+  (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark twice: those go,
+  `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.

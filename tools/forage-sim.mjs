@@ -61,7 +61,7 @@ const tests = {
       H.place(d, pen.exitX, pen.exitZ);
       const f = H.forage(120);
       const load = d.greens, back = H.walkTo(pen.gx, pen.gz, 40, 1.5), tr0 = pen.troughs[0];
-      const t2 = H.walkTo(tr0.x + (pen.x - tr0.x) * 0.25, tr0.z + (pen.z - tr0.z) * 0.25, 20, 0.6);   // into the pen, up to the first trough
+      const t2 = H.walkTo(tr0.x + (pen.x - tr0.x) * 0.12, tr0.z + (pen.z - tr0.z) * 0.12, 20, 0.6);   // into the pen, up to the first trough (within tipR from any side)
       const tipped1 = H.r(troughFood(pen)), left1 = H.r(d.greens);
       // a second load, tipped over the fence from outside
       d.greens = T.forage.carryCap; const tr = pen.troughs[pen.troughs.length - 1], a = Math.atan2(tr.z - pen.z, tr.x - pen.x);

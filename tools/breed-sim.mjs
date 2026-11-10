@@ -1,5 +1,5 @@
 // Headless economy test: `node tools/breed-sim.mjs [days] [--norams] [--trough N] [--set key=value ...]`. The flock is parked at the valley camp:
-// out grazing by day, everyone put in the pen at 19:00 (gate shut), let out at dawn. Rams court the fed ewes in the
+// out grazing by day, everyone put in the pen at 19:00 (gate shut, water topped up), let out at dawn. Rams court the fed ewes in the
 // closed pen in the evening; bred ewes lamb at dawn. Prints the flock each morning (the demo's "14 -> 22 by day 4").
 import { open } from './harness.mjs';
 const days = +process.argv.find(a => /^\d+$/.test(a)) || 4, noRams = process.argv.includes('--norams');
@@ -26,11 +26,12 @@ const r = await h.page.evaluate(({ days, noRams, sets, trough }) => {
       for (const s of G.sheep) if (!s.dead && !s.grabbed) { const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * (pen.R - 2); s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; }
       setGate(false);
       if (trough) GAME.fillTroughs(pen, trough);
+      GAME.fillWater(pen, 99);   // the water trough kept full (this is about food and lambs)
     }
     if (hr > 9 && hr < 18 && Math.random() < 0.05) for (const s of G.sheep) if (!s.dead && !s.pen) { const dd = Math.hypot(s.x - pen.x, s.z - pen.z); dSum += dd; dN++; far = Math.max(far, dd); }
     if (lastH < 6.5 && hr >= 6.5) {
       const live = G.sheep.filter(s => !s.dead);
-      log.push(`day ${G.clock.day}: ${live.length} sheep (${live.filter(s => s.ram).length} rams, ${live.filter(s => s.lamb).length} lambs), hunger ${(live.reduce((a, s) => a + s.hunger, 0) / live.length).toFixed(2)}, well fed ${live.filter(s => s.hunger < T.breedHunger).length}, born so far ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0} | pasture left: 20 m ${(pasture(20) * 100).toFixed(0)}%, 40 m ${(pasture(40) * 100).toFixed(0)}% | grazed ${dN ? (dSum / dN).toFixed(0) : '-'} m from the pen on average yesterday (furthest ${far.toFixed(0)})`);
+      log.push(`day ${G.clock.day}: ${live.length} sheep (${live.filter(s => s.ram).length} rams, ${live.filter(s => s.lamb).length} lambs), hunger ${(live.reduce((a, s) => a + s.hunger, 0) / live.length).toFixed(2)}, well fed ${live.filter(s => s.hunger < T.breedHunger).length}, born so far ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0}, thirst ${G.stats.thirst || 0} | pasture left: 20 m ${(pasture(20) * 100).toFixed(0)}%, 40 m ${(pasture(40) * 100).toFixed(0)}% | grazed ${dN ? (dSum / dN).toFixed(0) : '-'} m from the pen on average yesterday (furthest ${far.toFixed(0)})`);
       dSum = dN = far = 0;
       setGate(true);
     }
@@ -38,7 +39,7 @@ const r = await h.page.evaluate(({ days, noRams, sets, trough }) => {
     lastH = hr;
   }
   const live = G.sheep.filter(s => !s.dead);
-  log.push(`end: ${live.length} sheep (${live.filter(s => s.ram).length} rams), born ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0}`);
+  log.push(`end: ${live.length} sheep (${live.filter(s => s.ram).length} rams), born ${G.stats.born}, starved ${G.stats.starved}, eaten ${G.stats.eaten}, cougar ${G.stats.cougar || 0}, thirst ${G.stats.thirst || 0}`);
   return log;
 }, { days, noRams, sets, trough });
 console.log(r.join('\n')); if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 5));

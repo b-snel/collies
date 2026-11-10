@@ -43,6 +43,7 @@
   #hHunger { height:100%; width:30%; background:#7ed957; transition:width .3s, background .3s; }
   #hStarving { color:#ff7a6b; font-weight:600; }
   #hSaltBar { height:100%; width:60%; background:#e8e4f0; transition:width .3s, background .3s; }
+  #hWaterBar { height:100%; width:90%; background:#6fc3ff; transition:width .3s, background .3s; }
   #hMoodBar { height:100%; width:4%; background:#7ed957; transition:width .3s, background .3s; }
   #compass { bottom:40px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:10px; padding:6px 16px 6px 10px; }
   #cArrow { font-size:26px; width:30px; text-align:center; display:inline-block; }
@@ -88,6 +89,7 @@
   #end { background:rgba(10,15,40,.6); opacity:0; pointer-events:none; }
   #end h1 { font-size:clamp(40px, 7vw, 80px); margin:0; }
   #end .stars { font-size:56px; letter-spacing:6px; color:#ffd36b; margin:8px 0; }
+  #end.cabo { background:linear-gradient(180deg, rgba(255,140,90,.7), rgba(255,200,110,.55) 55%, rgba(40,170,200,.7)); }
   #end .stats { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 22px; font-size:24px; margin:10px 0 18px; }
   .hidden { opacity:0 !important; pointer-events:none !important; }
   #fps { position:fixed; left:8px; bottom:8px; color:#fff; font:12px monospace; text-shadow:0 1px 0 #000; }
@@ -315,6 +317,7 @@
     <div class="row"><span><i class="ic">🏠</i><span class="w">Penned</span></span><b id="hPen">0</b></div>
     <div class="row"><span><i class="ic">🍼</i><span class="w">Lambs born</span></span><b id="hBorn">0</b></div>
     <div class="row"><span><i class="ic">🪦</i><span class="w">Lost</span></span><b id="hLost">0</b></div>
+    <div class="row" id="hWoolRow" style="display:none" title="Wool from shearing"><span><i class="ic">🧶</i><span class="w">Wool</span></span><b id="hWool">0</b></div>
   </div>
   <div id="clock" class="panel">
     <div id="dial"><div id="dialHand"></div></div>
@@ -326,6 +329,8 @@
     <div class="bar"><div id="hHunger"></div><i id="hFedMark"></i></div>
     <div title="Sheep need salt. Salty sheep are peppy and quick; without it they slow down and in the end die of it. Bring lumps from the white salt rocks to a pen's salt lick"><i class="ic">🧂 </i><span class="w">Salt: </span><b id="hSalt">Good</b></div>
     <div class="bar"><div id="hSaltBar"></div></div>
+    <div title="Water: fill a 🪣 at a river, lake or the sea, tip it into a pen's water trough"><i class="ic">💧 </i><span class="w">Water: </span><b id="hWater">Good</b></div>
+    <div class="bar"><div id="hWaterBar"></div></div>
     <div><i class="ic">🌱 </i><span class="w">Pasture: </span><b id="hGrass">Good</b></div>
     <div><i class="ic">💓 </i><span class="w">Mood: </span><b id="hMood">Calm</b></div>
     <div class="bar"><div id="hMoodBar"></div></div>
@@ -349,7 +354,7 @@
 <div id="sound" style="display:none">🔇 Click anywhere to turn on sound</div>
 <div id="title" class="screen hidden">
   <h1>COLLIES</h1>
-  <h2>Herd your flock across the wilds to the Promised Land</h2>
+  <h2>Herd your flock across the wilds, all the way to Cabo 🏖️</h2>
   <div class="press">Press Ⓐ on a controller — or Space / Enter</div>
   <div class="controls">
     <span class="h"></span><span class="h">🎮 Controller</span><span class="h">⌨ Keys (P1 · P2)</span>
@@ -385,7 +390,7 @@
 </div>
 <div id="buildLine"><a href="https://github.com/b-snel/collies/blob/main/CREDITS.md" target="_blank" rel="noopener">Audio credits</a> · <span id="buildText">Dev build</span></div>
 <div id="end" class="screen">
-  <h1 id="eTitle">The Promised Land</h1>
+  <h1 id="eTitle">🏖️ Cabo! 🌴</h1>
   <div class="stars" id="eStars">★★★</div>
   <div id="eLine" style="font-size:34px;font-weight:700"></div>
   <div class="stats" id="eStats"></div>
@@ -596,8 +601,18 @@ const T = {
   // campStock: each camp's lick starts with that much. rockR/rockRate: a sheep next to a salt rock licks it (rock not used up).
   salt: { perDay: 0.1, start: [0.8, 1], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, campStock: 10, rockR: 3, rockRate: 0.6, deathHours: [72, 120], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
+  // water (WATER section): s.thirst 0 just drank … 1 parched, +perDay a day; parched deathHours → dies. Penned sheep over want
+  // drink at the pen's water trough (cap units; 1 unit = one sheep parched → quenched) till under full. A dog runs over a bucket
+  // to pick it up, wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
+  // startFill: the first camp's trough starts this full. wade: thirst/h off a sheep swimming or with its nose in water. low: Hank/toast
+  water: { perDay: 0.25, start: [0.05, 0.2], want: 0.25, full: 0.03, drinkRate: 3, cap: 12, bucket: 6, startFill: 1, deathHours: [36, 60],
+    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, tipR: 1.9, hold: 1.5, crowd: 4 },   // hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
-  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
+  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
+  // the Trading Post's vendor: a dog on a mat (matR m; mats ring m in front of the stall, gap m apart) barks to buy with 🧶 (G.wool). Batches go into the final pen (amt: 💧 sheep
+  // quenched, 🌾 hunger, 🧂 salt); refused if it has under `room` of a batch free. 🏖️ Cabo: base + per sheep penned there, bark twice (confirm s)
+  vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, clippers: { price: 0 }, water: { price: 3, amt: 8 }, food: { price: 4, amt: 8 }, salt: { price: 2, amt: 10 },
+    cabo: { base: 20, per: 2 } },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
   // BRAMBLES: thorny patches off the trail. A sheep that walks (snagWalk/s) or runs (snagRun/s, above runSpd m/s) into
   // a bush is snagged till a dog pounces it out. Calm sheep steer round them (avoid m). Off in ?sim (tests turn it on).
   bramble: { on: !SIM, every: 22, chance: [0.6, 0.75, 0.5, 0.45], lat: [6, 17], snagWalk: 0.3, snagRun: 2.2, runSpd: 3, avoid: 1.8, stress: 0.05, stressCap: 0.6, struggle: [1.5, 3.5] },
@@ -607,6 +622,9 @@ const T = {
   hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankCmdGap: 8,                   // s between whistled herding commands ("Come bye!")
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
+  // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
+  // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
+  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45 },
 };
 const WATER_Y = -3;
 
@@ -1061,13 +1079,14 @@ function anyConfirm() { // any device pressing A/Start/Enter/Space
 
 // =====================================================================
 // WORLD GENERATION — one continuous winding valley.
-// A trail (Catmull-Rom path) runs from the desert to the Promised Land.
+// A trail (Catmull-Rom path) runs from the desert past the Promised Land,
+// back into the desert to the Trading Post (the end: Cabo).
 // Everything (biomes, corridor walls, grass, scenery) is keyed off the
 // distance along that trail ("s") and the signed offset from it ("lat",
 // positive = east = the side nearest the camera, kept low so it never hides play).
 // =====================================================================
 const PATH_PTS = [[0, 75], [0, 35], [6, -15], [-4, -70], [-26, -125], [-38, -185], [-30, -240], [-8, -290], [22, -335], [44, -390],
-  [46, -440], [28, -495], [2, -545], [-12, -600], [-6, -655], [0, -710], [0, -770]];
+  [46, -440], [28, -495], [2, -545], [-12, -600], [-6, -655], [0, -710], [0, -770], [14, -825], [36, -875], [44, -930], [30, -985], [16, -1040]];
 const curve = new THREE.CatmullRomCurve3(PATH_PTS.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal');
 const PATH_LEN = curve.getLength();
 const PN = Math.round(PATH_LEN), PS = PATH_LEN / PN;
@@ -1080,8 +1099,8 @@ for (let i = 0; i <= PN; i++) {
 const pathIdx = s => clamp(Math.round(s / PS), 0, PN);
 function pathPoint(s, lat = 0) { const i = pathIdx(s); return { x: pX[i] - tZ[i] * lat, z: pZ[i] + tX[i] * lat, tx: tX[i], tz: tZ[i], nx: -tZ[i], nz: tX[i] }; }
 
-// biome weights [desert, valley, ocean, promised] along the trail
-function biomeW(s) { const a = smooth(165, 215, s), b = smooth(425, 470, s), c = smooth(640, 690, s); return [1 - a, a * (1 - b), b * (1 - c), c]; }
+// biome weights [desert, valley, ocean, promised] along the trail (desert again past the Promised Land)
+function biomeW(s) { const a = smooth(165, 215, s), b = smooth(425, 470, s), c = smooth(640, 690, s), d = smooth(870, 930, s); return [1 - a + d, a * (1 - b), b * (1 - c), c - d]; }
 const dot4 = (w, v) => w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3];
 
 // camps / waypoints
@@ -1089,9 +1108,14 @@ const CAMPS = [
   { name: 'Desert Corral', sub: 'The journey begins', s: 58, R: 9, lat: -17 },
   { name: 'Mountain Valley Camp', sub: 'Lush grass — and cold, hungry nights', s: 285, R: 9, lat: -17 },
   { name: 'Oceanside Camp', sub: 'Salt wind and sea grass', s: 545, R: 9, lat: -17 },
-  { name: 'The Promised Land', sub: 'Pen the flock and close the gate to finish', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
+  { name: 'The Promised Land', sub: 'Sweet grass — rest them up', s: 812, R: 12, lat: -15 },
+  { name: 'Trading Post', sub: '🧶 → 💧 🌾 🧂 🏖️', s: PATH_LEN - 72, R: 12, lat: -15, final: true },
 ];
 for (const c of CAMPS) { const p = pathPoint(c.s, c.lat); c.x = p.x; c.z = p.z; c.gateA = Math.atan2(p.nz, p.nx); c.nx = p.nx; c.nz = p.nz; c.tx = p.tx; c.tz = p.tz; }
+const FINAL = CAMPS.find(c => c.final);
+// the Trading Post's stall (VENDOR), past its pen: flat ground, nothing placed on it. It faces the camera (f = -CAM_F), mats in a row along r = CAM_R
+const MARKET = (() => { const s = FINAL.s + 28, p = pathPoint(s, -11), q = Math.SQRT1_2; return { s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: 10 }; })();
+const offMarket = (x, z, pad = 0) => Math.hypot(x - MARKET.x, z - MARKET.z) > MARKET.r + pad;
 
 // the river crossing (with a bridge) in the mountain valley
 const RIVER = { s: 385, hw: 5, bridgeHW: 4.5, deckY: 0.5 };
@@ -1169,13 +1193,14 @@ function heightAt(x, z) {
   const ci = trailInfo(x, z), w = biomeW(ci.s);
   let h = (fbm(x * 0.022, z * 0.022, 3) - 0.5) * 2.0 + (vnoise(x * 0.18 + 40, z * 0.18) - 0.5) * 0.25;
   for (const c of CAMPS) { const d = Math.hypot(x - c.x, z - c.z); if (d < 34) h = lerp(h, 0.15, 1 - smooth(c.R + 10, c.R + 24, d)); }
+  { const d = Math.hypot(x - MARKET.x, z - MARKET.z); if (d < MARKET.r + 12) h = lerp(h, 0.15, 1 - smooth(MARKET.r, MARKET.r + 12, d)); }
   if (w[2] > 0.001) h -= Math.max(0, ci.lat - 15) * 0.21 * w[2];
   const o = Math.max(ci.oW, ci.oE, ci.oC);
   if (o > -2) {
     const oo = o + 2;
     if (o === ci.oW) h += westProfile(oo, x, z, w);
     else if (o === ci.oE) h += eastProfile(oo, x, z, w);
-    else h += ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [0, 0, 0, 1]);
+    else h += ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [1, 0, 0, 0]);   // both ends desert: low ridge, mesas
   }
   // river channel
   const ra = Math.abs(riverAcross(x, z));
@@ -1653,7 +1678,7 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     const walk = !isBlocked(px, pz);
     const rockCol = ROCK_COL[bi];
     if (walk) {
-      let nearCamp = false; for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
+      let nearCamp = !offMarket(px, pz, 4); for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
       const nearRiver = Math.abs(riverAcross(px, pz)) < RIVER.hw + 9 && Math.abs(riverAlong(px, pz)) < 20;
       if (nearCamp || nearRiver || Math.abs(lat) < 4) { if (!nearRiver && Math.abs(lat) > 3 && r < 0.12 && bi > 0) addScen('flowers', px, pz, 1, 0); continue; }
       if (bi === 0) { if (r < 0.045) addScen('cactus', px, pz, 0.8 + wr() * 0.5, 0.45); else if (r < 0.08) { const s = 0.5 + wr() * 1.1; addScen('rock', px, pz, s, s * 0.85, { col: rockCol }); } else if (r < 0.16) addScen('deadbush', px, pz, 0.8 + wr() * 0.6, 0); }
@@ -1823,12 +1848,37 @@ function collideFences(e, r) {
   part(barn, merge(P(BOX(7, 4.5, 9), '#c0392b', { p: [0, 2.25, 0] }), P(CYL(4.4, 4.4, 9.4, 3), '#7a2a20', { s: [1, 0.55, 1], r: [Math.PI / 2, 0, Math.PI / 2], p: [0, 5.1, 0] }),
     P(BOX(2.6, 3, 0.1), '#f4f1ea', { p: [0, 1.5, 4.52] }), P(BOX(1.2, 1.2, 0.1), '#f4f1ea', { p: [0, 5.0, 4.52] })));
   OBSTACLES.push({ x: bp.x, z: bp.z, r: 5.5 }); stampObstacle(bp.x, bp.z, 5.5);
-  const rp = pathPoint(PATH_LEN - 5, -30);
+  const rp = pathPoint(c.s + 67, -30);
   const cols = ['#ff5a5a', '#ffa64d', '#ffe14d', '#6fe06a', '#4dc3ff', '#9a7bff'];
   cols.forEach((col, i) => {
     const m = new THREE.Mesh(new THREE.TorusGeometry(70 - i * 2.2, 1.1, 6, 64, Math.PI), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55, depthWrite: false }));
     m.position.set(rp.x - 40, -6, rp.z - 40); m.rotation.y = Math.PI / 4; scene.add(m);
   });
+}
+{ // the Trading Post's stall and its vendor (VENDOR section: the mats, buying). Local +z faces the camera
+  const M = MARKET, at = (lx, lz) => ({ x: M.x + M.rx * lx + M.fx * lz, z: M.z + M.rz * lx + M.fz * lz });
+  const g = new THREE.Group(); g.position.set(M.x, terrainH(M.x, M.z), M.z); g.rotation.y = M.yaw; scene.add(g);
+  part(g, merge(
+    P(BOX(3.4, 1.0, 0.8), '#a8743f', { p: [0, 0.5, 0.3] }), P(BOX(3.42, 0.14, 0.82), '#d8473f', { p: [0, 0.8, 0.3] }), P(BOX(3.6, 0.08, 1.0), '#7a5230', { p: [0, 1.04, 0.3] }),
+    ...[[-1.7, 0.75], [1.7, 0.75], [-1.7, -0.9], [1.7, -0.9]].map(([x, z]) => P(CYL(0.07, 0.08, 2.75, 6), '#7a5230', { p: [x, 1.37, z] })),
+    ...[0, 1, 2, 3, 4, 5].map(i => P(BOX(0.6, 0.05, 2.1), i % 2 ? '#f4ead2' : '#ff5a5a', { r: [0.25, 0, 0], p: [-1.5 + i * 0.6, 2.72, -0.05] })),   // striped awning
+    P(CYL(0.13, 0.16, 0.34, 8), '#4aa3df', { p: [-1.3, 1.25, 0.35] }), P(CYL(0.06, 0.09, 0.14, 8), '#4aa3df', { p: [-1.3, 1.48, 0.35] }),   // a water jug
+    P(BOX(0.32, 0.2, 0.3), '#f3eee6', { p: [1.2, 1.18, 0.3] }), P(BOX(0.24, 0.16, 0.24), '#f6c9d4', { r: [0, 0.4, 0], p: [1.18, 1.36, 0.28] }),   // salt
+    P(BOX(0.5, 0.28, 0.34), '#e8c770', { p: [0.75, 1.22, 0.45] })));   // greens
+  // the vendor, beside his stall (under the awning the camera wouldn't see him): canvas jacket, a wide straw sun hat.
+  // He waves when you buy and shakes his head when you can't pay
+  const v = new THREE.Group(); v.position.set(2.4, 0, 0.35); v.scale.setScalar(1.2); g.add(v);
+  part(v, merge(P(CYL(0.3, 0.38, 1.0, 10), '#3a5e8c', { p: [0, 0.5, 0] }), P(CYL(0.34, 0.42, 0.62, 10), '#b98a52', { p: [0, 1.25, 0] }),
+    P(CYL(0.36, 0.36, 0.08, 10), '#5a3a22', { p: [0, 1.0, 0] })));
+  const head = new THREE.Group(); head.position.y = 1.72; v.add(head);
+  part(head, merge(P(SPH(12), '#c98a5e', { s: [0.25, 0.27, 0.25] }),
+    P(CYL(0.5, 0.5, 0.04, 20), '#e8c070', { p: [0, 0.2, 0] }), P(CYL(0.22, 0.26, 0.22, 14), '#e8c070', { p: [0, 0.32, 0] }), P(CYL(0.265, 0.265, 0.06, 14), '#5a3a22', { p: [0, 0.25, 0] })));
+  part(head, merge(...[-1, 1].map(sd => P(SPH(6), '#1c120c', { s: [0.03, 0.036, 0.02], p: [0.08 * sd, 0.05, 0.23] }))), { outline: false, shadow: false });
+  const arm = new THREE.Group(); arm.position.set(0.42, 1.38, 0); v.add(arm);
+  part(arm, merge(P(CYL(0.08, 0.07, 0.6, 6), '#b98a52', { p: [0, -0.3, 0] }), P(SPH(8), '#c98a5e', { s: [0.09, 0.09, 0.09], p: [0, -0.64, 0] })));
+  arm.rotation.z = 0.25;
+  M.v = { root: v, head, arm, y: g.position.y };
+  for (const [lx, lz, r] of [[-1, 0.2, 1.3], [1, 0.2, 1.3], [2.4, 0.35, 0.6]]) { const p = at(lx, lz); OBSTACLES.push({ x: p.x, z: p.z, r }); stampObstacle(p.x, p.z, r); }
 }
 // ---------------- coyote dens: hollows tucked in against the hillside on the far side of the trail ----------------
 const DENS = [];
@@ -1836,12 +1886,12 @@ const DENS = [];
   const dr = mulberry32(5150), drr = (a, b) => a + dr() * (b - a);
   const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
   const tucked = (x, z) => { let n = 0; for (let k = 0; k < 16; k++) { const a = k / 16 * TAU; for (const r of [5, 7, 9]) if (isBlocked(x + Math.cos(a) * r, z + Math.sin(a) * r)) n++; } return n; };
-  for (const s0 of [150, 215, 352, 470, 620, 712]) {
+  for (const s0 of [150, 215, 352, 470, 620, 712, 905, 1012]) {
     let best = null, bs = -1;
     for (let t = 0; t < 70; t++) {
       const ss = s0 + drr(-22, 22), idx = pathIdx(ss), lat = -(hwWArr[idx] - drr(5, 13));
       const p = pathPoint(ss, lat); if (Math.abs(lat) < 14) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30) || !offMarket(p.x, p.z, 20)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 16 && Math.abs(riverAlong(p.x, p.z)) < 60) continue;
       if (!clear(p.x, p.z, 3)) continue;
       const tk = tucked(p.x, p.z); if (tk > bs) { bs = tk; best = { x: p.x, z: p.z, s: ss, nx: p.nx, nz: p.nz }; }
@@ -1873,14 +1923,14 @@ const LAIRS = [];
 {
   const kr = mulberry32(80812), krr = (a, b) => a + kr() * (b - a);
   const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
-  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }]) {
+  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }, { s: FINAL.s, camp: FINAL }]) {
     let best = null, bs = -1e9;
     for (let t = 0; t < 160; t++) {
       const ss = sp.s + krr(-34, 34), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
       if (hw < 15) continue;
       const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
       if (!clear(p.x, p.z, 3)) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15) || !offMarket(p.x, p.z, 8)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50) continue;
       if (DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) || LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < 45)) continue;
       const sc = (sp.camp ? -Math.abs(Math.hypot(p.x - sp.camp.x, p.z - sp.camp.z) - 30) : -Math.abs(ss - sp.s) * 0.2) + Math.abs(lat) * 0.2 + kr();
@@ -1916,14 +1966,14 @@ const NESTS = [];
 {
   const nr = mulberry32(51237), nrr = (a, b) => a + nr() * (b - a);
   const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
-  for (const s0 of [150, 330, 470, 640, PATH_LEN - 220]) {
+  for (const s0 of [150, 330, 470, 640, 664, 975]) {
     let best = null;
     for (let t = 0; t < 120 && !best; t++) {
       const ss = s0 + nrr(-30, 30), idx = pathIdx(ss), side = nr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
       if (hw < 18) continue;
       const lat = side * nrr(14, hw - 5), p = pathPoint(ss, lat);
       if (!clear(p.x, p.z, 3)) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 14)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 14) || !offMarket(p.x, p.z, 8)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50) continue;
       if (DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 20) || LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < 20)) continue;
       best = { x: p.x, z: p.z, s: ss };
@@ -2198,8 +2248,9 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 },
-  nextSheepId: 1, finalArm: 0, hints: {}, visited: new Set(), lost: [],
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 },
+  nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
+  wool: 0,   // SHARED HOOK: the journey's wool stock 🧶 (whole skeins; shearing adds, the vendor spends)
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
@@ -2256,7 +2307,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
   return {
     id: G.nextSheepId++, name: sheepName({ ram }), x, z, vx: 0, vz: 0, y: groundY(x, z), yaw: Math.random() * TAU,
     r: lamb ? 0.36 : ram ? T.ramRadius : T.sheepR, lamb, age, life: Math.round(rnd(...T.lifeDays)), grow: lamb ? 0.55 : 1, mother, black, scale: ram ? T.ramScale * rnd(0.97, 1.04) : 1.02 + Math.random() * 0.16,
-    hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), salt: rnd(...T.salt.start), saltStarve: 0, saltMax: rnd(...T.salt.deathHours), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
+    hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), salt: rnd(...T.salt.start), saltStarve: 0, saltMax: rnd(...T.salt.deathHours), thirst: rnd(...T.water.start), parchT: 0, parchMax: rnd(...T.water.deathHours), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
     eating: false, near: 0, pen: null, wasPen: null, grabbed: null, dead: false, breedOK: false, bred: false,
     hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(5, 40),
     pitch: lamb ? 1.45 + Math.random() * 0.2 : ram ? 0.66 + Math.random() * 0.14 : 0.85 + Math.random() * 0.3,
@@ -2265,6 +2316,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
     corner: 0, cWarn: 0, breakT: 0, breakCd: 0, bowlT: 0, bdx: 0, bdz: 0, cpx: x, cpz: z, boltT: 0, boltA: 0, strayBaa: rnd(2, 4), bellT: 0,
     // rams: idle -> windup -> charge -> dazed; and courting in the pen
     rs: 'idle', rcd: rnd(6, 10), rt: 0, rtar: null, cdx: 0, cdz: 0, pawT: 0, sparkT: 0, court: null, courtT: 0, courtCD: rnd(0, 2), wooT: 0, heartT: 0,
+    wool: lamb ? T.shear.lamb : rnd(...T.shear.start),   // SHARED HOOK: fleece 0…1 (HANK: shearing)
   };
 }
 // flock-wide mind: the hub strays head for, co-op flanking, the mood, Hank's cooldowns
@@ -2292,6 +2344,7 @@ function killSheep(s, why) {
   if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
   if (why === 'old') { G.stats.old = (G.stats.old || 0) + 1; burst(s.x, s.y + 0.8, s.z, 14, '#fff4c8', { speed: 0.6, up: 2.2, size: 0.1, life: 1.6, grav: -2 }); toast(lossLine(s, why), 'warn'); Sound.sad(); }
   else if (why === 'salt') { G.stats.salt = (G.stats.salt || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#f3eee6', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
+  else if (why === 'thirst') { G.stats.thirst = (G.stats.thirst || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#cfe6f5', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else if (why === 'cougar') { G.stats.cougar = (G.stats.cougar || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else if (why === 'falcon') { G.stats.falcon = (G.stats.falcon || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // (FALCON: eaten on the nest)   // (its wool flies up in the tree: COUGARS)
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
@@ -2381,7 +2434,7 @@ function penTarget(p, s, out) {
   return out;
 }
 // MORNING RUSH: the gate's opened in the morning and the whole pen pours out to graze (troughs, lick and sleep can wait)
-const morningOut = p => !!p && !p.final && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
+const morningOut = p => !!p && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
 const penRush = p => !!p && p.gateT > 0.6 && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
 function startRush(p) {
   p.rushUntil = G.time + T.morningRush.dur;
@@ -2535,6 +2588,7 @@ function startUnstick(s, wx, wz) {
 }
 // salt and energy: at T.salt.mid a sheep goes at its usual pace, full of salt T.salt.boost quicker, out of it T.salt.slow slower
 const saltPep = s => { const S = T.salt, v = s.salt ?? S.mid; return v >= S.mid ? 1 + S.boost * (v - S.mid) / (1 - S.mid) : 1 - S.slow * (S.mid - v) / S.mid; };
+const thirstPep = s => 1 - T.water.slow * clamp(((s.thirst || 0) - T.water.slowAt) / (1 - T.water.slowAt), 0, 1);   // WATER: parched sheep drag
 const MOVE_GRAZE = new Set(['flee', 'move', 'idle', 'follow', 'rejoin', 'seek', 'wander', 'stray', 'wait', 'exit']);   // states that snatch bites on the way (driven sheep "flee" the dog at a walk; panic stops it)
 const CALM_GO = new Set(['seek', 'rejoin', 'stray', 'pen', 'exit', 'follow', 'wander', 'wait', 'unstick', 'graze']);
 // the flock as a whole: pen fractions, the hub, co-op flanking, the mood and Hank's comments on it
@@ -2578,17 +2632,20 @@ function flockMind(dt, play) {
 // A trough feeds T.troughSpot metres a sheep on its side toward the middle of the pen; the rest stand back and wait.
 const troughHas = p => !!(p && p.troughs && p.troughs.some(tr => tr.food > 0.01));
 const lickHas = p => !!(p && p.lick && p.lick.salt > 0.01);
+const waterHas = p => !!(p && p.water && p.water.w > 0.01);   // WATER: the pen's water trough
 const troughTime = p => true;   // whenever there's food in it (the dogs went to the trouble of filling it)
-function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), and round the salt lick
+function troughLine(p, tr, spots, C) {   // the places along one trough, on its side toward the middle of the pen
+  const cx = tr.x, cz = tr.z, y = tr.yaw || 0, ax = Math.cos(y), az = -Math.sin(y), len = tr.len || 3, k = Math.max(1, Math.round(len / T.troughSpot));   // its length along its local x
+  let nx = -az, nz = ax; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }   // the side toward the middle of the pen
+  for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * len / k; spots.push({ tr, x: cx + ax * a + nx * 0.95, z: cz + az * a + nz * 0.95, yaw: Math.atan2(-nx, -nz) }); }
+  C.push({ x: cx, z: cz, len, ax, az, nx, nz });
+}
+function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), round the salt lick and along the water trough
   if (p.feedSpots) return p.feedSpots;
   const spots = [], C = [];
-  for (const tr of p.troughs || []) {
-    const cx = tr.x, cz = tr.z, y = tr.yaw || 0, ax = Math.cos(y), az = -Math.sin(y), len = tr.len || 3, k = Math.max(1, Math.round(len / T.troughSpot));   // its length along its local x
-    let nx = -az, nz = ax; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }   // the side toward the middle of the pen
-    for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * len / k; spots.push({ tr, x: cx + ax * a + nx * 0.95, z: cz + az * a + nz * 0.95, yaw: Math.atan2(-nx, -nz) }); }
-    C.push({ x: cx, z: cz, len, ax, az, nx, nz });
-  }
+  for (const tr of p.troughs || []) troughLine(p, tr, spots, C);
   p.feedSpots = spots; p.feedBy = spots.map(() => null); p.feedC = C;
+  p.waterSpots = []; p.waterC = []; if (p.water) troughLine(p, p.water, p.waterSpots, p.waterC); p.waterBy = p.waterSpots.map(() => null);
   const L = p.lick; p.lickSpots = []; p.lickBy = [];
   if (L) {
     const a0 = Math.atan2(p.z - L.z, p.x - L.x);   // round the side toward the middle of the pen
@@ -2605,18 +2662,18 @@ function claimTrough(s) {
   if (best < 0) return barge(s, spots, p.feedBy, 'slot', 'trough');
   p.feedBy[best] = s; s.slot = best; s.state = 'trough'; s.troughT = 0; s.troughBest = 1e9; return true;
 }
-// how hard a sheep shoves at the trough: size, rams, hunger; lambs and old ones lose
-const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3);
-function barge(s, spots, by, key, state) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place
+// how hard a sheep shoves at the trough: size, rams, hunger (and thirst); lambs and old ones lose
+const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3 + (s.thirst || 0) * 0.3);
+function barge(s, spots, by, key, state, hold = 0) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place (hold: only one that's had hold s there)
   if ((s.shoveCd || 0) > G.time) return false;
   let bi = -1, bv = 1e9;
-  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
+  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed || hold && !(G.time - (o.arrT ?? 1e9) >= hold)) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
   if (bi < 0) return false;
   s.shoveCd = G.time + T.shove.cd * rnd(0.6, 1.4);
   if (shoveStr(s) * rnd(0.7, 1.3) < bv * T.shove.win) return false;
   G.shoves = (G.shoves || 0) + 1;
   const o = by[bi]; bump(s, o, T.shove.kick);
-  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9; s.arrT = null;
   return true;
 }
 // s shoves o aside: o is knocked off, bleats, and thinks again
@@ -2645,32 +2702,42 @@ function grassShove(s) {
   s.tx = bo.x; s.tz = bo.z; bump(s, bo, C.kick); s.state = 'seek';
   return true;
 }
-function claimLick(s) {
-  const p = s.pen; troughSpots(p);
-  if (s.state === 'lick' && p.lickBy[s.lslot] === s) return true;
+function claimSpot(s, spots, by, key, state, hold = 0) {   // a free place at the salt lick or the water trough (none: barge for one)
+  if (s.state === state && by[s[key]] === s) return true;
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
-  p.lickSpots.forEach((q, i) => { if (p.lickBy[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return barge(s, p.lickSpots, p.lickBy, 'lslot', 'lick');
-  p.lickBy[best] = s; s.lslot = best; s.state = 'lick'; s.troughT = 0; s.troughBest = 1e9; return true;
+  spots.forEach((q, i) => { if (by[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
+  if (best < 0) return barge(s, spots, by, key, state, hold);
+  by[best] = s; s[key] = best; s.state = state; s.troughT = 0; s.troughBest = 1e9; s.arrT = null; return true;
+}
+function claimLick(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.lickSpots, p.lickBy, 'lslot', 'lick'); }
+function claimWater(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.waterSpots, p.waterBy, 'wslot', 'drink', T.water.hold); }   // WATER (one trough, a crowd: a fresh drinker gets a moment)
+// wait its turn where it is, but not in front of a trough (it'd block the way): step back toward the middle.
+// crowd: up to this many come over from wherever they are and jostle right behind it (the one water trough)
+function waitBy(s, Cs, crowd = 0) {
+  let c = null, cd = 1e9; for (const q of Cs) { const d = Math.hypot(s.x - q.x, s.z - q.z); if (d < cd) { cd = d; c = q; } }
+  s.state = 'wait'; s.tx = s.x; s.tz = s.z; if (!c) return;
+  const rx = s.x - c.x, rz = s.z - c.z; let u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
+  if (crowd && G.sheep.filter(o => o !== s && o.state === 'wait' && o.pen === s.pen && Math.hypot(o.tx - c.x, o.tz - c.z) < 4).length < crowd) { u = clamp(u, -c.len / 2, c.len / 2); v = 0; }
+  if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
+    const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
+    if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
+  }
 }
 function decideCalm(s, nb, night) {
   s.rush = false;
   if (s.pen && penRush(s.pen)) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
+  // WATER: penned and thirsty with water in the trough: drink, first if it's thirstier than hungry (a sleeping one gets up now and then to)
+  const drink = s.pen && waterHas(s.pen) && (!morningOut(s.pen) || s.thirst > T.morningRush.starve) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full) && (s.state !== 'sleep' || Math.random() < T.troughWake);
+  if (drink && s.thirst >= s.hunger && claimWater(s)) return;
   // penned and hungry with food in the trough: feed (a sleeping one gets up now and then to)
   if (s.pen && troughHas(s.pen) && troughTime(s.pen) && (!morningOut(s.pen) || s.hunger > T.morningRush.starve) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
     if (claimTrough(s)) return;
-    if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // no place free at the trough: lick the salt meanwhile
-    // wait its turn where it is, but not in front of a trough (it'd block the way): step back toward the middle
-    let c = null, cd = 1e9; for (const q of s.pen.feedC) { const d = Math.hypot(s.x - q.x, s.z - q.z); if (d < cd) { cd = d; c = q; } }
-    s.state = 'wait'; s.tx = s.x; s.tz = s.z;
-    const rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
-    if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
-      const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
-      if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
-    }
-    return;
+    if (drink && claimWater(s)) return;   // no place free at the trough: drink meanwhile
+    if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // ...or lick the salt
+    waitBy(s, s.pen.feedC); return;
   }
+  if (drink) { if (claimWater(s) || lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return; waitBy(s, s.pen.waterC, T.water.crowd); return; }
   // short of salt and there's salt in the lick: go and lick it (a sleeping one gets up now and then to)
   if (s.pen && lickHas(s.pen) && (s.salt < T.salt.want || s.state === 'lick' && s.salt < T.salt.full) && (s.state !== 'sleep' || Math.random() < T.troughWake) && claimLick(s)) return;
   const { nearest, nearestO, nC, cX, cZ, pp, steady } = nb;
@@ -2879,6 +2946,7 @@ function updateSheep(dt, dtH) {
   for (const p of pens) if (p.feedBy) {
     p.feedBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'trough' || o.pen !== p || o.slot !== i || !S.includes(o))) p.feedBy[i] = null; });
     p.lickBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'lick' || o.pen !== p || o.lslot !== i || !S.includes(o))) p.lickBy[i] = null; });
+    p.waterBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'drink' || o.pen !== p || o.wslot !== i || !S.includes(o))) p.waterBy[i] = null; });   // WATER
   }
   const bellR2 = T.bellR * T.bellR, gSp = T.grazeSpace, kSp = T.knotSpace, mvMin = T.moveMin;   // (hoisted for the neighbour loop)
   for (let i = 0; i < N; i++) {
@@ -2887,8 +2955,9 @@ function updateSheep(dt, dtH) {
     if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.wasGrabbed = true; continue; }
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
+    if (s.state === 'shear') { shearHold(s, dt, dtH); continue; }   // on its rump, Hank clipping it (HANK: shearing)
     if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; }   // dropped by a coyote: shaken, and jumpy from now on
-    s.goalHold -= dt; s.atTrough = false; s.atLick = false; if (s.troughCd > 0) s.troughCd -= dt;
+    s.goalHold -= dt; s.atTrough = false; s.atLick = false; s.atWater = false; if (s.troughCd > 0) s.troughCd -= dt;
     // ---- neighbours: only flockmates on the same side of a fence count
     let sepX = 0, sepZ = 0, aX = 0, aZ = 0, nA = 0, cX = 0, cZ = 0, nC = 0, nearest = 1e9, nearestO = null, near = 0, mov = 0, nMov = 0, mX = 0, mZ = 0;
     let nsS = 0, nsN = 0, bell = null, bellD = bellR2, spX = 0, spZ = 0, gaX = 0, gaZ = 0, nG = 0;
@@ -2931,9 +3000,10 @@ function updateSheep(dt, dtH) {
     const trR = s.trait === 'skittish' ? 1.13 : s.trait === 'stubborn' ? 0.87 : 1;
     for (const d of G.dogs) {
       const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4;
-      if (dd < 0.95 && d.hopT <= 0) { const push = 0.95 - dd; s.x += dx / dd * push; s.z += dz / dd * push; }
+      const outside = s.pen && !insidePen(s.pen, d.x, d.z, 0);   // penned sheep pay a dog outside their pen no mind, unless it barks
+      if (dd < 0.95 && d.hopT <= 0 && !outside) { const push = 0.95 - dd; s.x += dx / dd * push; s.z += dz / dd * push; }
       if (d.mode === 'lie') {   // a dog lying down settles the sheep round it (they just keep clear of it)
-        if (dd < T.lieCalmR) { steady = true; calm = true; if (dd < 4) { const k = (4 - dd) / 4 * 0.5; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } } }
+        if (dd < T.lieCalmR) { steady = true; calm = true; if (dd < 4 && !outside) { const k = (4 - dd) / 4 * 0.5; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } } }
         continue;
       }
       if (d.stunT > 0) continue;   // a dog that's been bowled over isn't frightening
@@ -2943,9 +3013,8 @@ function updateSheep(dt, dtH) {
       if (pounce) { R = Math.max(R, T.pounceR); K = Math.max(K, T.pounceK); }
       if (barking && dd < T.barkR) stressIn += T.stressBark * (1 - dd / T.barkR);
       if (dd >= R) continue;
-      // a dog on the other side of the fence (tipping greens in, say) doesn't move penned sheep that are shut in or
-      // feeding, unless it sprints or pounces at them
-      if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
+      // a dog outside the pen (tipping greens in, passing by) leaves penned sheep to their troughs and water: only a bark moves them
+      if (outside && !barking) continue;
       // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding
       if (s.pen && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
         if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
@@ -2965,8 +3034,8 @@ function updateSheep(dt, dtH) {
       if (pounce) stressIn += T.stressPounce;
     }
     // a hungry sheep with its head down in good grass needs more fear to be moved
-    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick') && press > 0 && cRaw === 0 && !steady) {
-      const resolve = s.state === 'trough' || s.state === 'lick' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
+    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick' || s.state === 'drink') && press > 0 && cRaw === 0 && !steady) {
+      const resolve = s.state === 'trough' || s.state === 'lick' || s.state === 'drink' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
     s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
@@ -3111,22 +3180,22 @@ function updateSheep(dt, dtH) {
           else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); s.atTrough = q.tr; if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
           break;
         }
-        case 'lick': {   // to its place at the salt lick, then face it and lick
-          const p = s.pen, q = p && lickHas(p) && p.lickBy && p.lickBy[s.lslot] === s ? p.lickSpots[s.lslot] : null;
+        case 'lick': case 'drink': {   // to its place at the salt lick (or the WATER trough), then face it and lick (drink)
+          const p = s.pen, lk = s.state === 'lick', q = !p ? null : lk ? (lickHas(p) && p.lickBy && p.lickBy[s.lslot] === s ? p.lickSpots[s.lslot] : null) : (waterHas(p) && p.waterBy && p.waterBy[s.wslot] === s ? p.waterSpots[s.wslot] : null);
           if (!q) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           const dx = q.x - s.x, dz = q.z - s.z, d = Math.hypot(dx, dz);
-          if (d > 0.7) {
+          if (d > (!lk && s.arrT != null ? 1.2 : 0.7)) {   // WATER: once there, jostled a little it keeps its nose in
             dX = dx / d; dZ = dz / d; spd = Math.min(T.sheepWalk * 1.4, 0.3 + d * 1.5);
             if (!(d > s.troughBest - 0.3)) { s.troughBest = d; s.troughT = 0; }
             else if ((s.troughT += dt) > 3) { s.state = 'idle'; s.troughCd = 3; }
           }
-          else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); s.atLick = true; if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
+          else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); if (lk) s.atLick = true; else { s.atWater = true; s.arrT ??= G.time; } if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
           break;
         }
         case 'wait': {   // stand back from the trough till a place comes free
           const dx = s.tx - s.x, dz = s.tz - s.z, d = Math.hypot(dx, dz);
           if (d > 0.6) { dX = dx / d; dZ = dz / d; spd = T.sheepWalk * 0.8; }
-          if (!s.pen || !troughHas(s.pen)) s.state = 'idle';
+          if (!s.pen || !(troughHas(s.pen) || waterHas(s.pen))) s.state = 'idle';
           s.thinkT = Math.min(s.thinkT, 0.7);
           break;
         }
@@ -3205,7 +3274,7 @@ function updateSheep(dt, dtH) {
         }
       }
     }
-    spd *= saltPep(s);   // salty sheep are peppy, salt-starved ones drag
+    spd *= saltPep(s) * thirstPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER)
     if (T.bramble.on && !s.snag && spd > 0 && !s.pen) {   // BRAMBLES: calm sheep go round them, bolting ones barely look
       const b = brambleAt(s.x, s.z, T.bramble.avoid);
       if (b) { const ox = s.x - b.x, oz = s.z - b.z, od = Math.hypot(ox, oz) || 1, k = (1 - Math.max(0, od - b.r) / T.bramble.avoid) * (s.state === 'flee' || straight ? 0.25 : 1.3); dX += ox / od * k; dZ += oz / od * k; }
@@ -3253,6 +3322,7 @@ function updateSheep(dt, dtH) {
     // ---- hunger & grazing
     const sleeping = s.state === 'sleep';
     s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH * (sleeping ? T.sleepHungerMul : 1));
+    s.wool = Math.min(1, (s.wool ?? 1) + dtH / (24 * T.shear.regrowDays));   // the fleece grows back (HANK: shearing)
     if (!s.lamb && !s.ram) {   // well fed any time from late afternoon on: ready to breed tonight (a night's hunger doesn't undo it)
       if (s.hunger < T.breedHunger && (G.clock.hour >= T.courtHour || isNight())) s.ready = true;
       else if (s.hunger > T.readyLose) s.ready = false;
@@ -3293,6 +3363,7 @@ function updateSheep(dt, dtH) {
     }
     if (s.salt <= 0) { s.saltStarve += dtH; if (s.saltStarve > s.saltMax) killSheep(s, 'salt'); }
     else s.saltStarve = Math.max(0, s.saltStarve - dtH * 2);
+    sheepThirst(s, dtH, sp);   // WATER: thirst rises; drinking at the trough or with its nose in water; parched too long → dies
     if (s.hunger >= 1) { s.starve += dtH; if (s.starve > s.starveMax) killSheep(s, 'starved'); }
     else s.starve = Math.max(0, s.starve - dtH);
     // ---- head animation
@@ -3601,6 +3672,7 @@ function bark(d) {
   }
   cougarBark(d);
   falconBark(d);
+  vendorBark(d);   // VENDOR: on a mat at the Trading Post it buys
   hint('bark-used');
 }
 // Tests and debug: swing a gate open or shut as if a dog had shoved it (players push gates for real: updateGate)
@@ -3611,13 +3683,6 @@ function toggleGate(pen, d) {
 function onGateClosed(pen) {
   G.gateClosedN = (G.gateClosedN || 0) + 1;
   const live = living().filter(s => !s.grabbed), inside = live.filter(s => s.pen === pen).length;
-  if (pen.final && inside > 0) {
-    const out = live.length - inside;
-    if (out === 0 || G.finalArm > 0) { finishGame(inside); return; }
-    G.finalArm = 6;
-    toast(`${out} sheep still outside! Lean on the gate to finish with ${inside}.`, 'warn');
-    return;
-  }
   if (inside > 0 && inside === live.length) { toast('The whole flock is safe in the pen ✔', 'good'); Sound.chime([0, 4, 7], 784); }
   else if (inside > 0 && isNight()) toast(`${live.length - inside} sheep still out in the dark!`, 'warn');
   hankGateClosed(pen, inside, live.length);   // HANK: "That'll do" at the end of the day
@@ -3715,6 +3780,13 @@ const SFX = (() => {
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
       for (let k = 0; k < 5; k++) { const t = t0 + k * 0.09 + Math.random() * 0.04, [n, f] = noise(A, t, 'bandpass', 1400 + Math.random() * 900, 1.1), g = A.ac.createGain(); A.env(g, t, 0.01, 0.8, 0.16); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.2); }
       this.thud(pan, vol * 0.5);
+    },
+    snip(pan = 0, vol = 0.2) {   // hand shears through a fleece (HANK: shearing)
+      const A = R(); if (!A) return; const t0 = A.ac.currentTime;
+      for (const [dt, f] of [[0, 2600], [0.08, 2200]]) {
+        const t = t0 + dt, [n, fl] = noise(A, t, 'bandpass', f * 1.6, 2.5), g = A.ac.createGain(); A.env(g, t, 0.002, 0.9, 0.05); fl.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.07);
+        const o = osc(A, 'square', t, f, f * 0.7, 0.03), og = A.ac.createGain(); A.env(og, t, 0.002, 0.25, 0.03); o.connect(og); og.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.05);
+      }
     },
   };
 })();
@@ -3951,6 +4023,7 @@ function swimSheep(s, a, dt) {
   if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
   s.y = Math.max(groundY(s.x, s.z), WATER_Y - 0.45) + Math.sin(a.t * 5 + s.id) * 0.05;   // paddling: just the back and head above water
   s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
+  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / T.hourSec);   // WATER: a few gulps on the way
   if (Math.random() < dt * 1.5) spawnRing(s.x, WATER_Y, s.z, 1.3, '#e8f8ff', 0.7);
 }
 function launchCoyote(c, vx, vz, vy, by = null) {
@@ -4269,7 +4342,6 @@ function updateGate(p, dt) {
     const into = d.inMag > 0.5 ? -(HIT.nx * d.wx + HIT.nz * d.wz) : 0;
     if (into < 0.45 || !freeToHop(d)) continue;
     d.leaning = true; d.leanT += dt;
-    if (p.final && p.latched && G.finalArm > 0 && d.leanT > 0.3) { onGateClosed(p); continue; }
     if (d.leanT > K.lean && d.mode !== 'sprint') { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
   }
 }
@@ -4341,9 +4413,9 @@ function pounceGateSlam(d, ox, oz) {
 initGates();
 // the prompt over a gate when a dog is near: what a shove will do, and which way it'll swing
 function drawGatePrompt(p, d) {
-  const held = d.holding === p, finalArm = p.final && p.latched && G.finalArm > 0, g = keyLabel(d.player, 'grab');
+  const held = d.holding === p, g = keyLabel(d.player, 'grab');
   // one short line, once each (HUD: nudge); the arrow below shows which way it'll swing
-  const [key, line] = finalArm ? ['gate-lean', 'Lean on it!'] : held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
+  const [key, line] = held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
     p.latched ? (p.fresh ? ['gate-push', `Push · ${g} drag`] : ['gate-latched', '🔒 Back off, shove again']) : p.gateT > 0.5 ? ['gate-shut', 'Push to shut'] : ['gate-push', `Push · ${g} drag`];
   nudge(key, p.gx, p.y + 3.6, p.gz, line, d.color);   // above the gate, so it never covers the dog
   if (held || (p.latched && !p.fresh)) return;
@@ -4475,6 +4547,7 @@ function updateWorldPhysics(dt) {
   for (const d of G.dogs) if (!d.leaning) d.leanT = 0;
   updateLaunchers(dt);
   updateForage(dt);   // dogs gathering greens and salt, tipping them into troughs and licks; regrowth (FORAGE section)
+  updateWater(dt);    // WATER: buckets picked up, filled, tipped into the pens' water troughs
   updateDigs(dt);     // DIG SPOTS: dogs digging up treasure for the barn
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
@@ -4544,7 +4617,7 @@ const PLANTS = [];
     for (let t = 0; t < 8 && !ok; t++) {
       const lat = frr(-hwWArr[k] * 0.85, hwEArr[k] * 0.85); if (Math.abs(lat) < 6) continue;   // never on the worn trail
       const p = pathPoint(s + frr(-3, 3), lat); cx = p.x; cz = p.z;
-      ok = sdfAt(cx, cz) > 2.5 && !wetAt(cx, cz) && camps.every(c => Math.hypot(cx - c.x, cz - c.z) > c.r) && (!L0 || Math.hypot(cx - L0.x, cz - L0.z) > 10);
+      ok = sdfAt(cx, cz) > 2.5 && !wetAt(cx, cz) && camps.every(c => Math.hypot(cx - c.x, cz - c.z) > c.r) && offMarket(cx, cz, 3) && (!L0 || Math.hypot(cx - L0.x, cz - L0.z) > 10);
     }
     if (!ok) continue;
     const n = kind === 'alfalfa' ? 3 + Math.floor(FR() * 4) : 5 + Math.floor(FR() * 5);
@@ -4592,7 +4665,7 @@ const FIND_GLOW = (() => {
 const SALT_ROCKS = [];
 {
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 9 })), L0 = LAUNCHERS[0];
-  const okAt = (x, z) => sdfAt(x, z) > 2.5 && !wetAt(x, z) && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 10)
+  const okAt = (x, z) => sdfAt(x, z) > 2.5 && !wetAt(x, z) && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 4) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 10)
     && Math.abs(trailInfo(x, z).lat) > 5 && PLANTS.every(o => (o.x - x) ** 2 + (o.z - z) ** 2 > 4) && SALT_ROCKS.every(o => Math.hypot(o.x - x, o.z - z) > 30);
   const place = (s0, spread) => {
     for (let t = 0; t < 24; t++) {
@@ -4786,11 +4859,11 @@ function forageChip(x, y, txt, bg, fg = '#fff', w0 = 0) {
   ctx.font = '600 13px Fredoka, sans-serif'; const w = Math.max(w0, ctx.measureText(txt).width + 16);
   ctx.fillStyle = bg; rr(x - w / 2, y - 11, w, 22, 10); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(txt, x, y + 1); return w;
 }
-function forageBar(x, y, k, full, icon = '🌿') {
+function forageBar(x, y, k, full, icon = '🌿', col = null) {
   const w = 64; ctx.fillStyle = 'rgba(27,26,40,.78)'; rr(x - w / 2 - 14, y - 10, w + 28, 20, 10); ctx.fill();
   ctx.font = '13px Fredoka, sans-serif'; ctx.fillText(icon, x - w / 2 - 3, y + 1);
   ctx.fillStyle = 'rgba(255,255,255,.18)'; rr(x - w / 2 + 8, y - 5, w, 10, 5); ctx.fill();
-  if (k > 0) { ctx.fillStyle = full ? '#7ed957' : '#b8e36b'; rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
+  if (k > 0) { ctx.fillStyle = col || (full ? '#7ed957' : '#b8e36b'); rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
 }
 function drawForageOverlay() {
   if (G.mode !== 'play') return;
@@ -4803,13 +4876,13 @@ function drawForageOverlay() {
   }
   // carrying a good load and no pen on screen: an arrow at the edge toward the nearest one
   for (const d of G.dogs) {
-    if (!((d.greens || 0) >= cap * 0.5 || d.salt)) continue;
+    if (!((d.greens || 0) >= cap * 0.5 || d.salt || (bucketOf(d)?.w || 0) >= T.water.bucket * 0.5)) continue;   // (WATER: a bucket of water)
     let pen = null, pd = 1e9; for (const p of pens) { const dd = Math.hypot(p.gx - d.x, p.gz - d.z); if (dd < pd) { pd = dd; pen = p; } }
     const [px, py, pz] = proj(pen.gx, pen.y + 1, pen.gz); if (pz <= 1 && px > 0 && px < W && py > 0 && py < H) continue;
     const cx = W / 2, cy = H / 2, dx = (pz > 1 ? -1 : 1) * (px - cx), dy = (pz > 1 ? -1 : 1) * (py - cy), kk = Math.min((W / 2 - 46) / Math.abs(dx || 1e-3), (H / 2 - 46) / Math.abs(dy || 1e-3)), ax = cx + dx * kk, ay = cy + dy * kk, a = Math.atan2(dy, dx);
     ctx.save(); ctx.translate(ax, ay); ctx.fillStyle = 'rgba(60,140,60,.9)'; ctx.beginPath(); ctx.arc(0, 0, 17, 0, TAU); ctx.fill();
     ctx.rotate(a); ctx.beginPath(); ctx.moveTo(27, 0); ctx.lineTo(16, -8); ctx.lineTo(16, 8); ctx.closePath(); ctx.fill(); ctx.restore();
-    ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(d.salt && (d.greens || 0) < cap * 0.5 ? '🧂' : '🌾', ax, ay + 1);
+    ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText((d.greens || 0) >= cap * 0.5 ? '🌾' : d.salt ? '🧂' : '💧', ax, ay + 1);
   }
   for (const p of pens) {   // what's in each trough, and the salt lick: only when a dog's close by
     if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
@@ -4831,6 +4904,195 @@ function drawForageOverlay() {
   }
 }
 // =====================================================================
+// WATER — every pen has a water trough at the back (pen.water = { w, cap,
+// x, z, yaw, len, tx, tz }) and a bucket lies outside it at the start
+// (BUCKETS: b.w water in it, b.by the dog carrying it). A dog runs over a
+// bucket to pick it up (one each), wades or swims into water to fill it,
+// and tips it into any pen's water trough by going up to it (either side
+// of the fence), setting it down there once it's empty. Penned sheep drink
+// (drinkWater) when thirsty: see the sheep mind. Anyone can add water
+// (fillWater). Thirst, drinking and dying of it: sheepThirst.
+// =====================================================================
+const waterA = p => p.gateA + Math.PI;   // straight across from the gate
+const WATER_GEO = (() => {
+  const L = 3.4, Wd = 0.76, M = '#a3b3be', D = '#7d8d98', RIM = '#cdd6dc';   // a galvanised stock tank on wooden feet
+  return { L, Wd, box: merge(
+    P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, Wd / 2] }), P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, -Wd / 2] }),
+    P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [L / 2, 0.44, 0] }), P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [-L / 2, 0.44, 0] }),
+    P(BOX(L, 0.06, Wd), D, { p: [0, 0.3, 0] }),
+    P(BOX(L + 0.08, 0.05, 0.1), RIM, { p: [0, 0.62, Wd / 2] }), P(BOX(L + 0.08, 0.05, 0.1), RIM, { p: [0, 0.62, -Wd / 2] }),
+    ...[-0.65, 0, 0.65].map(x => P(BOX(0.05, 0.3, 0.07), RIM, { p: [x * L / 2, 0.44, Wd / 2 + 0.02] })),
+    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => P(BOX(0.1, 0.3, 0.1), '#6b4226', { p: [sx * (L / 2 - 0.2), 0.14, sz * (Wd / 2 - 0.08)] }))),
+    fill: merge(P(BOX(L - 0.1, 1, Wd - 0.06), '#4aa8e8', { p: [0, 0.5, 0] }),
+      ...[-0.8, -0.2, 0.5, 1.0].map((x, i) => P(BOX(0.24, 0.02, 0.05), '#dff4ff', { p: [x, 1.0, (i % 2 ? 1 : -1) * 0.12] }))) };
+})();
+// a tin pail (open, so you can see the water in it), its handle, and the water: a disc that rises as it fills
+const PAIL = (() => {
+  const prof = [[0, 0], [0.13, 0], [0.17, 0.3], [0.19, 0.31], [0.19, 0.335], [0.155, 0.315], [0.115, 0.035], [0, 0.035]].map(([x, y]) => new THREE.Vector2(x, y));
+  return { body: merge(P(new THREE.LatheGeometry(prof, 14), '#aebac3'), P(new THREE.TorusGeometry(0.19, 0.016, 4, 14, Math.PI), '#59636b', { p: [0, 0.32, 0] })),
+    water: P(new THREE.CircleGeometry(1, 14).rotateX(-Math.PI / 2), '#4aa8e8') };
+})();
+function makePail() {
+  const root = new THREE.Group(); part(root, PAIL.body);
+  const water = new THREE.Mesh(PAIL.water, MAT.vc); water.visible = false; root.add(water);
+  return { root, water };
+}
+function setPailWater(m, k) {   // the water's surface at fill k (0…1), as wide as the pail is there
+  m.visible = k > 0.01; const y = lerp(0.05, 0.29, clamp(k, 0, 1)); m.position.y = y; const r = 0.111 + (y - 0.035) / 0.28 * 0.04; m.scale.set(r, 1, r);
+}
+const BUCKETS = [];
+for (const p of pens) {
+  const a = waterA(p), c = onRing(p, a, p.R - 0.9), tx = -Math.sin(a), tz = Math.cos(a), yaw = Math.atan2(-tz, tx), { L, Wd } = WATER_GEO;
+  const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; scene.add(g);
+  part(g, WATER_GEO.box);
+  const fill = new THREE.Mesh(WATER_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
+  p.water = { w: 0, cap: T.water.cap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill };   // (yaw/len/tx/tz: where the sheep line up, and segDist for tipping)
+  boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p);
+  // its bucket: just outside the fence beside it (or inside, if the ground out there won't do)
+  let h = onRing(p, a + 2.2 / p.R, p.R + 1.5); if (sdfAt(h.x, h.z) < 1.2) h = onRing(p, a + 2.6 / p.R, p.R - 2.2);
+  const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root);
+  BUCKETS.push({ i: BUCKETS.length, pen: p, hx: h.x, hz: h.z, x: h.x, z: h.z, w: 0, by: null, drop: null, root: pl.root, water: pl.water });
+}
+// SHARED HOOK: add amt water to a pen's water trough (1 = one sheep from parched to quenched); returns what went in (it's capped)
+function fillWater(pen, amt) {
+  const tr = pen && pen.water; if (!tr || !(amt > 0)) return 0;
+  const got = Math.min(amt, Math.max(0, tr.cap - tr.w)); tr.w += got; return got;
+}
+// SHARED HOOK (sheep mind): a sheep drinks from the pen's water trough. amt in thirst; returns what it got.
+function drinkWater(pen, amt) {
+  const tr = pen && pen.water; if (!tr || !(amt > 0)) return 0;
+  const got = Math.min(tr.w, amt); tr.w -= got; return got;
+}
+const WATER = { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 };   // avg, parched: the flock's thirst (HUD; synced)
+function resetWater() {
+  for (const p of pens) { p.water.w = p === pens[0] ? p.water.cap * T.water.startFill : 0; p.water.shown = p.water.w; }   // the first camp's starts full (no water out in the desert)
+  for (const b of BUCKETS) Object.assign(b, { x: b.hx, z: b.hz, w: 0, by: null, drop: null });
+  Object.assign(WATER, { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 });
+}
+resetWater();
+const bucketOf = d => { for (const b of BUCKETS) if (b.by === d) return b; return null; };
+// a dog in the water (swimming), or with water within T.water.reach of it (wading in at the bank)
+function dogAtWater(d) {
+  if (d.air) return !!d.air.swim;
+  if (wetAt(d.x, d.z)) return true;
+  for (let k = 0, r = T.water.reach; k < 8; k++) { const a = d.yaw + k * TAU / 8; if (wetAt(d.x + Math.sin(a) * r, d.z + Math.cos(a) * r)) return true; }
+  return false;
+}
+// what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
+function waterFx(kind, x, z, k = 1) {
+  const y = groundY(x, z);
+  if (kind === 'pick') { floatText('+🪣', x, y + 1.4, z, '#dff4ff', 1); SFX.clack(panOf(x, z), 0.25); }
+  else if (kind === 'fill') {
+    for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8']) burst(x, Math.max(y, WATER_Y) + 0.4, z, 6, c, { speed: 2, up: 4, size: 0.13, life: 0.7, grav: -12 });
+    spawnRing(x, Math.max(y, WATER_Y) + 0.05, z, 2.2, '#e8f8ff', 0.5); SFX.splash(panOf(x, z), 0.3); Sound.chime([0, 4, 7], 784, 0.12, 0.05);
+    floatText('🪣 💧', x, y + 1.8, z, '#9fe3ff', 1.2);
+  } else if (kind === 'tip') {
+    for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8']) burst(x, y + 0.9, z, 7, c, { speed: 1.6, up: 2.4, size: 0.12, life: 0.8, grav: -10 });
+    SFX.splash(panOf(x, z), 0.25); Sound.chime([0, 4, 7, 12], 659, 0.16, 0.06);
+    floatText(`💧 +${Math.round(k * 100)}%`, x, y + 1.8, z, '#9fe3ff', 1.3);
+  }
+}
+function pickBucket(b, d) {
+  b.by = d; b.drop = null; WATER.picks++;
+  waterFx('pick', b.x, b.z); rumble(d.player, 0.2, 0.35, 80); hint('bucket');
+}
+function fillBucket(b, d) {
+  b.w = T.water.bucket; WATER.fills++;
+  waterFx('fill', d.x + Math.sin(d.yaw) * 0.8, d.z + Math.cos(d.yaw) * 0.8); rumble(d.player, 0.3, 0.5, 120); hint('bucket-full');
+}
+function tipBucket(b, d, p) {
+  const tr = p.water, amt = fillWater(p, b.w); if (amt < 0.01) return false;
+  b.w -= amt; WATER.tips++; WATER.tipped += amt;
+  waterFx('tip', tr.x, tr.z, amt / tr.cap); rumble(d.player, 0.3, 0.5, 120); hint('water');
+  if (WATER.tips === 1) hank(null, 'Fresh water! Good dog.', { force: true });
+  if (b.w < 0.01) { b.w = 0; b.by = null; b.x = d.x; b.z = d.z; b.drop = d; }   // empty: set down here (it picks it up again once it's been away)
+  return true;
+}
+function updateDogWater(d) {
+  if (G.mode !== 'play') return;
+  let b = bucketOf(d);
+  if (!b) {
+    if (d.air) return;
+    for (const o of BUCKETS) if (!o.by && o.drop !== d && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; break; }
+    if (!b) return;
+  }
+  if (b.w < T.water.bucket - 0.01 && dogAtWater(d)) fillBucket(b, d);
+  if (b.w < 0.01 || d.air) return;
+  for (const p of pens) {   // close by a pen's water trough: in it goes
+    const tr = p.water; if (tr.w > tr.cap - 0.01 || Math.abs(tr.x - d.x) > 4 || Math.abs(tr.z - d.z) > 4) continue;
+    if (segDist(d.x, d.z, tr) < T.water.tipR && tipBucket(b, d, p)) break;
+  }
+}
+function updateWater(dt) {
+  if (G.mode !== 'play') return;
+  for (const b of BUCKETS) {
+    if (b.by && !G.dogs.includes(b.by)) { b.x = b.by.x; b.z = b.by.z; b.by = null; }   // its dog left: down it goes
+    if (b.drop && (!G.dogs.includes(b.drop) || Math.hypot(b.drop.x - b.x, b.drop.z - b.z) > 2.5)) b.drop = null;
+  }
+  for (const d of G.dogs) updateDogWater(d);
+  let n = 0, t = 0, pa = 0; for (const s of G.sheep) if (!s.dead) { n++; t += s.thirst || 0; if (s.thirst >= 1) pa++; }
+  WATER.avg = n ? t / n : 0; WATER.parched = pa;
+  // a thirsty flock and no water where they're penned: say so once a day (Hank, once a journey)
+  if (WATER.warnDay !== G.clock.day && G.clock.hour > 7 && G.clock.hour < 18) {
+    const live = G.sheep.filter(s => !s.dead);
+    if (WATER.avg > T.water.low && !pens.some(p => waterHas(p) && live.some(s => s.pen === p))) {
+      WATER.warnDay = G.clock.day; toast('💧 Thirsty flock!', 'warn'); hint('thirst');
+      if (!WATER.hankSaid) { WATER.hankSaid = true; hank(null, "They're thirsty! Fetch the bucket.", { force: true }); }
+    }
+  }
+}
+// SHEEP (from updateSheep): thirst rises; drinking at the trough, or a sip with its nose in the water; parched too long → dies
+function sheepThirst(s, dtH, sp) {
+  if (s.dead) return;
+  const W = T.water; s.thirst = Math.min(1, (s.thirst || 0) + W.perDay / 24 * dtH);
+  if (s.atWater && s.pen) {
+    const got = drinkWater(s.pen, Math.max(0, Math.min(W.drinkRate * dtH, s.thirst - W.full + 0.01)));
+    s.thirst = Math.max(0, s.thirst - got); if (got > 0) s.eating = true;
+    if (s.thirst <= W.full || !waterHas(s.pen)) { s.state = 'wander'; s.tx = lerp(s.x, s.pen.x, 0.4); s.tz = lerp(s.z, s.pen.z, 0.4); s.thinkT = rnd(1.5, 2.5); }   // done: out of the way of the next
+  } else if (s.thirst > 0.05 && !s.pen && sp < 1.5 && wetAt(s.x + Math.sin(s.yaw) * 0.8, s.z + Math.cos(s.yaw) * 0.8)) s.thirst = Math.max(0, s.thirst - W.wade * dtH);
+  if (s.thirst >= 1) { s.parchT = (s.parchT || 0) + dtH; if (s.parchT > (s.parchMax || W.deathHours[0])) killSheep(s, 'thirst'); }
+  else s.parchT = Math.max(0, (s.parchT || 0) - dtH * 2);
+}
+function syncWater(dt) {
+  for (const p of pens) { const tr = p.water; tr.shown = lerp(tr.shown, tr.w, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k); }
+  for (const b of BUCKETS) { b.root.visible = !b.by; if (!b.by) { b.root.position.set(b.x, groundY(b.x, b.z), b.z); setPailWater(b.water, b.w / T.water.bucket); } }
+  for (const d of G.dogs) {   // the one it carries hangs at its side
+    if (!d.models) continue;
+    if (!d.models.pail) { const pl = makePail(); pl.root.position.set(0.42, 0.4, -0.05); pl.root.scale.setScalar(0.9); d.models.root.add(pl.root); d.models.pail = pl; }
+    const b = bucketOf(d), pl = d.models.pail; pl.root.visible = !!b; if (b) setPailWater(pl.water, b.w / T.water.bucket);
+  }
+}
+// the flock panel's water row: how quenched the flock is on average
+function updateWaterHUD() {
+  const el = $('hWater'), bar = $('hWaterBar'); if (!el || !bar) return;
+  const t = WATER.avg;
+  const [txt, col] = t < 0.35 ? ['Good', '#6fc3ff'] : t < T.water.low ? ['Thirsty', '#ffd36b'] : t < 0.9 ? ['Very thirsty!', '#ff9a6b'] : ['Parched!', '#ff7a6b'];
+  if (el.textContent !== txt) { el.textContent = txt; el.style.color = col; }
+  bar.style.width = `${Math.round(Math.max(0.03, 1 - t) * 100)}%`; bar.style.background = col;
+}
+// the overlay: a dog's bucket and how full, buckets lying about, each pen's water level
+function drawWaterOverlay() {
+  if (G.mode !== 'play') return;
+  const B = T.water.bucket, vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
+  for (const d of G.dogs) {
+    const b = bucketOf(d); if (!b) continue;
+    const [px, py, pz] = proj(d.x, d.y + 2.4, d.z); if (vis(px, py, pz)) forageBar(px, py - ((d.greens || 0) > 0.01 ? 24 : 0), b.w / B, b.w >= B - 0.01, '🪣', '#5fb8f0');
+  }
+  for (const b of BUCKETS) {
+    if (b.by || !G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 40)) continue;
+    const y = groundY(b.x, b.z), [px, py, pz] = proj(b.x, y + 1.3, b.z); if (vis(px, py, pz)) forageChip(px, py, '🪣', 'rgba(27,26,40,.6)');
+    if (G.dogs.some(d => !bucketOf(d) && Math.hypot(d.x - b.x, d.z - b.z) < 9)) nudge('bucket', b.x, y + 2.1, b.z, '🪣 Run over it', '#6fc3ff');
+  }
+  const dry = WATER.avg > T.water.want;
+  for (const p of pens) {   // under the pen's 🐑 badge
+    const tr = p.water; if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
+    if (tr.w < tr.cap - 0.01 && G.dogs.some(d => (bucketOf(d)?.w || 0) > 0.01 && Math.hypot(d.x - tr.x, d.z - tr.z) < 9)) nudge('water', tr.x, p.y + 1.9, tr.z, '🪣 Walk up: tip in', '#6fc3ff');
+    const [px, py, pz] = proj(p.x, p.y + 1.6, p.z); if (!vis(px, py, pz)) continue;
+    const pct = Math.round(tr.shown / tr.cap * 100);
+    forageChip(px, py + 28, `💧 ${pct}%`, pct > 0 ? 'rgba(40,110,170,.85)' : dry ? 'rgba(170,70,60,.85)' : 'rgba(27,26,40,.6)');
+  }
+}
+// =====================================================================
 // DIG SPOTS — little mounds of turned earth off the trail, with a glint
 // on top. A dog that stands (or creeps) on one digs it up: some hold a
 // hat or a bit of kit for the dogs (DOG WARDROBE: kept in this browser,
@@ -4848,11 +5110,21 @@ const DIGS = [];
       const side = DR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.8;
       const lat = side * drr(T.dig.lat[0], Math.max(T.dig.lat[0] + 0.5, Math.min(T.dig.lat[1], room)));
       const p = pathPoint(s + drr(-4, 4), lat), x = p.x, z = p.z;
-      if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r)) continue;
+      if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) || !offMarket(x, z, 3)) continue;
       if ((L0 && Math.hypot(x - L0.x, z - L0.z) < 10) || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 4) || SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5)) continue;
       DIGS.push({ i: DIGS.length, x, z, y: terrainH(x, z), rot: DR() * TAU, dug: false, prog: 0, glint: DR() * 3 });
       break;
     }
+  }
+  // HANK: shearing: one more, always the same, between the first two camps: Hank's clippers (sp.clip)
+  const CR = mulberry32(61061);
+  for (let t = 0; t < 120; t++) {
+    const s = lerp(CAMPS[0].s, CAMPS[1].s, 0.45 + CR() * 0.3), k = pathIdx(s), side = CR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.8;
+    const p = pathPoint(s, side * (6 + CR() * clamp(room - 6, 0.5, 4))), x = p.x, z = p.z;
+    if (sdfAt(x, z) < 2.2 || wetAt(x, z) || Math.abs(trailInfo(x, z).lat) < 5 || !camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r)) continue;
+    if ((L0 && Math.hypot(x - L0.x, z - L0.z) < 10) || PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 4) || SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) || DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 12)) continue;
+    DIGS.push({ i: DIGS.length, x, z, y: terrainH(x, z), rot: CR() * TAU, dug: false, prog: 0, glint: CR() * 3, clip: true });
+    break;
   }
   const mound = merge(P(SPH(10), '#7a5634', { s: [0.75, 0.24, 0.62] }), P(SPH(8), '#8c6440', { s: [0.42, 0.18, 0.38], p: [0.15, 0.08, -0.05] }),
     P(ICO(1, 0), '#9a948a', { s: [0.09, 0.07, 0.09], p: [-0.5, 0.05, 0.3] }), P(ICO(1, 0), '#9a948a', { s: [0.07, 0.06, 0.07], p: [0.55, 0.04, -0.25] }),
@@ -4868,11 +5140,14 @@ const DIGS = [];
   }
 }
 const DIG_JUNK = ['AN OLD BOOT!', 'A BONE!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
+const CLIP_DIG = DIGS.find(sp => sp.clip) || null;   // HANK: shearing: where his clippers are buried
+const clippersOut = () => HANK.clippers || G.dogs.some(d => d.clippers);
 function resetDigs() { for (const d of DIGS) { d.dug = false; d.prog = 0; } }
 // in step(): who's digging where
 function updateDigs(dt) {
   for (const d of G.dogs) d.digK = Math.max(0, (d.digK || 0) - dt * 4);
   if (G.mode !== 'play') return;
+  if (CLIP_DIG && CLIP_DIG.dug && !clippersOut()) { CLIP_DIG.dug = false; CLIP_DIG.prog = 0; }   // the dog carrying them left: back in the ground
   for (const sp of DIGS) {
     if (sp.dug) continue;
     let dog = null, near = false;
@@ -4890,6 +5165,13 @@ function updateDigs(dt) {
 function digUp(sp, d) {
   sp.dug = true; sp.prog = 0;
   burst(sp.x, sp.y + 0.3, sp.z, 14, '#8a6440', { speed: 3, up: 4, size: 0.16, life: 0.8, grav: -9 });
+  if (sp.clip && !clippersOut()) {   // HANK: shearing: his clippers, carried in the dog's mouth till it reaches him
+    d.clippers = true;
+    confetti(sp.x, sp.y + 1, sp.z, 30); Sound.chime([0, 4, 7, 12], 660, 0.12); rumble(d.player, 0.3, 0.5, 120);
+    floatText('✂️!', sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
+    hank(null, 'My clippers! Bring them here!', { force: true });
+    return;
+  }
   const left = DOG_ITEMS.filter(it => !DOGS.found.includes(it.id));
   if (left.length && (!DOGS.found.length || Math.random() < T.dig.treasure)) {
     const it = pick(left); foundDogItem(it.id, d);
@@ -4916,6 +5198,10 @@ function syncDigs(dt) {
 }
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
+  // HANK: shearing: ✂️ over the clippers' mound and over the dog carrying them, and over Hank (take them to him)
+  const chip = (x, y, z) => { const [px, py, pz] = proj(x, y, z); if (pz <= 1 && px > -30 && px < W + 30 && py > -30 && py < H + 30) forageChip(px, py, '✂️', 'rgba(27,26,40,.7)'); };
+  if (CLIP_DIG && !CLIP_DIG.dug && !clippersOut() && G.dogs.some(d => Math.hypot(d.x - CLIP_DIG.x, d.z - CLIP_DIG.z) < 30)) chip(CLIP_DIG.x, CLIP_DIG.y + 1.9, CLIP_DIG.z);
+  for (const d of G.dogs) if (d.clippers) { chip(d.x, d.y + 2.9, d.z); nudge('clippers', HANK.x, HANK.y + 3, HANK.z, '✂️ ➜ 🧓'); }
   for (const sp of DIGS) {
     if (sp.dug) continue;
     if (sp.prog <= 0.02 && G.dogs.some(d => Math.hypot(d.x - sp.x, d.z - sp.z) < 8)) nudge('dig', sp.x, sp.y + 1.5, sp.z, '⬇ Stand here: dig');
@@ -4936,7 +5222,7 @@ const BRAMBLES = [];
 {
   const BR = mulberry32(240617), brr = (a, b) => a + BR() * (b - a), B = T.bramble, L0 = LAUNCHERS[0];
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 20 }));
-  const okAt = (x, z) => sdfAt(x, z) > 2.2 && !wetAt(x, z) && Math.abs(trailInfo(x, z).lat) > 5 && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 12)
+  const okAt = (x, z) => sdfAt(x, z) > 2.2 && !wetAt(x, z) && Math.abs(trailInfo(x, z).lat) > 5 && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 6) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 12)
     && !PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 6) && !SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) && !DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 4)
     && !BRAMBLES.some(o => Math.hypot(o.x - x, o.z - z) < 1.6);
   for (let s = 30; s < PATH_LEN - 25; s += B.every * brr(0.7, 1.3)) {
@@ -6292,8 +6578,13 @@ function sheepWoolColor(s, out) {
   else if (s.ram && !s.lamb) out.setRGB(0.93 * st, 0.88 * st, 0.78 * st);   // rams: a creamier, older fleece
   else { const tint = s.lamb ? 1.0 : 0.97; out.setRGB(tint * st, tint * st, tint * st); }
   const k = oldK(s);   // AGE: old fleece goes a dingy grey (and a black one grizzles)
-  return k > 0 ? out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k) : out;
+  if (k > 0) out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k);
+  const w = clamp((1 - (s.wool ?? 1)) / 0.8, 0, 1);   // HANK: shearing: shorn, the skin shows through, pinker the less fleece
+  return w > 0 ? out.lerp(s.black ? _cAge.setRGB(0.36 * st, 0.29 * st, 0.27 * st) : _cAge.setRGB(0.93 * st, 0.66 * st, 0.6 * st), 0.6 * w * w) : out;
 }
+// fleece size: shorn, a sheep's body is slimmer (x, y, z scale)
+const woolFit = (s, out) => { const w = s.wool ?? 1; return out.set(lerp(0.8, 1, w), lerp(0.88, 1, w), lerp(0.93, 1, w)); };
+const _wf = new THREE.Vector3();
 // the head's instance colour: white, a black face, or a dyed tuft; greying round the muzzle with age
 const _cAge = new THREE.Color();
 function sheepHeadColor(s, out) {
@@ -6309,12 +6600,13 @@ function syncSheep() {
     // tells: a stressed sheep trembles; a ram squaring up rocks on its feet
     const shiver = s.stress > 0.5 && !lying ? Math.sin(G.time * 47 + s.id * 3.1) * 0.12 * (s.stress - 0.5) : 0;
     const rock = s.rs === 'windup' ? Math.sin(G.time * 17) * 0.08 : s.rs === 'charge' ? 0.12 : 0;
-    _e.set(rock, s.yaw + shiver, s.grabbed ? 1.4 : 0, 'YXZ');
-    _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0), s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
+    const shk = s.shK = clamp((s.shK || 0) + (s.state === 'shear' ? 0.08 : -0.08), 0, 1);   // HANK: shearing: sat back on its rump
+    _e.set(rock - 0.95 * shk, s.yaw + shiver, s.grabbed ? 1.4 : 0, 'YXZ');
+    _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0) + 0.14 * shk * sc, s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
     if (s.pose) poseSheep(s, _mb, sc);   // flying, held, squashed on landing (dog-moves section)
     const bob = s.state === 'flee' || s.rs === 'charge' ? Math.abs(Math.sin(s.leg)) * 0.08 : 0, breathe = 1 + Math.sin(G.time * 2 + s.id) * 0.02;
-    const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok);
-    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob, 0), _qa.identity(), _s.set(thin, breathe * (1 - 0.04 * ok), 1));
+    const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok), wf = woolFit(s, _wf);   // (wf: a shorn fleece)
+    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob - (1 - wf.y) * 0.3, 0), _qa.identity(), _s.set(thin * wf.x, breathe * (1 - 0.04 * ok) * wf.y, wf.z));
     _ml.multiplyMatrices(_mb, _mp); SI.body.m.setMatrixAt(n, _ml);
     SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
     (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
@@ -6498,6 +6790,10 @@ const HINTS = {
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
   bramble: '🌿 Stuck in the brambles! <b>Pounce</b> into it to bonk it free.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
+  bucket: 'A <b>bucket</b> 🪣! Wade into a river, lake or the sea to fill it.',
+  'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
+  water: 'Water in! Penned sheep drink their fill.',
+  thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
   launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
   barn: 'The flock is safe for the night. Press <b>Tab</b> / <b>View</b> to visit <b>Hank’s barn</b>.',
 };
@@ -6527,6 +6823,10 @@ const TOUCH_HINTS = {
   'salt-lick': 'Salt in the lick! Peppy sheep',
   bramble: '🌿 Stuck! 💥 it free',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
+  bucket: '🪣! Wade into water to fill it',
+  'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
+  water: '💧 In! Penned sheep drink',
+  thirst: 'Thirsty! 🪣 → water → 💧 trough',
   launcher: 'Sheep on the low end, 💥 the red target',
   barn: '🏚️ Hank\'s barn',
 };
@@ -6568,7 +6868,8 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
-  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.cougar || 0) + (G.stats.falcon || 0);
+  const wr = $('hWoolRow'), wv = HANK.clippers || G.wool > 0 ? '' : 'none'; if (wr.style.display !== wv) wr.style.display = wv; $('hWool').textContent = G.wool;   // HANK: shearing
+  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.thirst || 0) + (G.stats.cougar || 0) + (G.stats.falcon || 0);
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
@@ -6583,9 +6884,9 @@ function updateHUD(dt) {
   const gl = g < 0 ? ['In pens', '#fff8e8'] : g > 0.6 ? ['Lush', '#7ed957'] : g > 0.35 ? ['Good', '#b8e36b'] : g > 0.15 ? ['Thin', '#ffd36b'] : ['Overgrazed', '#ff7a6b'];
   const ge = $('hGrass'); ge.textContent = gl[0]; ge.style.color = gl[1];
   if (g >= 0 && g < 0.2 && G.mode === 'play') hint('grass');
-  const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length;
-  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : ''].filter(Boolean).join(' ');
-  updateSaltHUD(live);
+  const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length, parched = WATER.parched;
+  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : ''].filter(Boolean).join(' ');
+  updateSaltHUD(live); updateWaterHUD();
   if (starving) hint('hungry');
   // compass to the next camp
   const fc = flockCenter(), fs = fc.n ? sAt(fc.x, fc.z) : 0;
@@ -6723,7 +7024,9 @@ function drawOverlay(dt) {
     if (d) nudge('launch', tx, S.y + 2.2, tz, `Pounce: ${keyLabel(d.player, 'pounce')}`, '#e8473f');
   }
   drawForageOverlay();   // what the dogs carry, trough and salt-lick levels, salt rocks (FORAGE section)
+  drawWaterOverlay();    // WATER: buckets, each pen's water
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
+  drawVendorOverlay();   // VENDOR: prices over the mats
   drawBrambleOverlay();  // BRAMBLES: snagged sheep
   // dog labels + stamina
   for (const d of G.dogs) {
@@ -6802,6 +7105,8 @@ const HANK = {
   thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
   // asleep on his mat (sim); lieK 0 standing…1 lying (render)
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
+  // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
+  clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -6883,6 +7188,7 @@ const _hv = new THREE.Vector3();
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
+  const shg = shearGoal(); if (shg) return shg;   // shearing: in the pen, by the sheep he's after
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
   // evening and night: warming himself at the campfire of the pen the flock's in
@@ -6901,7 +7207,8 @@ function hankGoal() {
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
-  const hk = HANK, g = hankGoal();
+  const hk = HANK; shearStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
+  const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
@@ -6914,7 +7221,8 @@ function updateHank(dt) {
   // lines said "in a moment" (game time, so they wait while the game does)
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
-  const g = hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;
+  if (hk.climb) { hankClimb(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
+  const g = hankCross(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence)
   if (G.mode !== 'play') hk.asleep = false;
   const spd = hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4);
   // keep clear of the flock and of walls: steer round, don't push through
@@ -6931,7 +7239,7 @@ function updateHank(dt) {
   collideGraves(hk, T.hankR);
   // solid but gentle: a sheep right against him is just eased aside (no fright), and dogs bump off him
   for (const s of G.sheep) {
-    if (s.dead || s.grabbed || s.air || s.heldBy) continue;
+    if (s.dead || s.grabbed || s.air || s.heldBy || s.state === 'shear') continue;
     const ex = s.x - hk.x, ez = s.z - hk.z, m = T.hankR + s.r, e2 = ex * ex + ez * ez; if (e2 >= m * m || e2 < 1e-8) continue;
     const e = Math.sqrt(e2), push = m - e; s.x += ex / e * push * 0.7; s.z += ez / e * push * 0.7; hk.x -= ex / e * push * 0.3; hk.z -= ez / e * push * 0.3;
   }
@@ -6959,6 +7267,7 @@ function updateHank(dt) {
   else if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
   else { const f = (hk.talkT > 0 || !g.face) && G.dogs.length ? nearestDog(hk.x, hk.z).dog : g.face; hk.yaw = lerpA(hk.yaw, f ? Math.atan2(f.x - hk.x, f.z - hk.z) : Math.PI / 4, 1 - Math.exp(-dt * 2)); }
   hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt);
+  updateShear(dt);   // shearing: clippers handed over, picking a sheep, clipping it
   if (G.mode === 'play') hankWatch(dt);
 }
 
@@ -7056,12 +7365,13 @@ function syncHank(dt) {
   const mk = clamp(hk.lieK * 2.5, 0, 1), lie = clamp((hk.lieK - 0.35) / 0.65, 0, 1), tip = lie * lie * (3 - 2 * lie);
   M.mat.visible = mk > 0.01;
   if (M.mat.visible) { M.mat.position.set(hk.x, groundY(hk.x, hk.z), hk.z); M.mat.rotation.y = hk.yaw; M.roll.scale.z = mk; M.pillow.scale.setScalar(clamp(mk * 5 - 4, 0.01, 1)); }
-  M.root.position.set(hk.x, hk.y + 0.3 * tip, hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
+  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing: bent over a sheep; a leg over a fence
+  M.root.position.set(hk.x, hk.y + 0.3 * tip + (hk.lift || 0), hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
   hk.phase += dt * sp * 2.4;
   const k = Math.min(1, sp / 1.6), sw = Math.sin(hk.phase);
-  M.legs[0].rotation.x = sw * 0.55 * k; M.legs[1].rotation.x = -sw * 0.55 * k;
-  M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7;
-  M.armL.rotation.x = -sw * 0.3 * k;
+  M.legs[0].rotation.x = sw * 0.55 * k - 1.3 * lf; M.legs[1].rotation.x = -sw * 0.55 * k + 0.4 * lf;
+  M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7 + 0.55 * shk;
+  M.armL.rotation.x = lerp(-sw * 0.3 * k, -1.15 + Math.sin(G.time * 15) * 0.2, shk);
   M.body.position.y = Math.abs(sw) * 0.05 * k;
   hk.talkT = Math.max(0, hk.talkT - dt);
   let cx = -0.35 + sw * 0.12 * k, cz = 0;
@@ -7069,11 +7379,12 @@ function syncHank(dt) {
   else if (tip > 0) cx = lerp(cx, 0.05, tip);                                      // crook laid along him asleep
   if (G.mode === 'end' && hk.celebrate) { cx = -2.7; cz = Math.sin(G.time * 8) * 0.35; }   // and waves it when you make it
   M.armR.rotation.x = lerp(M.armR.rotation.x, cx, 1 - Math.exp(-dt * 10)); M.armR.rotation.z = cz;
-  M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0;
+  M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0.35 * shk;
   // the lantern glows from dusk
   const n = LIGHT.night; M.glassMat.color.setRGB(lerp(0.32, 1, n), lerp(0.27, 0.8, n), lerp(0.16, 0.4, n));
   // the light hangs a little out in front (right at the glass it would bleach his coat): a warm pool on the ground round him
   M.glass.getWorldPosition(_hv); hankLight.position.set(_hv.x + Math.sin(hk.yaw) * 1.1, hk.y + 2.1, _hv.z + Math.cos(hk.yaw) * 1.1); hankLight.intensity = n * 5;
+  syncShears();   // shearing: his clippers (belt or hand) and a dog carrying them
   // the speech bubble: over his hat, or pinned to the screen edge with an arrow toward him
   const b = hk.bubble; if (!b) return;
   if (hk.sayT > 0) hk.sayT -= dt;
@@ -7160,7 +7471,7 @@ function hankWatch(dt) {
   // nice and steady over the bridge (once a journey)
   if (!hk.bridgeSaid && out.length >= 3 && Math.abs(riverAcross(fx, fz)) < RIVER.hw + 7 && Math.abs(riverAlong(fx, fz)) < 14) hk.bridgeSaid = hank('nice_steady', null, { force: true });
   // first sight of the Promised Land
-  if (!hk.finalSaid && G.visited.has(CAMPS[3].name)) { hk.finalSaid = true; hank(null, 'There she is, the Promised Land! Bring them home!', { force: true, delay: 1.5 }); }
+  if (!hk.finalSaid && G.visited.has(CAMPS[3].name)) { hk.finalSaid = true; hank(null, 'There she is, the Promised Land! Fatten them up!', { force: true, delay: 1.5 }); }
   // two dogs working opposite sides of the flock
   if (!hk.teamSaid && G.dogs.length >= 2 && out.length >= 4) {
     const a = G.dogs.map(d => [Math.atan2(d.z - fz, d.x - fx), Math.hypot(d.x - fx, d.z - fz)]);
@@ -7188,7 +7499,7 @@ function hankNap(dt) {
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;
+  const atFire = isNight() && g && g.face && !hk.job && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -7271,6 +7582,140 @@ function initHankUI() {
   resetHank();
 }
 
+// ---------------- shearing ----------------
+// His clippers lie in one mound between the first two camps (DIG SPOTS: sp.clip); a dog digs them up and takes them to
+// him. With them, awake and nothing prowling near for T.shear.calm s, he shears the flock penned behind a shut gate:
+// over the fence (clear of the gate and the troughs), woolliest first, each sat on its rump a few s. s.wool 0…1 regrows
+// over T.shear.regrowDays; each fleece adds to G.wool (🧶, whole skeins). HANK.clippers lasts the journey (not saved).
+// SHARED HOOK: Hank gets his clippers (from dog d, or from anywhere with d null), with his line and fx; no-op if he has them.
+function giveHankClippers(d = null) {
+  const hk = HANK; if (hk.clippers) return false;
+  hk.clippers = true; for (const o of G.dogs) o.clippers = false;
+  if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
+  starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText('✂️', hk.x, hk.y + 2.9, hk.z, '#ffd36b', 1.6); Sound.chime([0, 4, 7, 12, 16], 659, 0.14, 0.07);
+  if (d) rumble(d.player, 0.3, 0.5, 120);
+  hank(null, "Grand! I'll shear them in a shut pen.", { force: true });
+  return true;
+}
+const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
+const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm;
+const shearable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !!s.pen && s.pen.gateT < 0.05 && G.sheep.includes(s);
+function shearPick() {   // the woolliest penned sheep (near ones first), not one panicking, squaring up or feeding
+  const hk = HANK; let best = null, bs = -1e9;
+  for (const s of G.sheep) {
+    if (!shearable(s) || (s.wool ?? 1) < T.shear.min || (s.shearSkip || 0) > G.time || s.panic > 0.5 || (s.rs && s.rs !== 'idle')) continue;
+    const sc = s.wool - 0.015 * Math.hypot(s.x - hk.x, s.z - hk.z) - (s.state === 'trough' || s.state === 'lick' ? 0.3 : 0);
+    if (sc > bs) { bs = sc; best = s; }
+  }
+  return best;
+}
+function shearStop() {
+  const hk = HANK, j = hk.job;
+  if (j && j.s.state === 'shear') { j.s.state = 'idle'; j.s.thinkT = 0; }
+  hk.job = null; hk.shearing = false; hk.goal = null;
+}
+// hankGoal: next to the sheep, on the pen's middle side (g.pen: hankCross gets him over the fence first)
+function shearGoal() {
+  const hk = HANK, j = hk.job; if (!j || G.mode !== 'play') return null;
+  const s = j.s, p = j.pen;
+  if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: s };
+  let ux = p.x - s.x, uz = p.z - s.z, l = Math.hypot(ux, uz);
+  if (l < 1.5) { ux = hk.x - s.x; uz = hk.z - s.z; l = Math.hypot(ux, uz) || 1; }
+  const r = s.r + T.hankR + 0.15;
+  return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
+}
+// in updateHank (the host's sim): clippers handed over, picking a sheep, clipping it
+function updateShear(dt) {
+  const hk = HANK, S = T.shear;
+  if (G.mode === 'play' && !hk.clippers) for (const d of G.dogs) if (d.clippers && !d.air && Math.hypot(d.x - hk.x, d.z - hk.z) < S.giveR) { giveHankClippers(d); break; }
+  let j = hk.job;
+  if (j && (!shearCan() || !shearable(j.s) || j.s.pen !== j.pen)) { shearStop(); j = null; }
+  if (!j) {
+    if (!shearCan() || (hk.pickT = (hk.pickT || 0) - dt) > 0) return;
+    hk.pickT = 0.5; if (!(j = shearNext())) return;
+  }
+  const s = j.s, inPen = !hk.climb && penAt(hk.x, hk.z) === j.pen;
+  if (!j.on) {   // on his way: in reach (and in its pen) he sits it down; can't get to it in the pen for giveUp s: another
+    if (inPen && (j.t += dt) > S.giveUp) { s.shearSkip = G.time + S.skip; shearStop(); return; }
+    if (!inPen || Math.hypot(s.x - hk.x, s.z - hk.z) > s.r + T.hankR + S.reach) return;
+    Object.assign(j, { on: true, k: 0, w0: s.wool ?? 1 }); hk.shearing = true; hk.goal = null;
+    s.state = 'shear'; s.vx = s.vz = 0; s.shX = s.x; s.shZ = s.z; s.fear = 0; s.stress = Math.min(1, s.stress + S.stress);
+    if (hk.shearDay !== G.clock.day) { hk.shearDay = G.clock.day; hank(null, "Shearin' time!"); }
+  }
+  // clipping: the fleece comes off as he goes (held where it sat: the flock's jostling doesn't shift it)
+  hk.vx = hk.vz = 0; s.x = s.shX; s.z = s.shZ;
+  j.k = Math.min(1, j.k + dt / S.time); s.wool = j.w0 * (1 - j.k);
+  if ((j.snipT -= dt) <= 0) { j.snipT = 0.3; shearFx(s); }
+  if (j.k < 1) return;
+  const n = Math.max(1, Math.round(S.yield * j.w0 * shearSize(s)));
+  G.wool += n; s.wool = 0;
+  floatText(`+${n} 🧶`, s.x, s.y + 1.7, s.z, '#fff8e8', 1.25); Sound.chime([0, 4, 7], 784, 0.12, 0.06);
+  shearStop(); shearNext();   // straight on to the next (no climbing out and back in between)
+}
+function shearNext() { const s = shearPick(); return s ? (HANK.goal = null, HANK.job = { s, pen: s.pen, t: 0, on: false, k: 0, w0: 1, snipT: 0 }) : null; }
+// in updateSheep: the one being shorn sits still, rump to Hank
+function shearHold(s, dt, dtH) {
+  const j = HANK.job;
+  if (!j || j.s !== s || !j.on) { s.state = 'idle'; return; }
+  s.x = s.shX; s.z = s.shZ; s.vx = s.vz = 0; s.fear = 0;
+  s.yaw = lerpA(s.yaw, Math.atan2(s.x - HANK.x, s.z - HANK.z), Math.min(1, dt * 8));
+  s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH);
+}
+// a goal in a pen he isn't in (or out of the one he's in): over the fence, clear of the gate's swing and the troughs
+function crossAt(p, a0) {
+  const ring = (a, r) => ({ x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r });
+  for (let k = 0; k < 53; k++) {
+    const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.12, i = ring(a, p.R - 1.2), o = ring(a, p.R + 1.1);
+    if (Math.abs(wrapA(a - p.gateA)) < p.gapHalf + (p.gateLen + 1) / p.R || sdfAt(o.x, o.z) < 1.2) continue;
+    if ((p.solids || []).some(b => Math.hypot(i.x - b.x, i.z - b.z) < b.hl + 1.2)) continue;
+    return { in: i, out: o };
+  }
+  return { in: ring(a0, p.R - 1.2), out: ring(a0, p.R + 1.1) };
+}
+function hankCross(g) {
+  const hk = HANK, inP = penAt(hk.x, hk.z), gP = g.pen || null;
+  if (inP === gP) { hk.cross = null; return null; }
+  const p = inP || gP, out = !!inP;
+  let c = hk.cross;
+  if (!c || c.p !== p || c.out !== out) c = hk.cross = { p, out, ...crossAt(p, out ? Math.atan2(g.z - p.z, g.x - p.x) : Math.atan2(hk.z - p.z, hk.x - p.x)) };
+  const from = out ? c.in : c.out, to = out ? c.out : c.in;
+  if (Math.hypot(hk.x - from.x, hk.z - from.z) < 0.6) { hk.climb = { ax: hk.x, az: hk.z, bx: to.x, bz: to.z, t: 0 }; hk.cross = null; }
+  return { x: from.x, z: from.z, stop: 0.1, noShy: true };
+}
+function hankClimb(dt) {   // a leg over the top rail and down the other side
+  const hk = HANK, c = hk.climb, k = Math.min(1, (c.t += dt / T.shear.climbT));
+  hk.x = lerp(c.ax, c.bx, k); hk.z = lerp(c.az, c.bz, k); hk.vx = hk.vz = 0; hk.y = groundY(hk.x, hk.z);
+  hk.lift = Math.sin(Math.PI * k) * 0.8; hk.yaw = lerpA(hk.yaw, Math.atan2(c.bx - c.ax, c.bz - c.az), 1 - Math.exp(-dt * 10));
+  if (k >= 1) { hk.climb = null; hk.lift = 0; }
+}
+// a snip and a puff of fleece (ONLINE: fxDef)
+function shearFx(s) {
+  if (!s) return;
+  const L = s.look, hs = s.scale * (s.grow || 1);
+  burst(s.x, s.y + 0.7 * hs, s.z, 4, L && L.wool ? L.wool : s.black ? '#4a4642' : '#f6f1e3', { speed: 1.6, up: 2.2, size: 0.16, life: 0.9, grav: -3 });
+  SFX.snip(panOf(s.x, s.z));
+}
+// hand shears: two blades and a spring bow; on his belt, in his hand while he clips, in a dog's mouth
+const SHEARS_GEO = merge(
+  ...[-1, 1].flatMap(sd => [P(CONE(0.034, 0.27, 4), '#dfe4ea', { s: [1, 1, 0.4], r: [Math.PI / 2, 0, 0], p: [sd * 0.022, 0, 0.135] }),
+    P(BOX(0.045, 0.04, 0.13), '#c0392b', { p: [sd * 0.032, 0, -0.07] })]),
+  P(new THREE.TorusGeometry(0.035, 0.012, 6, 12, Math.PI), '#aab2bc', { r: [-Math.PI / 2, 0, 0], p: [0, 0, -0.135] }));
+function syncShears() {
+  const hk = HANK, M = hk.model;
+  if (!M.shears) {
+    const belt = part(M.torso, SHEARS_GEO, { shadow: false }), hand = part(M.armL, SHEARS_GEO, { shadow: false });
+    belt.position.set(0.42, 0, 0.38); belt.rotation.set(Math.PI / 2, 0, 0.3); belt.scale.setScalar(1.5);
+    hand.position.set(0.05, -0.85, 0.12); hand.rotation.set(Math.PI / 2, 0, 0); hand.scale.setScalar(1.5);
+    M.shears = { belt, hand };
+  }
+  M.shears.belt.visible = !!hk.clippers && !hk.shearing; M.shears.hand.visible = !!hk.shearing;
+  for (const d of G.dogs) {
+    const m = d.models; if (!m) continue;
+    if (!m.shears) { m.shears = part(m.head, SHEARS_GEO, { shadow: false }); m.shears.position.set(-0.05, -0.13, 0.27); m.shears.rotation.y = Math.PI / 2; m.shears.scale.setScalar(1.05); }
+    m.shears.visible = !!d.clippers;
+  }
+}
+
 // =====================================================================
 // FLOCK LOOKS — what each sheep wears: s.look = { wool, hat, hatColor,
 // acc: [], paint: [] } (plain JSON; it's saved). Hats and accessories are
@@ -7306,18 +7751,18 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
-  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : `${base}…`;
+  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : `${base}…`;
 }
-// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'old', 'cougar' or 'falcon'
-const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'cougar' || w === 'falcon' ? w : 'eaten';
+// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'thirst', 'old', 'cougar' or 'falcon'
+const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'thirst' || w === 'cougar' || w === 'falcon' ? w : 'eaten';
 // the end screen's lost sheep: one line per cause, "Starved: Pip (day 2), …"
-const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', falcon: 'Taken by a falcon', starved: 'Starved', salt: 'Died of no salt', old: 'Died of old age' };
+const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', falcon: 'Taken by a falcon', starved: 'Starved', salt: 'Died of no salt', thirst: 'Died of thirst', old: 'Died of old age' };
 function endMemHTML(L) {
   return Object.keys(LOST_HEAD).map(w => { const n = L.filter(m => cleanWhy(m.why) === w).map(m => `${escHTML(m.name)} (day ${m.day | 0})`); return n.length ? `<div><b>${LOST_HEAD[w]}:</b> ${n.join(', ')}</div>` : ''; }).join('');
 }
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : `${was}taken by coyotes`;
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -7664,7 +8109,7 @@ function barnModel() {
   const L = lookOf(s), g = new THREE.Group(), grow = ageGrow(s);
   g.scale.setScalar((s.scale || 1) * grow);
   sheepWoolColor(s, B.bodyMat.color);
-  B.body = barnPart(g, SHEEP_GEO.body, B.bodyMat, [0, 0.66, 0]);
+  B.body = barnPart(g, SHEEP_GEO.body, B.bodyMat, [0, 0.66, 0]); woolFit(s, B.body.scale);   // (shorn: slimmer)
   const head = new THREE.Group(); head.position.set(0, 0.8, 0.5); g.add(head); B.head = head;
   sheepHeadColor(s, B.headMat.color);
   barnPart(head, SHEEP_GEO.head, B.headMat);
@@ -7864,7 +8309,7 @@ function barnInfo() {
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
-  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger, b >= 0.66 ? '🦁' : b <= 0.33 ? '🐇' : ''].filter(Boolean).join(' · ');
+  el.textContent = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'}`, hunger, b >= 0.66 ? '🦁' : b <= 0.33 ? '🐇' : '', `🧶 ${Math.round((s.wool ?? 1) * 100)}%`].filter(Boolean).join(' · ');
   el.title = b >= 0.66 ? 'Brave' : b <= 0.33 ? 'Flighty' : '';
 }
 function barnRefresh() {
@@ -7981,13 +8426,14 @@ function eulogy(m) {
   const how = m.why === 'old' ? pick([`${m.age} good days on the trail.`, `Went in ${her} sleep, ${m.age} days old.`, `A long life, well grazed.`])
     : m.why === 'starved' ? pick([`The grass ran out before ${she} did.`, `Gone hungry. We'll find greener grass.`])
     : m.why === 'salt' ? pick([`Pined for salt to the last.`, `Never got that last lick of salt.`])
+    : m.why === 'thirst' ? pick([`Dreamed of cool water to the last.`, `The trough ran dry before ${she} did.`])
     : m.why === 'cougar' ? pick([`Taken up a tree in the night.`, `The big cat came, and ${she} was gone.`])
     : m.why === 'falcon' ? pick([`Flew once, and never came down.`, `Carried off into a clear blue sky.`])
     : pick([`The coyotes got there first.`, `Lost to the pack in the dark.`]);
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', old: '🕯️' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️' };
 function dawnReport(born = []) {
   const L = Array.isArray(G.lost) ? G.lost : [], dead = L.slice(DAWN.from).map(m => ({ ...m, text: eulogy(m) })); DAWN.from = L.length;
   G.dawnReport = { day: G.clock.day, born: born.map(s => s.id), dead };
@@ -8069,13 +8515,13 @@ const cleanName = n => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 14);
 function readFlockSave() {
   try {
     const j = JSON.parse(localStorage.getItem(FLOCK_KEY) || 'null'); if (!j || j.v !== 1) return null;
-    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999), brave: typeof r.brave === 'number' ? clamp(r.brave, 0, 1) : null } : null).filter(Boolean).slice(0, 80);
+    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999), brave: typeof r.brave === 'number' ? clamp(r.brave, 0, 1) : null, wool: typeof r.wool === 'number' ? clamp(r.wool, 0, 1) : null } : null).filter(Boolean).slice(0, 80);
     const memorial = (Array.isArray(j.memorial) ? j.memorial : []).map(m => m && cleanName(m.name) ? { name: cleanName(m.name), why: cleanWhy(m.why), day: m.day | 0, journey: m.journey | 0, words: String(m.words || '').slice(0, 120), look: cleanLook(m.look), ram: !!m.ram, lamb: !!m.lamb } : null).filter(Boolean).slice(0, 60);
     return { flock, memorial, journeys: j.journeys | 0 };
   } catch (e) { return null; }
 }
 const customised = r => r.renamed || r.look.hat !== 'none' || r.look.acc.length > 0 || !!r.look.wool || r.look.paint.length > 0 ? 1 : 0;
-function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2) }; }
+function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2), wool: +(s.wool ?? 1).toFixed(2) }; }
 function saveFlock() {
   if (NET.role === 'guest') return false;   // ONLINE: a guest is drawing the host's flock; this browser's own saved flock stays as it was
   const flock = G.sheep.filter(s => !s.dead).map(sheepRecord).concat(FLOCK.home).slice(0, 80);
@@ -8097,7 +8543,7 @@ function applySavedFlock() {
     if (s.lamb) continue;
     const i = roster.findIndex((r, k) => !used.has(k) && !!r.ram === !!s.ram); if (i < 0) continue;
     used.add(i); const r = roster[i];
-    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true; if (r.brave !== null) s.brave = r.brave;
+    s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true; if (r.brave !== null) s.brave = r.brave; if (r.wool !== null) s.wool = r.wool;
     if (r.life > 0) { s.age = Math.max(T.lambGrowDays, r.age); s.life = Math.max(r.life, s.age + 1); }   // AGE: they're as old as they were (older saves keep the age they drew)
   }
   FLOCK.home = roster.filter((r, k) => !used.has(k));
@@ -8118,6 +8564,148 @@ function freshFlock() {
   try { localStorage.removeItem(FLOCK_KEY); } catch (e) {}
   FLOCK.home = []; FLOCK.memorial = []; FLOCK.journeys = 0;
   if (G.mode === 'title') spawnFlock();
+}
+
+// =====================================================================
+// VENDOR — the Trading Post at the end of the trail (its stall and the
+// vendor: MARKET, built in WORLD GENERATION). Each ware sits on its own
+// mat; a dog on a mat barks to buy it with 🧶 (G.wool, from shearing).
+// 💧 🌾 🧂 go into the final pen; ✂️ (free) only while Hank has no
+// clippers; 🏖️ Cabo takes every sheep penned there and ends the journey
+// (finishGame). Buying runs on the host (bark); vendorFx shows it everywhere.
+// =====================================================================
+const finalPen = pens.find(p => p.final);
+const caboSheep = () => G.sheep.filter(s => !s.dead && !s.grabbed && !s.air && s.pen === finalPen);
+const WARES = [
+  { id: 'clippers', icon: '✂️', col: '#8a7aa8', show: () => !HANK.clippers },   // (shearing: never stuck without)
+  { id: 'water', icon: '💧', col: '#3a7bd5' },
+  { id: 'food', icon: '🌾', col: '#6aa84f' },
+  { id: 'salt', icon: '🧂', col: '#b9a9cc' },
+  { id: 'cabo', icon: '🏖️', col: '#f2d9a0' },
+];
+const VENDOR = { hello: false, waveAt: -9, noAt: -9, bought: {} };
+const wareOn = w => !w.show || w.show();
+function warePrice(w) { const V = T.vendor; return w.id === 'cabo' ? V.cabo.base + V.cabo.per * caboSheep().length : V[w.id].price; }
+{ // the mats, in a row in front of the stall, each with its ware at the back (local -z: toward the stall)
+  const back = -0.72;
+  const GEOS = {
+    clippers: merge(P(BOX(0.55, 0.3, 0.4), '#8a5a32', { p: [0, 0.18, back] }), P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, 0.45, 0], p: [0.05, 0.36, back] }),
+      P(BOX(0.62, 0.04, 0.1), '#c8ccd4', { r: [0, -0.45, 0], p: [0.05, 0.38, back] }), ...[-0.12, 0.12].map(z => P(CYL(0.08, 0.08, 0.05, 10), '#d8473f', { p: [-0.3, 0.39, back + z] }))),
+    water: merge(P(CYL(0.24, 0.3, 0.6, 10), '#4aa3df', { p: [-0.2, 0.32, back] }), P(CYL(0.1, 0.16, 0.18, 10), '#4aa3df', { p: [-0.2, 0.7, back] }),
+      P(CYL(0.17, 0.2, 0.42, 10), '#2f86c8', { p: [0.38, 0.23, back + 0.05] }), P(SPH(8), '#bfe6ff', { s: [0.12, 0.04, 0.12], p: [-0.2, 0.8, back] })),
+    food: merge(P(BOX(0.9, 0.48, 0.55), '#e8c770', { p: [0, 0.28, back] }), ...[-0.22, 0.22].map(x => P(BOX(0.05, 0.5, 0.57), '#8a5a32', { p: [x, 0.28, back] })),
+      ...[0, 1, 2].map(i => P(CONE(0.06, 0.2, 5), i % 2 ? '#9b6ad8' : '#b48ae6', { p: [-0.3 + i * 0.3, 0.6, back] }))),
+    salt: merge(P(BOX(0.45, 0.3, 0.45), '#f3eee6', { p: [-0.2, 0.19, back] }), P(BOX(0.4, 0.28, 0.4), '#ece6dc', { r: [0, 0.5, 0], p: [0.3, 0.18, back + 0.05] }),
+      P(BOX(0.36, 0.26, 0.36), '#f3eee6', { r: [0, 0.3, 0], p: [0.05, 0.47, back] }), P(BOX(0.14, 0.06, 0.16), '#f6c9d4', { p: [0.08, 0.62, back - 0.02] })),
+    cabo: merge(P(CYL(0.035, 0.035, 2.2, 6), '#f4f1ea', { p: [-0.75, 1.1, back] }), P(CONE(1.1, 0.45, 12), '#ff5a5a', { p: [-0.75, 2.2, back] }), P(CONE(0.55, 0.24, 12), '#ffffff', { p: [-0.75, 2.37, back] }),
+      P(BOX(0.6, 0.03, 1.2), '#4dc3ff', { p: [0.4, 0.08, -0.2] }), P(BOX(0.6, 0.035, 0.15), '#ffffff', { p: [0.4, 0.09, -0.62] }), GEO.palm.clone().scale(0.5, 0.5, 0.5).translate(1.05, 0, back - 0.45)),
+  };
+  WARES.forEach((w, i) => {
+    const M = MARKET, u = (i - (WARES.length - 1) / 2) * T.vendor.gap, f = T.vendor.ring;
+    w.i = i; w.x = M.x + M.fx * f + M.rx * u; w.z = M.z + M.fz * f + M.rz * u; w.y = terrainH(w.x, w.z);
+    w.shakeAt = w.armT = -9;
+    const g = new THREE.Group(); g.position.set(w.x, w.y, w.z); g.rotation.y = M.yaw; scene.add(g); w.g = g;
+    part(g, merge(P(BOX(2.5, 0.04, 2.5), w.id === 'cabo' ? '#ff8f5a' : '#5a4030', { p: [0, 0.02, 0] }), P(BOX(2.2, 0.05, 2.2), w.col, { p: [0, 0.04, 0] }),
+      ...[-0.7, 0.7].map(z => P(BOX(2.2, 0.055, 0.14), '#f4ead2', { p: [0, 0.045, z] }))), { outline: false, shadow: false });
+    part(g, GEOS[w.id]);
+  });
+}
+// SHARED HOOK (pen food): tip a batch into a pen's troughs, emptiest first, each up to its cap; returns what went in
+function stockTroughs(pen, amt) {
+  let left = amt;
+  for (let it = 0; it < 40 && left > 1e-4; it++) {
+    const tr = pen.troughs.filter(t => t.food < t.cap - 1e-4).sort((a, b) => a.food - b.food)[0]; if (!tr) break;
+    const k = Math.min(left, tr.cap - tr.food, amt / pen.troughs.length); tr.food += k; left -= k;
+  }
+  return amt - left;
+}
+// host: a bark on a mat buys what's on it
+function vendorBark(d) {
+  if (G.mode !== 'play' || d.air || Math.abs(d.x - MARKET.x) > 12 || Math.abs(d.z - MARKET.z) > 12) return null;
+  let best = null, bd = T.vendor.matR;
+  for (const w of WARES) { const k = Math.hypot(d.x - w.x, d.z - w.z); if (k < bd && wareOn(w)) { bd = k; best = w; } }
+  return best ? buyWare(best) : null;
+}
+// -> 'buy' | 'poor' (not enough 🧶) | 'full' (no room in the pen) | 'none' (Cabo: nobody penned) | 'arm' (Cabo: bark again to go)
+function buyWare(w) {
+  const V = T.vendor, wool = G.wool || 0, price = warePrice(w), pen = finalPen;
+  let kind = 'buy';
+  if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
+  else if (wool < price) kind = 'poor';
+  else if (w.id === 'cabo') { if (!(w.armT > G.time)) kind = 'arm'; }
+  else if (w.id === 'food') { const room = pen.troughs.reduce((a, tr) => a + Math.max(0, tr.cap - tr.food), 0); if (room < V.food.amt * V.room) kind = 'full'; else stockTroughs(pen, V.food.amt); }
+  else if (w.id === 'salt') { const L = pen.lick, room = L.cap - L.salt; if (room < V.salt.amt * V.room) kind = 'full'; else L.salt += Math.min(room, V.salt.amt); }
+  else if (w.id === 'water') { const W = pen.water, room = W ? W.cap - W.w : 0; if (room < V.water.amt * V.room) kind = 'full'; else fillWater(pen, V.water.amt); }
+  else if (w.id === 'clippers') giveHankClippers();
+  if (kind === 'buy') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
+  vendorFx(w.i, kind, price);
+  if (kind === 'none') hank(null, 'Pen them first! Then Cabo!', { force: true });
+  if (kind === 'buy' && w.id === 'cabo') { const n = caboSheep().length; hank(null, "Cabo! Sun, sand, an' nae coyotes!", { force: true, delay: 3 }); finishGame(n); }
+  return kind;
+}
+// what a sale (or a no) looks and sounds like, on every screen
+function vendorFx(i, kind, price = 0) {
+  const w = WARES[i]; if (!w) return;
+  const y = w.y + 1.6;
+  if (kind === 'arm') { w.armT = G.time + T.vendor.confirm; floatText(`${w.icon} ?`, w.x, y + 0.8, w.z, '#ffd36b', 1.4); Sound.chime([0, 7], 660, 0.16); return; }
+  w.armT = -9;
+  if (kind === 'buy') {
+    VENDOR.waveAt = G.time;
+    Sound.chime([0, 4, 7, 12], 784, 0.2, 0.07); starBurst(w.x, y, w.z, 8);
+    burst(w.x, w.y + 0.6, w.z, 10, w.col, { speed: 2, up: 3, size: 0.14, life: 0.8 });
+    floatText(price ? `${w.icon} -${price}🧶` : `${w.icon} ✔`, w.x, y + 0.6, w.z, '#7ed957', 1.3);
+    const p = finalPen;
+    if (w.id === 'food') for (const tr of p.troughs) burst(tr.x, p.y + 1, tr.z, 5, '#9bdc5a', { speed: 1.4, up: 1.6, size: 0.12, life: 0.8, grav: -9 });
+    if (w.id === 'salt') burst(p.lick.x, p.y + 1, p.lick.z, 8, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 });
+    if (w.id === 'food' || w.id === 'salt' || w.id === 'water') floatText(`+${w.icon}`, p.x, p.y + 2.4, p.z, '#ffffff', 1.4);
+    if (w.id === 'cabo') confetti(w.x, y, w.z, 40);
+    return;
+  }
+  // a no: the mat shakes, the vendor shakes his head
+  w.shakeAt = VENDOR.noAt = G.time;
+  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);
+  Sound.chime([0, -1], 196, 0.18, 0.12);
+}
+// sim step (host): Hank's word on arriving
+function updateVendor() {
+  if (G.mode !== 'play' || VENDOR.hello || !G.visited.has(FINAL.name)) return;
+  VENDOR.hello = true; hank(null, 'The Trading Post! Wool buys us Cabo!', { force: true, delay: 2 });
+}
+function resetVendor() { Object.assign(VENDOR, { hello: false, waveAt: -9, noAt: -9, bought: {} }); for (const w of WARES) w.shakeAt = w.armT = -9; }
+// every frame: mats shake on a no, the Cabo mat pulses while it waits; the vendor watches the dogs, waves on a sale
+function syncVendor(dt) {
+  const t = G.time, M = MARKET, v = M.v;
+  for (const w of WARES) {
+    const on = wareOn(w); w.g.visible = on; if (!on) continue;
+    const k = t - w.shakeAt, sh = k >= 0 && k < 0.45 ? Math.sin(k * 55) * 0.13 * (1 - k / 0.45) : 0, s = w.armT > t ? 1 + 0.06 * Math.sin(t * 10) : 1;
+    w.g.position.set(w.x + M.rx * sh, w.y, w.z + M.rz * sh); w.g.scale.set(s, 1, s);
+  }
+  let dog = null, dd = T.vendor.near; for (const d of G.dogs) { const k = Math.hypot(d.x - M.x, d.z - M.z); if (k < dd) { dd = k; dog = d; } }
+  const look = dog ? clamp(wrapA(Math.atan2(dog.x - M.x, dog.z - M.z) - M.yaw), -0.9, 0.9) : 0;
+  const no = t - VENDOR.noAt, wave = t - VENDOR.waveAt, party = G.mode === 'end' && HANK.celebrate;
+  v.root.rotation.y = lerpA(v.root.rotation.y, look, Math.min(1, dt * 4));
+  v.head.rotation.y = no >= 0 && no < 0.8 ? Math.sin(no * 22) * 0.45 : 0;
+  v.arm.rotation.z = party || (wave >= 0 && wave < 1.6) ? 2.5 + Math.sin(t * 14) * 0.35 : 0.25;
+  v.root.position.y = Math.abs(Math.sin(t * 1.3)) * 0.02 + (wave >= 0 && wave < 0.6 ? Math.sin(wave / 0.6 * Math.PI) * 0.18 : 0);   // a hop on a sale
+}
+// the overlay: each ware's price in 🧶 (green: you can pay), Cabo with how many go; bark twice for Cabo
+function drawVendorOverlay() {
+  if (G.mode !== 'play') return;
+  const near = G.dogs.find(d => Math.hypot(d.x - MARKET.x, d.z - MARKET.z) < T.vendor.near); if (!near) return;
+  const wool = G.wool || 0, n = caboSheep().length, bk = keyLabel(near.player, 'bark');
+  nudge('vendor', MARKET.x, MARKET.v.y + 3.6, MARKET.z, `${bk} on a mat: buy`);
+  ctx.font = '600 13px Fredoka, sans-serif';
+  for (const w of WARES) {
+    if (!wareOn(w)) continue;
+    const [px, py, pz] = proj(w.x + MARKET.fx * 1.6, w.y + 0.1, w.z + MARKET.fz * 1.6); if (pz > 1 || px < -60 || px > W + 60 || py < -40 || py > H + 40) continue;   // on the mat's front edge, clear of the dog's name
+    const price = warePrice(w), cabo = w.id === 'cabo', ok = wool >= price && (!cabo || n > 0), on = G.dogs.some(d => Math.hypot(d.x - w.x, d.z - w.z) < T.vendor.matR);
+    const txt = w.armT > G.time ? `${w.icon} ${bk} ✔` : cabo && !n ? `${w.icon} 🐑 0` : `${w.icon} ${price ? price + '🧶' : '🆓'}${cabo ? ` · 🐑${n}` : ''}`;
+    const sc = w.armT > G.time ? 1.12 + 0.08 * Math.sin(G.time * 10) : on ? 1.12 : 1;
+    ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
+    forageChip(0, 0, txt, ok ? 'rgba(60,140,60,.9)' : 'rgba(130,60,55,.85)');
+    if (on) { const tw = ctx.measureText(txt).width + 16; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2.5; rr(-tw / 2, -11, tw, 22, 10); ctx.stroke(); }
+    ctx.restore();
+  }
 }
 
 // =====================================================================
@@ -8171,14 +8759,15 @@ function startGame(dev) {
 function finishGame(n) {
   if (G.mode !== 'play') return;
   G.mode = 'end';
-  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.cougar || 0), ratio = n / Math.max(1, st.start);
+  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.thirst || 0) + (st.cougar || 0) + (st.falcon || 0), ratio = n / Math.max(1, st.start);
   const stars = ratio >= 1.8 ? 3 : ratio >= 1.2 ? 2 : ratio >= 0.7 ? 1 : 0;
-  $('eTitle').textContent = n > 0 ? 'The Promised Land!' : 'The flock is gone…';
+  $('eTitle').textContent = n > 0 ? '🏖️ Cabo! 🌴' : 'The flock is gone…';   // n > 0: only Cabo ends a journey well (VENDOR)
+  $('end').classList.toggle('cabo', n > 0);
   $('eStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('eLine').textContent = `🐑 ${st.start} → ${n}`;
+  $('eLine').textContent = n > 0 ? `🐑 ${st.start} → 🏖️ ${n} 🍹` : `🐑 ${st.start} → 0`;
   $('eStats').innerHTML = [[st.born, 'lambs'], [st.saved, 'rescued'], [G.clock.day, 'days']].filter(([v]) => v > 0).map(([v, t]) => `<span>${v} ${t}</span>`).join('');
   $('end').style.opacity = 1; $('end').style.pointerEvents = 'auto'; $('hud').classList.add('hidden');
-  if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = pens[3]; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
+  if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = finalPen; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
   else Sound.sad();
   G.endT = 0;
   onJourneyEnd(n);   // HANK + FLOCK SAVE: "That'll do", fondly remembered, the flock saved for next time
@@ -8192,9 +8781,12 @@ function resetGame() {
   for (const p of pens) resetGate(p);
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
   resetForage();   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
+  resetWater();    // WATER: buckets back by their troughs, the first camp's trough full
   resetDigs();     // DIG SPOTS: every mound back for the new journey
-  G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 };
+  resetVendor();   // VENDOR
+  G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 };
+  G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -8230,8 +8822,8 @@ function checkLose() {
 //                e: [[fxName, args, x?, z?], …] effects to replay, kf: 1 on a keyframe (anything unlisted is gone) }.
 // Per guest the host remembers the last value it sent of every field and sends only what changed: `mask` has
 // bit i set for each field i sent, in order. Positions and angles go as the change since the last value sent
-// (small integers); a record with a negative mask (-mask) carries absolute values instead (a thing new to
-// that guest, or any keyframe). The channel is reliable and ordered, so each delta lands on top of the one
+// (small integers); a record whose mask comes in an array ([mask]) carries absolute values instead (a thing new to
+// that guest, or any keyframe; up to 53 fields). The channel is reliable and ordered, so each delta lands on top of the one
 // before; a (re)join gets a keyframe.
 //
 // HOW TO SYNC A NEW PROPERTY: add ONE line to its entity's `fields` in NET_TYPES, e.g.
@@ -8306,6 +8898,7 @@ const NET_TYPES = {
       holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote or a gate
       greens: .02, salt: 'i',   // FORAGE: what it's carrying
       hp: .01, mauled: 'b', maulEsc: .05, ko: 'b',   // health, pinned under a cougar (and how close to breaking free), out cold
+      clippers: 'b',   // HANK: shearing: Hank's clippers in its mouth
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -8317,6 +8910,7 @@ const NET_TYPES = {
       lamb: 'b', age: 'i', life: 'i', black: 'b', scale: .01, pitch: .01, name: 's', pen: '@pen', grabbed: { c: 's', get: s => netRefStr(s.grabbed), set: (s, v) => { s.grabbed = netRefFind(v); } },   // a coyote ('c…') or a cougar ('Q…')
       stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog', ready: 'b', salt: .01,
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
+      wool: .02,   // HANK: shearing: its fleece (state 'shear': on its rump being shorn)
       ...NET_AIR,
     },
     make: (id, f) => netGuestSheep(id, f), kill: s => { const i = G.sheep.indexOf(s); if (i >= 0) G.sheep.splice(i, 1); }, animate: (s, dt) => netAnimSheep(s, dt),
@@ -8331,7 +8925,8 @@ const NET_TYPES = {
     tag: 'p', all: () => pens, id: p => pens.indexOf(p), static: true,
     fields: { phi: 'a', latched: 'b', fresh: 'b',
       ...Object.fromEntries([0, 1, 2, 3].map(i => ['tf' + i, { c: .02, get: p => p.troughs[i] ? p.troughs[i].food : 0, set: (p, v) => { if (p.troughs[i]) p.troughs[i].food = v; } }])),   // each forage trough's fill
-      lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } } },   // the salt lick
+      lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } },   // the salt lick
+      water: { c: .02, get: p => p.water.w, set: (p, v) => { p.water.w = v; } } },   // WATER: the water trough
     animate: p => updateGateGeometry(p),
   },
   plant: {   // alfalfa and daisies: picked or growing (they pop back up on their own on each screen)
@@ -8341,6 +8936,10 @@ const NET_TYPES = {
   saltRock: {   // salt rocks: crystals there or broken off (they grow back on their own on each screen)
     tag: 'u', all: () => SALT_ROCKS, id: r => r.ni ?? (r.ni = SALT_ROCKS.indexOf(r)), static: true,
     fields: { taken: { c: 'b', get: r => r.taken, set: (r, v) => { v = !!v; if (!v && r.taken) r.growT = G.time; r.taken = v; } } },
+  },
+  bucket: {   // WATER: the buckets, built the same on every screen: where it lies, how full, which dog has it
+    tag: 'B', all: () => BUCKETS, id: b => b.i, static: true,
+    fields: { x: .05, z: .05, w: .05, by: '@dog' },
   },
   launcher: {   // the Sheep Express: the plank's tilt (it's also the ground height on the plank)
     tag: 'L', all: () => LAUNCHERS, id: S => LAUNCHERS.indexOf(S), static: true,
@@ -8368,17 +8967,20 @@ const NET_TYPES = {
     tag: 'G', one: () => G,
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
-      ff: 'b', paused: 'b', pauseWho: 's', finalArm: .1,
+      ff: 'b', paused: 'b', pauseWho: 's',
+      wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
     },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i' } },
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
+  water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (a flock summary, not a sheep field)
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b' },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
+      clippers: 'b', shearing: 'b', lift: .02 },   // shearing: has his clippers, clipping a sheep, over a fence
     animate: hk => { hk.y = groundY(hk.x, hk.z); },
   },
 };
@@ -8941,7 +9543,7 @@ function netSnapTick() {
           if (old && old[i] === vals[i]) continue;
           mask += 2 ** i; (rec || (rec = [id, 0])).push(old && T.F[i].delta ? vals[i] - old[i] : vals[i]);
         }
-        if (rec) { rec[1] = old ? mask : -mask; (out || (out = c[tag] = [])).push(rec); any = true; }
+        if (rec) { rec[1] = old ? mask : [mask]; (out || (out = c[tag] = [])).push(rec); any = true; }   // ([mask]: absolute; not -mask, BinaryPack garbles negatives past 31 bits)
         sent.set(id, vals);
       }
       for (const id of sent.keys()) if (!now.has(id)) { sent.delete(id); (r[tag] || (r[tag] = [])).push(id); anyR = true; }
@@ -9273,7 +9875,7 @@ function netApplySnap(m) {
     const T = NET_TAGS[tag]; if (!T || !T.make || !Array.isArray(c[tag])) continue;
     const ids = NET.ids[tag] || (NET.ids[tag] = new Map());
     for (const rec of c[tag]) {
-      const id = rec[0]; if (ids.has(id) || !(rec[1] < 0)) continue;
+      const id = rec[0]; if (ids.has(id) || !Array.isArray(rec[1])) continue;
       const f = {}; netEachField(T, rec, (F, w) => { if (F.kind !== '@') f[F.name] = F.dec(w); });
       let o = null; NET.quiet = true;
       try { o = T.make(id, f); } catch (e) { if (DEBUG) console.warn('net make', tag, e); } finally { NET.quiet = false; }
@@ -9285,7 +9887,7 @@ function netApplySnap(m) {
     const T = NET_TAGS[tag]; if (!T || !Array.isArray(c[tag])) continue;
     for (const rec of c[tag]) {
       const o = netFind(T, rec[0]); if (!o) continue;
-      const created = made.has(o), abs = rec[1] < 0;
+      const created = made.has(o), abs = Array.isArray(rec[1]);
       netEachField(T, rec, (F, w, i) => {
         if (F.delta) { const q = o._nq || (o._nq = []); w = abs ? w : (q[i] || 0) + w; q[i] = w; }   // positions and angles arrive as changes
         const v = F.dec(w);
@@ -9310,9 +9912,9 @@ function netApplySnap(m) {
   // 5. the game's mode last (the host's finale arrives as an effect just before it)
   if (NET.wantMode != null) { netGuestMode(NET.wantMode); NET.wantMode = null; }
 }
-// walk one record: [id, mask, values in field order] (mask < 0 = absolute values)
+// walk one record: [id, mask, values in field order] ([mask] = absolute values)
 function netEachField(T, rec, fn) {
-  let mask = Math.abs(+rec[1] || 0), j = 2;
+  let mask = +(Array.isArray(rec[1]) ? rec[1][0] : rec[1]) || 0, j = 2;
   for (let i = 0; mask > 0 && i < T.F.length; i++) {
     const bit = mask % 2; mask = (mask - bit) / 2;
     if (bit) { if (j >= rec.length) return; fn(T.F[i], rec[j++], i); }
@@ -9525,6 +10127,7 @@ baaAt = fxDef('baaAt', baaAt);                                       // (by the 
 bellDing = fxDef('bellDing', bellDing);
 barkFx = fxDef('barkFx', barkFx);
 landDog = fxDef('landDog', landDog);
+shearFx = fxDef('shearFx', shearFx);                                 // HANK: shearing: a snip and a puff of fleece
 nipFx = fxDef('nipFx', nipFx);                                       // dog health: nips, maulings, knock-outs
 maulStartFx = fxDef('maulStartFx', maulStartFx);
 maulHitFx = fxDef('maulHitFx', maulHitFx);
@@ -9535,6 +10138,8 @@ dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
 finishGame = fxDef('finishGame', finishGame);
+vendorFx = fxDef('vendorFx', vendorFx);   // VENDOR: a sale, a no, Cabo's second bark
+waterFx = fxDef('waterFx', waterFx);                                 // WATER: picking up, filling, tipping a bucket
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
   if (!d || typeof d.value !== 'function' || k === 'init' || k === 'ambience' || k === 'raw') continue;
@@ -9568,7 +10173,7 @@ function step(dt) {
     updateCoyotes(dt);
     updateCougars(dt);
     updateFalcon(dt, dtH);
-    if (G.finalArm > 0) G.finalArm -= dt;
+    updateVendor();   // VENDOR: Hank's word at the Trading Post
     checkLose();
   } else {
     updateSheep(dt, 0);   // title / end: the flock still mills about
@@ -9604,7 +10209,9 @@ function frame(now) {
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
   syncHank(dt);           // HANK: his model, lantern and speech bubble
   syncForage(dt);         // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
+  syncWater(dt);          // WATER: water troughs, buckets
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
+  syncVendor(dt);         // VENDOR: mats and the vendor
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   renderer.render(scene, camera);
@@ -9627,7 +10234,7 @@ function debugKeys() {
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
-  if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
+  if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
 window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
@@ -9636,6 +10243,9 @@ window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
+Object.assign(window.GAME, { FINAL, MARKET, finalPen, VENDOR, WARES, warePrice, buyWare, vendorBark, vendorFx, caboSheep, stockTroughs, resetVendor, syncVendor });   // VENDOR
+Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
+Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
@@ -9643,7 +10253,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   syncFalcon(FALCON);
-  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncDigs(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
