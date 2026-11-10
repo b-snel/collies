@@ -7,12 +7,14 @@
 //  corner     a sheep in a tight spot with the flock on the far side of something: a rock/wall corner, the river bank
 //             (flock across the water), the back of an open pen (flock outside the back fence). How long it stalls,
 //             how long until it's out in open space, and until it's with the flock.
+//  lost       a big group of 10, one hungry sheep 70 m off (past sheep gravity) on good grass: its peak anxiety, when it heads back, when it's with them.
+//  shove      14 grazers on half-cropped ground, half starving and half fed: grass shoves, and who ends up on the better grass.
 //  cost       60 sheep grazing: milliseconds per physics step (one step per frame at 60 fps).
 import { open } from './harness.mjs';
 const args = process.argv.slice(2);
 const ti = args.indexOf('--trials'), trials = ti >= 0 ? +args[ti + 1] : 2;
 let names = args.filter((a, i) => !a.startsWith('--') && (ti < 0 || i !== ti + 1));
-if (!names.length) names = ['structure', 'merge', 'corner', 'cost'];
+if (!names.length) names = ['structure', 'merge', 'lost', 'shove', 'corner', 'cost'];
 const h = await open({ query: '?sim&debug' });
 await h.page.evaluate(() => {
   const { G, T, step, pathPoint, sdfAt, grassAt, pens, RIVER } = GAME;
@@ -74,6 +76,30 @@ await h.page.evaluate(() => {
       if (oneT < 0 && knots(free(), 8).length === 1) oneT = t;
     }
     return { loneJoinedAt: r2(loneT), knotOf3JoinedAt: r2(threeT), allOneGroupAt: r2(oneT), loneStartGap: r2(Math.hypot(q.x - p.x, q.z - p.z)) };
+  };
+  SCN.lost = () => {
+    const sh = reset(10, 11), p = pathPoint(330, -8), q = pathPoint(330, 62);
+    const big = sh.slice(0, 10), lone = sh[10];
+    place(big, p.x, p.z, 4); place([lone], q.x, q.z, 1);
+    for (const s of sh) { s.hunger = 0.15; s.mother = null; } lone.hunger = 0.6;
+    let t = 0, goT = -1, joinT = -1, peak = 0;
+    const d0 = Math.hypot(lone.x - p.x, lone.z - p.z);
+    while (t < 60 && joinT < 0) {
+      tick(); t += 0.025; peak = Math.max(peak, lone.anx || 0);
+      if (goT < 0 && Math.hypot(lone.x - p.x, lone.z - p.z) < d0 - 8) goT = t;
+      if (big.some(b => Math.hypot(lone.x - b.x, lone.z - b.z) < 6)) joinT = t;
+    }
+    return { startGap: r2(d0), peakAnx: r2(peak), headedBackAt: r2(goT), withFlockAt: r2(joinT), stressAfter: r2(lone.stress) };
+  };
+  SCN.shove = () => {
+    const sh = reset(10, 14), p = pathPoint(330, -8);
+    place(sh, p.x, p.z, 5); sh.forEach((s, i) => { s.mother = null; s.hunger = i % 2 ? 0.85 : 0.15; });
+    const GR = GAME.grass;   // patchy: about half the 2 m cells round them cropped bare
+    for (let b = 0; b < GR.VZ; b++) for (let a = 0; a < GR.VX; a++) { const x = GR.GMINX + a * GR.VS, z = GR.GMINZ + b * GR.VS; if (Math.hypot(x - p.x, z - p.z) < 14 && Math.random() < 0.55) GR.gAmt[b * GR.VX + a] = 0.03; }
+    const n0 = G.grassShoves || 0, hungry = sh.filter(s => s.hunger > 0.5), fed = sh.filter(s => s.hunger < 0.5);
+    let gH = 0, gF = 0, k = 0;
+    for (let t = 0; t < 30; t += 0.025) { tick(); if (t > 5 && Math.round(t * 40) % 40 === 0) { k++; gH += hungry.reduce((a, s) => a + grassAt(s.x, s.z), 0) / hungry.length; gF += fed.reduce((a, s) => a + grassAt(s.x, s.z), 0) / fed.length; } }
+    return { shoves: (G.grassShoves || 0) - n0, grassUnderHungry: r2(gH / k), grassUnderFed: r2(gF / k) };
   };
   // the most enclosed walkable spot near (cx, cz): blocked in the most directions 1.6 m out
   function findCorner(cx, cz, R) {
