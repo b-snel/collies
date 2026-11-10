@@ -22,7 +22,7 @@ the trail and wear them from the barn.
 - `node tools/serve.mjs` and open http://localhost:8000. Any static server
   works. `file://` usually doesn't, because of the module script.
 - `?debug` shows an FPS readout and enables cheat keys (`]` +1 hour, `N` dusk,
-  `M` dawn, `K` spawn a coyote, `O` age the flock 10 days, `F` teleport to the
+  `M` dawn, `K` spawn a coyote, `J` set the nearest cougar hunting, `O` age the flock 10 days, `F` teleport to the
   final pen).
   `window.GAME` exposes the state and most functions.
 - `?sim` stops the render loop so headless tests can call `GAME.step(dt)`
@@ -40,7 +40,7 @@ world gen (trail, 1 m grid, heights, signed distance field, grass) → renderer,
 terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
-river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
+river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → COUGARS → TOMBSTONES → clock and
 lighting → camera → visual sync → HUD and overlay → HANK, FLOCK LOOKS, DOG WARDROBE, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
@@ -61,6 +61,7 @@ that touch what you changed, and report their numbers.
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
 | `node tools/forage-sim.mjs` | forage plants and salt rocks, a dog gathering greens by running over them and tipping them into troughs (inside the pen and over the fence), several sheep feeding at once overnight, salt to the lick and licked, salt running down, slowing and killing, regrowth, every camp's troughs and lick |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
+| `node tools/cougar-sim.mjs [day\|hunt\|rescue\|penned] [--trials N]` | the cougar: gone by day and up its tree at night, takes a lamb first, the sheep dies only once it's up the tree (stone at the foot), a bot dog's pounce saves it, a shut pen keeps it out |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
@@ -179,6 +180,18 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   posts, then strike together. The carrier drags its catch off while the rest
   screen it. Running off the alpha breaks the pack. Closed pens are
   coyote-proof.
+- **Cougars** (`COUGARS`, one per lair tree in `LAIRS`, placed with their
+  own rng next to the hill camps and a couple between; tuning in `T.cougar`).
+  They're mysterious: gone by day, by night only a shape on the limb and two
+  glinting eyes, no edge arrows. At nightfall the one nearest the flock hunts
+  with `T.cougar.chance`, after a delay. It stalks slow and low, shies from
+  dogs, leaps, and drags its catch (crying all the way) to the trunk; the
+  sheep dies only once it's been carried up the tree (`killSheep(s,
+  'cougar')`, stone at the foot of the tree). Lambs first, always; never a
+  ram. A pounce or bumping into it (even low on the trunk) makes it drop the
+  sheep; a bark spooks a stalking one. It gives up after `T.cougar.tries`.
+  A grabbed sheep's `s.grabbed` is the cougar (`k.isCougar`), so code that
+  assumes a coyote there must check. Closed pens keep cougars out.
 - **Hank's barn** has two tabs on one turntable: **Sheep** (name, wool, hat,
   colour, extras, paint) and **Dogs** (each player slot's collie: name, coat,
   collar, hat, kit). Keep it light on words: icon chips with the name in the
