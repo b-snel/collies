@@ -74,9 +74,15 @@ At nightfall the coyotes come in packs, more each night.
 
 Red arrows at the screen edge point at coyotes you can't see. Closed pens are coyote-proof.
 
+## Cougars
+
+In the hills and down by the sea, a big old tree with a long low limb stands off the trail near each camp. By day it's empty. After dark a cougar lies along that limb, and all you'll see of it is its eyes.
+
+Some nights the cougar nearest the flock hunts. You'll hear it scream. It comes down quietly, creeps up low and slow, and pounces. It always goes for a lamb if one is in reach. It drags its catch, crying, back to its tree, and once it's up the tree that sheep is gone. Catch it first: pounce on it or run right into it, even at the foot of the trunk, and it drops the sheep and bolts back up. It keeps away from dogs, so a dog near the flock is the best guard, and a bark sends a stalking cougar back to its tree. Driven off twice, it gives up for the night. Closed pens keep it out too.
+
 ## Hank
 
-Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
+Hank, the old shepherd, walks the trail behind the flock with his crook, and stands by the campfire at night with his lantern lit. He only shouts about coyotes and cougars he can actually see, so if he's quiet, that doesn't mean nothing's out there. He whistles the commands ("Come bye!", "Away to me!", "Walk up!") as you work the flock, warns you when the sun's getting low, cheers a save and mourns a loss. His volume goes up to 150% and is on the title screen and in the barn.
 
 ## Hank's barn: making the flock yours
 

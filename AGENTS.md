@@ -14,14 +14,15 @@ nightfall, and fighting off coyote packs till dawn.
 It was rebuilt on the `demo-slice/sheep-herding` prototype (the grazing
 economy, day/night and one continuous trail), with the best of the older game
 ported on top: the sheep's emotional model, rams, the dog's pounce and grab,
-push-gates, Hank, the barn and online co-op.
+push-gates, Hank, the barn and online co-op. Dogs dig up hats and kit along
+the trail and wear them from the barn.
 
 ### Running it
 
 - `node tools/serve.mjs` and open http://localhost:8000. Any static server
   works. `file://` usually doesn't, because of the module script.
 - `?debug` shows an FPS readout and enables cheat keys (`]` +1 hour, `N` dusk,
-  `M` dawn, `K` spawn a coyote, `O` age the flock 10 days, `F` teleport to the
+  `M` dawn, `K` spawn a coyote, `J` set the nearest cougar hunting, `O` age the flock 10 days, `F` teleport to the
   final pen).
   `window.GAME` exposes the state and most functions.
 - `?sim` stops the render loop so headless tests can call `GAME.step(dt)`
@@ -39,14 +40,14 @@ world gen (trail, 1 m grid, heights, signed distance field, grass) → renderer,
 terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
-river launcher) → FORAGE (plants, buckets, troughs, Hank's twilight run) → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
-lighting → camera → visual sync → HUD and overlay → HANK, HANK'S BARN and the
+river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → COUGARS → TOMBSTONES → clock and
+lighting → camera → visual sync → HUD and overlay → HANK, FLOCK LOOKS, DOG WARDROBE, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
 Sections are delimited by `// ===` headers. The comments marked `SHARED HOOK`
 are the seams between systems: `knockDog`, `hitCoyote`, `provokeRam`, `hank`,
 `sheepWoolColor`, `s.headM` / `s.bodyM`, `s.air` / `s.heldBy` / `c.heldBy`,
-`p.gateT` (0 shut … 1 open, derived from the gate's hinge angle), and `pen.trough` / `troughEat(pen, amt)` (food in hunger units: 1 takes 1.0 off one sheep's hunger; returns what was eaten). Keep
+`p.gateT` (0 shut … 1 open, derived from the gate's hinge angle), `pen.troughs[i]` / `troughEat(tr, amt)` (food in hunger units: 1 takes 1.0 off one sheep's hunger; returns what was eaten), and `pen.lick` / `lickSalt(pen, amt)` (1 takes one sheep from no salt to full). Keep
 them stable, or update every caller.
 
 ### Tests
@@ -58,8 +59,9 @@ that touch what you changed, and report their numbers.
 | --- | --- |
 | `node tools/flock-sim.mjs [scenario] [--trials N]` | driving, sprint-scatter, the gate bot, critical mass, cornering, rams, calming, day 1 |
 | `node tools/moves-sim.mjs` | punts, caroms, pounce/grab/shake/fling, push-gates, the launcher, swimming, lie-down, the final pen |
-| `node tools/forage-sim.mjs` | forage plants, filling and delivering a bucket, Hank's twilight run to the trough, sheep eating from it overnight, regrowth |
+| `node tools/forage-sim.mjs` | forage plants and salt rocks, a dog gathering greens by running over them and tipping them into troughs (inside the pen and over the fence), several sheep feeding at once overnight, salt to the lick and licked, salt running down, slowing and killing, regrowth, every camp's troughs and lick |
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
+| `node tools/cougar-sim.mjs [day\|hunt\|rescue\|penned] [--trials N]` | the cougar: gone by day and up its tree at night, takes a lamb first, the sheep dies only once it's up the tree (stone at the foot), a bot dog's pounce saves it, a shut pen keeps it out |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
 | `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
@@ -67,6 +69,7 @@ that touch what you changed, and report their numbers.
 | `node tools/cluster-sim.mjs [structure\|merge\|corner\|cost] [--trials N]` | how a grazing flock breaks into knots (sizes, share alone, spacing, gaps), calm walking speeds, a loner and a small knot drifting to the big group, sheep getting out of a rock corner, off a river bank and out of the back of a pen, the cost of 60 sheep per step |
 | `node tools/age-sim.mjs` | ageing: the first flock's ages, how old sheep look (fleece, face, size, words), a lifetime of dawns (nobody dies of old age early, everyone by `T.lifeDays[1]`), ages kept in the saved flock |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
+| `node tools/dig-test.mjs [--shots DIR]` | dig spots along the trail, a dog digging one up, finds going on the dog and into the saved wardrobe, the barn's Dogs tab, mounds back on a new journey |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
 **Online co-op** (the ONLINE CO-OP section): the host runs the game; guests only
@@ -155,15 +158,63 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   (`killSheep(s, 'old')`: tombstone, "Fondly remembered", `G.stats.old`). The
   first flock is 3–24 days old (the bell ewe 26–30), so nobody greys on day 1,
   and ages are kept in the saved flock between journeys.
-- **The trough** (`pen.trough.food`, 1 unit = 1.0 hunger): penned sheep
-  hungrier than 0.18 take a place along it (one per metre), and the rest stand
-  aside and wait. They feed from late afternoon and wake at night to eat. A
+- **Foraging.** A dog gathers alfalfa and daisies just by running over them
+  (up to `T.forage.carryCap`, shown on its back) and tips them into a trough
+  by going up to it, from inside the pen or over the fence beside it
+  (`T.forage.tipR`). No bucket, no Hank run.
+- **The troughs** (`pen.troughs[i].food`, 1 unit = 1.0 hunger): each pen has
+  `T.forage.troughs` along the fence past the gate's latch post (four in the
+  bigger final pen). Penned sheep hungrier than 0.18 take a place along one
+  (one per metre, about 7 feeding at once) and the rest step back toward the
+  middle and wait. They feed from late afternoon and wake at night to eat. A
   ewe fed there the night she's courted is likelier to lamb (and twin).
+- **Salt** (`s.salt`, 0–1, `T.salt`). It runs down `T.salt.perDay`, so the
+  starting flock (0.55–0.8) runs out on day 3–4. Salty sheep are peppy
+  (`saltPep(s)`: +12% at full, normal at 0.5, −30% at none, applied to every
+  sheep speed); a sheep out of salt for `T.salt.deathHours` (30–54 h) dies of
+  it (`killSheep(s, 'salt')`). Salt rocks lie off the trail (one about 30 m
+  up the trail from each camp but the last, more in the desert and by the
+  ocean) and regrow in 2–3 days: run over one to pick up a lump, take it to
+  the pen's salt lick on the hinge side (`T.salt.lump` = enough for 10 sheep).
+  Penned sheep under `T.salt.want` go and lick it, three at a time.
 - **Coyote packs** gather out of sight on the far side of the flock and pick
   the loneliest or weakest sheep. A driver, ambushers and a decoy take up
   posts, then strike together. The carrier drags its catch off while the rest
   screen it. Running off the alpha breaks the pack. Closed pens are
   coyote-proof.
+- **Cougars** (`COUGARS`, one per lair tree in `LAIRS`, placed with their
+  own rng next to the hill camps and a couple between; tuning in `T.cougar`).
+  They're mysterious: gone by day, by night only a shape on the limb and two
+  glinting eyes, no edge arrows. At nightfall the one nearest the flock hunts
+  with `T.cougar.chance`, after a delay. It stalks slow and low, shies from
+  dogs, leaps, and drags its catch (crying all the way) to the trunk; the
+  sheep dies only once it's been carried up the tree (`killSheep(s,
+  'cougar')`, stone at the foot of the tree). Lambs first, always; never a
+  ram. A pounce or bumping into it (even low on the trunk) makes it drop the
+  sheep; a bark spooks a stalking one. It gives up after `T.cougar.tries`.
+  A grabbed sheep's `s.grabbed` is the cougar (`k.isCougar`), so code that
+  assumes a coyote there must check. Closed pens keep cougars out.
+- **Hank only calls out what he sees** (`hankSees`: within `T.hankSight`, less
+  at night, no hill in between; `hankSpotPredators` in `hankWatch`). A pack
+  gets one line per sighting ("Here they come!" the first tonight, "Coyotes!
+  In broad daylight!" by day, "More of them!" after), a catch gets "Get 'im!"
+  once he can see it, a cougar gets a line stalking or with a sheep, and its
+  eyes up the tree once a night. No timed nightfall or 00:30 alarms.
+- **Hank's barn** has two tabs on one turntable: **Sheep** (name, wool, hat,
+  colour, extras, paint) and **Dogs** (each player slot's collie: name, coat,
+  collar, hat, kit). Keep it light on words: icon chips with the name in the
+  tooltip and beside the section label, no paragraphs; the "Fondly
+  remembered" list sits behind a button.
+- **Dig spots and the dog wardrobe.** Mounds with an X off the trail (about
+  one every `T.dig.every` m, placed with their own rng so every screen online
+  has the same ones). A dog standing or creeping on one digs it up in
+  `T.dig.time` s. The first find ever is always treasure, after that
+  `T.dig.treasure`; once everything's found it's junk (a boot, a bone). Finds
+  go straight on the dog if it has nothing of that sort on. Hats reuse the
+  flock's `HAT_GEO` (`dogGear`); tinted parts take the collar colour. What's
+  found and each slot's look live in `localStorage['collies.dogs.v1']`
+  (`DOGS`, `saveDogs`), the host's when online (dogs sync `look` and `digK`,
+  spots sync as `NET_TYPES.dig`).
 - **Nobody dies to physics.** Sheep that land in water swim out. Deaths
   (coyotes, starvation) leave a named tombstone and go on the "Fondly
   remembered" list.
