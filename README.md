@@ -114,3 +114,5 @@ This repo is meant to be deployed on Vercel as a static project with framework p
 Custom domain: `collies.bsnel.com` is added to the Vercel project, and DNS has a `CNAME` record from `collies` to `cname.vercel-dns.com`.
 
 When `index.html`, `vendor/three.min.js`, `vendor/peerjs.min.js` or the icons change, bump `CACHE` in `sw.js` (for example `collies-v2`) so installed copies pick up the new files.
+
+Preview: https://original-fever-dream-collies.thebrypod.workers.dev
