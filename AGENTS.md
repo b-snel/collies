@@ -119,7 +119,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`);
   then till 13:00 no pen pull, nobody goes back in (`morningOut`). Trough food
   and water beat both: hungry/thirsty penned sheep eat or drink first, ones
-  outside come in for it any time of day (`T.troughDraw`).
+  outside come in for it any time of day (`T.troughDraw`), barely while a dog
+  works them (`pushed`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
   leaf's free end; pressed ones slide along, not into it. Lambs follow a
   penned mum in.
