@@ -14,7 +14,8 @@ nightfall, and fighting off coyote packs till dawn.
 It was rebuilt on the `demo-slice/sheep-herding` prototype (the grazing
 economy, day/night and one continuous trail), with the best of the older game
 ported on top: the sheep's emotional model, rams, the dog's pounce and grab,
-push-gates, Hank, the barn and online co-op.
+push-gates, Hank, the barn and online co-op. Dogs dig up hats and kit along
+the trail and wear them from the barn.
 
 ### Running it
 
@@ -39,8 +40,8 @@ world gen (trail, 1 m grid, heights, signed distance field, grass) → renderer,
 terrain, water and grass tufts → scenery → fences, pens and the bridge →
 creature models → particles → game state `G` → SHEEP (the mind and rams) →
 DOGS → DOG MOVES & PHYSICS (pounce, grab, things in the air, push-gates, the
-river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
-lighting → camera → visual sync → HUD and overlay → HANK, HANK'S BARN and the
+river launcher) → FORAGE (plants, salt rocks, what the dogs carry, troughs, salt licks) → DIG SPOTS → NAVIGATION (A*) → COYOTES (packs) → TOMBSTONES → clock and
+lighting → camera → visual sync → HUD and overlay → HANK, FLOCK LOOKS, DOG WARDROBE, HANK'S BARN and the
 saved flock → game flow → main loop → `window.GAME`.
 
 Sections are delimited by `// ===` headers. The comments marked `SHARED HOOK`
@@ -67,6 +68,7 @@ that touch what you changed, and report their numbers.
 | `node tools/cluster-sim.mjs [structure\|merge\|corner\|cost] [--trials N]` | how a grazing flock breaks into knots (sizes, share alone, spacing, gaps), calm walking speeds, a loner and a small knot drifting to the big group, sheep getting out of a rock corner, off a river bank and out of the back of a pen, the cost of 60 sheep per step |
 | `node tools/age-sim.mjs` | ageing: the first flock's ages, how old sheep look (fleece, face, size, words), a lifetime of dawns (nobody dies of old age early, everyone by `T.lifeDays[1]`), ages kept in the saved flock |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
+| `node tools/dig-test.mjs [--shots DIR]` | dig spots along the trail, a dog digging one up, finds going on the dog and into the saved wardrobe, the barn's Dogs tab, mounds back on a new journey |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
 **Online co-op** (the ONLINE CO-OP section): the host runs the game; guests only
@@ -177,6 +179,21 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   posts, then strike together. The carrier drags its catch off while the rest
   screen it. Running off the alpha breaks the pack. Closed pens are
   coyote-proof.
+- **Hank's barn** has two tabs on one turntable: **Sheep** (name, wool, hat,
+  colour, extras, paint) and **Dogs** (each player slot's collie: name, coat,
+  collar, hat, kit). Keep it light on words: icon chips with the name in the
+  tooltip and beside the section label, no paragraphs; the "Fondly
+  remembered" list sits behind a button.
+- **Dig spots and the dog wardrobe.** Mounds with an X off the trail (about
+  one every `T.dig.every` m, placed with their own rng so every screen online
+  has the same ones). A dog standing or creeping on one digs it up in
+  `T.dig.time` s. The first find ever is always treasure, after that
+  `T.dig.treasure`; once everything's found it's junk (a boot, a bone). Finds
+  go straight on the dog if it has nothing of that sort on. Hats reuse the
+  flock's `HAT_GEO` (`dogGear`); tinted parts take the collar colour. What's
+  found and each slot's look live in `localStorage['collies.dogs.v1']`
+  (`DOGS`, `saveDogs`), the host's when online (dogs sync `look` and `digK`,
+  spots sync as `NET_TYPES.dig`).
 - **Nobody dies to physics.** Sheep that land in water swim out. Deaths
   (coyotes, starvation) leave a named tombstone and go on the "Fondly
   remembered" list.
