@@ -92,14 +92,15 @@ await h.page.evaluate(() => {
     reset(8); const sh = live(); const s0 = 95, p0 = pathPoint(s0); place(sh, p0.x, p0.z, 5);
     const pd = pathPoint(s0 - 12); D().x = pd.x; D().z = pd.z;
     for (let i = 0; i < 40; i++) tick();
-    const startS = sAt(stats().x, stats().z); let t = 0; const rms = [], p90 = [], stress = [], panic = []; let maxStress = 0;
+    const startS = sAt(stats().x, stats().z), hun0 = free().reduce((a, s) => a + s.hunger, 0) / free().length; let t = 0; const rms = [], p90 = [], stress = [], panic = []; let maxStress = 0;
     while (t < dur) { const st = driveBot({ back, sprint }); if (Math.round(t * 40) % 40 === 0 && t > 5) { rms.push(st.rms); p90.push(st.p90); stress.push(st.stress); maxStress = Math.max(maxStress, ...free().map(s => s.stress || 0)); panic.push(free().filter(s => (s.stress || 0) > 0.75).length); } tick(); t += 0.025; if (sAt(stats().x, stats().z) > 262) break; }
     const st = stats(), endS = sAt(st.x, st.z);
     // coast: stop the dog, how long does the flock keep moving?
     P().bot = {}; let coast = 0; const c0 = stats(); let px = c0.x, pz = c0.z;
     for (let k = 0; k < 400; k++) { tick(); if (k % 8 === 7) { const c = stats(); const v = Math.hypot(c.x - px, c.z - pz) / 0.2; px = c.x; pz = c.z; if (v > 0.35) coast = (k + 1) * 0.025; } }
     const left = free().filter(s => Math.hypot(s.x - st.x, s.z - st.z) > 20).length;
-    return { mps: r2((endS - startS) / t), secs: r2(t), rms: r2(mean(rms)), p90: r2(mean(p90)), stress: r2(mean(stress)), maxStress: r2(maxStress), panicked: r2(mean(panic)), stragglers20m: left, coast: r2(coast), n: st.n };
+    const dHun = free().reduce((a, s) => a + s.hunger, 0) / free().length - hun0;   // hunger change while driven (+0.034/h if nothing eaten)
+    return { mps: r2((endS - startS) / t), dHunPerH: r2(dHun / (t / T.hourSec)), spd: r2(st.spd), secs: r2(t), rms: r2(mean(rms)), p90: r2(mean(p90)), stress: r2(mean(stress)), maxStress: r2(maxStress), panicked: r2(mean(panic)), stragglers20m: left, coast: r2(coast), n: st.n };
   };
   // 2. sprint at the flock vs walk behind it
   SCN.sprint = () => {
@@ -260,7 +261,7 @@ await h.page.evaluate(() => {
       else if (phase === 'close') { if (pressGate(c1, false)) { phase = 'done'; closed = G.clock.hour; } }
       else P().bot = {};
       tick(); t += 0.025;
-      if (Math.round(t * 40) % (40 * 10) === 0) log.push(`${G.clock.hour.toFixed(1)}h ${phase} s=${Math.round(sAt(st.x, st.z))} rms=${st.rms.toFixed(1)} str=${st.stress.toFixed(2)}`);
+      if (Math.round(t * 40) % (40 * 10) === 0) log.push(`${G.clock.hour.toFixed(1)}h ${phase} s=${Math.round(sAt(st.x, st.z))} rms=${st.rms.toFixed(1)} str=${st.stress.toFixed(2)} hun=${(live().reduce((a, s) => a + s.hunger, 0) / live().length).toFixed(2)}`);
       if (phase === 'done' && G.clock.hour > 20.4) break;
     }
     return { coyotesWoke: awake, coyoteNearestFlock: cNear < 1e9 ? r2(cNear) : null, fetched: restaged, arriveHour: r2(arrive), allInHour: r2(allIn), closedHour: r2(closed), penned: live().filter(s => s.pen === c1).length, of: live().length, spareSec: closed > 0 ? Math.round((T.nightStart - closed) * T.hourSec) : null, log: log.filter((_, i) => i % 3 === 0) };

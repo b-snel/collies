@@ -105,7 +105,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Rams** charge coyotes, then leaning dogs; bark cancels; punted → dazed +
   grudge. Lambs need a ram penned overnight.
 - **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 10 s.
-  0.25 hunger/h on good grass. Flock moves on together when eaten out
+  0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
   lamb at dawn (`T.lambChance`).

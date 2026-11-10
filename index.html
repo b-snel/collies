@@ -423,8 +423,9 @@ const T = {
   // flock
   startAdults: 12, startLambs: 2, maxSheep: 160,
   hungerPerHour: 0.034, sleepHungerMul: 0.4, starveHours: 9,   // hours at max hunger before death (randomised ±35% per sheep)
-  eatPerHour: 3.85,      // grass units a sheep crops per in-game hour on good grass (1 unit = one full 2x2 m cell)
-  foodValue: 0.065,      // hunger removed per grass unit: good grass takes 0.25 hunger an hour, so a hungry sheep is fed in 3-4 h
+  eatPerHour: 6.2,       // grass units a sheep crops per in-game hour on good grass (1 unit = one full 2x2 m cell)
+  foodValue: 0.065,      // hunger removed per grass unit: good grass takes 0.4 hunger an hour, so a hungry sheep is fed in ~2 h
+  moveGraze: { k: 0.5, sp: 3.2, stress: 0.55 },   // snatching bites on the move: share of the grazing rate, gone by this speed (m/s) or stress
   grazeFull: 0.35,       // grass at least this thick is cropped at the full rate; thinner, proportionally slower
   grazeHunger: 0.1,      // sheep below this hunger stop grazing and idle
   regrowPerHour: 0.005,  // grass units per cell per in-game hour (x (0.35 + cap)): a cropped patch takes about five days to come back
@@ -2348,6 +2349,7 @@ function startUnstick(s, wx, wz) {
 }
 // salt and energy: at T.salt.mid a sheep goes at its usual pace, full of salt T.salt.boost quicker, out of it T.salt.slow slower
 const saltPep = s => { const S = T.salt, v = s.salt ?? S.mid; return v >= S.mid ? 1 + S.boost * (v - S.mid) / (1 - S.mid) : 1 - S.slow * (S.mid - v) / S.mid; };
+const MOVE_GRAZE = new Set(['flee', 'move', 'idle', 'follow', 'rejoin', 'seek', 'wander', 'stray', 'wait', 'exit']);   // states that snatch bites on the way (driven sheep "flee" the dog at a walk; panic stops it)
 const CALM_GO = new Set(['seek', 'rejoin', 'stray', 'pen', 'exit', 'follow', 'wander', 'wait', 'unstick', 'graze']);
 // the flock as a whole: pen fractions, the hub, co-op flanking, the mood and Hank's comments on it
 function flockMind(dt, play) {
@@ -2996,6 +2998,14 @@ function updateSheep(dt, dtH) {
       s.hunger = Math.max(0, s.hunger - got * T.foodValue / lm);
       s.eating = got > full * 0.12;
       if (!s.eating && !inGrazeFront(s)) s.thinkT = Math.min(s.thinkT, 0.3);
+    } else if (MOVE_GRAZE.has(s.state) && !s.pen && s.hunger > T.grazeHunger && !s.air && !s.heldBy && s.panic < 0.25) {
+      // a calm sheep being walked along still snatches bites: less the faster it goes and the more stressed it is
+      const mg = T.moveGraze, k = mg.k * clamp(1 - Math.hypot(s.vx, s.vz) / mg.sp, 0, 1) * clamp(1 - s.stress / mg.stress, 0, 1);
+      if (k > 0.02) {
+        const hx = s.x + Math.sin(s.yaw) * 0.6 * s.grow, hz = s.z + Math.cos(s.yaw) * 0.6 * s.grow, lm = s.lamb ? 0.6 : 1;
+        const got = eatGrass(hx, hz, T.eatPerHour * dtH * lm * k * clamp(grassAt(hx, hz) / T.grazeFull, 0, 1));
+        s.hunger = Math.max(0, s.hunger - got * T.foodValue / lm);
+      }
     }
     if (s.atTrough && s.pen) {
       const tr = s.atTrough, got = troughEat(tr, Math.max(0, Math.min(T.troughRate * dtH, s.hunger - T.troughFull)));
