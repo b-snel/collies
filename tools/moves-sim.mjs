@@ -1,6 +1,6 @@
 // Headless tests for the dog's moves and the physics-y world: `node tools/moves-sim.mjs [name ...]`.
 // Pounce/punt distance, carom chains, pouncing a coyote off its prey, grab-drag, fling over a fence into a pen,
-// pushing a gate open and shut (latch → gateT 0 → onGateClosed), vaulting a gate, grab-dragging a gate shut,
+// pushing a gate open and shut (latch → gateT 0 → onGateClosed), slamming a gate by sprinting, grab-dragging a gate shut,
 // the river launcher (pounce-fired, and loaded by driving sheep into its chute), splash-and-swim, shaking a coyote,
 // a flung sheep bowling a coyote, lying down, and the final pen's finish.
 import { open } from './harness.mjs';
@@ -201,15 +201,28 @@ const tests = {
       return { slamSpeed: H.r(maxW), swungTo: H.r(minPhi), gateT: H.r(pen.gateT), whacked, sheepStillInPen: sh.filter(s => GAME.penAt(s.x, s.z) === pen).length, of: sh.length, dogOutside: Math.hypot(d.x - pen.x, d.z - pen.z) > pen.R };
     });
   },
-  // 7. sprint into a shut gate: vault it, gate stays latched
-  async vault() {
+  // 7. sprint into a shut gate: slams open, no hop; sprint into the open leaf from the wedge: slams shut
+  async sprintSlam() {
     return h.page.evaluate(() => {
-      const { pens } = GAME; H.reset(); const d = H.d(), pen = pens[1], nx = Math.cos(pen.gateA), nz = Math.sin(pen.gateA);
+      const { G, pens, gatePsi } = GAME; H.reset(); const d = H.d(), pen = pens[1], nx = Math.cos(pen.gateA), nz = Math.sin(pen.gateA);
       H.place(d, pen.gx + nx * 4, pen.gz + nz * 4);
-      let hopped = false;
-      H.p.bot = H.to(-nx, -nz, { sprint: true }); H.run(1.2, () => { if (d.hopT > 0) hopped = true; });
+      let hopped = false, maxW = 0;
+      H.p.bot = H.to(-nx, -nz, { sprint: true }); H.run(1.2, () => { if (d.hopT > 0) hopped = true; maxW = Math.max(maxW, Math.abs(pen.w)); });
       H.p.bot = {}; H.run(0.3);
-      return { hopped, dogInside: Math.hypot(d.x - pen.x, d.z - pen.z) < pen.R, stillLatched: pen.latched, gateT: pen.gateT };
+      const open = { hopped, slamW: H.r(maxW), gateT: H.r(pen.gateT), latched: pen.latched, dogInside: Math.hypot(d.x - pen.x, d.z - pen.z) < pen.R };
+      // now swung wide open (outward); from the wedge outside the leaf, sprint into it
+      H.reset(); GAME.toggleGate(pen); H.run(1.2);
+      const a = pen.angClosed + pen.outSign * (pen.phi + 0.35), r = pen.gateLen * 0.75;
+      H.place(d, pen.hinge.x + Math.cos(a) * r, pen.hinge.z + Math.sin(a) * r);
+      let hop2 = false, latchedAt = -1;
+      const t0 = G.time;
+      H.run(1.5, () => {
+        const psi = gatePsi(pen, d.x, d.z), aa = pen.angClosed + pen.outSign * psi;
+        H.p.bot = H.to(Math.sin(aa) * pen.outSign, -Math.cos(aa) * pen.outSign, { sprint: true });
+        if (pen.latched && latchedAt < 0) latchedAt = G.time - t0; if (d.hopT > 0 && latchedAt < 0) hop2 = true;
+      });
+      H.p.bot = {};
+      return { open, shut: { hoppedBeforeShut: hop2, latched: pen.latched, secs: H.r(latchedAt), gateT: H.r(pen.gateT) } };
     });
   },
   // 8. grab an open gate and drag it shut from outside
