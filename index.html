@@ -2996,9 +2996,10 @@ function updateSheep(dt, dtH) {
     const trR = s.trait === 'skittish' ? 1.13 : s.trait === 'stubborn' ? 0.87 : 1;
     for (const d of G.dogs) {
       const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4;
-      if (dd < 0.95 && d.hopT <= 0) { const push = 0.95 - dd; s.x += dx / dd * push; s.z += dz / dd * push; }
+      const outside = s.pen && !insidePen(s.pen, d.x, d.z, 0);   // penned sheep pay a dog outside their pen no mind, unless it barks
+      if (dd < 0.95 && d.hopT <= 0 && !outside) { const push = 0.95 - dd; s.x += dx / dd * push; s.z += dz / dd * push; }
       if (d.mode === 'lie') {   // a dog lying down settles the sheep round it (they just keep clear of it)
-        if (dd < T.lieCalmR) { steady = true; calm = true; if (dd < 4) { const k = (4 - dd) / 4 * 0.5; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } } }
+        if (dd < T.lieCalmR) { steady = true; calm = true; if (dd < 4 && !outside) { const k = (4 - dd) / 4 * 0.5; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } } }
         continue;
       }
       if (d.stunT > 0) continue;   // a dog that's been bowled over isn't frightening
@@ -3008,9 +3009,8 @@ function updateSheep(dt, dtH) {
       if (pounce) { R = Math.max(R, T.pounceR); K = Math.max(K, T.pounceK); }
       if (barking && dd < T.barkR) stressIn += T.stressBark * (1 - dd / T.barkR);
       if (dd >= R) continue;
-      // a dog on the other side of the fence (tipping greens in, say) doesn't move penned sheep that are shut in or
-      // feeding, unless it sprints or pounces at them
-      if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'drink' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
+      // a dog outside the pen (tipping greens in, passing by) leaves penned sheep to their troughs and water: only a bark moves them
+      if (outside && !barking) continue;
       // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding
       if (s.pen && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
         if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
@@ -3180,7 +3180,7 @@ function updateSheep(dt, dtH) {
           const p = s.pen, lk = s.state === 'lick', q = !p ? null : lk ? (lickHas(p) && p.lickBy && p.lickBy[s.lslot] === s ? p.lickSpots[s.lslot] : null) : (waterHas(p) && p.waterBy && p.waterBy[s.wslot] === s ? p.waterSpots[s.wslot] : null);
           if (!q) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           const dx = q.x - s.x, dz = q.z - s.z, d = Math.hypot(dx, dz);
-          if (d > 0.7) {
+          if (d > (!lk && s.arrT != null ? 1.2 : 0.7)) {   // WATER: once there, jostled a little it keeps its nose in
             dX = dx / d; dZ = dz / d; spd = Math.min(T.sheepWalk * 1.4, 0.3 + d * 1.5);
             if (!(d > s.troughBest - 0.3)) { s.troughBest = d; s.troughT = 0; }
             else if ((s.troughT += dt) > 3) { s.state = 'idle'; s.troughCd = 3; }
@@ -4901,7 +4901,7 @@ function drawForageOverlay() {
 // =====================================================================
 const waterA = p => p.gateA + Math.PI;   // straight across from the gate
 const WATER_GEO = (() => {
-  const L = 2.6, Wd = 0.76, M = '#a3b3be', D = '#7d8d98', RIM = '#cdd6dc';   // a galvanised stock tank on wooden feet
+  const L = 3.4, Wd = 0.76, M = '#a3b3be', D = '#7d8d98', RIM = '#cdd6dc';   // a galvanised stock tank on wooden feet
   return { L, Wd, box: merge(
     P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, Wd / 2] }), P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, -Wd / 2] }),
     P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [L / 2, 0.44, 0] }), P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [-L / 2, 0.44, 0] }),

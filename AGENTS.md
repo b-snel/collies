@@ -98,6 +98,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 
 - **Pressure, not collision.** Radius: walk 9, creep 5.5, sprint 12 m, bent
   toward the dog's heading.
+- **Penned sheep ignore dogs outside the pen** (no press, no bump, no
+  stress) unless one barks; a dog or predator inside: as normal.
 - **Momentum and contagion.** Pushed sheep walk on ~3.5 s; calm sheep join
   movers at 0.88× (≥1.0 = runaway).
 - **Fear / stress / panic.** Stress spreads 0.4/s, calms 0.15/s, panic >0.75.
