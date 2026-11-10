@@ -67,7 +67,7 @@ Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: hold
 
 Hank's ✂️ clippers are buried in a dig spot between the first two camps. Dig them up and bring them to him. When the flock is penned with the gate shut, Hank climbs in and shears the woolliest sheep, one by one, for 🧶. Wool grows back in a few days.
 
-At the end of the trail, the Trading Post sells 💧 🌾 🧂 for wool: stand on a mat and bark. 🏖️ Cabo takes every sheep penned there, Hank and the dogs too, and wins the journey (bark twice).
+A trader waits near the end of every leg: stand on a mat and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. At the end of the trail, the Trading Post sells the same, and 🏖️ Cabo takes every sheep penned there, Hank and the dogs too, and wins the journey (bark twice).
 
 ## Coyotes
 

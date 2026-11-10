@@ -12,8 +12,8 @@ file, comments, commits and PRs: short.
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
 drive a flock along one trail (desert → mountains → ocean → the Promised
 Land → desert → the Trading Post): graze it, pen it at camps by nightfall,
-fight off coyotes, cougars and falcons till dawn. At the Trading Post wool
-buys supplies, and Cabo 🏖️, which wins.
+fight off coyotes, cougars and falcons till dawn. Traders on every leg sell
+troughs for wool; the Trading Post also sells Cabo 🏖️, which wins.
 
 ### Run
 
@@ -47,7 +47,8 @@ every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeR
 open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
 `fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched →
 quenched; return what went in / out), `giveHankClippers()` (no-op if he has
-them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number).
+them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
+`kitSet(pen, kind, n)` (`food`/`water`/`salt`: show bought troughs and licks; `kitN`, `kitMax`).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -75,7 +76,7 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
-| `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
+| `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
 | `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
@@ -198,12 +199,17 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (a lone coyote: `T.coyoteBark.soloWise`), then turns bold (`barkWorks`): only
   a bonk moves it, and it lunges at dogs to nip. Packs lose less heart per bark
   (`packK`).
-- **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`, `T.vendor`): the
-  end of the trail, desert, no water. A dog on a mat barks (`vendorBark`, host)
-  to buy with `G.wool`: 💧 (`fillWater`), 🌾 (`stockTroughs`), 🧂 into the final
-  pen; ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
-  (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark twice: those go,
-  `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
+- **Traders** (`STALLS`, `T.vendor`): a stall `before` m short of each camp
+  past the first, plus the Trading Post's (`MARKET`). A dog on a mat barks
+  (`vendorBark`, host) to buy with `G.wool`. 📍 picks the pen (found ones,
+  `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough /
+  water trough / lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9
+  (slots prebuilt along the fence), then batches. Water and salt: one pool per
+  pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
+- **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`): the end of the
+  trail, desert, no water. ✂️ free while Hank has none. Too poor or no room: ✖,
+  nothing spent (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark
+  twice: those go, `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
