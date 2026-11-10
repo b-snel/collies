@@ -101,7 +101,8 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   linger on good grass and need more fear to move, and scared sheep need more
   hunger to graze.
 - **Critical mass.** An open pen pulls calm, fed sheep in, and the pull grows
-  with the share already inside.
+  with the share already inside. Food in a pen's troughs pulls
+  hungry sheep in too (`T.penTroughPull`), even in the morning.
 - **Cornered sheep break out.** Pressed hard but not moving → a warning bleat →
   a burst past the dog.
 - **Knots and sheep gravity.** Every 0.5 s the free sheep are clustered into
@@ -166,8 +167,11 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
   `T.forage.troughs` along the fence past the gate's latch post (four in the
   bigger final pen). Penned sheep hungrier than 0.18 take a place along one
   (one per metre, about 7 feeding at once) and the rest step back toward the
-  middle and wait. They feed from late afternoon and wake at night to eat. A
-  ewe fed there the night she's courted is likelier to lamb (and twin).
+  middle and wait. They feed whenever there's food in it, and wake at night to
+  eat. A dog outside the fence (tipping greens in) doesn't move sheep that are
+  shut in or feeding unless it sprints or pounces, and a feeding sheep shrugs
+  off light pressure inside (`T.troughResolve`). A ewe fed there the night
+  she's courted is likelier to lamb (and twin).
 - **Salt** (`s.salt`, 0–1, `T.salt`). It runs down `T.salt.perDay`, so the
   starting flock (0.55–0.8) runs out on day 3–4. Salty sheep are peppy
   (`saltPep(s)`: +12% at full, normal at 0.5, −30% at none, applied to every

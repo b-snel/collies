@@ -395,8 +395,9 @@ const T = {
   pathsPerStep: 1,       // A* searches the sheep may run per physics step (the rest go straight for a step and try again)
   calmBrisk: 1.5,        // calm but purposeful walking (to fresh grass, back to the group, out of a tight spot) as a multiple of sheepWalk
   resolveHunger: 0.4, resolveGain: 0.6, resolveMax: 0.25,   // a hungry grazer ignores dog pressure below (hunger-0.4)*0.6 (max 0.25) on good grass
-  penPullR: 12, penPullRF: 14, penPullBase: 0.45, penPullF: 0.9,   // pen pull radius/strength grow with the fraction already in
-  penFedDay: 0.38, penFedDusk: 0.32,   // hunger above which the pen stops pulling: 0.38 by day, 0.7 at nightfall
+  penPullR: 16, penPullRF: 14, penPullBase: 0.65, penPullF: 0.9,   // pen pull radius/strength grow with the fraction already in
+  penFedDay: 0.5, penFedDusk: 0.35,   // hunger above which the pen stops pulling: 0.5 by day, 0.85 at nightfall
+  penTroughPull: 0.8,    // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
   bellR: 25,
   cornerPress: 0.5, cornerSpd: 1.2, cornerWarn: 0.45, cornerT: 0.75, breakSpd: 11, breakT: 0.6, breakCd: 1.8, cornerStun: 0.55,
   startRams: 2, ramScale: 1.32, ramRadius: 0.66, ramPressR: 0.8, ramPressK: 0.7, ramIrk: 0.2, ramDogR: 10,
@@ -410,6 +411,7 @@ const T = {
   troughWant: 0.18, troughFull: 0.06,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
   troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
+  troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   troughWake: 0.08,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
   flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
   // dogs
@@ -2025,12 +2027,14 @@ function penTarget(p, s, out) {
 function penPull(s) {
   if (s.pen || G.mode !== 'play' || s.ram && s.rs !== 'idle') return null;
   if (s.lamb && s.mother && !s.mother.dead) return null;              // lambs go where mum goes
-  const h = G.clock.hour; if (h >= 6 && h < 13 && s.hunger > 0.15) return null;   // mornings are for grazing
-  const dusk = duskK(), fedK = penFed(s, dusk), calmK = 1 - s.stress;   // hungry or frightened sheep don't want to go in
-  if (fedK <= 0 || calmK < 0.05) return null;
+  const h = G.clock.hour, morning = h >= 6 && h < 13 && s.hunger > 0.15;   // mornings are for grazing
+  const dusk = duskK(), fed = penFed(s, dusk), calmK = 1 - s.stress;   // hungry or frightened sheep don't want to go in...
+  if (calmK < 0.05) return null;
   let best = null, bw = 0;
   for (const p of pens) {
     if (p.gateT < 0.5) continue;
+    const fedK = troughHas(p) ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
+    if (fedK <= 0) continue;
     const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = T.penPullR + T.penPullRF * pF;
     if (gd > R) continue;
     const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk);
@@ -2204,7 +2208,7 @@ function flockMind(dt, play) {
 // A trough feeds T.troughSpot metres a sheep on its side toward the middle of the pen; the rest stand back and wait.
 const troughHas = p => !!(p && p.troughs && p.troughs.some(tr => tr.food > 0.01));
 const lickHas = p => !!(p && p.lick && p.lick.salt > 0.01);
-const troughTime = p => p.gateT < 0.5 || G.clock.hour >= T.courtHour || isNight();   // evening and night (or whenever it's shut in)
+const troughTime = p => true;   // whenever there's food in it (the dogs went to the trouble of filling it)
 function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), and round the salt lick
   if (p.feedSpots) return p.feedSpots;
   const spots = [], C = [];
@@ -2270,8 +2274,8 @@ function decideCalm(s, nb, night) {
   const kn = s.knot, lone = !kn || kn.m === 1, stray = strayGoal(s);
   const uFlock = 0.3 + s.stress * 0.3 + (stray ? 0.15 + (kn ? kn.gw : 0) * 0.4 + (lone || s.pen ? 0.25 : 0) : 0) + (steady ? 0.3 : 0);   // on its own, it wants its flock more than an empty pen
   // inside an open pen the same pull holds a fed sheep in (outside the morning graze)
-  const h = G.clock.hour, inOpen = s.pen && s.pen.gateT > 0.5 && G.mode === 'play' && !(h >= 6 && h < 13 && s.hunger > 0.15);
-  const uPen = pp ? pp.w : inOpen ? (T.penPullBase + T.penPullF * (s.pen.frac || 0)) * penFed(s, dusk) * (1 + dusk) : 0;
+  const h = G.clock.hour, inOpen = s.pen && s.pen.gateT > 0.5 && G.mode === 'play' && (troughHas(s.pen) || !(h >= 6 && h < 13 && s.hunger > 0.15));
+  const uPen = pp ? pp.w : inOpen ? (T.penPullBase + T.penPullF * (s.pen.frac || 0)) * (troughHas(s.pen) ? Math.max(penFed(s, dusk), T.penTroughPull) : penFed(s, dusk)) * (1 + dusk) : 0;
   let best = 'flock', bs = uFlock; if (uGraze > bs) { best = 'graze'; bs = uGraze; } if (uPen > bs) { best = 'pen'; bs = uPen; }
   const cur = s.goal === 'graze' ? uGraze : s.goal === 'pen' ? uPen : s.goal === 'flock' ? uFlock : -1;
   if (best !== s.goal && (cur <= 0 || (s.goalHold <= 0 && bs > cur + T.goalHyst))) { s.goal = best; s.goalHold = T.goalHold; }
@@ -2511,6 +2515,9 @@ function updateSheep(dt, dtH) {
       if (pounce) { R = Math.max(R, T.pounceR); K = Math.max(K, T.pounceK); }
       if (barking && dd < T.barkR) stressIn += T.stressBark * (1 - dd / T.barkR);
       if (dd >= R) continue;
+      // a dog on the other side of the fence (tipping greens in, say) doesn't move penned sheep that are shut in or
+      // feeding, unless it sprints or pounces at them
+      if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
       const k = (1 - dd / R) * K;
       // walking onto the flock drives it the way the dog walks, so you can steer it
       let ux = dx / dd, uz = dz / dd; const dv = Math.hypot(d.vx, d.vz);
@@ -2525,8 +2532,8 @@ function updateSheep(dt, dtH) {
       if (pounce) stressIn += T.stressPounce;
     }
     // a hungry sheep with its head down in good grass needs more fear to be moved
-    if (s.state === 'graze' && s.eating && press > 0 && cRaw === 0 && !steady) {
-      const resolve = clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
+    if ((s.state === 'graze' && s.eating || s.state === 'trough') && press > 0 && cRaw === 0 && !steady) {
+      const resolve = s.state === 'trough' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
     s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
