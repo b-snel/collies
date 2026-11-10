@@ -35,14 +35,16 @@ till dawn.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`, `p.gateT` (0 shut…1
-open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`.
+open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`,
+`fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched →
+quenched; return what went in / out).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -53,6 +55,7 @@ Run the ones touching your change; report the numbers.
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
 | `moves-sim.mjs` | punts, pounce/grab/fling, carrying through a gate, gates, launcher, swimming, final pen |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
+| `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
@@ -132,6 +135,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   main flock however far.
 - **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
   lumps go to the pen's lick.
+- **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
+  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Run
+  over a bucket to carry it (one per dog), wade/swim to fill, walk up to any
+  water trough to tip in (empty: set down there). Penned thirsty sheep drink;
+  a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
 - **Coyote packs** flank and strike together; chase off the alpha to break
   them. Shut pens stop them.
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);

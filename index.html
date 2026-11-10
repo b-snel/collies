@@ -43,6 +43,7 @@
   #hHunger { height:100%; width:30%; background:#7ed957; transition:width .3s, background .3s; }
   #hStarving { color:#ff7a6b; font-weight:600; }
   #hSaltBar { height:100%; width:60%; background:#e8e4f0; transition:width .3s, background .3s; }
+  #hWaterBar { height:100%; width:90%; background:#6fc3ff; transition:width .3s, background .3s; }
   #hMoodBar { height:100%; width:4%; background:#7ed957; transition:width .3s, background .3s; }
   #compass { bottom:40px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:10px; padding:6px 16px 6px 10px; }
   #cArrow { font-size:26px; width:30px; text-align:center; display:inline-block; }
@@ -323,6 +324,8 @@
     <div class="bar"><div id="hHunger"></div><i id="hFedMark"></i></div>
     <div title="Sheep need salt. Salty sheep are peppy and quick; without it they slow down and in the end die of it. Bring lumps from the white salt rocks to a pen's salt lick"><i class="ic">🧂 </i><span class="w">Salt: </span><b id="hSalt">Good</b></div>
     <div class="bar"><div id="hSaltBar"></div></div>
+    <div title="Water: fill a 🪣 at a river, lake or the sea, tip it into a pen's water trough"><i class="ic">💧 </i><span class="w">Water: </span><b id="hWater">Good</b></div>
+    <div class="bar"><div id="hWaterBar"></div></div>
     <div><i class="ic">🌱 </i><span class="w">Pasture: </span><b id="hGrass">Good</b></div>
     <div><i class="ic">💓 </i><span class="w">Mood: </span><b id="hMood">Calm</b></div>
     <div class="bar"><div id="hMoodBar"></div></div>
@@ -585,6 +588,12 @@ const T = {
   // without for deathHours, dies of it. Penned sheep under want go and lick till they're at full.
   salt: { perDay: 0.17, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, deathHours: [30, 54], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
+  // water (WATER section): s.thirst 0 just drank … 1 parched, +perDay a day; parched deathHours → dies. Penned sheep over want
+  // drink at the pen's water trough (cap units; 1 unit = one sheep parched → quenched) till under full. A dog runs over a bucket
+  // to pick it up, wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
+  // startFill: the first camp's trough starts this full. wade: thirst/h off a sheep swimming or with its nose in water. low: Hank/toast
+  water: { perDay: 0.25, start: [0.05, 0.2], want: 0.25, full: 0.03, drinkRate: 3, cap: 12, bucket: 6, startFill: 1, deathHours: [36, 60],
+    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, tipR: 1.9, hold: 1.5, crowd: 4 },   // hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
   // Hank (the old shepherd) and his voice
@@ -2108,7 +2117,7 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 },
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0 },
   nextSheepId: 1, finalArm: 0, hints: {}, visited: new Set(), lost: [],
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
@@ -2166,7 +2175,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
   return {
     id: G.nextSheepId++, name: sheepName({ ram }), x, z, vx: 0, vz: 0, y: groundY(x, z), yaw: Math.random() * TAU,
     r: lamb ? 0.36 : ram ? T.ramRadius : T.sheepR, lamb, age, life: Math.round(rnd(...T.lifeDays)), grow: lamb ? 0.55 : 1, mother, black, scale: ram ? T.ramScale * rnd(0.97, 1.04) : 1.02 + Math.random() * 0.16,
-    hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), salt: rnd(...T.salt.start), saltStarve: 0, saltMax: rnd(...T.salt.deathHours), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
+    hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), salt: rnd(...T.salt.start), saltStarve: 0, saltMax: rnd(...T.salt.deathHours), thirst: rnd(...T.water.start), parchT: 0, parchMax: rnd(...T.water.deathHours), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
     eating: false, near: 0, pen: null, wasPen: null, grabbed: null, dead: false, breedOK: false, bred: false,
     hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(5, 40),
     pitch: lamb ? 1.45 + Math.random() * 0.2 : ram ? 0.66 + Math.random() * 0.14 : 0.85 + Math.random() * 0.3,
@@ -2202,6 +2211,7 @@ function killSheep(s, why) {
   if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
   if (why === 'old') { G.stats.old = (G.stats.old || 0) + 1; burst(s.x, s.y + 0.8, s.z, 14, '#fff4c8', { speed: 0.6, up: 2.2, size: 0.1, life: 1.6, grav: -2 }); toast(lossLine(s, why), 'warn'); Sound.sad(); }
   else if (why === 'salt') { G.stats.salt = (G.stats.salt || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#f3eee6', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
+  else if (why === 'thirst') { G.stats.thirst = (G.stats.thirst || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#cfe6f5', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else if (why === 'cougar') { G.stats.cougar = (G.stats.cougar || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // (its wool flies up in the tree: COUGARS)
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
@@ -2444,6 +2454,7 @@ function startUnstick(s, wx, wz) {
 }
 // salt and energy: at T.salt.mid a sheep goes at its usual pace, full of salt T.salt.boost quicker, out of it T.salt.slow slower
 const saltPep = s => { const S = T.salt, v = s.salt ?? S.mid; return v >= S.mid ? 1 + S.boost * (v - S.mid) / (1 - S.mid) : 1 - S.slow * (S.mid - v) / S.mid; };
+const thirstPep = s => 1 - T.water.slow * clamp(((s.thirst || 0) - T.water.slowAt) / (1 - T.water.slowAt), 0, 1);   // WATER: parched sheep drag
 const MOVE_GRAZE = new Set(['flee', 'move', 'idle', 'follow', 'rejoin', 'seek', 'wander', 'stray', 'wait', 'exit']);   // states that snatch bites on the way (driven sheep "flee" the dog at a walk; panic stops it)
 const CALM_GO = new Set(['seek', 'rejoin', 'stray', 'pen', 'exit', 'follow', 'wander', 'wait', 'unstick', 'graze']);
 // the flock as a whole: pen fractions, the hub, co-op flanking, the mood and Hank's comments on it
@@ -2487,17 +2498,20 @@ function flockMind(dt, play) {
 // A trough feeds T.troughSpot metres a sheep on its side toward the middle of the pen; the rest stand back and wait.
 const troughHas = p => !!(p && p.troughs && p.troughs.some(tr => tr.food > 0.01));
 const lickHas = p => !!(p && p.lick && p.lick.salt > 0.01);
+const waterHas = p => !!(p && p.water && p.water.w > 0.01);   // WATER: the pen's water trough
 const troughTime = p => true;   // whenever there's food in it (the dogs went to the trouble of filling it)
-function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), and round the salt lick
+function troughLine(p, tr, spots, C) {   // the places along one trough, on its side toward the middle of the pen
+  const cx = tr.x, cz = tr.z, y = tr.yaw || 0, ax = Math.cos(y), az = -Math.sin(y), len = tr.len || 3, k = Math.max(1, Math.round(len / T.troughSpot));   // its length along its local x
+  let nx = -az, nz = ax; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }   // the side toward the middle of the pen
+  for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * len / k; spots.push({ tr, x: cx + ax * a + nx * 0.95, z: cz + az * a + nz * 0.95, yaw: Math.atan2(-nx, -nz) }); }
+  C.push({ x: cx, z: cz, len, ax, az, nx, nz });
+}
+function troughSpots(p) {   // built once per pen: the places along the troughs (spot.tr), round the salt lick and along the water trough
   if (p.feedSpots) return p.feedSpots;
   const spots = [], C = [];
-  for (const tr of p.troughs || []) {
-    const cx = tr.x, cz = tr.z, y = tr.yaw || 0, ax = Math.cos(y), az = -Math.sin(y), len = tr.len || 3, k = Math.max(1, Math.round(len / T.troughSpot));   // its length along its local x
-    let nx = -az, nz = ax; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }   // the side toward the middle of the pen
-    for (let i = 0; i < k; i++) { const a = (i - (k - 1) / 2) * len / k; spots.push({ tr, x: cx + ax * a + nx * 0.95, z: cz + az * a + nz * 0.95, yaw: Math.atan2(-nx, -nz) }); }
-    C.push({ x: cx, z: cz, len, ax, az, nx, nz });
-  }
+  for (const tr of p.troughs || []) troughLine(p, tr, spots, C);
   p.feedSpots = spots; p.feedBy = spots.map(() => null); p.feedC = C;
+  p.waterSpots = []; p.waterC = []; if (p.water) troughLine(p, p.water, p.waterSpots, p.waterC); p.waterBy = p.waterSpots.map(() => null);
   const L = p.lick; p.lickSpots = []; p.lickBy = [];
   if (L) {
     const a0 = Math.atan2(p.z - L.z, p.x - L.x);   // round the side toward the middle of the pen
@@ -2514,18 +2528,18 @@ function claimTrough(s) {
   if (best < 0) return barge(s, spots, p.feedBy, 'slot', 'trough');
   p.feedBy[best] = s; s.slot = best; s.state = 'trough'; s.troughT = 0; s.troughBest = 1e9; return true;
 }
-// how hard a sheep shoves at the trough: size, rams, hunger; lambs and old ones lose
-const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3);
-function barge(s, spots, by, key, state) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place
+// how hard a sheep shoves at the trough: size, rams, hunger (and thirst); lambs and old ones lose
+const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3 + (s.thirst || 0) * 0.3);
+function barge(s, spots, by, key, state, hold = 0) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place (hold: only one that's had hold s there)
   if ((s.shoveCd || 0) > G.time) return false;
   let bi = -1, bv = 1e9;
-  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
+  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed || hold && !(G.time - (o.arrT ?? 1e9) >= hold)) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
   if (bi < 0) return false;
   s.shoveCd = G.time + T.shove.cd * rnd(0.6, 1.4);
   if (shoveStr(s) * rnd(0.7, 1.3) < bv * T.shove.win) return false;
   G.shoves = (G.shoves || 0) + 1;
   const o = by[bi]; bump(s, o, T.shove.kick);
-  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9; s.arrT = null;
   return true;
 }
 // s shoves o aside: o is knocked off, bleats, and thinks again
@@ -2554,32 +2568,42 @@ function grassShove(s) {
   s.tx = bo.x; s.tz = bo.z; bump(s, bo, C.kick); s.state = 'seek';
   return true;
 }
-function claimLick(s) {
-  const p = s.pen; troughSpots(p);
-  if (s.state === 'lick' && p.lickBy[s.lslot] === s) return true;
+function claimSpot(s, spots, by, key, state, hold = 0) {   // a free place at the salt lick or the water trough (none: barge for one)
+  if (s.state === state && by[s[key]] === s) return true;
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
-  p.lickSpots.forEach((q, i) => { if (p.lickBy[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return barge(s, p.lickSpots, p.lickBy, 'lslot', 'lick');
-  p.lickBy[best] = s; s.lslot = best; s.state = 'lick'; s.troughT = 0; s.troughBest = 1e9; return true;
+  spots.forEach((q, i) => { if (by[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
+  if (best < 0) return barge(s, spots, by, key, state, hold);
+  by[best] = s; s[key] = best; s.state = state; s.troughT = 0; s.troughBest = 1e9; s.arrT = null; return true;
+}
+function claimLick(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.lickSpots, p.lickBy, 'lslot', 'lick'); }
+function claimWater(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.waterSpots, p.waterBy, 'wslot', 'drink', T.water.hold); }   // WATER (one trough, a crowd: a fresh drinker gets a moment)
+// wait its turn where it is, but not in front of a trough (it'd block the way): step back toward the middle.
+// crowd: up to this many come over from wherever they are and jostle right behind it (the one water trough)
+function waitBy(s, Cs, crowd = 0) {
+  let c = null, cd = 1e9; for (const q of Cs) { const d = Math.hypot(s.x - q.x, s.z - q.z); if (d < cd) { cd = d; c = q; } }
+  s.state = 'wait'; s.tx = s.x; s.tz = s.z; if (!c) return;
+  const rx = s.x - c.x, rz = s.z - c.z; let u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
+  if (crowd && G.sheep.filter(o => o !== s && o.state === 'wait' && o.pen === s.pen && Math.hypot(o.tx - c.x, o.tz - c.z) < 4).length < crowd) { u = clamp(u, -c.len / 2, c.len / 2); v = 0; }
+  if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
+    const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
+    if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
+  }
 }
 function decideCalm(s, nb, night) {
   s.rush = false;
   if (s.pen && penRush(s.pen)) { rushOut(s); return; }   // the gate's open of a morning: out, all of them
+  // WATER: penned and thirsty with water in the trough: drink, first if it's thirstier than hungry (a sleeping one gets up now and then to)
+  const drink = s.pen && waterHas(s.pen) && (!morningOut(s.pen) || s.thirst > T.morningRush.starve) && (s.thirst > T.water.want || s.state === 'drink' && s.thirst > T.water.full) && (s.state !== 'sleep' || Math.random() < T.troughWake);
+  if (drink && s.thirst >= s.hunger && claimWater(s)) return;
   // penned and hungry with food in the trough: feed (a sleeping one gets up now and then to)
   if (s.pen && troughHas(s.pen) && troughTime(s.pen) && (!morningOut(s.pen) || s.hunger > T.morningRush.starve) && (s.hunger > T.troughWant || s.state === 'trough' && s.hunger > T.troughFull) && (s.state !== 'sleep' || Math.random() < T.troughWake)) {
     if (claimTrough(s)) return;
-    if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // no place free at the trough: lick the salt meanwhile
-    // wait its turn where it is, but not in front of a trough (it'd block the way): step back toward the middle
-    let c = null, cd = 1e9; for (const q of s.pen.feedC) { const d = Math.hypot(s.x - q.x, s.z - q.z); if (d < cd) { cd = d; c = q; } }
-    s.state = 'wait'; s.tx = s.x; s.tz = s.z;
-    const rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
-    if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
-      const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
-      if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
-    }
-    return;
+    if (drink && claimWater(s)) return;   // no place free at the trough: drink meanwhile
+    if (lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return;   // ...or lick the salt
+    waitBy(s, s.pen.feedC); return;
   }
+  if (drink) { if (claimWater(s) || lickHas(s.pen) && s.salt < T.salt.want && claimLick(s)) return; waitBy(s, s.pen.waterC, T.water.crowd); return; }
   // short of salt and there's salt in the lick: go and lick it (a sleeping one gets up now and then to)
   if (s.pen && lickHas(s.pen) && (s.salt < T.salt.want || s.state === 'lick' && s.salt < T.salt.full) && (s.state !== 'sleep' || Math.random() < T.troughWake) && claimLick(s)) return;
   const { nearest, nearestO, nC, cX, cZ, pp, steady } = nb;
@@ -2788,6 +2812,7 @@ function updateSheep(dt, dtH) {
   for (const p of pens) if (p.feedBy) {
     p.feedBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'trough' || o.pen !== p || o.slot !== i || !S.includes(o))) p.feedBy[i] = null; });
     p.lickBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'lick' || o.pen !== p || o.lslot !== i || !S.includes(o))) p.lickBy[i] = null; });
+    p.waterBy.forEach((o, i) => { if (o && (o.dead || o.state !== 'drink' || o.pen !== p || o.wslot !== i || !S.includes(o))) p.waterBy[i] = null; });   // WATER
   }
   const bellR2 = T.bellR * T.bellR, gSp = T.grazeSpace, kSp = T.knotSpace, mvMin = T.moveMin;   // (hoisted for the neighbour loop)
   for (let i = 0; i < N; i++) {
@@ -2796,7 +2821,7 @@ function updateSheep(dt, dtH) {
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
     if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; }   // dropped by a coyote: shaken, and jumpy from now on
-    s.goalHold -= dt; s.atTrough = false; s.atLick = false; if (s.troughCd > 0) s.troughCd -= dt;
+    s.goalHold -= dt; s.atTrough = false; s.atLick = false; s.atWater = false; if (s.troughCd > 0) s.troughCd -= dt;
     // ---- neighbours: only flockmates on the same side of a fence count
     let sepX = 0, sepZ = 0, aX = 0, aZ = 0, nA = 0, cX = 0, cZ = 0, nC = 0, nearest = 1e9, nearestO = null, near = 0, mov = 0, nMov = 0, mX = 0, mZ = 0;
     let nsS = 0, nsN = 0, bell = null, bellD = bellR2, spX = 0, spZ = 0, gaX = 0, gaZ = 0, nG = 0;
@@ -2853,7 +2878,7 @@ function updateSheep(dt, dtH) {
       if (dd >= R) continue;
       // a dog on the other side of the fence (tipping greens in, say) doesn't move penned sheep that are shut in or
       // feeding, unless it sprints or pounces at them
-      if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
+      if (s.pen && !pounce && d.mode !== 'sprint' && (s.pen.gateT < 0.1 || s.state === 'trough' || s.state === 'drink' || s.state === 'wait') && !insidePen(s.pen, d.x, d.z, -0.3)) continue;
       // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding
       if (s.pen && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
         if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
@@ -2873,8 +2898,8 @@ function updateSheep(dt, dtH) {
       if (pounce) stressIn += T.stressPounce;
     }
     // a hungry sheep with its head down in good grass needs more fear to be moved
-    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick') && press > 0 && cRaw === 0 && !steady) {
-      const resolve = s.state === 'trough' || s.state === 'lick' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
+    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick' || s.state === 'drink') && press > 0 && cRaw === 0 && !steady) {
+      const resolve = s.state === 'trough' || s.state === 'lick' || s.state === 'drink' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
     s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
@@ -3019,8 +3044,8 @@ function updateSheep(dt, dtH) {
           else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); s.atTrough = q.tr; if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
           break;
         }
-        case 'lick': {   // to its place at the salt lick, then face it and lick
-          const p = s.pen, q = p && lickHas(p) && p.lickBy && p.lickBy[s.lslot] === s ? p.lickSpots[s.lslot] : null;
+        case 'lick': case 'drink': {   // to its place at the salt lick (or the WATER trough), then face it and lick (drink)
+          const p = s.pen, lk = s.state === 'lick', q = !p ? null : lk ? (lickHas(p) && p.lickBy && p.lickBy[s.lslot] === s ? p.lickSpots[s.lslot] : null) : (waterHas(p) && p.waterBy && p.waterBy[s.wslot] === s ? p.waterSpots[s.wslot] : null);
           if (!q) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           const dx = q.x - s.x, dz = q.z - s.z, d = Math.hypot(dx, dz);
           if (d > 0.7) {
@@ -3028,13 +3053,13 @@ function updateSheep(dt, dtH) {
             if (!(d > s.troughBest - 0.3)) { s.troughBest = d; s.troughT = 0; }
             else if ((s.troughT += dt) > 3) { s.state = 'idle'; s.troughCd = 3; }
           }
-          else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); s.atLick = true; if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
+          else { s.yaw = lerpA(s.yaw, q.yaw, Math.min(1, dt * 5)); if (lk) s.atLick = true; else { s.atWater = true; s.arrT ??= G.time; } if (d > 0.2) { dX = dx; dZ = dz; spd = d; } }
           break;
         }
         case 'wait': {   // stand back from the trough till a place comes free
           const dx = s.tx - s.x, dz = s.tz - s.z, d = Math.hypot(dx, dz);
           if (d > 0.6) { dX = dx / d; dZ = dz / d; spd = T.sheepWalk * 0.8; }
-          if (!s.pen || !troughHas(s.pen)) s.state = 'idle';
+          if (!s.pen || !(troughHas(s.pen) || waterHas(s.pen))) s.state = 'idle';
           s.thinkT = Math.min(s.thinkT, 0.7);
           break;
         }
@@ -3113,7 +3138,7 @@ function updateSheep(dt, dtH) {
         }
       }
     }
-    spd *= saltPep(s);   // salty sheep are peppy, salt-starved ones drag
+    spd *= saltPep(s) * thirstPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER)
     // ---- integrate
     const dl = Math.hypot(dX, dZ); let tvx = 0, tvz = 0;
     if (dl > 1e-3 && spd > 0) { tvx = dX / dl * spd; tvz = dZ / dl * spd; }
@@ -3191,6 +3216,7 @@ function updateSheep(dt, dtH) {
     }
     if (s.salt <= 0) { s.saltStarve += dtH; if (s.saltStarve > s.saltMax) killSheep(s, 'salt'); }
     else s.saltStarve = Math.max(0, s.saltStarve - dtH * 2);
+    sheepThirst(s, dtH, sp);   // WATER: thirst rises; drinking at the trough or with its nose in water; parched too long → dies
     if (s.hunger >= 1) { s.starve += dtH; if (s.starve > s.starveMax) killSheep(s, 'starved'); }
     else s.starve = Math.max(0, s.starve - dtH);
     // ---- head animation
@@ -3839,6 +3865,7 @@ function swimSheep(s, a, dt) {
   if (Math.hypot(s.vx, s.vz) > 0.2) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 4));
   s.y = Math.max(groundY(s.x, s.z), WATER_Y - 0.45) + Math.sin(a.t * 5 + s.id) * 0.05;   // paddling: just the back and head above water
   s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
+  s.thirst = Math.max(0, (s.thirst || 0) - T.water.wade * dt / T.hourSec);   // WATER: a few gulps on the way
   if (Math.random() < dt * 1.5) spawnRing(s.x, WATER_Y, s.z, 1.3, '#e8f8ff', 0.7);
 }
 function launchCoyote(c, vx, vz, vy, by = null) {
@@ -4357,6 +4384,7 @@ function updateWorldPhysics(dt) {
   for (const d of G.dogs) if (!d.leaning) d.leanT = 0;
   updateLaunchers(dt);
   updateForage(dt);   // dogs gathering greens and salt, tipping them into troughs and licks; regrowth (FORAGE section)
+  updateWater(dt);    // WATER: buckets picked up, filled, tipped into the pens' water troughs
   updateDigs(dt);     // DIG SPOTS: dogs digging up treasure for the barn
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
@@ -4668,11 +4696,11 @@ function forageChip(x, y, txt, bg, fg = '#fff', w0 = 0) {
   ctx.font = '600 13px Fredoka, sans-serif'; const w = Math.max(w0, ctx.measureText(txt).width + 16);
   ctx.fillStyle = bg; rr(x - w / 2, y - 11, w, 22, 10); ctx.fill(); ctx.fillStyle = fg; ctx.fillText(txt, x, y + 1); return w;
 }
-function forageBar(x, y, k, full, icon = '🌿') {
+function forageBar(x, y, k, full, icon = '🌿', col = null) {
   const w = 64; ctx.fillStyle = 'rgba(27,26,40,.78)'; rr(x - w / 2 - 14, y - 10, w + 28, 20, 10); ctx.fill();
   ctx.font = '13px Fredoka, sans-serif'; ctx.fillText(icon, x - w / 2 - 3, y + 1);
   ctx.fillStyle = 'rgba(255,255,255,.18)'; rr(x - w / 2 + 8, y - 5, w, 10, 5); ctx.fill();
-  if (k > 0) { ctx.fillStyle = full ? '#7ed957' : '#b8e36b'; rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
+  if (k > 0) { ctx.fillStyle = col || (full ? '#7ed957' : '#b8e36b'); rr(x - w / 2 + 8, y - 5, Math.max(10, w * k), 10, 5); ctx.fill(); }
 }
 function drawForageOverlay() {
   if (G.mode !== 'play') return;
@@ -4685,13 +4713,13 @@ function drawForageOverlay() {
   }
   // carrying a good load and no pen on screen: an arrow at the edge toward the nearest one
   for (const d of G.dogs) {
-    if (!((d.greens || 0) >= cap * 0.5 || d.salt)) continue;
+    if (!((d.greens || 0) >= cap * 0.5 || d.salt || (bucketOf(d)?.w || 0) >= T.water.bucket * 0.5)) continue;   // (WATER: a bucket of water)
     let pen = null, pd = 1e9; for (const p of pens) { const dd = Math.hypot(p.gx - d.x, p.gz - d.z); if (dd < pd) { pd = dd; pen = p; } }
     const [px, py, pz] = proj(pen.gx, pen.y + 1, pen.gz); if (pz <= 1 && px > 0 && px < W && py > 0 && py < H) continue;
     const cx = W / 2, cy = H / 2, dx = (pz > 1 ? -1 : 1) * (px - cx), dy = (pz > 1 ? -1 : 1) * (py - cy), kk = Math.min((W / 2 - 46) / Math.abs(dx || 1e-3), (H / 2 - 46) / Math.abs(dy || 1e-3)), ax = cx + dx * kk, ay = cy + dy * kk, a = Math.atan2(dy, dx);
     ctx.save(); ctx.translate(ax, ay); ctx.fillStyle = 'rgba(60,140,60,.9)'; ctx.beginPath(); ctx.arc(0, 0, 17, 0, TAU); ctx.fill();
     ctx.rotate(a); ctx.beginPath(); ctx.moveTo(27, 0); ctx.lineTo(16, -8); ctx.lineTo(16, 8); ctx.closePath(); ctx.fill(); ctx.restore();
-    ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(d.salt && (d.greens || 0) < cap * 0.5 ? '🧂' : '🌾', ax, ay + 1);
+    ctx.font = '16px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText((d.greens || 0) >= cap * 0.5 ? '🌾' : d.salt ? '🧂' : '💧', ax, ay + 1);
   }
   for (const p of pens) {   // what's in each trough, and the salt lick: only when a dog's close by
     if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
@@ -4710,6 +4738,195 @@ function drawForageOverlay() {
   for (const r of SALT_ROCKS) {   // salt rocks near a dog
     if (r.taken || !G.dogs.some(d => Math.hypot(d.x - r.x, d.z - r.z) < 40)) continue;
     const [px, py, pz] = proj(r.x, r.y + 1.3, r.z); if (vis(px, py, pz)) forageChip(px, py, '🧂', 'rgba(27,26,40,.6)');
+  }
+}
+// =====================================================================
+// WATER — every pen has a water trough at the back (pen.water = { w, cap,
+// x, z, yaw, len, tx, tz }) and a bucket lies outside it at the start
+// (BUCKETS: b.w water in it, b.by the dog carrying it). A dog runs over a
+// bucket to pick it up (one each), wades or swims into water to fill it,
+// and tips it into any pen's water trough by going up to it (either side
+// of the fence), setting it down there once it's empty. Penned sheep drink
+// (drinkWater) when thirsty: see the sheep mind. Anyone can add water
+// (fillWater). Thirst, drinking and dying of it: sheepThirst.
+// =====================================================================
+const waterA = p => p.gateA + Math.PI;   // straight across from the gate
+const WATER_GEO = (() => {
+  const L = 2.6, Wd = 0.76, M = '#a3b3be', D = '#7d8d98', RIM = '#cdd6dc';   // a galvanised stock tank on wooden feet
+  return { L, Wd, box: merge(
+    P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, Wd / 2] }), P(BOX(L, 0.34, 0.06), M, { p: [0, 0.44, -Wd / 2] }),
+    P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [L / 2, 0.44, 0] }), P(BOX(0.06, 0.34, Wd + 0.06), D, { p: [-L / 2, 0.44, 0] }),
+    P(BOX(L, 0.06, Wd), D, { p: [0, 0.3, 0] }),
+    P(BOX(L + 0.08, 0.05, 0.1), RIM, { p: [0, 0.62, Wd / 2] }), P(BOX(L + 0.08, 0.05, 0.1), RIM, { p: [0, 0.62, -Wd / 2] }),
+    ...[-0.65, 0, 0.65].map(x => P(BOX(0.05, 0.3, 0.07), RIM, { p: [x * L / 2, 0.44, Wd / 2 + 0.02] })),
+    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => P(BOX(0.1, 0.3, 0.1), '#6b4226', { p: [sx * (L / 2 - 0.2), 0.14, sz * (Wd / 2 - 0.08)] }))),
+    fill: merge(P(BOX(L - 0.1, 1, Wd - 0.06), '#4aa8e8', { p: [0, 0.5, 0] }),
+      ...[-0.8, -0.2, 0.5, 1.0].map((x, i) => P(BOX(0.24, 0.02, 0.05), '#dff4ff', { p: [x, 1.0, (i % 2 ? 1 : -1) * 0.12] }))) };
+})();
+// a tin pail (open, so you can see the water in it), its handle, and the water: a disc that rises as it fills
+const PAIL = (() => {
+  const prof = [[0, 0], [0.13, 0], [0.17, 0.3], [0.19, 0.31], [0.19, 0.335], [0.155, 0.315], [0.115, 0.035], [0, 0.035]].map(([x, y]) => new THREE.Vector2(x, y));
+  return { body: merge(P(new THREE.LatheGeometry(prof, 14), '#aebac3'), P(new THREE.TorusGeometry(0.19, 0.016, 4, 14, Math.PI), '#59636b', { p: [0, 0.32, 0] })),
+    water: P(new THREE.CircleGeometry(1, 14).rotateX(-Math.PI / 2), '#4aa8e8') };
+})();
+function makePail() {
+  const root = new THREE.Group(); part(root, PAIL.body);
+  const water = new THREE.Mesh(PAIL.water, MAT.vc); water.visible = false; root.add(water);
+  return { root, water };
+}
+function setPailWater(m, k) {   // the water's surface at fill k (0…1), as wide as the pail is there
+  m.visible = k > 0.01; const y = lerp(0.05, 0.29, clamp(k, 0, 1)); m.position.y = y; const r = 0.111 + (y - 0.035) / 0.28 * 0.04; m.scale.set(r, 1, r);
+}
+const BUCKETS = [];
+for (const p of pens) {
+  const a = waterA(p), c = onRing(p, a, p.R - 0.9), tx = -Math.sin(a), tz = Math.cos(a), yaw = Math.atan2(-tz, tx), { L, Wd } = WATER_GEO;
+  const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; scene.add(g);
+  part(g, WATER_GEO.box);
+  const fill = new THREE.Mesh(WATER_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
+  p.water = { w: 0, cap: T.water.cap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill };   // (yaw/len/tx/tz: where the sheep line up, and segDist for tipping)
+  boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p);
+  // its bucket: just outside the fence beside it (or inside, if the ground out there won't do)
+  let h = onRing(p, a + 2.2 / p.R, p.R + 1.5); if (sdfAt(h.x, h.z) < 1.2) h = onRing(p, a + 2.6 / p.R, p.R - 2.2);
+  const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root);
+  BUCKETS.push({ i: BUCKETS.length, pen: p, hx: h.x, hz: h.z, x: h.x, z: h.z, w: 0, by: null, drop: null, root: pl.root, water: pl.water });
+}
+// SHARED HOOK: add amt water to a pen's water trough (1 = one sheep from parched to quenched); returns what went in (it's capped)
+function fillWater(pen, amt) {
+  const tr = pen && pen.water; if (!tr || !(amt > 0)) return 0;
+  const got = Math.min(amt, Math.max(0, tr.cap - tr.w)); tr.w += got; return got;
+}
+// SHARED HOOK (sheep mind): a sheep drinks from the pen's water trough. amt in thirst; returns what it got.
+function drinkWater(pen, amt) {
+  const tr = pen && pen.water; if (!tr || !(amt > 0)) return 0;
+  const got = Math.min(tr.w, amt); tr.w -= got; return got;
+}
+const WATER = { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 };   // avg, parched: the flock's thirst (HUD; synced)
+function resetWater() {
+  for (const p of pens) { p.water.w = p === pens[0] ? p.water.cap * T.water.startFill : 0; p.water.shown = p.water.w; }   // the first camp's starts full (no water out in the desert)
+  for (const b of BUCKETS) Object.assign(b, { x: b.hx, z: b.hz, w: 0, by: null, drop: null });
+  Object.assign(WATER, { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 });
+}
+resetWater();
+const bucketOf = d => { for (const b of BUCKETS) if (b.by === d) return b; return null; };
+// a dog in the water (swimming), or with water within T.water.reach of it (wading in at the bank)
+function dogAtWater(d) {
+  if (d.air) return !!d.air.swim;
+  if (wetAt(d.x, d.z)) return true;
+  for (let k = 0, r = T.water.reach; k < 8; k++) { const a = d.yaw + k * TAU / 8; if (wetAt(d.x + Math.sin(a) * r, d.z + Math.cos(a) * r)) return true; }
+  return false;
+}
+// what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
+function waterFx(kind, x, z, k = 1) {
+  const y = groundY(x, z);
+  if (kind === 'pick') { floatText('+🪣', x, y + 1.4, z, '#dff4ff', 1); SFX.clack(panOf(x, z), 0.25); }
+  else if (kind === 'fill') {
+    for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8']) burst(x, Math.max(y, WATER_Y) + 0.4, z, 6, c, { speed: 2, up: 4, size: 0.13, life: 0.7, grav: -12 });
+    spawnRing(x, Math.max(y, WATER_Y) + 0.05, z, 2.2, '#e8f8ff', 0.5); SFX.splash(panOf(x, z), 0.3); Sound.chime([0, 4, 7], 784, 0.12, 0.05);
+    floatText('🪣 💧', x, y + 1.8, z, '#9fe3ff', 1.2);
+  } else if (kind === 'tip') {
+    for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8']) burst(x, y + 0.9, z, 7, c, { speed: 1.6, up: 2.4, size: 0.12, life: 0.8, grav: -10 });
+    SFX.splash(panOf(x, z), 0.25); Sound.chime([0, 4, 7, 12], 659, 0.16, 0.06);
+    floatText(`💧 +${Math.round(k * 100)}%`, x, y + 1.8, z, '#9fe3ff', 1.3);
+  }
+}
+function pickBucket(b, d) {
+  b.by = d; b.drop = null; WATER.picks++;
+  waterFx('pick', b.x, b.z); rumble(d.player, 0.2, 0.35, 80); hint('bucket');
+}
+function fillBucket(b, d) {
+  b.w = T.water.bucket; WATER.fills++;
+  waterFx('fill', d.x + Math.sin(d.yaw) * 0.8, d.z + Math.cos(d.yaw) * 0.8); rumble(d.player, 0.3, 0.5, 120); hint('bucket-full');
+}
+function tipBucket(b, d, p) {
+  const tr = p.water, amt = fillWater(p, b.w); if (amt < 0.01) return false;
+  b.w -= amt; WATER.tips++; WATER.tipped += amt;
+  waterFx('tip', tr.x, tr.z, amt / tr.cap); rumble(d.player, 0.3, 0.5, 120); hint('water');
+  if (WATER.tips === 1) hank(null, 'Fresh water! Good dog.', { force: true });
+  if (b.w < 0.01) { b.w = 0; b.by = null; b.x = d.x; b.z = d.z; b.drop = d; }   // empty: set down here (it picks it up again once it's been away)
+  return true;
+}
+function updateDogWater(d) {
+  if (G.mode !== 'play') return;
+  let b = bucketOf(d);
+  if (!b) {
+    if (d.air) return;
+    for (const o of BUCKETS) if (!o.by && o.drop !== d && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; break; }
+    if (!b) return;
+  }
+  if (b.w < T.water.bucket - 0.01 && dogAtWater(d)) fillBucket(b, d);
+  if (b.w < 0.01 || d.air) return;
+  for (const p of pens) {   // close by a pen's water trough: in it goes
+    const tr = p.water; if (tr.w > tr.cap - 0.01 || Math.abs(tr.x - d.x) > 4 || Math.abs(tr.z - d.z) > 4) continue;
+    if (segDist(d.x, d.z, tr) < T.water.tipR && tipBucket(b, d, p)) break;
+  }
+}
+function updateWater(dt) {
+  if (G.mode !== 'play') return;
+  for (const b of BUCKETS) {
+    if (b.by && !G.dogs.includes(b.by)) { b.x = b.by.x; b.z = b.by.z; b.by = null; }   // its dog left: down it goes
+    if (b.drop && (!G.dogs.includes(b.drop) || Math.hypot(b.drop.x - b.x, b.drop.z - b.z) > 2.5)) b.drop = null;
+  }
+  for (const d of G.dogs) updateDogWater(d);
+  let n = 0, t = 0, pa = 0; for (const s of G.sheep) if (!s.dead) { n++; t += s.thirst || 0; if (s.thirst >= 1) pa++; }
+  WATER.avg = n ? t / n : 0; WATER.parched = pa;
+  // a thirsty flock and no water where they're penned: say so once a day (Hank, once a journey)
+  if (WATER.warnDay !== G.clock.day && G.clock.hour > 7 && G.clock.hour < 18) {
+    const live = G.sheep.filter(s => !s.dead);
+    if (WATER.avg > T.water.low && !pens.some(p => waterHas(p) && live.some(s => s.pen === p))) {
+      WATER.warnDay = G.clock.day; toast('💧 Thirsty flock!', 'warn'); hint('thirst');
+      if (!WATER.hankSaid) { WATER.hankSaid = true; hank(null, "They're thirsty! Fetch the bucket.", { force: true }); }
+    }
+  }
+}
+// SHEEP (from updateSheep): thirst rises; drinking at the trough, or a sip with its nose in the water; parched too long → dies
+function sheepThirst(s, dtH, sp) {
+  if (s.dead) return;
+  const W = T.water; s.thirst = Math.min(1, (s.thirst || 0) + W.perDay / 24 * dtH);
+  if (s.atWater && s.pen) {
+    const got = drinkWater(s.pen, Math.max(0, Math.min(W.drinkRate * dtH, s.thirst - W.full + 0.01)));
+    s.thirst = Math.max(0, s.thirst - got); if (got > 0) s.eating = true;
+    if (s.thirst <= W.full || !waterHas(s.pen)) { s.state = 'wander'; s.tx = lerp(s.x, s.pen.x, 0.4); s.tz = lerp(s.z, s.pen.z, 0.4); s.thinkT = rnd(1.5, 2.5); }   // done: out of the way of the next
+  } else if (s.thirst > 0.05 && !s.pen && sp < 1.5 && wetAt(s.x + Math.sin(s.yaw) * 0.8, s.z + Math.cos(s.yaw) * 0.8)) s.thirst = Math.max(0, s.thirst - W.wade * dtH);
+  if (s.thirst >= 1) { s.parchT = (s.parchT || 0) + dtH; if (s.parchT > (s.parchMax || W.deathHours[0])) killSheep(s, 'thirst'); }
+  else s.parchT = Math.max(0, (s.parchT || 0) - dtH * 2);
+}
+function syncWater(dt) {
+  for (const p of pens) { const tr = p.water; tr.shown = lerp(tr.shown, tr.w, Math.min(1, dt * 2.5)); const k = clamp(tr.shown / tr.cap, 0, 1); tr.fill.visible = k > 0.005; tr.fill.scale.y = Math.max(0.001, 0.27 * k); }
+  for (const b of BUCKETS) { b.root.visible = !b.by; if (!b.by) { b.root.position.set(b.x, groundY(b.x, b.z), b.z); setPailWater(b.water, b.w / T.water.bucket); } }
+  for (const d of G.dogs) {   // the one it carries hangs at its side
+    if (!d.models) continue;
+    if (!d.models.pail) { const pl = makePail(); pl.root.position.set(0.42, 0.4, -0.05); pl.root.scale.setScalar(0.9); d.models.root.add(pl.root); d.models.pail = pl; }
+    const b = bucketOf(d), pl = d.models.pail; pl.root.visible = !!b; if (b) setPailWater(pl.water, b.w / T.water.bucket);
+  }
+}
+// the flock panel's water row: how quenched the flock is on average
+function updateWaterHUD() {
+  const el = $('hWater'), bar = $('hWaterBar'); if (!el || !bar) return;
+  const t = WATER.avg;
+  const [txt, col] = t < 0.35 ? ['Good', '#6fc3ff'] : t < T.water.low ? ['Thirsty', '#ffd36b'] : t < 0.9 ? ['Very thirsty!', '#ff9a6b'] : ['Parched!', '#ff7a6b'];
+  if (el.textContent !== txt) { el.textContent = txt; el.style.color = col; }
+  bar.style.width = `${Math.round(Math.max(0.03, 1 - t) * 100)}%`; bar.style.background = col;
+}
+// the overlay: a dog's bucket and how full, buckets lying about, each pen's water level
+function drawWaterOverlay() {
+  if (G.mode !== 'play') return;
+  const B = T.water.bucket, vis = (px, py, pz) => pz <= 1 && px > -40 && px < W + 40 && py > -40 && py < H + 40;
+  for (const d of G.dogs) {
+    const b = bucketOf(d); if (!b) continue;
+    const [px, py, pz] = proj(d.x, d.y + 2.4, d.z); if (vis(px, py, pz)) forageBar(px, py - ((d.greens || 0) > 0.01 ? 24 : 0), b.w / B, b.w >= B - 0.01, '🪣', '#5fb8f0');
+  }
+  for (const b of BUCKETS) {
+    if (b.by || !G.dogs.some(d => Math.hypot(d.x - b.x, d.z - b.z) < 40)) continue;
+    const y = groundY(b.x, b.z), [px, py, pz] = proj(b.x, y + 1.3, b.z); if (vis(px, py, pz)) forageChip(px, py, '🪣', 'rgba(27,26,40,.6)');
+    if (G.dogs.some(d => !bucketOf(d) && Math.hypot(d.x - b.x, d.z - b.z) < 9)) nudge('bucket', b.x, y + 2.1, b.z, '🪣 Run over it', '#6fc3ff');
+  }
+  const dry = WATER.avg > T.water.want;
+  for (const p of pens) {   // under the pen's 🐑 badge
+    const tr = p.water; if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
+    if (tr.w < tr.cap - 0.01 && G.dogs.some(d => (bucketOf(d)?.w || 0) > 0.01 && Math.hypot(d.x - tr.x, d.z - tr.z) < 9)) nudge('water', tr.x, p.y + 1.9, tr.z, '🪣 Walk up: tip in', '#6fc3ff');
+    const [px, py, pz] = proj(p.x, p.y + 1.6, p.z); if (!vis(px, py, pz)) continue;
+    const pct = Math.round(tr.shown / tr.cap * 100);
+    forageChip(px, py + 28, `💧 ${pct}%`, pct > 0 ? 'rgba(40,110,170,.85)' : dry ? 'rgba(170,70,60,.85)' : 'rgba(27,26,40,.6)');
   }
 }
 // =====================================================================
@@ -6110,6 +6327,10 @@ const HINTS = {
   'salt-found': 'A lump of <b>salt</b>! Take it to a pen\'s <b>salt lick</b> (the post on the far side from the troughs).',
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
+  bucket: 'A <b>bucket</b> 🪣! Wade into a river, lake or the sea to fill it.',
+  'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
+  water: 'Water in! Penned sheep drink their fill.',
+  thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
   launcher: 'A sheep launcher! Drive sheep onto the <b>low end</b>, then <b>pounce</b> on the red target to fling them over the river.',
   barn: 'The flock is safe for the night. Press <b>Tab</b> / <b>View</b> to visit <b>Hank’s barn</b>.',
 };
@@ -6137,6 +6358,10 @@ const TOUCH_HINTS = {
   'salt-found': '🧂 Salt! To a pen\'s <b>salt lick</b>',
   'salt-lick': 'Salt in the lick! Peppy sheep',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
+  bucket: '🪣! Wade into water to fill it',
+  'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
+  water: '💧 In! Penned sheep drink',
+  thirst: 'Thirsty! 🪣 → water → 💧 trough',
   launcher: 'Sheep on the low end, 💥 the red target',
   barn: '🏚️ Hank\'s barn',
 };
@@ -6178,7 +6403,7 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
-  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.cougar || 0);
+  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.thirst || 0) + (G.stats.cougar || 0);
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
@@ -6193,9 +6418,9 @@ function updateHUD(dt) {
   const gl = g < 0 ? ['In pens', '#fff8e8'] : g > 0.6 ? ['Lush', '#7ed957'] : g > 0.35 ? ['Good', '#b8e36b'] : g > 0.15 ? ['Thin', '#ffd36b'] : ['Overgrazed', '#ff7a6b'];
   const ge = $('hGrass'); ge.textContent = gl[0]; ge.style.color = gl[1];
   if (g >= 0 && g < 0.2 && G.mode === 'play') hint('grass');
-  const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length;
-  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : ''].filter(Boolean).join(' ');
-  updateSaltHUD(live);
+  const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length, parched = WATER.parched;
+  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : ''].filter(Boolean).join(' ');
+  updateSaltHUD(live); updateWaterHUD();
   if (starving) hint('hungry');
   // compass to the next camp
   const fc = flockCenter(), fs = fc.n ? sAt(fc.x, fc.z) : 0;
@@ -6333,6 +6558,7 @@ function drawOverlay(dt) {
     if (d) nudge('launch', tx, S.y + 2.2, tz, `Pounce: ${keyLabel(d.player, 'pounce')}`, '#e8473f');
   }
   drawForageOverlay();   // what the dogs carry, trough and salt-lick levels, salt rocks (FORAGE section)
+  drawWaterOverlay();    // WATER: buckets, each pen's water
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
   // dog labels + stamina
   for (const d of G.dogs) {
@@ -6914,18 +7140,18 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
-  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : `${base}…`;
+  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : `${base}…`;
 }
-// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'old' or 'cougar'
-const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'cougar' ? w : 'eaten';
+// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'thirst', 'old' or 'cougar'
+const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'thirst' || w === 'cougar' ? w : 'eaten';
 // the end screen's lost sheep: one line per cause, "Starved: Pip (day 2), …"
-const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', starved: 'Starved', salt: 'Died of no salt', old: 'Died of old age' };
+const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', starved: 'Starved', salt: 'Died of no salt', thirst: 'Died of thirst', old: 'Died of old age' };
 function endMemHTML(L) {
   return Object.keys(LOST_HEAD).map(w => { const n = L.filter(m => cleanWhy(m.why) === w).map(m => `${escHTML(m.name)} (day ${m.day | 0})`); return n.length ? `<div><b>${LOST_HEAD[w]}:</b> ${n.join(', ')}</div>` : ''; }).join('');
 }
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'cougar' ? `${was}taken up a tree by a cougar` : `${was}taken by coyotes`;
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cougar' ? `${was}taken up a tree by a cougar` : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -7589,12 +7815,13 @@ function eulogy(m) {
   const how = m.why === 'old' ? pick([`${m.age} good days on the trail.`, `Went in ${her} sleep, ${m.age} days old.`, `A long life, well grazed.`])
     : m.why === 'starved' ? pick([`The grass ran out before ${she} did.`, `Gone hungry. We'll find greener grass.`])
     : m.why === 'salt' ? pick([`Pined for salt to the last.`, `Never got that last lick of salt.`])
+    : m.why === 'thirst' ? pick([`Dreamed of cool water to the last.`, `The trough ran dry before ${she} did.`])
     : m.why === 'cougar' ? pick([`Taken up a tree in the night.`, `The big cat came, and ${she} was gone.`])
     : pick([`The coyotes got there first.`, `Lost to the pack in the dark.`]);
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', starved: '🌾', salt: '🧂', old: '🕯️' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️' };
 function dawnReport(born = []) {
   const L = Array.isArray(G.lost) ? G.lost : [], dead = L.slice(DAWN.from).map(m => ({ ...m, text: eulogy(m) })); DAWN.from = L.length;
   G.dawnReport = { day: G.clock.day, born: born.map(s => s.id), dead };
@@ -7762,7 +7989,7 @@ function startGame(dev) {
 function finishGame(n) {
   if (G.mode !== 'play') return;
   G.mode = 'end';
-  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.cougar || 0), ratio = n / Math.max(1, st.start);
+  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.thirst || 0) + (st.cougar || 0), ratio = n / Math.max(1, st.start);
   const stars = ratio >= 1.8 ? 3 : ratio >= 1.2 ? 2 : ratio >= 0.7 ? 1 : 0;
   $('eTitle').textContent = n > 0 ? 'The Promised Land!' : 'The flock is gone…';
   $('eStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
@@ -7782,9 +8009,10 @@ function resetGame() {
   for (const p of pens) resetGate(p);
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
   resetForage();   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
+  resetWater();    // WATER: buckets back by their troughs, the first camp's trough full
   resetDigs();     // DIG SPOTS: every mound back for the new journey
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -7921,7 +8149,8 @@ const NET_TYPES = {
     tag: 'p', all: () => pens, id: p => pens.indexOf(p), static: true,
     fields: { phi: 'a', latched: 'b', fresh: 'b',
       ...Object.fromEntries([0, 1, 2, 3].map(i => ['tf' + i, { c: .02, get: p => p.troughs[i] ? p.troughs[i].food : 0, set: (p, v) => { if (p.troughs[i]) p.troughs[i].food = v; } }])),   // each forage trough's fill
-      lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } } },   // the salt lick
+      lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } },   // the salt lick
+      water: { c: .02, get: p => p.water.w, set: (p, v) => { p.water.w = v; } } },   // WATER: the water trough
     animate: p => updateGateGeometry(p),
   },
   plant: {   // alfalfa and daisies: picked or growing (they pop back up on their own on each screen)
@@ -7931,6 +8160,10 @@ const NET_TYPES = {
   saltRock: {   // salt rocks: crystals there or broken off (they grow back on their own on each screen)
     tag: 'u', all: () => SALT_ROCKS, id: r => r.ni ?? (r.ni = SALT_ROCKS.indexOf(r)), static: true,
     fields: { taken: { c: 'b', get: r => r.taken, set: (r, v) => { v = !!v; if (!v && r.taken) r.growT = G.time; r.taken = v; } } },
+  },
+  bucket: {   // WATER: the buckets, built the same on every screen: where it lies, how full, which dog has it
+    tag: 'B', all: () => BUCKETS, id: b => b.i, static: true,
+    fields: { x: .05, z: .05, w: .05, by: '@dog' },
   },
   launcher: {   // the Sheep Express: the plank's tilt (it's also the ground height on the plank)
     tag: 'L', all: () => LAUNCHERS, id: S => LAUNCHERS.indexOf(S), static: true,
@@ -7960,8 +8193,9 @@ const NET_TYPES = {
     },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', thirst: 'i' } },
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
+  water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (sheep are at 31 fields: masks past 2^31 break on the wire)
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b' },
@@ -9103,6 +9337,7 @@ dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
 finishGame = fxDef('finishGame', finishGame);
+waterFx = fxDef('waterFx', waterFx);                                 // WATER: picking up, filling, tipping a bucket
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
   if (!d || typeof d.value !== 'function' || k === 'init' || k === 'ambience' || k === 'raw') continue;
@@ -9169,6 +9404,7 @@ function frame(now) {
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
   syncHank(dt);           // HANK: his model, lantern and speech bubble
   syncForage(dt);         // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
+  syncWater(dt);          // WATER: water troughs, buckets
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
@@ -9200,13 +9436,14 @@ window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pen
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
+Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
-  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncDigs(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
