@@ -92,6 +92,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Utility goals with hysteresis** (hunger vs safety vs flock).
 - **Critical mass.** Open pens pull calm, fed sheep, more as more are in;
   trough food pulls hungry ones (`T.penTroughPull`).
+- **Homeward.** From 13:00 to night (`homeK`, `T.penHome`) the pen pull
+  reaches further, beats stress, and a bark bends flight toward the gate.
 - **Morning rush.** Gate opened dawn–13:00 (or open at 06:00): for
   `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`).
 - **Carrying.** A held sheep passes an open gateway (`mouthOf`), not a shut
@@ -113,11 +115,14 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
   to tip in.
+- **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
+  weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
 - **Salt** (`s.salt`) runs down daily; out too long = death. Rocks off trail;
   lumps go to the pen's lick.
 - **Coyote packs** flank and strike together; chase off the alpha to break
   them. Shut pens stop them.
-- **Cougars** (`COUGARS`, `LAIRS`, `T.cougar`): night only, lambs first,
+- **Cougars** (`COUGARS`, `LAIRS`, `T.cougar`): night only, nearest one hunts
+  every night (held up only by a dog barking under its tree, `treedR`), lambs first,
   never rams; pounce or bump drops the sheep; vaults pen fences. `s.grabbed`
   may be a cougar (`k.isCougar`).
 - **Hank calls out only what he sees** (`hankSees`).

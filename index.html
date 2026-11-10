@@ -473,6 +473,7 @@ const T = {
   resolveHunger: 0.4, resolveGain: 0.6, resolveMax: 0.25,   // a hungry grazer ignores dog pressure below (hunger-0.4)*0.6 (max 0.25) on good grass
   penPullR: 16, penPullRF: 14, penPullBase: 0.65, penPullF: 0.9,   // pen pull radius/strength grow with the fraction already in
   penFedDay: 0.5, penFedDusk: 0.35,   // hunger above which the pen stops pulling: 0.5 by day, 0.85 at nightfall
+  penHome: { from: 13, r: 0.8, w: 1.2, stress: 0.75, bark: 0.85, flee: 1.5 },   // afternoon → night (0…1): pen pull reaches r× further, w× stronger, stress counts less; a bark/flight bends toward the gate
   penTroughPull: 0.8,    // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
   morningRush: { until: 13, dur: 25, spd: 5.2, spread: 7 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate
   bellR: 25,
@@ -485,12 +486,13 @@ const T = {
   courtHour: 16, wooTime: 2.0, courtCd: 1.0, lambChance: 0.5, twinChance: 0.15,
   lambRest: 3,           // days a ewe rests after lambing before she can be courted again
   // the troughs (pen.troughs[i].food: 1 unit takes 1.0 off one sheep's hunger): penned sheep feed there from late afternoon and through the night
-  troughWant: 0.18, troughFull: 0.06,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
+  troughWant: 0.1, troughFull: 0.01,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
   troughSpot: 1.0,       // metres of trough per sheep feeding at it (the rest wait their turn)
+  shove: { r: 4.2, cd: 1, win: 0.85, kick: 3.2, bumpCd: 1.2 },   // a sheep without a place barges a weaker one (smaller, older, a lamb, less hungry; rams win) off the trough/lick within r m
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   penStillSpd: 1.2, penStillR: 3,   // a dog slower than this in a pen only shoos penned sheep within penStillR (they keep feeding)
-  troughWake: 0.08,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
+  troughWake: 0.2,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
   flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
   // dogs
   dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
@@ -508,11 +510,12 @@ const T = {
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // cougars: one lies up in the big old tree off the trail by each hill camp (and a couple between). By day it's gone;
-  // at nightfall the one nearest the flock may hunt (chance), coming down after delay in-game hours. It stalks in slow
+  // at nightfall the one nearest the flock hunts (chance), coming down after delay in-game hours (held up treedT s by a dog
+  // barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway). It stalks in slow
   // and low, shies from dogs (shyR from it, guardR from its target), leaps from leapR, and drags its catch, crying, back
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
-  cougar: { range: 80, chance: 0.6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
+  cougar: { range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
@@ -550,7 +553,7 @@ const T = {
   // salt: rocks of it along the trail. Run over one to pick up a lump, take it to a pen's salt lick. s.salt (0..1) runs
   // down every day; salty sheep are peppy (boost at 1, normal at mid), a sheep out of salt slows (slow at 0) and, left
   // without for deathHours, dies of it. Penned sheep under want go and lick till they're at full.
-  salt: { perDay: 0.22, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.85, full: 0.95, lickRate: 0.8,
+  salt: { perDay: 0.17, start: [0.55, 0.8], mid: 0.5, boost: 0.12, slow: 0.3, want: 0.88, full: 0.99, lickRate: 0.8,
     lump: 10, lickCap: 20, deathHours: [30, 54], low: 0.25, pickR: 1.5, regrowDays: [2, 3] },
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.45, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure; m of trail per spot; m off the trail
@@ -2187,6 +2190,7 @@ function grazeScan() {
 const inGrazeFront = s => MIND.gzOk && !s.pen && (s.x - MIND.gzCx) ** 2 + (s.z - MIND.gzCz) ** 2 < 400;
 // ---- critical mass: an open pen the flock is filling pulls calm, fed sheep in
 const duskK = () => { const h = G.clock.hour; return isNight() ? 1 : h >= 12 ? clamp((h - T.duskWarn) / (T.nightStart - T.duskWarn), 0, 1) : 0; };
+const homeK = () => { const h = G.clock.hour; return isNight() ? 1 : clamp((h - T.penHome.from) / (T.nightStart - T.penHome.from), 0, 1); };   // later = keener on the pen
 const PP = { pen: null, w: 0, tx: 0, tz: 0, dx: 0, dz: 0 };
 // only a well-fed sheep feels the pull by day; toward nightfall hungrier ones come home too (the hungriest linger)
 const penFed = (s, dusk) => clamp(1 - (s.hunger - 0.1) / (T.penFedDay + T.penFedDusk * dusk - 0.1), 0, 1);
@@ -2212,16 +2216,16 @@ function penPull(s) {
   if (s.pen || G.mode !== 'play' || s.ram && s.rs !== 'idle') return null;
   if (s.lamb && s.mother && !s.mother.dead) return null;              // lambs go where mum goes
   const h = G.clock.hour, morning = h >= 6 && h < 13 && s.hunger > 0.15;   // mornings are for grazing
-  const dusk = duskK(), fed = penFed(s, dusk), calmK = 1 - s.stress;   // hungry or frightened sheep don't want to go in...
+  const dusk = duskK(), hk = homeK(), fed = penFed(s, dusk), calmK = 1 - s.stress * (1 - T.penHome.stress * hk);   // hungry or frightened sheep don't want to go in (less so late on)...
   if (calmK < 0.05) return null;
   let best = null, bw = 0;
   for (const p of pens) {
     if (p.gateT < 0.5 || penRush(p)) continue;
     const fedK = troughHas(p) ? Math.max(fed, T.penTroughPull) : morning ? 0 : fed;   // ...unless there's alfalfa in the troughs
     if (fedK <= 0) continue;
-    const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = T.penPullR + T.penPullRF * pF;
+    const gd = Math.hypot(s.x - p.gx, s.z - p.gz), pF = p.frac || 0, R = (T.penPullR + T.penPullRF * pF) * (1 + T.penHome.r * hk);
     if (gd > R) continue;
-    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk);
+    const w = (1 - gd / R) * (T.penPullBase + T.penPullF * pF) * calmK * fedK * (1 + dusk) * (1 + T.penHome.w * hk);
     if (w > bw) { bw = w; best = p; }
   }
   if (!best) return null;
@@ -2417,8 +2421,26 @@ function claimTrough(s) {
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
   spots.forEach((q, i) => { if (p.feedBy[i] || q.tr.food <= 0.01) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return false;
+  if (best < 0) return barge(s, spots, p.feedBy, 'slot', 'trough');
   p.feedBy[best] = s; s.slot = best; s.state = 'trough'; s.troughT = 0; s.troughBest = 1e9; return true;
+}
+// how hard a sheep shoves at the trough: size, rams, hunger; lambs and old ones lose
+const shoveStr = s => (s.grow || 1) * (s.ram ? 1.5 : 1) * (s.lamb ? 0.45 : 1) * (1 - 0.55 * oldK(s)) * (0.6 + s.hunger + (1 - s.salt) * 0.3);
+function barge(s, spots, by, key, state) {   // SHARED-ish: no free place → push the weakest eater within T.shove.r off its place
+  if ((s.shoveCd || 0) > G.time) return false;
+  let bi = -1, bv = 1e9;
+  by.forEach((o, i) => { if (!o || o === s || o.heldBy || o.grabbed) return; const q = spots[i]; if (Math.hypot(q.x - s.x, q.z - s.z) > T.shove.r) return; const v = shoveStr(o); if (v < bv) { bv = v; bi = i; } });
+  if (bi < 0) return false;
+  s.shoveCd = G.time + T.shove.cd * rnd(0.6, 1.4);
+  if (shoveStr(s) * rnd(0.7, 1.3) < bv * T.shove.win) return false;
+  G.shoves = (G.shoves || 0) + 1;
+  const o = by[bi], dx = o.x - s.x, dz = o.z - s.z, dl = Math.hypot(dx, dz) || 1;
+  o.vx += dx / dl * T.shove.kick; o.vz += dz / dl * T.shove.kick; o.hopV = Math.max(o.hopV || 0, 1.6);
+  o.state = 'idle'; o.thinkT = rnd(0.6, 1.4); o.troughCd = T.shove.bumpCd; o.shoveCd = G.time + rnd(0.5, 1.5);   // shoved off: it'll be back, shoving
+  if (Math.random() < 0.6) baaAt(o, 0.4, o.lamb ? 1.3 : 1.12);
+  s.hopV = Math.max(s.hopV || 0, 1.2);
+  by[bi] = s; s[key] = bi; s.state = state; s.troughT = 0; s.troughBest = 1e9;
+  return true;
 }
 function claimLick(s) {
   const p = s.pen; troughSpots(p);
@@ -2426,7 +2448,7 @@ function claimLick(s) {
   if (s.troughCd > 0) return false;
   let best = -1, bd = 1e9;
   p.lickSpots.forEach((q, i) => { if (p.lickBy[i]) return; const d = Math.hypot(q.x - s.x, q.z - s.z); if (d < bd) { bd = d; best = i; } });
-  if (best < 0) return false;
+  if (best < 0) return barge(s, p.lickSpots, p.lickBy, 'lslot', 'lick');
   p.lickBy[best] = s; s.lslot = best; s.state = 'lick'; s.troughT = 0; s.troughBest = 1e9; return true;
 }
 function decideCalm(s, nb, night) {
@@ -2441,7 +2463,7 @@ function decideCalm(s, nb, night) {
     s.state = 'wait'; s.tx = s.x; s.tz = s.z;
     const rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
     if (Math.abs(u) < c.len / 2 + 0.9 && v < 3.5) {
-      s.tx = c.x + c.ax * u * 0.6 + c.nx * 4.2; s.tz = c.z + c.az * u * 0.6 + c.nz * 4.2;
+      const back = rnd(1.9, 2.8); s.tx = c.x + c.ax * u * 0.8 + c.nx * back; s.tz = c.z + c.az * u * 0.8 + c.nz * back;   // crowding in behind, waiting for a gap to shove into
       if (!insidePen(s.pen, s.tx, s.tz, 1.2)) { s.tx = lerp(c.x, s.pen.x, 0.6); s.tz = lerp(c.z, s.pen.z, 0.6); }
     }
     return;
@@ -2766,7 +2788,7 @@ function updateSheep(dt, dtH) {
       if (nA) { const al = Math.hypot(aX, aZ); if (al > 0.1) { const w = 0.45 * (1 - 0.6 * pk); dX += aX / al * w; dZ += aZ / al * w; } }
       if (bell && bellD > 2.5 && pk < 1) { const w = 0.3 * (1 - pk) * (s.trait === 'stubborn' ? 0.5 : 1); dX += (bell.x - s.x) / bellD * w; dZ += (bell.z - s.z) / bellD * w; }
       if (s.lamb && s.mother && !s.mother.dead && !s.mother.grabbed) { const mx = s.mother.x - s.x, mz = s.mother.z - s.z, ml = Math.hypot(mx, mz); if (ml > 2) { dX += mx / ml * 0.5; dZ += mz / ml * 0.5; } }
-      if (pp) { dX += pp.dx * pp.w * 0.8; dZ += pp.dz * pp.w * 0.8; }
+      if (pp) { const w = pp.w * 0.8 * (1 + T.penHome.flee * homeK()); dX += pp.dx * w; dZ += pp.dz * w; }
       dX += sepX * 1.4; dZ += sepZ * 1.4;
       s.alert = 3.5;
       spd = Math.min(run, T.fleeBase + T.fleeGain * Math.max(s.fear, s.panic * 0.85) + s.stress * T.fleeStress); acc = 7;
@@ -3302,12 +3324,16 @@ function bark(d) {
   d.barkCd = T.barkCd; G.barks = (G.barks || 0) + 1;
   barkFx(d);
   rumble(d.player, 0.25, 0.5, 90);
+  const hk = homeK();
   for (const s of G.sheep) {
     if (s.dead || s.grabbed || s.air || s.heldBy) continue;
     const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd > T.barkR) continue;
     const k = 1 - dd / T.barkR;
-    s.vx += dx / dd * k * 4; s.vz += dz / dd * k * 4; s.fdx = dx / dd; s.fdz = dz / dd;
-    s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, 0.3 + k * 0.6); s.hopV = Math.max(s.hopV, 2 + k * 2);
+    let ux = dx / dd, uz = dz / dd, calmer = 1;
+    const pp = hk > 0 && penPull(s);   // late in the day a bark sends them home: off toward the gate, less of a bolt
+    if (pp) { const b = hk * T.penHome.bark * clamp((ux * pp.dx + uz * pp.dz + 1) / 1.2, 0, 1); ux += (pp.dx - ux) * b; uz += (pp.dz - uz) * b; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; calmer = 1 - 0.3 * b; }
+    s.vx += ux * k * 4; s.vz += uz * k * 4; s.fdx = ux; s.fdz = uz;
+    s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, (0.3 + k * 0.6) * calmer); s.hopV = Math.max(s.hopV, 2 + k * 2);
   }
   for (const c of G.coyotes) {
     if (c.air || c.heldBy || Math.hypot(c.x - d.x, c.z - d.z) >= T.barkR + 2) continue;
@@ -5155,11 +5181,11 @@ function cougarVault(k, tx, tz, after) {
   k.state = 'vault'; k.t = 0; k.lx = k.x; k.lz = k.z; k.ltx = tx; k.ltz = tz; k.after = after;
   Sound.growl(panOf(k.x, k.z), 0.12);
 }
-function cougarTarget(k, exclude = null) {
+function cougarTarget(k, exclude = null, range = T.cougar.range) {
   const L = k.lair; let best = null, bs = 1e9;
   for (const s of G.sheep) {
     if (s === exclude || !cougarPrey(s)) continue;
-    const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > T.cougar.range) continue;
+    const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > range) continue;
     let sc = Math.hypot(s.x - k.x, s.z - k.z) + dl * 0.3 - Math.max(0, 5 - (s.near || 0)) * 3 - oldK(s) * 6 - (s.weak || 0) * 6;
     for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 20) sc += (20 - dd) * 4; }
     if (s.lamb) sc -= 1000;   // lambs first, always
@@ -5225,6 +5251,7 @@ function cougarSpooked(k, hit) {
 }
 function cougarBark(d) {   // spotted: a bark close by sends a stalking cougar back up its tree (till it's wise to it: then it may come for the dog)
   for (const k of COUGARS) {
+    if (k.state === 'perch' && Math.hypot(k.lair.bx - d.x, k.lair.bz - d.z) < T.cougar.treedR) k.treedAt = G.time;   // treed: it stays put a while
     if ((k.state !== 'stalk' && k.state !== 'down') || Math.hypot(k.x - d.x, k.z - d.z) >= T.barkR + 6) continue;
     if (barkWorks(k)) cougarSpooked(k, 0.5);
     else if (k.state === 'stalk' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.shyR + 2 && canMaul(k, d)) cougarLeapDog(k, d);
@@ -5315,7 +5342,7 @@ function cougarsAtDawn() {
     else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -5331,8 +5358,8 @@ function updateCougars(dt) {
       case 'away': break;
       case 'perch': case 'fed': {
         if (!isNight() && !onScreen(L.x, L.y + 3, L.z, 0.1)) { k.state = 'away'; break; }   // gone by day, when nobody's looking
-        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0) {
-          k.target = cougarTarget(k);
+        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0 && G.time - (k.treedAt ?? -1e9) > C.treedT) {
+          k.target = cougarTarget(k) || cougarTarget(k, null, Infinity);
           if (k.target) { k.state = 'down'; k.t = 0; k.huntT = 0; k.holdT = 0; cougarWarn(k); }
           else k.wait = 20;   // nothing out in reach: it watches a while longer
         }
