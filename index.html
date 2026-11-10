@@ -507,11 +507,12 @@ const T = {
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // cougars: one lies up in the big old tree off the trail by each hill camp (and a couple between). By day it's gone;
-  // at nightfall the one nearest the flock may hunt (chance), coming down after delay in-game hours. It stalks in slow
+  // at nightfall the one nearest the flock hunts (chance), coming down after delay in-game hours (held up treedT s by a dog
+  // barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway). It stalks in slow
   // and low, shies from dogs (shyR from it, guardR from its target), leaps from leapR, and drags its catch, crying, back
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
-  cougar: { range: 80, chance: 0.6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
+  cougar: { range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
@@ -5138,11 +5139,11 @@ function cougarVault(k, tx, tz, after) {
   k.state = 'vault'; k.t = 0; k.lx = k.x; k.lz = k.z; k.ltx = tx; k.ltz = tz; k.after = after;
   Sound.growl(panOf(k.x, k.z), 0.12);
 }
-function cougarTarget(k, exclude = null) {
+function cougarTarget(k, exclude = null, range = T.cougar.range) {
   const L = k.lair; let best = null, bs = 1e9;
   for (const s of G.sheep) {
     if (s === exclude || !cougarPrey(s)) continue;
-    const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > T.cougar.range) continue;
+    const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > range) continue;
     let sc = Math.hypot(s.x - k.x, s.z - k.z) + dl * 0.3 - Math.max(0, 5 - (s.near || 0)) * 3 - oldK(s) * 6 - (s.weak || 0) * 6;
     for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 20) sc += (20 - dd) * 4; }
     if (s.lamb) sc -= 1000;   // lambs first, always
@@ -5208,6 +5209,7 @@ function cougarSpooked(k, hit) {
 }
 function cougarBark(d) {   // spotted: a bark close by sends a stalking cougar back up its tree (till it's wise to it: then it may come for the dog)
   for (const k of COUGARS) {
+    if (k.state === 'perch' && Math.hypot(k.lair.bx - d.x, k.lair.bz - d.z) < T.cougar.treedR) k.treedAt = G.time;   // treed: it stays put a while
     if ((k.state !== 'stalk' && k.state !== 'down') || Math.hypot(k.x - d.x, k.z - d.z) >= T.barkR + 6) continue;
     if (barkWorks(k)) cougarSpooked(k, 0.5);
     else if (k.state === 'stalk' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.shyR + 2 && canMaul(k, d)) cougarLeapDog(k, d);
@@ -5298,7 +5300,7 @@ function cougarsAtDawn() {
     else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -5314,8 +5316,8 @@ function updateCougars(dt) {
       case 'away': break;
       case 'perch': case 'fed': {
         if (!isNight() && !onScreen(L.x, L.y + 3, L.z, 0.1)) { k.state = 'away'; break; }   // gone by day, when nobody's looking
-        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0) {
-          k.target = cougarTarget(k);
+        if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0 && G.time - (k.treedAt ?? -1e9) > C.treedT) {
+          k.target = cougarTarget(k) || cougarTarget(k, null, Infinity);
           if (k.target) { k.state = 'down'; k.t = 0; k.huntT = 0; k.holdT = 0; cougarWarn(k); }
           else k.wait = 20;   // nothing out in reach: it watches a while longer
         }
