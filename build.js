@@ -1,4 +1,4 @@
-// Build step (Vercel; Cloudflare Pages for branch previews): copy the site into dist/ and stamp index.html with the commit it was built from,
+// Build step (Vercel; Cloudflare Workers for branch previews): copy the site into dist/ and stamp index.html with the commit it was built from,
 // so the title screen and pause menu can say which build you're playing. Run locally with `node build.js`.
 'use strict';
 const fs = require('fs');
@@ -8,13 +8,13 @@ const { execSync } = require('child_process');
 const ROOT = __dirname;
 const OUT = path.join(ROOT, 'dist');
 // Build tooling, not part of the site.
-const SKIP = new Set(['dist', 'node_modules', 'build.js', 'package.json', 'package-lock.json', 'vercel.json']);
+const SKIP = new Set(['dist', 'node_modules', 'build.js', 'package.json', 'package-lock.json', 'vercel.json', 'wrangler.jsonc']);
 
 const git = cmd => { try { return execSync('git ' + cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { return ''; } };
 const env = process.env;
 
 // Vercel / Cloudflare hand these over at build time; a local run asks git instead.
-const sha = (env.VERCEL_GIT_COMMIT_SHA || env.CF_PAGES_COMMIT_SHA || git('rev-parse HEAD')).toLowerCase();
+const sha = (env.VERCEL_GIT_COMMIT_SHA || env.WORKERS_CI_COMMIT_SHA || env.CF_PAGES_COMMIT_SHA || git('rev-parse HEAD')).toLowerCase();
 const message = env.VERCEL_GIT_COMMIT_MESSAGE || git('log -1 --format=%B');
 const subject = message.split('\n')[0];
 // The PR a preview was built for, or on main the PR that was merged: "Merge pull request #7 from ..." or "Title (#7)".
@@ -23,7 +23,7 @@ const pr = env.VERCEL_GIT_PULL_REQUEST_ID || (subject.match(/^Merge pull request
 const BUILD = {
   sha: /^[0-9a-f]{7,40}$/.test(sha) ? sha : '',
   pr: /^\d+$/.test(pr) ? pr : '',
-  env: /^[a-z]+$/.test(env.VERCEL_ENV || '') ? env.VERCEL_ENV : env.CF_PAGES ? (env.CF_PAGES_BRANCH === 'main' ? 'production' : 'preview') : '',
+  env: /^[a-z]+$/.test(env.VERCEL_ENV || '') ? env.VERCEL_ENV : (env.WORKERS_CI || env.CF_PAGES) ? ((env.WORKERS_CI_BRANCH || env.CF_PAGES_BRANCH) === 'main' ? 'production' : 'preview') : '',
   at: new Date().toISOString(),
 };
 
