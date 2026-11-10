@@ -31,6 +31,11 @@ the trail and wear them from the barn.
   `?join=CODE`) or joins one. PeerJS (`vendor/peerjs.min.js`, loaded on
   demand) uses the public 0.peerjs.com for signalling; `?peerserver=host:port`
   points at your own (`npx peer --port 9000 --host 127.0.0.1`).
+- Hybrid co-op: both ends can have a sofa. On the host, more players join
+  locally as usual; on a guest, the first device touched drives its dog and a
+  second person joins with Ⓐ on another controller or the other side of the
+  keyboard (in the lobby or mid-journey), getting a dog of their own. Four
+  dogs in all, however they're split across screens.
 
 ### Code layout (`index.html`, top to bottom)
 
@@ -70,6 +75,7 @@ that touch what you changed, and report their numbers.
 | `node tools/age-sim.mjs` | ageing: the first flock's ages, how old sheep look (fleece, face, size, words), a lifetime of dawns (nobody dies of old age early, everyone by `T.lifeDays[1]`), ages kept in the saved flock |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
 | `node tools/dig-test.mjs [--shots DIR]` | dig spots along the trail, a dog digging one up, finds going on the dog and into the saved wardrobe, the barn's Dogs tab, mounds back on a new journey |
+| `node tools/hybrid-test.mjs [--shots DIR]` | hybrid online co-op: two on the host's screen and two on one guest's, each guest keyboard side driving only its own dog, the guest's camera and leash covering both, and the room filling at 4 |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
 **Online co-op** (the ONLINE CO-OP section): the host runs the game; guests only
@@ -77,7 +83,9 @@ draw it. New state that's drawn needs a line in `NET_TYPES`, a new one-shot
 button goes in `NET_EDGES`, and a new feedback function called from game code
 (confetti, a popup, a synth sound) needs `name = fxDef('name', name)` at the
 end of that section, or friends online never see or hear it. The section header
-explains the rest.
+explains the rest. A host seat is one guest browser; `s.subs` holds one
+`{player, held, edges}` per person playing on that screen, and a net player's
+`p.seat` / `p.sub` say where its inputs come from (`p` in `i` / `e` messages).
 
 Bots are players with `kind: 'bot'`: `readInput` merges `player.bot` into the
 input. Inputs are screen-space, so to move along world direction (dx, dz) use

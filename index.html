@@ -5227,9 +5227,9 @@ function updateCamera(dt, snap = false) {
   FX.shake = Math.max(0, FX.shake - dt * T.shakeDecay);
   if (FX.shake > 0.002) { const a = FX.shake * 2, ox = (Math.random() - 0.5) * a, oy = (Math.random() - 0.5) * a; camera.position.x += CAM_R.x * ox; camera.position.z += CAM_R.z * ox; camera.position.y += oy; }
 }
-// keep co-op dogs within one screen
-function leashDogs() {
-  const dogs = netCamDogs();   // ONLINE: only the dogs sharing this screen (friends online have their own)
+// keep co-op dogs within one screen (ONLINE: each screen's dogs on their own: the host's sofa, and each friend's)
+function leashDogs() { for (const dogs of netScreens()) leashScreen(dogs); }
+function leashScreen(dogs) {
   if (dogs.length < 2) return;
   let cx = 0, cz = 0; for (const d of dogs) { cx += d.x; cz += d.z; } cx /= dogs.length; cz /= dogs.length;
   const limX = (T.viewMax * aspect) / 2 - 3, limY = T.viewMax / 2 - 3;
@@ -5497,7 +5497,7 @@ function updateHUD(dt) {
   [...jb.querySelectorAll('.camp')].forEach((e, i) => e.classList.toggle('done', CAMPS[i].s < fs - 5 || (G.visited.has(CAMPS[i].name) && i === 0)));
   jb.querySelector('.me').style.left = `calc(6px + (100% - 12px) * ${clamp(fs / PATH_LEN, 0, 1)})`;
   $('sound').style.display = Sound.running ? 'none' : 'block';
-  const joins = $('joins'); const want = G.mode === 'play' && G.players.length < 4 && NET.role !== 'guest' ? `<div>Press Ⓐ on another controller to join (${G.players.length}/4)</div>` : '';
+  const joins = $('joins'); const want = G.mode === 'play' && G.players.length < 4 && (NET.role !== 'guest' || (NET.inRoom && !NET.dead)) ? `<div>Press Ⓐ on another controller to join (${G.players.length}/4)</div>` : '';   // ONLINE: a guest's sofa can add dogs too
   if (joins.innerHTML !== want) joins.innerHTML = want;
 }
 function proj(x, y, z) { _ndc.set(x, y, z).project(camera); return [(_ndc.x * 0.5 + 0.5) * W, (-_ndc.y * 0.5 + 0.5) * H, _ndc.z]; }
@@ -6857,6 +6857,7 @@ function joinPlayer(dev) {
   Sound.bark(PCOL[slot].pitch, 0); rumble(p, 0.3, 0.5, 150);
   if (G.players.length > 1) toast(`${p.name} joined the herd!`, 'good');
   hankDogJoined(p);   // HANK
+  if (NET.role === 'host') netRoster();   // ONLINE: friends see who's playing
   return p;
 }
 function startGame(dev) {
@@ -6915,11 +6916,17 @@ function checkLose() {
 // G entities, smooths them, and runs the normal visual sync, overlay and HUD. Its camera follows its own dog.
 //
 // Messages (plain objects with a `t`; BinaryPack on the wire, one reliable ordered DataConnection per guest):
-//   guest → host  hi {v, b (build hash), cid (stable client id), name} · i {h: held inputs} on change and
-//                 every 400 ms · e {k} one-shot buttons (NET_EDGES) + 'pause' / 'again' · n {name} · hb {ts} · bye
-//   host → guest  w {slot, host, code} welcome · l {list} roster · s snapshot (20 Hz) · g {h, c} grass changes
+//   guest → host  hi {v, b (build hash), cid (stable client id), name, n (players on that screen)} · i {h: held
+//                 inputs, p} on change and every 400 ms · e {k, p} one-shot buttons (NET_EDGES) + 'pause' / 'again' ·
+//                 j {n} someone else on that screen picked up a controller · n {name} · hb {ts} · bye
+//                 (p: which of that screen's players, left out for the first)
+//   host → guest  w {slot, slots, host, code} welcome (slots: one per player there, -1 till the journey starts) ·
+//                 l {list, you: [entries]} roster · s snapshot (20 Hz) · g {h, c} grass changes
 //                 (3 Hz: hours to regrow, then [cell-index step, byte] pairs) · G {d} whole grass map, one byte a
-//                 cell (on join, and after a big change) · hb {hid} · pong {ts} · r {a} rumble · old / full / bye
+//                 cell (on join, and after a big change) · hb {hid} · pong {ts} · r {a, p} rumble · old / full / bye
+// HYBRID: a seat is one friend's browser; s.subs holds a {player, held, edges} for each person playing on that
+// screen (couch co-op on both ends: the host's sofa joins locally, each friend's sofa through their one link).
+// A net player's p.seat and p.sub say where its inputs come from; 4 dogs in all (netRoomFor).
 // Snapshot s = { c: { tag: [[id, mask, value, value, …], …] }, r: { tag: [ids gone] },
 //                e: [[fxName, args, x?, z?], …] effects to replay, kf: 1 on a keyframe (anything unlisted is gone) }.
 // Per guest the host remembers the last value it sent of every field and sends only what changed: `mask` has
@@ -6966,10 +6973,11 @@ const NET_EDGES = new Set(['bark', 'pounce']);
 const NET = {
   role: null,                 // null offline · 'host' · 'guest'
   peer: null, conn: null, code: '', myName: '', cid: '', status: '', statusErr: false,
-  seats: [],                  // host: one per friend {cid, name, conn, player, held, edges, sent, shadow, gH, …}
+  seats: [],                  // host: one per friend's browser {cid, name, conn, subs: [{name, player, held, edges, inAt}], sent, shadow, gH, …}
   rec: false, vis: false, quiet: false, fxq: [], snapAt: 0, grassAt: 0, nid: 0,
   slot: -1, hostName: '', inRoom: false, dead: false, lastMsg: 0, hostHid: false, rtt: 0, roster: [],
-  ids: {}, now: 0, wantMode: null, myKind: 'kb', myPad: -1, inKey: '', inAt: 0, uiAt: 0, uiKey: '',
+  ids: {}, now: 0, wantMode: null, uiAt: 0, uiKey: '',
+  locals: [],                 // guest: the players on this screen, one dog each {kind, index, used, slot, inKey, inAt}; NET.slot is the first one's
   stats: { bytes: 0, snap: 0, grass: 0, other: 0, msgs: 0, since: performance.now() }, fxIn: {},
 };
 NET.cid = (() => {
@@ -7157,11 +7165,19 @@ function netIceWatch(conn, lost) {
 }
 function netStoredName() { try { return localStorage.getItem('collies.name') || ''; } catch (e) { return ''; } }
 function netNameField() { const n = netCleanName($('netName').value); if (n) try { localStorage.setItem('collies.name', n); } catch (e) {} return n; }
-// the dogs this screen's camera follows (and leashes together): a guest's own dog; the host's local dogs
+// the dogs this screen's camera follows (and leashes together): a guest's own dogs; the host's local dogs
 function netCamDogs() {
-  if (NET.role === 'guest') { const d = G.dogs.find(d => d.player.slot === NET.slot); return d ? [d] : G.dogs; }
+  if (NET.role === 'guest') { const L = G.dogs.filter(d => netLocalOf(d.player.slot)); return L.length ? L : G.dogs; }
   if (NET.role === 'host') { const L = G.dogs.filter(d => d.player.kind !== 'net'); return L.length ? L : G.dogs; }
   return G.dogs;
+}
+
+// every screen's dogs, as groups that share a camera: the host's, then one group per friend's browser
+function netScreens() {
+  if (NET.role !== 'host') return [netCamDogs()];
+  const out = [netCamDogs()];
+  for (const s of NET.seats) { const L = s.subs.filter(u => u.player && u.player.dog).map(u => u.player.dog); if (L.length > 1) out.push(L); }
+  return out;
 }
 
 // ---- effects: one hook for every sound and bit of feedback ----------------------------------------------
@@ -7329,7 +7345,7 @@ function netFrameStart(now, dt) {
     if (pauseHit && G.mode === 'play') netSend({ t: 'e', k: 'pause' });
     if (G.mode === 'end' && anyConfirm()) netSend({ t: 'e', k: 'again' });
   } else if (NET.dead && netAHit()) netRejoin();
-  for (const p of G.players) { const me = p.slot === NET.slot; p.kind = me ? NET.myKind : 'remote'; p.index = me ? (NET.myKind === 'pad' ? NET.myPad : 0) : -1; }
+  for (const p of G.players) { const me = netLocalOf(p.slot); p.kind = me ? me.kind : 'remote'; p.index = me ? me.index : -1; }   // (hints and the pause screen show each their own buttons)
   const adt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // the host's hit-stop, felt here too
   if (!G.paused) { G.time += adt; U.uTime.value = G.time; }
   const k = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-20 * dt);
@@ -7484,7 +7500,7 @@ function netOpenRoom(Peer, tries) {
   });
 }
 function netStopHosting() {
-  for (const s of NET.seats) { if (s.conn) { netSendSeat(s, { t: 'bye' }); const c = s.conn; setTimeout(() => { try { c.close(); } catch (e) {} }, 200); s.conn = null; } if (s.player) netRemovePlayer(s.player); }
+  for (const s of NET.seats) { if (s.conn) { netSendSeat(s, { t: 'bye' }); const c = s.conn; setTimeout(() => { try { c.close(); } catch (e) {} }, 200); s.conn = null; } for (const u of s.subs) if (u.player) netRemovePlayer(u.player); }
   NET.seats.length = 0;
   const p = NET.peer; NET.peer = null; if (p) setTimeout(() => { try { p.destroy(); } catch (e) {} }, 300);
   NET.role = null; NET.code = ''; netRecUpdate(); netStatus('');
@@ -7515,14 +7531,16 @@ function netWelcome(conn, m) {
   const cid = String(m.cid || '').slice(0, 40), name = netCleanName(m.name) || 'Pup', now = performance.now();
   // the same browser coming back takes its own dog; so does someone with the same dog name whose link dropped
   let s = (cid && NET.seats.find(x => x.cid === cid)) || NET.seats.find(x => !x.conn && x.name.toLowerCase() === name.toLowerCase()) || null;
-  if (!s && NET.seats.length < NETT.maxGuests && (G.mode === 'title' || G.players.length < 4)) { s = { cid, name, conn: null, player: null, held: {}, edges: [], sent: null, shadow: null, gH: 0 }; NET.seats.push(s); }
+  if (!s && NET.seats.length < NETT.maxGuests && netRoomFor(null) > 0) { s = { cid, name, conn: null, subs: [netSub()], sent: null, shadow: null, gH: 0 }; NET.seats.push(s); }
   if (!s) s = NET.seats.find(x => !x.conn && (x.left || now - (x.lostAt || 0) > NETT.reclaimMs)) || null;   // a seat left empty a long while
   if (!s) return refuse('full');
   if (s.conn && s.conn !== conn) { const old = s.conn; setTimeout(() => { try { old.close(); } catch (e) {} }, 200); }   // the same friend on a fresh link
-  const back = !!s.player && !s.conn && G.mode !== 'title';
-  Object.assign(s, { cid, name, conn, lastMsg: now, held: {}, inAt: 0, edges: [], sent: null, left: false, lostAt: 0 });
-  if (s.player) s.player.name = name;
-  netSendSeat(s, { t: 'w', slot: s.player ? s.player.slot : -1, host: NET.myName || netLocalName(), code: NET.code });
+  const back = s.subs.some(u => u.player) && !s.conn && G.mode !== 'title';
+  Object.assign(s, { cid, name, conn, lastMsg: now, sent: null, left: false, lostAt: 0 });
+  for (const u of s.subs) { u.held = {}; u.inAt = 0; u.edges.length = 0; }
+  s.subs[0].name = name; if (s.subs[0].player) s.subs[0].player.name = name;
+  netSubsWant(s, m.n);   // a guest with friends on the same screen: one dog each
+  netSendWelcome(s);
   netGrassFull(s);
   if (back) toast(`${name} is back!`, 'good');
   netRecUpdate(); netRoster();
@@ -7530,9 +7548,10 @@ function netWelcome(conn, m) {
 }
 function netSeatLost(s) {
   if (!s.conn) return;
-  const c = s.conn; s.conn = null; s.lostAt = performance.now(); s.held = {}; s.edges.length = 0; s.sent = null; s.shadow = null;
+  const c = s.conn; s.conn = null; s.lostAt = performance.now(); s.sent = null; s.shadow = null;
+  for (const u of s.subs) { u.held = {}; u.edges.length = 0; }
   setTimeout(() => { try { c.close(); } catch (e) {} }, 200);
-  if (!s.player) NET.seats.splice(NET.seats.indexOf(s), 1);   // still in the lobby: nothing to keep
+  if (!s.subs.some(u => u.player)) NET.seats.splice(NET.seats.indexOf(s), 1);   // still in the lobby: nothing to keep
   else if (G.mode !== 'title') toast(`${s.name} ${s.left ? 'left' : 'lost connection'} — their dog will wait`, 'warn');
   netRecUpdate(); netRoster();
 }
@@ -7542,48 +7561,79 @@ function netHostSeats() {
   const p0 = G.players.find(p => p.kind !== 'net');
   if (p0 && NET.myName && !p0.netNamed) { p0.name = NET.myName; p0.netNamed = true; }
   for (const s of NET.seats) {
-    if (!s.conn || s.player) continue;
-    const p = joinPlayer({ kind: 'net', index: 100 + NET.seats.indexOf(s), name: s.name });
-    if (!p) { netSendSeat(s, { t: 'full' }); netSeatLost(s); continue; }
-    p.seat = s; s.player = p;
-    netSendSeat(s, { t: 'w', slot: p.slot, host: NET.myName || netLocalName(), code: NET.code });
-    netRoster();
+    if (!s.conn || s.subs.every(u => u.player)) continue;
+    let changed = false;
+    for (let k = 0; k < s.subs.length; k++) {
+      const u = s.subs[k]; if (u.player) continue;
+      const p = joinPlayer({ kind: 'net', index: 100 + NET.seats.indexOf(s) * 4 + k, name: u.name || undefined });
+      if (!p) {
+        if (k === 0) { netSendSeat(s, { t: 'full' }); netSeatLost(s); break; }
+        s.subs.length = k; changed = true; break;   // no room for this screen's extra dogs: the welcome below tells them
+      }
+      p.seat = s; p.sub = u; u.player = p; changed = true;
+    }
+    if (changed && s.conn) { netSendWelcome(s); netRoster(); }
   }
+}
+// one seat per friend's browser; each holds the dogs played on that screen (couch co-op online: two on one
+// keyboard or a controller each), so two sofas can share one game
+function netSub(name = '') { return { name, player: null, held: {}, inAt: 0, edges: [] }; }
+// how many more dogs fit (4 in all): the host's own (at least 1) plus every seat's, the seat asking left out
+function netRoomFor(seat) {
+  let n = Math.max(1, G.players.filter(p => p.kind !== 'net').length);
+  for (const s of NET.seats) if (s !== seat) n += s.subs.length;
+  return 4 - n;
+}
+// a guest says how many people are playing on their screen: keep the dogs they have, add (or trim) the rest
+function netSubsWant(s, n) {
+  n = clamp((n | 0) || 1, 1, 4);
+  const room = Math.max(1, netRoomFor(s)), keep = Math.max(1, ...s.subs.map((u, k) => u.player ? k + 1 : 0));
+  const want = Math.max(keep, Math.min(n, room));
+  while (s.subs.length < want) s.subs.push(netSub());
+  if (s.subs.length > want) s.subs.length = want;
+}
+function netSendWelcome(s) {
+  const slots = s.subs.map(u => u.player ? u.player.slot : -1);
+  netSendSeat(s, { t: 'w', slot: slots[0], slots, host: NET.myName || netLocalName(), code: NET.code });
 }
 function netRoster() {
   const list = [{ n: NET.myName || netLocalName(), s: 0, on: 1, h: 1 }];
-  for (const s of NET.seats) list.push({ n: s.name, s: s.player ? s.player.slot : -1, on: s.conn ? 1 : 0 });
+  for (const p of G.players) if (p.kind !== 'net' && p !== G.players.find(q => q.kind !== 'net')) list.push({ n: p.name, s: p.slot, on: 1, h: 1 });   // the host's sofa
+  const yours = new Map();
+  for (const s of NET.seats) { const mine = []; s.subs.forEach((u, k) => { mine.push(list.length); list.push({ n: u.player ? u.player.name : k ? u.name || `${s.name} +${k}` : s.name, s: u.player ? u.player.slot : -1, on: s.conn ? 1 : 0 }); }); yours.set(s, mine); }
   NET.roster = list; NET.uiKey = '';
-  NET.seats.forEach((s, i) => netSendSeat(s, { t: 'l', list, you: i + 1 }));   // (you: which entry is them)
+  for (const s of NET.seats) netSendSeat(s, { t: 'l', list, you: yours.get(s) });   // (you: which entries are them)
 }
 function netFromGuest(s, m) {
   s.lastMsg = performance.now();
+  const u = s.subs[m.p | 0] || null;   // which of the dogs on their screen (p, 0 when there's one)
   switch (m.t) {
     case 'i': {
-      const h = m.h; if (!h || typeof h !== 'object') break;
+      const h = m.h; if (!h || typeof h !== 'object' || !u) break;
       const o = {}; for (const k in NET_HELD) if (k in h) o[k] = typeof NET_HELD[k] === 'number' ? clamp(+h[k] || 0, -1, 1) : !!h[k];
       const l = Math.hypot(o.mx || 0, o.my || 0); if (l > 1) { o.mx /= l; o.my /= l; }
-      s.held = o; s.inAt = performance.now(); break;
+      u.held = o; u.inAt = performance.now(); break;
     }
     case 'e': {
       const k = String(m.k);
       if (k === 'pause') { if (G.mode === 'play') setPause(!G.paused, s.name); }
       else if (k === 'again') { if (G.mode === 'end' && (G.endT || 0) > 1.5) resetGame(); }
-      else if (NET_EDGES.has(k) && s.player && s.edges.length < 8) s.edges.push(k);
+      else if (NET_EDGES.has(k) && u && u.player && u.edges.length < 8) u.edges.push(k);
       break;
     }
-    case 'n': { const nm = netCleanName(m.name); if (nm && nm !== s.name) { s.name = nm; if (s.player) s.player.name = nm; netRoster(); } break; }
+    case 'j': { netSubsWant(s, m.n); netHostSeats(); netSendWelcome(s); netRoster(); break; }   // someone else on their screen picked up a controller
+    case 'n': { const nm = netCleanName(m.name); if (nm && nm !== s.name) { s.name = nm; s.subs[0].name = nm; if (s.subs[0].player) s.subs[0].player.name = nm; netRoster(); } break; }
     case 'hb': netSendSeat(s, { t: 'pong', ts: m.ts }); break;
     case 'bye': s.left = true; netSeatLost(s); break;
   }
 }
 // readInput() for a friend's dog: their held inputs (zeroed if nothing's come for a second) + their button presses, once each
 function netReadInput(p, r) {
-  const s = p.seat;
-  if (!s || !s.conn) { r.lie = true; return r; }   // dropped: the dog lies down and waits (for when dogs can lie down)
-  if (performance.now() - s.inAt < NETT.staleIn) Object.assign(r, s.held);
-  for (const k of s.edges) r[k] = true;
-  s.edges.length = 0;
+  const s = p.seat, u = p.sub;
+  if (!s || !s.conn || !u || !s.subs.includes(u)) { r.lie = true; return r; }   // dropped (or that friend's screen has fewer players now): the dog lies down and waits
+  if (performance.now() - u.inAt < NETT.staleIn) Object.assign(r, u.held);
+  for (const k of u.edges) r[k] = true;
+  u.edges.length = 0;
   return r;
 }
 // heartbeats both ways (a background tab still ticks about once a second)
@@ -7595,13 +7645,13 @@ function netHeartbeat() {
 setInterval(netHeartbeat, 1000);
 document.addEventListener('visibilitychange', () => {
   if (NET.role === 'host') { if (document.hidden && NET.seats.some(s => s.conn)) setPause(true, '#hidden'); netHeartbeat(); }
-  if (NET.role === 'guest' && document.hidden) { const h = { ...NET_HELD }; NET.inKey = JSON.stringify(h); netSend({ t: 'i', h }); }   // let go of everything
+  if (NET.role === 'guest' && document.hidden) { const h = { ...NET_HELD }; NET.locals.forEach((L, k) => { L.inKey = JSON.stringify(h); netSend(k ? { t: 'i', h, p: k } : { t: 'i', h }); }); }   // let go of everything
 });
 // a friend's controller buzzes on their own device
 {
   const r0 = rumble;
   rumble = function (player, ...a) {
-    if (player && player.kind === 'net') { const s = player.seat; if (s && s.conn) netSendSeat(s, { t: 'r', a: a.map(v => netFxEnc(v, 0)) }); return; }
+    if (player && player.kind === 'net') { const s = player.seat; if (s && s.conn) netSendSeat(s, { t: 'r', p: Math.max(0, s.subs.indexOf(player.sub)), a: a.map(v => netFxEnc(v, 0)) }); return; }
     return r0(player, ...a);
   };
   NET.rumble0 = r0;
@@ -7614,7 +7664,7 @@ async function netJoin(code, name) {
   if (code.length < 5) { netStatus("Type in the 5-letter room code from your friend's screen.", true); $('netCode').focus(); return; }
   try { localStorage.setItem('collies.name', name); } catch (e) {}
   Sound.init();
-  Object.assign(NET, { role: 'guest', code, myName: name, inRoom: false, dead: false, slot: -1, roster: [] });
+  Object.assign(NET, { role: 'guest', code, myName: name, inRoom: false, dead: false, slot: -1, roster: [], locals: [netLocal()] });
   netStatus('Connecting…');
   let Peer; try { Peer = await netLoadPeer(); } catch (e) { netGuestFail("Couldn't load the online code. Check your connection and try again."); return; }
   if (NET.role !== 'guest') return;
@@ -7625,7 +7675,7 @@ function netConnectGuest(Peer) {
   p.on('open', () => {
     if (NET.peer !== p) return;
     const c = p.connect(netPeerId(NET.code), { reliable: true }); NET.conn = c;
-    c.on('open', () => { if (NET.conn !== c) return; netStatus('Connected. Saying hello…'); netSend({ t: 'hi', v: NET_VER, b: NET_BUILD, cid: NET.cid, name: NET.myName }); });
+    c.on('open', () => { if (NET.conn !== c) return; netStatus('Connected. Saying hello…'); netSend({ t: 'hi', v: NET_VER, b: NET_BUILD, cid: NET.cid, name: NET.myName, n: NET.locals.length }); });
     c.on('data', m => { if (NET.conn === c && m && typeof m === 'object') netFromHost(m); });
     c.on('close', () => { if (NET.conn === c) netGuestLost(); });
     c.on('error', () => {});
@@ -7645,7 +7695,7 @@ function netGuestFail(msg) {
   if (p) try { p.destroy(); } catch (e) {}
   NET.awaiting = false;
   if (NET.dead) { NET.lostMsg = msg; NET.uiKey = ''; return; }
-  const was = NET.inRoom; NET.role = null; NET.inRoom = false; NET.slot = -1;
+  const was = NET.inRoom; NET.role = null; NET.inRoom = false; NET.slot = -1; NET.locals = [];
   netStatus(msg, true);
   if (was) location.reload();
 }
@@ -7671,20 +7721,24 @@ function netFromHost(m) {
   switch (m.t) {
     case 'w': {
       const first = !NET.inRoom;
-      NET.inRoom = true; NET.awaiting = false; clearTimeout(NET.joinTO); NET.slot = m.slot | 0; NET.hostName = netCleanName(m.host) || 'Your friend';
-      if (m.slot < 0) NET.slot = -1;
+      NET.inRoom = true; NET.awaiting = false; clearTimeout(NET.joinTO); NET.hostName = netCleanName(m.host) || 'Your friend';
+      const slots = Array.isArray(m.slots) ? m.slots : [m.slot];
+      if (!NET.locals.length) NET.locals.push(netLocal());
+      if (slots.length < NET.locals.length) { NET.locals.length = Math.max(1, slots.length); if (!first) toast('No room for another dog: 4 is the most', 'warn'); }
+      NET.locals.forEach((L, k) => { L.slot = slots[k] >= 0 && slots[k] < 4 ? slots[k] | 0 : -1; });
+      NET.slot = NET.locals[0].slot;
       if (first) netGuestWipe();          // (a rejoin keeps what it has: the keyframe that follows sorts it out)
       NET.dead = false; NET.lostMsg = '';
-      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start…` : '');
+      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on another controller, or the other side of the keyboard.` : '');
       break;
     }
     case 's': if (NET.inRoom) netApplySnap(m); break;
     case 'g': netGrassDelta(m); break;
     case 'G': netGrassDump(m); break;
-    case 'l': NET.roster = Array.isArray(m.list) ? m.list.slice(0, 5) : []; NET.you = m.you | 0; NET.uiKey = ''; break;
+    case 'l': NET.roster = Array.isArray(m.list) ? m.list.slice(0, 5) : []; NET.you = Array.isArray(m.you) ? m.you.map(v => v | 0) : [m.you | 0]; NET.uiKey = ''; break;
     case 'hb': NET.hostHid = !!m.hid; break;
     case 'pong': NET.rtt = performance.now() - (+m.ts || 0); break;
-    case 'r': if (NET.myKind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: NET.myPad }, ...m.a.map(v => +v || 0)); break;
+    case 'r': { const L = NET.locals[m.p | 0]; if (L && L.kind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: L.index }, ...m.a.map(v => +v || 0)); break; }
     case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); break;
     case 'full': netGuestFail('That game is full: there are 4 dogs already.'); break;
     case 'bye': netGuestLost('Your friend closed the game.'); break;
@@ -7808,23 +7862,47 @@ function netGuestGrave(id, f) {
   g.nid = id; g.root.position.set(f.x || 0, terrainH(f.x || 0, f.z || 0), f.z || 0);
   return g;
 }
-// a friend's controls: both keyboard layouts and any controller drive their one dog
+// a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
+// the same screen joins like local co-op (Ⓐ on another controller, or the other side of the keyboard) and gets
+// a dog of their own: from then on each player has just their own device.
+function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0 }; }
+function netLocalOf(slot) { if (NET.role !== 'guest' || !(slot >= 0)) return null; for (const L of NET.locals) if (L.slot === slot) return L; return null; }
+const netSameDev = (L, dev) => L.used && L.kind === dev.kind && L.index === dev.index;
 function netGuestInput(now) {
-  const r = { ...NET_HELD };
+  const locals = NET.locals.length ? NET.locals : (NET.locals = [netLocal()]);
   const devs = [{ kind: 'kb', index: 0 }, { kind: 'kb', index: 1 }];
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) if (pads[i]) devs.push({ kind: 'pad', index: i });
-  for (const dev of devs) {
-    const x = readInput(dev); let active = false;
-    for (const k in x) { const v = x[k]; if (typeof v === 'number') { r[k] = (r[k] || 0) + v; if (v) active = true; } else if (v) { r[k] = v; active = true; } }
-    if (active) { NET.myKind = dev.kind; if (dev.kind === 'pad') NET.myPad = dev.index; }
+  const live = NET.inRoom && !NET.dead && NET.conn && NET.conn.open;
+  // someone else here picks up a controller: ask the host for one more dog (it answers with the slots it gave)
+  const fresh = new Set();
+  if (live && locals[0].used && (G.mode === 'title' || G.mode === 'play') && locals.length < 4 && NET.roster.length < 4) {
+    for (const dev of devs) {
+      if (locals.some(L => netSameDev(L, dev))) continue;
+      const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : anyEdge(KB[dev.index].join);
+      if (!hit) continue;
+      const L = netLocal(); Object.assign(L, dev, { used: true }); locals.push(L); fresh.add(L);
+      netSend({ t: 'j', n: locals.length });
+      break;   // one at a time: the host's answer sets the roster
+    }
   }
-  const l = Math.hypot(r.mx || 0, r.my || 0); if (l > 1) { r.mx /= l; r.my /= l; }
-  if (!NET.inRoom || NET.dead || !NET.conn || !NET.conn.open) return;
-  const h = {}; for (const k in NET_HELD) { const v = r[k]; h[k] = typeof NET_HELD[k] === 'number' ? Math.round((+v || 0) * 100) / 100 : !!v; }
-  const key = JSON.stringify(h);
-  if (key !== NET.inKey ? now - NET.inAt >= 16 : now - NET.inAt >= 400) { NET.inKey = key; NET.inAt = now; netSend({ t: 'i', h }); }
-  for (const k of NET_EDGES) if (r[k]) netSend({ t: 'e', k });
+  const one = locals.length === 1;
+  for (let k = 0; k < locals.length; k++) {
+    const L = locals[k], r = { ...NET_HELD };
+    for (const dev of devs) {
+      if (!one && !netSameDev(L, dev)) continue;
+      const x = readInput(dev); let active = false;
+      for (const key in x) { const v = x[key]; if (typeof v === 'number') { r[key] = (r[key] || 0) + v; if (v) active = true; } else if (v) { r[key] = v; active = true; } }
+      if (active && one) { L.kind = dev.kind; L.index = dev.index; L.used = true; }   // alone: whatever was touched last is theirs
+    }
+    if (fresh.has(L)) { for (const e of NET_EDGES) r[e] = false; }   // the join press shouldn't also bark
+    const l = Math.hypot(r.mx || 0, r.my || 0); if (l > 1) { r.mx /= l; r.my /= l; }
+    if (!live) continue;
+    const h = {}; for (const key in NET_HELD) { const v = r[key]; h[key] = typeof NET_HELD[key] === 'number' ? Math.round((+v || 0) * 100) / 100 : !!v; }
+    const hk = JSON.stringify(h), p = k || undefined;
+    if (hk !== L.inKey ? now - L.inAt >= 16 : now - L.inAt >= 400) { L.inKey = hk; L.inAt = now; netSend(p ? { t: 'i', h, p } : { t: 'i', h }); }
+    for (const e of NET_EDGES) if (r[e]) netSend(p ? { t: 'e', k: e, p } : { t: 'e', k: e });
+  }
 }
 
 // ---- screens: the title's online panel, the HUD chip, pause, "lost the connection" ---------------------
@@ -7837,7 +7915,7 @@ function netUI(now) {
   const pausedWhy = !G.paused ? '' : G.pauseWho === '#hidden' ? (host ? 'Paused while this tab was in the background.' : `${NET.hostName}'s game is in the background — waiting for them…`)
     : G.pauseWho === '#barn' ? `${NET.hostName} is in Hank's barn, dressing up the flock…`
     : G.pauseWho && NET.role ? `Paused by ${G.pauseWho}` : '';
-  const key = [NET.role, NET.code, NET.status, NET.statusErr, NET.inRoom, NET.dead, NET.lostMsg, NET.slot, G.mode, G.paused, pausedWhy, friends, quiet, NET.hostHid,
+  const key = [NET.role, NET.code, NET.status, NET.statusErr, NET.inRoom, NET.dead, NET.lostMsg, NET.locals.map(L => L.slot).join(), G.mode, G.paused, pausedWhy, friends, quiet, NET.hostHid,
     Math.round(NET.rtt / 10), JSON.stringify(NET.roster), $('netPanel').hidden].join('|');
   if (key === NET.uiKey) return; NET.uiKey = key;
   // title panel
@@ -7849,7 +7927,7 @@ function netUI(now) {
   $('netCodeShow').textContent = NET.code; $('netLink').textContent = NET.code ? netLink() : '';
   $('netStatus').textContent = NET.status; $('netStatus').classList.toggle('err', NET.statusErr);
   $('netBack').textContent = host ? 'Stop hosting' : guest ? (NET.inRoom ? 'Leave' : 'Cancel') : 'Back';
-  const roster = NET.roster.map((r, i) => `<span class="${r.on ? '' : 'off'}">${r.h ? '🏠 ' : '🐕 '}${netCleanName(r.n)}${guest && i === NET.you ? ' (you)' : ''}</span>`).join('');
+  const roster = NET.roster.map((r, i) => `<span class="${r.on ? '' : 'off'}">${r.h ? '🏠 ' : '🐕 '}${netCleanName(r.n)}${guest && (NET.you || []).includes(i) ? ' (you)' : ''}</span>`).join('');
   $('netRoster').innerHTML = NET.role ? roster : '';
   const tb = $('tBarn'); if (tb) tb.hidden = guest;   // Hank's barn is the host's
   const press = $('title').querySelector('.press');
