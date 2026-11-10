@@ -534,7 +534,7 @@ const T = {
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
-  coyoteMaul: { time: 14, every: 0.9 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it
+  coyoteMaul: { time: 14, every: 0.9, rest: 3, dodgeR: 5 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it; then `rest` s and the next (dodges dogs within dodgeR)
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
@@ -5364,7 +5364,16 @@ function coyoteMaul(c, dt) {
     if (Math.random() < 0.5) Sound.baa(s.pitch * 1.2, 0.45, panOf(s.x, s.z), true);
     floatText(`${Math.max(0, Math.round(s.maulHp * 100))}%`, s.x, s.y + 1.5, s.z, '#ff7a6b', 0.7);
   }
-  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; killSheep(s, 'eaten'); c.state = 'leave'; c.stateT = 0; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; killSheep(s, 'eaten'); c.state = 'leave'; c.stateT = 0; c.restT = G.time + M.rest; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+}
+// shut in and not fleeing: dodges dogs, else runs down the nearest penned sheep (grab → coyoteMaul), a short rest after each kill
+function penHavoc(c, nd, ndd) {
+  if (G.time < (c.restT || 0)) return false;
+  if (nd && ndd < T.coyoteMaul.dodgeR) { const ex = c.x - nd.x, ez = c.z - nd.z, e = Math.hypot(ex, ez) || 1; c.hx = ex / e; c.hz = ez / e; c.hs = T.coyoteRun; return true; }
+  const s = penPrey(c, c.trap); if (!s) return false;
+  const n = navSteer(c, s.x, s.z); c.hx = n.x; c.hz = n.z; c.hs = T.coyoteRun;
+  if (Math.hypot(s.x - c.x, s.z - c.z) < 1.05) grab(c, s);
+  return true;
 }
 function updateCoyotes(dt) {
   const fc = flockCenter();
@@ -5440,6 +5449,7 @@ function updateCoyotes(dt) {
         break;
       }
       case 'leave': {
+        if (c.trap && penHavoc(c, nd, ndd)) { dX = c.hx; dZ = c.hz; spd = c.hs; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: havoc
         if (c.inPen) { const q = c.inPen, tx = c.trap ? lerp(q.x, q.gx, 0.8) : q.exitX, tz = c.trap ? lerp(q.z, q.gz, 0.8) : q.exitZ, n = navSteer(c, tx, tz); dX = n.x; dZ = n.z; spd = Math.hypot(tx - c.x, tz - c.z) < 1 ? 0 : 5; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: waits by the gate
         if (c.den) {   // home to the den, then sleep
           const sl = c.den.slots[c.slot % c.den.slots.length], d = Math.hypot(sl.x - c.x, sl.z - c.z);

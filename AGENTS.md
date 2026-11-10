@@ -69,7 +69,7 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
-| `pen-trap-test.mjs` | coyote shut in a pen mauls, dog saves; open gate → dragged out; ram bravery, lambs inherit |
+| `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 
@@ -137,7 +137,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   them. Shut pens stop them.
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
   gate shut (`c.trap`) → it mauls a penned sheep where it stands
-  (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off.
+  (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off, then
+  runs down the next (`penHavoc`), dodging dogs, till the gate opens.
 - **Ram bravery** (`s.brave` 0…1, `T.brave`): under `ramMin` a ram never
   fights, braver ones charge more and further, past `cougar` cougars too.
   Lambs take mostly the sire's (`sireBrave`). Scales everyone's stress gain.
