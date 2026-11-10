@@ -624,7 +624,8 @@ const T = {
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
-  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45 },
+  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45,
+    think: { first: 10, every: 35, dur: 4.5 } },   // a dog still carrying the clippers: a thought bubble after first s, then every s, for dur s
 };
 const WATER_Y = -3;
 
@@ -6936,6 +6937,25 @@ function drawDogCarry(d, px, py) {
     ctx.fillStyle = '#fff'; ctx.fillText(icon, x, y + 0.5);
   });
 }
+// HANK: shearing: a dog still carrying his clippers thinks so, now and then (T.shear.think)
+const CLIP_THOUGHT = 'I should give these shears to Hank';
+function drawDogThought(d, px, py, dt) {
+  if (!d.clippers) { d._clipT = 0; return; }
+  if (!G.paused) d._clipT = (d._clipT || 0) + dt;
+  const S = T.shear.think, t = d._clipT - S.first; if (t < 0 || d.mauled) return;
+  const u = t % S.every; if (u > S.dur) return;
+  const k = Math.min(1, u / 0.3), sc = 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;   // pops in, fades out
+  ctx.save(); ctx.globalAlpha = Math.min(1, (S.dur - u) / 0.5); ctx.translate(px, py - 56 + Math.sin(u * 3) * 1.5); ctx.scale(sc, sc);
+  ctx.font = 'italic 600 12px Fredoka, sans-serif'; const w = ctx.measureText(CLIP_THOUGHT).width + 18, h = 22;
+  const puffs = [[2, 30, 2], [6, 25, 3]];   // little circles trailing down to the dog's head
+  const n = Math.max(2, Math.round(w / 16)), bumps = [];
+  for (let i = 0; i < n; i++) { const x = -w / 2 + 8 + i * (w - 16) / (n - 1); bumps.push([x, -h / 2 + 1, 7]); if (i < n - 1) bumps.push([x + (w - 16) / (n - 1) / 2, h / 2 - 1, 6.5]); }
+  const shape = () => { rr(-w / 2, -h / 2, w, h, h / 2); for (const [x, y, r] of [...bumps, ...puffs]) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); } };
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(42,29,20,.85)'; shape(); ctx.stroke();   // stroke, then fill over it: one outline round the cloud
+  ctx.fillStyle = '#fff8e8'; shape(); ctx.fill();
+  ctx.fillStyle = '#1b1a22'; ctx.fillText(CLIP_THOUGHT, 0, 1);
+  ctx.restore();
+}
 // a dog's health: a thin bar under its name, only while hurt (the chunk just lost lingers in red); claw marks when it's hit; the mash prompt under a cougar
 function drawDogHealth(d, px, py, dt) {
   const hp = clamp(d.hp ?? 1, 0, 1);
@@ -7047,6 +7067,7 @@ function drawOverlay(dt) {
       ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(sx, py, 4.5, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
     }
     if (G.mode === 'play' && !d.mauled) drawDogCarry(d, px, py);   // (mauled: the mash prompt goes there)
+    if (G.mode === 'play') drawDogThought(d, px, py, dt);   // HANK: shearing: "give Hank his shears"
     drawDogHealth(d, px, py, dt);
   }
   drawCoyoteArrows();

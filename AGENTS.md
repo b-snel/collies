@@ -176,10 +176,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
 - **Shearing** (`T.shear`): Hank's clippers are always in one dig spot between
-  the first two camps (`CLIP_DIG`); a dog carries them to him. Awake, no
-  predator near, he climbs into a shut pen (`hankCross`) and shears the
-  woolliest (`s.wool` ≥ `min`) one at a time on its rump (`s.state 'shear'`):
-  `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
+  the first two camps (`CLIP_DIG`); a dog carries them to him (a thought bubble
+  nags till then, `T.shear.think`). Awake, no predator near, he climbs into a
+  shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
+  time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only, world waits; `?sim` only
