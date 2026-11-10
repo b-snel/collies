@@ -6,8 +6,10 @@ All recordings below are free to use. The game's own code and art are original.
 The music is synthesized in the browser.
 
 ## Sound effects
-All of the game's sound effects are synthesized in the browser: the dogs' barks, the coyotes' howls, yips and growls, sheep bleats, splashes, gates and the rest. The recorded bark and coyote clips in `audio/sfx/` belong to the earlier version of the game and aren't used by this one:
-- Dog bark: cut from **"simple_dog_loop"** ([Internet Archive](https://archive.org/details/simple_dog_loop)), CC0 1.0.
+All of the game's sound effects are synthesized in the browser (coyotes' howls, yips and growls, sheep bleats, crickets, splashes, gates and the rest), except the dogs' bark:
+- Dog bark (`audio/sfx/bark1.mp3`): cut from **"simple_dog_loop"** ([Internet Archive](https://archive.org/details/simple_dog_loop)), CC0 1.0.
+
+The recorded coyote clips in `audio/sfx/` belong to the earlier version of the game and aren't used by this one:
 - Coyote howls and yips: recorded for the game by its creator.
 
 ## Hank's voice

@@ -522,7 +522,7 @@ function fbm(x, z, o = 3) { let s = 0, a = 0.5, f = 1, n = 0; for (let i = 0; i 
 // AUDIO — everything synthesized with WebAudio, no files
 // =====================================================================
 const Sound = (() => {
-  let ac = null, master = null, noiseBuf = null, amb = null, lastBaa = 0, lastYelp = 0, baaEnds = [];
+  let ac = null, master = null, noiseBuf = null, amb = null, crick = [], barkBuf = null, lastBaa = 0, lastYelp = 0, baaEnds = [];
   function init() {
     if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -531,6 +531,8 @@ const Sound = (() => {
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     amb = { wind: loopNoise('lowpass', 380, 0), surf: loopNoise('lowpass', 650, 0), crick: crickets() };
+    fetch('audio/sfx/bark1.mp3').then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => new Promise((res, rej) => ac.decodeAudioData(b, res, rej)))
+      .then(b => { barkBuf = b; }).catch(() => {});   // real bark (CC0); synth woof till then
   }
   function loopNoise(type, freq, gain) {
     const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
@@ -538,15 +540,25 @@ const Sound = (() => {
     const g = ac.createGain(); g.gain.value = gain;
     src.connect(f); f.connect(g); g.connect(master); src.start(); return g;
   }
+  // crickets: a few chirpers, each its own pitch, place and loose rhythm (one steady tone sounded like an alarm)
   function crickets() {
-    const o = ac.createOscillator(); o.frequency.value = 4300;
-    const g1 = ac.createGain(); g1.gain.value = 0.5; const l1 = ac.createOscillator(); l1.type = 'square'; l1.frequency.value = 26;
-    const l1g = ac.createGain(); l1g.gain.value = 0.5; l1.connect(l1g); l1g.connect(g1.gain);
-    const g2 = ac.createGain(); g2.gain.value = 0.5; const l2 = ac.createOscillator(); l2.type = 'square'; l2.frequency.value = 1.3;
-    const l2g = ac.createGain(); l2g.gain.value = 0.5; l2.connect(l2g); l2g.connect(g2.gain);
-    const out = ac.createGain(); out.gain.value = 0;
-    o.connect(g1); g1.connect(g2); g2.connect(out); out.connect(master);
-    o.start(); l1.start(); l2.start(); return out;
+    const bus = ac.createGain(); bus.gain.value = 0;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200;
+    bus.connect(lp); lp.connect(master);
+    crick = [0, 1, 2, 3].map(() => ({ f: 3500 + Math.random() * 1100, pan: Math.random() * 1.6 - 0.8, vol: 0.5 + Math.random() * 0.5, next: 0, gap: 0.6 + Math.random() * 1.4 }));
+    return bus;
+  }
+  function chirp(c, t, bus) {   // one chirp: 2-4 quick pulses, softly enveloped
+    const o = ac.createOscillator(); o.frequency.value = c.f * (0.99 + Math.random() * 0.02);
+    const g = ac.createGain(); g.gain.value = 0;
+    const p = ac.createStereoPanner ? ac.createStereoPanner() : null;
+    o.connect(g); if (p) { p.pan.value = c.pan; g.connect(p); p.connect(bus); } else g.connect(bus);
+    const n = 2 + Math.floor(Math.random() * 3), pw = 0.016, gap = 0.028;
+    for (let i = 0; i < n; i++) {
+      const a = t + i * gap, v = c.vol * (i === n - 1 ? 0.7 : 1);
+      g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(v, a + 0.004); g.gain.linearRampToValueAtTime(0, a + pw);
+    }
+    o.start(t); o.stop(t + n * gap + 0.02);
   }
   function out(vol, pan = 0) {
     const g = ac.createGain(); g.gain.value = vol;
@@ -572,7 +584,12 @@ const Sound = (() => {
     get running() { return !!ac && ac.state === 'running'; },
     raw() { return ac && ac.state === 'running' ? { ac, noiseBuf, out, env } : null; },   // for synth sounds built elsewhere (dog-moves SFX)
     get ctx() { return ac; }, get dest() { return master; },   // for Hank's recorded voice (HANK section)
-    bark(p = 1, pan = 0) { if (!ac) return; const t = ac.currentTime; const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); },
+    bark(p = 1, pan = 0) {
+      if (!ac) return; const t = ac.currentTime;
+      if (!barkBuf) { const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); return; }
+      const src = ac.createBufferSource(); src.buffer = barkBuf; src.playbackRate.value = p * (0.96 + Math.random() * 0.08);
+      src.connect(out(1.1, pan)); src.start(t);
+    },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
       // never a screaming chorus: at most two bleats at once (three if one matters), and the idle chatter is spaced out
       if (!ac) return; const now = ac.currentTime;
@@ -705,7 +722,11 @@ const Sound = (() => {
     ambience(night, ocean, dt) {
       if (!ac) return; const k = Math.min(1, dt * 2);
       amb.wind.gain.value = lerp(amb.wind.gain.value, 0.05 * (1 - night * 0.5), k);
-      amb.crick.gain.value = lerp(amb.crick.gain.value, 0.016 * night, k);
+      amb.crick.gain.value = lerp(amb.crick.gain.value, 0.02 * night, k);
+      if (night > 0.05) for (const c of crick) {   // schedule each cricket's next chirp, loosely
+        const now = ac.currentTime; if (c.next < now) c.next = now + Math.random() * c.gap;
+        if (c.next < now + 0.2) { chirp(c, c.next, amb.crick); c.next += c.gap * (0.6 + Math.random() * 0.8) + (Math.random() < 0.12 ? 2 + Math.random() * 4 : 0); }
+      }
       const surf = 0.11 * ocean * (0.6 + 0.4 * Math.sin(ac.currentTime * 0.6));
       amb.surf.gain.value = lerp(amb.surf.gain.value, surf, k);
     },
