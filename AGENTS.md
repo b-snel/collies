@@ -23,6 +23,10 @@ till dawn.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
   `?peerserver=host:port` for your own server.
+- Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊
+  💤 ⚡ buttons (`TOUCH`, player `kind: 'touch'`), short `TOUCH_HINTS`,
+  rotate prompt in portrait. Compact HUD under 520 px tall (icons, no
+  labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
   joins with Ⓐ on another controller or the other keyboard side and gets
   their own dog. 4 dogs in all.
