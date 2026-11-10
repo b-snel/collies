@@ -64,20 +64,20 @@ ok('🌾 food: wool spent, a batch in the final pen\'s troughs', r3.food === 'bu
 ok('🧂 salt: wool spent, a batch in the final pen\'s lick', r3.salt === 'buy' && Math.abs(r3.saltIn - r3.V.salt.amt) < 0.01 && r3.woolAfterSalt === r3.woolAfterFood - r3.V.salt.price, r3);
 ok('a full pen: a no, nothing spent, never over the troughs\' and lick\'s caps', r3.foodStop === 'full' && r3.fullAgain === 'full' && r3.woolSpentWhenFull === 0 && !r3.overCap && r3.foodFull > 0.75 && r3.saltStop === 'full' && r3.lick[0] <= r3.lick[1], r3);
 
-// 4. 💧 water and ✂️ clippers: only when the pen-water and shearing hooks are there
+// 4. 💧 water into the final pen's trough (fillWater), till it's full; ✂️ free while Hank has none
 const r4 = await h.page.evaluate(() => {
-  const { G, buyWare, HANK, T } = GAME; G.wool = 50; const out = {};
+  const { G, buyWare, HANK, T, finalPen } = GAME, V = T.vendor, W = finalPen.water; G.wool = 50; W.w = 0; const out = {};
   const water = H.ware('water'), clip = H.ware('clippers');
-  out.waterShown = water.show(); out.clipShown = clip.show();
-  if (out.waterShown) { const w0 = G.wool; out.water = buyWare(water); out.waterSpent = w0 - G.wool; }
-  if (out.clipShown) { out.clip = buyWare(clip); out.clippers = !!HANK.clippers; out.clipShownAfter = clip.show(); }
-  // a hidden ware's mat sells nothing
-  const hidden = GAME.WARES.find(w => !w.show || w.show() ? false : true);
-  if (hidden) { const d = G.dogs[0]; d.x = hidden.x; d.z = hidden.z; out.hiddenBark = GAME.vendorBark(d); }
-  out.price = T.vendor.water.price;
+  let w0 = G.wool; out.water = buyWare(water); out.waterSpent = w0 - G.wool; out.waterIn = W.w;
+  W.w = W.cap - V.water.amt * V.room + 0.1; w0 = G.wool; out.full = buyWare(water); out.fullSpent = w0 - G.wool;
+  HANK.clippers = false; out.clipShown = clip.show(); w0 = G.wool; out.clip = buyWare(clip); out.clipSpent = w0 - G.wool; out.clippers = !!HANK.clippers; out.clipShownAfter = clip.show();
+  const d = G.dogs[0]; d.x = clip.x; d.z = clip.z; w0 = G.wool; out.hiddenBark = GAME.vendorBark(d); out.hiddenSpent = w0 - G.wool;   // a hidden ware's mat sells nothing
+  out.V = { amt: V.water.amt, price: V.water.price };
   return out;
 });
-ok('💧 water: through fillWater when it exists (else no mat)', r4.waterShown ? (r4.water === 'buy' && r4.waterSpent === r4.price) || (r4.water === 'full' && r4.waterSpent === 0) : true, r4);
+ok('💧 water: wool spent, a batch in the final pen\'s water trough', r4.water === 'buy' && r4.waterSpent === r4.V.price && Math.abs(r4.waterIn - r4.V.amt) < 0.01, r4);
+ok('💧 water: no room → no sale', r4.full === 'full' && r4.fullSpent === 0, r4);
+ok('✂️ free while Hank has none, then gone; its empty mat sells nothing', r4.clipShown && r4.clip === 'buy' && r4.clipSpent === 0 && r4.clippers && !r4.clipShownAfter && r4.hiddenBark === null && r4.hiddenSpent === 0, r4);
 ok('✂️ clippers: free, only while Hank has none (else no mat)', r4.clipShown ? r4.clip === 'buy' && r4.clippers && !r4.clipShownAfter : true, r4);
 ok('a hidden ware\'s mat sells nothing', r4.hiddenBark === undefined || r4.hiddenBark === null, r4);
 
@@ -131,27 +131,6 @@ ok('losing the whole flock still ends it', r7.lostMode === 'end' && !/Cabo/.test
 // 8. a new journey: the vendor's ready again
 const r8 = await h.page.evaluate(() => { GAME.resetGame(); return { mode: GAME.G.mode, armed: GAME.WARES.some(w => w.armT > GAME.G.time), hello: GAME.VENDOR.hello }; });
 ok('a new journey resets the stall', r8.mode === 'play' && !r8.armed && !r8.hello, r8);
-
-// 9. the 💧 and ✂️ call paths without the pen-water / shearing code: reload with stand-in hooks (only the missing ones)
-const stub = {};
-await h.page.route('**/index.html*', async route => {
-  const res = await route.fetch(); let body = await res.text(); const add = [];
-  stub.water = !/(function|const|let|var)\s+fillWater\b/.test(body); stub.clip = !/(function|const|let|var)\s+giveHankClippers\b/.test(body);
-  if (stub.water) add.push('function fillWater(pen, amt) { window.__water = (window.__water || 0) + amt; return amt; }');
-  if (stub.clip) add.push('function giveHankClippers() { HANK.clippers = true; }');
-  await route.fulfill({ response: res, body: body.replace("import * as THREE from 'three';", "import * as THREE from 'three';\n" + add.join('\n')) });
-});
-await h.page.reload(); await h.page.waitForFunction(() => window.GAME, null, { timeout: 60000 });
-const r9 = await h.page.evaluate(stub => {
-  const { G, startGame, buyWare, WARES, HANK, T } = GAME, w = id => WARES.find(o => o.id === id), out = {};
-  startGame({ kind: 'bot', index: 0 }); G.players[0].bot = {}; G.wool = 20;
-  out.waterShown = w('water').show(); out.water = buyWare(w('water')); out.got = window.__water; out.wool = G.wool;
-  out.clipShown = w('clippers').show(); out.clip = buyWare(w('clippers')); out.clippers = !!HANK.clippers; out.clipAfter = w('clippers').show(); out.woolAfterClip = G.wool;
-  out.want = { amt: T.vendor.water.amt, price: T.vendor.water.price }; out.stub = stub;
-  return out;
-}, stub);
-ok('💧 with fillWater: the mat shows, a bark puts a batch through it and spends wool', r9.waterShown && (!stub.water || (r9.water === 'buy' && r9.got === r9.want.amt && r9.wool === 20 - r9.want.price)), r9);
-ok('✂️ with giveHankClippers: free, Hank gets them, the mat goes', !stub.clip || (r9.clipShown && r9.clip === 'buy' && r9.clippers && !r9.clipAfter && r9.woolAfterClip === r9.wool), r9);
 
 ok('no page errors', h.errors.length === 0, h.errors.slice(0, 5));
 console.log(fails ? `${fails} FAILED` : 'all ok');
