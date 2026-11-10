@@ -61,6 +61,8 @@ that touch what you changed, and report their numbers.
 | `node tools/night-sim.mjs idle\|guard` | a night in the open with coyote packs, undefended or guarded by a bot dog |
 | `node tools/breed-sim.mjs [days] [--trough N] [--set k=v]` | a flock parked at a camp for days: lambs, pasture left near the pen, how far out they graze, starvation |
 | `node tools/graze-sim.mjs [--moveon \| --trough N]` | how fast a hungry flock fills up and how far apart grazers stand; a grazed-bare patch (does the flock move on together?); a night at a stocked trough |
+| `node tools/lamb-sim.mjs [--hunger H] [--trough N]` | the player's evening: graze by the camp, pen at 19:30, how many are well fed, courted, and lambs at dawn |
+| `node tools/gateway-sim.mjs` | driving the flock into a pen and out again through a gate swung in or out: does anyone stall at the gate? |
 | `node tools/hank-test.mjs` | Hank's voice rules and clips, the barn, looks in the world, the saved flock |
 | `node tools/net-test.mjs [--shots DIR]` | online co-op with real PeerJS between two or three pages: inputs, the flock, grass, coyotes, Hank, punts, gates, rams, hats, drop and rejoin, errors, bytes per second (`PEERSERVER=host:port` for a local server) |
 
@@ -116,6 +118,13 @@ input. Inputs are screen-space, so to move along world direction (dx, dz) use
     ranges further out each day; hunger at dawn creeps up after about six
     days and starvation trickles in, rather than a one-day crash.
   - Regrowth runs in `step()`, so headless tests regrow grass too.
+- **Lambs.** A ewe that's well fed (under `T.breedHunger`) any time from 16:00
+  is ready for the night and stays ready unless she gets properly hungry
+  (`T.readyLose`). Rams court the ready ewes in a shut pen; a courted ewe
+  lambs at dawn (`T.lambChance`, better if she fed at the trough) unless
+  she's hungrier than `T.lambHunger`, then rests `T.lambRest` days. Test:
+  `node tools/lamb-sim.mjs [--hunger H]` (a 13:00 hunger of 0.97 leaves about 8 of
+  12 fed at a 19:30 penning: 6–7 courted, about 3 lambs).
 - **The trough** (`pen.trough.food`, 1 unit = 1.0 hunger): penned sheep
   hungrier than 0.18 take a place along it (one per metre), and the rest stand
   aside and wait. They feed from late afternoon and wake at night to eat. A

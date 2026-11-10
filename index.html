@@ -219,7 +219,7 @@
     <div id="hNight"></div>
   </div>
   <div id="needs" class="panel">
-    <div title="Sheep fed past the white mark are well fed: ewes like that can be courted by a ram in a shut pen overnight">Well fed: <b id="hFed">0/0</b></div>
+    <div title="Sheep fed past the white mark are well fed. A ewe that's well fed any time from 4pm stays ready all night: pen her with a ram and she may lamb at dawn">Well fed: <b id="hFed">0/0</b></div>
     <div class="bar"><div id="hHunger"></div><i id="hFedMark"></i></div>
     <div>Pasture: <b id="hGrass">Good</b></div>
     <div>Mood: <b id="hMood">Calm</b></div>
@@ -338,12 +338,15 @@ const T = {
   grazeFull: 0.35,       // grass at least this thick is cropped at the full rate; thinner, proportionally slower
   grazeHunger: 0.1,      // sheep below this hunger stop grazing and idle
   regrowPerHour: 0.005,  // grass units per cell per in-game hour (x (0.35 + cap)): a cropped patch takes about five days to come back
-  breedHunger: 0.3,      // "well fed": ewes below this can be courted (and lamb at dawn); the HUD counts them
+  breedHunger: 0.3,      // "well fed": a ewe below this any time from courtHour on is ready to breed tonight; the HUD counts them
+  readyLose: 0.6,        // a ready ewe stays ready all night unless she gets this hungry
+  lambHunger: 0.6,       // a courted ewe lambs at dawn unless she's hungrier than this
   lambGrowDays: 2,
   sheepWalk: 1.5, sheepRun: 7.8, lambRun: 7.0, sheepR: 0.56,
   // sheep mind & rams: fear (instant) / stress (slow mood) / panic, goals, critical mass, cornering, rams, courting
   fleeBase: 2.0, fleeGain: 6.8, fleeStress: 0.8, panicRun: 1.6,   // flee speed = base + gain*fear + stress bonus (+panicRun when panicked), capped by run
   sheepTrot: 3.8, penWalk: 1.35, courtWalk: 2.2,
+  gatePocketOut: 2.2,    // a sheep caught behind an open gate (between the leaf and the fence or wing) walks out away from the hinge this hard
   moveMin: 1.0,          // a calm sheep joins neighbours moving faster than this (m/s); scale it with sheepWalk or the flock coasts on
   pressSteer: 0.9,         // how far a moving dog's pressure bends toward its direction of travel (at 8 m/s)
   stressCalmSpd: 6,        // a dog closing on a sheep slower than this (m/s) doesn't stress it by speed alone
@@ -368,7 +371,8 @@ const T = {
   ramDogFromDay: 2,      // on day 1 a ram only charges a dog that provokes it (punt, shake, holding on): new players learn the drive first
   ramCoyoteR: 7, ramBonk: 0.8, ramCoyoteCd: [12, 18],   // rams defend the flock, but they don't win the night on their own
   ramWindup: 0.9, ramWindupProvoked: 0.6, ramCharge: 14, ramChargeT: 1, ramHitR: 1.5, ramHitStun: 1.1, ramDazed: 1.8, ramCd: [10, 15], ramBarkCd: 8,
-  courtHour: 16, wooTime: 3.2, courtCd: 2.8, lambChance: 0.4, twinChance: 0.15,
+  courtHour: 16, wooTime: 2.0, courtCd: 1.0, lambChance: 0.5, twinChance: 0.15,
+  lambRest: 3,           // days a ewe rests after lambing before she can be courted again
   // the trough (pen.trough.food: 1 unit takes 1.0 off one sheep's hunger): penned sheep feed there from late afternoon and through the night
   troughWant: 0.18, troughFull: 0.06,   // a penned sheep hungrier than troughWant goes to feed, and eats till it's down to troughFull
   troughRate: 1.0,       // hunger a sheep eats off per in-game hour at the trough (alfalfa is richer than grass)
@@ -451,7 +455,7 @@ function fbm(x, z, o = 3) { let s = 0, a = 0.5, f = 1, n = 0; for (let i = 0; i 
 // AUDIO — everything synthesized with WebAudio, no files
 // =====================================================================
 const Sound = (() => {
-  let ac = null, master = null, noiseBuf = null, amb = null, lastBaa = 0, lastYelp = 0;
+  let ac = null, master = null, noiseBuf = null, amb = null, lastBaa = 0, lastYelp = 0, baaEnds = [];
   function init() {
     if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -503,8 +507,14 @@ const Sound = (() => {
     get ctx() { return ac; }, get dest() { return master; },   // for Hank's recorded voice (HANK section)
     bark(p = 1, pan = 0) { if (!ac) return; const t = ac.currentTime; const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
-      if (!ac) return; const now = ac.currentTime; if (!force && now - lastBaa < 0.35) return; lastBaa = now;
+      // never a screaming chorus: at most two bleats at once (three if one matters), and even an important one waits a beat
+      if (!ac) return; const now = ac.currentTime;
+      baaEnds = baaEnds.filter(e => e > now);
+      if (force ? (now - lastBaa < 0.15 || baaEnds.length >= 3) : (now - lastBaa < 0.35 || baaEnds.length >= 2)) return;
+      lastBaa = now;
+      p = Math.min(p, 1.75);   // past this it's a shriek
       const t = now + Math.random() * 0.04, dur = 0.5 + Math.random() * 0.3, f0 = 270 * p;
+      baaEnds.push(t + dur);
       const o = ac.createOscillator(); o.type = 'sawtooth';
       o.frequency.setValueAtTime(f0 * 1.1, t); o.frequency.linearRampToValueAtTime(f0, t + 0.1); o.frequency.linearRampToValueAtTime(f0 * 0.88, t + dur);
       const vib = ac.createOscillator(); vib.frequency.value = 7 + Math.random() * 3; const vg = ac.createGain(); vg.gain.value = f0 * 0.07;
@@ -2075,7 +2085,7 @@ function ramStep(s, dt) {
   s.rs = 'idle'; return false;
 }
 // courting: a ram in a closed pen in the evening woos the fed ewes in there with him, one at a time
-const ewePrime = (o, p) => o && !o.dead && !o.lamb && !o.ram && !o.bred && o.pen === p && o.hunger < T.breedHunger && !o.grabbed && !o.heldBy && !o.air;
+const ewePrime = (o, p) => o && !o.dead && !o.lamb && !o.ram && !o.bred && o.pen === p && (o.ready || o.hunger < T.breedHunger) && !(o.lambedDay && G.clock.day - o.lambedDay < T.lambRest) && !o.grabbed && !o.heldBy && !o.air;
 function courtStep(s, dt) {
   const p = s.pen, ok = p && p.gateT < 0.1 && (G.clock.hour >= T.courtHour || isNight()) && s.fear < 0.3 && G.mode === 'play';
   if (!ok) { if (s.court) s.court = null; if (s.state === 'court') s.state = 'idle'; return; }
@@ -2370,12 +2380,20 @@ function updateSheep(dt, dtH) {
         if (r < p.R && r > p.R - 1.5) { const k = (r - (p.R - 1.5)) / 1.5; dX -= px / r * k; dZ -= pz / r * k; }
         else if (r >= p.R && r < p.R + 1.3) { const k = (p.R + 1.3 - r) / 1.3; dX += px / r * k; dZ += pz / r * k; }
       }
-      // funnel wings (and a shut gate): keep off them, and peel along them toward the free end instead of grinding in
+      // funnel wings (and the gate leaf): keep off them, and peel along them toward the free end instead of grinding in
       for (const p of pens) {
         if (Math.abs(s.x - p.gx) > 10 || Math.abs(s.z - p.gz) > 10) continue;
+        // behind an open gate (the pocket between the leaf and the fence or wing it swung toward): walk out, away from the hinge
+        if (Math.abs(p.phi || 0) > 0.2) {
+          const hx = s.x - p.hinge.x, hz = s.z - p.hinge.z, hr = Math.hypot(hx, hz), psi = gatePsi(p, s.x, s.z);
+          if (hr > 0.2 && hr < p.gateLen + 1 && Math.sign(psi) === Math.sign(p.phi) && Math.abs(psi) > Math.abs(p.phi) && Math.abs(psi) < Math.abs(p.phi) + 1.2) {
+            const k = T.gatePocketOut * (1.2 - Math.min(1, hr / (p.gateLen + 1)) * 0.6);
+            dX += hx / hr * k; dZ += hz / hr * k; spd = Math.max(spd, T.sheepWalk * 0.9);
+          }
+        }
         const L = p.segs.length;
         for (let q = L - 2; q <= L; q++) {
-          const g = q < L ? p.segs[q] : p.gateSeg; if (q === L && p.gateT > 0.5) continue;
+          const g = q < L ? p.segs[q] : p.gateSeg, leafOpen = q === L && Math.abs(p.phi || 0) > 0.2;   // the gate leaf: ax/az is the hinge, bx/bz its free end
           const abx = g.bx - g.ax, abz = g.bz - g.az, l2 = abx * abx + abz * abz, t = clamp(((s.x - g.ax) * abx + (s.z - g.az) * abz) / l2, 0, 1);
           if (q < L && (t < 0.08 || s.pen)) continue;   // the gateposts themselves are the gateway's business
           const nx0 = s.x - (g.ax + abx * t), nz0 = s.z - (g.az + abz * t), dd = Math.hypot(nx0, nz0);
@@ -2384,7 +2402,8 @@ function updateSheep(dt, dtH) {
           dX += nx * (1.4 - dd) * 0.9; dZ += nz * (1.4 - dd) * 0.9;
           if (into > 0) {
             dX += nx * into; dZ += nz * into;   // don't push into it: slide along
-            if (q < L) {   // outside a wing, peel out round its tip; inside the funnel and wanting in, slide toward the gate
+            if (leafOpen) { const ll = Math.sqrt(l2); dX += abx / ll * into * 1.2; dZ += abz / ll * into * 1.2; }   // an open gate: slide off its free end, never into the hinge corner
+            else if (q < L) {   // outside a wing, peel out round its tip; inside the funnel and wanting in, slide toward the gate
               const ll = Math.sqrt(l2), tx = abx / ll, tz = abz / ll, ix = p.gx + Math.cos(p.gateA) * 3 - g.ax, iz = p.gz + Math.sin(p.gateA) * 3 - g.az;
               const inFunnel = (abx * iz - abz * ix) * (abx * (s.z - g.az) - abz * (s.x - g.ax)) > 0;
               if (!inFunnel) { dX += tx * into; dZ += tz * into; } else if (pp && pp.pen === p) { dX -= tx * into; dZ -= tz * into; }
@@ -2426,6 +2445,10 @@ function updateSheep(dt, dtH) {
     // ---- hunger & grazing
     const sleeping = s.state === 'sleep';
     s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH * (sleeping ? T.sleepHungerMul : 1));
+    if (!s.lamb && !s.ram) {   // well fed any time from late afternoon on: ready to breed tonight (a night's hunger doesn't undo it)
+      if (s.hunger < T.breedHunger && (G.clock.hour >= T.courtHour || isNight())) s.ready = true;
+      else if (s.hunger > T.readyLose) s.ready = false;
+    }
     s.eating = false;
     if (s.state === 'graze' && s.hunger > 0.02) {
       // eating is counted in in-game hours (so it keeps pace with hunger whatever T.hourSec is), and thin grass is
@@ -2480,7 +2503,7 @@ function onSheepEnteredPen(s, pen) {
 // the white mark is the breeding line (T.breedHunger), and "Well fed 9/14" counts the sheep past it
 function updateFedHUD(live) {
   const el = document.getElementById('hFed'), bar = document.getElementById('hHunger'), mark = document.getElementById('hFedMark'); if (!el || !bar) return;
-  const n = live.length, full = n ? 1 - live.reduce((a, s) => a + s.hunger, 0) / n : 0, fed = live.filter(s => s.hunger < T.breedHunger).length, line = 1 - T.breedHunger;
+  const n = live.length, full = n ? 1 - live.reduce((a, s) => a + s.hunger, 0) / n : 0, fed = live.filter(s => s.hunger < T.breedHunger || s.ready).length, line = 1 - T.breedHunger;   // (ready ewes stay counted through the night)
   bar.style.width = `${Math.round(full * 100)}%`; bar.style.background = full >= line ? '#7ed957' : full >= 0.4 ? '#ffd36b' : '#ff7a6b';
   if (mark) mark.style.left = `${Math.round(line * 100)}%`;
   const txt = `${fed}/${n}`; if (el.textContent !== txt) el.textContent = txt;
@@ -2505,8 +2528,9 @@ function lambsAtDawn() {
   let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram);
   for (const s of [...G.sheep]) {
     if (s.dead) continue;
-    if (!s.lamb && !s.ram && s.bred && s.hunger < T.breedHunger + 0.15 && Math.random() < T.lambChance * (s.flushed ? T.flushLamb : 1)) {
+    if (!s.lamb && !s.ram && s.bred && s.hunger < T.lambHunger && Math.random() < Math.min(0.95, T.lambChance * (s.flushed ? T.flushLamb : 1))) {
       const n = Math.random() < (s.flushed ? T.flushTwins : T.twinChance) ? 2 : 1;
+      s.lambedDay = G.clock.day;   // she rests a few days before she can be courted again
       for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
         const l = makeSheep(s.x + rnd(-0.6, 0.6), s.z + rnd(-0.6, 0.6), { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2 });
         G.sheep.push(l); born++;
@@ -2514,7 +2538,7 @@ function lambsAtDawn() {
         floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
       }
     }
-    s.bred = false; s.breedOK = false; s.flushed = false; s.troughAte = 0;
+    s.bred = false; s.breedOK = false; s.flushed = false; s.troughAte = 0; s.ready = false;
   }
   for (const s of G.sheep) if (s.lamb) { s.age++; if (s.age >= T.lambGrowDays) growUp(s); }
   // the bell passes to another ewe if its owner is gone
@@ -2808,9 +2832,9 @@ function pounceHits(d) {
   }
   if (launcherPounce(d)) return;
   for (const s of G.sheep) {
-    if (s.dead || s.air || s.heldBy || s.grabbed || s.pen) continue;
+    if (s.dead || s.air || s.heldBy || s.grabbed) continue;
     const bx = s.x - d.x, bz = s.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
-    if (bd < T.pounceHitR) { punt(s, d, bx / bd, bz / bd); return; }
+    if (bd < T.pounceHitR && !fenceBetween(d.x, d.z, s.x, s.z)) { punt(s, d, bx / bd, bz / bd); return; }   // penned ones too (bonk them out over the fence), but never through a fence
   }
 }
 function endLunge(d, k = 0.15) { d.pounceT = 0; d.vx *= k; d.vz *= k; landDog(d, 0.28); }   // the dog stops dead: all the energy goes into what it hit
@@ -3156,7 +3180,8 @@ function shakeHold(d) {
   } else if (kind === 'ram') {   // a ram bucks you off and comes for you
     releaseHold(d, false); knockDog(d, -fx * 10, -fz * 10, 0.5, 'BUCKED!'); provokeRam(H, d);
   } else {   // a sheep or lamb: just frightened
-    H.fear = 1; H.panic = 1; H.stress = Math.min(1, (H.stress || 0) + 0.35); Sound.baa(H.pitch * 1.3, 0.45, pan, true); floatText('BAA!', H.x, H.y + 1.6, H.z, '#ffffff', 1);
+    H.fear = 1; H.panic = 1; H.stress = Math.min(1, (H.stress || 0) + 0.35);
+    if (G.time - (H.shakeBaaT || -9) > 0.9) { H.shakeBaaT = G.time; Sound.baa(H.pitch * 1.12, 0.38, pan, true); floatText('BAA!', H.x, H.y + 1.6, H.z, '#ffffff', 1); }   // one cry a second, not one a shake
   }
 }
 // rigidly at the mouth (never a spring); it fights back as a force on the dog, and whatever it bumps stops the dog too
@@ -3226,7 +3251,7 @@ function initGates() {
   }
 }
 // tests/dev: snap a gate open (swung out, lining up with its funnel wing) or shut and latched
-function setGate(p, open) { p.phi = open ? T.gate.maxOut * 0.95 : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; updateGateGeometry(p); }
+function setGate(p, open, inward = false) { p.phi = open ? (inward ? -T.gate.maxIn * 0.73 : T.gate.maxOut * 0.95) : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; updateGateGeometry(p); }
 function resetGate(p) { p.phi = 0; p.w = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = false; updateGateGeometry(p); }
 function gatePsi(p, x, z) { return p.outSign * wrapA(Math.atan2(z - p.hinge.z, x - p.hinge.x) - p.angClosed); }   // a point's angle round the hinge, in phi terms
 function gateNormal(p, phi = p.phi) { const a = p.angClosed + p.outSign * phi; return { x: -Math.sin(a) * p.outSign, z: Math.cos(a) * p.outSign }; }   // toward the leaf's +phi side
@@ -6008,7 +6033,7 @@ const NET_TYPES = {
     fields: {
       x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', eating: 'b', hunger: .01, hopY: .02, hopV: .1,
       lamb: 'b', age: 'i', black: 'b', scale: .01, pitch: .01, name: 's', pen: '@pen', grabbed: '@coyote',
-      stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog',
+      stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog', ready: 'b',
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
       ...NET_AIR,
     },
