@@ -9,7 +9,7 @@ const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name
 const r1 = await h.page.evaluate(() => {
   const { BRAMBLES, sAt, sdfAt, PATH_LEN, CAMPS, trailInfo } = GAME, s = BRAMBLES.map(b => sAt(b.x, b.z));
   return { n: BRAMBLES.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, minSdf: Math.min(...BRAMBLES.map(b => sdfAt(b.x, b.z))),
-    onTrail: BRAMBLES.filter(b => Math.abs(trailInfo(b.x, b.z).lat) < 5).length, nearCamp: BRAMBLES.filter(b => CAMPS.some(c => Math.hypot(b.x - c.x, b.z - c.z) < c.R + 8)).length };
+    onTrail: BRAMBLES.filter(b => Math.abs(trailInfo(b.x, b.z).lat) < 5).length, nearCamp: BRAMBLES.filter(b => CAMPS.some(c => Math.hypot(b.x - c.x, b.z - c.z) < c.R + 16)).length };
 });
 ok(`${r1.n} bramble bushes`, r1.n >= 40, r1);
 ok('spread down the trail', r1.first < 150 && r1.last > r1.len - 250, r1);
