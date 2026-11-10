@@ -342,6 +342,13 @@ const T = {
   readyLose: 0.6,        // a ready ewe stays ready all night unless she gets this hungry
   lambHunger: 0.6,       // a courted ewe lambs at dawn unless she's hungrier than this
   lambGrowDays: 2,
+  // ageing, in days (one day = 24 x hourSec = 4 real minutes; ages tick at dawn and carry over between journeys in the saved flock):
+  // a lamb grows up at lambGrowDays, a yearling fills out by adultDays, and from oldDays a sheep greys, stoops and slows
+  // until it dies peacefully in its sleep at an age drawn from lifeDays (so a sheep lives some 3-4 hours of play)
+  adultDays: 8, oldDays: 32, lifeDays: [46, 62],
+  startAge: [3, 24], bellAge: [26, 30],   // the first flock's ages (the bell ewe is the wise old one)
+  oldSlow: 0.2,          // at the very end of its life a sheep runs this much slower (coyotes notice: oldPrey)
+  oldLamb: 0.5, oldPrey: 6,   // a very old ewe's lamb chance x(1 - oldLamb); coyotes favour old sheep by up to oldPrey
   sheepWalk: 1.5, sheepRun: 7.8, lambRun: 7.0, sheepR: 0.56,
   // sheep mind & rams: fear (instant) / stress (slow mood) / panic, goals, critical mass, cornering, rams, courting
   fleeBase: 2.0, fleeGain: 6.8, fleeStress: 0.8, panicRun: 1.6,   // flee speed = base + gain*fear + stress bonus (+panicRun when panicked), capped by run
@@ -1686,7 +1693,7 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, saved: 0 },
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, saved: 0 },
   nextSheepId: 1, finalArm: 0, hints: {}, visited: new Set(), lost: [],
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
@@ -1728,13 +1735,22 @@ function sheepName(o = {}) {
   for (let k = 2; ; k++) { const n = `${pick(SHEEP_NAMES)} ${['II', 'III', 'IV', 'V', 'VI'][k - 2] || k}`; if (!used.has(n)) return n; }
 }
 // "ewe, pink fleece, red bobble hat, sunglasses" — what kind of sheep it is and what it's wearing (FLOCK LOOKS section)
-function describeSheep(s) { return [s.lamb ? 'lamb' : s.ram ? 'ram' : s.bell ? 'bell ewe' : 'ewe', s.black && !(s.look && s.look.wool) ? 'black fleece' : '', ...lookWords(s)].filter(Boolean).join(', '); }
+function describeSheep(s) { return [(oldK(s) >= 0.3 ? 'old ' : '') + (s.lamb ? 'lamb' : s.ram ? 'ram' : s.bell ? 'bell ewe' : 'ewe'), s.black && !(s.look && s.look.wool) ? 'black fleece' : '', ...lookWords(s)].filter(Boolean).join(', '); }
+// AGE: 0 until T.oldDays, rising to 1 on the day it dies of old age
+const oldK = s => s.lamb || !s.life ? 0 : clamp((s.age - T.oldDays) / Math.max(1, s.life - T.oldDays), 0, 1);
+// size with age: a lamb grows 0.55 -> 0.85, then a yearling fills out to full size by T.adultDays
+const ageGrow = s => s.lamb ? lerp(0.55, 0.85, clamp(s.age / T.lambGrowDays, 0, 1)) : lerp(0.88, 1, clamp((s.age - T.lambGrowDays) / (T.adultDays - T.lambGrowDays), 0, 1));
+// "yearling", "in her prime", "getting on", "very old"
+function ageWord(s) {
+  if (s.lamb) return 'lamb'; const k = oldK(s), her = s.ram ? 'his' : 'her';
+  return s.age < T.adultDays ? 'yearling' : k <= 0 ? `in ${her} prime` : k < 0.5 ? 'getting on' : 'very old';
+}
 const rollTrait = () => { const r = Math.random(); return r < 0.2 ? 'skittish' : r < 0.35 ? 'stubborn' : null; };
-function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 0.1, hunger = 0.25, ram = false, bell = false } = {}) {
+function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 0.1, hunger = 0.25, ram = false, bell = false, age = lamb ? 0 : Math.round(rnd(...T.startAge)) } = {}) {
   ram = ram && !lamb;
   return {
     id: G.nextSheepId++, name: sheepName({ ram }), x, z, vx: 0, vz: 0, y: groundY(x, z), yaw: Math.random() * TAU,
-    r: lamb ? 0.36 : ram ? T.ramRadius : T.sheepR, lamb, age: 0, grow: lamb ? 0.55 : 1, mother, black, scale: ram ? T.ramScale * rnd(0.97, 1.04) : 1.02 + Math.random() * 0.16,
+    r: lamb ? 0.36 : ram ? T.ramRadius : T.sheepR, lamb, age, life: Math.round(rnd(...T.lifeDays)), grow: lamb ? 0.55 : 1, mother, black, scale: ram ? T.ramScale * rnd(0.97, 1.04) : 1.02 + Math.random() * 0.16,
     hunger, starve: 0, starveMax: T.starveHours * (0.65 + Math.random() * 0.7), fear: 0, panic: 0, stress: 0, alert: 0, fdx: 0, fdz: 0, state: 'idle', thinkT: Math.random(), tx: x, tz: z,
     eating: false, near: 0, pen: null, wasPen: null, grabbed: null, dead: false, breedOK: false, bred: false,
     hopY: 0, hopV: 0, leg: Math.random() * TAU, headPitch: 0, headYaw: 0, startled: false, baaT: rnd(2, 12),
@@ -1759,7 +1775,8 @@ function spawnFlock() {
   const place = () => { for (let k = 0; k < 50; k++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * (c.R - 1.6); const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (G.sheep.every(o => dist2(o, { x, z }) > 1.4)) return [x, z]; } return [c.x, c.z]; };
   for (let i = 0; i < T.startAdults; i++) {
     const [x, z] = place(), ram = i >= T.startAdults - T.startRams;
-    G.sheep.push(makeSheep(x, z, { black: !ram && (i === 3 || i === 9 && Math.random() < 0.5), hunger: rnd(0.2, 0.35), ram, bell: i === 7 }));
+    const bell = i === 7, age = Math.round(bell ? rnd(...T.bellAge) : rnd(...T.startAge));
+    G.sheep.push(makeSheep(x, z, { black: !ram && (i === 3 || i === 9 && Math.random() < 0.5), hunger: rnd(0.2, 0.35), ram, bell, age }));
   }
   for (let i = 0; i < T.startLambs; i++) { const m = G.sheep[i * 4 + 1]; const l = makeSheep(m.x + 0.8, m.z + 0.5, { lamb: true, mother: m, hunger: 0.25 }); l.age = 1; l.grow = 0.7; G.sheep.push(l); }
   applySavedFlock();   // FLOCK SAVE: last journey's named, dressed sheep take their places (call once the flock is built)
@@ -1768,7 +1785,8 @@ function spawnFlock() {
 function killSheep(s, why) {
   if (s.dead) return; s.dead = true;
   if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
-  if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
+  if (why === 'old') { G.stats.old = (G.stats.old || 0) + 1; burst(s.x, s.y + 0.8, s.z, 14, '#fff4c8', { speed: 0.6, up: 2.2, size: 0.1, life: 1.6, grav: -2 }); toast(lossLine(s, why), 'warn'); Sound.sad(); }
+  else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   addTombstone(s, why);
   G.lost.push({ name: s.name, why, day: G.clock.day, looks: describeSheep(s) });
@@ -2344,7 +2362,7 @@ function updateSheep(dt, dtH) {
     if (pk > 0) s.panic = Math.max(s.panic, 0.3 + 0.6 * pk);
     // ---- decide desired motion
     let dX = 0, dZ = 0, spd = 0, acc = 4, straight = false;
-    const run = (s.lamb ? T.lambRun : T.sheepRun) * (s.hunger >= 1 ? 0.7 : 1) * (s.trait === 'stubborn' ? 0.88 : 1) + pk * T.panicRun;
+    const run = (s.lamb ? T.lambRun : T.sheepRun) * (s.hunger >= 1 ? 0.7 : 1) * (s.trait === 'stubborn' ? 0.88 : 1) * (1 - T.oldSlow * oldK(s)) + pk * T.panicRun;
     const pp = penPull(s);
     if (s.ram && s.rs !== 'idle' && (s.pen || !play)) { s.rs = 'idle'; s.rcd = 4; s.state = 'idle'; }   // charged into a pen: penned
     if (s.ram && !s.lamb && play && !s.pen && ramStep(s, dt)) { dX = RAMV.x; dZ = RAMV.z; spd = RAMV.spd; acc = RAMV.acc; straight = RAMV.straight; }
@@ -2654,11 +2672,23 @@ function growUp(s) {
     toast(`${s.name} has grown into a fine young ram!`, 'good');
   }
 }
+// AGE: everyone is a day older at dawn. Lambs grow up, a sheep reaching T.oldDays starts to grey, and one that has
+// reached its life's span has died peacefully in its sleep (one being carried or in the air gets another day)
+function ageAtDawn() {
+  for (const s of [...G.sheep]) {
+    if (s.dead) continue;
+    s.age++;
+    if (s.lamb) { if (s.age >= T.lambGrowDays) growUp(s); continue; }
+    if (s.age === T.oldDays && s.age < s.life) toast(`${s.name} is getting on in years: ${s.ram ? 'his' : 'her'} fleece is greying.`, '');
+    if (s.age >= s.life && !s.grabbed && !s.heldBy && !s.air) killSheep(s, 'old');
+  }
+}
 function lambsAtDawn() {
+  ageAtDawn();
   let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram);
   for (const s of [...G.sheep]) {
     if (s.dead) continue;
-    if (!s.lamb && !s.ram && s.bred && s.hunger < T.lambHunger && Math.random() < Math.min(0.95, T.lambChance * (s.flushed ? T.flushLamb : 1))) {
+    if (!s.lamb && !s.ram && s.bred && s.hunger < T.lambHunger && Math.random() < Math.min(0.95, T.lambChance * (s.flushed ? T.flushLamb : 1) * (1 - T.oldLamb * oldK(s)))) {
       const n = Math.random() < (s.flushed ? T.flushTwins : T.twinChance) ? 2 : 1;
       s.lambedDay = G.clock.day;   // she rests a few days before she can be courted again
       for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
@@ -2670,7 +2700,6 @@ function lambsAtDawn() {
     }
     s.bred = false; s.breedOK = false; s.flushed = false; s.troughAte = 0; s.ready = false;
   }
-  for (const s of G.sheep) if (s.lamb) { s.age++; if (s.age >= T.lambGrowDays) growUp(s); }
   // the bell passes to another ewe if its owner is gone
   if (!G.sheep.some(s => !s.dead && s.bell)) {
     const c = G.sheep.filter(s => !s.dead && !s.lamb && !s.ram);
@@ -4262,7 +4291,7 @@ function pickPackTarget(p, exclude = null) {
   const L = p.leader; let best = null, bs = 1e9;
   for (const s of G.sheep) {
     if (!huntable(s) || s === exclude) continue;
-    let sc = Math.hypot(s.x - L.x, s.z - L.z) * 0.6 - (s.lamb ? 10 : 0) - Math.max(0, 5 - s.near) * 4 - s.hunger * 6 - (s.weak || 0) * 8;
+    let sc = Math.hypot(s.x - L.x, s.z - L.z) * 0.6 - (s.lamb ? 10 : 0) - Math.max(0, 5 - s.near) * 4 - s.hunger * 6 - (s.weak || 0) * 8 - oldK(s) * T.oldPrey;
     for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 16) sc += (16 - dd) * 3; }
     if (s.pen) sc += 14;
     if (sc < bs) { bs = sc; best = s; }
@@ -4690,17 +4719,24 @@ const HIP = [[0.2, 0.42, 0.28], [-0.2, 0.42, 0.28], [0.2, 0.42, -0.28], [-0.2, 0
 // SHARED HOOK: the fleece colour for one sheep (instance colour multiplies the white wool)
 function sheepWoolColor(s, out) {
   const st = s.hunger >= 1 ? 0.8 : 1;
-  if (s.look && s.look.wool) return out.set(s.look.wool).multiplyScalar(st);   // HANK'S BARN: a wool colour picked in the barn
-  if (s.black) return out.setRGB(0.27 * st, 0.27 * st, 0.25 * st);
-  if (s.ram && !s.lamb) return out.setRGB(0.93 * st, 0.88 * st, 0.78 * st);   // rams: a creamier, older fleece
-  const tint = s.lamb ? 1.0 : 0.97;
-  return out.setRGB(tint * st, tint * st, tint * st);
+  if (s.look && s.look.wool) out.set(s.look.wool).multiplyScalar(st);   // HANK'S BARN: a wool colour picked in the barn
+  else if (s.black) out.setRGB(0.27 * st, 0.27 * st, 0.25 * st);
+  else if (s.ram && !s.lamb) out.setRGB(0.93 * st, 0.88 * st, 0.78 * st);   // rams: a creamier, older fleece
+  else { const tint = s.lamb ? 1.0 : 0.97; out.setRGB(tint * st, tint * st, tint * st); }
+  const k = oldK(s);   // AGE: old fleece goes a dingy grey (and a black one grizzles)
+  return k > 0 ? out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k) : out;
+}
+// the head's instance colour: white, a black face, or a dyed tuft; greying round the muzzle with age
+const _cAge = new THREE.Color();
+function sheepHeadColor(s, out) {
+  if (s.look && s.look.wool) headTint(s, out); else { const v = s.black ? 0.5 : 1; out.setRGB(v, v, v); }
+  const k = oldK(s); return k > 0 ? out.lerp(_cAge.setRGB(0.82, 0.8, 0.78), 0.55 * k) : out;
 }
 function syncSheep() {
   let n = 0, nl = 0, nh = 0, nb = 0;
   for (const s of G.sheep) {
     if (s.dead || n >= T.maxSheep) continue;
-    const grow = s.lamb ? lerp(0.55, 0.85, clamp(s.age / T.lambGrowDays, 0, 1)) : 1; s.grow = grow;
+    const grow = ageGrow(s), ok = oldK(s); s.grow = grow;   // AGE: lambs and yearlings are smaller; old sheep stoop
     const sc = s.scale * grow, lying = s.state === 'sleep' || !!s.grabbed;
     // tells: a stressed sheep trembles; a ram squaring up rocks on its feet
     const shiver = s.stress > 0.5 && !lying ? Math.sin(G.time * 47 + s.id * 3.1) * 0.12 * (s.stress - 0.5) : 0;
@@ -4709,21 +4745,21 @@ function syncSheep() {
     _mb.compose(_v.set(s.x, s.y + s.hopY + (s.grabbed ? 0.25 : 0), s.z), _q.setFromEuler(_e), _s.set(sc, sc, sc));
     if (s.pose) poseSheep(s, _mb, sc);   // flying, held, squashed on landing (dog-moves section)
     const bob = s.state === 'flee' || s.rs === 'charge' ? Math.abs(Math.sin(s.leg)) * 0.08 : 0, breathe = 1 + Math.sin(G.time * 2 + s.id) * 0.02;
-    const thin = s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1;
-    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66) + bob, 0), _qa.identity(), _s.set(thin, breathe, 1));
+    const thin = (s.hunger > 0.75 ? lerp(1, 0.85, (s.hunger - 0.75) * 4) : 1) * (1 - 0.07 * ok);
+    _mp.compose(_v.set(0, (lying ? 0.38 : 0.66 - 0.07 * ok) + bob, 0), _qa.identity(), _s.set(thin, breathe * (1 - 0.04 * ok), 1));
     _ml.multiplyMatrices(_mb, _mp); SI.body.m.setMatrixAt(n, _ml);
     SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
     (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
     if (s.bell && nb < SI.bell.max) { _mp.compose(_v.set(0, bob, 0), _qa.identity(), _s.set(1, 1, 1)); _ml.multiplyMatrices(_mb, _mp); SI.bell.m.setMatrixAt(nb++, _ml); }
-    _e.set(s.headPitch, s.headYaw, 0, 'YXZ');
-    _mp.compose(_v.set(0, (lying ? 0.55 : 0.8) + bob, 0.5), _q.setFromEuler(_e), _s.set(1, 1, 1));
+    _e.set(s.headPitch + (lying ? 0 : 0.35 * ok), s.headYaw, 0, 'YXZ');   // an old sheep carries its head low
+    _mp.compose(_v.set(0, (lying ? 0.55 : 0.8 - 0.13 * ok) + bob, 0.5 + 0.03 * ok), _q.setFromEuler(_e), _s.set(1, 1, 1));
     _ml.multiplyMatrices(_mb, _mp); SI.head.m.setMatrixAt(n, _ml);
     (s.headM || (s.headM = new THREE.Matrix4())).copy(_ml);   // SHARED HOOK: head transform for hats, horns, bells
     if (s.ram && !s.lamb) SI.horn.m.setMatrixAt(nh++, _ml);
-    SI.head.m.setColorAt(n, _c.setRGB(s.black ? 0.5 : 1, s.black ? 0.5 : 1, s.black ? 0.5 : 1));
+    SI.head.m.setColorAt(n, sheepHeadColor(s, _c));
     for (let l = 0; l < 4; l++) {
       const paw = s.rs === 'windup' && l < 2 ? Math.max(0, Math.sin(G.time * 17 + l * Math.PI)) * 0.7 : 0;   // pawing the ground
-      const sw = lying ? 0 : Math.sin(s.leg + (l === 0 || l === 3 ? 0 : Math.PI)) * Math.min(0.8, Math.hypot(s.vx, s.vz) * 0.25) - paw;
+      const sw = lying ? 0 : Math.sin(s.leg + (l === 0 || l === 3 ? 0 : Math.PI)) * Math.min(0.8 - 0.3 * ok, Math.hypot(s.vx, s.vz) * 0.25) - paw;   // old legs: a stiffer, shorter stride
       _mp.compose(_v.set(HIP[l][0], HIP[l][1] + bob, HIP[l][2]), _q.setFromEuler(_e.set(sw, 0, 0)), _s.set(1, lying ? 0.01 : 1, 1));
       _ml.multiplyMatrices(_mb, _mp); SI.leg.m.setMatrixAt(nl++, _ml);
     }
@@ -4855,7 +4891,7 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
-  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved;
+  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0);
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
@@ -5421,7 +5457,7 @@ function onJourneyEnd(n) {
   if (n > 0) hank('thatll_do', null, { force: true, whistle: 'thatll_do', delay: 0.8 });
   else hank('try_again', null, { force: true, delay: 1 });
   const el = document.getElementById('eMem'), lost = FLOCK.memorial.filter(m => m.journey === FLOCK.journeys);
-  if (el) el.innerHTML = lost.length ? '<b>Fondly remembered:</b> ' + lost.map(m => `🕯️ <b>${escHTML(m.name)}</b>${m.words ? ` <i>(${escHTML(m.words)})</i>` : ''}, ${m.why === 'starved' ? 'starved' : 'taken by coyotes'} on day ${m.day}`).join(' · ') : '';
+  if (el) el.innerHTML = lost.length ? '<b>Fondly remembered:</b> ' + lost.map(m => `🕯️ <b>${escHTML(m.name)}</b>${m.words ? ` <i>(${escHTML(m.words)})</i>` : ''}, ${lostHow(m.why)} on day ${m.day}`).join(' · ') : '';
   saveFlock();
 }
 function escHTML(v) { return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -5467,10 +5503,13 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'starved' ? `${s.name} starved` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
-  return why === 'starved' ? `${base}… find better grass!` : `${base}…`;
+  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : `${base}…`;
 }
+// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved' or 'old'
+const cleanWhy = w => w === 'starved' || w === 'old' ? w : 'eaten';
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -5613,7 +5652,7 @@ function syncSheepDressUp(dt = 0) {
     const L = s.look; let tile = -1;
     if (L && s.headM) {
       if (L.paint && L.paint.length) tile = paintTile(s);
-      if (L.wool) { SI.head.m.setColorAt(n, headTint(s, _c)); headTinted = true; }
+      if (L.wool) { SI.head.m.setColorAt(n, sheepHeadColor(s, _c)); headTinted = true; }
       if (L.hat && L.hat !== 'none') for (const p of DRESS.item[L.hat] || []) dressPut(p, s.headM, L);
       for (const a of L.acc || []) for (const p of DRESS.item[a] || []) {
         if (p.onBody) { _mL.makeTranslation(0, s.state === 'sleep' || s.grabbed ? -0.27 : 0, 0); dressPut(p, _mS.multiplyMatrices(s.bodyM, _mL), L); }
@@ -5712,12 +5751,12 @@ function barnModel() {
   const B = BARN; if (!B.r) return;
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; }
   const s = B.sel; if (!s) return;
-  const L = lookOf(s), g = new THREE.Group(), grow = s.lamb ? lerp(0.55, 0.85, clamp(s.age / T.lambGrowDays, 0, 1)) : 1;
+  const L = lookOf(s), g = new THREE.Group(), grow = ageGrow(s);
   g.scale.setScalar((s.scale || 1) * grow);
   sheepWoolColor(s, B.bodyMat.color);
   B.body = barnPart(g, SHEEP_GEO.body, B.bodyMat, [0, 0.66, 0]);
   const head = new THREE.Group(); head.position.set(0, 0.8, 0.5); g.add(head); B.head = head;
-  if (L.wool) headTint(s, B.headMat.color); else B.headMat.color.setRGB(s.black ? 0.5 : 1, s.black ? 0.5 : 1, s.black ? 0.5 : 1);
+  sheepHeadColor(s, B.headMat.color);
   barnPart(head, SHEEP_GEO.head, B.headMat);
   for (const h of HIP) barnPart(g, SHEEP_GEO.leg, MAT.vc, h);
   const put = (geoSet, onBody) => { if (!geoSet) return; const par = onBody ? g : head; if (geoSet.fixed) barnPart(par, geoSet.fixed, MAT.vc); if (geoSet.tint) barnPart(par, geoSet.tint, tintMat(L.hatColor)); };
@@ -5857,7 +5896,7 @@ function barnList() {
 function barnInfo() {
   const s = BARN.sel, el = document.getElementById('barnInfo'); if (!s || !el) return;
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
-  const bits = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', s.black ? 'black fleece' : '', s.lamb && s.mother && !s.mother.dead ? `${s.mother.name}’s` : '', hunger, s.pen ? 'in the pen' : ''];
+  const bits = [s.lamb ? 'Lamb' : s.ram ? 'Ram' : 'Ewe', `${s.age | 0} day${(s.age | 0) === 1 ? '' : 's'} old${s.lamb ? '' : ', ' + ageWord(s)}`, s.black ? 'black fleece' : '', s.lamb && s.mother && !s.mother.dead ? `${s.mother.name}’s` : '', hunger, s.pen ? 'in the pen' : ''];
   el.textContent = bits.filter(Boolean).join(' · ');
 }
 function barnRefresh() {
@@ -5874,7 +5913,7 @@ function barnRefresh() {
   const note = document.getElementById('barnNote'); if (note) note.textContent = FLOCK.home.length ? `${FLOCK.home.length} more of your sheep are waiting at home for another journey.` : '';
   const fr = document.getElementById('barnFresh'); if (fr) { fr.textContent = BARN.fresh ? 'Really? Forget this flock (click again)' : 'Start a fresh flock'; fr.classList.toggle('warn', !!BARN.fresh); }
   const M = FLOCK.memorial, mem = document.getElementById('barnMem');
-  if (mem) mem.innerHTML = M.length ? '<span class="eyebrow">Fondly remembered</span><div class="memList">' + M.slice(0, 30).map(m => `<span class="mem">🕯️ <b>${escHTML(m.name)}</b> ${m.why === 'starved' ? 'starved' : 'was taken by coyotes'}, day ${m.day}${m.words ? ` <i>(${escHTML(m.words)})</i>` : ''}</span>`).join('') + '</div>' : '';
+  if (mem) mem.innerHTML = M.length ? '<span class="eyebrow">Fondly remembered</span><div class="memList">' + M.slice(0, 30).map(m => `<span class="mem">🕯️ <b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}${m.words ? ` <i>(${escHTML(m.words)})</i>` : ''}</span>`).join('') + '</div>' : '';
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [], pad = document.getElementById('barnPad');
   if (pad) pad.textContent = pads.length ? 'Pad: D-pad ↑↓ sheep · ←→ hat · Ⓧ wool · Ⓨ colour · LB/RB bits and bobs · Ⓐ new name · right stick turns · Ⓑ back' : 'Tab or Esc to go back';
 }
@@ -5949,13 +5988,13 @@ const cleanName = n => String(n || '').replace(/\s+/g, ' ').trim().slice(0, 14);
 function readFlockSave() {
   try {
     const j = JSON.parse(localStorage.getItem(FLOCK_KEY) || 'null'); if (!j || j.v !== 1) return null;
-    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed } : null).filter(Boolean).slice(0, 80);
-    const memorial = (Array.isArray(j.memorial) ? j.memorial : []).map(m => m && cleanName(m.name) ? { name: cleanName(m.name), why: m.why === 'starved' ? 'starved' : 'eaten', day: m.day | 0, journey: m.journey | 0, words: String(m.words || '').slice(0, 120), look: cleanLook(m.look), ram: !!m.ram, lamb: !!m.lamb } : null).filter(Boolean).slice(0, 60);
+    const flock = (Array.isArray(j.flock) ? j.flock : []).map(r => r && cleanName(r.name) ? { name: cleanName(r.name), look: cleanLook(r.look), black: !!r.black, ram: !!r.ram, renamed: !!r.renamed, age: clamp(r.age | 0, 0, 999), life: clamp(r.life | 0, 0, 999) } : null).filter(Boolean).slice(0, 80);
+    const memorial = (Array.isArray(j.memorial) ? j.memorial : []).map(m => m && cleanName(m.name) ? { name: cleanName(m.name), why: cleanWhy(m.why), day: m.day | 0, journey: m.journey | 0, words: String(m.words || '').slice(0, 120), look: cleanLook(m.look), ram: !!m.ram, lamb: !!m.lamb } : null).filter(Boolean).slice(0, 60);
     return { flock, memorial, journeys: j.journeys | 0 };
   } catch (e) { return null; }
 }
 const customised = r => r.renamed || r.look.hat !== 'none' || r.look.acc.length > 0 || !!r.look.wool || r.look.paint.length > 0 ? 1 : 0;
-function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed }; }
+function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0 }; }
 function saveFlock() {
   if (NET.role === 'guest') return false;   // ONLINE: a guest is drawing the host's flock; this browser's own saved flock stays as it was
   const flock = G.sheep.filter(s => !s.dead).map(sheepRecord).concat(FLOCK.home).slice(0, 80);
@@ -5978,6 +6017,7 @@ function applySavedFlock() {
     const i = roster.findIndex((r, k) => !used.has(k) && !!r.ram === !!s.ram); if (i < 0) continue;
     used.add(i); const r = roster[i];
     s.name = r.name; s.look = cleanLook(r.look); s.black = r.black; s.renamed = r.renamed; s.fromSave = true;
+    if (r.life > 0) { s.age = Math.max(T.lambGrowDays, r.age); s.life = Math.max(r.life, s.age + 1); }   // AGE: they're as old as they were (older saves keep the age they drew)
   }
   FLOCK.home = roster.filter((r, k) => !used.has(k));
   // names stay unique: a new arrival that drew a saved sheep's name gets another
@@ -5985,12 +6025,13 @@ function applySavedFlock() {
   for (const s of G.sheep) if (!s.fromSave && taken.has(s.name)) s.name = sheepName({ ram: s.ram && !s.lamb });
 }
 function mournSheep(s, why) {
-  FLOCK.memorial.unshift({ name: s.name, why: why === 'starved' ? 'starved' : 'eaten', day: G.clock.day, journey: FLOCK.journeys, words: lookWords(s).join(', '), look: cleanLook(s.look), ram: !!s.ram, lamb: !!s.lamb });
+  FLOCK.memorial.unshift({ name: s.name, why: cleanWhy(why), day: G.clock.day, journey: FLOCK.journeys, words: lookWords(s).join(', '), look: cleanLook(s.look), ram: !!s.ram, lamb: !!s.lamb });
   if (FLOCK.memorial.length > 60) FLOCK.memorial.length = 60;
   HANK.lostTonight++;
   if (G.mode !== 'play') return;
   saveFlock();
-  if (living().length > 0) hank('one_more', null, { force: true, delay: 1.4 });
+  if (why === 'old') hank(null, pick([`Rest easy, ${s.name}. Ye had a grand long life.`, `Auld ${s.name}… went in ${s.ram ? 'his' : 'her'} sleep. A good innings.`, `Ah, ${s.name}. Many a mile ye walked wi' us.`]), { force: true, delay: 1.4 });
+  else if (living().length > 0) hank('one_more', null, { force: true, delay: 1.4 });
 }
 function freshFlock() {
   try { localStorage.removeItem(FLOCK_KEY); } catch (e) {}
@@ -6031,12 +6072,12 @@ function startGame(dev) {
 function finishGame(n) {
   if (G.mode !== 'play') return;
   G.mode = 'end';
-  const st = G.stats, lost = st.eaten + st.starved, ratio = n / Math.max(1, st.start);
+  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0), ratio = n / Math.max(1, st.start);
   const stars = ratio >= 1.8 ? 3 : ratio >= 1.2 ? 2 : ratio >= 0.7 ? 1 : 0;
   $('eTitle').textContent = n > 0 ? 'The Promised Land!' : 'The flock is gone…';
   $('eStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
   $('eLine').textContent = n > 0 ? `You brought ${n} sheep home.` : 'No sheep made it. Try again!';
-  $('eStats').innerHTML = [['Started with', st.start], ['Lambs born', st.born], ['Rescued from coyotes', st.saved], ['Lost to coyotes', st.eaten], ['Starved', st.starved], ['Days on the trail', G.clock.day], ['Final flock', n]]
+  $('eStats').innerHTML = [['Started with', st.start], ['Lambs born', st.born], ['Rescued from coyotes', st.saved], ['Lost to coyotes', st.eaten], ['Starved', st.starved], ['Died of old age', st.old || 0], ['Days on the trail', G.clock.day], ['Final flock', n]]
     .map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
   $('end').style.opacity = 1; $('end').style.pointerEvents = 'auto'; $('hud').classList.add('hidden');
   if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = pens[3]; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
@@ -6052,7 +6093,7 @@ function resetGame() {
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
   resetForage();   // FORAGE: buckets back on their hooks, troughs empty, every plant grown
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, saved: 0 };
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, saved: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; G.lost = [];
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; });
@@ -6162,7 +6203,7 @@ const NET_TYPES = {
     tag: 's', all: () => G.sheep, id: s => s.id,
     fields: {
       x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', eating: 'b', hunger: .01, hopY: .02, hopV: .1,
-      lamb: 'b', age: 'i', black: 'b', scale: .01, pitch: .01, name: 's', pen: '@pen', grabbed: '@coyote',
+      lamb: 'b', age: 'i', life: 'i', black: 'b', scale: .01, pitch: .01, name: 's', pen: '@pen', grabbed: '@coyote',
       stress: .04, rs: 's', ram: 'b', bell: 'b', heldBy: '@dog', ready: 'b',
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
       ...NET_AIR,
@@ -6214,7 +6255,7 @@ const NET_TYPES = {
     },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', saved: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', saved: 'i' } },
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
@@ -6405,7 +6446,7 @@ function netReplayFx(ev) {
 // the end screen's "Fondly remembered": the host's journey (G.lost), not this browser's own saved flock
 function netGuestEndMem() {
   const el = $('eMem'), L = Array.isArray(G.lost) ? G.lost : []; if (!el) return;
-  el.innerHTML = L.length ? '<b>Fondly remembered:</b> ' + L.map(m => `🕯️ <b>${escHTML(m.name)}</b>${m.looks ? ` <i>(${escHTML(m.looks)})</i>` : ''}, ${m.why === 'starved' ? 'starved' : 'taken by coyotes'} on day ${m.day | 0}`).join(' · ') : '';
+  el.innerHTML = L.length ? '<b>Fondly remembered:</b> ' + L.map(m => `🕯️ <b>${escHTML(m.name)}</b>${m.looks ? ` <i>(${escHTML(m.looks)})</i>` : ''}, ${lostHow(m.why)} on day ${m.day | 0}`).join(' · ') : '';
 }
 
 // ---- pause (works offline too) ---------------------------------------------------------------------------
@@ -7121,6 +7162,7 @@ function debugKeys() {
   if (keyEdge.has('KeyN')) G.clock.hour = 19.9;
   if (keyEdge.has('KeyM')) G.clock.hour = 5.9;
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
+  if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = pens[3]; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } } }
 }
 // expose for debugging / automated tests
@@ -7139,7 +7181,7 @@ function renderOnce(dt = 1 / 60) {
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
-  describeSheep, sheepName, lossLine, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, sheepWoolColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
+  describeSheep, sheepName, lossLine, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
 spawnFlock();
