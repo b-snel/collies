@@ -70,6 +70,7 @@ Run the ones touching your change; report the numbers.
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
+| `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
 | `gateway-sim.mjs` | stalls at gates |
 | `straggler-sim.mjs [--trials N]` | stragglers behind the pen / the open leaf get in |
@@ -137,15 +138,23 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
-  lamb at dawn (`T.lambChance`).
+  lamb at dawn (`T.lambChance`). A ram over `T.readyLose` eats before he courts.
 - **Age** (`s.age` days, `ageAtDawn`, `oldK(s)` from `T.oldDays`); dies of age
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
   to tip in. The fence by the troughs can't be hopped (`byTrough`); tip over it.
 - **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
   weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
+  Needier shoves harder (`desp`); not one just arrived (`hold`); nearer beats one
+  still on its way (`beatsTo`). All hungry ones crowd in behind, hungriest
+  shoulder to the front (`heft`); non-feeders keep off the feeding line; feeders
+  stand shoulder to shoulder (`side`). Night fast-forward waits for supper.
 - **Hungry shove on grass.** A hungry grazer barges a fuller one off better
   grass next to it, harder the hungrier (`grassShove`, `T.grassShove`).
+- **Grass dash.** Hungry and boxed in on stubble (`T.grassDash`) → runs to the
+  best green patch near a flockmate, not by a den or brambles, shouldering
+  through (`grassDash`, `heft`). Hungry on good grass: less flock pull (`stay`),
+  lets a calm drift go by (`tuck`), food beats flock (`want`).
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
