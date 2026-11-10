@@ -61,7 +61,7 @@ Run the ones touching your change; report the numbers.
 | `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
-| `falcon-test.mjs [eat\|bark\|nest\|dog\|night\|odds]` | falcon: nest kills, bark drops, dog carried, day only |
+| `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
@@ -170,7 +170,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
   'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
-  nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it.
+  nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it; its mark barking sends it off.
   Off in `?sim` (`T.falcon.on`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
