@@ -511,6 +511,9 @@ const T = {
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
+  // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
+  // within r of the mouth, never past leash; nobody inside r for calm s (or hold s in all) → back to sleep, cd s before it'll defend again
+  denDefend: { r: 16, leash: 24, sheepWake: 3, calm: 2.5, hold: 30, cd: 25, snapR: 1.7, snapCd: [1.2, 2], lunge: 11 },   // lunge: speed on its last few metres (catches a sheep)
   // cougars: one lies up in the big old tree off the trail by each hill camp (and a couple between). By day it's gone;
   // at nightfall the one nearest the flock hunts (chance), coming down after delay in-game hours (held up treedT s by a dog
   // barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway). It stalks in slow
@@ -4914,10 +4917,20 @@ function wakeDen(D, size) {
   packHowl(p);
   return p;
 }
+// startled den: everyone up, snarling, and at whatever's at the door
+function defendDen(D) {
+  denFill(D);
+  const p = D.pack;
+  for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); c.barks = 0; c.bold = c.wiseShown = false; c.state = 'pack'; c.stateT = 0; c.gx = c.x; c.gz = c.z; c.spd = 0; }
+  p.members = D.coyotes.slice(); p.leader = D.coyotes[0]; p.target = null; p.carrier = null; p.calmT = 0;
+  setPhase(p, 'defend'); D.defendAt = G.time + T.denDefend.cd;
+  const L = p.leader; Sound.growl(panOf(L.x, L.z), 0.2); Sound.yips(panOf(L.x, L.z), 0.15);
+  floatText('GRRR!', L.x, L.y + 1.6, L.z, '#ff8a5c', 1.2);
+}
 // nightfall (and the 00:30 wave): the nearest sleeping den wakes. With no den in reach, a roaming pack turns up instead.
 function wakeDens(size, wave = 1) {
   const fc = flockCenter();
-  const near = G.dens.filter(D => D.pack.phase === 'den' || D.pack.phase === 'retreat').map(D => ({ D, d: Math.hypot(D.x - fc.x, D.z - fc.z) }))
+  const near = G.dens.filter(D => ['den', 'retreat', 'defend'].includes(D.pack.phase)).map(D => ({ D, d: Math.hypot(D.x - fc.x, D.z - fc.z) }))
     .filter(o => o.d < T.denRange).sort((a, b) => a.d - b.d);
   if (near.length) return wakeDen(near[0].D, size);
   if (wave > 1) {   // no second den in reach: the pack that's out gets its second wind, and one more joins it
@@ -5037,11 +5050,35 @@ function updatePack(p, dt, fc) {
   p.phaseT += dt;
   const L = p.leader, dc = dogCentroid();
   const anyTarget = G.sheep.some(huntable);
-  if (p.phase !== 'retreat' && p.phase !== 'escape' && !anyTarget && p.phase !== 'prowl') setPhase(p, 'prowl');
+  if (p.phase !== 'retreat' && p.phase !== 'escape' && p.phase !== 'defend' && !anyTarget && p.phase !== 'prowl') setPhase(p, 'prowl');
   const avgCourage = p.members.reduce((a, c) => a + c.courage, 0) / p.members.length;
   if (p.phase !== 'retreat' && p.phase !== 'escape' && avgCourage <= 0.15) { setPhase(p, 'retreat'); return; }
   const post = (c, x, z, spd, crouch = 1) => { c.gx = x; c.gz = z; c.spd = spd; c.crouchW = crouch; };
   switch (p.phase) {
+    case 'defend': {
+      // drive off whatever's near the den; never past the leash
+      const D = p.den, DD = T.denDefend, near = [];
+      for (const d of G.dogs) if (!d.ko && Math.hypot(d.x - D.x, d.z - D.z) < DD.r) near.push(d);
+      for (const s of G.sheep) if (!s.dead && !s.grabbed && !s.heldBy && Math.hypot(s.x - D.x, s.z - D.z) < DD.r) near.push(s);
+      p.calmT = near.length ? 0 : p.calmT + dt;
+      if (p.calmT > DD.calm || p.phaseT > DD.hold) { setPhase(p, 'retreat'); break; }
+      for (const c of p.members) {
+        if (c.state !== 'pack') continue;
+        let t = null, bd = 1e9;
+        for (const o of near) { const d = Math.hypot(o.x - c.x, o.z - c.z) + (G.dogs.includes(o) ? -3 : 0); if (d < bd) { bd = d; t = o; } }
+        let gx = D.x + D.mx * 2.5 + Math.cos(G.time + c.slot) * 1.5, gz = D.z + D.mz * 2.5 + Math.sin(G.time + c.slot) * 1.5, spd = T.coyoteTrot;
+        if (t) { gx = t.x; gz = t.z; spd = bd < 4 ? DD.lunge : T.coyoteRun; }
+        const lx = gx - D.x, lz = gz - D.z, ll = Math.hypot(lx, lz); if (ll > DD.leash) { gx = D.x + lx / ll * DD.leash; gz = D.z + lz / ll * DD.leash; }
+        post(c, gx, gz, spd, t ? 0.3 : 0);
+        if (t && !G.dogs.includes(t) && G.time >= (c.snapAt || 0) && Math.hypot(t.x - c.x, t.z - c.z) < DD.snapR) {   // a snap: the sheep bolts, away from the den
+          c.snapAt = G.time + rnd(DD.snapCd[0], DD.snapCd[1]);
+          startleSheep(t, t.x - D.x, t.z - D.z, 1); t.hopV = 3; t.panic = 1;
+          Sound.growl(panOf(c.x, c.z), 0.12); Sound.baa(t.pitch * 1.15, 0.4, panOf(t.x, t.z), true);
+          burst(t.x, t.y + 0.7, t.z, 5, '#f7f3e8', { speed: 2, up: 2 });
+        }
+      }
+      break;
+    }
     case 'gather': {
       // meet up out of sight on the far side of the flock from the dogs
       p.stageT -= dt;
@@ -5139,7 +5176,7 @@ function updatePack(p, dt, fc) {
     }
   }
 }
-const canNip = (c, d) => G.time >= (c.nipAt || 0) && !c.prey && !d.air && !d.maul && !d.ko && (c.bold || c.role === 'screen' || (c.pack && c.pack.phase === 'strike'));
+const canNip = (c, d) => G.time >= (c.nipAt || 0) && !c.prey && !d.air && !d.maul && !d.ko && (c.bold || c.role === 'screen' || (c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'defend')));
 function updateCoyotes(dt) {
   const fc = flockCenter();
   updateDens();
@@ -5153,6 +5190,8 @@ function updateCoyotes(dt) {
     if (c.state === 'sleep') {   // curled up at the den: a dog nosing too close wakes it, and it slinks off and comes back later
       c.vx = c.vz = 0; c.crouch = 0;
       if (c.tumble > 0) { c.state = 'flee'; c.stateT = 0; c.fleeDur = rnd(1.5, 2.5); c.fx = c.x - Math.sin(c.yaw); c.fz = c.z - Math.cos(c.yaw); continue; }
+      const D = c.den, DD = T.denDefend;
+      if (D && D.pack.phase === 'den' && G.time >= (D.defendAt || 0) && ((nd && ndd < T.denWake) || G.sheep.some(s => !s.dead && !s.grabbed && !s.heldBy && Math.hypot(s.x - c.x, s.z - c.z) < DD.sheepWake))) { defendDen(D); continue; }
       if (nd && ndd < T.denWake) { if (c.growlT <= 0) { c.growlT = 2; Sound.growl(panOf(c.x, c.z), 0.12); } c.state = 'flee'; c.stateT = 0; c.fleeDur = rnd(1.4, 2.2); c.fx = nd.x; c.fz = nd.z; }
       continue;
     }
@@ -5160,7 +5199,7 @@ function updateCoyotes(dt) {
     else if (nd && c.state !== 'flee' && c.state !== 'leave') {
       const fearR = nd.mode === 'sprint' ? 8 : nd.mode === 'creep' ? 4 : 6;
       if (ndd < 1.4) scareCoyote(c, 0.5, nd, true);
-      else if (ndd < fearR && !c.bold) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
+      else if (ndd < fearR && !c.bold && !(c.pack && c.pack.phase === 'defend')) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
     }
     let dX = 0, dZ = 0, spd = 0, crouchW = 0;
     switch (c.state) {
@@ -5170,7 +5209,7 @@ function updateCoyotes(dt) {
         if (dd > 0.6) { const n = navSteer(c, c.gx, c.gz); dX = n.x; dZ = n.z; spd = dd < 2 ? c.spd * dd / 2 : c.spd; }
         crouchW = c.crouchW || 0;
         // wary of dogs unless it's go time
-        const bold = c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'escape' || (c.pack.phase === 'feint' && c.role === 'decoy'));
+        const bold = c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'escape' || c.pack.phase === 'defend' || (c.pack.phase === 'feint' && c.role === 'decoy'));
         if (!bold && !c.bold) for (const d of G.dogs) { const ex = c.x - d.x, ez = c.z - d.z, e = Math.hypot(ex, ez); if (e < 11 && e > 0) { dX += ex / e * (11 - e) / 11 * 1.6; dZ += ez / e * (11 - e) / 11 * 1.6; spd = Math.max(spd, 3.5); } }
         break;
       }
@@ -5189,7 +5228,7 @@ function updateCoyotes(dt) {
       }
       case 'flee': {
         const dx = c.x - c.fx, dz = c.z - c.fz, d = Math.hypot(dx, dz) || 1; dX = dx / d; dZ = dz / d; spd = T.coyoteFlee;
-        if (c.stateT > c.fleeDur) { const hunting = c.pack && !['den', 'retreat'].includes(c.pack.phase) && !c.alone; c.state = c.courage > 0 && hunting ? 'pack' : 'leave'; c.stateT = 0; }
+        if (c.stateT > c.fleeDur) { const hunting = c.pack && !['den', 'retreat'].includes(c.pack.phase) && !c.alone && !(c.pack.phase === 'defend' && c.den && Math.hypot(c.x - c.den.x, c.z - c.den.z) > T.denDefend.leash); c.state = c.courage > 0 && hunting ? 'pack' : 'leave'; c.stateT = 0; }
         break;
       }
       case 'leave': {
