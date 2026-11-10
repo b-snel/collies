@@ -1,4 +1,4 @@
-// Headless test: `node tools/pen-trap-test.mjs`. A coyote shut in a pen mauls a sheep (dies unless a dog comes);
+// Headless test: `node tools/pen-trap-test.mjs`. A coyote shut in a pen mauls sheep after sheep (each dies unless a dog comes);
 // with the gate open it drags it out. Rams fight by bravery; lambs take after their sire.
 import { open } from './harness.mjs';
 const h = await open();
@@ -15,14 +15,18 @@ const trap = mode => h.page.evaluate(async mode => {
   const p = spawnPack(1, { howl: false }); const c = p.members[0];
   at(c, pen.x + Math.cos(pen.gateA) * (pen.R - 2), pen.z + Math.sin(pen.gateA) * (pen.R - 2));
   if (mode === 'open') GAME.grab(c, live[0]);
-  let grabbed = null, outT = null, saved = false;
-  for (let t = 0; t < 25; t += 0.05) {
+  let grabbed = null, outT = null, saved = false, kills = 0, moved = 0;
+  const n0 = live.length, T0 = mode === 'shut' ? 45 : 25;
+  for (let t = 0; t < T0; t += 0.05) {
+    const px = c.x, pz = c.z;
     step(0.05);
+    if (!c.prey && grabbed) moved += Math.hypot(c.x - px, c.z - pz);   // between kills
     if (c.prey && !grabbed) grabbed = c.prey;
     if (mode === 'save' && grabbed && t > 6 && !saved) { at(d, c.x + 1, c.z); saved = true; }
     if (grabbed && outT === null && Math.hypot(c.x - pen.x, c.z - pen.z) > pen.R + 0.5) outT = +t.toFixed(1);
   }
-  return { mode, grabbed: !!grabbed, dead: grabbed ? grabbed.dead : null, outT, everMauled: grabbed ? grabbed.maulHp !== undefined : false };
+  kills = n0 - living().length;
+  return { mode, kills, moved: +moved.toFixed(1), grabbed: !!grabbed, dead: grabbed ? grabbed.dead : null, outT, everMauled: grabbed ? grabbed.maulHp !== undefined : false };
 }, mode);
 const rams = () => h.page.evaluate(() => {
   const { G, T, step, startGame, resetGame, living, spawnPack } = GAME;
@@ -50,8 +54,9 @@ const rams = () => h.page.evaluate(() => {
 let ok = true;
 const shut = await trap('shut'); console.log(JSON.stringify(shut));
 ok &&= shut.grabbed && shut.dead === true && shut.outT === null && shut.everMauled; console.log(ok ? 'PASS' : 'FAIL', 'shut: mauled');
+let pass = shut.kills >= 2 && shut.moved > 3; ok &&= pass; console.log(pass ? 'PASS' : 'FAIL', 'shut: havoc, goes for the next');
 const save = await trap('save'); console.log(JSON.stringify(save));
-let pass = save.grabbed && save.dead === false; ok &&= pass; console.log(pass ? 'PASS' : 'FAIL', 'shut: dog saves it');
+pass = save.grabbed && save.dead === false; ok &&= pass; console.log(pass ? 'PASS' : 'FAIL', 'shut: dog saves it');
 const op = await trap('open'); console.log(JSON.stringify(op));
 pass = op.grabbed && op.outT !== null; ok &&= pass; console.log(pass ? 'PASS' : 'FAIL', 'open: dragged out');
 const r = await rams(); console.log(JSON.stringify(r));

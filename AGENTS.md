@@ -12,14 +12,14 @@ file, comments, commits and PRs: short.
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
 drive a flock along one trail (desert → mountains → ocean → the Promised
 Land → desert → the Trading Post): graze it, pen it at camps by nightfall,
-fight off coyotes and cougars till dawn. At the Trading Post wool buys
-supplies, and Cabo 🏖️, which wins.
+fight off coyotes, cougars and falcons till dawn. At the Trading Post wool
+buys supplies, and Cabo 🏖️, which wins.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
-  cougar hunts, `O` flock +10 days, `F` to the Trading Post, +50 🧶). `window.GAME` exposes
+  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, +50 🧶). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
@@ -29,14 +29,15 @@ supplies, and Cabo 🏖️, which wins.
   rotate prompt in portrait. Compact HUD under 520 px tall (icons, no
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
-  joins with Ⓐ on another controller or the other keyboard side and gets
-  their own dog. 4 dogs in all.
+  joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
+- One keyboard player: WASD and arrows drive the same dog.
+- Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 
 ### Layout (`index.html`, top to bottom)
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
+DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -56,6 +57,7 @@ Run the ones touching your change; report the numbers.
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
+| `falcon-test.mjs [eat\|bark\|nest\|dog\|night\|odds]` | falcon: nest kills, bark drops, dog carried, day only |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
@@ -70,7 +72,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | Trading Post: wares bought, too poor, full pen, bark on a mat, Cabo wins, old finish gone |
-| `pen-trap-test.mjs` | coyote shut in a pen mauls, dog saves; open gate → dragged out; ram bravery, lambs inherit |
+| `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 
@@ -124,7 +126,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Age** (`s.age` days, `ageAtDawn`, `oldK(s)` from `T.oldDays`); dies of age
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
-  to tip in.
+  to tip in. The fence by the troughs can't be hopped (`byTrough`); tip over it.
 - **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
   weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
 - **Hungry shove on grass.** A hungry grazer barges a fuller one off better
@@ -138,7 +140,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   them. Shut pens stop them.
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
   gate shut (`c.trap`) → it mauls a penned sheep where it stands
-  (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off.
+  (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off, then
+  runs down the next (`penHavoc`), dodging dogs, till the gate opens.
 - **Ram bravery** (`s.brave` 0…1, `T.brave`): under `ramMin` a ram never
   fights, braver ones charge more and further, past `cougar` cougars too.
   Lambs take mostly the sire's (`sireBrave`). Scales everyone's stress gain.
@@ -150,6 +153,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
   running away: bonked, yowls (`Sound.yowl`), runs `bonkRun`× faster. `s.grabbed`
   may be a cougar (`k.isCougar`).
+- **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
+  (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
+  'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
+  nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it.
+  Off in `?sim` (`T.falcon.on`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.

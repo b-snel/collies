@@ -118,6 +118,8 @@
   .nroster { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
   .nroster span { background:rgba(0,0,0,.28); border-radius:10px; padding:2px 10px; font-size:15px; }
   .nroster span.off { opacity:.55; text-decoration:line-through; }
+  #pauseDogs button { font:600 16px 'Fredoka', system-ui, sans-serif; color:var(--cream); background:rgba(0,0,0,.28); border:2px solid transparent; border-radius:10px; padding:2px 10px; cursor:pointer; }
+  #pauseDogs button.sel { border-color:#ffd36b; }
   .nstatus { min-height:20px; font-size:15px; color:#ffd36b; }
   .nstatus.err { color:#ff8a6b; }
   #netChip { position:absolute; right:14px; bottom:14px; padding:4px 10px 4px 12px; font-size:15px; display:flex; gap:8px; align-items:center; border-width:2px; border-radius:14px; pointer-events:auto; }
@@ -240,10 +242,11 @@
   .dawnSec { display:flex; flex-direction:column; gap:6px; }
   .dawnSec .eyebrow { font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--barn-accent); }
   .dawnRow { display:flex; align-items:center; gap:6px; }
-  .dawnRow i { width:14px; height:14px; border-radius:50%; flex:none; border:2px solid rgba(0,0,0,.45); }
+  .dawnRow i { width:12px; height:18px; border-radius:4px; flex:none; border:2px solid rgba(0,0,0,.45); }
   .dawnRow input { font:inherit; font-size:18px; font-weight:700; width:min(200px, 45vw); padding:2px 8px; border-radius:10px; border:2px dashed var(--barn-edge); background:rgba(255,248,232,.06); color:var(--barn-ink); user-select:text; -webkit-user-select:text; }
   .dawnRow button { font-size:18px; padding:2px 8px; }
-  .dawnRow small { color:var(--barn-muted); font-size:13px; margin-left:auto; }
+  .dawnRow small { color:var(--barn-muted); font-size:14px; margin-left:4px; white-space:nowrap; }
+  .dawnRow small b { color:var(--barn-ink); }
   .dawnObit { font-size:15px; line-height:1.4; color:var(--barn-muted); }
   .dawnObit b { color:var(--barn-ink); }
   .dawnObit em { display:block; padding-left:24px; }
@@ -395,6 +398,7 @@
   <div id="pauseWhy" class="nsub"></div>
   <div class="press">Press P / Esc / Start to carry on</div>
   <div id="pauseCtrls"></div>
+  <div id="pauseDogs" class="nroster"></div>
   <div id="pauseNet" class="npanel" hidden>
     <div class="row"><span>Online room</span><span id="pauseCode" class="ncode"></span><button id="pauseCopy" class="nbtn" type="button">Copy invite link</button></div>
     <div id="pauseLink" class="nlink"></div>
@@ -534,7 +538,7 @@ const T = {
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
-  coyoteMaul: { time: 14, every: 0.9 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it
+  coyoteMaul: { time: 14, every: 0.9, rest: 3, dodgeR: 5 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it; then `rest` s and the next (dodges dogs within dodgeR)
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
@@ -552,6 +556,12 @@ const T = {
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
     // Mauling: a swipe every `every` s (a bite each third), up to `max` hp in all; mashing pounce `mash` times throws it off
     maulR: 4, maulCd: 10, maul: { leapT: 0.38, every: 0.3, swipe: 0.045, bite: 0.08, max: 0.5, mash: 10, decay: 0.35, kick: 9 } },
+  // falcon (FALCON, NESTS): by day (from…to) every `every` in-game hours it circles (circleT s, circleH m up), screeches
+  // and dives (diveSpd) on a dog (dogChance) or a sheep (lambs likelier, never rams). A dog: carried dogHop m, dropped.
+  // A sheep: carried (carry m/s, cruiseH up) to the nearest nest; a bark within barkR makes it drop it. At the nest it
+  // eats it after eatT s unless a dog barks within nestR of the spire. Off in ?sim (tests turn it on).
+  falcon: { on: !SIM, every: [3, 7], first: 4, from: 7.5, to: 18.5, circleT: 3.2, circleH: 24, circleR: 9, diveSpd: 23, diveMax: 6,
+    cruiseH: 7, carry: 6.3, carryDog: 9, dogHop: [20, 38], dogChance: 0.35, barkR: 13, nestR: 15, eatT: 5, leaveT: 5, hitR: 2 },
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -839,6 +849,19 @@ const Sound = (() => {
         o.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
       }
     },
+    screech(pan = 0, vol = 0.2) {   // a falcon diving: a raw, falling "KYEEEEARR"
+      if (!ac) return; const t = ac.currentTime, dur = 0.9 + Math.random() * 0.25, b = 2300 + Math.random() * 300, d = out(vol, pan);
+      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 1.2;
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.04); g.gain.setValueAtTime(0.75, t + dur * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      f.connect(g); g.connect(d);
+      for (const [mul, type, amp] of [[1, 'sawtooth', 0.5], [1.51, 'square', 0.15], [0.5, 'triangle', 0.3]]) {
+        const o = ac.createOscillator(); o.type = type;
+        o.frequency.setValueAtTime(b * 0.8 * mul, t); o.frequency.exponentialRampToValueAtTime(b * mul, t + 0.08); o.frequency.exponentialRampToValueAtTime(b * 0.55 * mul, t + dur);
+        const v = ac.createOscillator(); v.frequency.value = 38; const vg = ac.createGain(); vg.gain.value = 90 * mul; v.connect(vg); vg.connect(o.frequency);
+        const og = ac.createGain(); og.gain.value = amp; o.connect(og); og.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
+      }
+      const n = ac.createBufferSource(); n.buffer = noiseBuf; const ng = ac.createGain(); ng.gain.value = 0.3; n.connect(ng); ng.connect(f); n.start(t, Math.random()); n.stop(t + dur);
+    },
     hiss(pan = 0, vol = 0.2) {
       if (!ac) return; const t = ac.currentTime, d = out(vol, pan);
       const n = ac.createBufferSource(); n.buffer = noiseBuf; const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2600;
@@ -862,7 +885,7 @@ const Sound = (() => {
 })();
 
 // =====================================================================
-// INPUT — gamepads (standard mapping) + two keyboard players
+// INPUT — gamepads (standard mapping) + one keyboard player (WASD or arrows)
 // =====================================================================
 const keys = new Set(), keyEdge = new Set();
 const KB = [
@@ -874,7 +897,7 @@ const KB = [
 // what to print for a player's buttons in hints and prompts
 const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'Ⓨ' }, kb0: { bark: 'Space', pounce: 'E', grab: 'R', lie: 'C' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'" } };
 KEY_LABEL.touch = { bark: '📣', pounce: '💥', grab: '✊', lie: '💤' };
-const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + player.index] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
+const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + INPUT_KB] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
 const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.sprint, ...k.creep, 'Enter']));
 let INPUT_DEV = 'kb';   // the last thing anyone touched here: 'kb' or 'pad' (the pause screen draws its controls)
 let INPUT_KB = 0;       // which keyboard side was touched last (the bottom bar)
@@ -997,12 +1020,14 @@ function readInput(p) {
     r.bark = padEdge(p.index, gp, 0);                                         // A
     r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
   } else {
-    const k = KB[p.index];
-    r.mx = (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
-    r.my = (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
+    for (const k of KB) {   // one keyboard player: WASD and arrows both drive it
+      r.mx += (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
+      r.my += (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
+      r.sprint ||= anyKey(k.sprint); r.creep ||= anyKey(k.creep); r.lie ||= anyKey(k.lie); r.grab ||= anyKey(k.grab);
+      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce);
+    }
+    r.mx = clamp(r.mx, -1, 1); r.my = clamp(r.my, -1, 1);
     const m = Math.hypot(r.mx, r.my); if (m > 1) { r.mx /= m; r.my /= m; }
-    r.sprint = anyKey(k.sprint); r.creep = anyKey(k.creep); r.lie = anyKey(k.lie); r.grab = anyKey(k.grab);
-    r.bark = anyEdge(k.bark); r.pounce = anyEdge(k.pounce);
   }
   return r;
 }
@@ -1015,7 +1040,7 @@ function pollJoins(players) {
     const gp = pads[i]; if (!gp) continue;
     if ((padEdge(i, gp, 0) || padEdge(i, gp, 9)) && !players.some(p => p.kind === 'pad' && p.index === i)) out.push({ kind: 'pad', index: i });
   }
-  KB.forEach((k, i) => { if (anyEdge(k.join) && !players.some(p => p.kind === 'kb' && p.index === i)) out.push({ kind: 'kb', index: i }); });
+  if (KB.some(k => anyEdge(k.join)) && !players.some(p => p.kind === 'kb')) out.push({ kind: 'kb', index: 0 });   // one keyboard player
   if (TOUCH.tap && !players.some(p => p.kind === 'touch')) out.push({ kind: 'touch', index: 0 });
   return out;
 }
@@ -1918,6 +1943,40 @@ const LAIRS = [];
     L.id = LAIRS.length; LAIRS.push(L);
   }
 }
+// ---------------- falcon nests: a tall rock spire off the trail with a stick nest on top (FALCON) ----------------
+// Own rng (same on every screen). N.top = the nest's floor height.
+const NESTS = [];
+{
+  const nr = mulberry32(51237), nrr = (a, b) => a + nr() * (b - a);
+  const clear = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
+  for (const s0 of [150, 330, 470, 640, 664, 975]) {
+    let best = null;
+    for (let t = 0; t < 120 && !best; t++) {
+      const ss = s0 + nrr(-30, 30), idx = pathIdx(ss), side = nr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+      if (hw < 18) continue;
+      const lat = side * nrr(14, hw - 5), p = pathPoint(ss, lat);
+      if (!clear(p.x, p.z, 3)) continue;
+      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 14) || !offMarket(p.x, p.z, 8)) continue;
+      if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50) continue;
+      if (DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 20) || LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < 20)) continue;
+      best = { x: p.x, z: p.z, s: ss };
+    }
+    if (!best) continue;
+    const N = best; N.y = terrainH(N.x, N.z); N.top = N.y + 7.6;
+    const g = new THREE.Group(); g.position.set(N.x, N.y, N.z); g.rotation.y = nrr(0, TAU); scene.add(g);
+    const rk = '#9a8670', rk2 = '#7d6b58', st = '#6e5232';
+    part(g, merge(
+      P(CYL(0.95, 1.5, 4.2, 8), rk, { p: [0, 2.1, 0] }), P(CYL(0.75, 1.0, 3.2, 7), rk2, { p: [0, 5.6, 0] }),
+      P(SPH(7), rk, { s: [1.1, 0.5, 1.0], p: [0, 7.15, 0] }),
+      ...[0, 1, 2].map(i => P(SPH(7), rk2, { s: [0.7, 0.45, 0.6], p: [Math.cos(i * 2.1) * 1.4, 0.25, Math.sin(i * 2.1) * 1.4] })),
+      P(new THREE.TorusGeometry(0.85, 0.28, 6, 14), st, { r: [Math.PI / 2, 0, 0], p: [0, 7.55, 0] }),
+      ...[0, 1, 2, 3, 4].map(i => P(CYL(0.04, 0.04, 1.3, 4), '#5a4126', { r: [Math.PI / 2, i * 1.3, 0.3], p: [Math.cos(i * 1.3) * 0.7, 7.6, Math.sin(i * 1.3) * 0.7] })),
+      P(CYL(0.6, 0.6, 0.1, 10), '#4a3620', { p: [0, 7.45, 0] }),
+      ...[0, 1, 2, 3].map(i => P(CYL(0.05, 0.05, 0.4, 4), '#efe6d2', { r: [Math.PI / 2, 0, nrr(0, 3)], p: [nrr(-1.6, 1.6), 0.05, nrr(-1.6, 1.6)] }))));
+    OBSTACLES.push({ x: best.x, z: best.z, r: 1.5 }); stampObstacle(best.x, best.z, 1.5);
+    N.id = NESTS.length; NESTS.push(N);
+  }
+}
 buildSDF();
 
 // =====================================================================
@@ -2028,6 +2087,33 @@ function makeCougar() {
   }
   root.visible = false; root.rotation.order = 'YXZ'; scene.add(root);
   return { root, body, head, legs, tail, eyes };
+}
+// a falcon: slate back, barred cream chest, dark "moustache", long pointed wings (they flap), talons, and its ground shadow
+function makeFalcon() {
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body); body.scale.setScalar(1.5);
+  const back = '#4d5866', dark = '#2c323b', chest = '#efe3c8', yel = '#f2c230';
+  part(body, merge(
+    P(SPH(10), back, { s: [0.22, 0.2, 0.46] }), P(SPH(9), chest, { s: [0.18, 0.17, 0.34], p: [0, -0.06, 0.1] }),
+    ...[0, 1, 2].map(i => P(BOX(0.3, 0.025, 0.04), dark, { p: [0, -0.12 - i * 0.02, 0.02 + i * 0.12] })),
+    P(BOX(0.24, 0.03, 0.42), back, { p: [0, 0.02, -0.55] }), P(BOX(0.25, 0.031, 0.08), dark, { p: [0, 0.02, -0.74] })));
+  const head = new THREE.Group(); head.position.set(0, 0.12, 0.44); body.add(head);
+  part(head, merge(
+    P(SPH(9), back, { s: [0.15, 0.14, 0.16] }), P(SPH(8), chest, { s: [0.11, 0.09, 0.1], p: [0, -0.05, 0.06] }),
+    P(SPH(6), dark, { s: [0.03, 0.08, 0.03], p: [0.1, -0.04, 0.06] }), P(SPH(6), dark, { s: [0.03, 0.08, 0.03], p: [-0.1, -0.04, 0.06] }),
+    P(SPH(6), yel, { s: [0.04, 0.04, 0.03], p: [0.08, 0.03, 0.1] }), P(SPH(6), yel, { s: [0.04, 0.04, 0.03], p: [-0.08, 0.03, 0.1] }),
+    P(SPH(5), '#111111', { s: [0.025, 0.025, 0.02], p: [0.085, 0.03, 0.125] }), P(SPH(5), '#111111', { s: [0.025, 0.025, 0.02], p: [-0.085, 0.03, 0.125] }),
+    P(CONE(0.045, 0.14, 6), '#3a3f47', { r: [Math.PI / 2 + 0.5, 0, 0], p: [0, -0.02, 0.18] })));
+  const wings = [1, -1].map(sx => {
+    const w = new THREE.Group(); w.position.set(0.15 * sx, 0.08, 0.08); body.add(w);
+    part(w, merge(P(BOX(0.75, 0.04, 0.34), back, { p: [0.4 * sx, 0, 0] }), P(BOX(0.6, 0.035, 0.22), dark, { r: [0, -0.35 * sx, 0], p: [1.0 * sx, 0, -0.08] }),
+      P(BOX(0.7, 0.042, 0.1), chest, { p: [0.4 * sx, -0.012, 0.06] })));
+    return w;
+  });
+  const legs = [1, -1].map(sx => { const g = new THREE.Group(); g.position.set(0.08 * sx, -0.15, 0.05); body.add(g); part(g, merge(P(CYL(0.03, 0.03, 0.2, 5), yel, { p: [0, -0.1, 0] }), P(BOX(0.1, 0.03, 0.14), dark, { p: [0, -0.21, 0.03] }))); return g; });
+  root.visible = false; root.rotation.order = 'YXZ'; scene.add(root);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0, depthWrite: false }));
+  shadow.visible = false; scene.add(shadow);
+  return { root, body, head, wings, legs, shadow };
 }
 
 // ---------------- sheep: instanced so the flock can grow big ----------------
@@ -2145,7 +2231,7 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 },
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 },
   nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
@@ -2239,7 +2325,8 @@ function killSheep(s, why) {
   if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
   if (why === 'old') { G.stats.old = (G.stats.old || 0) + 1; burst(s.x, s.y + 0.8, s.z, 14, '#fff4c8', { speed: 0.6, up: 2.2, size: 0.1, life: 1.6, grav: -2 }); toast(lossLine(s, why), 'warn'); Sound.sad(); }
   else if (why === 'salt') { G.stats.salt = (G.stats.salt || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#f3eee6', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
-  else if (why === 'cougar') { G.stats.cougar = (G.stats.cougar || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // (its wool flies up in the tree: COUGARS)
+  else if (why === 'cougar') { G.stats.cougar = (G.stats.cougar || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }
+  else if (why === 'falcon') { G.stats.falcon = (G.stats.falcon || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // (FALCON: eaten on the nest)   // (its wool flies up in the tree: COUGARS)
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   addTombstone(s, why);
@@ -3356,6 +3443,7 @@ function updateDog(d, inp, dt) {
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
   dogHealth(d, dt);
   if (d.maul) { updateMauledDog(d, inp, dt); return; }
+  if (d.air && d.air.kind === 'falcon') return;   // FALCON: in its talons (it moves the dog)
   if (d.air) { if (d.holding) releaseHold(d, false); d.mode = 'walk'; d.pounceT = 0; updateAirborneDog(d, inp, dt); return; }
   if (d.stunT > 0) {   // bowled over: no control until it wears off
     if (d.holding) releaseHold(d, false);
@@ -3433,7 +3521,14 @@ function startHop(d, nx, nz, v) {   // (nx, nz) points from the fence back to th
   d.hopT = d.hopDur; d.pounceT = 0; d.vx = -nx * v; d.vz = -nz * v; d.leanT = 0;
   burst(d.x, d.y + 0.2, d.z, 4, '#e8dcc0', { speed: 1, up: 1, size: 0.15 });
 }
-function freeToHop(d) { return !d.holding; }   // holding an animal or a gate you stop at fences
+function freeToHop(d) { return !d.holding && !byTrough(d); }   // holding an animal or a gate, or at the troughs, you stop at fences
+function byTrough(d) {   // the fence by a pen's troughs can't be hopped (refill over it)
+  for (const p of pens) {
+    if (Math.abs(d.x - p.x) > p.R + 4 || Math.abs(d.z - p.z) > p.R + 4) continue;
+    for (const tr of p.troughs || []) { const rx = d.x - tr.x, rz = d.z - tr.z; if (Math.abs(rx * tr.tx + rz * tr.tz) < tr.len / 2 + 0.7 && Math.abs(rx * tr.tz - rz * tr.tx) < 2.2) return true; }
+  }
+  return false;
+}
 function landDog(d, sq) { d.landT = G.time; d.landSq = sq; burst(d.x, d.y + 0.1, d.z, 3, '#e8dcc0', { speed: 1.2, up: 0.6, size: 0.2, life: 0.4, grav: 0 }); }
 // SHARED HOOK: something bowled the dog over (a ram, a cornered sheep, a flying sheep)
 function knockDog(d, vx, vz, t, label = 'OOF!') {
@@ -3527,6 +3622,7 @@ function bark(d) {
     scareCoyote(c, B.amt / (1 + B.packK * (n - 1)), d);   // a pack shrugs barks off
   }
   cougarBark(d);
+  falconBark(d);
   vendorBark(d);   // VENDOR: on a mat at the Trading Post it buys
   hint('bark-used');
 }
@@ -5303,7 +5399,16 @@ function coyoteMaul(c, dt) {
     if (Math.random() < 0.5) Sound.baa(s.pitch * 1.2, 0.45, panOf(s.x, s.z), true);
     floatText(`${Math.max(0, Math.round(s.maulHp * 100))}%`, s.x, s.y + 1.5, s.z, '#ff7a6b', 0.7);
   }
-  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; killSheep(s, 'eaten'); c.state = 'leave'; c.stateT = 0; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; killSheep(s, 'eaten'); c.state = 'leave'; c.stateT = 0; c.restT = G.time + M.rest; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+}
+// shut in and not fleeing: dodges dogs, else runs down the nearest penned sheep (grab → coyoteMaul), a short rest after each kill
+function penHavoc(c, nd, ndd) {
+  if (G.time < (c.restT || 0)) return false;
+  if (nd && ndd < T.coyoteMaul.dodgeR) { const ex = c.x - nd.x, ez = c.z - nd.z, e = Math.hypot(ex, ez) || 1; c.hx = ex / e; c.hz = ez / e; c.hs = T.coyoteRun; return true; }
+  const s = penPrey(c, c.trap); if (!s) return false;
+  const n = navSteer(c, s.x, s.z); c.hx = n.x; c.hz = n.z; c.hs = T.coyoteRun;
+  if (Math.hypot(s.x - c.x, s.z - c.z) < 1.05) grab(c, s);
+  return true;
 }
 function updateCoyotes(dt) {
   const fc = flockCenter();
@@ -5379,6 +5484,7 @@ function updateCoyotes(dt) {
         break;
       }
       case 'leave': {
+        if (c.trap && penHavoc(c, nd, ndd)) { dX = c.hx; dZ = c.hz; spd = c.hs; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: havoc
         if (c.inPen) { const q = c.inPen, tx = c.trap ? lerp(q.x, q.gx, 0.8) : q.exitX, tz = c.trap ? lerp(q.z, q.gz, 0.8) : q.exitZ, n = navSteer(c, tx, tz); dX = n.x; dZ = n.z; spd = Math.hypot(tx - c.x, tz - c.z) < 1 ? 0 : 5; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: waits by the gate
         if (c.den) {   // home to the den, then sleep
           const sl = c.den.slots[c.slot % c.den.slots.length], d = Math.hypot(sl.x - c.x, sl.z - c.z);
@@ -5745,6 +5851,187 @@ function updateCougars(dt) {
       }
     }
   }
+}
+
+// =====================================================================
+// FALCON — now and then by day one circles high over the flock (its shadow
+// on the grass), screeches and dives. A dog: carried off a way and dropped.
+// A sheep (lambs likelier, never rams): carried to its nest on a rock spire
+// (NESTS) and eaten there after T.falcon.eatT s. A bark under it makes it drop
+// the sheep (in the air, or from the nest). s.grabbed is the falcon (F.isFalcon);
+// a carried dog has d.air.kind 'falcon'.
+// =====================================================================
+const FALCON = { isFalcon: true, i: 0, state: 'away', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, bank: 0, t: 0, prey: null, dog: null, target: null, nest: null, dest: null, ang: 0, models: makeFalcon() };
+const falconSheepOK = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;
+const falconDogOK = d => !d.air && !d.ko && !d.maul && !(d.stunT > 0) && G.dogs.includes(d);
+function falconPick() {
+  const C = T.falcon, dogs = G.dogs.filter(falconDogOK);
+  if (dogs.length && Math.random() < C.dogChance) return pick(dogs);
+  let tot = 0; const w = [];
+  for (const s of G.sheep) { if (!falconSheepOK(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
+  let r = Math.random() * tot; for (const [s, k] of w) if ((r -= k) <= 0) return s;
+  return dogs.length ? pick(dogs) : null;
+}
+const falconTargetOK = e => e && (e.isDog ? falconDogOK(e) : falconSheepOK(e));
+// fly toward (tx, ty, tz) at spd, turning and banking
+function falconFly(F, tx, ty, tz, spd, dt, turn = 3) {
+  const dx = tx - F.x, dy = ty - F.y, dz = tz - F.z, d = Math.hypot(dx, dy, dz) || 1, v = d < 2 ? spd * d / 2 : spd, q = Math.min(1, turn * dt);
+  F.vx += (dx / d * v - F.vx) * q; F.vy += (dy / d * v - F.vy) * q; F.vz += (dz / d * v - F.vz) * q;
+  F.x += F.vx * dt; F.y += F.vy * dt; F.z += F.vz * dt;
+  F.y = Math.max(F.y, groundY(F.x, F.z) + 0.6);
+  const sp = Math.hypot(F.vx, F.vz);
+  if (sp > 0.5) { const ny = Math.atan2(F.vx, F.vz); F.bank = lerp(F.bank, clamp(wrapA(ny - F.yaw) / Math.max(dt, 1e-3) * 0.08, -0.8, 0.8), Math.min(1, dt * 4)); F.yaw = lerpA(F.yaw, ny, Math.min(1, dt * 8)); }
+}
+function falconHold(F) {
+  if (F.prey) { const s = F.prey; s.x = F.x; s.z = F.z; s.y = Math.max(groundY(s.x, s.z), F.y - 1.25); s.vx = F.vx; s.vz = F.vz; s.yaw = F.yaw; }
+  if (F.dog) { const d = F.dog; d.x = F.x; d.z = F.z; d.y = Math.max(groundY(d.x, d.z), F.y - 1.1); d.air.h = d.y; d.vx = F.vx; d.vz = F.vz; d.yaw = F.yaw; }
+}
+function falconGo(F) { F.state = 'leave'; F.t = 0; F.target = null; const a = Math.random() * TAU; F.dest = { x: F.x + Math.cos(a) * 80, z: F.z + Math.sin(a) * 80 }; }
+function falconCome(target) {   // (also the debug key V, and tests)
+  const F = FALCON, C = T.falcon; if (!target) return false;
+  F.target = target; F.state = 'circle'; F.t = 0; F.ang = Math.random() * TAU; F.prey = F.dog = null;
+  F.x = target.x + Math.cos(F.ang) * C.circleR; F.z = target.z + Math.sin(F.ang) * C.circleR; F.y = groundY(target.x, target.z) + C.circleH; F.vx = F.vy = F.vz = 0;
+  Sound.screech(panOf(F.x, F.z), 0.08);
+  return true;
+}
+function falconGrab(F, e) {
+  const C = T.falcon; F.target = null; F.state = 'carry'; F.t = 0; F.vy = 5; F.vx *= 0.3; F.vz *= 0.3;   // a heave of the wings: up and away
+  burst(e.x, e.y + 0.7, e.z, 14, '#d8d0c0', { speed: 3, up: 3, size: 0.14 }); Sound.screech(panOf(e.x, e.z), 0.18);
+  if (e.isDog) {
+    if (e.holding) releaseHold(e, false);
+    e.air = { kind: 'falcon', h: e.y, vy: 0, t: 0, spin: 0, bounces: 1, ghost: 0, noLand: 0.05 }; e.pounceT = e.hopT = 0; e.mode = 'walk';
+    F.dog = e; Sound.yelp(panOf(e.x, e.z)); if (hankSees(e.x, e.z, e.y)) hank('bring_back'); floatText('😱', e.x, e.y + 2, e.z, '#fff', 1.4); rumble(e.player, 0.8, 0.5, 300);
+    let best = null;
+    for (let k = 0; k < 16 && !best; k++) { const a = Math.random() * TAU, r = rnd(C.dogHop[0], C.dogHop[1]), x = e.x + Math.cos(a) * r, z = e.z + Math.sin(a) * r; if (sdfAt(x, z) > 2 && !overWater(x, z)) best = { x, z }; }
+    F.dest = best || { x: e.x + 15, z: e.z };
+  } else {
+    e.grabbed = F; e.pen = null; e.state = 'flee'; e.eating = false; F.prey = e;
+    let bn = null, bd = 1e9; for (const N of NESTS) { const d = Math.hypot(N.x - e.x, N.z - e.z); if (d < bd) { bd = d; bn = N; } }
+    F.nest = bn;
+    Sound.baa(e.pitch * 1.25, 0.5, panOf(e.x, e.z), true);
+    toast(`🦅 ${e.name || '🐑'}! 🗣️`, 'bad'); hint('falcon-grab');
+    for (const p of G.players) rumble(p, 0.6, 0.4, 250);
+    for (const o of G.sheep) {   // the sheep round about scatter
+      if (o === e || o.dead || o.grabbed || o.air || o.heldBy) continue;
+      const dx = o.x - e.x, dz = o.z - e.z, d = Math.hypot(dx, dz) + 1e-4; if (d > 10) continue;
+      const q = 1 - d / 10; o.fdx = dx / d; o.fdz = dz / d; o.fear = Math.max(o.fear, 0.4 + q * 0.5); o.panic = Math.max(o.panic, 0.3 + q * 0.5); o.hopV = Math.max(o.hopV, 2 + q * 2);
+    }
+  }
+}
+// lets go of whatever it has: a sheep falls (from the nest it hops down), a dog falls
+function falconDrop(F, saved) {
+  const s = F.prey, d = F.dog; F.prey = F.dog = null;
+  if (s) {
+    s.grabbed = null;
+    if (F.state === 'nest') {   // off the spire: a jump out and down
+      const a = Math.random() * TAU; s.x = F.nest.x + Math.cos(a) * 0.6; s.z = F.nest.z + Math.sin(a) * 0.6; s.y = F.nest.top;
+      launchSheep(s, Math.cos(a) * 4, Math.sin(a) * 4, 5, 'drop');
+    } else launchSheep(s, F.vx * 0.6, F.vz * 0.6, 1, 'drop');
+    s.panic = 1; s.fear = 1;
+    if (saved) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
+  }
+  if (d && d.air && d.air.kind === 'falcon') { d.air = null; launchDog(d, F.vx * 0.5, F.vz * 0.5, 2); floatText('WHEE!', d.x, d.y + 1.6, d.z, '#ffd36b', 1.2); }
+  if (saved) { Sound.screech(panOf(F.x, F.z), 0.14); floatText('KYAA!', F.x, F.y + 1, F.z, '#ffd36b'); }
+  falconGo(F);
+}
+function falconBark(d) {
+  const F = FALCON, C = T.falcon, hd = Math.hypot(F.x - d.x, F.z - d.z);
+  if (F.state === 'carry' && (F.prey || (F.dog && F.dog !== d)) && hd < C.barkR) falconDrop(F, true);
+  else if (F.state === 'nest' && F.prey && Math.hypot(F.nest.x - d.x, F.nest.z - d.z) < C.nestR) falconDrop(F, true);
+  else if ((F.state === 'dive' || F.state === 'circle') && F.target && !F.target.isDog && hd < C.barkR) { Sound.screech(panOf(F.x, F.z), 0.12); falconGo(F); }
+}
+function resetFalcon() {
+  const F = FALCON;
+  if (F.prey) F.prey.grabbed = null;
+  if (F.dog && F.dog.air && F.dog.air.kind === 'falcon') F.dog.air = null;
+  F.prey = F.dog = F.target = null; F.state = 'away'; F.t = 0; G.falconIn = T.falcon.first;
+}
+function updateFalcon(dt, dtH) {
+  const F = FALCON, C = T.falcon; F.t += dt;
+  if (F.prey && (F.prey.dead || !G.sheep.includes(F.prey))) F.prey = null;
+  if (F.dog && (!G.dogs.includes(F.dog) || !F.dog.air || F.dog.air.kind !== 'falcon')) F.dog = null;
+  switch (F.state) {
+    case 'away': {
+      if (!C.on || G.mode !== 'play' || G.clock.hour < C.from || G.clock.hour >= C.to) break;
+      if ((G.falconIn = (G.falconIn ?? C.first) - dtH) > 0) break;
+      G.falconIn = rnd(C.every[0], C.every[1]);
+      falconCome(falconPick());
+      break;
+    }
+    case 'circle': {   // high up, round and round over its mark
+      const e = F.target; if (!falconTargetOK(e)) { const o = falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
+      F.ang += dt * 0.9; const t = F.target;
+      falconFly(F, t.x + Math.cos(F.ang) * C.circleR, groundY(t.x, t.z) + C.circleH, t.z + Math.sin(F.ang) * C.circleR, 11, dt, 4);
+      if (F.t > C.circleT) { F.state = 'dive'; F.t = 0; Sound.screech(panOf(F.x, F.z), 0.22); if (hankSees(t.x, t.z, t.y)) hank('falcon'); floatText('❗', t.x, (t.y || 0) + 2.2, t.z, '#ff5a5a', 1.4); }
+      break;
+    }
+    case 'dive': {
+      const e = F.target; if (!falconTargetOK(e) || F.t > C.diveMax) { falconGo(F); break; }
+      const gy = groundY(e.x, e.z) + (e.isDog ? 0.9 : 1.1);
+      falconFly(F, e.x + (e.vx || 0) * 0.15, gy, e.z + (e.vz || 0) * 0.15, C.diveSpd, dt, 6);
+      if (Math.random() < dt * 25) burst(F.x, F.y, F.z, 1, '#ffffff', { speed: 0.3, up: 0.1, size: 0.12, life: 0.35, grav: 0 });
+      const low = F.y - groundY(F.x, F.z) < 2.6;
+      if (low) for (const d of G.dogs) if (d !== e && d.pounceT > 0 && Math.hypot(d.x - F.x, d.z - F.z) < C.hitR) {   // pounced in mid-dive
+        SFX.bonk(panOf(F.x, F.z), 0.3); starBurst(F.x, F.y, F.z, 8, undefined, { speed: 4, up: 3 }); floatText('BONK!', F.x, F.y + 1, F.z, '#fff', 1.2); falconGo(F); break;
+      }
+      if (F.state !== 'dive') break;
+      if (Math.hypot(e.x - F.x, e.z - F.z) < 1.6 && Math.abs(F.y - gy) < 1.4) falconGrab(F, e);
+      break;
+    }
+    case 'carry': {
+      if (!F.prey && !F.dog) { falconGo(F); break; }
+      const tg = F.prey ? F.nest : F.dest, ground = groundY(F.x, F.z);
+      if (!tg) { falconDrop(F, false); break; }
+      const hd = Math.hypot(tg.x - F.x, tg.z - F.z);
+      const ty = F.prey ? (hd < 6 ? tg.top + 1.3 : Math.max(ground + C.cruiseH, tg.top + 2)) : ground + C.cruiseH * 0.8;
+      falconFly(F, tg.x, ty, tg.z, F.prey ? C.carry : C.carryDog, dt, 3);
+      falconHold(F);
+      if (F.prey && (F.cryT = (F.cryT || 0) - dt) <= 0) { F.cryT = rnd(0.5, 0.9); Sound.baa(F.prey.pitch * 1.25, 0.45, panOf(F.x, F.z), true); }
+      if (F.dog && (hd < 1.5 || F.t > 12)) { falconDrop(F, false); break; }
+      if (F.prey && hd < 1.2 && Math.abs(F.y - tg.top - 1.3) < 1) { F.state = 'nest'; F.t = 0; }
+      if (F.t > 60) falconDrop(F, false);
+      break;
+    }
+    case 'nest': {   // on the nest with it: it eats unless a dog barks it off (falconBark)
+      const N = F.nest, s = F.prey;
+      F.x = N.x; F.z = N.z; F.y = N.top + 0.45; F.vx = F.vy = F.vz = 0; F.bank = 0;
+      if (!s) { falconGo(F); break; }
+      s.x = N.x + Math.sin(F.yaw) * 0.5; s.z = N.z + Math.cos(F.yaw) * 0.5; s.y = N.top; s.vx = s.vz = 0;
+      if ((F.cryT = (F.cryT || 0) - dt) <= 0) { F.cryT = rnd(0.7, 1.3); Sound.baa(s.pitch * 1.25, 0.45, panOf(s.x, s.z), true); }
+      if (F.t > C.eatT) {   // gone. Its stone goes at the foot of the spire.
+        burst(N.x, N.top + 0.6, N.z, 18, '#f7f3e8', { speed: 2, up: 1.5 });
+        F.prey = null; s.grabbed = null;
+        const a = Math.random() * TAU; s.x = N.x + Math.cos(a) * 2.6; s.z = N.z + Math.sin(a) * 2.6; s.y = groundY(s.x, s.z);
+        killSheep(s, 'falcon');
+        falconGo(F);
+      }
+      break;
+    }
+    case 'leave': {
+      const D = F.dest || { x: F.x, z: F.z + 50 };
+      falconFly(F, D.x, groundY(F.x, F.z) + 40, D.z, 15, dt, 2);
+      if (F.t > C.leaveT) { F.state = 'away'; F.t = 0; }
+      break;
+    }
+  }
+}
+// wings beating (gliding while it circles, tucked in the dive), the shadow on the ground (host and guests alike)
+function syncFalcon(F) {
+  const M = F.models, st = F.state, on = st !== 'away'; M.root.visible = on; M.shadow.visible = on && st !== 'nest';
+  if (!on) return;
+  const t = G.time; M.root.position.set(F.x, F.y, F.z);
+  const pitch = st === 'dive' ? 0.6 : st === 'leave' ? -0.3 : 0;
+  M.root.rotation.set(pitch, F.yaw, -F.bank || 0);
+  let flap = 0, fold = 0;
+  if (st === 'dive') fold = 1.0;
+  else if (st === 'circle') flap = Math.sin(t * 3) * 0.15;
+  else if (st === 'nest') { fold = 1.3; flap = Math.max(0, Math.sin(t * 2)) * 0.2; }
+  else flap = Math.sin(t * (st === 'carry' ? 13 : 10)) * 0.75;
+  M.wings.forEach((w, i) => { const sx = i ? -1 : 1; w.rotation.z = sx * flap; w.rotation.y = -sx * fold; });
+  M.legs.forEach(g => { g.rotation.x = st === 'dive' || F.prey || F.dog ? 0.9 : 0.2; });
+  M.head.rotation.x = st === 'nest' ? 0.4 + Math.max(0, Math.sin(t * 5)) * 0.4 : 0;
+  const gy = groundY(F.x, F.z), h = F.y - gy;
+  M.shadow.position.set(F.x, gy + 0.08, F.z); M.shadow.scale.setScalar(1.2 + h * 0.04); M.shadow.material.opacity = clamp(0.45 - h * 0.008, 0.15, 0.45);
 }
 
 // =====================================================================
@@ -6131,6 +6418,7 @@ const HINTS = {
   night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (hold Ⓧ + Ⓑ / R + E). Keep the flock together.',
   'coyote-grab': 'Chase it down! <b>Pounce</b> on the coyote, or grab it and <b>shake</b>, to make it drop the sheep!',
   'cougar-grab': 'A cougar! Catch it before it climbs its tree: <b>pounce</b> on it, or run right into it, and it drops the sheep.',
+  'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
   gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / R) and drag it round.',
@@ -6158,6 +6446,7 @@ const TOUCH_HINTS = {
   night: 'Coyotes! 📣 💥, or ✊ + 💥 to <b>shake</b>',
   'coyote-grab': '💥 the coyote, or ✊ + 💥, to drop the sheep',
   'cougar-grab': 'Cougar! 💥 it or run into it',
+  'falcon-grab': '🦅 📣 under it',
   dawn: 'Morning! <b>Open the gate</b>, let them graze',
   hungry: 'Starving sheep! Find lush grass',
   gates: 'Shut gate: back off, shove again. ⚡ into it: vault. ✊: drag',
@@ -6208,7 +6497,7 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
-  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.cougar || 0);
+  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.cougar || 0) + (G.stats.falcon || 0);
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
@@ -6427,6 +6716,7 @@ const HANK_LINES = {
   teamwork: 'Grand teamwork, the pair of ye!',
   watch_it: 'Oi! Watch it!', manners: 'Mind yer manners!', not_me: 'Not me, the sheep!',
   come_bye: 'Come bye!', away_to_me: 'Away to me!', walk_up: 'Walk up!', lie_down: 'Lie down!',
+  falcon: 'Falcon! Run!', bring_back: 'Oi! Bring back me dog!',
 };
 // his own whistles (audio/whistle/<id>.mp3), played just before the matching words
 const WHISTLES = ['come_bye', 'away_to_me', 'walk_up', 'lie_down', 'thatll_do'];
@@ -6945,18 +7235,18 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
   return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : `${base}…`;
 }
-// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'old' or 'cougar'
-const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'cougar' ? w : 'eaten';
+// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'old', 'cougar' or 'falcon'
+const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'cougar' || w === 'falcon' ? w : 'eaten';
 // the end screen's lost sheep: one line per cause, "Starved: Pip (day 2), …"
-const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', starved: 'Starved', salt: 'Died of no salt', old: 'Died of old age' };
+const LOST_HEAD = { eaten: 'Taken by coyotes', cougar: 'Taken by a cougar', falcon: 'Taken by a falcon', starved: 'Starved', salt: 'Died of no salt', old: 'Died of old age' };
 function endMemHTML(L) {
   return Object.keys(LOST_HEAD).map(w => { const n = L.filter(m => cleanWhy(m.why) === w).map(m => `${escHTML(m.name)} (day ${m.day | 0})`); return n.length ? `<div><b>${LOST_HEAD[w]}:</b> ${n.join(', ')}</div>` : ''; }).join('');
 }
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'cougar' ? `${was}taken up a tree by a cougar` : `${was}taken by coyotes`;
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -7621,11 +7911,12 @@ function eulogy(m) {
     : m.why === 'starved' ? pick([`The grass ran out before ${she} did.`, `Gone hungry. We'll find greener grass.`])
     : m.why === 'salt' ? pick([`Pined for salt to the last.`, `Never got that last lick of salt.`])
     : m.why === 'cougar' ? pick([`Taken up a tree in the night.`, `The big cat came, and ${she} was gone.`])
+    : m.why === 'falcon' ? pick([`Flew once, and never came down.`, `Carried off into a clear blue sky.`])
     : pick([`The coyotes got there first.`, `Lost to the pack in the dark.`]);
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', starved: '🌾', salt: '🧂', old: '🕯️' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', old: '🕯️' };
 function dawnReport(born = []) {
   const L = Array.isArray(G.lost) ? G.lost : [], dead = L.slice(DAWN.from).map(m => ({ ...m, text: eulogy(m) })); DAWN.from = L.length;
   G.dawnReport = { day: G.clock.day, born: born.map(s => s.id), dead };
@@ -7638,7 +7929,7 @@ function openDawn(born, dead) {
   const el = $('dawn'), wool = s => (lookOf(s).wool || (s.black ? '#4a4440' : '#f6f1e3'));
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Dawn">
     <div class="barnHead"><h2>🌅 Day ${DAWN.day}</h2><button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button></div>
-    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i style="background:${wool(s)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.mother ? `<small title="Mum">🐑 ${escHTML(s.mother.name)}</small>` : ''}</div>`).join('')}</div>` : ''}
+    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${wool(s)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.mother ? `<small title="Mum">mum <b>${escHTML(s.mother.name)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
     ${dead.length ? `<div class="dawnSec"><span class="eyebrow">🕯️ Obituaries · ${dead.length}</span>${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5); return `<div class="dawnObit">${DAWN_ICON[cleanWhy(m.why)]} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic} ${w}</span><br><em>${escHTML(m.text)}</em></div>`; }).join('')}</div>` : ''}
     <div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>
   </div>`;
@@ -7922,6 +8213,22 @@ function joinPlayer(dev) {
   if (NET.role === 'host') netRoster();   // ONLINE: friends see who's playing
   return p;
 }
+// a local dog leaves (pause screen ✕). Keeps at least one local player.
+function dropPlayer(p) {
+  if (!p || p.kind === 'net' || G.players.filter(q => q.kind !== 'net').length < 2) return false;
+  const d = p.dog;
+  if (d) {
+    if (d.holding) releaseHold(d, false);
+    if (d.maul) endMaul(d.maul, 'done');
+    if (FALCON.dog === d) falconDrop(FALCON, false);
+    for (const k of COUGARS) if (k.dog === d) k.dog = null;
+  }
+  netRemovePlayer(p);
+  Sound.chime([7, 0], 660, 0.12);
+  if (NET.role === 'host') netRoster();
+  PAUSE_DOGS.sel = -1;
+  return true;
+}
 function startGame(dev) {
   G.mode = 'play';
   if (dev.kind === 'touch') touchFull();
@@ -7952,6 +8259,7 @@ function resetGame() {
   for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens();
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   resetCougars();
+  resetFalcon();
   for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
   for (const p of pens) resetGate(p);
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
@@ -7959,7 +8267,7 @@ function resetGame() {
   resetDigs();     // DIG SPOTS: every mound back for the new journey
   resetVendor();   // VENDOR
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0, falcon: 0 };
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -8116,6 +8424,10 @@ const NET_TYPES = {
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's' },
     animate: (k, dt) => { k.y = groundY(k.x, k.z) + k.h; k.leg += Math.hypot(k.vx, k.vz) * dt * 2.4; },
   },
+  falcon: {   // FALCON: one bird; its prey travel as s.grabbed ('A0') or a dog's air kind 'falcon'
+    tag: 'A', one: () => FALCON,
+    fields: { x: 'p', z: 'p', y: .02, vx: .1, vz: .1, yaw: 'a', bank: .02, state: 's', nest: { c: 'i', get: F => F.nest ? F.nest.id : -1, set: (F, v) => { F.nest = NESTS[v] || null; } } },
+  },
   dig: {   // DIG SPOTS: dug or not, and how far down
     tag: 'D', all: () => DIGS, id: sp => sp.i, static: true,
     fields: { dug: 'b', prog: .05 },
@@ -8135,7 +8447,7 @@ const NET_TYPES = {
     },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i' } },
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
@@ -8248,7 +8560,7 @@ function netScreens() {
 // ---- effects: one hook for every sound and bit of feedback ----------------------------------------------
 const FXR = {};                                // name -> local function (wrapped)
 const FXPOS = { x: 0, z: 0, on: false };      // where the last panOf() pointed (so guests can pan for their own camera)
-const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0, yowl: 0 };   // which argument of Sound.x is the pan
+const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0, yowl: 0, screech: 0 };   // which argument of Sound.x is the pan
 let fxDepth = 0;
 function fx(name, ...a) { const f = FXR[name]; return f ? f(...a) : undefined; }
 // opt: keep(args) = send it at all · pan = which argument is the stereo pan · after(result) = send only if the call
@@ -8279,6 +8591,7 @@ function netRefStr(v) {
   if (G.sheep.includes(v)) return 's' + v.id;
   if (G.coyotes.includes(v)) return 'c' + NET_TYPES.coyote.id(v);
   if (v.isCougar) return 'Q' + v.i;
+  if (v.isFalcon) return 'A0';
   const pi = pens.indexOf(v); if (pi >= 0) return 'p' + pi;
   if (G.dogs.includes(v)) return 'd' + v.player.slot;
   return null;
@@ -8386,6 +8699,22 @@ function ctlBar(dt = 0) {
     : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['P', 'pause']]
     : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['P', 'pause']];
   $('ctlBar').innerHTML = L.map(([k, t]) => `<span>${cap(k)}${t}</span>`).join('');
+}
+// pause: local dogs, ✕ drops one (click, or ←/→ + Ⓧ / Delete)
+const PAUSE_DOGS = { sel: -1, key: '' };
+function pauseDogs() {
+  const list = G.players.filter(p => p.kind !== 'net'), el = $('pauseDogs');
+  if (list.length < 2 || NET.role === 'guest') { if (PAUSE_DOGS.key !== '-') { PAUSE_DOGS.key = '-'; el.innerHTML = ''; } return; }
+  if (!(PAUSE_DOGS.sel >= 0 && PAUSE_DOGS.sel < list.length)) PAUSE_DOGS.sel = list.length - 1;   // the newest: most likely the accident
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let mv = (keyEdge.has('ArrowRight') ? 1 : 0) - (keyEdge.has('ArrowLeft') ? 1 : 0), x = keyEdge.has('Delete') || keyEdge.has('Backspace');
+  for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (!gp) continue; mv += (padEdge(i, gp, 15) ? 1 : 0) - (padEdge(i, gp, 14) ? 1 : 0); if (padEdge(i, gp, 2)) x = true; }
+  if (mv) PAUSE_DOGS.sel = (PAUSE_DOGS.sel + mv + list.length) % list.length;
+  if (x && dropPlayer(list[PAUSE_DOGS.sel])) { PAUSE_DOGS.key = ''; return; }   // redrawn next frame
+  const ico = p => p.kind === 'pad' ? '🎮' : p.kind === 'kb' ? '⌨️' : p.kind === 'touch' ? '📱' : '🤖';
+  const key = list.map(p => p.slot + p.kind + p.name).join() + '|' + PAUSE_DOGS.sel + INPUT_DEV;
+  if (key === PAUSE_DOGS.key) return; PAUSE_DOGS.key = key;
+  el.innerHTML = list.map((p, i) => `<button type="button" data-slot="${p.slot}" class="${i === PAUSE_DOGS.sel ? 'sel' : ''}" style="color:${PCOL[p.slot].ui}">${ico(p)} ${netCleanName(p.name)} ${i === PAUSE_DOGS.sel ? (INPUT_DEV === 'pad' ? 'Ⓧ' : '⌦') : ''}✕</button>`).join('');
 }
 let pauseCtrlsKey = '';
 function pauseControls() {   // redrawn only when what it would show changes
@@ -8978,7 +9307,7 @@ function netFromHost(m) {
       NET.slot = NET.locals[0].slot;
       if (first) netGuestWipe();          // (a rejoin keeps what it has: the keyframe that follows sorts it out)
       NET.dead = false; NET.lostMsg = '';
-      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on another controller, or the other side of the keyboard.` : '');
+      netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on a controller.` : '');
       break;
     }
     case 's': {
@@ -9119,14 +9448,14 @@ function netGuestGrave(id, f) {
   return g;
 }
 // a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
-// the same screen joins like local co-op (Ⓐ on another controller, or the other side of the keyboard) and gets
+// the same screen joins like local co-op (Ⓐ on another controller; the keyboard is one player) and gets
 // a dog of their own: from then on each player has just their own device.
 function netLocal() { return { kind: 'kb', index: 0, used: false, slot: -1, inKey: '', inAt: 0, q: 0, hist: [], ack: null, pounces: [] }; }
 function netLocalOf(slot) { if (NET.role !== 'guest' || !(slot >= 0)) return null; for (const L of NET.locals) if (L.slot === slot) return L; return null; }
 const netSameDev = (L, dev) => L.used && L.kind === dev.kind && L.index === dev.index;
 function netGuestInput(now) {
   const locals = NET.locals.length ? NET.locals : (NET.locals = [netLocal()]);
-  const devs = [{ kind: 'kb', index: 0 }, { kind: 'kb', index: 1 }];
+  const devs = [{ kind: 'kb', index: 0 }];   // one keyboard player
   if (TOUCH.on) devs.push({ kind: 'touch', index: 0 });
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) if (pads[i]) devs.push({ kind: 'pad', index: i });
@@ -9136,7 +9465,7 @@ function netGuestInput(now) {
   if (live && locals[0].used && (G.mode === 'title' || G.mode === 'play') && locals.length < 4 && NET.roster.length < 4) {
     for (const dev of devs) {
       if (locals.some(L => netSameDev(L, dev))) continue;
-      const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : dev.kind === 'touch' ? TOUCH.tap : anyEdge(KB[dev.index].join);
+      const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : dev.kind === 'touch' ? TOUCH.tap : KB.some(k => anyEdge(k.join));
       if (!hit) continue;
       const L = netLocal(); Object.assign(L, dev, { used: true }); locals.push(L); fresh.add(L);
       netSend({ t: 'j', n: locals.length });
@@ -9243,6 +9572,7 @@ async function netCopyLink(btn) {
   on('netJoinBtn', () => netJoin(codeEl.value, nameEl.value));
   on('netBack', () => { if (NET.role === 'host') { netStopHosting(); netRoster(); NET.roster = []; } else if (NET.role === 'guest') netLeave(); else { $('netPanel').hidden = true; netStatus(''); } });
   on('netCopy', b => netCopyLink(b)); on('netChipCopy', b => netCopyLink(b)); on('pauseCopy', b => netCopyLink(b));
+  $('pauseDogs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) dropPlayer(G.players.find(p => p.kind !== 'net' && p.slot === +b.dataset.slot)); });
   on('pauseResume', () => { if (NET.role === 'guest') netSend({ t: 'e', k: 'pause' }); else setPause(false); });
   on('pauseHost', () => netHost());
   on('pauseStop', () => { netStopHosting(); NET.roster = []; });
@@ -9311,6 +9641,7 @@ function step(dt) {
     updateSheep(dt, dtH);
     updateCoyotes(dt);
     updateCougars(dt);
+    updateFalcon(dt, dtH);
     updateVendor();   // VENDOR: Hank's word at the Trading Post
     checkLose();
   } else {
@@ -9326,7 +9657,8 @@ function frame(now) {
   if (netFrameStart(now, dt)) {   // ONLINE: false on a guest, which never runs the game (the host's snapshots move everything). Body left at its old indent.
   // joining / confirming
   if (G.mode === 'title') { const j = pollJoins(G.players); if (j.length) { Sound.init(); startGame(j[0]); } }
-  else if (G.mode === 'play') { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
+  else if (G.mode === 'play' && !G.paused) { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
+  if (G.mode === 'play' && G.paused) pauseDogs();
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
   for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = false; p.skipInput = false; } }
@@ -9340,6 +9672,7 @@ function frame(now) {
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
+  syncFalcon(FALCON);
   syncSheep();
   syncMoves(dt);
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
@@ -9367,11 +9700,12 @@ function debugKeys() {
   if (keyEdge.has('KeyM')) G.clock.hour = 5.9;
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
+  if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 50); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
-window.GAME = { hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
@@ -9384,6 +9718,7 @@ function renderOnce(dt = 1 / 60) {
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
+  syncFalcon(FALCON);
   syncSheep(); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }

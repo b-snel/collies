@@ -130,6 +130,22 @@ const tests = {
     });
   },
   // every camp: the troughs and the salt lick can be reached from outside the fence, and tipping works there
+  // the fence by the troughs can't be hopped (in or out); greens still go in over it. Elsewhere it hops.
+  async troughFence() {
+    return h.page.evaluate(() => {
+      const { pens, troughFood } = GAME; H.reset(11); const pen = pens[1], d = H.d(), tr = pen.troughs[0];
+      const ox = tr.x - pen.x, oz = tr.z - pen.z, l = Math.hypot(ox, oz), ux = ox / l, uz = oz / l;
+      const push = (x, z, sec, extra) => { H.place(d, x, z); H.run(sec, () => { H.p.bot = H.to(pen.x - d.x, pen.z - d.z, extra); }); H.p.bot = {}; return GAME.insidePen ? GAME.insidePen(pen, d.x, d.z) : Math.hypot(d.x - pen.x, d.z - pen.z) < pen.R; };
+      d.greens = GAME.T.forage.carryCap;
+      const inWalk = push(pen.x + ux * (pen.R + 1.2), pen.z + uz * (pen.R + 1.2), 3);
+      const fed = H.r(troughFood(pen));
+      const inSprint = push(pen.x + ux * (pen.R + 3), pen.z + uz * (pen.R + 3), 3, { sprint: true });
+      const a = Math.atan2(uz, ux) + Math.PI;   // the far side of the pen: no trough
+      const inElse = push(pen.x + Math.cos(a) * (pen.R + 1.2), pen.z + Math.sin(a) * (pen.R + 1.2), 3);
+      const ok = !inWalk && !inSprint && fed > 0 && inElse;
+      return { ok, hoppedAtTroughWalk: inWalk, hoppedAtTroughSprint: inSprint, tippedOverFence: fed, hoppedElsewhere: inElse };
+    });
+  },
   async allCamps() {
     return h.page.evaluate(() => {
       const { pens, sdfAt, T, troughFood } = GAME, out = [];
