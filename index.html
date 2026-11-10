@@ -1501,6 +1501,13 @@ function collideFences(e, r) {
     if (!e.isDog && collideSeg(e, r, p.gateSeg)) { hit = true; hx = HIT.nx; hz = HIT.nz; }   // dogs and the gate leaf: updateGate (they push it)
   }
   for (const s of staticFences) if (Math.abs(e.x - s.ax) < 20 && Math.abs(e.z - s.az) < 20 && collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
+  // something that ended up inside a trough or the salt lick (a lamb born on it, a squeeze, a landing) would be
+  // walled in by its sides for good: step it out on the side toward the middle of the pen
+  for (const p of pens) for (const b of p.solids || []) {
+    const rx = e.x - b.x, rz = e.z - b.z; if (rx * rx + rz * rz > 9) continue;
+    const u = rx * b.tx + rz * b.tz, v = rx * b.nx + rz * b.nz;
+    if (Math.abs(u) < b.hl && Math.abs(v) < b.hw) { const dv = b.hw + r + 0.02 - v; e.x += b.nx * dv; e.z += b.nz * dv; hit = true; hx = b.nx; hz = b.nz; }
+  }
   HIT.nx = hx; HIT.nz = hz; return hit;
 }
 
@@ -2892,7 +2899,9 @@ function lambsAtDawn() {
       const n = Math.random() < (s.flushed ? T.flushTwins : T.twinChance) ? 2 : 1;
       s.lambedDay = G.clock.day;   // she rests a few days before she can be courted again
       for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
-        const l = makeSheep(s.x + rnd(-0.6, 0.6), s.z + rnd(-0.6, 0.6), { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2 });
+        let lx = s.x + rnd(-0.6, 0.6), lz = s.z + rnd(-0.6, 0.6);
+        if (s.pen && !insidePen(s.pen, lx, lz, 1.2)) { lx = lerp(lx, s.pen.x, 0.15); lz = lerp(lz, s.pen.z, 0.15); }   // born by the fence: on the pen side of it
+        const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2 });
         G.sheep.push(l); born++;
         burst(l.x, l.y + 0.8, l.z, 6, '#ff8fb8', { speed: 0.8, up: 2, size: 0.12, grav: 1.5 });
         floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
@@ -4028,7 +4037,8 @@ const TROUGH_GEO = (() => {
     fill: merge(P(BOX(L - 0.12, 1, Wd - 0.08), '#9bc84a', { p: [0, 0.5, 0] }),
       ...Array.from({ length: 9 }, (_, i) => P(SPH(5), ['#ffffff', '#b48ae6', '#ffc62a'][i % 3], { s: [0.06, 0.04, 0.06], p: [-1.05 + i * 0.26, 1.0, ((i * 37) % 5 - 2) * 0.1] }))) };
 })();
-const boxFence = (cx, cz, tx, tz, hl, hw) => {   // sheep bump into it (and it's stamped for the coyotes' nav)
+const boxFence = (cx, cz, tx, tz, hl, hw, p) => {   // sheep bump into it (and it's stamped for the coyotes' nav)
+  if (p) { let nx = -tz, nz = tx; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; } (p.solids ||= []).push({ x: cx, z: cz, tx, tz, nx, nz, hl, hw }); }   // collideFences steps anything inside back out
   const corner = (u, v) => [cx + tx * u - tz * v, cz + tz * u + tx * v], cs = [corner(hl, hw), corner(-hl, hw), corner(-hl, -hw), corner(hl, -hw)];
   for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; staticFences.push({ ax, az, bx, bz }); }
 };
@@ -4041,7 +4051,7 @@ for (const p of pens) {
     part(g, TROUGH_GEO.box);
     const fill = new THREE.Mesh(TROUGH_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
     p.troughs.push({ i, food: 0, cap: T.forage.troughCap, x: c.x, z: c.z, yaw, len: L, tx, tz, shown: 0, fill });   // yaw/len: where the sheep line up to feed
-    boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05);
+    boxFence(c.x, c.z, tx, tz, L / 2 + 0.05, Wd / 2 + 0.05, p);
   }
   // the salt lick: a block of salt on a stout post
   const a = lickA(p), c = onRing(p, a, p.R - 0.8), g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = -a; scene.add(g);
@@ -4050,7 +4060,7 @@ for (const p of pens) {
   part(block, merge(P(BOX(0.4, 0.3, 0.4), '#f3eee6', { p: [0, 0.15, 0] }), P(BOX(0.18, 0.08, 0.2), '#f6c9d4', { p: [0.06, 0.32, -0.05] })), { shadow: false });
   block.scale.y = 0.001; block.visible = false;
   p.lick = { salt: 0, cap: T.salt.lickCap, x: c.x, z: c.z, shown: 0, block };
-  boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), 0.3, 0.3);
+  boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), 0.3, 0.3, p);
 }
 // SHARED HOOK (sheep mind): a sheep eats from one of a pen's troughs. amt in hunger units; returns what was taken.
 function troughEat(tr, amt) {
