@@ -8,7 +8,7 @@ const { execSync } = require('child_process');
 const ROOT = __dirname;
 const OUT = path.join(ROOT, 'dist');
 // Build tooling and repo docs, not part of the site.
-const SKIP = new Set(['dist', 'node_modules', 'tools', 'build.js', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'AGENTS.md', 'CLAUDE.md', 'README.md']);
+const SKIP = new Set(['dist', 'node_modules', 'tools', 'preview-router', 'build.js', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'AGENTS.md', 'CLAUDE.md', 'README.md']);
 
 const git = cmd => { try { return execSync('git ' + cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { return ''; } };
 const env = process.env;
