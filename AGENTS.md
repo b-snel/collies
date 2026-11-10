@@ -37,7 +37,7 @@ till dawn.
 → scenery → fences/pens/bridge → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → DIG SPOTS → NAVIGATION → COYOTES → COUGARS →
 TOMBSTONES → clock/lighting → camera → visual sync → HUD → HANK, FLOCK LOOKS,
-DOG WARDROBE, BARN, saved flock → game flow → main loop → `window.GAME`.
+DOG WARDROBE, BARN, DAWN REPORT, saved flock → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
@@ -152,6 +152,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs.
+- **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
+  a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only, world waits; `?sim` only
+  fills `G.dawnReport`.
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
   `localStorage['collies.dogs.v1']`.
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying

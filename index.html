@@ -162,7 +162,7 @@
   #hankBubble .arr { display:none; position:absolute; left:50%; top:50%; width:24px; height:24px; margin:-12px; font-style:normal; font-size:22px; color:var(--hank-name); line-height:24px; text-shadow:0 0 3px var(--hank-bubble-bg); }
   #hankBubble.edge::after, #hankBubble.edge::before { display:none; }
   #hankBubble.edge .arr { display:block; }
-  body.inBarn #hankBubble { display:none; }
+  body.inBarn #hankBubble, body.inDawn #hankBubble { display:none; }
   .hankVol { display:inline-flex; align-items:center; gap:8px; font-size:15px; text-shadow:none; }
   .hankVol input[type=range] { width:120px; accent-color:var(--barn-accent); }
   .hankVol output { min-width:3.2em; text-align:right; font-variant-numeric:tabular-nums; }
@@ -233,6 +233,19 @@
   .barnFoot .bbtn.warn { background:#ff7a6b; color:#1b1a22; }
   .barnPad { font-size:13px; color:var(--barn-muted); text-align:center; }
   .barnPad:empty { display:none; }
+  #dawn.hidden { display:none; }
+  #dawn { position:fixed; inset:0; z-index:6; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--barn-backdrop); color:var(--barn-ink); text-shadow:none; }
+  #dawn .barnCard { width:min(620px, 100%); }
+  .dawnSec { display:flex; flex-direction:column; gap:6px; }
+  .dawnSec .eyebrow { font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--barn-accent); }
+  .dawnRow { display:flex; align-items:center; gap:6px; }
+  .dawnRow i { width:14px; height:14px; border-radius:50%; flex:none; border:2px solid rgba(0,0,0,.45); }
+  .dawnRow input { font:inherit; font-size:18px; font-weight:700; width:min(200px, 45vw); padding:2px 8px; border-radius:10px; border:2px dashed var(--barn-edge); background:rgba(255,248,232,.06); color:var(--barn-ink); user-select:text; -webkit-user-select:text; }
+  .dawnRow button { font-size:18px; padding:2px 8px; }
+  .dawnRow small { color:var(--barn-muted); font-size:13px; margin-left:auto; }
+  .dawnObit { font-size:15px; line-height:1.4; color:var(--barn-muted); }
+  .dawnObit b { color:var(--barn-ink); }
+  .dawnObit .tag { font-size:12px; padding:1px 7px; border-radius:10px; background:var(--barn-chip); color:var(--barn-ink); margin-left:4px; white-space:nowrap; }
   @media (max-width:860px) { .barnGrid { grid-template-columns:minmax(0,1fr); } .barnList { flex-direction:row; flex-wrap:wrap; max-height:110px; } }
 
   /* ===== MOBILE: touch controls (landscape), rotate prompt, compact HUD ===== */
@@ -400,6 +413,7 @@
 </div>
 <div id="hankBubble"><b>Hank</b><span></span><i class="arr">➤</i></div>
 <div id="barn" class="hidden"></div>
+<div id="dawn" class="hidden"></div>
 <div id="loading">Rounding up the flock…</div>
 <div id="fps"></div>
 <script type="module">
@@ -900,7 +914,7 @@ if (window.visualViewport) {
 }
 addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') touchOn();
-  if (TOUCH.on && !e.target.closest('button, input, a, .npanel, #titleExtras, #barn, .tb')) TOUCH.tap = true;   // a tap on open ground: start, join, again
+  if (TOUCH.on && !e.target.closest('button, input, a, .npanel, #titleExtras, #barn, .tb, #dawn')) TOUCH.tap = true;   // a tap on open ground: start, join, again
 }, true);
 addEventListener('contextmenu', e => { if (TOUCH.on) e.preventDefault(); });
 if (/[?&]touch\b/.test(location.search) || (matchMedia('(pointer:coarse)').matches && !matchMedia('(pointer:fine)').matches)) touchOn();
@@ -2183,7 +2197,7 @@ function killSheep(s, why) {
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   addTombstone(s, why);
-  G.lost.push({ name: s.name, why, day: G.clock.day, looks: describeSheep(s) });
+  G.lost.push({ name: s.name, why, day: G.clock.day, looks: describeSheep(s), brave: s.brave ?? 0.5, ram: !!s.ram, lamb: !!s.lamb, age: s.age | 0, words: lookWords(s) });
   mournSheep(s, why);   // FLOCK SAVE: fondly remembered (and Hank says something)
 }
 function findGrass(s, ccx, ccz) {
@@ -3246,7 +3260,7 @@ function ageAtDawn() {
 }
 function lambsAtDawn() {
   ageAtDawn();
-  let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram);
+  let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram), babies = [];
   for (const s of [...G.sheep]) {
     if (s.dead) continue;
     if (!s.lamb && !s.ram && s.bred && s.hunger < T.lambHunger && Math.random() < Math.min(0.95, T.lambChance * (s.flushed ? T.flushLamb : 1) * (1 - T.oldLamb * oldK(s)))) {
@@ -3257,7 +3271,7 @@ function lambsAtDawn() {
         if (s.pen && !insidePen(s.pen, lx, lz, 1.2)) { lx = lerp(lx, s.pen.x, 0.15); lz = lerp(lz, s.pen.z, 0.15); }   // born by the fence: on the pen side of it
         const B = T.brave, brave = clamp(B.sire * (s.sireBrave ?? 0.5) + B.dam * (s.brave ?? 0.5) + (1 - B.sire - B.dam) * Math.random(), 0, 1);   // like father, like lamb
         const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2, brave });
-        G.sheep.push(l); born++;
+        G.sheep.push(l); born++; babies.push(l);
         burst(l.x, l.y + 0.8, l.z, 6, '#ff8fb8', { speed: 0.8, up: 2, size: 0.12, grav: 1.5 });
         floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
       }
@@ -3272,6 +3286,7 @@ function lambsAtDawn() {
   if (born) { G.stats.born += born; toast(`${born} lamb${born > 1 ? 's were' : ' was'} born overnight! 🐑`, 'good'); Sound.chime([0, 4, 7, 12, 16], 523); }
   else if (G.clock.day > 1) toast(ramAlive ? 'No lambs this morning. Pen the well-fed ewes with a ram overnight.' : 'No lambs this morning: there are no rams left…', 'warn');
   onLambsBorn(born);   // HANK + FLOCK SAVE: he coos over them; new arrivals join the saved flock
+  dawnReport(babies);  // DAWN REPORT: who was born, who we lost
 }
 
 // =====================================================================
@@ -6138,7 +6153,7 @@ function updateHints(dt) {
 let hudT = 0;
 function updateHUD(dt) {
   bannerTimer -= dt; if (bannerTimer <= 0) $('banner').classList.remove('show');
-  const playing = G.mode === 'play' && !G.paused && !BARN.open && !(NET.role === 'guest' && NET.dead);   // MOBILE: touch controls only while playing
+  const playing = G.mode === 'play' && !G.paused && !BARN.open && !DAWN.open && !(NET.role === 'guest' && NET.dead);   // MOBILE: touch controls only while playing
   document.body.classList.toggle('playing', playing);
   if (TOUCH.on) {
     $('tBarnBtn').style.display = NET.role === 'guest' ? 'none' : '';
@@ -7544,6 +7559,81 @@ addEventListener('keydown', e => {
 }, true);
 
 // =====================================================================
+// DAWN REPORT — at dawn, if anyone was born or lost since the last one:
+// new lambs (rename, 🎲, ✏️ → barn) and a short eulogy for each one lost,
+// coloured by its bravery. Host only; the world waits while it's open.
+// G.dawnReport keeps the last one (tests, ?sim never opens it).
+// =====================================================================
+const DAWN = { open: false, from: 0, born: [], dead: [], day: 0 };
+const braveWord = b => b >= 0.75 ? ['🦁', 'fearless'] : b >= 0.55 ? ['🛡️', 'bold'] : b >= 0.4 ? ['🌾', 'steady'] : b >= 0.2 ? ['🐇', 'flighty'] : ['🍃', 'timid'];
+function eulogy(m) {
+  const her = m.ram && !m.lamb ? 'his' : 'her', she = m.ram && !m.lamb ? 'he' : 'she', b = m.brave ?? 0.5;
+  const trait = b >= 0.55 ? pick([`Never backed down from a coyote.`, `First to the front when the howling started.`, `Stared down the dark and never blinked.`, `Feared nothing on four legs.`, `Would have charged a mountain if it looked at ${her} funny.`])
+    : b >= 0.4 ? pick([`Steady as a fencepost.`, `Never first, never last, always there.`, `Kept ${her} head when the rest lost theirs.`, `Quiet, sure-footed, dependable.`])
+    : pick([`Bolted at every shadow, and we loved ${her} for it.`, `Once ran from ${her} own reflection.`, `Spooked by butterflies, brave at heart.`, `Always first to run and last to be caught.`, `Jumped at every twig, yet walked every mile.`]);
+  const how = m.why === 'old' ? pick([`${m.age} good days on the trail.`, `Went in ${her} sleep, ${m.age} days old.`, `A long life, well grazed.`])
+    : m.why === 'starved' ? pick([`The grass ran out before ${she} did.`, `Gone hungry. We'll find greener grass.`])
+    : m.why === 'salt' ? pick([`Pined for salt to the last.`, `Never got that last lick of salt.`])
+    : m.why === 'cougar' ? pick([`Taken up a tree in the night.`, `The big cat came, and ${she} was gone.`])
+    : pick([`The coyotes got there first.`, `Lost to the pack in the dark.`]);
+  const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
+  return `${trait} ${how}${garb}`;
+}
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', starved: '🌾', salt: '🧂', old: '🕯️' };
+function dawnReport(born = []) {
+  const L = Array.isArray(G.lost) ? G.lost : [], dead = L.slice(DAWN.from).map(m => ({ ...m, text: eulogy(m) })); DAWN.from = L.length;
+  G.dawnReport = { day: G.clock.day, born: born.map(s => s.id), dead };
+  if ((!born.length && !dead.length) || SIM || G.mode !== 'play' || NET.role === 'guest') return false;
+  return openDawn(born, dead);
+}
+function openDawn(born, dead) {
+  if (BARN.open) closeBarn();
+  Object.assign(DAWN, { open: true, born, dead, day: G.clock.day }); keys.clear();
+  const el = $('dawn'), wool = s => (lookOf(s).wool || (s.black ? '#4a4440' : '#f6f1e3'));
+  el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Dawn">
+    <div class="barnHead"><h2>🌅 Day ${DAWN.day}</h2><button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button></div>
+    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i style="background:${wool(s)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.mother ? `<small title="Mum">🐑 ${escHTML(s.mother.name)}</small>` : ''}</div>`).join('')}</div>` : ''}
+    ${dead.length ? `<div class="dawnSec"><span class="eyebrow">🕯️ ${dead.length}</span>${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5); return `<div class="dawnObit">${DAWN_ICON[cleanWhy(m.why)]} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic} ${w}</span><br>${escHTML(m.text)}</div>`; }).join('')}</div>` : ''}
+    <div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>
+  </div>`;
+  const byId = row => born.find(s => s.id === +row.dataset.id);
+  el.querySelectorAll('.dawnRow input').forEach(inp => {
+    inp.addEventListener('input', () => barnSet(byId(inp.closest('.dawnRow')), { name: inp.value }));
+    inp.addEventListener('blur', () => { const s = byId(inp.closest('.dawnRow')); if (s) inp.value = s.name; });
+  });
+  el.querySelector('.barnCard').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; const row = b.closest('.dawnRow'), s = row && byId(row);
+    if (b.dataset.go !== undefined) closeDawn();
+    else if (b.dataset.dice !== undefined && s) { barnSet(s, { name: sheepName({ not: s.name }) }); row.querySelector('input').value = s.name; }
+    else if (b.dataset.edit !== undefined && s) { closeDawn(); openBarn(s); }
+    else if (b.dataset.flock !== undefined) { closeDawn(); openBarn(); }
+  });
+  el.classList.remove('hidden'); document.body.classList.add('inDawn');
+  return true;
+}
+function closeDawn() {
+  if (!DAWN.open) return; DAWN.open = false;
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  $('dawn').classList.add('hidden'); document.body.classList.remove('inDawn'); keys.clear();
+  saveFlock();   // new names stick
+}
+// in frame(): while open the world waits; pad Ⓐ/Ⓑ/Start closes, View opens the barn
+function dawnFrame() {
+  if (!DAWN.open) return false;
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (!gp) continue; if (padEdge(i, gp, 8)) { closeDawn(); openBarn(); break; } if (padEdge(i, gp, 0) || padEdge(i, gp, 1) || padEdge(i, gp, 9)) { closeDawn(); break; } }
+  endInputFrame(); return true;
+}
+addEventListener('keydown', e => {
+  if (!DAWN.open) return;
+  const typing = e.target && e.target.tagName === 'INPUT';
+  if (!e.repeat && (e.code === 'Escape' || (e.code === 'Enter' && !typing) || (e.code === 'Space' && !typing))) { e.preventDefault(); closeDawn(); }
+  else if (!e.repeat && e.code === 'Enter' && typing) e.target.blur();
+  else if (!e.repeat && e.code === 'Tab') { e.preventDefault(); closeDawn(); openBarn(); }
+  e.stopImmediatePropagation();
+}, true);
+
+// =====================================================================
 // FLOCK SAVE — the player's flock between journeys. Every living sheep's
 // name and look (plus the ones waiting at home) and the "fondly
 // remembered" list go to localStorage[FLOCK_KEY], saved when the barn
@@ -7680,7 +7770,7 @@ function resetGame() {
   resetDigs();     // DIG SPOTS: every mound back for the new journey
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.finalArm = 0;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, saved: 0, cougar: 0 };
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = [];
+  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -8159,6 +8249,8 @@ function netFrameEnd(now) {
     // the host in Hank's barn mid-journey: their world waits, so friends see a pause (lifted when it closes)
     if (BARN.open && G.mode === 'play' && !G.paused && NET.seats.some(s => s.conn)) setPause(true, '#barn');
     else if (!BARN.open && G.paused && G.pauseWho === '#barn') setPause(false);
+    if (DAWN.open && G.mode === 'play' && !G.paused && NET.seats.some(s => s.conn)) setPause(true, '#dawn');
+    else if (!DAWN.open && G.paused && G.pauseWho === '#dawn') setPause(false);
     if (now >= NET.snapAt) { NET.snapAt = (now - NET.snapAt < 120 ? NET.snapAt : now) + 1000 / NETT.hz; netSnapTick(); }
     if (now >= NET.grassAt) { NET.grassAt = now + NETT.grassMs; for (const s of NET.seats) if (s.conn && s.conn.open && s.shadow) netGrassTick(s); }
   }
@@ -8894,6 +8986,7 @@ function netUI(now) {
   const friends = NET.seats.filter(s => s.conn).length;
   const pausedWhy = !G.paused ? '' : G.pauseWho === '#hidden' ? (host ? 'Paused while this tab was in the background.' : `${NET.hostName}'s game is in the background — waiting for them…`)
     : G.pauseWho === '#barn' ? `${NET.hostName} is in Hank's barn, dressing up the flock…`
+    : G.pauseWho === '#dawn' ? `🌅 ${NET.hostName}…`
     : G.pauseWho && NET.role ? `Paused by ${G.pauseWho}` : '';
   const key = [NET.role, NET.code, NET.status, NET.statusErr, NET.inRoom, NET.dead, NET.lostMsg, NET.locals.map(L => L.slot).join(), G.mode, G.paused, pausedWhy, friends, quiet, NET.hostHid,
     Math.round(NET.rtt / 10), JSON.stringify(NET.roster), $('netPanel').hidden].join('|');
@@ -9038,7 +9131,7 @@ function step(dt) {
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min(0.1, (now - last) / 1000); last = now;
-  if (barnFrame(dt)) { netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
+  if (barnFrame(dt) || dawnFrame()) { netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
   if (netFrameStart(now, dt)) {   // ONLINE: false on a guest, which never runs the game (the host's snapshots move everything). Body left at its old indent.
   // joining / confirming
   if (G.mode === 'title') { const j = pollJoins(G.players); if (j.length) { Sound.init(); startGame(j[0]); } }
@@ -9102,7 +9195,7 @@ function renderOnce(dt = 1 / 60) {
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
-  describeSheep, sheepName, lossLine, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
+  describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
 spawnFlock();
