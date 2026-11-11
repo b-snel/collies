@@ -565,7 +565,7 @@ const T = {
   staminaDrain: 0.3, staminaRegen: 0.4,
   pressR: { walk: 9, creep: 5.5, sprint: 12, lie: 3.5 },
   pressK: { walk: 1.0, creep: 0.5, sprint: 1.5, lie: 0.15 },
-  barkR: 13, barkCd: 0.6,
+  barkR: 13, barkCd: 0.6, barkBuf: 0.25,   // a bark pressed up to barkBuf s before the cooldown's up still goes off
   barkWise: 3,           // a coyote or cougar barked off this many times in a night stops falling for it (and comes at the dogs)
   coyoteBark: { amt: 0.45, packK: 0.4, soloWise: 1, lungeR: 8 },   // bark scare / (1 + packK*(pack-1)); a lone one falls for soloWise barks, then needs a bonk; bold ones lunge at dogs within lungeR
   // TEAM BARK: dogs barking within `win` s and `near` m of each other (chained). Predators only: every bark radius x (1 + grow*(n-1)),
@@ -1143,7 +1143,19 @@ function padState(i) {
   return pads && pads[i];
 }
 function padPressed(gp, b) { const btn = gp.buttons[b]; return !!btn && (btn.pressed || btn.value > 0.4); }
-function padEdge(i, gp, b) { return padPressed(gp, b) && !(padPrev[i] && padPrev[i][b]); }
+function padEdge(i, gp, b) { return (padPressed(gp, b) && !(padPrev[i] && padPrev[i][b])) || !!(padTap[i] && padTap[i].has(b)); }
+// a fast poll between frames keeps quick taps a slow frame would miss, till the frame reads them
+const padSeen = {}, padTap = {};   // gamepad index -> last polled buttons / buttons pressed since the last frame
+function padPoll() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (let i = 0; pads && i < pads.length; i++) {
+    const gp = pads[i]; if (!gp) continue;
+    const was = padSeen[i] || [], now = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
+    for (let b = 0; b < now.length; b++) if (now[b] && !was[b]) (padTap[i] ||= new Set()).add(b);
+  }
+}
+let padPollId = 0;
+if (!SIM) addEventListener('gamepadconnected', () => { if (!padPollId) padPollId = setInterval(() => { if (!document.hidden) padPoll(); }, 4); });
 function rumble(player, strong = 0.4, weak = 0.6, ms = 120) {
   if (!player || player.kind !== 'pad') return;
   const gp = padState(player.index);
@@ -1206,7 +1218,8 @@ function endInputFrame() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
-    padPrev[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
+    padPrev[i] = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);   // (padSeen too: a press read now isn't latched again)
+    if (padTap[i]) padTap[i].clear();
     if (padPrev[i].some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5)) INPUT_DEV = 'pad';
   }
 }
@@ -4086,6 +4099,7 @@ function spawnDog(player) {
 }
 function updateDog(d, inp, dt) {
   d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt); d.jumpCd = Math.max(0, d.jumpCd - dt);
+  d.barkBuf = inp.bark ? T.barkBuf : Math.max(0, (d.barkBuf || 0) - dt);   // pressed a touch early (or online, a hair before the host's cooldown): kept
   d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt); d.barkAgo += dt; d.teamAgo += dt;
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
   dogHealth(d, dt);
@@ -4163,7 +4177,7 @@ function updateDog(d, inp, dt) {
   d.y = groundY(d.x, d.z);
   d.leg += sp * dt * 3.2;
   if (mode === 'sprint' && sp > 8 && Math.random() < dt * 14) burst(d.x - d.vx * 0.05, d.y + 0.1, d.z - d.vz * 0.05, 1, '#e8dcc0', { speed: 0.6, up: 0.8, size: 0.2, life: 0.5, grav: 0 });
-  if (inp.bark && d.barkCd <= 0) bark(d);
+  if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
 }
 function barkFx(d) {   // what a bark looks and sounds like (a guest plays its own dog's at once: netPredPress)
   d.barkAnim = 0.3;
