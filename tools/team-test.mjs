@@ -1,6 +1,6 @@
 // Headless test: `node tools/team-test.mjs [rules|coyote|pack|cougar|maul|falcon]`. TEAM BARK.
 //   rules   together (within win, near) → a team bark; too late, too far, hoarse (cd) → none; after cd → again
-//   coyote  a lone coyote wise to barks: a solo bark doesn't move it, a team bark sends it off (not bold); hint shown
+//   coyote  a coyote falls for one bark: a fresh one, a team bark sends it off; the next bark, solo or team, doesn't move it (bold); hint shown
 //   pack    four dogs bark one after another: 2, 3, 4 → three team barks, the pack breaks
 //   cougar  a cougar dragging a sheep: a solo bark does nothing, a team bark drops it (saved)
 //   maul    a cougar on a dog: two partners bark together, it lets go
@@ -35,12 +35,15 @@ const run = scen => h.page.evaluate(async scen => {
     const pk = spawnPack(scen === 'pack' ? 3 : 1, { howl: false }), cs = pk.members, hx = pk.homeX, hz = pk.homeZ;
     const place = () => cs.forEach((c, i) => { c.x = hx + i * 1.5; c.z = hz; c.vx = c.vz = 0; c.state = 'pack'; c.stateT = 0; c.gx = c.x; c.gz = c.z; c.spd = 0; });
     if (scen === 'coyote') {
-      G.hints['team-bark'] = false;
-      const c = cs[0]; place(); c.barks = 10; c.bold = true; c.wiseShown = false;
-      put(A, hx + 6, hz); put(B, hx - 6, hz); spare(); bark(A);
-      Object.assign(out, { soloState: c.state, soloBold: c.bold, hint: !!G.hints['team-bark'] });
+      G.hints['team-bark'] = false; G.hints['coyote-wise'] = false;
+      const c = cs[0]; place(); c.barks = 0; c.bold = false; c.wiseShown = false;
+      put(A, hx + 6, hz); put(B, hx - 6, hz); spare();
+      let n0 = tb(); bark(A); run(0.1); bark(B);   // its first: a team bark
+      Object.assign(out, { firstTeams: tb() - n0, firstState: c.state, firstBold: c.bold });
+      run(T.teamBark.cd + 0.2); place(); put(A, hx + 6, hz); put(B, hx - 6, hz); spare(); bark(A);
+      Object.assign(out, { soloState: c.state, soloBold: c.bold, hint: !!G.hints['coyote-wise'], teamHint: !!G.hints['team-bark'] });
       run(1); place(); put(A, hx + 6, hz); put(B, hx - 6, hz); spare();
-      const n0 = tb(); bark(A); run(0.1); bark(B);
+      n0 = tb(); bark(A); run(0.1); bark(B);
       Object.assign(out, { teams: tb() - n0, state: c.state, bold: c.bold });
       return out;
     }
@@ -93,7 +96,8 @@ for (const sc of scens) {
   const r = await run(sc);
   let ok = true;
   if (sc === 'rules') ok = r.together === 1 && r.late === 0 && r.far === 0 && r.again === 1 && r.hoarse === 0 && r.rested === 1;
-  if (sc === 'coyote') ok = r.soloBold && !['flee', 'leave'].includes(r.soloState) && r.hint && r.teams === 1 && ['flee', 'leave'].includes(r.state) && !r.bold;
+  if (sc === 'coyote') ok = r.firstTeams === 1 && ['flee', 'leave'].includes(r.firstState) && !r.firstBold && r.soloBold && !['flee', 'leave'].includes(r.soloState) && r.hint && !r.teamHint
+    && r.teams === 1 && !['flee', 'leave'].includes(r.state) && r.bold;
   if (sc === 'pack') ok = r.teams === 3 && r.phase === 'retreat' && r.states.every(s => s === 'leave');
   if (sc === 'cougar') ok = r.stalk && r.solo === 'drag' && r.state !== 'drag' && !r.held && r.saved === 1;
   if (sc === 'maul') ok = r.stalk && r.solo === 'maul' && r.state !== 'maul' && r.freed;

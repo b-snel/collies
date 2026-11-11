@@ -5,6 +5,8 @@
 //   penned  the whole flock behind a shut gate, no dog: it jumps the fence, takes a lamb and jumps back out with it
 //   penguard  the same, but a dog lies in the pen with them: it takes nobody
 //   day     by day the cougar isn't there; at nightfall it's up on its limb
+//   grove   nightfall by a grove, night after night: the cougars take random trees in it (all different), one hunts
+//           alone, two with two dogs, one more from day moreFrom
 import { open } from './harness.mjs';
 const args = process.argv.slice(2), ti = args.indexOf('--trials'), only = args.find((a, i) => !a.startsWith('--') && i !== ti + 1);
 const trials = ti >= 0 ? +args[ti + 1] : 3;
@@ -19,7 +21,22 @@ const run = (scen) => h.page.evaluate(async (scen) => {
     G.clock.hour = 12; for (let i = 0; i < 40; i++) step(0.025);
     const dayState = k.state, dayVis = k.models.root.visible;
     G.clock.hour = 20.45; for (let i = 0; i < 200; i++) step(0.025);
-    return { lairs, dayState, nightState: k.state, nightY: +(k.y - L.y).toFixed(2) };
+    return { lairs, dayState, nightState: k.state, nightY: +(k.y - k.lair.y).toFixed(2) };
+  }
+  if (scen === 'grove') {
+    const { GROVES } = GAME, gv = GROVES[2], L0 = gv.trees[0], tp = GAME.pathPoint(L0.s);
+    const night = (day) => {
+      for (const s of living()) { s.x = tp.x + (Math.random() - 0.5) * 8; s.z = tp.z + (Math.random() - 0.5) * 8; s.vx = s.vz = 0; s.pen = null; }
+      for (const o of G.dogs) { o.x = tp.x + 3; o.z = tp.z; }
+      GAME.resetCougars(); G.clock.day = day; G.clock.hour = 20.4; for (let i = 0; i < 80; i++) step(0.025);
+      const up = COUGARS.filter(k => k.state === 'perch');
+      return { trees: up.map(k => k.lair.id), inGrove: up.every(k => gv.trees.includes(k.lair)), hunt: COUGARS.filter(k => k.hunts).length };
+    };
+    const solo = [1, 2, 3, 4, 5].map(() => night(2)), late = night(T.cougar.moreFrom);
+    GAME.joinPlayer({ kind: 'bot', index: 1 }); G.players[1].bot = {};
+    const duo = night(2);
+    const sets = new Set(solo.map(n => n.trees.slice().sort().join()));
+    return { trees: gv.trees.length, solo, late, duo, sets: sets.size };
   }
   // the flock lies down 14-24 m out from the tree, toward the trail
   const ux = Math.sin(L.yaw), uz = Math.cos(L.yaw);
@@ -51,13 +68,13 @@ const run = (scen) => h.page.evaluate(async (scen) => {
     if (diedWhen || (scen === 'rescue' && G.stats.saved > saved0 && !k.prey && k.state === 'perch')) break;
   }
   const g = G.graves.find(g => g.name === grabbed);
-  return { penShut: pen.gateT < 0.3, grabbedInPen, vaults, lairs, start, end: living().length, lambs: firstLamb, grabbed, grabbedLamb, diedWhen, saved: G.stats.saved - saved0, lost: G.stats.cougar || 0,
+  return { penShut: pen.gateT < 0.3, grabbedInPen, vaults, start, end: living().length, lambs: firstLamb, grabbed, grabbedLamb, diedWhen, saved: G.stats.saved - saved0, lost: G.stats.cougar || 0,
     graveFromTree: g ? +Math.hypot(g.x - L.x, g.z - L.z).toFixed(1) : null, memorial: (GAME.G.lost.at(-1) || {}).why, cougar: k.state, states, t: +t.toFixed(1) };
 }, scen);
-const scens = only ? [only] : ['day', 'hunt', 'rescue', 'penned', 'penguard'];
+const scens = only ? [only] : ['day', 'hunt', 'rescue', 'penned', 'penguard', 'grove'];   // (grove last: its second dog stays)
 let fail = 0;
 for (const sc of scens) {
-  const n = sc === 'day' ? 1 : trials;
+  const n = sc === 'day' || sc === 'grove' ? 1 : trials;
   for (let i = 0; i < n; i++) {
     const r = await run(sc);
     let ok = true;
@@ -66,6 +83,7 @@ for (const sc of scens) {
     if (sc === 'rescue') ok = r.saved >= 1 && r.lost === 0 && r.grabbedLamb === true;
     if (sc === 'penned') ok = r.penShut && r.grabbedLamb === true && r.grabbedInPen && r.vaults >= 2 && r.diedWhen && r.diedWhen.state === 'fed';
     if (sc === 'penguard') ok = r.lost === 0 && !r.grabbed;
+    if (sc === 'grove') { const all = [...r.solo, r.late, r.duo]; ok = r.trees >= 4 && all.every(n => n.inGrove && n.trees.length === 3 && new Set(n.trees).size === 3) && r.solo.every(n => n.hunt === 1) && r.late.hunt === 2 && r.duo.hunt === 2 && r.sets > 1; }
     if (!ok) fail++;
     console.log(ok ? 'ok  ' : 'FAIL', sc, JSON.stringify(r));
   }

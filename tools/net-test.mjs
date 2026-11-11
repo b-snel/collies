@@ -3,7 +3,7 @@
 // PEERSERVER=host:port uses your own PeerJS server (e.g. `npx peer --port 9000`) instead of the public 0.peerjs.com.
 // Checks: connect + lobby, the guest's keys move its dog on the host, the flock matches on both screens (time-aligned),
 // grass grazed on the host reaches the guest, buckets and pen water too, coyotes and tombstones appear/vanish, a silent guest's input is zeroed,
-// a dropped guest's dog waits and Rejoin takes it back, a rope dragged and a tug of war, host-hidden pauses, wrong code / other build / full are
+// a dropped guest's dog waits and Rejoin takes it back, a rope dragged and a tug of war, a bone thrown, host-hidden pauses, wrong code / other build / full are
 // reported, a second friend drops in mid-journey, and the traffic in bytes per second with 14 and with 60 sheep.
 // WebGL drawing is switched off while checking (SwiftShader would starve the CPU and slow the game clock) and back
 // on for the screenshots. Prints a JSON report; exits 1 on any failure.
@@ -247,16 +247,24 @@ try {
   // ---------------------------------------------------------------- a cougar halfway up its tree with a sheep in its jaws
   // (held there: 'down' with a far-negative timer keeps it posed on the trunk; the sheep's grabbed is the cougar)
   const cgHost = await A.page.evaluate(() => {
-    const { COUGARS, G, groundY } = GAME, k = COUGARS[0], s = G.sheep[0];
+    const { COUGARS, G, groundY, GROVES } = GAME, k = COUGARS[0], s = G.sheep[0];
+    k.lair = GROVES[1].trees.at(-1);   // tonight's tree (COUGARS: random in the grove) reaches the guest
     k.state = 'down'; k.t = -1e6; s.grabbed = k; k.prey = s; s.x = k.lair.bx + 0.5; s.z = k.lair.bz; s.y = groundY(s.x, s.z) + 2;
-    return { id: s.id, x: k.lair.px, z: k.lair.pz };
+    return { id: s.id, x: k.lair.px, z: k.lair.pz, lair: k.lair.id };
   });
-  await until(B, id => { const s = GAME.G.sheep.find(o => o.id === id); return s && s.grabbed === GAME.COUGARS[0] && GAME.COUGARS[0].models.root.visible; }, cgHost.id, 5000).catch(() => {});
-  const cg = await B.page.evaluate(id => { const k = GAME.COUGARS[0], s = GAME.G.sheep.find(o => o.id === id); return { state: k.state, shown: k.models.root.visible, dx: Math.hypot(k.x - k.lair.px, k.z - k.lair.pz), up: k.y - k.lair.y, grabbed: !!s && s.grabbed === k, lift: s ? s.y - GAME.groundY(s.x, s.z) : null }; }, cgHost.id);
-  check('a cougar up its tree with a sheep in its jaws shows on the guest', cg.state === 'down' && cg.shown && cg.dx < 0.3 && cg.up > 3 && cg.grabbed && Math.abs(cg.lift - 2) < 0.2, { ...cg, dx: r2(cg.dx), up: r2(cg.up), lift: cg.lift == null ? null : r2(cg.lift) });
+  await until(B, w => { const s = GAME.G.sheep.find(o => o.id === w.id); return s && s.grabbed === GAME.COUGARS[0] && GAME.COUGARS[0].models.root.visible && GAME.COUGARS[0].lair.id === w.lair; }, { id: cgHost.id, lair: cgHost.lair }, 5000).catch(() => {});
+  const cg = await B.page.evaluate(id => { const k = GAME.COUGARS[0], s = GAME.G.sheep.find(o => o.id === id); return { lair: k.lair.id, state: k.state, shown: k.models.root.visible, dx: Math.hypot(k.x - k.lair.px, k.z - k.lair.pz), up: k.y - k.lair.y, grabbed: !!s && s.grabbed === k, lift: s ? s.y - GAME.groundY(s.x, s.z) : null }; }, cgHost.id);
+  check('a cougar up its tree with a sheep in its jaws shows on the guest', cg.lair === cgHost.lair && cg.state === 'down' && cg.shown && cg.dx < 0.3 && cg.up > 3 && cg.grabbed && Math.abs(cg.lift - 2) < 0.2, { ...cg, dx: r2(cg.dx), up: r2(cg.up), lift: cg.lift == null ? null : r2(cg.lift) });
   await A.page.evaluate(() => { const { COUGARS } = GAME, k = COUGARS[0]; if (k.prey) { k.prey.grabbed = null; k.prey.y = GAME.groundY(k.prey.x, k.prey.z); } k.prey = null; k.state = 'away'; });
   await until(B, () => !GAME.COUGARS[0].models.root.visible && !GAME.G.sheep.some(s => s.grabbed), null, 5000).catch(() => {});
   check('…and is gone again on the guest once it lets go', await B.page.evaluate(() => !GAME.COUGARS[0].models.root.visible && !GAME.G.sheep.some(s => s.grabbed)));
+
+  // ---------------------------------------------------------------- FALCON CANYON: THE GREAT FALCON's hearts; a snake out after a sheep
+  const bsHost = await A.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; Object.assign(B, { hp: 2, max: 4 }); n.x = n.x0 + 3; n.z = n.z0 + 1; return { x: n.x, z: n.z }; });
+  await until(B, w => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return B.hp === 2 && B.max === 4 && Math.hypot(n.x - w.x, n.z - w.z) < 0.1; }, bsHost, 5000).catch(() => {});
+  const bs = await B.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return { on: B.on, hp: B.hp, max: B.max, x: n.x, z: n.z, big: GAME.BOSS ? GAME.BOSS.models.root.scale.x : 0 }; });
+  check('the great falcon (big on the guest too), its hearts, and a slithering snake reach the guest', bs.hp === 2 && bs.max === 4 && bs.big > 1.5 && Math.hypot(bs.x - bsHost.x, bs.z - bsHost.z) < 0.1, bs);
+  await A.page.evaluate(() => { const n = GAME.SNAKES[0]; Object.assign(GAME.CANYON.boss, { hp: 0, max: 0 }); n.x = n.x0; n.z = n.z0; });
 
   // ---------------------------------------------------------------- forage: picked plants, salt, what a dog carries, the troughs and lick reach the guest
   await A.page.evaluate(() => {
@@ -408,6 +416,20 @@ try {
     ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave) });
   await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'), g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
+  // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
+  await A.page.evaluate(() => {
+    const { G, spawnBone } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
+    window.__bone = spawnBone(d.x + Math.sin(d.yaw) * 1.1, d.z + Math.cos(d.yaw) * 1.1);
+    d.player.bot = { grabTap: true }; requestAnimationFrame(() => { d.player.bot = {}; });
+  });
+  await sleep(800);
+  const boneG1 = await B.page.evaluate(() => { const b = GAME.BONES[0], d = GAME.G.dogs.find(d => d.player.slot === 0); return { n: GAME.BONES.length, held: !!b && b.by === d && d.holding === b }; });
+  await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = { grabTap: true }; requestAnimationFrame(() => { d.player.bot = {}; }); });
+  await sleep(3500);
+  const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
+  const boneG2 = await B.page.evaluate(() => { const b = GAME.BONES[0]; return b ? { x: b.x, z: b.z, by: !!b.by } : null; });
+  check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
+    boneG1.n === 1 && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
   const moods = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.MIND.mood, document.getElementById('hMood').textContent])));
