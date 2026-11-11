@@ -17,7 +17,7 @@ const setup = async () => { errors.push(...h.errors); await h.close(); h = await
   H.inp = (dx, dz, x = {}) => { const l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l, ...x }; };
   H.run = (sec, fn) => { for (let t = 0; t < sec - 1e-9; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return sec; };
   H.tap = (p, extra = {}) => { p.bot = { ...extra, grabTap: true }; step(0.025); p.bot = { ...extra }; };
-  H.place = (e, x, z, yaw) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = groundY(x, z); if (yaw !== undefined) e.yaw = yaw; };
+  H.place = (e, x, z, yaw) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = groundY(x, z); if (yaw !== undefined) e.yaw = yaw; if (e.isDog && e.air && e.air.swim) e.air = null; };   // (out of the river if it was put in it)
   H.far = (x, z) => G.sheep.forEach((o, i) => H.place(o, x + 70 + (i % 6) * 2, z + 70 + Math.floor(i / 6) * 2));
   H.links = R => { let m = 0; for (let k = 0; k < R.n - 1; k++) m = Math.max(m, Math.abs(Math.hypot(R.x[k + 1] - R.x[k], R.y[k + 1] - R.y[k], R.z[k + 1] - R.z[k]) - T.rope.seg) / T.rope.seg); return +m.toFixed(3); };
   H.under = R => { let m = 9; for (let k = 0; k < R.n; k++) m = Math.min(m, R.y[k] - groundY(R.x[k], R.z[k])); return +m.toFixed(3); };
@@ -32,7 +32,7 @@ if (want('layout')) {
     return { n: ROPES.length, legs: ROPES.map(R => CAMPS.findIndex((c, i) => i < CAMPS.length - 1 && R.s > c.s && R.s < CAMPS[i + 1].s)),
       canyon: ROPES.filter(R => canyonK(R.s) > 0).length, lat: ROPES.map(R => +Math.abs(trailInfo(R.hx, R.hz).lat).toFixed(1)), sdf: Math.min(...ROPES.map(R => sdfAt(R.hx, R.hz))), wet: ROPES.filter(R => wetAt(R.hx, R.hz)).length };
   });
-  ok(`a rope on every leg (${r.n})`, r.n === 4 && r.legs.join() === '0,1,2,3', r);
+  ok(`a rope on every leg (${r.n})`, r.n === 5 && r.legs.join() === '0,1,2,3,4', r);   // (the MOUNTAIN PASS too)
   ok('off the trail, clear of rock, water and Falcon Canyon', r.canyon === 0 && r.wet === 0 && r.sdf > 3 && r.lat.every(l => l > 4), r);
 }
 

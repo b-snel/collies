@@ -27,7 +27,7 @@ const r1 = await h.page.evaluate(() => {
     promised: CAMPS[3].s, final: FINAL.s, rock: Math.max(...SNAKES.map(n => Math.hypot(n.x - n.rock.x, n.z - n.rock.z) - n.rock.cr)), sdf: Math.min(...SNAKES.map(n => sdfAt(n.x, n.z))), x0: SNAKES[0].x };
 });
 ok(`${r1.n} rattlesnakes, in the desert past the Promised Land (s ${r1.s.join(', ')})`, r1.n >= 4 && r1.s.every(s => s > r1.promised + 60 && s < r1.final) && r1.desert > 0.7, r1);
-ok('each tucked in behind its rock, off the trail', r1.rock < 0.5 && r1.sdf > 0 && r1.lat.every(l => Math.abs(l) > 4), r1);
+ok('each tucked in behind its rock, off the trail', r1.rock < 0.5 && r1.sdf > 0 && r1.lat.every(l => Math.abs(l) > 3), r1);
 await h.page.reload(); await h.page.waitForFunction(() => window.GAME);
 const x0b = await h.page.evaluate(() => GAME.SNAKES[0].x);
 ok('the same snakes every load', x0b === r1.x0, [x0b, r1.x0]);

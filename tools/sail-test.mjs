@@ -386,13 +386,13 @@ if (want('land')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, pens, DECK, CAMPS, step, resetGame, groundY, penAt, onDeck } = GAME, out = {};
-    resetGame(); out.on = SEA.on; out.pens = pens.length; out.deck = pens[5] === DECK && DECK.deck && DECK.lock; out.gate = DECK.gateT;
+    resetGame(); out.on = SEA.on; out.pens = pens.length - CAMPS.length; out.deck = pens[pens.length - 1] === DECK && DECK.deck && DECK.lock; out.gate = DECK.gateT;
     out.flockAtCamp = G.sheep.every(s => s.x < 1000); for (let t = 0; t < 20; t += 0.025) step(0.025);
     out.none = !G.sheep.some(s => s.x > 1000) && !G.dogs.some(d => d.x > 1000); out.kit = [DECK.troughs.length, DECK.water.at.length, DECK.lick.at.length].join();
     out.deckY = groundY(DECK.x, DECK.z) - (-3); out.sea = groundY(DECK.x + 40, DECK.z);
     return out;
   });
-  ok('ashore nothing\'s changed: five camp pens and the boat\'s deck, its gangway lashed; nobody out there', !r.on && r.pens === 6 && r.deck && r.gate === 0 && r.flockAtCamp && r.none, r);
+  ok('ashore nothing\'s changed: the camps\' pens and the boat\'s deck, its gangway lashed; nobody out there', !r.on && r.pens === 1 && r.deck && r.gate === 0 && r.flockAtCamp && r.none, r);
   ok(`the deck: ground ${r.deckY} m over the water, with its troughs (${r.kit})`, Math.abs(r.deckY - 1.45) < 1e-6 && r.sea === -9 && r.kit === '3,1,1', r);
 }
 
