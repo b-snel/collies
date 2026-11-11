@@ -21,6 +21,8 @@
   #overlay { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; }
   #vignette { position:fixed; inset:0; pointer-events:none; opacity:0;
     background:radial-gradient(ellipse at center, rgba(5,8,30,0) 40%, rgba(5,8,30,.55) 75%, rgba(3,5,20,.9) 100%); }
+  #gloom { position:fixed; inset:0; pointer-events:none; opacity:0;
+    background:radial-gradient(ellipse at center, rgba(40,8,6,0) 30%, rgba(48,12,10,.5) 70%, rgba(18,3,3,.92) 100%); }
   #hud { position:fixed; inset:0; pointer-events:none; color:var(--cream); text-shadow:0 2px 0 rgba(0,0,0,.45); transition:opacity .6s; }
   .panel { position:absolute; background:var(--panel); border:3px solid rgba(255,248,232,.85); border-radius:18px; padding:8px 14px; box-shadow:0 4px 0 rgba(0,0,0,.3); }
   #flock { top:14px; left:14px; min-width:170px; }
@@ -69,6 +71,7 @@
   #journey .camp.done { background:#7ed957; }
   #journey .camp.final { background:#ffd36b; }
   #journey .camp.pick { box-shadow:0 0 0 3px #d8473f; }
+  #journey .gorge { position:absolute; top:14px; height:8px; border-radius:3px; background:#6e2a22; box-shadow:0 2px 0 rgba(0,0,0,.35); }
   #journey .me { position:absolute; top:-6px; margin-left:-11px; font-size:20px; transition:left .4s; filter:drop-shadow(0 2px 0 rgba(0,0,0,.5)); }
   #sound { position:fixed; left:12px; bottom:12px; background:rgba(27,26,40,.7); color:var(--cream); border-radius:10px; padding:4px 10px; font-size:14px; pointer-events:none; }
   #ctlBar { position:absolute; bottom:6px; left:50%; transform:translateX(-50%); display:flex; gap:4px 12px; flex-wrap:nowrap; white-space:nowrap;
@@ -299,7 +302,7 @@
     #clock { top:8px; gap:6px; padding:3px 10px 3px 4px; } #dial { width:32px; height:32px; border-width:2px; } #dialHand { height:13px; margin-top:-13px; width:3px; margin-left:-1.5px; }
     #hDay { font-size:14px; } #hTime, #hNight { font-size:12px; }
     #journey { top:52px; bottom:auto; left:50%; transform:translateX(-50%); width:min(200px, 26vw); height:24px; }
-    #journey .me { font-size:15px; top:-2px; margin-left:-8px; } #journey .camp { width:12px; height:12px; margin-left:-6px; top:10px; border-width:2px; } #journey .line { top:14px; height:3px; }
+    #journey .me { font-size:15px; top:-2px; margin-left:-8px; } #journey .camp { width:12px; height:12px; margin-left:-6px; top:10px; border-width:2px; } #journey .line { top:14px; height:3px; } #journey .gorge { top:12.5px; height:6px; }
     #compass { bottom:8px; padding:3px 10px 3px 6px; gap:4px; } #cArrow { font-size:18px; width:20px; } #cName { display:none; } #cDist { font-size:13px; }
     #toasts { top:80px; } .toast { font-size:13px; padding:3px 10px; }
     #hint { font-size:13px; padding:6px 12px; bottom:44px; }
@@ -319,6 +322,7 @@
 <body>
 <canvas id="gl"></canvas>
 <div id="vignette"></div>
+<div id="gloom"></div>
 <canvas id="overlay"></canvas>
 <div id="hud" class="hidden">
   <div id="flock" class="panel">
@@ -580,6 +584,14 @@ const T = {
   // eats it after eatT s unless a dog barks within nestR of the spire. Off in ?sim (tests turn it on).
   falcon: { on: !SIM, every: [3, 7], first: 4, from: 7.5, to: 18.5, circleT: 3.2, circleH: 24, circleR: 9, diveSpd: 23, diveMax: 6,
     cruiseH: 7, carry: 6.3, carryDog: 9, dogHop: [20, 38], dogChance: 0.35, barkR: 13, nestR: 15, eatT: 5, leaveT: 5, hitR: 2 },
+  // FALCON CANYON (CANYON): a narrow red gorge, s0…s1 along the trail (walls pinch in over `pinch` m; floor half widths hwW/hwE),
+  // past the Promised Land, before the snakes. Bones and feathers at its mouth. `birds` falcons on `roosts` rock pillars. By day
+  // (from…to), while anything's in it, one swoops every `every` s (first after `first`; maxAir at once) from a pillar within
+  // reach m: up (circleH, circleR) circleT s, then the dive. A sheep (never rams) goes to its pillar, eaten after eatT s; a dog
+  // (dogChance): carried, dropped. A bark within barkR of a perched one: it stays put `shy` s; back from a swoop it rests `rest` s.
+  // gloom: how dark it gets. Off in ?sim (tests turn it on).
+  canyon: { on: !SIM, s0: 896, s1: 968, pinch: 16, hwW: 11, hwE: 9, roosts: 11, birds: 16, from: 6.5, to: 19.5, every: [5, 8], first: 3, maxAir: 2,
+    reach: 26, circleT: 1.6, circleH: 11, circleR: 6, eatT: 7, dogChance: 0.2, barkR: 16, shy: 12, rest: 15, gloom: 0.6 },
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -638,7 +650,7 @@ const T = {
   // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
   // a hopping dog's missed); then back behind its rock for cd s. A pounce within hitR or a bark within barkR: back for scareCd s.
   // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp
-  snake: { from: 900, every: 32, lat: 16, warnR: 4.2, strikeR: 2.4, rattleT: 1.1, strikeT: 0.22, hit: 0.85, cd: [25, 40], shy: 0.55,
+  snake: { from: 966, every: 22, lat: 16, warnR: 4.2, strikeR: 2.4, rattleT: 1.1, strikeT: 0.22, hit: 0.85, cd: [25, 40], shy: 0.55,
     barkR: 5.5, hitR: 2, scareCd: 12, dieHours: [24, 34], lamb: 0.65, dogDmg: 0.12 },
   // WOUNDS (VET): a sheep a predator lets go of is cut: sev = base[kind] + held s × perS + a pen mauling's damage × maul. sev ≥ deep:
   // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
@@ -757,6 +769,27 @@ const Sound = (() => {
       g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(v, a + 0.004); g.gain.linearRampToValueAtTime(0, a + pw);
     }
     o.start(t); o.stop(t + n * gap + 0.02);
+  }
+  function moan() {
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 330; bp.Q.value = 7;
+    const lfo = ac.createOscillator(); lfo.frequency.value = 0.13; const lg = ac.createGain(); lg.gain.value = 170; lfo.connect(lg); lg.connect(bp.frequency);
+    const g = ac.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(master); src.start(); lfo.start();
+    const d = ac.createGain(); d.gain.value = 0; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240; lp.connect(d); d.connect(master);
+    for (const [f, type, a] of [[49, 'sine', 0.5], [49.7, 'sine', 0.5], [73.6, 'triangle', 0.25], [98.4, 'sine', 0.2]]) { const o = ac.createOscillator(); o.type = type; o.frequency.value = f; const og = ac.createGain(); og.gain.value = a; o.connect(og); og.connect(lp); o.start(); }
+    return { g, d };
+  }
+  // a falcon's cry far off, echoing off rock (FALCON CANYON)
+  function echoCry(pan, vol, wait = 0) {
+    const t = ac.currentTime + wait, dur = 0.8 + Math.random() * 0.3, b = 2000 + Math.random() * 500, d = out(vol, pan);
+    const dl = ac.createDelay(); dl.delayTime.value = 0.33 + Math.random() * 0.12; const fb = ac.createGain(); fb.gain.value = 0.45;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(d);
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 1.4;
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.8, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    f.connect(g); g.connect(d); g.connect(dl);
+    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(b * 0.8, t); o.frequency.exponentialRampToValueAtTime(b, t + 0.08); o.frequency.exponentialRampToValueAtTime(b * 0.55, t + dur);
+    const v = ac.createOscillator(); v.frequency.value = 36; const vg = ac.createGain(); vg.gain.value = 80; v.connect(vg); vg.connect(o.frequency);
+    o.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
   }
   function out(vol, pan = 0) {
     const g = ac.createGain(); g.gain.value = vol;
@@ -950,8 +983,20 @@ const Sound = (() => {
     },
     pluck(semi = 0, vol = 0.18) { this.chime([semi], 880, vol); },
     sad() { this.chime([0, -3, -7], 440, 0.2, 0.18); },
-    ambience(night, ocean, dt) {
+    // FALCON CANYON: into the gorge: a low chord that swells and sours, and a cry far off up the walls
+    omen(vol = 0.2) {
+      if (!ac) return; const t = ac.currentTime, d = out(vol, 0), dur = 3.4;
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(280, t); lp.frequency.linearRampToValueAtTime(950, t + 1.3); lp.frequency.linearRampToValueAtTime(220, t + dur);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      lp.connect(g); g.connect(d);
+      for (const f of [55, 58.3, 82.4, 110.6]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.94, t + dur); o.connect(lp); o.start(t); o.stop(t + dur + 0.05); }
+      echoCry(-0.4, vol * 0.4, 1.3);
+    },
+    ambience(night, ocean, dt, canyon = 0) {
       if (!ac) return; const k = Math.min(1, dt * 2);
+      if (canyon > 0.01 && !amb.moan) amb.moan = moan();   // FALCON CANYON: wind moaning down the gorge, a drone under it, cries echoing off the walls
+      if (amb.moan) { amb.moan.g.gain.value = lerp(amb.moan.g.gain.value, 0.1 * canyon, k); amb.moan.d.gain.value = lerp(amb.moan.d.gain.value, 0.06 * canyon, k); }
+      if (canyon > 0.4 && Math.random() < dt * 0.14 * canyon) echoCry(Math.random() * 1.6 - 0.8, 0.03 + Math.random() * 0.03);
       amb.wind.gain.value = lerp(amb.wind.gain.value, 0.05 * (1 - night * 0.5), k);
       amb.crick.gain.value = lerp(amb.crick.gain.value, 0.02 * night, k);
       if (night > 0.05) for (const c of crick) {   // schedule each cricket's next chirp, loosely
@@ -1167,6 +1212,8 @@ function pathPoint(s, lat = 0) { const i = pathIdx(s); return { x: pX[i] - tZ[i]
 // biome weights [desert, valley, ocean, promised] along the trail (desert again past the Promised Land)
 function biomeW(s) { const a = smooth(165, 215, s), b = smooth(425, 470, s), c = smooth(640, 690, s), d = smooth(870, 930, s); return [1 - a + d, a * (1 - b), b * (1 - c), c - d]; }
 const dot4 = (w, v) => w[0] * v[0] + w[1] * v[1] + w[2] * v[2] + w[3] * v[3];
+// FALCON CANYON: 0 outside … 1 in the gorge (its walls pinch in over T.canyon.pinch m at each end)
+function canyonK(s) { const C = T.canyon; return smooth(C.s0 - C.pinch, C.s0, s) * (1 - smooth(C.s1, C.s1 + C.pinch, s)); }
 
 // camps / waypoints
 const CAMPS = [
@@ -1212,6 +1259,8 @@ for (let i = 0; i <= PN; i++) {
   let boost = 0; for (const c of CAMPS) boost = Math.max(boost, (1 - smooth(25, 60, Math.abs(s - c.s))) * 10);
   hwWArr[i] = dot4(w, [44, 40, 38, 50]) + (vnoise(s * 0.035, 3.7) - 0.5) * 12 + boost;
   hwEArr[i] = dot4(w, [38, 31, 95, 44]) + (vnoise(s * 0.035, 9.1) - 0.5) * 10 + boost * 0.5;
+  const ck = canyonK(s);   // FALCON CANYON: the walls close in
+  if (ck > 0) { hwWArr[i] = lerp(hwWArr[i], T.canyon.hwW + (vnoise(s * 0.09, 2.2) - 0.5) * 3, ck); hwEArr[i] = lerp(hwEArr[i], T.canyon.hwE + (vnoise(s * 0.09, 6.6) - 0.5) * 2.5, ck); }
 }
 const CAP_PAD = 14;
 
@@ -1333,6 +1382,9 @@ function eastProfile(o, x, z, w) {
   const canyon = -Math.min(o * 1.3, 7.5), shore = -Math.min(o * 0.35, 6), lake = -Math.min(o * 0.45, 6);
   return w[0] * ridge + w[1] * canyon + w[2] * shore + w[3] * lake;
 }
+// FALCON CANYON: sheer banded cliffs with ledges on the far side; a low broken rim on this side (the camera looks over it)
+function canyonWall(o, x, z) { const n = fbm(x * 0.05 + 21, z * 0.05 - 4, 3); return terrace(Math.max(0, Math.min(o * 2.6, 34) + (n - 0.5) * 9), 4.5); }
+function canyonRim(o, x, z) { const n = vnoise(x * 0.15 + 3, z * 0.15 - 7); return Math.min(o * 0.8, 4.2) + smooth(12, 26, o) * 7 + (n - 0.5) * 2.4 * Math.min(1, o / 3); }
 function heightAt(x, z, carve = true) {
   const ci = trailInfo(x, z), w = biomeW(ci.s);
   let h = (fbm(x * 0.022, z * 0.022, 3) - 0.5) * 2.0 + (vnoise(x * 0.18 + 40, z * 0.18) - 0.5) * 0.25;
@@ -1341,9 +1393,9 @@ function heightAt(x, z, carve = true) {
   if (w[2] > 0.001) h -= Math.max(0, ci.lat - 15) * 0.21 * w[2];
   const o = Math.max(ci.oW, ci.oE, ci.oC);
   if (o > -2) {
-    const oo = o + 2;
-    if (o === ci.oW) h += westProfile(oo, x, z, w);
-    else if (o === ci.oE) h += eastProfile(oo, x, z, w);
+    const oo = o + 2, ck = canyonK(ci.s);
+    if (o === ci.oW) h += ck > 0 ? lerp(westProfile(oo, x, z, w), canyonWall(oo, x, z), ck) : westProfile(oo, x, z, w);
+    else if (o === ci.oE) h += ck > 0 ? lerp(eastProfile(oo, x, z, w), canyonRim(oo, x, z), ck) : eastProfile(oo, x, z, w);
     else h += ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [1, 0, 0, 0]);   // both ends desert: low ridge, mesas
   }
   // river channel
@@ -1620,6 +1672,7 @@ const vNormal = new Float32Array(VN * 3);
   const strata = ['#c96a3e', '#e0955a', '#b8583a', '#eab070'].map(h => new THREE.Color(h));
   const SAND = new THREE.Color('#ecdcaa'), WET = new THREE.Color('#c9b27a'), SNOW = new THREE.Color('#f2f5fa'), ROCK = new THREE.Color('#8d909c');
   const CLIFF_O = new THREE.Color('#b3a385'), HILLS_P = new THREE.Color('#6f9a48'), DIRT_P = new THREE.Color('#8a7a5a');
+  const C_STRATA = ['#6e3226', '#8c4630', '#552620', '#9a5a38', '#5f2c24'].map(h => new THREE.Color(h)), C_FLOOR = new THREE.Color('#b08866'), C_DRY = new THREE.Color('#a39a62');   // FALCON CANYON
   const LUSH = new THREE.Color('#2f9a3a'), MUD = new THREE.Color('#4e3822');
   const corral = CAMPS[0];
   for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) {
@@ -1656,6 +1709,11 @@ const vNormal = new Float32Array(VN * 3);
       cB.r += tmp2.r * w[bi]; cB.g += tmp2.g * w[bi]; cB.b += tmp2.b * w[bi];
       visCap += vc * w[bi];
     }
+    const ck = canyonK(ci.s);   // FALCON CANYON: blood-red banded walls, a dusty floor, next to no grass
+    if (ck > 0.001) {
+      if (!walk && (steep || h > 2)) tmp.copy(C_STRATA[Math.floor((h + 40) / 2.25) % C_STRATA.length]); else tmp.copy(C_FLOOR);
+      cA.lerp(tmp, ck); cB.lerp(walk ? C_DRY : tmp, ck); visCap *= 1 - ck;
+    }
     // STREAMS and the river: lush, deep green banks; the stream bed wet sand. MUD: dark bog, nothing grows
     const sd = streamD(x, z), ra = riverAlong(x, z) > -90 ? Math.abs(riverAcross(x, z)) - RIVER.hw - 1 : 1e9;
     const lushK = 1 - smooth(1, T.stream.lushR, Math.min(sd - T.stream.hw, ra)), mk = mudK(x, z), wetBed = 1 - smooth(T.stream.hw, T.stream.hw + 1.2, sd);
@@ -1676,6 +1734,7 @@ const vNormal = new Float32Array(VN * 3);
       cap += T.stream.lush * lushK * (w[1] + w[3]);   // STREAMS: lusher by the water (where grass grows well anyway)
       if (Math.abs(lat) < 2.2) cap *= 0.3;   // the worn trail
       for (const c of CAMPS) { const d = Math.hypot(x - c.x, z - c.z); if (d < c.R + 0.6) cap = 0.08; else if (d < c.R + 5) cap *= 0.6; }
+      if (ck > 0.001) cap = lerp(cap, 0.1 + 0.08 * smooth(0.4, 0.7, pn), ck);
       cap *= (1 - wetBed) * (1 - mk);   // none in the water or the bog
     } else cap = visCap;
     gCap[v] = cap;
@@ -1909,6 +1968,11 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     let bi = 0, acc = w[0], rr = wr(); while (bi < 3 && rr > acc) { bi++; acc += w[bi]; }   // pick a biome by weight
     const walk = !isBlocked(px, pz);
     const rockCol = ROCK_COL[bi];
+    if (canyonK(ci.s) > 0.5) {   // FALCON CANYON: bare red rock and dead brush
+      if (walk) { if (Math.abs(lat) > 4.5 && r < 0.04) { const s = 0.5 + wr() * 0.8; addScen('rock', px, pz, s, s * 0.85, { col: '#8a4a36' }); } else if (Math.abs(lat) > 3 && r < 0.12) addScen('deadbush', px, pz, 0.7 + wr() * 0.6, 0); }
+      else if (Math.max(ci.oW, ci.oE, ci.oC) > 1 && r < 0.06) { const s = 1 + wr() * 2.2; addScen('rock', px, pz, s, 0, { col: '#7a3b2c' }); }
+      continue;
+    }
     if (walk) {
       if (wetLand(px, pz, 1.5)) continue;   // STREAMS, MUD: nothing grows in them
       let nearCamp = !offMarket(px, pz, 4); for (const c of CAMPS) if (Math.hypot(px - c.x, pz - c.z) < c.R + 14) nearCamp = true;
@@ -2113,11 +2177,11 @@ const DENS = [];
   const dr = mulberry32(5150), drr = (a, b) => a + dr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
   const tucked = (x, z) => { let n = 0; for (let k = 0; k < 16; k++) { const a = k / 16 * TAU; for (const r of [5, 7, 9]) if (isBlocked(x + Math.cos(a) * r, z + Math.sin(a) * r)) n++; } return n; };
-  for (const s0 of [150, 215, 352, 470, 620, 712, 905, 1012]) {
+  for (const s0 of [150, 215, 352, 470, 620, 712, 870, 1012]) {
     let best = null, bs = -1;
     for (let t = 0; t < 70; t++) {
       const ss = s0 + drr(-22, 22), idx = pathIdx(ss), lat = -(hwWArr[idx] - drr(5, 13));
-      const p = pathPoint(ss, lat); if (Math.abs(lat) < 14) continue;
+      const p = pathPoint(ss, lat); if (Math.abs(lat) < 14 || canyonK(ss) > 0.02) continue;   // (not in FALCON CANYON)
       if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 30) || !offMarket(p.x, p.z, 20)) continue;
       if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 16 && Math.abs(riverAlong(p.x, p.z)) < 60) continue;
       if (!clear(p.x, p.z, 3)) continue;
@@ -2193,7 +2257,7 @@ const NESTS = [];
 {
   const nr = mulberry32(51237), nrr = (a, b) => a + nr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
-  for (const s0 of [150, 330, 470, 640, 664, 975]) {
+  for (const s0 of [150, 330, 470, 640, 664, 1000]) {
     let best = null;
     for (let t = 0; t < 120 && !best; t++) {
       const ss = s0 + nrr(-30, 30), idx = pathIdx(ss), side = nr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
@@ -2221,6 +2285,90 @@ const NESTS = [];
     N.id = NESTS.length; NESTS.push(N);
   }
 }
+// ---------------- FALCON CANYON: rock pillars down the gorge, a falcon (or two) on each; bones and feathers everywhere ----------------
+// Own rng (same on every screen). A perch (CANYON.perches): where one bird sits (x, z, top), id 100 + its index (NET: a
+// falcon's nest), ta: the way off the pillar down to the trail. The birds: FALCONS past the first (FALCON section).
+const CANYON = { roosts: [], perches: [], k: 0, next: T.canyon.first, cand: [], scanT: 0, seen: false, hankSaid: false, perched: null, drift: null };
+{
+  const C = T.canyon, cr = mulberry32(66613), crr = (a, b) => a + cr() * (b - a), span = C.s1 - C.s0 - 10;
+  const RED = ['#7a3b2c', '#9a5236', '#6a3328', '#a8653f'], BONE = '#efe6d2', BONE2 = '#d6c8aa', HOLE = '#2e211b', STICK = '#5a4126', GUANO = '#e2ddd0';
+  const clearOf = (x, z, r) => { for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };
+  // bits: a skull (a ram's has horns), a ribcage, a leg bone, feathers (slate, cream), a whole skeleton, a bird on a ledge
+  const skull = (ram) => merge(P(SPH(8), BONE, { s: [0.13, 0.11, 0.21], p: [0, 0.1, 0] }), P(SPH(6), BONE2, { s: [0.085, 0.065, 0.1], p: [0, 0.075, 0.19] }),
+    P(SPH(5), HOLE, { s: [0.04, 0.04, 0.03], p: [0.1, 0.13, 0.08] }), P(SPH(5), HOLE, { s: [0.04, 0.04, 0.03], p: [-0.1, 0.13, 0.08] }), P(SPH(4), HOLE, { s: [0.025, 0.018, 0.02], p: [0, 0.09, 0.28] }),
+    ...(ram ? [1, -1].map(sx => P(new THREE.TorusGeometry(0.12, 0.04, 5, 10, Math.PI * 1.5), '#cdbb94', { r: [0, Math.PI / 2, 0.4 * sx], p: [0.15 * sx, 0.16, -0.03] })) : []));
+  const ribs = () => merge(P(CYL(0.035, 0.035, 0.85, 5), BONE, { r: [Math.PI / 2, 0, 0], p: [0, 0.05, 0] }),
+    ...[-0.27, -0.09, 0.09, 0.27].map((zz, i) => P(new THREE.TorusGeometry(0.21 - Math.abs(i - 1.5) * 0.025, 0.022, 4, 10, Math.PI * 1.1), BONE, { p: [0, 0.05, zz] })));
+  const bone = () => merge(P(CYL(0.025, 0.025, 0.42, 5), BONE, { r: [0, 0, Math.PI / 2], p: [0, 0.035, 0] }), P(SPH(5), BONE, { s: [0.045, 0.04, 0.045], p: [0.21, 0.04, 0] }), P(SPH(5), BONE, { s: [0.045, 0.04, 0.045], p: [-0.21, 0.04, 0] }));
+  const feather = (c1, c2, k = 1) => merge(P(SPH(6), c1, { s: [0.065 * k, 0.012, 0.23 * k], p: [0, 0.015, 0] }), P(CYL(0.008, 0.008, 0.34 * k, 3), c2, { r: [Math.PI / 2, 0, 0], p: [0, 0.022, -0.05 * k] }),
+    ...[0, 1].map(i => P(BOX(0.12 * k, 0.004, 0.02), c2, { p: [0, 0.027, (-0.06 + i * 0.1) * k] })));
+  const GEO_C = {
+    skull: skull(false), ramskull: skull(true), ribs: ribs(), bone: bone(),
+    featherD: feather('#3d4550', '#e9dfc6'), featherL: feather('#e9dfc6', '#4d5866'),
+    skeleton: merge(skull(false).rotateY(0.3).translate(0, 0, 0.62), ribs(), bone().rotateY(1.2).translate(0.32, 0, 0.3), bone().rotateY(1.9).translate(-0.3, 0, 0.2), bone().rotateY(1.4).translate(0.28, 0, -0.42), bone().rotateY(1.7).translate(-0.3, 0, -0.38),
+      P(CYL(0.025, 0.012, 0.45, 4), BONE, { r: [Math.PI / 2 + 0.1, 0, 0], p: [0, 0.04, -0.62] })),
+    totem: merge(P(CYL(0.07, 0.11, 2.3, 6), STICK, { r: [0.04, 0, 0.05], p: [0, 1.15, 0] }), P(BOX(1.0, 0.07, 0.07), STICK, { p: [0, 1.8, 0] }),
+      skull(true).rotateX(-0.5).translate(0, 2.25, 0.06),
+      ...[-0.42, -0.2, 0.2, 0.42].map((x, i) => P(CYL(0.006, 0.006, 0.3, 3), '#c9b38a', { p: [x, 1.62, 0] })),
+      ...[-0.42, -0.2, 0.2, 0.42].map((x, i) => feather(i % 2 ? '#3d4550' : '#e9dfc6', i % 2 ? '#e9dfc6' : '#4d5866', 1.2).rotateX(Math.PI / 2).rotateY(i * 0.4).translate(x, 1.3, 0)),
+      P(SPH(5), BONE, { s: [0.06, 0.06, 0.06], p: [0, 1.88, 0.05] })),
+  };
+  const bits = { skull: [], ramskull: [], ribs: [], bone: [], featherD: [], featherL: [], skeleton: [], totem: [] };
+  const floorOK = (x, z) => !isBlocked(x, z) && streamD(x, z) > T.stream.hw + 0.6 && offMarket(x, z, 2) && CAMPS.every(c => Math.hypot(x - c.x, z - c.z) > c.R + 4);   // (not in a stream)
+  const strew = (kind, x, z, sc = 1) => { if (floorOK(x, z)) bits[kind].push({ x, z, y: terrainH(x, z) + (kind.startsWith('feather') ? 0.01 : 0), sc: sc * crr(0.85, 1.15), rot: crr(0, TAU), rx: kind === 'ribs' || kind === 'skeleton' ? crr(-0.25, 0.25) : 0, rz: kind === 'skull' || kind === 'ramskull' ? crr(-0.4, 0.4) : 0 }); };
+  const someBits = (x, z, r, n) => { for (let i = 0; i < n; i++) { const a = crr(0, TAU), d = Math.sqrt(cr()) * r, u = cr(); strew(u < 0.12 ? 'skull' : u < 0.17 ? 'ramskull' : u < 0.27 ? 'ribs' : u < 0.5 ? 'bone' : u < 0.78 ? 'featherD' : 'featherL', x + Math.cos(a) * d, z + Math.sin(a) * d); } };
+  // the pillars, mostly against the far wall (the near rim stays low: the camera looks over it); the first few have two birds
+  for (let k = 0; k < C.roosts; k++) {
+    const side = k % 3 === 1 ? 1 : -1; let R = null;
+    for (let t = 0; t < 30 && !R; t++) {
+      const s = C.s0 + 2 + (k + 0.5) / C.roosts * span + crr(-2.5, 2.5), idx = pathIdx(s), hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+      const lat = side * (hw - crr(1.9, 2.7)), p = pathPoint(s, lat);
+      if (Math.abs(lat) < 5.5 || !clearOf(p.x, p.z, 1)) continue;
+      R = { k, s, side, x: p.x, z: p.z, tx: p.tx, tz: p.tz, ta: Math.atan2(-p.nz * side, -p.nx * side) };
+    }
+    if (!R) continue;
+    const H = side < 0 ? crr(8, 10.5) : crr(5, 6.3), ux = Math.cos(R.ta), uz = Math.sin(R.ta);
+    R.y = terrainH(R.x, R.z); R.top = R.y + H; CANYON.roosts.push(R);
+    const g = new THREE.Group(); g.position.set(R.x, R.y, R.z); scene.add(g);
+    const parts = [], nseg = 4, sh = H / nseg;
+    for (let i = 0; i < nseg; i++) parts.push(P(CYL(lerp(1.2, 0.78, (i + 1) / nseg) * crr(0.88, 1), lerp(1.25, 0.8, i / nseg), sh * 1.03, 8), RED[(k + i) % 4], { r: [0, crr(0, 3), 0], p: [crr(-0.1, 0.1), sh * (i + 0.5), crr(-0.1, 0.1)] }));
+    parts.push(P(CYL(1.05, 0.8, 0.45, 8), '#5e2b24', { p: [0, H, 0] }),   // the cap, its nest, the white streaks down the trail side
+      P(new THREE.TorusGeometry(0.62, 0.17, 5, 12), STICK, { r: [Math.PI / 2, 0, 0], p: [0, H + 0.28, 0] }),
+      ...[0, 1, 2, 3].map(i => P(CYL(0.03, 0.03, 1.1, 3), '#4a3620', { r: [Math.PI / 2, i * 0.8 + k, 0.25], p: [0, H + 0.32, 0] })),
+      ...[-0.4, 0.05, 0.45].map((o, i) => { const L = crr(0.8, H * 0.35); return P(BOX(0.08, L, 0.04), GUANO, { r: [0, -R.ta + Math.PI / 2, 0], p: [ux * 0.86 - uz * o, H - 0.2 - L / 2, uz * 0.86 + ux * o] }); }),
+      ...[0, 1, 2].map(i => { const a = R.ta + (i - 1) * 1.6 + Math.PI; return P(SPH(7), RED[i], { s: [0.8, 0.45, 0.7], p: [Math.cos(a) * 1.3, 0.2, Math.sin(a) * 1.3] }); }));
+    part(g, merge(...parts));
+    OBSTACLES.push({ x: R.x, z: R.z, r: 1.3 }); stampObstacle(R.x, R.z, 1.3);
+    const two = k < C.birds - C.roosts;
+    for (const o of two ? [-0.62, 0.62] : [0]) CANYON.perches.push({ id: 100 + CANYON.perches.length, roost: R, x: R.x + R.tx * o, z: R.z + R.tz * o, top: R.top + 0.3, ta: R.ta, yaw: Math.atan2(ux, uz) });
+    someBits(R.x + ux * 2.6, R.z + uz * 2.6, 1.8, 7);   // what's left of its meals, at its foot
+  }
+  // the mouth: bones and feathers strewn thick, a ram's skull on a stake each side of the way in; then all the way down the gorge
+  for (let i = 0; i < 80; i++) { const s = C.s0 + 4 - (C.pinch + 16) * cr() ** 1.6, idx = pathIdx(s), p = pathPoint(s, crr(-Math.min(hwWArr[idx] - 1, 17), Math.min(hwEArr[idx] - 1, 15))); someBits(p.x, p.z, 0.6, 1); }
+  for (let i = 0; i < 5; i++) { const s = crr(C.s0 - C.pinch, C.s0 + 2), idx = pathIdx(s), p = pathPoint(s, crr(-hwWArr[idx] * 0.7, hwEArr[idx] * 0.7)); strew('skeleton', p.x, p.z); }
+  for (let i = 0; i < 40; i++) { const s = crr(C.s0, C.s1), idx = pathIdx(s), p = pathPoint(s, crr(-hwWArr[idx] + 1, hwEArr[idx] - 1)); someBits(p.x, p.z, 0.5, 1); }
+  for (const sd of [-1, 1]) { const s = C.s0 - 3, idx = pathIdx(s), p = pathPoint(s, sd * ((sd < 0 ? hwWArr[idx] : hwEArr[idx]) - 2.2)); if (floorOK(p.x, p.z)) { bits.totem.push({ x: p.x, z: p.z, y: terrainH(p.x, p.z), sc: 1.15, rot: Math.PI / 4 + crr(-0.2, 0.2) }); OBSTACLES.push({ x: p.x, z: p.z, r: 0.35 }); stampObstacle(p.x, p.z, 0.35); } }
+  for (const [kind, list] of Object.entries(bits)) if (list.length) instanced(GEO_C[kind], list, { outline: !kind.startsWith('feather'), shadow: kind === 'totem' || kind === 'skeleton' });
+  CANYON.bones = Object.values(bits).reduce((n, l) => n + l.length, 0);
+  // more of them, up on the cliffs and the rim, watching (they never come down: CANYON.perched, turned in syncCanyon)
+  const birdG = merge(P(SPH(9), '#4d5866', { s: [0.2, 0.3, 0.19], p: [0, 0.32, 0] }), P(SPH(8), '#efe3c8', { s: [0.15, 0.22, 0.12], p: [0, 0.3, 0.08] }),
+    ...[0, 1, 2].map(i => P(BOX(0.22, 0.02, 0.03), '#2c323b', { p: [0, 0.22 + i * 0.07, 0.17] })),
+    ...[1, -1].map(sx => P(SPH(7), '#2c323b', { s: [0.07, 0.27, 0.16], r: [0.15, 0, 0], p: [0.16 * sx, 0.3, -0.03] })),
+    P(BOX(0.16, 0.34, 0.03), '#4d5866', { r: [-0.25, 0, 0], p: [0, 0.08, -0.15] }),
+    P(SPH(8), '#4d5866', { s: [0.13, 0.12, 0.13], p: [0, 0.64, 0.02] }), P(SPH(6), '#2c323b', { s: [0.03, 0.07, 0.03], p: [0.09, 0.6, 0.06] }), P(SPH(6), '#2c323b', { s: [0.03, 0.07, 0.03], p: [-0.09, 0.6, 0.06] }),
+    P(SPH(5), '#f2c230', { s: [0.035, 0.035, 0.03], p: [0.075, 0.66, 0.1] }), P(SPH(5), '#f2c230', { s: [0.035, 0.035, 0.03], p: [-0.075, 0.66, 0.1] }),
+    P(CONE(0.04, 0.12, 5), '#3a3f47', { r: [Math.PI / 2 + 0.5, 0, 0], p: [0, 0.61, 0.15] }), P(CYL(0.02, 0.02, 0.1, 4), '#f2c230', { p: [0.06, 0.02, 0.03] }), P(CYL(0.02, 0.02, 0.1, 4), '#f2c230', { p: [-0.06, 0.02, 0.03] }));
+  const watchers = [];
+  for (let i = 0; i < 40 && watchers.length < 24; i++) {
+    const far = i % 4 !== 3, s = crr(C.s0 - 4, C.s1 + 2), idx = pathIdx(s), lat = far ? -(hwWArr[idx] + crr(2.5, 11)) : hwEArr[idx] + crr(3, 9), p = pathPoint(s, lat);
+    const y = terrainH(p.x, p.z); if (far ? y < 5 : y < 1.8) continue;
+    watchers.push({ x: p.x, z: p.z, y: y - 0.05, rot: Math.atan2(-p.nx * Math.sign(lat), -p.nz * Math.sign(lat)), sc: 1.45, ph: crr(0, TAU) });
+  }
+  const m = new THREE.InstancedMesh(birdG, MAT.vc, watchers.length), om = new THREE.InstancedMesh(outlineGeo(birdG), OUTLINE, watchers.length);
+  watchers.forEach((w, i) => { w.look = w.rot; _m4.compose(_v.set(w.x, w.y, w.z), _q.setFromEuler(_e.set(0, w.rot, 0)), _s.setScalar(w.sc)); m.setMatrixAt(i, _m4); });
+  m.computeBoundingSphere(); om.instanceMatrix = m.instanceMatrix; om.boundingSphere = m.boundingSphere; m.castShadow = true; m.receiveShadow = true; scene.add(m, om);
+  CANYON.perched = { m, om, list: watchers, t: 0 };
+}
 // ---------------- APPLE TREES: off the trail in the valley and the Promised Land (own rng). A pounce into the trunk shakes
 // apples down (APPLES: T.apple.n per tree, hanging, on the ground or eaten; the APPLES section) ----------------
 const APPLE_TREES = [], APPLES = [];
@@ -2232,7 +2380,7 @@ const APPLE_TREES = [], APPLES = [];
     const w = biomeW(s); if (w[1] + w[3] < 0.8) continue;
     for (let t = 0; t < 40; t++) {
       const ss = s + arr(-10, 10), k = pathIdx(ss), side = AR() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[k] : hwEArr[k];
-      if (hw < 17) continue;
+      if (hw < 17 || canyonK(ss) > 0.02) continue;   // (not in FALCON CANYON)
       const lat = side * arr(9, Math.min(19, hw - 7)), p = pathPoint(ss, lat);
       if (!clear(p.x, p.z, 3)) continue;
       if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || !offMarket(p.x, p.z, 10) || Math.hypot(p.x - barn.x, p.z - barn.z) < 12) continue;
@@ -2382,7 +2530,7 @@ function makeFalcon() {
     P(SPH(5), '#111111', { s: [0.025, 0.025, 0.02], p: [0.085, 0.03, 0.125] }), P(SPH(5), '#111111', { s: [0.025, 0.025, 0.02], p: [-0.085, 0.03, 0.125] }),
     P(CONE(0.045, 0.14, 6), '#3a3f47', { r: [Math.PI / 2 + 0.5, 0, 0], p: [0, -0.02, 0.18] })));
   const wings = [1, -1].map(sx => {
-    const w = new THREE.Group(); w.position.set(0.15 * sx, 0.08, 0.08); body.add(w);
+    const w = new THREE.Group(); w.position.set(0.15 * sx, 0.08, 0.08); w.rotation.order = 'YXZ'; body.add(w);   // (x: FALCON CANYON's perched birds hold them against their sides)
     part(w, merge(P(BOX(0.75, 0.04, 0.34), back, { p: [0.4 * sx, 0, 0] }), P(BOX(0.6, 0.035, 0.22), dark, { r: [0, -0.35 * sx, 0], p: [1.0 * sx, 0, -0.08] }),
       P(BOX(0.7, 0.042, 0.1), chest, { p: [0.4 * sx, -0.012, 0.06] })));
     return w;
@@ -5060,7 +5208,7 @@ const PLANTS = [];
   const dens = [0.45, 0.8, 0.75, 0.7], alf = [0.15, 0.42, 0.32, 0.38];   // [desert, valley, ocean, promised]: patches per 7 m of trail, share that's alfalfa
   for (let s = 14; s < PATH_LEN - 14; s += 7) {
     const w = biomeW(s), k = pathIdx(s);
-    if (FR() > dot4(w, dens)) continue;
+    if (FR() > dot4(w, dens) || canyonK(s) > 0.2) continue;   // (FALCON CANYON: nothing grows)
     const kind = FR() < dot4(w, alf) ? 'alfalfa' : 'daisy';
     let cx = 0, cz = 0, ok = false;
     for (let t = 0; t < 8 && !ok; t++) {
@@ -5115,7 +5263,7 @@ const SALT_ROCKS = [];
 {
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 9 })), L0 = LAUNCHERS[0];
   const okAt = (x, z) => sdfAt(x, z) > 2.5 && !wetAt(x, z) && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 4) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 10)
-    && Math.abs(trailInfo(x, z).lat) > 5 && PLANTS.every(o => (o.x - x) ** 2 + (o.z - z) ** 2 > 4) && SALT_ROCKS.every(o => Math.hypot(o.x - x, o.z - z) > 30);
+    && Math.abs(trailInfo(x, z).lat) > 5 && PLANTS.every(o => (o.x - x) ** 2 + (o.z - z) ** 2 > 4) && SALT_ROCKS.every(o => Math.hypot(o.x - x, o.z - z) > 30) && canyonK(sAt(x, z)) < 0.2;
   const place = (s0, spread) => {
     for (let t = 0; t < 24; t++) {
       const s = clamp(s0 + frr(-spread, spread), 10, PATH_LEN - 10), k = pathIdx(s), lat = (FR() < 0.5 ? -1 : 1) * frr(7, Math.max(8, (FR() < 0.5 ? hwWArr[k] : hwEArr[k]) * 0.8));
@@ -5744,7 +5892,7 @@ const BRAMBLES = [];
     && !PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 6) && !SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) && !DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 4)
     && !BRAMBLES.some(o => Math.hypot(o.x - x, o.z - z) < 1.6);
   for (let s = 30; s < PATH_LEN - 25; s += B.every * brr(0.7, 1.3)) {
-    if (BR() > dot4(biomeW(s), B.chance)) continue;
+    if (BR() > dot4(biomeW(s), B.chance) || canyonK(s) > 0.1) continue;   // (none in FALCON CANYON)
     const k = pathIdx(s);
     for (let t = 0; t < 12; t++) {
       const side = BR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.85;
@@ -7100,8 +7248,14 @@ function updateCougars(dt) {
 // (NESTS) and eaten there after T.falcon.eatT s. A bark under it makes it drop
 // the sheep (in the air, or from the nest). s.grabbed is the falcon (F.isFalcon);
 // a carried dog has d.air.kind 'falcon'.
+// FALCON CANYON: FALCONS[1…] sit on the gorge's pillars (F.home, a perch):
+// 'perch' (watching whatever's down there), a swoop on something in the gorge
+// (updateCanyon: circle, dive, carry, eaten on its pillar), 'home' (back to it).
 // =====================================================================
 const FALCON = { isFalcon: true, i: 0, state: 'away', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, bank: 0, t: 0, prey: null, dog: null, target: null, nest: null, dest: null, ang: 0, models: makeFalcon() };
+const FALCONS = [FALCON, ...CANYON.perches.map((P, k) => ({ isFalcon: true, i: k + 1, home: P, state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, bank: 0, t: 0,
+  prey: null, dog: null, target: null, nest: null, dest: null, ang: 0, rest: 0, flap: 0, look: P.yaw, watchT: 0, models: makeFalcon() }))];
+const nestById = v => v >= 100 ? CANYON.perches[v - 100] || null : NESTS[v] || null;   // (NET: a falcon's nest: a spire, or its pillar)
 const falconSheepOK = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;
 const falconDogOK = d => !d.air && !d.ko && !d.maul && !(d.stunT > 0) && G.dogs.includes(d);
 function falconPick() {
@@ -7126,7 +7280,11 @@ function falconHold(F) {
   if (F.prey) { const s = F.prey; s.x = F.x; s.z = F.z; s.y = Math.max(groundY(s.x, s.z), F.y - 1.25); s.vx = F.vx; s.vz = F.vz; s.yaw = F.yaw; }
   if (F.dog) { const d = F.dog; d.x = F.x; d.z = F.z; d.y = Math.max(groundY(d.x, d.z), F.y - 1.1); d.air.h = d.y; d.vx = F.vx; d.vz = F.vz; d.yaw = F.yaw; }
 }
-function falconGo(F) { F.state = 'leave'; F.t = 0; F.target = null; const a = Math.random() * TAU; F.dest = { x: F.x + Math.cos(a) * 80, z: F.z + Math.sin(a) * 80 }; }
+function falconGo(F) {
+  F.t = 0; F.target = null;
+  if (F.home) { F.state = 'home'; return; }   // FALCON CANYON: back to its pillar
+  F.state = 'leave'; const a = Math.random() * TAU; F.dest = { x: F.x + Math.cos(a) * 80, z: F.z + Math.sin(a) * 80 };
+}
 function falconCome(target) {   // (also the debug key V, and tests)
   const F = FALCON, C = T.falcon; if (!target) return false;
   F.target = target; F.state = 'circle'; F.t = 0; F.ang = Math.random() * TAU; F.prey = F.dog = null;
@@ -7146,7 +7304,7 @@ function falconGrab(F, e) {
     F.dest = best || { x: e.x + 15, z: e.z };
   } else {
     e.grabbed = F; e.pen = null; e.state = 'flee'; e.eating = false; F.prey = e;
-    let bn = null, bd = 1e9; for (const N of NESTS) { const d = Math.hypot(N.x - e.x, N.z - e.z); if (d < bd) { bd = d; bn = N; } }
+    let bn = F.home || null, bd = 1e9; if (!bn) for (const N of NESTS) { const d = Math.hypot(N.x - e.x, N.z - e.z); if (d < bd) { bd = d; bn = N; } }   // (FALCON CANYON: its own pillar)
     F.nest = bn;
     Sound.baa(e.pitch * 1.25, 0.5, panOf(e.x, e.z), true);
     toast(`🦅 ${e.name || '🐑'}! 🗣️`, 'bad'); hint('falcon-grab');
@@ -7158,13 +7316,13 @@ function falconGrab(F, e) {
     }
   }
 }
-// lets go of whatever it has: a sheep falls (from the nest it hops down), a dog falls
+// lets go of whatever it has: a sheep falls (from the nest it hops down: off a canyon pillar, toward the trail), a dog falls
 function falconDrop(F, saved) {
   const s = F.prey, d = F.dog; F.prey = F.dog = null;
   if (s) {
     s.grabbed = null;
     if (F.state === 'nest') {   // off the spire: a jump out and down
-      const a = Math.random() * TAU; s.x = F.nest.x + Math.cos(a) * 0.6; s.z = F.nest.z + Math.sin(a) * 0.6; s.y = F.nest.top;
+      const N = F.nest, a = N.ta !== undefined ? N.ta + rnd(-0.4, 0.4) : Math.random() * TAU; s.x = N.x + Math.cos(a) * 0.6; s.z = N.z + Math.sin(a) * 0.6; s.y = N.top;
       launchSheep(s, Math.cos(a) * 4, Math.sin(a) * 4, 5, 'drop');
     } else launchSheep(s, F.vx * 0.6, F.vz * 0.6, 1, 'drop');
     s.panic = 1; s.fear = 1;
@@ -7175,19 +7333,29 @@ function falconDrop(F, saved) {
   falconGo(F);
 }
 function falconBark(d) {
-  const F = FALCON, C = T.falcon, hd = Math.hypot(F.x - d.x, F.z - d.z);
-  if (F.state === 'carry' && (F.prey || (F.dog && F.dog !== d)) && hd < C.barkR) falconDrop(F, true);
-  else if (F.state === 'nest' && F.prey && Math.hypot(F.nest.x - d.x, F.nest.z - d.z) < C.nestR) falconDrop(F, true);
-  else if ((F.state === 'dive' || F.state === 'circle') && F.target && (hd < C.barkR || F.target === d)) { Sound.screech(panOf(F.x, F.z), 0.12); falconGo(F); }   // its mark barking (dog too) sends it off
+  const C = T.falcon, K = T.canyon; let ruffled = null;
+  for (const F of FALCONS) {
+    const hd = Math.hypot(F.x - d.x, F.z - d.z);
+    if (F.state === 'carry' && (F.prey || (F.dog && F.dog !== d)) && hd < C.barkR) falconDrop(F, true);
+    else if (F.state === 'nest' && F.prey && Math.hypot(F.nest.x - d.x, F.nest.z - d.z) < C.nestR) falconDrop(F, true);
+    else if ((F.state === 'dive' || F.state === 'circle') && F.target && (hd < C.barkR || F.target === d)) { Sound.screech(panOf(F.x, F.z), 0.12); falconGo(F); }   // its mark barking (dog too) sends it off
+    else if (F.state === 'perch' && hd < K.barkR) { F.rest = Math.max(F.rest, G.time + K.shy); F.flap = 1; ruffled = F; }   // FALCON CANYON: it stays on its pillar a while
+  }
+  if (ruffled && Math.random() < 0.5) Sound.screech(panOf(ruffled.x, ruffled.z), 0.05);
 }
 function resetFalcon() {
-  const F = FALCON;
-  if (F.prey) F.prey.grabbed = null;
-  if (F.dog && F.dog.air && F.dog.air.kind === 'falcon') F.dog.air = null;
-  F.prey = F.dog = F.target = null; F.state = 'away'; F.t = 0; G.falconIn = T.falcon.first;
+  for (const F of FALCONS) {
+    if (F.prey) F.prey.grabbed = null;
+    if (F.dog && F.dog.air && F.dog.air.kind === 'falcon') F.dog.air = null;
+    F.prey = F.dog = F.target = null; F.t = 0;
+    if (F.home) { const P = F.home; Object.assign(F, { state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, look: P.yaw, bank: 0, rest: 0, flap: 0 }); }
+    else F.state = 'away';
+  }
+  G.falconIn = T.falcon.first; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
 }
-function updateFalcon(dt, dtH) {
-  const F = FALCON, C = T.falcon; F.t += dt;
+function updateFalcon(dt, dtH) { updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH); }
+function falconStep(F, dt, dtH) {
+  const C = T.falcon, K = T.canyon; F.t += dt;
   if (F.prey && (F.prey.dead || !G.sheep.includes(F.prey))) F.prey = null;
   if (F.dog && (!G.dogs.includes(F.dog) || !F.dog.air || F.dog.air.kind !== 'falcon')) F.dog = null;
   switch (F.state) {
@@ -7198,11 +7366,22 @@ function updateFalcon(dt, dtH) {
       falconCome(falconPick());
       break;
     }
-    case 'circle': {   // high up, round and round over its mark
-      const e = F.target; if (!falconTargetOK(e)) { const o = falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
-      F.ang += dt * 0.9; const t = F.target;
-      falconFly(F, t.x + Math.cos(F.ang) * C.circleR, groundY(t.x, t.z) + C.circleH, t.z + Math.sin(F.ang) * C.circleR, 11, dt, 4);
-      if (F.t > C.circleT) { F.state = 'dive'; F.t = 0; Sound.screech(panOf(F.x, F.z), 0.22); if (hankSees(t.x, t.z, t.y)) hank('falcon'); floatText('❗', t.x, (t.y || 0) + 2.2, t.z, '#ff5a5a', 1.4); }
+    case 'perch': {   // FALCON CANYON: on its pillar, its eyes on whatever's nearest down in the gorge
+      const P = F.home; F.x = P.x; F.y = P.top + 0.7; F.z = P.z; F.vx = F.vy = F.vz = 0; F.bank = 0; F.flap = Math.max(0, F.flap - dt * 1.2);
+      if ((F.watchT -= dt) <= 0) {
+        F.watchT = rnd(0.6, 1.6); let best = null, bd = K.reach * K.reach;
+        for (const e of CANYON.cand) { const q = (e.x - F.x) ** 2 + (e.z - F.z) ** 2; if (q < bd) { bd = q; best = e; } }
+        F.look = best ? Math.atan2(best.x - F.x, best.z - F.z) + rnd(-0.2, 0.2) : P.yaw + rnd(-0.7, 0.7);
+      }
+      F.yaw = lerpA(F.yaw, F.look, Math.min(1, dt * 3));
+      break;
+    }
+    case 'circle': {   // high up, round and round over its mark (from a pillar: up off it and round, lower and quicker)
+      const e = F.target; if (!falconTargetOK(e)) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
+      const t = F.target, cr = F.home ? K.circleR : C.circleR, ch = F.home ? K.circleH : C.circleH;
+      F.ang += dt * (F.home ? 1.6 : 0.9);
+      falconFly(F, t.x + Math.cos(F.ang) * cr, groundY(t.x, t.z) + ch, t.z + Math.sin(F.ang) * cr, F.home ? 13 : 11, dt, 4);
+      if (F.t > (F.home ? K.circleT : C.circleT)) { F.state = 'dive'; F.t = 0; Sound.screech(panOf(F.x, F.z), 0.22); if (hankSees(t.x, t.z, t.y)) hank('falcon'); floatText('❗', t.x, (t.y || 0) + 2.2, t.z, '#ff5a5a', 1.4); }
       break;
     }
     case 'dive': {
@@ -7238,13 +7417,19 @@ function updateFalcon(dt, dtH) {
       if (!s) { falconGo(F); break; }
       s.x = N.x + Math.sin(F.yaw) * 0.5; s.z = N.z + Math.cos(F.yaw) * 0.5; s.y = N.top; s.vx = s.vz = 0;
       if ((F.cryT = (F.cryT || 0) - dt) <= 0) { F.cryT = rnd(0.7, 1.3); Sound.baa(s.pitch * 1.25, 0.45, panOf(s.x, s.z), true); }
-      if (F.t > C.eatT) {   // gone. Its stone goes at the foot of the spire.
+      if (F.t > (F.home ? K.eatT : C.eatT)) {   // gone. Its body (then its stone) at the foot of the spire, the trail side of a pillar
         burst(N.x, N.top + 0.6, N.z, 18, '#f7f3e8', { speed: 2, up: 1.5 });
         F.prey = null; s.grabbed = null;
-        const a = Math.random() * TAU; s.x = N.x + Math.cos(a) * 2.6; s.z = N.z + Math.sin(a) * 2.6; s.y = groundY(s.x, s.z);
+        const a = N.ta !== undefined ? N.ta + rnd(-0.5, 0.5) : Math.random() * TAU; s.x = N.x + Math.cos(a) * 2.6; s.z = N.z + Math.sin(a) * 2.6; s.y = groundY(s.x, s.z);
         killSheep(s, 'falcon');
         falconGo(F);
       }
+      break;
+    }
+    case 'home': {   // FALCON CANYON: back up onto its pillar, then a rest
+      const P = F.home, ty = P.top + 0.7, hd = Math.hypot(P.x - F.x, P.z - F.z);
+      falconFly(F, P.x, hd > 4 ? Math.max(ty + 2.5, F.y) : ty, P.z, 12, dt, 4);
+      if ((hd < 0.5 && Math.abs(F.y - ty) < 0.6) || F.t > 15) { F.state = 'perch'; F.t = 0; F.rest = G.time + K.rest; F.flap = 0.7; F.look = P.yaw; F.watchT = 0.5; }
       break;
     }
     case 'leave': {
@@ -7255,23 +7440,96 @@ function updateFalcon(dt, dtH) {
     }
   }
 }
-// wings beating (gliding while it circles, tucked in the dive), the shadow on the ground (host and guests alike)
+// FALCON CANYON (host): what's down in the gorge (CANYON.cand, every 0.25 s), the first time in (banner, an omen, a word from
+// Hank once he's there too), and the swoops: by day, one every T.canyon.every s on something in it, from the nearest rested bird
+const canyonIn = s => s > T.canyon.s0 - 6 && s < T.canyon.s1 + 4;
+function updateCanyon(dt) {
+  const K = T.canyon;
+  if ((CANYON.scanT -= dt) <= 0) {
+    CANYON.scanT = 0.25; const cs = CANYON.cand = [];
+    for (const s of G.sheep) if (!s.dead && !s.pen && canyonIn(sAt(s.x, s.z))) cs.push(s);
+    for (const d of G.dogs) if (canyonIn(sAt(d.x, d.z))) cs.push(d);
+  }
+  if (G.mode !== 'play') return;
+  const cs = CANYON.cand;
+  if (!CANYON.seen && cs.length) { CANYON.seen = true; banner('🦅 Falcon Canyon', '🦴 🦴 🦴'); Sound.omen(0.22); hint('canyon'); }
+  if (CANYON.seen && !CANYON.hankSaid && sAt(HANK.x, HANK.z) > K.s0 - 24) { CANYON.hankSaid = true; hank(null, "Bones... Falcon country. Keep 'em close, and keep barkin'!", { force: true, delay: 0.6 }); }
+  if (!K.on || G.clock.hour < K.from || G.clock.hour >= K.to || !cs.length) { CANYON.next = Math.max(CANYON.next, K.first); return; }
+  if ((CANYON.next -= dt) > 0) return;
+  if (FALCONS.filter(F => F.home && F.state !== 'perch').length >= K.maxAir) { CANYON.next = 0.5; return; }
+  const e = canyonMark(cs), F = e && canyonBird(e);
+  if (!F) { CANYON.next = rnd(1, 2); return; }
+  canyonSwoop(F, e); CANYON.next = rnd(K.every[0], K.every[1]);
+}
+// what one goes for: a dog now and then, else a sheep in the gorge proper (lambs and stragglers likelier, never rams), not one already marked
+function canyonMark(cs) {
+  const K = T.canyon, marked = new Set(FALCONS.map(F => F.target).filter(Boolean)), gorge = e => { const s = sAt(e.x, e.z); return s > K.s0 - 4 && s < K.s1; };
+  const dogs = cs.filter(e => e.isDog && falconDogOK(e) && !marked.has(e) && gorge(e));
+  if (dogs.length && Math.random() < K.dogChance) return pick(dogs);
+  let tot = 0; const w = [];
+  for (const s of cs) { if (s.isDog || !falconSheepOK(s) || marked.has(s) || !gorge(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
+  let r = Math.random() * tot; for (const [s, k] of w) if ((r -= k) <= 0) return s;
+  return null;
+}
+// who goes: the nearest bird within reach that's perched, rested and not kept on its pillar by a bark
+function canyonBird(e) {
+  let best = null, bd = T.canyon.reach;
+  for (const F of FALCONS) { if (!F.home || F.state !== 'perch' || G.time < F.rest) continue; const d = Math.hypot(F.x - e.x, F.z - e.z); if (d < bd) { bd = d; best = F; } }
+  return best;
+}
+function canyonSwoop(F, e) {   // (also tests)
+  F.target = e; F.state = 'circle'; F.t = 0; F.ang = Math.atan2(F.z - e.z, F.x - e.x); F.vy = 5; F.flap = 1; F.prey = F.dog = null;
+  Sound.screech(panOf(F.x, F.z), 0.12); burst(F.x, F.y, F.z, 5, '#4d5866', { speed: 1.2, up: 0.6, size: 0.1, life: 1.4, grav: -1.5 });
+  return true;
+}
+// wings beating (gliding while it circles, tucked in the dive, folded on a perch), the shadow on the ground (host and guests alike)
 function syncFalcon(F) {
-  const M = F.models, st = F.state, on = st !== 'away'; M.root.visible = on; M.shadow.visible = on && st !== 'nest';
+  const M = F.models, st = F.state, on = st !== 'away' && (!F.home || Math.abs(F.x - cam.x) + Math.abs(F.z - cam.z) < 95); M.root.visible = on; M.shadow.visible = on && st !== 'nest' && st !== 'perch';
   if (!on) return;
   const t = G.time; M.root.position.set(F.x, F.y, F.z);
-  const pitch = st === 'dive' ? 0.6 : st === 'leave' ? -0.3 : 0;
+  const pitch = st === 'dive' ? 0.6 : st === 'leave' ? -0.3 : st === 'perch' ? -0.75 : 0;   // (sat up on a perch)
   M.root.rotation.set(pitch, F.yaw, -F.bank || 0);
-  let flap = 0, fold = 0;
+  let flap = 0, fold = 0; const ruff = F.flap || 0;
   if (st === 'dive') fold = 1.0;
-  else if (st === 'circle') flap = Math.sin(t * 3) * 0.15;
+  else if (st === 'circle') flap = F.home && F.t < 0.8 ? Math.sin(t * 12) * 0.75 : Math.sin(t * 3) * 0.15;
   else if (st === 'nest') { fold = 1.3; flap = Math.max(0, Math.sin(t * 2)) * 0.2; }
+  else if (st === 'perch') fold = -1.35 * (1 - ruff), flap = ruff * Math.sin(t * 15 + F.i) * 0.7 - 0.18 * (1 - ruff);   // (folded back along its sides, tips down; a bark: a ruffle)
   else flap = Math.sin(t * (st === 'carry' ? 13 : 10)) * 0.75;
-  M.wings.forEach((w, i) => { const sx = i ? -1 : 1; w.rotation.z = sx * flap; w.rotation.y = -sx * fold; });
-  M.legs.forEach(g => { g.rotation.x = st === 'dive' || F.prey || F.dog ? 0.9 : 0.2; });
-  M.head.rotation.x = st === 'nest' ? 0.4 + Math.max(0, Math.sin(t * 5)) * 0.4 : 0;
+  const tuck = st === 'perch' ? lerp(0.55, 1, ruff) : 1;
+  M.wings.forEach((w, i) => { const sx = i ? -1 : 1; w.rotation.z = sx * flap; w.rotation.y = -sx * fold; w.rotation.x = st === 'perch' ? 1.2 * (1 - ruff) : 0; w.scale.x = tuck; });
+  M.legs.forEach(g => { g.rotation.x = st === 'dive' || F.prey || F.dog ? 0.9 : st === 'perch' ? 0.95 : 0.2; });
+  M.head.rotation.x = st === 'nest' ? 0.4 + Math.max(0, Math.sin(t * 5)) * 0.4 : st === 'perch' ? (LIGHT.night > 0.6 ? 1.2 : 0.6 + Math.max(0, Math.sin(t * 0.8 + F.i * 1.7)) * 0.25) : 0;   // (asleep at night)
+  M.head.rotation.y = st === 'perch' && LIGHT.night <= 0.6 ? Math.sin(t * 0.55 + F.i * 2.3) * 0.45 : 0;
   const gy = groundY(F.x, F.z), h = F.y - gy;
   M.shadow.position.set(F.x, gy + 0.08, F.z); M.shadow.scale.setScalar(1.2 + h * 0.04); M.shadow.material.opacity = clamp(0.45 - h * 0.008, 0.15, 0.45);
+}
+// FALCON CANYON, every frame on every screen: the watchers on the cliffs turn their heads to the flock, feathers drift down
+const _cf = { m: new THREE.Matrix4() };
+function syncCanyon(dt) {
+  const W = CANYON.perched, k = CANYON.k;
+  if (W && k > 0.01 && (W.t -= dt) <= 0) {
+    W.t = 0.2; const fc = flockCenter(), tx = fc.n ? fc.x : cam.x, tz = fc.n ? fc.z : cam.z;
+    W.list.forEach((w, i) => {
+      if (Math.abs(w.x - cam.x) + Math.abs(w.z - cam.z) > 110) return;
+      const want = Math.atan2(tx - w.x, tz - w.z) + Math.sin(G.time * 0.4 + w.ph) * 0.5; w.look = lerpA(w.look, want, 0.25);
+      _m4.compose(_v.set(w.x, w.y, w.z), _q.setFromEuler(_e.set(0, w.look, 0)), _s.setScalar(w.sc)); W.m.setMatrixAt(i, _m4);
+    });
+    W.m.instanceMatrix.needsUpdate = true;
+  }
+  const D = CANYON.drift || (CANYON.drift = (() => {   // a few feathers in the air round the camera
+    const n = 26, g = merge(P(SPH(6), '#4d5866', { s: [0.07, 0.012, 0.24] }), P(CYL(0.008, 0.008, 0.36, 3), '#e9dfc6', { r: [Math.PI / 2, 0, 0], p: [0, 0.008, -0.05] }));
+    const m = new THREE.InstancedMesh(g, MAT.vc, n); m.frustumCulled = false; m.count = 0; scene.add(m);
+    return { m, n, f: Array.from({ length: n }, () => ({ x: 0, y: -99, z: 0, ph: rnd(0, TAU), sp: rnd(0.35, 0.7), s: rnd(0.8, 1.4) })) };
+  })());
+  const want = Math.round(D.n * clamp(k * 1.3, 0, 1));
+  if (!want) { D.m.count = 0; return; }
+  for (let i = 0; i < want; i++) {
+    const f = D.f[i], gy = groundY(f.x, f.z);
+    if (f.y < gy + 0.05 || Math.abs(f.x - cam.x) + Math.abs(f.z - cam.z) > 60) { f.x = cam.x + rnd(-28, 28); f.z = cam.z + rnd(-28, 28); f.y = groundY(f.x, f.z) + rnd(4, 14); }
+    f.ph += dt * 1.7; f.y -= f.sp * dt; f.x += Math.sin(f.ph) * dt * 0.9 + 0.25 * dt; f.z += Math.cos(f.ph * 0.7) * dt * 0.6;
+    _m4.compose(_v.set(f.x, f.y, f.z), _q.setFromEuler(_e.set(Math.sin(f.ph) * 0.7, f.ph * 0.5, Math.cos(f.ph * 1.3) * 0.5)), _s.setScalar(f.s)); D.m.setMatrixAt(i, _m4);
+  }
+  D.m.count = want; D.m.instanceMatrix.needsUpdate = true;
 }
 
 // =====================================================================
@@ -7508,7 +7766,7 @@ const SKY = [
   [24, { bg: '#0d1633', sun: '#8fb0ff', sunI: 1.0, hs: '#3b4f8f', hg: '#1a1f33', hI: 1.0, night: 1 }],
 ];
 const _ca = new THREE.Color(), _cb = new THREE.Color();
-const LIGHT = { night: 0 };
+const LIGHT = { night: 0 }, GLOOM = document.getElementById('gloom');
 function updateLighting(dt) {
   const h = G.clock.hour; let i = 0; while (i < SKY.length - 2 && SKY[i + 1][0] <= h) i++;
   const [h0, a] = SKY[i], [h1, b] = SKY[i + 1], t = clamp((h - h0) / (h1 - h0), 0, 1);
@@ -7525,6 +7783,14 @@ function updateLighting(dt) {
   const ty = groundY(cam.x, cam.z);
   sun.target.position.set(cam.x, ty, cam.z);
   sun.position.set(cam.x + sunDir.x * 150, ty + sunDir.y * 150, cam.z + sunDir.z * 150);
+  // FALCON CANYON: gloom in the gorge, by day too: a dimmer, redder sun, a bruised sky, dark red at the edges
+  const ck = CANYON.k = lerp(CANYON.k, canyonK(sAt(cam.x, cam.z)), Math.min(1, dt * 1.5)), gl = ck * T.canyon.gloom;
+  if (gl > 0.002) {
+    sun.intensity *= 1 - 0.55 * gl; sun.color.lerp(_cb.set('#ff9466'), 0.5 * gl);
+    hemi.intensity *= 1 - 0.3 * gl; hemi.color.lerp(_cb.set('#7a5a7a'), 0.6 * gl); hemi.groundColor.lerp(_cb.set('#3a1a14'), 0.6 * gl);
+    scene.background.lerp(_cb.set('#4a3036'), 0.85 * gl);
+  }
+  GLOOM.style.opacity = Math.min(0.8, gl * 1.3).toFixed(3);
   U.uWaterLight.value.setRGB(lerp(1, 0.32, night), lerp(1, 0.38, night), lerp(1, 0.62, night));
   document.getElementById('vignette').style.opacity = (night * 0.95).toFixed(3);
   for (let k = 0; k < 4; k++) { const d = G.dogs[k], L = dogLights[k]; if (d) { L.position.set(d.x, d.y + 2.2, d.z); L.intensity = 14 * night; } else L.intensity = 0; }
@@ -7973,6 +8239,7 @@ const HINTS = {
   'coyote-grab': 'Chase it down! <b>Pounce</b> on the coyote, or grab it and <b>shake</b>, to make it drop the sheep!',
   'cougar-grab': 'A cougar! Catch it before it climbs its tree: <b>pounce</b> on it, or run right into it, and it drops the sheep.',
   'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
+  canyon: '🦅 Falcons! <b>Bark</b> near one on its rock and it stays put a while. Keep the flock tight and keep moving.',
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
   gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / R) and drag it round.',
@@ -8012,6 +8279,7 @@ const TOUCH_HINTS = {
   'coyote-grab': '💥 the coyote, or ✊ + 💥, to drop the sheep',
   'cougar-grab': 'Cougar! 💥 it or run into it',
   'falcon-grab': '🦅 📣 under it',
+  canyon: '🦅 📣 near them · keep moving',
   dawn: 'Morning! <b>Open the gate</b>, let them graze',
   hungry: 'Starving sheep! Find lush grass',
   gates: 'Shut gate: back off, shove again. ⚡ into it: vault. ✊: drag',
@@ -8106,7 +8374,7 @@ function updateHUD(dt) {
   }
   // journey bar: camps along the trail, the flock and the dogs
   const jb = $('journey');
-  if (!jb.dataset.built) { jb.dataset.built = 1; CAMPS.forEach((c, i) => { const e = document.createElement('div'); e.className = 'camp' + (c.final ? ' final' : ''); e.style.left = `calc(6px + (100% - 12px) * ${c.s / PATH_LEN})`; e.title = c.name; jb.appendChild(e); }); const me = document.createElement('div'); me.className = 'me'; me.textContent = '🐑'; jb.appendChild(me); }
+  if (!jb.dataset.built) { jb.dataset.built = 1; const gz = document.createElement('div'); gz.className = 'gorge'; gz.title = '🦅 Falcon Canyon'; gz.style.left = `calc(6px + (100% - 12px) * ${T.canyon.s0 / PATH_LEN})`; gz.style.width = `calc((100% - 12px) * ${(T.canyon.s1 - T.canyon.s0) / PATH_LEN})`; jb.appendChild(gz); CAMPS.forEach((c, i) => { const e = document.createElement('div'); e.className = 'camp' + (c.final ? ' final' : ''); e.style.left = `calc(6px + (100% - 12px) * ${c.s / PATH_LEN})`; e.title = c.name; jb.appendChild(e); }); const me = document.createElement('div'); me.className = 'me'; me.textContent = '🐑'; jb.appendChild(me); }
   const stl = stallNear();   // VENDOR: at a stall, its pen's camp ringed
   [...jb.querySelectorAll('.camp')].forEach((e, i) => { e.classList.toggle('done', CAMPS[i].s < fs - 5 || (G.visited.has(CAMPS[i].name) && i === 0)); e.classList.toggle('pick', !!stl && stl.sel === i); });
   jb.querySelector('.me').style.left = `calc(6px + (100% - 12px) * ${clamp(fs / PATH_LEN, 0, 1)})`;
@@ -10465,7 +10733,7 @@ function dropPlayer(p) {
   if (d) {
     if (d.holding) releaseHold(d, false);
     if (d.maul) endMaul(d.maul, 'done');
-    if (FALCON.dog === d) falconDrop(FALCON, false);
+    for (const F of FALCONS) if (F.dog === d) falconDrop(F, false);
     for (const k of COUGARS) if (k.dog === d) k.dog = null;
     if (bagN(d)) giveHankBag(d);   // VET: what it was carrying goes to Hank
   }
@@ -10688,9 +10956,9 @@ const NET_TYPES = {
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's' },
     animate: (k, dt) => { k.y = groundY(k.x, k.z) + k.h; k.leg += Math.hypot(k.vx, k.vz) * dt * 2.4; },
   },
-  falcon: {   // FALCON: one bird; its prey travel as s.grabbed ('A0') or a dog's air kind 'falcon'
-    tag: 'A', one: () => FALCON,
-    fields: { x: 'p', z: 'p', y: .02, vx: .1, vz: .1, yaw: 'a', bank: .02, state: 's', nest: { c: 'i', get: F => F.nest ? F.nest.id : -1, set: (F, v) => { F.nest = NESTS[v] || null; } } },
+  falcon: {   // FALCON (and FALCON CANYON's, built the same on every screen); prey travel as s.grabbed ('A' + F.i) or a dog's air kind 'falcon'
+    tag: 'A', all: () => FALCONS, id: F => F.i, static: true,
+    fields: { x: 'p', z: 'p', y: .02, vx: .1, vz: .1, yaw: 'a', bank: .02, state: 's', flap: .05, nest: { c: 'i', get: F => F.nest ? F.nest.id : -1, set: (F, v) => { F.nest = nestById(v); } } },
   },
   dig: {   // DIG SPOTS: dug or not, and how far down
     tag: 'D', all: () => DIGS, id: sp => sp.i, static: true,
@@ -10869,7 +11137,7 @@ function netRefStr(v) {
   if (G.sheep.includes(v)) return 's' + v.id;
   if (G.coyotes.includes(v)) return 'c' + NET_TYPES.coyote.id(v);
   if (v.isCougar) return 'Q' + v.i;
-  if (v.isFalcon) return 'A0';
+  if (v.isFalcon) return 'A' + v.i;
   const pi = pens.indexOf(v); if (pi >= 0) return 'p' + pi;
   if (G.dogs.includes(v)) return 'd' + v.player.slot;
   return null;
@@ -11952,7 +12220,8 @@ function frame(now) {
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
-  syncFalcon(FALCON);
+  for (const F of FALCONS) syncFalcon(F);
+  syncCanyon(dt);         // FALCON CANYON: watchers on the cliffs, feathers in the air
   syncSheep(dt);
   syncMoves(dt);
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
@@ -11970,7 +12239,7 @@ function frame(now) {
   drawOverlay(dt);
   updateHUD(dt);
   const oceanNear = biomeW(sAt(cam.x, cam.z))[2];
-  Sound.ambience(LIGHT.night, oceanNear, dt);
+  Sound.ambience(LIGHT.night, oceanNear, dt, CANYON.k);
   netFrameEnd(now, dt);   // ONLINE: snapshots out, status chip, pause screen
   endInputFrame();
   // adaptive resolution: drop to 1x if the GPU is struggling
@@ -11985,6 +12254,7 @@ function debugKeys() {
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
+  if (keyEdge.has('KeyU')) { const p = pathPoint(T.canyon.s0 - 26, 0); for (const d of G.dogs) { d.x = p.x + 3; d.z = p.z + 3; } for (const s of G.sheep) if (!s.dead) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); s.pen = null; } HANK.x = p.x + 6; HANK.z = p.z + 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 13)); }   // FALCON CANYON: to its mouth
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
   if (keyEdge.has('KeyH')) {   // VET: one bitten, one bleeding, one festering, one dead; a dog with a full bag and 🧶 to spend
     const L = living().filter(s => !s.lamb), d = G.dogs[0];
@@ -11995,7 +12265,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
-window.GAME = { FALCON, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { FALCON, FALCONS, CANYON, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, findPath, navLOS, killSheep, makeSheep, bark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
@@ -12015,8 +12285,8 @@ function renderOnce(dt = 1 / 60) {
   for (const d of G.dogs) syncDog(d);
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
-  syncFalcon(FALCON);
-  syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  for (const F of FALCONS) syncFalcon(F);
+  syncCanyon(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
