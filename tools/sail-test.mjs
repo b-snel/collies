@@ -285,8 +285,8 @@ if (want('storm')) {
     GAME.seaStart({ under: true, leg: 2 }); SEA.e = (a.e + b.e) / 2; SEA.n = (a.n + b.n) / 2; SEA.hdg = b.crs; SEA.hoist = 0.55; H.flock(0);
     let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
-    // a great wave: abeam it sweeps the deck; on the bow it doesn't
-    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(0, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); let heel = 0; H.run(12, () => { H.steer(0); heel = Math.max(heel, Math.abs(SEA.heel)); }); return { over: H.swimmers().length, heel: H.deg(heel), hit: !SEA.rogue || SEA.rogue.hit }; };
+    // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
+    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); let heel = 0; H.run(12, () => { H.steer(0); heel = Math.max(heel, Math.abs(SEA.heel)); }); return { over: H.swimmers().length, heel: H.deg(heel), hit: !SEA.rogue || SEA.rogue.hit }; };
     out.beam = wave(Math.PI / 2); out.bow = wave(0.1);
     return out;
   });
@@ -319,7 +319,8 @@ if (want('siren')) {
     // barking amidships breaks the song's hold: nobody goes over
     near(); H.place(d, 0, 0); let o2 = 0, freed = 0; H.run(30, t => { p.bot = { bark: Math.round(t * 40) % 24 === 0 }; o2 = Math.max(o2, H.swimmers().length); if (H.swimmers().length && !out.how) out.how = H.swimmers().map(s => [s.air.how, s.ram, s.lamb, H.r(boatU(s.x, s.z)), H.r(s.air.t)]); freed += G.sheep.filter(s => (s.lureCd || 0) > G.time).length ? 1 : 0; }); out.barkOver = o2; out.freed = freed > 0;
     // a dog standing in the way at that rail stops them there
-    near(); const s = G.sheep.find(q => !q.ram && !q.lamb); H.flock(-3, 6, 10); H.place(s, 0, 2); s.lure = 1; H.place(d, 0, 4.2); p.bot = {}; H.run(8); out.blocked = !s.air && boatV(s.x, s.z) < 3.4;
+    const walk = dog => { near(); const s = G.sheep.find(q => !q.ram && !q.lamb); H.flock(-3, 6, 10); H.place(s, 0, 2); if (dog) H.place(d, 0, 4.2); p.bot = {}; let far = 0; H.run(1.6, () => { s.lure = 1; far = Math.max(far, boatV(s.x, s.z)); }); return H.r(far); };
+    out.free = walk(false); out.far = walk(true); out.blocked = out.far < 2.5 && out.free > 3.5;
     // left to it: they walk to the rail on the singing side and jump; in the water they swim for the rock and are lost
     near(); let lured = 0, over = 0; H.run(30, () => { lured = Math.max(lured, G.sheep.filter(s => s.lure).length); over = Math.max(over, H.swimmers().length); });
     out.lured = lured; out.over = over; out.side = H.swimmers().every(s => boatV(s.x, s.z) > 0);
@@ -329,7 +330,7 @@ if (want('siren')) {
   ok(`near their rock the song takes hold of sheep (${r.lured}); they go over the rail on that side (${r.over})`, r.lured >= 3 && r.over >= 2 && r.side, r);
   ok(`left in the water they swim to the singing and are lost (${r.taken})`, r.taken >= 1, r);
   ok(`barking breaks its hold: hardly any go over (${r.barkOver}, not ${r.over})`, r.freed && r.barkOver <= 1 && r.barkOver < r.over - 3, r);
-  ok('a dog in the way at the rail stops one', r.blocked, r);
+  ok(`a dog in its way stops one (it got to ${r.far} m off the centreline, not ${r.free})`, r.blocked, r);
 }
 
 if (want('kraken')) {
