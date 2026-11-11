@@ -649,8 +649,11 @@ const T = {
   vet: { bag: 6, giveR: 2.4, time: 2.4, reach: 0.55, giveUp: 25, skip: 20, venomSlow: 0.72, say: 75 },
   // REMAINS: a sheep that dies lies where it fell (its name over it) and rots into a tombstone over rotDays in-game days. With a
   // shovel Hank carries one (within reach m of him, from…to o'clock, nothing prowling) to the nearest camp's cemetery (YARDS),
-  // at walk m/s, digs `dig` s and says a few words. A full cemetery gets another row, up to `rows`
-  remains: { rotDays: 1.5, reach: 70, from: 6.5, to: 19.5, walk: 2.4, dig: 3.2, rows: 8 },   // rows: the most a cemetery grows to (3 graves a row)
+  // at walk m/s, digs `dig` s and says a few words. A full cemetery gets another row, up to `rows`.
+  // No cemetery till the first body comes: he sets it down by the way in and builds one, round the fence line at build.spd m/s
+  // (inset m inside it, aiming lead m ahead; it only goes up while he's within near m)
+  remains: { rotDays: 1.5, reach: 70, from: 6.5, to: 19.5, walk: 2.4, dig: 3.2, rows: 8,   // rows: the most a cemetery grows to (3 graves a row)
+    build: { spd: 1.5, inset: 0.6, lead: 0.7, near: 1.6 } },
   // BRAMBLES: thorny patches off the trail. A sheep that walks (snagWalk/s) or runs (snagRun/s, above runSpd m/s) into
   // a bush is snagged till a dog pounces it out. Calm sheep steer round them (avoid m). Off in ?sim (tests turn it on).
   bramble: { on: !SIM, every: 22, chance: [0.6, 0.75, 0.5, 0.45], lat: [6, 17], snagWalk: 0.3, snagRun: 2.2, runSpd: 3, avoid: 1.8, stress: 0.05, stressCap: 0.6, struggle: [1.5, 3.5] },
@@ -1186,11 +1189,11 @@ const STALLS = [...CAMPS.slice(1).map(c => c.s - T.vendor.before), FINAL.s + 28]
 });
 const MARKET = STALLS[STALLS.length - 1];
 // REMAINS: a little cemetery by each camp (round the back of the pen, past the campfire): Hank buries the fallen here, in neat
-// rows facing the camera (slots: back row first). Nothing else is placed on it.
+// rows facing the camera (slots: back row first). Nothing else is placed on it. Not there till he builds it (Y.built: yardStep).
 // Full: Hank adds a row at the back and the fence goes round it (yardGrow), while the ground there is clear.
 const YARDS = CAMPS.map((c, i) => {
   const cols = 3, rows = 4, gap = 1.35, a = c.gateA + 2.15, d = c.R + 7.2, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
-  const q = Math.SQRT1_2, Y = { i, camp: c, x, z, r: 4.6, cols, rows, rows0: rows, gap, R: { x: q, z: -q }, F: { x: -q, z: -q }, slots: [], n: 0 };   // R, F = CAM_R, CAM_F (screen right, screen up)
+  const q = Math.SQRT1_2, Y = { i, camp: c, x, z, r: 4.6, cols, rows, rows0: rows, gap, R: { x: q, z: -q }, F: { x: -q, z: -q }, slots: [], n: 0, built: 0 };   // R, F = CAM_R, CAM_F (screen right, screen up)
   for (let r = rows - 1; r >= 0; r--) for (let k = 0; k < cols; k++) Y.slots.push(yardSpot(Y, r, k));
   return Y;
 });
@@ -4177,6 +4180,11 @@ const SFX = (() => {
     dig(pan = 0, vol = 0.22) {   // paws scrabbling in dirt (dig spots)
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
       for (let k = 0; k < 2; k++) { const t = t0 + k * 0.06, [n, f] = noise(A, t, 'lowpass', 900 + Math.random() * 500, 0.8), g = A.ac.createGain(); A.env(g, t, 0.004, 0.9, 0.07); f.connect(g); g.connect(A.out(vol, pan)); n.stop(t + 0.1); }
+    },
+    knock(pan = 0, vol = 0.22) {   // a mallet on a fence post (REMAINS: Hank building a cemetery)
+      const A = R(); if (!A) return; const t = A.ac.currentTime;
+      const o = osc(A, 'triangle', t, 460, 200, 0.07), g = A.ac.createGain(); A.env(g, t, 0.002, 1, 0.09); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + 0.12);
+      const [n, f] = noise(A, t, 'bandpass', 1500, 2.2), ng = A.ac.createGain(); A.env(ng, t, 0.001, 0.6, 0.035); f.connect(ng); ng.connect(A.out(vol, pan)); n.stop(t + 0.05);
     },
     scratch(pan = 0, vol = 0.3) {   // claws raking fur
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
@@ -7404,9 +7412,10 @@ function updateRemains(dtH) {
     if (g.rot >= 1) graveStone(g);
   }
 }
-// every frame: bodies rot (and buzz), one on Hank's shoulder goes with him, a fresh stone comes up out of the ground
+// every frame: bodies rot (and buzz), one on Hank's shoulder goes with him, a fresh stone comes up out of the ground, a cemetery goes up
 function syncRemains(dt) {
   const hk = HANK;
+  for (const Y of YARDS) syncYard(Y);   // the cemeteries, as far as they're built
   for (const g of G.graves) {
     if (g.stone) { const u = clamp((G.time - (g.riseT ?? -9)) / 0.7, 0, 1); if (u < 1) { const e = 1 - (1 - u) ** 3; g.root.position.y = g.y - 0.9 * (1 - e); } else if (g.root.position.y !== g.y) g.root.position.y = g.y; continue; }
     const B = g.body; if (!B) continue;
@@ -7426,23 +7435,82 @@ function collideGraves(e, r) {
     if (d < rr && d > 1e-4) { e.x = g.x + dx / d * rr; e.z = g.z + dz / d * rr; const vn = (e.vx * dx + e.vz * dz) / d; if (vn < 0) { e.vx -= vn * dx / d; e.vz -= vn * dz / d; } }
   }
 }
-// the cemeteries (YARDS, placed in WORLD GENERATION): a low picket fence open to the camera, gateposts, a yew. Built for Y.rows rows
+// the cemeteries (YARDS, placed in WORLD GENERATION): a low picket fence open to the camera, gateposts, a yew. Built for Y.rows rows.
+// Merged in the order Hank puts it up (Y.line: from the left gatepost round the back to the right one); Y.marks: where each
+// piece is along that line (u m) and how much of the mesh it ends (n), so syncYard shows as much as is built
 function buildYard(Y) {
   if (Y.g) scene.remove(Y.g);
-  const g = new THREE.Group(); g.position.set(Y.x, terrainH(Y.x, Y.z), Y.z); g.rotation.y = Math.PI / 4; scene.add(g);   // local x: screen right, local z: toward the camera
-  const hw = (Y.cols - 1) / 2 * Y.gap + 1.1, hf = (Y.rows0 - 1) / 2 * Y.gap + 1.1, hb = (Y.rows - 1 - (Y.rows0 - 1) / 2) * Y.gap + 1.1, parts = [];   // front (+z) and back (-z) from the middle of the first rows
-  const picket = (x, z) => parts.push(P(BOX(0.12, 0.62, 0.06), '#f2ead6', { p: [x, 0.31, z] }), P(CONE(0.085, 0.14, 4), '#f2ead6', { r: [0, Math.PI / 4, 0], p: [x, 0.69, z] }));
-  const rail = (x0, z0, x1, z1) => { const l = Math.hypot(x1 - x0, z1 - z0); parts.push(P(BOX(l, 0.07, 0.05), '#e2d8c2', { r: [0, -Math.atan2(z1 - z0, x1 - x0), 0], p: [(x0 + x1) / 2, 0.42, (z0 + z1) / 2] })); };
-  for (let x = -hw; x <= hw + 1e-3; x += 0.42) picket(x, -hb);   // the back
-  for (const sd of [-1, 1]) for (let z = -hb + 0.42; z <= hf + 1e-3; z += 0.42) picket(sd * hw, z);   // the sides
-  for (const sd of [-1, 1]) for (let x = hw; x >= 1.2; x -= 0.42) picket(sd * x, hf);   // the front, open in the middle
-  rail(-hw, -hb, hw, -hb); rail(-hw, -hb, -hw, hf); rail(hw, -hb, hw, hf); rail(-hw, hf, -1.2, hf); rail(1.2, hf, hw, hf);
-  // a yew in the back corner and a gatepost each side of the way in
-  parts.push(P(CYL(0.12, 0.16, 0.8, 6), '#6b4a2e', { p: [-hw - 0.7, 0.4, -hb + 0.2] }), P(CONE(0.75, 2.4, 8), '#2f5a3a', { p: [-hw - 0.7, 1.75, -hb + 0.2] }), P(CONE(0.55, 1.6, 8), '#386a45', { p: [-hw - 0.7, 2.5, -hb + 0.2] }));
-  for (const sd of [-1, 1]) parts.push(P(BOX(0.2, 1.0, 0.2), '#d9cdb2', { p: [sd * 1.2, 0.5, hf] }), P(SPH(6), '#d9cdb2', { s: [0.13, 0.13, 0.13], p: [sd * 1.2, 1.06, hf] }));
-  part(g, merge(...parts));
-  part(g, P(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), '#6f8f4a', { s: [hw + 0.2, 1, (hf + hb) / 2 + 0.2], p: [0, 0.03, (hf - hb) / 2] }), { outline: false, shadow: false });   // mown grass
-  Y.g = g;
+  const g = new THREE.Group(); g.position.set(Y.x, terrainH(Y.x, Y.z), Y.z); g.rotation.y = Math.PI / 4; g.visible = Y.built > 0; scene.add(g);   // local x: screen right, local z: toward the camera
+  const hw = (Y.cols - 1) / 2 * Y.gap + 1.1, hf = (Y.rows0 - 1) / 2 * Y.gap + 1.1, hb = (Y.rows - 1 - (Y.rows0 - 1) / 2) * Y.gap + 1.1;   // front (+z) and back (-z) from the middle of the first rows
+  const line = [[-1.2, hf], [-hw, hf], [-hw, -hb], [hw, -hb], [hw, hf], [1.2, hf]];
+  Object.assign(Y, { hw, hf, hb, line, len: 0, marks: [] });
+  const parts = [], marks = Y.marks; let nv = 0;
+  const add = (u, x, z, ...gs) => { parts.push(...gs); for (const q of gs) nv += q.attributes.position.count; marks.push({ u, x, z, n: nv }); };
+  const post = (x, z) => [P(BOX(0.2, 1.0, 0.2), '#d9cdb2', { p: [x, 0.5, z] }), P(SPH(6), '#d9cdb2', { s: [0.13, 0.13, 0.13], p: [x, 1.06, z] })];
+  const picket = (x, z) => [P(BOX(0.12, 0.62, 0.06), '#f2ead6', { p: [x, 0.31, z] }), P(CONE(0.085, 0.14, 4), '#f2ead6', { r: [0, Math.PI / 4, 0], p: [x, 0.69, z] })];
+  const rail = (x0, z0, x1, z1) => { const l = Math.hypot(x1 - x0, z1 - z0); return P(BOX(l, 0.07, 0.05), '#e2d8c2', { r: [0, -Math.atan2(z1 - z0, x1 - x0), 0], p: [(x0 + x1) / 2, 0.42, (z0 + z1) / 2] }); };
+  add(0, line[0][0], line[0][1], ...post(line[0][0], line[0][1]));   // a gatepost each side of the way in: first and last
+  let u = 0;
+  for (let i = 1; i < line.length; i++) {   // pickets evenly along each side, one on every corner, a rail back to the last
+    const [ax, az] = line[i - 1], [bx, bz] = line[i], l = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(l / 0.42));
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t, px = ax + (bx - ax) * (k - 1) / n, pz = az + (bz - az) * (k - 1) / n, last = i === line.length - 1 && k === n;
+      add(u + l * t, x, z, ...(last ? post(x, z) : picket(x, z)), rail(px, pz, x, z));
+    }
+    u += l;
+  }
+  Y.len = u;
+  const fence = part(g, merge(...parts)); Y.fence = [fence.geometry, fence.children[0].geometry];
+  // a yew in the back corner (it shoots up as he goes by), and mown grass (spreading as the fence goes up)
+  const yew = new THREE.Group(); yew.position.set(-hw - 0.7, 0, -hb + 0.2); g.add(yew);
+  part(yew, merge(P(CYL(0.12, 0.16, 0.8, 6), '#6b4a2e', { p: [0, 0.4, 0] }), P(CONE(0.75, 2.4, 8), '#2f5a3a', { p: [0, 1.75, 0] }), P(CONE(0.55, 1.6, 8), '#386a45', { p: [0, 2.5, 0] })));
+  Y.yew = yew; Y.yewU = (hw - 1.2) + hf + hb - 0.4;   // (just before the back corner)
+  Y.lawn = part(g, P(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), '#6f8f4a', { s: [hw + 0.2, 1, (hf + hb) / 2 + 0.2], p: [0, 0.03, 0] }), { outline: false, shadow: false, pos: [0, 0, (hf - hb) / 2] });
+  Y.g = g; Y.shown = -1; syncYard(Y, false);
+}
+// a cemetery's local spot (x: screen right, z: toward the camera, from its middle) in the world
+const yardAt = (Y, lx, lz) => ({ x: Y.x + Y.R.x * lx - Y.F.x * lz, z: Y.z + Y.R.z * lx - Y.F.z * lz });
+// u m along its fence line (inset m inside it) in the world
+function yardLine(Y, u, inset = 0) {
+  const L = Y.line; let x = L[0][0], z = L[0][1];
+  for (let i = 1; i < L.length; i++) {
+    const [ax, az] = L[i - 1], [bx, bz] = L[i], l = Math.hypot(bx - ax, bz - az);
+    if (u <= l || i === L.length - 1) { const t = clamp(u / l, 0, 1); x = ax + (bx - ax) * t; z = az + (bz - az) * t; break; }
+    u -= l;
+  }
+  if (inset) { x = clamp(x, -Y.hw + inset, Y.hw - inset); z = clamp(z, -Y.hb + inset, Y.hf - inset); }
+  return yardAt(Y, x, z);
+}
+// in buryStep (host): Hank puts up the fence as he walks round inside it (while he keeps up); true once it's all up
+function yardStep(Y, dt) {
+  const B = T.remains.build, hk = HANK, p = yardLine(Y, Y.built * Y.len, B.inset);
+  if (Math.hypot(p.x - hk.x, p.z - hk.z) < B.near) Y.built = Math.min(1, Y.built + B.spd * dt / Y.len);
+  return Y.built >= 1;
+}
+// 0…1 between the last piece up and the next, in the cemetery Hank's building (his mallet swings in time)
+function yardSwing() {
+  let Y = null, d = 1e9; for (const y of YARDS) if (y.built > 0 && y.built < 1) { const e = Math.hypot(y.x - HANK.x, y.z - HANK.z); if (e < d) { d = e; Y = y; } }
+  if (!Y) return (G.time * 2.5) % 1;
+  const u = Y.built * Y.len, M = Y.marks; let i = 1; while (i < M.length - 1 && M[i].u <= u) i++;
+  return clamp((u - M[i - 1].u) / Math.max(0.05, M[i].u - M[i - 1].u), 0, 1);
+}
+const _yewS = u => u <= 0 ? 0.001 : u >= 1 ? 1 : 1 + 2.7 * (u - 1) ** 3 + 1.7 * (u - 1) ** 2;   // ease out, a little overshoot
+// every frame (and on a rebuild): as much of it as is built. A piece going up: a knock and a puff (fx: a jump, e.g. a snapshot, is quiet)
+function syncYard(Y, fx = true) {
+  const b = Y.built || 0, on = b > 0, u = b * Y.len, M = Y.marks;
+  if (Y.g.visible !== on) Y.g.visible = on;
+  let n = 0; if (on) while (n < M.length && M[n].u <= u + 1e-4) n++;
+  if (n !== Y.shown) {
+    const cnt = n ? M[n - 1].n : 0; for (const geo of Y.fence) geo.setDrawRange(0, cnt);
+    if (fx && n > Y.shown && n - Y.shown <= 3 && Y.shown >= 0) for (let i = Y.shown; i < n; i++) {
+      const m = M[i], p = yardAt(Y, m.x, m.z), y = terrainH(p.x, p.z);
+      if (!onScreen(p.x, y + 0.5, p.z, 0.05)) continue;
+      burst(p.x, y + 0.1, p.z, 3, '#b59a74', { speed: 1.1, up: 1.2, size: 0.12, life: 0.5, grav: -6 }); SFX.knock(panOf(p.x, p.z), 0.2);
+    }
+    Y.shown = n;
+  }
+  Y.yew.scale.setScalar(_yewS((u - Y.yewU) / 1.4)); Y.yew.visible = u > Y.yewU;
+  const k = smooth(0, 0.35, b); Y.lawn.scale.set(k || 1e-3, 1, k || 1e-3);
 }
 // a cemetery with rows rows (more: Hank's added one at the back; fewer: a new journey). Same on every screen (NET_TYPES.yard)
 function yardGrow(Y, rows) {
@@ -8359,7 +8427,7 @@ const HANK = {
   // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
   clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
   // VET: what the dogs brought him (HANK.meds: doses of each; HANK.shovel), the job in hand (care), bent over a patient or digging
-  meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, vetSaid: {}, shovelSaid: false,
+  meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false,   // (REMAINS: building a cemetery)
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -8464,7 +8532,7 @@ function hankGoal() {
 }
 function resetHank() {
   const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
-  Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
+  Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
@@ -8630,6 +8698,8 @@ function syncHank(dt) {
   M.legs[0].rotation.x = sw * 0.55 * k - 1.3 * lf; M.legs[1].rotation.x = -sw * 0.55 * k + 0.4 * lf;
   M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7 + 0.55 * shk;
   M.armL.rotation.x = lerp(-sw * 0.3 * k, hk.digging ? -0.9 + Math.sin(G.time * 5) * 0.65 : -1.15 + Math.sin(G.time * (hk.tending ? 6 : 15)) * 0.2, shk);
+  const bk = hk.bK = clamp((hk.bK || 0) + (hk.building ? dt : -dt) * 5, 0, 1);   // REMAINS: building a cemetery: the mallet up, and down as each picket goes in
+  if (bk > 0) { const ph = yardSwing(), up = ph < 0.75 ? smooth(0, 0.75, ph) : 1 - (ph - 0.75) / 0.25; M.armL.rotation.x = lerp(M.armL.rotation.x, lerp(-0.55, -2.1, up), bk); }
   M.body.position.y = Math.abs(sw) * 0.05 * k;
   hk.talkT = Math.max(0, hk.talkT - dt);
   let cx = -0.35 + sw * 0.12 * k, cz = 0;
@@ -9126,7 +9196,7 @@ function careStop() {
   const hk = HANK, j = hk.care; if (!j) return;
   if (j.kind === 'treat' && j.s.state === 'treat') { j.s.state = 'idle'; j.s.thinkT = 0; }
   if (j.kind === 'bury' && j.g && !j.g.stone) { const g = j.g; if (g.by) { g.x = hk.x + Math.sin(hk.yaw) * 0.8; g.z = hk.z + Math.cos(hk.yaw) * 0.8; } g.by = false; g.lay = false; g.skip = G.time + 5; }   // put down where he stands
-  hk.care = null; hk.tending = false; hk.digging = false; hk.goal = null;
+  hk.care = null; hk.tending = false; hk.digging = false; hk.building = false; hk.goal = null;
 }
 // hankGoal: by the patient (in its pen, if it's penned); a body, then a grave's side
 function careGoal() {
@@ -9139,9 +9209,10 @@ function careGoal() {
     const r = s.r + T.hankR + 0.15;
     return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
   }
-  const g = j.g, sl = j.Y.slots[j.slot], sx = sl.x + CAM_R.x * 0.95, sz = sl.z + CAM_R.z * 0.95;   // he digs from the grave's side, so you see it
+  const g = j.g, sl = j.Y.slots[j.slot];
   if (j.phase === 'fetch') return { x: g.x, z: g.z, stop: 0.6, noShy: true, pen: penAt(g.x, g.z), face: g };
-  if (j.phase === 'carry') return { x: sx, z: sz, stop: 0.1, noShy: true, pen: null, carry: true, yard: true };
+  if (j.phase === 'carry') { const p = buryTo(j); return { x: p.x, z: p.z, stop: 0.1, noShy: true, pen: null, carry: true, yard: true }; }
+  if (j.phase === 'build') { const B = T.remains.build, p = yardLine(j.Y, j.Y.built * j.Y.len + B.lead, B.inset); return { x: p.x, z: p.z, stop: 0.05, noShy: true, pen: null, yard: true }; }
   return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: null, face: sl, yard: true };
 }
 // in updateHank (host): a dog's bag handed over, picking a job, seeing to it
@@ -9176,6 +9247,8 @@ function treatStep(j, dt) {
   hank(null, pick([`There ye go, ${s.name}.`, `Ye'll mend, ${s.name}.`, `Easy now, ${s.name}. That's the worst of it.`, `Hold still… there. Good ${s.ram && !s.lamb ? 'lad' : 'lass'}.`]), { force: true });
   careStop();
 }
+// where he carries a body: the side of its grave (he digs from there, so you see it); no cemetery yet: its way in
+function buryTo(j) { const sl = j.Y.slots[j.slot]; return j.Y.built < 1 ? yardAt(j.Y, 0, j.Y.hf + 0.9) : { x: sl.x + CAM_R.x * 0.95, z: sl.z + CAM_R.z * 0.95 }; }
 function buryStep(j, dt) {
   const hk = HANK, g = j.g, R = T.remains, sl = j.Y.slots[j.slot];
   if (j.phase === 'fetch') {
@@ -9186,11 +9259,23 @@ function buryStep(j, dt) {
   }
   if (j.phase === 'carry') {
     g.x = hk.x; g.z = hk.z;
-    const sx = sl.x + CAM_R.x * 0.95, sz = sl.z + CAM_R.z * 0.95;
+    const to = buryTo(j);
     if ((j.t += dt) > 120) { careStop(); return; }
-    if (hk.climb || Math.hypot(sx - hk.x, sz - hk.z) > 0.45) return;
+    if (hk.climb || Math.hypot(to.x - hk.x, to.z - hk.z) > 0.45) return;
+    if (j.Y.built < 1) {   // no cemetery here yet: he sets the body down by the way in and builds one
+      if (!j.Y.built) hank(null, pick([`A proper place for ye, ${g.name}.`, `Right. Somewhere to rest, ${g.name}.`]), { force: true });
+      j.phase = 'build'; j.t = 0; hk.building = true; hk.goal = null;
+      const p = yardAt(j.Y, -1.8, j.Y.hf + 1.1); g.by = false; g.lay = true; g.x = p.x; g.z = p.z;
+      return;
+    }
     j.phase = 'dig'; j.t = 0; hk.digging = true; hk.goal = null;
     g.by = false; g.lay = true; g.x = sl.x - CAM_R.x * 0.95; g.z = sl.z - CAM_R.z * 0.95;   // laid down on the far side of the grave
+    return;
+  }
+  if (j.phase === 'build') {   // round the fence line; done, back for the body
+    if (!yardStep(j.Y, dt)) return;
+    j.phase = 'fetch'; j.t = 0; hk.building = false; hk.goal = null;
+    const p = yardAt(j.Y, 0, j.Y.hf + 0.3); starBurst(p.x, terrainH(p.x, p.z) + 1.2, p.z, 8); Sound.chime([0, 4, 7], 523, 0.12, 0.07);
     return;
   }
   hk.vx = hk.vz = 0; hk.yaw = lerpA(hk.yaw, Math.atan2(sl.x - hk.x, sl.z - hk.z), Math.min(1, dt * 8));
@@ -9249,19 +9334,21 @@ const MEDBAG_GEO = merge(P(BOX(0.34, 0.22, 0.16), '#7a4a2a', { p: [0, 0, 0] }), 
   P(BOX(0.11, 0.035, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.035, 0.11, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.05, 0.04, 0.02), '#e8c050', { p: [0, 0.08, 0.085] }));
 const SHOVEL_GEO = merge(P(CYL(0.025, 0.025, 1.2, 6), '#9a6636', { p: [0, 0.6, 0] }), P(BOX(0.2, 0.04, 0.045), '#7a5230', { p: [0, 1.22, 0] }),
   P(BOX(0.24, 0.3, 0.025), '#8f969e', { p: [0, -0.13, 0] }), P(CONE(0.12, 0.09, 4), '#8f969e', { r: [Math.PI, Math.PI / 4, 0], s: [1, 1, 0.2], p: [0, -0.32, 0] }));
+const MALLET_GEO = merge(P(CYL(0.025, 0.025, 0.6, 6), '#9a6636', { p: [0, 0.3, 0] }), P(CYL(0.09, 0.09, 0.26, 8), '#7a5230', { r: [0, 0, Math.PI / 2], p: [0, 0.62, 0] }));   // REMAINS: for putting up a cemetery fence
 const HOLE = (() => { const g = new THREE.Group(); g.visible = false; scene.add(g);
   part(g, merge(P(CYL(0.42, 0.36, 0.05, 12), '#2e1e10', { p: [0, 0.02, 0] }), ...[0, 1, 2, 3].map(i => P(SPH(7), '#7a5634', { s: [0.3, 0.16, 0.24], p: [0.6 + (i % 2) * 0.12, 0.06 + (i > 1 ? 0.1 : 0), -0.25 + i * 0.16] }))), { outline: false });
   return { g, t: 0 }; })();
 function syncVet(dt) {
   const hk = HANK, M = hk.model;
   if (!M.vet) {
-    const back = part(M.torso, SHOVEL_GEO, { shadow: false }), hand = part(M.armL, SHOVEL_GEO, { shadow: false }), bag = part(M.torso, MEDBAG_GEO, { shadow: false });
+    const back = part(M.torso, SHOVEL_GEO, { shadow: false }), hand = part(M.armL, SHOVEL_GEO, { shadow: false }), bag = part(M.torso, MEDBAG_GEO, { shadow: false }), mallet = part(M.armL, MALLET_GEO, { shadow: false });
     back.position.set(0.12, 0.2, -0.46); back.rotation.set(0.15, 0, 0.5); hand.position.set(0.05, -0.8, 0.15); hand.rotation.set(Math.PI * 0.55, 0, 0);
+    mallet.position.set(0.05, -0.85, 0.05); mallet.rotation.set(Math.PI * 0.5, 0, 0);
     bag.position.set(-0.5, 0.0, 0.12); bag.rotation.y = -0.4; bag.scale.setScalar(0.85);
-    M.vet = { back, hand, bag };
+    M.vet = { back, hand, bag, mallet };
   }
   const meds = hk.meds || {};
-  M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.bag.visible = (meds.venom || 0) + (meds.bandage || 0) + (meds.pills || 0) > 0;
+  M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.mallet.visible = !!hk.building; M.vet.bag.visible = (meds.venom || 0) + (meds.bandage || 0) + (meds.pills || 0) > 0;
   for (const d of G.dogs) {
     const m = d.models; if (!m) continue;
     if (!m.medbag) {
@@ -10522,7 +10609,7 @@ function resetGame() {
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0 };
   G.wool = 0; for (const d of G.dogs) { d.clippers = false; d.bag = null; }   // HANK: shearing: no wool yet, the clippers buried again (VET: bags empty)
-  resetSnakes(); for (const Y of YARDS) { Y.n = 0; yardGrow(Y, Y.rows0); }   // RATTLESNAKES back behind their rocks; REMAINS: empty cemeteries, as they were
+  resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -10725,14 +10812,14 @@ const NET_TYPES = {
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
   stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i' } },
   snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05 } },   // RATTLESNAKES: out how far, striking at what
-  yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) } } },   // REMAINS: a cemetery Hank's added rows to
+  yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (a flock summary, not a sheep field)
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
       clippers: 'b', shearing: 'b', lift: .02,   // shearing: has his clippers, clipping a sheep, over a fence
-      meds: 'j', shovel: 'b', tending: 'b', digging: 'b' },   // VET: his stock, his shovel, at a patient, digging a grave
+      meds: 'j', shovel: 'b', tending: 'b', digging: 'b', building: 'b' },   // VET: his stock, his shovel, at a patient, digging a grave (REMAINS: building a cemetery)
     animate: hk => { hk.y = hankY(hk.x, hk.z); },
   },
 };
@@ -12010,7 +12097,7 @@ Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsD
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, syncBonk, punt });   // BONK SPOTS
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHankBag, bagN, careNext, careStop, updateCare, lastWords,
-  YARDS, yardGrow, yardRoom, yardSpot, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
+  YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
