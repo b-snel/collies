@@ -42,7 +42,8 @@ cave: that wins.
   joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
 - One keyboard player: WASD and arrows drive the same dog.
 - Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
-- Map: minimap under the flock panel; `M` / R3 / tap it → the whole trail, big.
+- Map: minimap bottom left (over the controls bar while it's up; touch: under the flock
+  panel); `M` / R3 / tap it → the whole trail, big. At a trader: 📍 its pen.
 
 ### Layout (`index.html`, top to bottom)
 
@@ -111,7 +112,7 @@ Run the ones touching your change; report the numbers.
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
-| `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, M / click → big, arrows dodge it, fog for late friends, reset, cost |
+| `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
 
@@ -245,7 +246,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps, traders,
   salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
-  Edge arrows keep clear of it (`mapDodge`).
+  Edge arrows keep clear of it (`mapDodge`). At a trader, its pen ringed + 📍 (on the edge if off it). No trail bar.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
