@@ -27,7 +27,7 @@ ok('the Trading Post is the last camp and the only final one', r1.last && r1.fin
 ok('the trail runs on past the Trading Post a little, like the old end', r1.toEnd > 50 && r1.toEnd < 100, r1);
 ok('no water near the Trading Post', r1.wetNear === 0, r1);
 ok('every mat on open ground, none in a pen', r1.mats.every(m => m.sdf > 1 && !m.inPen), r1.mats);
-ok('one trader on every leg, the Trading Post\'s at the end; none by the river, a den, a cougar tree or a dig spot', r1.legs.every(n => n === 1) && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1).includes('cabo') && r1.wares.slice(0, -1).every(w => w === 'pen water food salt'), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
+ok('one trader on every leg, the Trading Post\'s at the end; none by the river, a den, a cougar tree or a dig spot', r1.legs.every(n => n === 1) && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1).includes('cabo') && r1.wares.slice(0, -1).every(w => w === 'pen water food salt venom bandage pills shovel') && r1.wares.every(w => w.endsWith('venom bandage pills shovel')), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
 ok('the stall stands by the pen', r1.stallFromPen > 15 && r1.stallFromPen < 45, r1);
 ok('a den and a cougar tree near enough to hunt there', r1.denNear < r1.denRange && r1.lairNear < r1.cougarRange, r1);
 

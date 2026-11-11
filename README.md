@@ -69,6 +69,18 @@ Hank's ✂️ clippers are buried in a dig spot between the first two camps. Dig
 
 A trader waits near the end of every leg: stand on a mat and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. At the end of the trail, the Trading Post sells the same, and 🏖️ Cabo takes every sheep penned there, Hank and the dogs too, and wins the journey (bark twice).
 
+## Snakes, wounds and Hank the vet
+
+Back in the desert past the Promised Land, rattlesnakes hide behind rocks. One rattles when something comes near, then strikes. Steer the flock wide, or bark or pounce to send it back behind its rock. A bitten sheep goes a sickly green and gets slower and slower, and dies in a day or so.
+
+A sheep you save from a coyote, cougar or falcon comes away cut. A deep cut 🩸 bleeds out in half a day; a shallow one 🦠 festers and kills in a day and a half.
+
+Hank can save them. Every trader sells 💉 anti-venom, 🩹 bandages and 💊 antibiotics: bark on the mat and your dog carries it in its bag. Take the bag to Hank. He walks to the sickest one he can help (over a pen fence if he has to) and treats it. Over each sick sheep, a ring shows how long it has left (green: Hank has the cure). Hank shows what he's short of.
+
+## The fallen
+
+A sheep that dies lies where it fell, its name over it, and slowly rots into a tombstone. Buy Hank a 🪏 shovel and, by day, he carries the fallen to the little cemetery by the nearest camp, buries them in neat rows and says a few words that fit the sheep. When a cemetery fills up he adds another row.
+
 ## Coyotes
 
 At nightfall the coyotes come in packs, more each night.
@@ -101,7 +113,7 @@ Every sheep has a name. Open the barn (Tab or View, or from the title screen) to
 
 It all shows out on the trail. Your flock is saved on the device, and the sheep you've named and dressed start your next journey. "Start a fresh flock" on the title screen's barn clears it.
 
-A sheep being dragged off cries out with its name. A lost sheep gets a tombstone where it fell, with its name on it and its hat resting on top, and joins the "Fondly remembered" list in the barn and on the end screen.
+A sheep being dragged off cries out with its name. A lost sheep lies where it fell, then gets a tombstone (or a grave in a camp's cemetery, if Hank has a shovel), with its name on it and its hat resting on top, and joins the "Fondly remembered" list in the barn and on the end screen.
 
 ## Playing together
 
