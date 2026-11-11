@@ -44,7 +44,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → NAVIGATION → COYOTES → COUGARS → FALCON →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS) → HUD → HANK, VET, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -198,6 +198,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
   nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it; its mark barking sends it off.
   Off in `?sim` (`T.falcon.on`).
+- **Hank never leans on a wall.** Blocked short of his spot he stands easy
+  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
@@ -231,6 +233,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   water trough / lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9
   (slots prebuilt along the fence), then batches. Water and salt: one pool per
   pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
+  A dog stepping on a mat: the ware hops, its name plate pops up (`WARE_KINDS`
+  `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
 - **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`): the end of the
   trail, desert, no water. ✂️ free while Hank has none. Too poor or no room: ✖,
   nothing spent (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark
@@ -290,6 +294,12 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   a neat stone rises, `lastWords` (by bravery, trait, bell, lamb, age; seeded).
   Full: he adds a row at the back (`yardGrow`, if `yardRoom`; up to
   `T.remains.rows`); else the next cemetery; none: it rots where it lies.
+
+### Icons
+
+Our own, no emoji: `ART` (32×32 SVG paths, sticker outline). Overlay text goes through
+`richText` / `richW`, which swap any emoji in `EMOJI_ART` for its icon; DOM: `artSVG(name)` or
+`data-art`. New icon → `ART` + `EMOJI_ART`.
 
 ### Gotchas
 
