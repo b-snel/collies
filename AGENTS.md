@@ -9,9 +9,10 @@ file, comments, commits and PRs: short.
 ## The game
 
 3D border-collie herding, one file `index.html` (three.js r160 from
-`vendor/three.module.js`, plain JS, no build). Up to 4 dogs, local or online,
-drive a flock along one trail (desert → mountains → ocean → the Promised
-Land → Falcon Canyon → desert → the Trading Post): graze it, pen it at camps by nightfall,
+`vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a breed,
+better with practice), local or online, drive a flock along one trail
+(desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
+the Trading Post): graze it, pen it at camps by nightfall,
 fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
 desert. Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead; the Trading Post also sells Cabo
@@ -42,13 +43,14 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 ### Layout (`index.html`, top to bottom)
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
-→ scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
+→ scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
-every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
+every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `train(d, trait, amt)` (xp),
+`dogK(d, trait)` (breed × training multiplier, 1 = as tuned), `barkR(d)`, `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`/`d.heldBy`, `p.gateT` (0 shut…1
 open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
 `fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched →
@@ -97,6 +99,7 @@ Run the ones touching your change; report the numbers.
 | `input-test.mjs` | Ⓐ on slow frames: quick taps between frames, held = one bark, early press waits out the cooldown (`padPoll`, `T.barkBuf`) |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
+| `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
 
 All are `node tools/<script>`.
 
@@ -225,6 +228,18 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
   `localStorage['collies.dogs.v1']`.
+- **Breeds** (`BREEDS`, `T.breeds`, `T.traits`): 📣 bark (reach, scare), 💥 bonk (punts,
+  predator hits), ⤴ jump (height, air time), ⚡ speed, 💨 stamina, 🛡 grit (damage, heal, KO,
+  mashing free), ✊ grip (hold cost, drag speed, flings, shakes). ★ 1…3 each, 14 in all; ★★ =
+  as tuned. Header (all ★★, learns `learn`×), Huntaway, Heeler, Outrunner, Backer; body size
+  per breed. P1 picks on the title (chips, ←/→ / A/D / D-pad, eaten before join), anyone in the
+  barn's Dogs tab (R3); kept per slot in `DOGS.looks[slot].breed`; `T.breedDef` per slot (all
+  Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.br`, `b`).
+- **Training** (`T.train`, `G.train[slot|breed]`, `trainRec`): doing it earns xp in that trait
+  (barks that reach something, bonks that hit, jumps on the move `jumpGap` apart, m sprinted,
+  stamina spent, hp lost, s holding); levels at `lv` (max 5), each × (1 + `per`); ⬆ over the dog
+  (`trainFx`). One journey: `resetGame` clears it; swap breed and back keeps it. Off in `?sim`
+  (`T.train.on`). Guests get `d.breed` + levels (`brd`, `netDogBreed`).
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
   down); at 0 knocked out a while, never dies. Cougar close (`maulR`, or bumped
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to

@@ -46,33 +46,33 @@ ok('clips loaded by prefetch, none missing', r1.loaded >= 30 && r1.missing.lengt
 const r2 = await h.page.evaluate(async () => {
   const { G, HANK, step, hank, T } = GAME; const out = {};
   const adv = s => { for (let i = 0; i < Math.round(s / 0.05); i++) step(0.05); };
-  adv(16);   // clear any start-up lines out of the 15 s window
+  adv(T.hankRepeat + 1);   // clear any start-up lines out of the repeat window
   const stops0 = window.__stops;
   out.a = hank('good_dog', null, { force: true });               // said
   await new Promise(r => setTimeout(r, 200));
   out.aPlayed = HANK.played.at(-1);
-  out.b = hank('thats_it');                                        // unforced within 7 s -> dropped (gap)
+  out.b = hank('thats_it');                                        // unforced within the gap -> dropped
   out.c = hank('good_dog', null, { force: true });               // same line twice in a row -> dropped even when forced
   out.d = hank('in_ye_go', null, { force: true });                // a different forced line -> said, cuts good_dog off
   await new Promise(r => setTimeout(r, 200));
   out.cut = window.__stops > stops0;
-  out.e = hank('good_dog', null, { force: true });               // said 0 s ago (not last) -> dropped (within 15 s)
+  out.e = hank('good_dog', null, { force: true });               // said 0 s ago (not last) -> dropped (repeat window)
   adv(T.hankGap + 0.5);
   out.f = hank('thats_it');                                        // unforced after the gap -> said
   adv(T.hankRepeat - T.hankGap + 0.5);
-  out.g = hank('good_dog', null, { force: true });               // >15 s since good_dog -> said
+  out.g = hank('good_dog', null, { force: true });               // past the repeat window -> said
   out.log = HANK.log.slice(-7).map(l => `${l.id}:${l.said ? 'said' : l.why}`);
   // subtitle only (no clip) still shows in the bubble
   adv(16); out.h = hank(null, 'A wee lamb! Keep it close!', { force: true }); out.bubble = document.querySelector('#hankBubble span').textContent;
   return out;
 });
 ok('forced line said + its clip played', r2.a === true && r2.aPlayed && r2.aPlayed.id === 'good_dog', r2.aPlayed);
-ok('unforced line within 7 s dropped', r2.b === false);
+ok('unforced line within the gap dropped', r2.b === false);
 ok('same line twice in a row dropped (even forced)', r2.c === false);
 ok('another forced line said and cuts the old clip off', r2.d === true && r2.cut === true);
-ok('a line said < 15 s ago dropped (even forced)', r2.e === false);
-ok('unforced line after 7 s said', r2.f === true);
-ok('a line again after 15 s said', r2.g === true, r2.log);
+ok('a line said inside the repeat window dropped (even forced)', r2.e === false);
+ok('unforced line after the gap said', r2.f === true);
+ok('a line again after the repeat window said', r2.g === true, r2.log);
 ok('subtitle-only line shows in the bubble', r2.h === true && r2.bubble === 'A wee lamb! Keep it close!', r2.bubble);
 
 // 3. herding commands: dog circling the flock clockwise / anticlockwise -> come bye / away to me, with the whistle first
@@ -87,7 +87,7 @@ const r3 = await h.page.evaluate(async () => {
   const R = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }, F = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 };
   const run = (dir) => { let a = 0; const fc0 = flockCenter(); d.x = fc0.x + 12; d.z = fc0.z;
     for (let i = 0; i < 60; i++) { const fc = flockCenter(); a = Math.atan2(d.z - fc.z, d.x - fc.x); const tx = -Math.sin(a) * dir, tz = Math.cos(a) * dir;
-      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastBare = HANK.lastStarve = HANK.lastGreedy = G.time; step(0.05);
+      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastMove = HANK.lastStarve = HANK.lastGreedy = G.time; step(0.05);
       const b = Math.atan2(d.z - fc.z, d.x - fc.x); d.x = fc.x + Math.cos(b) * 12; d.z = fc.z + Math.sin(b) * 12; } G.players[0].bot = {}; };
   HANK.lastSay = -99; HANK.said = {}; HANK.lastKey = null; HANK.cmd = ''; G.hints.dig = true;   // (no other lines crowding the commands out: dig spots, greedy grazers)
   run(1); out.cw = HANK.log.slice(-3).map(l => `${l.id}:${l.said ? 'said' : l.why}`);
@@ -100,6 +100,24 @@ const r3 = await h.page.evaluate(async () => {
 ok('dog circling clockwise (angle increasing) -> "Come bye!"', r3.cw.some(x => x === 'come_bye:said'), r3.cw);
 ok('whistle plays before the words', r3.cwPlayed.join() === 'whistle:come_bye,voice:come_bye', r3.cwPlayed);
 ok('dog circling anticlockwise -> "Away to me!"', r3.ccw.some(x => x === 'away_to_me:said'), r3.ccw);
+
+// 3b. time to move them: grazed bare, or evening with the flock out, no dog on it -> "Get that greedy one movin'!"; not while a dog works them
+const r3b = await h.page.evaluate(() => {
+  const { G, HANK, MIND, step, pathPoint } = GAME, GR = GAME.grass, P = pathPoint(120, 0), d = G.dogs[0];
+  const grass = bare => { for (let b = 0; b < GR.VZ; b++) for (let a = 0; a < GR.VX; a++) { const k = b * GR.VX + a; if (Math.hypot(GR.GMINX + a * GR.VS - P.x, GR.GMINZ + b * GR.VS - P.z) < 30) GR.gAmt[k] = bare ? 0 : GR.gCap[k]; } };
+  const trial = (bare, hour, work) => {
+    grass(bare); d.x = P.x + 60; d.z = P.z; G.players[0].bot = {};
+    for (const s of G.sheep) if (!s.dead) { s.x = P.x + (Math.random() - .5) * 6; s.z = P.z + (Math.random() - .5) * 6; s.pen = null; s.vx = s.vz = 0; }
+    Object.assign(HANK, { lastSay: -99, said: {}, lastKey: null, lastMove: -99, lastGreedy: G.time + 999, lastStarve: G.time + 999, asleep: false }); HANK.log.length = 0; MIND.workedT = -99;
+    for (let i = 0; i < 60; i++) { G.clock.hour = hour; if (work) MIND.workedT = G.time; step(0.05); }
+    return HANK.log.filter(e => e.said && e.id === 'greedy_one').length;
+  };
+  const out = { bare: trial(true, 10), bareWorked: trial(true, 10, true), lush: trial(false, 10), evening: trial(false, 17), eveningWorked: trial(false, 17, true) };
+  grass(false); return out;
+});
+ok('grazed bare, no dog on them -> "Get that greedy one movin\'!"', r3b.bare === 1, r3b);
+ok('evening, flock still out -> same line', r3b.evening === 1, r3b);
+ok('…not on good grass by day, nor while a dog works them', r3b.lush === 0 && r3b.bareWorked === 0 && r3b.eveningWorked === 0, r3b);
 
 // 4. the barn: open, rename + hat + wool + accessory, close; it shows on the sheep in the world
 const r4 = await h.page.evaluate(() => {
