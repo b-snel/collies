@@ -44,7 +44,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -275,6 +275,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   splashed one swims back to its own bank (`a.side`). Only the launcher takes them over.
 - **Launcher chute** (`T.launcher.funnel`, `inChute`): long wings; driven sheep bend
   for the mouth, slide round a wing's tip, walk on to the low end. In the chute: no breakouts.
+- **Mouth loads swing** (CARRY SWING, `carrySwing`, `d.cw`, `T.carrySwing`, drawing only): anything in a
+  dog's mouth (bucket, sheep, coyote) hangs from its jaws on a pendulum: lags starts, stops, turns and hops,
+  clonks off the chest (head jolts, tin tonk), kicks, sloshes. Cute and comical. New mouth load → turn it by `d.cw`.
 - **Ram nads** (`s.nads`, `T.nads`, drawing only): a cord and a pair on springs,
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
