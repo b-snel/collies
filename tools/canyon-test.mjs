@@ -1,6 +1,6 @@
 // Headless test: `node tools/canyon-test.mjs [layout|eat|bark|shy|dog|limits]`. FALCON CANYON.
 //   layout  the gorge between the Promised Land and the snakes: narrow, tall far wall, pillars with falcons, watchers,
-//           bones; nothing else put in it; a way through; the same every load
+//           bones; nothing else in it; a way through; the same every load
 //   eat     a falcon swoops off its pillar on a sheep in the gorge, takes it up and eats it: body at the pillar's foot
 //   bark    a bark under one carrying a sheep: dropped, lands alive
 //   shy     a bark near perched ones keeps them there a while
@@ -24,7 +24,7 @@ const setup = (s, o = {}) => h.page.evaluate(([s, o]) => {
 
 if (!only || only === 'layout') {
   const r = await h.page.evaluate(() => {
-    const { T, CANYON, FALCONS, SNAKES, DENS, NESTS, PLANTS, SALT_ROCKS, BRAMBLES, CAMPS, sAt, sdfAt, terrainH, pathPoint, findPath, canyonK } = GAME;
+    const { T, CANYON, FALCONS, SNAKES, DENS, NESTS, PLANTS, SALT_ROCKS, BRAMBLES, APPLE_TREES, MUDS, STREAMS, CAMPS, sAt, sdfAt, terrainH, pathPoint, findPath, canyonK } = GAME;
     const K = T.canyon, mid = (K.s0 + K.s1) / 2;
     let free = 0; for (let l = -40; l <= 40; l += 0.5) { const p = pathPoint(mid, l); if (sdfAt(p.x, p.z) > 0) free += 0.5; }
     const wall = Math.max(...[10, 14, 18].map(o => { const p = pathPoint(mid, -(K.hwW + o)); return terrainH(p.x, p.z); }));
@@ -34,13 +34,13 @@ if (!only || only === 'layout') {
     return { s0: K.s0, s1: K.s1, promised: CAMPS[3].s, snakes: Math.min(...SNAKES.map(n => sAt(n.x, n.z))), free, wall: +wall.toFixed(1),
       roosts: CANYON.roosts.length, birds: birds.length, perched: birds.every(F => F.state === 'perch'), up: Math.min(...CANYON.roosts.map(R => R.top - R.y)),
       watchers: CANYON.perched.list.length, bones: CANYON.bones, feet: Math.min(...CANYON.perches.map(P => sdfAt(P.x + Math.cos(P.ta) * 2.6, P.z + Math.sin(P.ta) * 2.6))),
-      inGorge: { dens: inG(DENS), nests: inG(NESTS), plants: inG(PLANTS), salt: inG(SALT_ROCKS), brambles: inG(BRAMBLES) }, path: !!(path && path.length), x0: CANYON.roosts[0].x };
+      inGorge: { dens: inG(DENS), nests: inG(NESTS), plants: inG(PLANTS), salt: inG(SALT_ROCKS), brambles: inG(BRAMBLES), apples: inG(APPLE_TREES), bogs: inG(MUDS), streams: inG(STREAMS.flatMap(S => S.pts)) }, path: !!(path && path.length), x0: CANYON.roosts[0].x };
   });
   ok(`the gorge (s ${r.s0}–${r.s1}) is past the Promised Land (${r.promised}) and before the snakes (first at ${Math.round(r.snakes)})`, r.s0 > r.promised + 30 && r.snakes > r.s1, r);
   ok(`narrow (${r.free} m of floor), a tall far wall (${r.wall} m)`, r.free < 26 && r.free > 12 && r.wall > 15, r);
   ok(`${r.birds} falcons on ${r.roosts} pillars (≥ ${r.up.toFixed(1)} m up), ${r.watchers} more on the cliffs, ${r.bones} bones and feathers`, r.birds >= 14 && r.roosts >= 10 && r.perched && r.up > 4.5 && r.watchers >= 16 && r.bones >= 100, r);
   ok('below every pillar: open ground (where a body falls)', r.feet > 0.3, r);
-  ok('no dens, nests, plants, salt or brambles in it', Object.values(r.inGorge).every(n => n === 0), r.inGorge);
+  ok('no dens, nests, plants, salt, brambles, apple trees, bogs or streams in it', Object.values(r.inGorge).every(n => n === 0), r.inGorge);
   ok('a way through for the flock', r.path, r);
   const x0 = await h.page.evaluate(async () => { location.reload(); return 0; }).catch(() => 0);
   await h.page.waitForFunction(() => window.GAME, null, { timeout: 60000 });
@@ -49,7 +49,7 @@ if (!only || only === 'layout') {
 }
 
 if (!only || only === 'eat') {
-  await setup(910, { dogS: 860, dogLat: 0 });
+  await setup(910, { dogS: 886, dogLat: 0 });
   const r = await h.page.evaluate(() => {
     const { G, T, step, FALCONS, CANYON, sdfAt } = GAME;
     let t = 0, swoop = null, nest = false, seen = false;
