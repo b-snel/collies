@@ -40,7 +40,7 @@ troughs for wool; the Trading Post also sells Cabo 🏖️, which wins.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → NAVIGATION → COYOTES → COUGARS → FALCON →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → NAVIGATION → COYOTES → COUGARS → FALCON →
 TOMBSTONES → clock/lighting → camera → visual sync (RAM NADS) → HUD → HANK, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -83,6 +83,7 @@ Run the ones touching your change; report the numbers.
 | `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
 | `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
+| `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
@@ -231,6 +232,25 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
   Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
+- **Bonk spots** (BONK SPOTS): a pounce is the fix. A rescue bonk (cast, bog,
+  brambles) lands calm (`a.rescue`), no scatter.
+  - **Cast** (`T.cast`): a sheep in full fleece now and then rolls onto its
+    back by day (state `'cast'`, legs kicking, a "!" over it, off screen too).
+    Only a pounce rights it (`castFlip`); left `die` h it dies (`'cast'`).
+    Shearing stops it.
+  - **Mud** (`MUDS`, `T.mud`): bogs in the Promised Land. Sheep slow, may
+    stick (`s.bog`, sinking), calm ones go round; a pounce pops it out over
+    the nearest edge, muddy a while (`s.mud`). Dogs wade slow.
+  - **Balker** (`T.balk`): of an evening (day 2 on) the bell ewe may plant
+    herself in front of an open gate (`s.balk`, `p.balker`); pressure and
+    grabs don't move her, the rest hang back. Bonked in: they follow
+    (`p.leadT`).
+  - **Apples** (`APPLE_TREES`, `APPLES`, `T.apple`): a pounce into the trunk
+    (or a flying sheep) shakes some down; hungry sheep go for one before grass
+    (state `'apple'`). They grow back.
+- **Streams** (`STREAMS`, `T.stream`): narrow, shallow, from the hills to the
+  lake; walkable (slow), wet (`wetAt`: buckets fill, sheep sip). Grass by
+  streams and the river is lusher (cap up to 1.45).
 - **River, no bridge** (`RIVER`, `inRiver`): dogs walk in and swim (`startSwim`,
   `collideDog` / `SWIM_SDF`; drops what they hold), Hank wades. Sheep can't: a
   splashed one swims back to its own bank (`a.side`). Only the launcher takes them over.
