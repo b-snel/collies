@@ -310,7 +310,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
 - **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
-  (`d.tugS`: planted + walking back + Ⓧ taps, each a yank) drags the other. Stamina drains (`grabKinds.tug`,
+  (`d.tugS`: planted + walking back + Ⓧ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
 - **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
   `T.punt.dogK`/`dogUp`); not one under a cougar (that pounce frees it).

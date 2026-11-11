@@ -3,7 +3,7 @@
 // PEERSERVER=host:port uses your own PeerJS server (e.g. `npx peer --port 9000`) instead of the public 0.peerjs.com.
 // Checks: connect + lobby, the guest's keys move its dog on the host, the flock matches on both screens (time-aligned),
 // grass grazed on the host reaches the guest, buckets and pen water too, coyotes and tombstones appear/vanish, a silent guest's input is zeroed,
-// a dropped guest's dog waits and Rejoin takes it back, host-hidden pauses, wrong code / other build / full are
+// a dropped guest's dog waits and Rejoin takes it back, a rope dragged and a tug of war, host-hidden pauses, wrong code / other build / full are
 // reported, a second friend drops in mid-journey, and the traffic in bytes per second with 14 and with 60 sheep.
 // WebGL drawing is switched off while checking (SwiftShader would starve the CPU and slow the game clock) and back
 // on for the screenshots. Prints a JSON report; exits 1 on any failure.
@@ -378,6 +378,36 @@ try {
   await B.page.keyboard.up('KeyC'); await sleep(500);
   const upA = await gdog();
   check('the guest pounces (once per press) and lies down (held)', pounced > 0.1 && lieA.mode === 'lie' && lieB === 'lie' && upA.mode !== 'lie', { pounceT: r2(pounced), lyingHost: lieA.mode, lyingGuest: lieB, after: upA.mode });
+  // ROPES: the host's dog bites a rope and drags it (the guest sees it, nodes and who holds it); the guest taps R by its far end:
+  // a tug of war on both screens, and the guest's taps heave on the host
+  const ropeAt = await A.page.evaluate(() => {
+    const { G, ROPES, CAM_R, CAM_F, flockCenter } = GAME, fc = flockCenter(), R = [...ROPES].sort((a, b) => Math.hypot(b.cx - fc.x, b.cz - fc.z) - Math.hypot(a.cx - fc.x, a.cz - fc.z))[0];
+    const d = G.dogs.find(d => d.player.kind !== 'net'), b = G.dogs.find(d => d.player.kind === 'net'), back = [d.x, d.z, b.x, b.z];
+    d.x = R.cx - 1.5; d.z = R.cz; d.yaw = Math.PI / 2; d.vx = d.vz = 0; b.x = R.cx + 14; b.z = R.cz; b.vx = b.vz = 0;
+    d.player.bot = { grabTap: true };
+    requestAnimationFrame(() => { d.player.bot = { mx: CAM_R.x, my: -CAM_F.x }; setTimeout(() => { d.player.bot = {}; }, 1200); });
+    return { i: R.i, back };
+  });
+  await sleep(3500);   // (dragged 1.2 s, then it slides to a stop)
+  const ropeH = await A.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.kind !== 'net'); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
+  const ropeG = await B.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.slot === 0); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
+  const ropeErr = Math.max(...ropeH.x.map((x, k) => Math.hypot(x - ropeG.x[k], ropeH.z[k] - ropeG.z[k])));
+  await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it
+    const R = GAME.ROPES[i], a = GAME.G.dogs.find(d => d.player.kind !== 'net'), b = GAME.G.dogs.find(d => d.player.kind === 'net');
+    const k = a.ropeI < R.n / 2 ? R.n - 1 : 0, j = k ? k - 2 : 2, tx = R.x[k] - R.x[j], tz = R.z[k] - R.z[j], l = Math.hypot(tx, tz) || 1;
+    b.x = R.x[k] + tx / l * 1.05; b.z = R.z[k] + tz / l * 1.05; b.yaw = Math.atan2(-tx, -tz); b.vx = b.vz = 0;
+  }, ropeAt.i);
+  await sleep(300);
+  await B.page.keyboard.press('KeyR');
+  await sleep(1000);
+  const tugH = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
+  const tugG = await B.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
+  for (let k = 0; k < 3; k++) { await B.page.keyboard.press('KeyR'); await sleep(100); }
+  const heave = await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').tugK || 0);
+  check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest taps it: a tug of war on both, its taps heave',
+    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave) });
+  await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'), g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
+  await sleep(300);
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
   const moods = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.MIND.mood, document.getElementById('hMood').textContent])));
