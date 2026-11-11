@@ -135,7 +135,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Calm but brisk** (`T.calmBrisk`); grazing stays slow.
 - **Rams** charge coyotes, then leaning dogs; bark cancels; punted → dazed +
   grudge. Lambs need a ram penned overnight.
-- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 13 s by day, 10 s at night (`hourLen`).
+- **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 13 s by day, 12 s at night (`hourLen`).
   0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
