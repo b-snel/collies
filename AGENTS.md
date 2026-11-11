@@ -22,7 +22,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `M` dawn, `K` coyote, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
-  `H` a bite, two wounds, a death and a full bag, `L` to the snakes, `U` to Falcon Canyon). `window.GAME` exposes
+  `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
@@ -56,7 +56,7 @@ quenched; return what went in / out), `giveHankClippers()` (no-op if he has
 them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `kitSet(pen, kind, n)` (`food`/`water`/`salt`: show bought troughs and licks; `kitN`, `kitMax`),
 `snakeBite(s, n)`, `woundSheep(s)` (uses `s.heldT`, `s.grabBy`), `cureSheep(s, cure)`, `s.venom`/`s.bleed`/`s.infect`
-(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHankBag(d)`, `d.bag`, `HANK.meds`, `HANK.shovel`.
+(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`.
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -87,8 +87,8 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
-| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 into the bag, to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
-| `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
+| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
+| `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
@@ -212,8 +212,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
 - **Shearing** (`T.shear`): Hank's clippers are always in one dig spot between
-  the first two camps (`CLIP_DIG`); a dog carries them to him (a thought bubble
-  nags till then, `T.shear.think`). Awake, no predator near, he climbs into a
+  the first two camps (`CLIP_DIG`); dug up, they're his. Awake, no predator near, he climbs into a
   shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
   time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
@@ -292,9 +291,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Wounds** (`T.wound`): a sheep a predator lets go of is cut (`woundSheep`):
   deep bleeds (`bleedHours`), shallow festers (`infectHours`). No night
   fast-forward while one bleeds.
-- **Vet** (`VET`, `T.vet`): traders' second row 💉 🩹 💊 🪏 goes in the
-  buyer's `d.bag` (no words: icons, a thought cloud, a nudge); within `giveR`
-  it's Hank's. Stocked, he walks (over fences) to the worst-off he can cure
+- **Vet** (`VET`, `T.vet`): traders' second row 💉 🩹 💊 🪏 goes straight
+  to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
   (`HANK.care`, `s.state 'treat'`), before shearing. Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
 - **Burial** (`YARDS`, `T.remains`): with a shovel, by day, nothing prowling,

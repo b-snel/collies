@@ -1,6 +1,6 @@
 // Headless checks for rattlesnakes, wounds, Hank the vet and the fallen: snakes behind desert rocks rattle and strike;
 // a bite sickens and slows a sheep and kills it in time; a sheep a predator lets go of is cut (deep: bleeds, shallow:
-// festers); the trader's 💉 🩹 💊 🪏 go in the dog's bag and the dog takes them to Hank; Hank treats the sick (over a
+// festers); the trader's 💉 🩹 💊 🪏 go straight to Hank; Hank treats the sick (over a
 // pen fence too); a body lies with its name, rots into a tombstone, or Hank (with a shovel) buries it in the cemetery
 // with a few words (none there yet: he builds one first; a full one gets another row). node tools/vet-test.mjs
 import { open } from './harness.mjs';
@@ -112,21 +112,21 @@ const r6 = await h.page.evaluate(() => {
 });
 ok('a sheep saved from a coyote\'s jaws comes away cut', r6.ail > 0, r6);
 
-// 7. the trader: 💉 🩹 💊 🪏 into the dog's bag (🧶 spent); a full bag: no; the shovel gone from the mats once bought
+// 7. the trader: 💉 🩹 💊 🪏 straight to Hank (🧶 spent); too poor: no; the shovel gone from the mats once bought
 const r7 = await h.page.evaluate(() => {
-  const { G, MARKET, buyWare, T, HANK } = GAME, d = G.dogs[0], ware = id => MARKET.wares.find(w => w.id === id);
-  d.bag = null; G.wool = 30; HANK.shovel = false;
+  const { G, MARKET, buyWare, T, HANK, renderOnce } = GAME, d = G.dogs[0], ware = id => MARKET.wares.find(w => w.id === id);
+  G.wool = 30; HANK.shovel = false; HANK.meds = { venom: 0, bandage: 0, pills: 0 };
   const out = { kinds: MARKET.wares.filter(w => w.row === 1).map(w => w.id) };
-  out.buy = ['venom', 'bandage', 'pills', 'shovel'].map(id => buyWare(ware(id), d)); out.spent = 30 - G.wool; out.bag = { ...d.bag };
+  out.buy = ['venom', 'bandage', 'pills', 'shovel'].map(id => buyWare(ware(id), d)); out.spent = 30 - G.wool;
+  renderOnce(); out.meds = { ...HANK.meds }; out.shovel = HANK.shovel; out.back = HANK.model.vet.back.visible; out.hip = HANK.model.vet.bag.visible;
   out.shovelShown = ware('shovel').show();
-  G.wool = 0; out.poor = buyWare(ware('venom'), d);
-  G.wool = 50; let k; while ((k = buyWare(ware('bandage'), d)) === 'buy'); out.full = k; out.n = Object.values(d.bag).reduce((a, b) => a + b, 0);
+  G.wool = 0; out.poor = buyWare(ware('venom'), d); out.venom = HANK.meds.venom;
   return out;
 });
-ok(`second row: ${r7.kinds.join(' ')}; each into the dog's bag (${r7.spent} 🧶)`, r7.kinds.join() === 'venom,bandage,pills,shovel' && r7.buy.every(k => k === 'buy') && r7.bag.venom === 1 && r7.bag.shovel === 1 && r7.spent === 10, r7);
-ok('too poor: no; a full bag: no; the shovel off the mats once a dog has it', r7.poor === 'poor' && r7.full === 'bag' && r7.n === 6 && !r7.shovelShown, r7);
+ok(`second row: ${r7.kinds.join(' ')}; each straight to Hank (${r7.spent} 🧶)`, r7.kinds.join() === 'venom,bandage,pills,shovel' && r7.buy.every(k => k === 'buy') && r7.meds.venom === 1 && r7.meds.bandage === 1 && r7.meds.pills === 1 && r7.shovel && r7.back && r7.hip && r7.spent === 10, r7);
+ok('too poor: no; the shovel off the mats once Hank has it', r7.poor === 'poor' && r7.venom === 1 && !r7.shovelShown, r7);
 
-// 8. the dog takes its bag to Hank: his stock, his shovel; he goes to the sick and treats them, the worst first
+// 8. Hank stocked: he goes to the sick and treats them, the worst first
 const r8 = await h.page.evaluate(() => {
   const { G, HANK, T, CAM_R, CAM_F, step, snakeBite, renderOnce, living } = GAME, d = G.dogs[0], P = G.players[0];
   G.clock.hour = 9; H.calm();
@@ -134,11 +134,8 @@ const r8 = await h.page.evaluate(() => {
   for (const s of living()) H.place(s, c.x + 30 + Math.random() * 6, c.z + Math.random() * 6);
   const sick = L[0]; snakeBite(sick); sick.venom = 0.5;
   HANK.x = c.x + 45; HANK.z = c.z; HANK.vx = HANK.vz = 0; HANK.asleep = false; HANK.goal = null;
-  H.place(d, HANK.x + 10, HANK.z + 4);
-  d.bag = { venom: 1, bandage: 1, pills: 0, shovel: 1 }; renderOnce();
-  const mouth = d.models.medbag.visible && d.models.shovel.visible;
-  let t = 0;
-  while (d.bag && t < 15) { const dx = HANK.x - d.x, dz = HANK.z - d.z, l = Math.hypot(dx, dz) || 1; P.bot = { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l }; step(0.025); t += 0.025; }
+  HANK.meds = { venom: 0, bandage: 0, pills: 0 }; HANK.shovel = false;
+  GAME.giveHank({ venom: 1, bandage: 1, pills: 0, shovel: 1 });
   P.bot = {}; H.place(d, c.x + 80, c.z + 30); renderOnce();
   const got = { meds: { ...HANK.meds }, shovel: HANK.shovel, back: HANK.model.vet.back.visible, said: HANK.log.slice(-3).map(l => l.text) };
   let treated = null, tending = false, held = 0, sx = 0, sz = 0;
@@ -148,9 +145,9 @@ const r8 = await h.page.evaluate(() => {
     if (!(sick.venomRate > 0)) treated = { t: +(k * 0.025).toFixed(1), meds: { ...HANK.meds }, venom: +sick.venom.toFixed(2) };
   }
   H.run(1);
-  return { t: +t.toFixed(1), mouth, got, treated, tending, held: +held.toFixed(3), state: sick.state, said: HANK.log.slice(-2).map(l => l.text), dist: +Math.hypot(HANK.x - sick.x, HANK.z - sick.z).toFixed(1), id: sick.id };
+  return { got, treated, tending, held: +held.toFixed(3), state: sick.state, said: HANK.log.slice(-2).map(l => l.text), dist: +Math.hypot(HANK.x - sick.x, HANK.z - sick.z).toFixed(1), id: sick.id };
 });
-ok(`a bag and a shovel in the dog's mouth; to Hank in ${r8.t}s: his stock`, r8.mouth && r8.got.meds.venom === 1 && r8.got.meds.bandage === 1 && r8.got.shovel && r8.got.back, r8);
+ok('giveHank: his stock, the shovel on his back', r8.got.meds.venom === 1 && r8.got.meds.bandage === 1 && r8.got.shovel && r8.got.back, r8);
 ok(`he walks to the bitten one and treats it (${r8.treated && r8.treated.t}s): it stands still for him`, r8.treated && r8.tending && r8.held < 0.05 && r8.treated.meds.venom === 0, r8);
 ok('treated: it mends; it\'s up and about; Hank says so', r8.state !== 'treat' && r8.said.some(t => /There ye go|mend|Easy now|Hold still/.test(t)), r8);
 const r8b = await h.page.evaluate(id => { const s = GAME.G.sheep.find(o => o.id === id), v0 = s.venom; GAME.sheepAilments(s, 6); return { v0: +v0.toFixed(2), v1: +s.venom.toFixed(2), pep: +GAME.sickPep(s).toFixed(2) }; }, r8.id);
@@ -296,14 +293,14 @@ const r13b = await h.page.evaluate(() => {
 ok(`a full cemetery grows a row (${r13b.rows.join(' → ')} rows); the next grave goes in it`, r13b.rows[1] === r13b.rows[0] + 1 && r13b.slots[1] === r13b.slots[0] + 3 && r13b.rebuilt && r13b.stone && r13b.at < 0.05, r13b);
 ok(`every camp's cemetery has room to grow (${r13b.room.join(' ')})`, r13b.room.every(Boolean), r13b);
 
-// 14. a new journey: the bag, his stock, his shovel, the bodies and the cemeteries all start empty
+// 14. a new journey: his stock, his shovel, the bodies and the cemeteries all start empty
 const r14 = await h.page.evaluate(() => {
-  const { G, HANK, YARDS, resetGame, SNAKES } = GAME; G.dogs[0].bag = { venom: 2 };
+  const { G, HANK, YARDS, resetGame, SNAKES } = GAME; GAME.giveHank({ venom: 2, shovel: 1 });
   resetGame();
-  return { bag: G.dogs[0].bag, meds: HANK.meds, shovel: HANK.shovel, graves: G.graves.length, yards: YARDS.map(y => y.n).join(''), rows: YARDS.map(y => y.rows).join(''), snakes: SNAKES.every(n => n.state === 'hide'),
+  return { meds: HANK.meds, shovel: HANK.shovel, graves: G.graves.length, yards: YARDS.map(y => y.n).join(''), rows: YARDS.map(y => y.rows).join(''), snakes: SNAKES.every(n => n.state === 'hide'),
     built: YARDS.map(y => y.built).join(''), shown: YARDS.some(y => y.g.visible) };
 });
-ok('a new journey: empty bags, no stock, no shovel, no bodies, no cemeteries (back to their size), snakes hidden', !r14.bag && !r14.meds.venom && !r14.shovel && r14.graves === 0 && /^0+$/.test(r14.yards) && /^4+$/.test(r14.rows) && /^0+$/.test(r14.built) && !r14.shown && r14.snakes, r14);
+ok('a new journey: no stock, no shovel, no bodies, no cemeteries (back to their size), snakes hidden', !r14.meds.venom && !r14.shovel && r14.graves === 0 && /^0+$/.test(r14.yards) && /^4+$/.test(r14.rows) && /^0+$/.test(r14.built) && !r14.shown && r14.snakes, r14);
 
 ok('no page errors', h.errors.length === 0, h.errors.slice(0, 5));
 await h.close();

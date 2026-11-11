@@ -1,4 +1,4 @@
-// Headless checks for shearing: the clippers' dig spot, a dog carrying them to Hank, Hank shearing a penned flock behind a
+// Headless checks for shearing: the clippers' dig spot (dug up: Hank's), Hank shearing a penned flock behind a
 // shut gate (over the fence, one at a time; not with the gate open, not asleep), the wool stock, regrowth, the shorn look,
 // the saved flock keeping s.wool, a new journey. node tools/shear-test.mjs
 import { open } from './harness.mjs';
@@ -18,7 +18,7 @@ await h.page.reload(); await h.page.waitForFunction(() => window.GAME);
 const r1b = await spot();
 ok('the same spot every load (own rng)', r1b.x === r1.x && r1b.z === r1.z, [r1, r1b]);
 
-// 2. a dog digs them up: in its mouth
+// 2. a dog digs them up: straight to Hank
 const r2 = await h.page.evaluate(() => {
   localStorage.clear();
   const { G, CLIP_DIG: sp, HANK, step, startGame, renderOnce } = GAME;
@@ -26,23 +26,12 @@ const r2 = await h.page.evaluate(() => {
   const d = G.dogs[0]; let t = 0;
   while (!sp.dug && t < 5) { d.x = sp.x + 0.3; d.z = sp.z; d.vx = d.vz = 0; step(0.025); t += 0.025; }
   renderOnce();
-  return { dug: sp.dug, secs: +t.toFixed(2), carrying: !!d.clippers, hank: HANK.clippers, mouth: !!(d.models.shears && d.models.shears.visible), said: HANK.log.slice(-4).map(l => l.text) };
+  for (let i = 0; i < 3; i++) renderOnce(0.1);
+  return { dug: sp.dug, secs: +t.toFixed(2), hank: HANK.clippers, belt: HANK.model.shears.belt.visible, again: GAME.giveHankClippers(), said: HANK.log.slice(-3).map(l => l.text), row: document.getElementById('hWoolRow').style.display };
 });
-ok(`a dog digs up the clippers (${r2.secs}s) and carries them`, r2.dug && r2.carrying && !r2.hank, r2);
-ok('they show in its mouth; Hank calls for them', r2.mouth && r2.said.some(t => /clippers/i.test(t)), r2);
-
-// 3. carried up to Hank: he takes them
-const r3 = await h.page.evaluate(() => {
-  const { G, HANK, step, giveHankClippers, renderOnce, CAM_R, CAM_F } = GAME, d = G.dogs[0], P = G.players[0];
-  const a = Math.random() * 6.28; d.x = HANK.x + Math.cos(a) * 9; d.z = HANK.z + Math.sin(a) * 9; d.vx = d.vz = 0;
-  let t = 0;
-  while (!HANK.clippers && t < 15) { const dx = HANK.x - d.x, dz = HANK.z - d.z, l = Math.hypot(dx, dz) || 1; P.bot = { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l }; step(0.025); t += 0.025; }
-  P.bot = {}; for (let i = 0; i < 3; i++) renderOnce(0.1);
-  return { t: +t.toFixed(1), hank: HANK.clippers, dog: !!d.clippers, belt: HANK.model.shears.belt.visible, mouth: d.models.shears.visible, again: giveHankClippers(), said: HANK.log.slice(-3).map(l => l.text), row: document.getElementById('hWoolRow').style.display };
-});
-ok(`the dog takes them to Hank (${r3.t}s): he has them, it doesn't`, r3.hank && !r3.dog, r3);
-ok('on his belt, gone from its mouth; his line; the 🧶 row shows', r3.belt && !r3.mouth && r3.said.some(t => /shear/i.test(t)) && r3.row === '', r3);
-ok('giveHankClippers() again: no-op', r3.again === false, r3);
+ok(`a dog digs up the clippers (${r2.secs}s): Hank has them`, r2.dug && r2.hank, r2);
+ok('on his belt; his line; the 🧶 row shows', r2.belt && r2.said.some(t => /shear/i.test(t)) && r2.row === '', r2);
+ok('giveHankClippers() again: no-op', r2.again === false, r2);
 
 // 4. a flock penned behind a shut gate: Hank climbs in and shears the woolliest, one at a time
 const r4 = await h.page.evaluate(() => {
@@ -51,7 +40,7 @@ const r4 = await h.page.evaluate(() => {
   G.clock.hour = 15; setGate(pen, false);
   living().forEach((s, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.5; s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; s.wool = s.lamb ? 0.7 : 1; s.stress = 0; s.hunger = 0.2; });
   const d = G.dogs[0]; d.x = pen.x - Math.cos(ga) * 45; d.z = pen.z - Math.sin(ga) * 45;
-  HANK.x = pen.x - Math.cos(ga) * (pen.R + 9); HANK.z = pen.z - Math.sin(ga) * (pen.R + 9); HANK.vx = HANK.vz = 0; HANK.goal = null; HANK.upT = -99; HANK.asleep = false;
+  HANK.x = pen.x - Math.cos(ga) * (pen.R + 9); HANK.z = pen.z - Math.sin(ga) * (pen.R + 9); HANK.vx = HANK.vz = 0; HANK.goal = null; HANK.upT = -99; HANK.asleep = false; HANK.farT = 0;
   const wool0 = G.wool; let t = 0, maxStep = 0, climbs = 0, wasClimb = false, inPen = false, hold = 0, shownHand = false, order = [], stressMax = 0;
   let px = HANK.x, pz = HANK.z, cur = null, cx = 0, cz = 0;
   while (t < 45 && order.length < 4) {
@@ -146,19 +135,16 @@ ok('shorn: pink skin showing, less as it grows', a8.rg > 0.1 && a8.rg > b8.rg &&
 ok('sat back on its rump while shorn (head up), and up again after', r8.shK === 1 && r8.tip > 0.1 && r8.back === 0, r8);
 
 // 9. online: what's synced
-const r9 = await h.page.evaluate(() => { const T = window.NET.api.types; return { s: 'wool' in T.sheep.fields, d: 'clippers' in T.dog.fields, h: ['clippers', 'shearing', 'lift'].every(k => k in T.hank.fields), g: 'wool' in T.game.fields }; });
-ok('synced: s.wool, d.clippers, Hank\'s clippers/shearing/climb, G.wool', r9.s && r9.d && r9.h && r9.g, r9);
+const r9 = await h.page.evaluate(() => { const T = window.NET.api.types; return { s: 'wool' in T.sheep.fields, h: ['clippers', 'shearing', 'lift'].every(k => k in T.hank.fields), g: 'wool' in T.game.fields }; });
+ok('synced: s.wool, Hank\'s clippers/shearing/climb, G.wool', r9.s && r9.h && r9.g, r9);
 
-// 10. the clippers lost with a dog that leaves: back in the ground; a new journey: no wool, clippers buried
+// 10. a new journey: no wool, clippers buried
 const r10 = await h.page.evaluate(() => {
-  const { G, HANK, CLIP_DIG: sp, step, resetGame, digUp } = GAME, out = {};
-  HANK.clippers = false; sp.dug = false; const d = G.dogs[0]; digUp(sp, d); out.carry = !!d.clippers;
-  d.clippers = false; step(0.025); out.back = !sp.dug;   // (as if the dog carrying them had gone)
-  G.mode = 'end'; resetGame(); out.wool = G.wool; out.hank = HANK.clippers; out.dogs = G.dogs.some(o => o.clippers); out.spot = !sp.dug;
+  const { G, HANK, CLIP_DIG: sp, resetGame } = GAME, out = {};
+  G.mode = 'end'; resetGame(); out.wool = G.wool; out.hank = HANK.clippers; out.spot = !sp.dug;
   return out;
 });
-ok('clippers lost with their dog: back in the mound', r10.carry && r10.back, r10);
-ok('a new journey: no wool, clippers buried again', r10.wool === 0 && !r10.hank && !r10.dogs && r10.spot, r10);
+ok('a new journey: no wool, clippers buried again', r10.wool === 0 && !r10.hank && r10.spot, r10);
 
 // 11. the saved flock keeps each sheep's fleece
 const r11a = await h.page.evaluate(() => {

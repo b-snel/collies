@@ -669,9 +669,9 @@ const T = {
   // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
   // and kills in infectHours unless Hank gives antibiotics. Treated: mends over healHours. slow: speed lost at worst
   wound: { base: { coyote: 0.3, cougar: 0.5, falcon: 0.2 }, perS: 0.06, maul: 0.7, deep: 0.5, bleedHours: [10, 18], infectHours: [30, 42], healHours: 18, slow: 0.55 },
-  // VET: a dog carries what it buys in its bag (bag: most) to Hank (giveR m); he treats one patient in `time` s (reach m away;
+  // VET: what a dog buys goes straight to Hank; he treats one patient in `time` s (reach m away;
   // can't get to it for giveUp s: it waits skip s). venomSlow: speed lost at worst
-  vet: { bag: 6, giveR: 2.4, time: 2.4, reach: 0.55, giveUp: 25, skip: 20, venomSlow: 0.72, say: 75 },
+  vet: { time: 2.4, reach: 0.55, giveUp: 25, skip: 20, venomSlow: 0.72, say: 75 },
   // REMAINS: a sheep that dies lies where it fell (its name over it) and rots into a tombstone over rotDays in-game days. With a
   // shovel Hank carries one (within reach m of him, from…to o'clock, nothing prowling) to the nearest camp's cemetery (YARDS),
   // at walk m/s, digs `dig` s and says a few words. A full cemetery gets another row, up to `rows`.
@@ -710,8 +710,7 @@ const T = {
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
-  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, giveR: 2.4, climbT: 1.2, giveUp: 15, skip: 45,
-    think: { first: 10, every: 35, dur: 4.5 } },   // a dog still carrying the clippers: a thought bubble after first s, then every s, for dur s
+  shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, climbT: 1.2, giveUp: 15, skip: 45 },
   // RAM NADS (drawing only): size by s.brave (× of normal); steps/s; m/s²; spring Hz and damping ratio (cord, each nut, jiggle);
   // per s: swing damping vs the body (inner: nut vs cord), air drag (wet: in water), pull to the body's down, the bag holding the pair; cone tan
   // (fore/aft, side); tuck/relax s (cremaster); dry s
@@ -5839,13 +5838,12 @@ const DIGS = [];
 }
 const DIG_JUNK = ['AN OLD BOOT!', 'A BONE!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
 const CLIP_DIG = DIGS.find(sp => sp.clip) || null;   // HANK: shearing: where his clippers are buried
-const clippersOut = () => HANK.clippers || G.dogs.some(d => d.clippers);
+const clippersOut = () => HANK.clippers;
 function resetDigs() { for (const d of DIGS) { d.dug = false; d.prog = 0; } }
 // in step(): who's digging where
 function updateDigs(dt) {
   for (const d of G.dogs) d.digK = Math.max(0, (d.digK || 0) - dt * 4);
   if (G.mode !== 'play') return;
-  if (CLIP_DIG && CLIP_DIG.dug && !clippersOut()) { CLIP_DIG.dug = false; CLIP_DIG.prog = 0; }   // the dog carrying them left: back in the ground
   for (const sp of DIGS) {
     if (sp.dug) continue;
     let dog = null, near = false;
@@ -5863,11 +5861,9 @@ function updateDigs(dt) {
 function digUp(sp, d) {
   sp.dug = true; sp.prog = 0;
   burst(sp.x, sp.y + 0.3, sp.z, 14, '#8a6440', { speed: 3, up: 4, size: 0.16, life: 0.8, grav: -9 });
-  if (sp.clip && !clippersOut()) {   // HANK: shearing: his clippers, carried in the dog's mouth till it reaches him
-    d.clippers = true;
-    confetti(sp.x, sp.y + 1, sp.z, 30); Sound.chime([0, 4, 7, 12], 660, 0.12); rumble(d.player, 0.3, 0.5, 120);
-    floatText('✂️!', sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
-    hank(null, 'My clippers! Bring them here!', { force: true });
+  if (sp.clip && !clippersOut()) {   // HANK: shearing: his clippers, straight to him
+    confetti(sp.x, sp.y + 1, sp.z, 30); floatText('✂️!', sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
+    giveHankClippers(d);
     return;
   }
   const left = DOG_ITEMS.filter(it => !DOGS.found.includes(it.id));
@@ -5896,10 +5892,9 @@ function syncDigs(dt) {
 }
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
-  // HANK: shearing: ✂️ over the clippers' mound, and over Hank while a dog carries them (on the dog: drawDogCarry, HUD)
+  // HANK: shearing: ✂️ over the clippers' mound
   const chip = (x, y, z) => { const [px, py, pz] = proj(x, y, z); if (pz <= 1 && px > -30 && px < W + 30 && py > -30 && py < H + 30) forageChip(px, py, '✂️', 'rgba(27,26,40,.7)'); };
   if (CLIP_DIG && !CLIP_DIG.dug && !clippersOut() && G.dogs.some(d => Math.hypot(d.x - CLIP_DIG.x, d.z - CLIP_DIG.z) < 30)) chip(CLIP_DIG.x, CLIP_DIG.y + 1.9, CLIP_DIG.z);
-  if (G.dogs.some(d => d.clippers)) nudge('clippers', HANK.x, HANK.y + 3, HANK.z, '✂️ ➜ 🧓');
   for (const sp of DIGS) {
     if (sp.dug) continue;
     if (sp.prog <= 0.02 && G.dogs.some(d => Math.hypot(d.x - sp.x, d.z - sp.z) < 8)) nudge('dig', sp.x, sp.y + 1.5, sp.z, '⬇ Stand here: dig');
@@ -8608,14 +8603,12 @@ function drawCoyoteArrows() {
   }
   ctx.globalAlpha = 1;
 }
-// what a dog carries: a small pip each over its name (🌿 / 🪣 ringed by how full, 🧂, ✂️)
+// what a dog carries: a small pip each over its name (🌿 / 🪣 ringed by how full, 🧂)
 function drawDogCarry(d, px, py) {
   const cap = T.forage.carryCap, g = d.greens || 0, b = bucketOf(d), items = [];
   if (g > 0.01) items.push(['🌿', g / cap, g >= cap - 1e-6 ? '#7ed957' : '#b8e36b']);
   if (b) items.push(['🪣', b.w / T.water.bucket, '#5fb8f0']);
   if (d.salt) items.push(['🧂']);
-  if (d.clippers) items.push(['✂️']);
-  for (const k of VET_KINDS) if (d.bag && d.bag[k] > 0) items.push([VET_ICON[k]]);   // VET: what's in its bag for Hank
   const r = 8.5, y = py - 15; ctx.font = '10px Fredoka, sans-serif'; ctx.lineWidth = 2;
   items.forEach(([icon, k, col], i) => {
     const x = px + (i - (items.length - 1) / 2) * (2 * r + 3);
@@ -8626,17 +8619,6 @@ function drawDogCarry(d, px, py) {
     }
     ctx.fillStyle = '#fff'; richText(icon, x, y + 0.5);
   });
-}
-// HANK: shearing: a dog still carrying his clippers thinks so, now and then (T.shear.think)
-const CLIP_THOUGHT = 'I should give these shears to Hank';
-function drawDogThought(d, px, py, dt) {
-  const bag = bagN(d) > 0;   // VET: its bag for Hank, likewise (icons, no words)
-  if (!d.clippers && !bag) { d._clipT = 0; return; }
-  if (!G.paused) d._clipT = (d._clipT || 0) + dt;
-  const S = T.shear.think, t = d._clipT - S.first; if (t < 0 || d.mauled) return;
-  const u = t % S.every; if (u > S.dur) return;
-  if (d.clippers) drawCloud(px, py - 56, CLIP_THOUGHT, u, S.dur);
-  else drawCloud(px, py - 56, `${bagIcons(d)} ➜ 🧓`, u, S.dur, '600 14px Fredoka, sans-serif');
 }
 // a dog's health: a thin bar under its name, only while hurt (the chunk just lost lingers in red); claw marks when it's hit; the mash prompt under a cougar
 function drawDogHealth(d, px, py, dt) {
@@ -8753,7 +8735,6 @@ function drawOverlay(dt) {
       ctx.strokeStyle = d.exhausted ? '#ff7a6b' : '#7ed957'; ctx.beginPath(); ctx.arc(sx, py, 4.5, -Math.PI / 2, -Math.PI / 2 + TAU * d.stamina); ctx.stroke();
     }
     if (G.mode === 'play' && !d.mauled) drawDogCarry(d, px, py);   // (mauled: the mash prompt goes there)
-    if (G.mode === 'play') drawDogThought(d, px, py, dt);   // HANK: shearing: "give Hank his shears"
     drawDogHealth(d, px, py, dt);
   }
   drawWarePops();   // VENDOR: the name of what's on a mat a dog's on
@@ -9322,14 +9303,13 @@ function initHankUI() {
 }
 
 // ---------------- shearing ----------------
-// His clippers lie in one mound between the first two camps (DIG SPOTS: sp.clip); a dog digs them up and takes them to
-// him. With them, awake and nothing prowling near for T.shear.calm s, he shears the flock penned behind a shut gate:
+// His clippers lie in one mound between the first two camps (DIG SPOTS: sp.clip); a dog digs them up: they're his. With them, awake and nothing prowling near for T.shear.calm s, he shears the flock penned behind a shut gate:
 // over the fence (clear of the gate and the troughs), woolliest first, each sat on its rump a few s. s.wool 0…1 regrows
 // over T.shear.regrowDays; each fleece adds to G.wool (🧶, whole skeins). HANK.clippers lasts the journey (not saved).
 // SHARED HOOK: Hank gets his clippers (from dog d, or from anywhere with d null), with his line and fx; no-op if he has them.
 function giveHankClippers(d = null) {
   const hk = HANK; if (hk.clippers) return false;
-  hk.clippers = true; for (const o of G.dogs) o.clippers = false;
+  hk.clippers = true;
   if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
   starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText('✂️', hk.x, hk.y + 2.9, hk.z, '#ffd36b', 1.6); Sound.chime([0, 4, 7, 12, 16], 659, 0.14, 0.07);
   if (d) rumble(d.player, 0.3, 0.5, 120);
@@ -9363,10 +9343,9 @@ function shearGoal() {
   const r = s.r + T.hankR + 0.15;
   return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
 }
-// in updateHank (the host's sim): clippers handed over, picking a sheep, clipping it
+// in updateHank (the host's sim): picking a sheep, clipping it
 function updateShear(dt) {
   const hk = HANK, S = T.shear;
-  if (G.mode === 'play' && !hk.clippers) for (const d of G.dogs) if (d.clippers && !d.air && Math.hypot(d.x - hk.x, d.z - hk.z) < S.giveR) { giveHankClippers(d); break; }
   let j = hk.job;
   if (j && (!shearCan() || !shearable(j.s) || j.s.pen !== j.pen)) { shearStop(); j = null; }
   if (!j) {
@@ -9434,7 +9413,7 @@ function shearFx(s) {
   burst(s.x, s.y + 0.7 * hs, s.z, 4, L && L.wool ? L.wool : s.black ? '#4a4642' : '#f6f1e3', { speed: 1.6, up: 2.2, size: 0.16, life: 0.9, grav: -3 });
   SFX.snip(panOf(s.x, s.z));
 }
-// hand shears: two blades and a spring bow; on his belt, in his hand while he clips, in a dog's mouth
+// hand shears: two blades and a spring bow; on his belt, in his hand while he clips
 const SHEARS_GEO = merge(
   ...[-1, 1].flatMap(sd => [P(CONE(0.034, 0.27, 4), '#dfe4ea', { s: [1, 1, 0.4], r: [Math.PI / 2, 0, 0], p: [sd * 0.022, 0, 0.135] }),
     P(BOX(0.045, 0.04, 0.13), '#c0392b', { p: [sd * 0.032, 0, -0.07] })]),
@@ -9448,11 +9427,6 @@ function syncShears() {
     M.shears = { belt, hand };
   }
   M.shears.belt.visible = !!hk.clippers && !hk.shearing; M.shears.hand.visible = !!hk.shearing;
-  for (const d of G.dogs) {
-    const m = d.models; if (!m) continue;
-    if (!m.shears) { m.shears = part(m.head, SHEARS_GEO, { shadow: false }); m.shears.position.set(-0.05, -0.13, 0.27); m.shears.rotation.y = Math.PI / 2; m.shears.scale.setScalar(1.05); }
-    m.shears.visible = !!d.clippers;
-  }
 }
 
 // =====================================================================
@@ -9460,8 +9434,8 @@ function syncShears() {
 // cuts a predator leaves when a dog makes it let go (woundSheep: a deep one
 // bleeds, s.bleed; a shallow one festers, s.infect) each kill in time unless
 // he treats them: 💉 anti-venom, 🩹 bandages, 💊 antibiotics. A trader sells
-// them (and a 🪏 shovel) into the barking dog's bag (d.bag); the dog carries
-// it to Hank (HANK.meds, HANK.shovel: they last the journey). Stocked, he
+// them (and a 🪏 shovel) straight into Hank's kit (giveHank: HANK.meds,
+// HANK.shovel: they last the journey). Stocked, he
 // walks (over a pen fence if need be) to the worst-off he can cure and sees
 // to it (s.state 'treat'); with a shovel, by day, he carries the fallen
 // (REMAINS) to the cemetery by the nearest camp, digs, lays them in under a
@@ -9532,11 +9506,11 @@ function sickTrail(s, dt) {
   if ((b & 4) && Math.random() < dt * 2.5) { const a = Math.random() * TAU; burst(s.x + Math.cos(a) * 0.5, s.y + 1.1 * hs, s.z + Math.sin(a) * 0.5, 1, '#1c1a18', { speed: 1.2, up: 0.4, size: 0.05, life: 0.7, grav: 0 }); }
   if ((b & 1) && Math.random() < dt * 2) burst(s.x + Math.sin(s.yaw) * 0.5 * hs, s.y + 1.0 * hs, s.z + Math.cos(s.yaw) * 0.5 * hs, 1, '#a8c070', { speed: 0.5, up: 1.2, size: 0.08, life: 0.5, grav: -6 });
 }
-// what the flock needs that Hank (with what the dogs carry) hasn't got: a Set of 'venom' | 'bandage' | 'pills'
+// what the flock needs that Hank hasn't got: a Set of 'venom' | 'bandage' | 'pills'
 function vetWant() {
   const need = { venom: 0, bandage: 0, pills: 0 }, want = new Set(), meds = HANK.meds || {};
   for (const s of G.sheep) { if (s.dead) continue; const b = ailOf(s); if (b) for (const A of AIL) if (b & A.bit) need[A.cure]++; }
-  for (const k in need) { if (!need[k]) continue; let have = meds[k] || 0; for (const d of G.dogs) have += (d.bag && d.bag[k]) || 0; if (have < need[k]) want.add(k); }
+  for (const k in need) if (need[k] && (meds[k] || 0) < need[k]) want.add(k);
   return want;
 }
 // Hank sees a sheep that needs what he hasn't got: he says so (each kind once in a while)
@@ -9555,19 +9529,16 @@ function vetWatch() {
     hank(null, `Poor ${g.name}… wi' a shovel 🪏 I'd bury ${her} proper.`, { force: true, delay: 2 }); return;
   }
 }
-// ---------------- the dog's bag ----------------
-const bagN = d => d && d.bag ? VET_KINDS.reduce((a, k) => a + (d.bag[k] || 0), 0) : 0;
-const bagIcons = d => VET_KINDS.filter(k => d.bag && d.bag[k] > 0).map(k => VET_ICON[k]).join('');
-// SHARED HOOK: dog d hands its bag to Hank (meds into his stock, a shovel on his back); false if it had nothing
-function giveHankBag(d) {
-  const hk = HANK, b = d.bag; if (!bagN(d)) return false;
-  const icons = bagIcons(d), onlyShovel = VET_KINDS.every(k => k === 'shovel' || !(b[k] > 0));
+// ---------------- into Hank's kit ----------------
+// SHARED HOOK: Hank gets wares b ({ venom, bandage, pills, shovel }: counts): meds into his stock, a shovel on his back; false if none
+function giveHank(b, d = null) {
+  const hk = HANK; if (!b || !VET_KINDS.some(k => b[k] > 0)) return false;
+  const icons = VET_KINDS.filter(k => b[k] > 0).map(k => VET_ICON[k]).join(''), onlyShovel = VET_KINDS.every(k => k === 'shovel' || !(b[k] > 0));
   for (const k of ['venom', 'bandage', 'pills']) hk.meds[k] = (hk.meds[k] || 0) + (b[k] || 0);
   if (b.shovel > 0) hk.shovel = true;
-  d.bag = null;
   if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
-  starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText(`${icons} ✔`, hk.x, hk.y + 2.9, hk.z, '#7ed957', 1.4); Sound.chime([0, 4, 7, 12], 587, 0.14, 0.07);
-  rumble(d.player, 0.3, 0.5, 120);
+  starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText(`${icons} ✔`, hk.x, hk.y + 2.9, hk.z, '#7ed957', 1.4);
+  if (d) rumble(d.player, 0.3, 0.5, 120);
   hank(null, onlyShovel ? "A shovel! They'll get a proper burial now." : vetWant().size || G.sheep.some(s => !s.dead && ailOf(s)) ? "Grand! I'll see to them." : "Grand! I'll keep it handy.", { force: true });
   hk.carePickT = 0;
   return true;
@@ -9626,10 +9597,9 @@ function careGoal() {
   if (j.phase === 'build') { const B = T.remains.build, p = yardLine(j.Y, j.Y.built * j.Y.len + B.lead, B.inset); return { x: p.x, z: p.z, stop: 0.05, noShy: true, pen: null, yard: true }; }
   return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: null, face: sl, yard: true };
 }
-// in updateHank (host): a dog's bag handed over, picking a job, seeing to it
+// in updateHank (host): picking a job, seeing to it
 function updateCare(dt) {
   const hk = HANK;
-  if (G.mode === 'play') for (const d of G.dogs) if (d.bag && !d.air && Math.hypot(d.x - hk.x, d.z - hk.z) < T.vet.giveR && bagN(d)) giveHankBag(d);
   let j = hk.care;
   if (j && !careValid(j)) { careStop(); j = null; }
   if (j && j.kind === 'bury' && j.phase === 'fetch' && (j.chk = (j.chk || 0) - dt) <= 0) { j.chk = 1; if (careNext(true)) { careStop(); j = null; } }   // a patient first
@@ -9740,7 +9710,7 @@ function lastWords(g) {
   const coda = g.why === 'snake' ? pk([' Curse that snake.', '']) : g.why === 'bled' || g.why === 'infect' ? pk([' I was too late.', '']) : g.why === 'old' ? '' : pk(['', ' Rest easy.']);
   return line + coda;
 }
-// ---------------- what they look like: a bag (or a shovel) in a dog's mouth; on Hank, his bag at his hip, the shovel on his back or in his hands ----------------
+// ---------------- what they look like: on Hank, his bag at his hip, the shovel on his back or in his hands ----------------
 const MEDBAG_GEO = merge(P(BOX(0.34, 0.22, 0.16), '#7a4a2a', { p: [0, 0, 0] }), P(BOX(0.36, 0.04, 0.18), '#5e3820', { p: [0, 0.11, 0] }), P(new THREE.TorusGeometry(0.08, 0.018, 4, 10, Math.PI), '#4a2e1a', { p: [0, 0.13, 0] }),
   P(BOX(0.11, 0.035, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.035, 0.11, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.05, 0.04, 0.02), '#e8c050', { p: [0, 0.08, 0.085] }));
 const SHOVEL_GEO = merge(P(CYL(0.025, 0.025, 1.2, 6), '#9a6636', { p: [0, 0.6, 0] }), P(BOX(0.2, 0.04, 0.045), '#7a5230', { p: [0, 1.22, 0] }),
@@ -9760,14 +9730,6 @@ function syncVet(dt) {
   }
   const meds = hk.meds || {};
   M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.mallet.visible = !!hk.building; M.vet.bag.visible = (meds.venom || 0) + (meds.bandage || 0) + (meds.pills || 0) > 0;
-  for (const d of G.dogs) {
-    const m = d.models; if (!m) continue;
-    if (!m.medbag) {
-      m.medbag = part(m.head, MEDBAG_GEO, { shadow: false }); m.medbag.position.set(0, -0.2, 0.3); m.medbag.scale.setScalar(0.62);
-      m.shovel = part(m.head, SHOVEL_GEO, { shadow: false }); m.shovel.position.set(0.15, -0.12, 0.3); m.shovel.rotation.set(0, 0, Math.PI / 2); m.shovel.scale.setScalar(0.62);
-    }
-    const b = d.bag || {}; m.shovel.visible = b.shovel > 0; m.medbag.visible = (b.venom || 0) + (b.bandage || 0) + (b.pills || 0) > 0 && !(b.shovel > 0 && d.clippers);
-  }
   // the grave he's digging (in front of him: guests see it too)
   HOLE.t = hk.digging ? HOLE.t + dt : 0; HOLE.g.visible = !!hk.digging;
   if (hk.digging) { const fx = Math.sin(hk.yaw), fz = Math.cos(hk.yaw), x = hk.x + fx * 0.95, z = hk.z + fz * 0.95; HOLE.g.position.set(x, terrainH(x, z), z); HOLE.g.rotation.y = hk.yaw; HOLE.g.scale.setScalar(clamp(0.3 + HOLE.t / T.remains.dig, 0.3, 1)); }
@@ -9804,8 +9766,6 @@ function drawVetOverlay() {
   const [hx, hy, hz] = proj(hk.x, hk.y + 1.6, hk.z), onH = hz <= 1 && hx > 0 && hx < W && hy > 0 && hy < H;
   const want = vetWant();
   if (want.size && onH) drawCloud(hx + 62, hy - 6, [...want].map(k => VET_ICON[k]).join(' ') + ' ?', 1, 1e9, '600 15px Fredoka, sans-serif');   // what he needs (beside him: his speech bubble's above)
-  const dog = G.dogs.find(d => bagN(d));
-  if (dog) nudge('vetbag', hk.x, hk.y + 3, hk.z, `${bagIcons(dog)} ➜ 🧓`);
 }
 
 // =====================================================================
@@ -10737,11 +10697,11 @@ const WARE_KINDS = {   // name: what pops up over it when a dog steps on (more: 
   food: { icon: '🌾', col: '#6aa84f', name: 'Feed trough', more: 'Feed refill' },
   salt: { icon: '🧂', col: '#b9a9cc', name: 'Salt lick', more: 'Salt refill' },
   cabo: { icon: '🏖️', col: '#f2b25a', name: 'Trip to Cabo' },
-  // VET: the second row, into the barking dog's bag for Hank
+  // VET: the second row, straight to Hank
   venom: { icon: '💉', col: '#4fb28a', row: 1, name: 'Antivenom', sub: 'for 🐍 bites' },
   bandage: { icon: '🩹', col: '#d9a46c', row: 1, name: 'Bandage', sub: 'for 🩸 cuts' },
   pills: { icon: '💊', col: '#d86a6a', row: 1, name: 'Pills', sub: 'for 🦠 infection' },
-  shovel: { icon: '🪏', col: '#9a7a5a', row: 1, name: 'Shovel', sub: 'for 🪦 burials', show: () => !HANK.shovel && !G.dogs.some(d => d.bag && d.bag.shovel > 0) },   // (one's enough)
+  shovel: { icon: '🪏', col: '#9a7a5a', row: 1, name: 'Shovel', sub: 'for 🪦 burials', show: () => !HANK.shovel },   // (one's enough)
 };
 const ALL_WARES = [];   // every stall's (w.gi); w.i: its place on its stall
 for (const st of STALLS) st.wares = [...(st.final ? ['pen', 'clippers', 'water', 'food', 'salt', 'cabo'] : ['pen', 'water', 'food', 'salt']), ...VET_KINDS].map((id, i) => {
@@ -10823,10 +10783,8 @@ function vendorBark(d) {
 function buyWare(w, d = null) {
   const V = T.vendor, wool = G.wool || 0, st = w.stall, pen = pens[st.sel] || finalPen, deal = wareDeal(w, pen), price = deal.price;
   let kind = 'buy';
-  const vet = VET_KINDS.includes(w.id), dog = vet ? d || G.dogs.reduce((b, o) => !b || Math.hypot(o.x - w.x, o.z - w.z) < Math.hypot(b.x - w.x, b.z - w.z) ? o : b, null) : null;   // VET: into the buyer's bag (or the nearest dog's)
+  const vet = VET_KINDS.includes(w.id);   // VET: straight to Hank
   if (w.id === 'pen') { pickPen(st); kind = 'pen'; }
-  else if (vet && !dog) kind = 'none';
-  else if (vet && wool >= price && bagN(dog) >= T.vet.bag) kind = 'bag';
   else if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
   else if (wool < price) kind = 'poor';
   else if (w.id === 'cabo') { if (!(w.armT > G.time)) kind = 'arm'; }
@@ -10839,7 +10797,7 @@ function buyWare(w, d = null) {
     else if (w.id === 'food') stockTroughs(pen, V.food.amt); else if (w.id === 'water') fillWater(pen, V.water.amt); else lickAdd(pen, V.salt.amt);
   }
   else if (w.id === 'clippers') giveHankClippers();
-  else if (vet) { const b = dog.bag || (dog.bag = {}); b[w.id] = (b[w.id] || 0) + 1; floatText(`${w.icon} 🎒`, dog.x, dog.y + 2.2, dog.z, '#ffffff', 1); }
+  else if (vet) giveHank({ [w.id]: 1 }, d);
   if (kind === 'buy' || kind === 'add') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
   vendorFx(w.gi, kind, price, st.sel, KIT[w.id] ? kitN(pens[st.sel] || finalPen, w.id) : 0);
   if (kind === 'none' && w.id === 'cabo') hank(null, 'Pen them first! Then Cabo!', { force: true });
@@ -10868,7 +10826,7 @@ function vendorFx(i, kind, price = 0, pi = -1, n = 0) {
   }
   // a no: the mat shakes, the vendor shakes his head
   w.shakeAt = st.noAt = G.time;
-  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : kind === 'bag' ? '🎒 ✖' : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);   // (bag: the dog's is full: take it to Hank first)
+  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);
   Sound.chime([0, -1], 196, 0.18, 0.12);
 }
 // sim step (host): each stall's pen (picked, or the furthest found); Hank's word at the first trader and at the Trading Post
@@ -11050,7 +11008,6 @@ function dropPlayer(p) {
     if (d.maul) endMaul(d.maul, 'done');
     for (const F of FALCONS) if (F.dog === d) falconDrop(F, false);
     for (const k of COUGARS) if (k.dog === d) k.dog = null;
-    if (bagN(d)) giveHankBag(d);   // VET: what it was carrying goes to Hank
   }
   netRemovePlayer(p);
   Sound.chime([7, 0], 660, 0.12);
@@ -11101,7 +11058,7 @@ function resetGame() {
   for (const p of pens) { p.balker = null; p.balkDay = 0; p.leadT = 0; }   // BALKER
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0 };
-  G.wool = 0; for (const d of G.dogs) { d.clippers = false; d.bag = null; }   // HANK: shearing: no wool yet, the clippers buried again (VET: bags empty)
+  G.wool = 0;   // HANK: shearing: no wool yet, the clippers buried again
   resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
@@ -11214,8 +11171,6 @@ const NET_TYPES = {
       holding: { c: 's', get: d => netRefStr(d.holding), set: (d, v) => { d.holding = netRefFind(v); } },   // a sheep, a coyote or a gate
       greens: .02, salt: 'i',   // FORAGE: what it's carrying
       hp: .01, mauled: 'b', maulEsc: .05, ko: 'b',   // health, pinned under a cougar (and how close to breaking free), out cold
-      clippers: 'b',   // HANK: shearing: Hank's clippers in its mouth
-      bag: 'j',        // VET: what it's carrying to Hank
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -12571,10 +12526,10 @@ function debugKeys() {
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
   if (keyEdge.has('KeyU')) { const p = pathPoint(T.canyon.s0 - 26, 0); for (const d of G.dogs) { d.x = p.x + 3; d.z = p.z + 3; } for (const s of G.sheep) if (!s.dead) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); s.pen = null; } HANK.x = p.x + 6; HANK.z = p.z + 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 13)); }   // FALCON CANYON: to its mouth
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
-  if (keyEdge.has('KeyH')) {   // VET: one bitten, one bleeding, one festering, one dead; a dog with a full bag and 🧶 to spend
-    const L = living().filter(s => !s.lamb), d = G.dogs[0];
+  if (keyEdge.has('KeyH')) {   // VET: one bitten, one bleeding, one festering, one dead; Hank fully stocked and 🧶 to spend
+    const L = living().filter(s => !s.lamb);
     if (L[0]) snakeBite(L[0]); if (L[1]) { L[1].heldT = 6; L[1].grabBy = 'coyote'; woundSheep(L[1]); } if (L[2]) { L[2].heldT = 0; L[2].grabBy = 'falcon'; woundSheep(L[2]); } if (L[3]) killSheep(L[3], 'eaten');
-    if (d) d.bag = { venom: 1, bandage: 1, pills: 1, shovel: 1 }; G.wool = Math.max(G.wool || 0, 30); G.clock.hour = Math.max(8, Math.min(G.clock.hour, 15));
+    giveHank({ venom: 1, bandage: 1, pills: 1, shovel: 1 }); G.wool = Math.max(G.wool || 0, 30); G.clock.hour = Math.max(8, Math.min(G.clock.hour, 15));
   }
   if (keyEdge.has('KeyL')) { const p = pathPoint(T.snake.from + 6, 0); for (const d of G.dogs) { d.x = p.x - 2; d.z = p.z; } for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } HANK.x = p.x; HANK.z = p.z - 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 14)); }   // RATTLESNAKES: to the desert past the Promised Land
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
@@ -12591,7 +12546,7 @@ Object.assign(window.GAME, { FINAL, MARKET, STALLS, finalPen, VENDOR, WARES, ALL
 Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, syncBonk, punt });   // BONK SPOTS
-Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHankBag, bagN, careNext, careStop, updateCare, lastWords,
+Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
