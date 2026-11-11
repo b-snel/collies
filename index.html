@@ -694,7 +694,8 @@ const T = {
   // tug (TUG OF WAR): how hard a dog heaves: base (planted) + back × walking back + tap × a tap's boost (fading over tapT s), × tired when
   // exhausted; a tap yanks it back yank m/s and costs tapCost stamina, walking back backDrain/s (holding on: grabKinds.tug.grip). The knot
   // past a side's line (win m from the start) or that side letting go: the other wins; losers are yanked (lose m/s, stun s). slack: grips kept
-  // that taut. cd s before another can start
+  // that taut. cd s before another can start. hank: a dog's mouth within r m of him with it: he walks to its far end (want s), takes it within take m;
+  // heaves base + back (walking back walk m/s) + heave every s (fading over heaveT, a yank m/s); past tire s weaker tireR/s down to tireMin×; again s before he plays again
   // BONES: m kg, r m round; e: how bouncy a hit is; max on the map. A hit gives the thing J = (1+e)·v / (1/m + 1/its mass), its speed
   // changes J/its mass (mass: kg, × size³ for sheep, × build for dogs, × 1.56 an alpha coyote); show: × that for how far it's knocked.
   // Over knock (m/s) a dog's bowled over, over bowl a sheep flies; irk: a ram takes it personally; scare: × courage off a coyote;
@@ -705,7 +706,8 @@ const T = {
     toss: { add: 9, mul: 1.15, up: 6.5 }, bounce: 0.35, bounceMin: 2.5, keep: 0.6, slide: 12, kick: 14, kickUp: 6, kickR: 0.9,
     mass: { dog: 22, sheep: 55, coyote: 14, cougar: 60, hank: 80 } },   // (sheep: × size³, so a ewe ~70 kg, a ram ~130, a new lamb ~12)
   rope: { n: 28, seg: 0.36, r: 0.075, grav: 22, slide: 9, fric: 1.5, air: 0.6, iters: 14, bend: 0.25, bendMin: 0.8, reach: 0.95, mouthY: 0.82, kick: 0.6, wave: 7, near: 3, lat: [5, 10],
-    tug: { base: 2, back: 1.5, tap: 2.5, tapT: 0.4, tired: 0.5, yank: 5, tapCost: 0.012, backDrain: 0.05, win: 3, slack: 0.97, lose: 7, stun: 0.6, cd: 1.5 } },
+    tug: { base: 2, back: 1.5, tap: 2.5, tapT: 0.4, tired: 0.5, yank: 5, tapCost: 0.012, backDrain: 0.05, win: 3, slack: 0.97, lose: 7, stun: 0.6, cd: 1.5,
+      hank: { r: 3, take: 1.1, want: 8, base: 4.5, back: 1.5, heave: 2.2, every: 1.1, heaveT: 0.4, yank: 2.5, walk: 0.9, tire: 8, tireR: 0.04, tireMin: 0.5, again: 6 } } },
   // CARRY SWING (drawing only): what's in a dog's mouth hangs on a pendulum L m long; damp /s; clonks off the chest past
   // back rad (bounce kept, clonk rad/s for a sound), fwd/side as far as it goes; kick: a held animal's wriggles; jolt: the head
   carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
@@ -6833,8 +6835,10 @@ function drawSnakeOverlay() {
 // it too. The knot (a red rag halfway between their grips) starts on a white
 // line, with each side's line T.rope.tug.win m off. Walk back and tap Ⓧ to
 // heave (stamina; out: SLIP!, rope lost). Knot over your line, or the other
-// side lets go: won. R.tug (null, or { k: the knot's node, sx/sz: the start,
-// ux/uz: side A → side B }); side A holds below k, side B above.
+// side lets go: won. Up to 4 dogs: each side heaves as one (ropeHold). Bring
+// it to Hank: he takes the far end and tugs the lot of them (HANK.rope).
+// R.tug (null, or { k: the knot's node, sx/sz: the start, ux/uz: side A →
+// side B }); side A holds below k, side B above.
 // =====================================================================
 const ROPES = [];
 const ROPE_SUB = 2, ROPE_RAD = 6;   // drawn: rings per link, sides round
@@ -6896,17 +6900,18 @@ function ropeDec(R, v) {
 // where a dog's jaws hold it (a hop or a lunge lifts it)
 function ropeMouth(d, out) {
   const K = T.rope, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  if (d === HANK) { out.x = d.x + fx * 0.75; out.z = d.z + fz * 0.75; out.y = groundY(d.x, d.z) + 1.05; return out; }   // HANK: in his hands
   const hop = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) * (d.hopH || 1.25) : 0, lunge = d.pounceT > 0 ? Math.sin((1 - d.pounceT / T.pounceTime) * Math.PI) * 0.7 : 0;
   out.x = d.x + fx * K.reach; out.z = d.z + fz * K.reach; out.y = groundY(d.x, d.z) + K.mouthY + hop + lunge;
   return out;
 }
-const _rmA = { x: 0, y: 0, z: 0 }, _rmB = { x: 0, y: 0, z: 0 }, _rmP = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, z: 0 })), _rTmp = { x: 0, z: 0, vx: 0, vz: 0 };
+const _rmA = { x: 0, y: 0, z: 0 }, _rmB = { x: 0, y: 0, z: 0 }, _rmP = [0, 1, 2, 3, 4].map(() => ({ x: 0, y: 0, z: 0 })), _rTmp = { x: 0, z: 0, vx: 0, vz: 0 };
 // tryGrab: the nearest bit of rope in reach (not right by another dog's grip); { R, i } or null
 function ropeGrip(d, mx, mz, best) {
   let out = null; const K = T.rope;
   for (const R of ROPES) {
     if (Math.abs(R.cx - mx) > R.rad + 2.5 || Math.abs(R.cz - mz) > R.rad + 2.5) continue;
-    const others = G.dogs.filter(o => o !== d && o.holding === R);
+    const others = G.dogs.filter(o => o !== d && o.holding === R); if (HANK.rope === R) others.push(HANK);
     for (let k = 0; k < R.n; k++) {
       if (R.y[k] - R.gy[k] > 1.6 || others.some(o => Math.abs(o.ropeI - k) < K.near)) continue;
       const dd = Math.hypot(R.x[k] - mx, R.z[k] - mz) - 0.1;
@@ -6948,6 +6953,8 @@ function updateRopes(dt) {
   for (const R of ROPES) {
     R.holders.length = 0;
     for (const d of G.dogs) if (d.holding === R) R.holders.push(d);
+    if (HANK.rope === R) R.holders.push(HANK);
+    hankRope(R);   // HANK: brought it? he comes for the far end
     if (!R.tug && R.want && R.tugCd <= G.time) { R.want = false; tugStart(R); }
     if (R.tug) tugStep(R, dt);
     if (R.holders.length > 1) ropeHold(R);
@@ -6962,7 +6969,7 @@ function ropeSim(R, dt) {
   const K = T.rope, n = R.n, { x, y, z, px, py, pz, gy, pin } = R, rr = K.r, seg = K.seg, bmin = seg * 2 * K.bendMin;
   const fr = Math.exp(-K.fric * dt), ar = Math.exp(-K.air * dt), g = K.grav * dt * dt, sl = K.slide * dt * dt;
   R.dt = dt; pin.fill(-1);
-  R.holders.forEach((d, h) => { if (h < 4 && d.ropeI >= 0) { ropeMouth(d, _rmP[h]); pin[d.ropeI] = h; } });
+  R.holders.forEach((d, h) => { if (h < 5 && d.ropeI >= 0) { ropeMouth(d, _rmP[h]); pin[d.ropeI] = h; } });
   for (let k = 0; k < n; k++) {
     if (pin[k] >= 0) { const m = _rmP[pin[k]]; px[k] = x[k]; py[k] = y[k]; pz[k] = z[k]; x[k] = m.x; y[k] = m.y; z[k] = m.z; continue; }
     let vx = x[k] - px[k], vy = (y[k] - py[k]) * ar, vz = z[k] - pz[k];
@@ -7022,8 +7029,9 @@ function ropeSim(R, dt) {
 // ---------------- TUG OF WAR ----------------
 const tugSide = (R, d) => d.ropeI < R.tug.k ? -1 : d.ropeI > R.tug.k ? 1 : ((ropeMouth(d, _rmA).x - R.tug.sx) * R.tug.ux + (_rmA.z - R.tug.sz) * R.tug.uz < 0 ? -1 : 1);
 function tugStart(R) {
-  const H = G.dogs.filter(o => o.holding === R && o.ropeI >= 0); if (H.length < 2) return;
+  const H = R.holders.filter(o => o.ropeI >= 0), hk = H.includes(HANK); if (H.length < 2) return;
   let lo = H[0], hi = H[0]; for (const o of H) { if (o.ropeI < lo.ropeI) lo = o; if (o.ropeI > hi.ropeI) hi = o; }
+  if (hk) { const sd = HANK.ropeI < R.n / 2 ? 1 : -1; let near = null; for (const o of H) if (o !== HANK && (!near || sd * (o.ropeI - near.ropeI) < 0)) near = o; if (sd > 0) { lo = HANK; hi = near; } else { lo = near; hi = HANK; } }   // HANK: him against all of them
   const k = Math.round((lo.ropeI + hi.ropeI) / 2), a = ropeMouth(lo, _rmA), b = ropeMouth(hi, _rmB);
   let ux = b.x - a.x, uz = b.z - a.z, l = Math.hypot(ux, uz);
   if (l < 0.5) { ux = R.x[k + 1] - R.x[k - 1]; uz = R.z[k + 1] - R.z[k - 1]; l = Math.hypot(ux, uz) || 1; }
@@ -7032,7 +7040,9 @@ function tugStart(R) {
   for (const o of H) { o.tugK = 0; o.dropAt = 0; }
   MV.tugs = (MV.tugs || 0) + 1;
   ropeFx('tug', R.x[k], R.z[k]); for (const o of H) rumble(o.player, 0.5, 0.6, 160);
-  sayOnce('tug', null, "Tug o' war! Heave!"); hint('tug');
+  if (hk) { HANK.tugT = 0; HANK.heaveT = 0; hank(null, pick(["Ye want a tug, eh? Heave!", "Right, ye wee rascal. Pull!", "Come on then!"]), { force: true }); }
+  else sayOnce('tug', null, "Tug o' war! Heave!");
+  hint('tug');
 }
 // Ⓧ in a tug: a heave (a yank back, heavier a moment)
 function tugTap(R, d) {
@@ -7054,29 +7064,34 @@ function tugStep(R, dt) {
   U.off = (R.x[U.k] - U.sx) * U.ux + (R.z[U.k] - U.sz) * U.uz;
   if (Math.abs(U.off) > K.win) { tugEnd(R, U.off < 0 ? -1 : 1); return; }   // the knot over a side's line
   for (const d of H) {   // how hard each heaves: planted, walking back, tapping
+    if (d === HANK) { hankTug(R, dt); continue; }
     const ax = d.tugSide * U.ux, az = d.tugSide * U.uz, back = Math.max(0, d.wx * ax + d.wz * az) * (d.inMag || 0);
     d.tugK = Math.max(0, (d.tugK || 0) - dt / K.tapT);
     d.tugS = (K.base + K.back * back + K.tap * d.tugK) * (d.exhausted ? K.tired : 1) * dogK(d, 'grip');   // (BREEDS: a good grip heaves harder)
     d.stamina -= K.backDrain * back * dt;
   }
 }
-// two or more dogs on it: the rope between grips can't stretch. Whoever heaves harder stays put, the other's dragged
+// two or more on it: the rope between grips can't stretch. Whoever heaves harder stays put, the other's dragged.
+// In a tug, across the knot each side heaves as one: its heaves add up, and the whole side moves together
 function ropeHold(R) {
   const K = T.rope.tug, S = R.holders.filter(d => d.ropeI >= 0).sort((a, b) => a.ropeI - b.ropeI);
   for (const d of S) if (!R.tug) d.tugS = K.base;
+  const team = R.tug && S.filter(d => d.tugSide < 0), teamB = R.tug && S.filter(d => d.tugSide > 0), sum = g => g.reduce((t, d) => t + d.tugS, 0);
   for (let it = 0; it < 3; it++) for (let j = 0; j < S.length - 1; j++) {
     const a = S[j], b = S[j + 1], L = (b.ropeI - a.ropeI) * T.rope.seg * K.slack, ma = ropeMouth(a, _rmA), mb = ropeMouth(b, _rmB);
     const dx = mb.x - ma.x, dz = mb.z - ma.z, dd = Math.hypot(dx, dz); if (dd <= L) continue;
-    const wa = 1 / a.tugS, wb = 1 / b.tugS, e = (dd - L) / dd / (wa + wb);
-    tugMove(a, dx * e * wa, dz * e * wa); tugMove(b, -dx * e * wb, -dz * e * wb);
+    const across = R.tug && a.tugSide < 0 && b.tugSide > 0, ga = across ? team : [a], gb = across ? teamB : [b];
+    const wa = 1 / (across ? sum(ga) : a.tugS), wb = 1 / (across ? sum(gb) : b.tugS), e = (dd - L) / dd / (wa + wb);
+    for (const o of ga) tugMove(o, dx * e * wa, dz * e * wa); for (const o of gb) tugMove(o, -dx * e * wb, -dz * e * wb);
   }
 }
-function tugMove(d, mx, mz) { d.x += mx; d.z += mz; collideDog(d); collideFences(d, T.dogR); }
+function tugMove(d, mx, mz) { d.x += mx; d.z += mz; const r = d === HANK ? T.hankR : T.dogR; collideDog(d, r); collideFences(d, r); }
 // over: side (-1 A, 1 B, 0 nobody) wins. The losers are yanked off their feet; the winners stagger back and keep it
 function tugEnd(R, side) {
   const U = R.tug, K = T.rope.tug; R.tug = null; R.tugCd = G.time + K.cd; R.want = false;
-  if (!side) return;
-  const ax = side * U.ux, az = side * U.uz, kx = R.x[U.k], kz = R.z[U.k];
+  if (!side) { if (HANK.rope === R) hankTugEnd(R, null); return; }
+  const ax = side * U.ux, az = side * U.uz, kx = R.x[U.k], kz = R.z[U.k], hk = HANK.rope === R;
+  if (hk) hankTugEnd(R, tugSideOfEnd(U, HANK) === side, ax, az);   // HANK: he lets go, won or lost
   for (const d of G.dogs) {
     if (d.holding !== R) continue;
     if (tugSideOfEnd(U, d) !== side) { releaseHold(d, false); knockDog(d, ax * K.lose, az * K.lose, K.stun, 'OOF!'); continue; }
@@ -7085,9 +7100,60 @@ function tugEnd(R, side) {
   }
   if (G.stats) G.stats.tugs = (G.stats.tugs || 0) + 1;
   ropeFx('win', kx, kz);
-  sayOnce('tug-win', null, 'Ha! Strong dog!');
+  if (!hk) sayOnce('tug-win', null, 'Ha! Strong dog!');
 }
 const tugSideOfEnd = (U, d) => d.ropeI < U.k ? -1 : d.ropeI > U.k ? 1 : (d.tugSide || 1);
+// ---------------- HANK'S TUG: a dog brings it to him; he walks to the far end, takes it, and tugs the lot of them ----------------
+function hankRopeFree() {
+  const hk = HANK;
+  return G.mode === 'play' && !hk.asleep && !hk.climb && !hk.cross && !hk.care && !hk.job && !hk.shearing && !hk.tending && !hk.digging && !hk.building && !(hk.lift > 0) && !hankThreats(T.hankNap.wakeR).length;
+}
+// the end furthest along it from every dog's grip (-1: none far enough)
+function hankRopeEnd(R) {
+  let best = -1, bm = 7;
+  for (const e of [0, R.n - 1]) { let m = 99; for (const d of R.holders) if (d !== HANK && d.ropeI >= 0) m = Math.min(m, Math.abs(e - d.ropeI)); if (m > bm) { bm = m; best = e; } }
+  return best;
+}
+// in updateRopes, each rope: on it (still free to play?), on his way to it, or a dog bringing it to him
+function hankRope(R) {
+  const hk = HANK, K = T.rope.tug.hank;
+  if (hk.rope === R) { if (!R.tug || !hankRopeFree()) { if (R.tug) tugEnd(R, 0); else hankTugEnd(R, null); R.holders = R.holders.filter(o => o !== hk); } return; }
+  if (hk.ropeWant === R) {
+    const e = hankRopeEnd(R);
+    if (R.tug || e < 0 || !R.holders.length || G.time > hk.ropeWantT || !hankRopeFree()) { hk.ropeWant = null; hk.ropeAgain = G.time + 2; hk.goal = null; return; }
+    hk.ropeEnd = e; const m = ropeMouth(hk, _rmA);
+    if (Math.hypot(R.x[e] - m.x, R.z[e] - m.z) < K.take || Math.hypot(R.x[e] - hk.x, R.z[e] - hk.z) < K.take) {
+      hk.rope = R; hk.ropeI = e; hk.ropeWant = null; hk.goal = null; R.holders.push(hk); R.live = 2; R.found = true;
+      ropeFx('bite', R.x[e], R.z[e]); tugStart(R);
+    }
+    return;
+  }
+  if (hk.ropeWant || hk.rope || R.tug || !R.holders.length || G.time < (hk.ropeAgain || 0)) return;
+  if (!R.holders.some(d => Math.hypot(d.x - hk.x, d.z - hk.z) < K.r) || hankRopeEnd(R) < 0 || !hankRopeFree()) return;
+  hk.ropeWant = R; hk.ropeWantT = G.time + K.want; hk.ropeEnd = hankRopeEnd(R); hk.goal = null;
+  hank(null, pick(["A tug, is it?", "Oho! Gie's that!"]), { force: true });
+}
+// hankGoal: the far end of the rope he's after
+function hankRopeGoal() { const hk = HANK, R = hk.ropeWant; if (!R || !(hk.ropeEnd >= 0)) return null; return { x: R.x[hk.ropeEnd], z: R.z[hk.ropeEnd], stop: 0.35, noShy: true }; }
+// tugStep: he walks back, heaving every so often (tiring in the end)
+function hankTug(R, dt) {
+  const hk = HANK, U = R.tug, K = T.rope.tug.hank, sd = hk.tugSide;
+  hk.tugT = (hk.tugT || 0) + dt;
+  if ((hk.heaveT = (hk.heaveT || 0) - dt) <= 0) { hk.heaveT = K.every; hk.tugK = 1; burst(hk.x - sd * U.ux * 0.4, groundY(hk.x, hk.z) + 0.1, hk.z - sd * U.uz * 0.4, 3, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.22, life: 0.4, grav: 0 }); }
+  hk.tugK = Math.max(0, (hk.tugK || 0) - dt / K.heaveT);
+  const tire = hk.tugT > K.tire ? Math.max(K.tireMin, 1 - (hk.tugT - K.tire) * K.tireR) : 1;
+  hk.tugS = (K.base + K.back + K.heave * hk.tugK) * tire;
+  const v = (K.walk + K.yank * hk.tugK) * tire; hk.vx = sd * U.ux * v; hk.vz = sd * U.uz * v;
+  hk.x += hk.vx * dt; hk.z += hk.vz * dt; collideDog(hk, T.hankR); collideFences(hk, T.hankR);
+  hk.yaw = lerpA(hk.yaw, Math.atan2(-sd * U.ux, -sd * U.uz), Math.min(1, dt * 8));
+}
+// he lets go: won (a laugh), lost (yanked off his feet toward them: ax/az), or just stopped (null)
+function hankTugEnd(R, won, ax, az) {
+  const hk = HANK; hk.rope = null; hk.ropeI = -1; hk.tugK = 0; hk.goal = null; hk.ropeAgain = G.time + T.rope.tug.hank.again;
+  if (won == null) return;
+  if (won) { floatText('WIN!', hk.x, hk.y + 2.8, hk.z, hk.color, 1.6); hank(null, pick(["Ha! Still got it!", "Ye'll need more dogs than that!"]), { force: true }); }
+  else { hk.stumble = 0.8; hk.vx = ax * 3; hk.vz = az * 3; floatText('OOF!', hk.x, hk.y + 2.8, hk.z, '#ffffff', 1.4); hank(null, pick(["Ach! Strong dogs!", "Fair beat me, ye did!"]), { force: true }); }
+}
 // what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
 function ropeFx(kind, x, z) {
   const y = groundY(x, z), pan = panOf(x, z);
@@ -7122,6 +7188,10 @@ function ropeMesh(R) {
 }
 for (const R of ROPES) ropeMesh(R);
 resetRopes();
+function ropeDrawAt(D, R, i, v) {   // a held node drawn at the jaws (or hands), its neighbours kept a link off
+  const L = T.rope.seg; D.vx[i] = v.x; D.vy[i] = v.y; D.vz[i] = v.z;
+  for (const j of [i - 1, i + 1]) if (j >= 0 && j < R.n) { const dx = D.vx[j] - v.x, dy = D.vy[j] - v.y, dz = D.vz[j] - v.z, l = Math.hypot(dx, dy, dz) || 1; if (l > L) { D.vx[j] = v.x + dx / l * L; D.vy[j] = v.y + dy / l * L; D.vz[j] = v.z + dz / l * L; } }
+}
 const _rcr = (a, b, c, d, t) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
 function syncRopes(dt) {
   const K = T.rope, guest = NET.role === 'guest';
@@ -7135,8 +7205,11 @@ function syncRopes(dt) {
     D.init = true;
     for (const d of G.dogs) if (d.holding === R && d.ropeI >= 0 && d.models) {
       d.models.head.updateWorldMatrix(true, false); d.models.head.localToWorld(_rv.set(0, -0.1, 0.33));
-      const i = d.ropeI; D.vx[i] = _rv.x; D.vy[i] = _rv.y; D.vz[i] = _rv.z;
-      for (const j of [i - 1, i + 1]) if (j >= 0 && j < R.n) { const dx = D.vx[j] - _rv.x, dy = D.vy[j] - _rv.y, dz = D.vz[j] - _rv.z, l = Math.hypot(dx, dy, dz) || 1; if (l > K.seg) { D.vx[j] = _rv.x + dx / l * K.seg; D.vy[j] = _rv.y + dy / l * K.seg; D.vz[j] = _rv.z + dz / l * K.seg; } }
+      ropeDrawAt(D, R, d.ropeI, _rv);
+    }
+    if (HANK.rope === R && HANK.ropeI >= 0) {   // HANK: in his hands
+      const M = HANK.model; M.armL.updateWorldMatrix(true, false); M.armL.localToWorld(_rv.set(0, -0.77, 0)); M.armR.updateWorldMatrix(true, false); M.armR.localToWorld(_rt.set(0, -0.77, 0));
+      ropeDrawAt(D, R, HANK.ropeI, _rv.add(_rt).multiplyScalar(0.5));
     }
     // the tube
     const pos = D.geo.attributes.position.array, nrm = D.geo.attributes.normal.array, S = ROPE_RAD, n = R.n, rr = K.r;
@@ -9781,7 +9854,7 @@ const HINTS = {
   wound: 'Hurt! 🩸 needs 🩹, 🦠 needs 💊. Buy them at a trader and bring them to 🧓 Hank.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! <b>Grab</b> it to carry it (tap again: set it down). Wade into a river, lake or the sea to fill it.',
-  rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too: <b>tug of war</b>!',
+  rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too, or bring it to 🧓 Hank: <b>tug of war</b>!',
   bone: 'A <b>bone</b>! Tap <b>Ⓧ</b> / <b>R</b> again to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
   tug: '<b>Tug of war!</b> Walk back and tap <b>Ⓧ</b> / <b>R</b> to heave. Knot over your line, or out-last them.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
@@ -9828,7 +9901,7 @@ const TOUCH_HINTS = {
   wound: '🩸 → 🩹 · 🦠 → 💊 · ➜ 🧓',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   bucket: '🪣! ✊ to carry · wade in to fill',
-  rope: 'Rope! Two dogs: <b>tug of war</b>',
+  rope: 'Rope! 2+ dogs or 🧓: <b>tug of war</b>',
   bone: 'Bone! ✊ again: <b>throw</b>',
   tug: 'Tug! Walk back, ✊✊✊',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
@@ -10401,6 +10474,8 @@ const HANK = {
   clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
   // VET: what the dogs brought him (HANK.meds: doses of each; HANK.shovel), the job in hand (care), bent over a patient or digging
   meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false,   // (REMAINS: building a cemetery)
+  // ROPES: the rope he's tugging (ropeI: his grip), the one he's walking to (ropeEnd), when he'll play again; his tug colour
+  rope: null, ropeI: -1, ropeWant: null, ropeEnd: -1, ropeAgain: 0, tugS: 0, tugSide: 0, tugK: 0, color: '#d23a2e',
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -10485,6 +10560,7 @@ function hankGoal() {
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
   const cg = careGoal(); if (cg) return cg;       // VET: a patient, or a body to bury
   const shg = shearGoal(); if (shg) return shg;   // shearing: in the pen, by the sheep he's after
+  const rpg = hankRopeGoal(); if (rpg) return rpg;   // ROPES: a dog's brought him the rope
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
   // evening and night: warming himself at the campfire of the pen the flock's in
@@ -10504,7 +10580,7 @@ function hankGoal() {
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
-  const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
+  const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0, rope: null, ropeI: -1, ropeWant: null, ropeAgain: 0 });   // (ROPES)   // shearing: the clippers are buried again
   Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
@@ -10519,6 +10595,7 @@ function updateHank(dt) {
   // lines said "in a moment" (game time, so they wait while the game does)
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
+  if (hk.rope) { hk.y = hankY(hk.x, hk.z); hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt); return; }   // ROPES: in a tug (hankTug moves him)
   if (hk.climb) { hankClimb(dt); updateCare(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
   const g = hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
   if (G.mode !== 'play') hk.asleep = false;
@@ -10693,6 +10770,12 @@ function syncHank(dt) {
   else if (tip > 0) cx = lerp(cx, 0.05, tip);                                      // crook laid along him asleep
   if (G.mode === 'end' && hk.celebrate) { cx = -2.7; cz = Math.sin(G.time * 8) * 0.35; }   // and waves it when you make it
   M.armR.rotation.x = lerp(M.armR.rotation.x, cx, 1 - Math.exp(-dt * 10)); M.armR.rotation.z = cz;
+  const tk = hk.tgK = clamp((hk.tgK || 0) + (hk.rope ? dt : -dt) * 5, 0, 1);   // ROPES: in a tug, both hands on it, leaning back, heels in
+  if (tk > 0) {
+    const hv = Math.max(0, Math.sin(G.time * 5.7)) * 0.15;
+    M.armL.rotation.x = lerp(M.armL.rotation.x, -1.3, tk); M.armR.rotation.x = lerp(M.armR.rotation.x, -1.3, tk); M.armR.rotation.z = lerp(cz, -0.25, tk);
+    M.torso.rotation.x = lerp(M.torso.rotation.x, -0.3 - hv, tk); M.legs[0].rotation.x = lerp(M.legs[0].rotation.x, -0.5 + sw * 0.25 * k, tk); M.legs[1].rotation.x = lerp(M.legs[1].rotation.x, 0.35 - sw * 0.25 * k, tk);
+  }
   M.head.rotation.x = hk.talkT > 0 ? -0.15 : 0.35 * shk - (sp < 0.3 ? 0.12 * (1 - shk) : 0);   // standing: chin up (from up here, not at his boots)
   // the lantern glows from dusk
   const n = LIGHT.night; M.glassMat.color.setRGB(lerp(0.32, 1, n), lerp(0.27, 0.8, n), lerp(0.16, 0.4, n));
@@ -12942,7 +13025,8 @@ const NET_TYPES = {
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
       clippers: 'b', shearing: 'b', lift: .02,   // shearing: has his clippers, clipping a sheep, over a fence
-      meds: 'j', shovel: 'b', tending: 'b', digging: 'b', building: 'b' },   // VET: his stock, his shovel, at a patient, digging a grave (REMAINS: building a cemetery)
+      meds: 'j', shovel: 'b', tending: 'b', digging: 'b', building: 'b',
+      rope: { c: 'i', get: hk => hk.rope ? hk.rope.i : -1, set: (hk, v) => { hk.rope = v >= 0 ? ROPES[v] || null : null; } }, ropeI: 'i' },   // ROPES: the rope he's tugging, his grip   // VET: his stock, his shovel, at a patient, digging a grave (REMAINS: building a cemetery)
     animate: hk => { hk.y = hankY(hk.x, hk.z); },
   },
 };
