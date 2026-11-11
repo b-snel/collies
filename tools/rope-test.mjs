@@ -1,7 +1,8 @@
 // Headless checks for ROPES and the Ⓧ taps: one rope a leg; tap to bite (anywhere along it), drag it (it follows, links hold,
 // on the ground, no stamina), one tap drops it, quick taps shake it (a wave); taps on a sheep (buffered bite, shake, drop;
 // Ⓑ no longer shakes); TUG OF WAR: two dogs on it, the knot over a line wins, equal heaves hold, out of stamina loses; reset.
-// node tools/rope-test.mjs [layout|drag|taps|sheep|tug|even|tired|reset]
+// TEAMS: 3 and 4 dogs on it, each side heaving as one; HANK: brought it, he takes the far end and tugs (one planted dog loses, two win).
+// node tools/rope-test.mjs [layout|drag|taps|sheep|tug|even|tired|team|hank|reset]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [];
@@ -152,6 +153,81 @@ if (want('tired')) {
     return { secs: H.r(end), over: !R.tug, aHolds: a.holding === R, bLost: !b.holding, bStamina: H.r(b.stamina) };
   });
   ok(`out of stamina: it slips and loses (${r.secs} s)`, r.over && r.aHolds && r.bLost && r.bStamina < 0.05, r);
+}
+
+if (want('team')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, ROPES, joinPlayer } = GAME, R = ROPES[1], out = {};
+    joinPlayer({ kind: 'bot', index: 2 }); joinPlayer({ kind: 'bot', index: 3 });
+    const [a, b, c, e] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = {}; }
+    H.place(c, R.x[7] - 0.4, R.z[7] + 0.9, Math.PI); H.place(e, R.x[20] + 0.4, R.z[20] + 0.9, Math.PI);
+    c.player.bot = {}; H.tap(c.player); out.third = c.holding === R; out.thirdSide = c.tugSide;
+    // 2 v 1: both walking back beat one walking back and tapping
+    a.player.bot = H.inp(-1, 0); c.player.bot = H.inp(-1, 0); let t = -1;
+    const end = H.run(10, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; b.player.bot = H.inp(1, 0, x ? { grabTap: true } : {}); });
+    for (const d of G.dogs) d.player.bot = {};
+    out.secs = H.r(end); out.over = !R.tug; out.aWins = a.holding === R && c.holding === R; out.bLost = !b.holding;
+    // 4 dogs: 2 v 2 on a fresh rope, the 4th bites too, even heaves hold
+    H.run(2); for (const d of G.dogs) { if (d.holding) GAME.releaseHold(d, false); d.stamina = 1; d.exhausted = false; } H.run(0.5);
+    const R2 = ROPES[2]; H.far(R2.hx, R2.hz); H.line(R2, R2.hx - 5, R2.hz, 1, 0);
+    H.place(a, R2.x[2] - 1.05, R2.z[2], Math.PI / 2); H.place(b, R2.x[25] + 1.05, R2.z[25], -Math.PI / 2);
+    H.place(c, R2.x[6] - 0.4, R2.z[6] + 0.9, Math.PI); H.place(e, R2.x[21] + 0.4, R2.z[21] + 0.9, Math.PI);
+    for (const d of G.dogs) H.tap(d.player); H.run(0.05);
+    out.four = G.dogs.filter(d => d.holding === R2).length; out.tug4 = !!R2.tug;
+    a.player.bot = c.player.bot = H.inp(-1, 0); b.player.bot = e.player.bot = H.inp(1, 0); let worst = 0;
+    H.run(2.5, () => { worst = Math.max(worst, Math.abs(R2.tug ? R2.tug.off : 9)); });
+    for (const d of G.dogs) d.player.bot = {};
+    out.worst4 = H.r(worst); out.links4 = H.links(R2);
+    return out;
+  });
+  ok('a third dog bites on, on the side it grabbed', r.third && r.thirdSide === -1, r);
+  ok(`two heaving together beat one (${r.secs} s)`, r.over && r.aWins && r.bLost, r);
+  ok(`four on it, 2 v 2 even: it holds (knot within ${r.worst4} m)`, r.four === 4 && r.tug4 && r.worst4 < 1 && r.links4 < 0.12, r);
+}
+
+if (want('hank')) {
+  // a dog brings the rope to Hank: he walks to the far end, takes it, a tug starts
+  const hankSetup = () => h.page.evaluate(() => {
+    const { G, ROPES, HANK, joinPlayer } = GAME, R = ROPES[1];
+    if (G.dogs.length < 2) joinPlayer({ kind: 'bot', index: 1 });
+    const [a, b] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = {}; }
+    H.far(R.hx, R.hz); H.line(R, R.hx - 5, R.hz, 1, 0);
+    H.place(a, R.x[2] - 1.05, R.z[2], Math.PI / 2); H.place(b, R.hx, R.hz + 30); H.tap(a.player);
+    H.place(HANK, R.x[2] - 1.2, R.z[2] + 2.2); HANK.goal = null; HANK.ropeAgain = 0;
+    const t = H.run(10, () => !!R.tug);
+    return { held: a.holding === R, want: !!HANK.ropeWant || HANK.rope === R, secs: H.r(t), tug: !!R.tug, hank: HANK.rope === R, end: HANK.ropeI, k: R.tug && R.tug.k };
+  });
+  await setup();
+  const s1 = await hankSetup();
+  ok(`brought to Hank: he takes the far end (${s1.end}) in ${s1.secs} s, a tug`, s1.held && s1.tug && s1.hank && s1.end === 27 && s1.k > 8, s1);
+  const r1 = await h.page.evaluate(() => {
+    const { G, ROPES, HANK } = GAME, R = ROPES[1], a = G.dogs[0];
+    const end = H.run(15, () => !R.tug);
+    return { secs: H.r(end), over: !R.tug, lost: !a.holding, hankFree: !HANK.rope };
+  });
+  ok(`one dog just holding on: Hank wins (${r1.secs} s), lets go`, r1.over && r1.lost && r1.hankFree, r1);
+  await setup();
+  await hankSetup();
+  const r2 = await h.page.evaluate(() => {
+    const { G, ROPES, HANK } = GAME, R = ROPES[1], [a, b] = G.dogs;
+    H.place(b, R.x[5] - 0.9, R.z[5], Math.PI / 2); H.tap(b.player); const team = b.holding === R && b.tugSide === a.tugSide;
+    const hx = HANK.x; let t = -1;
+    const end = H.run(15, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; for (const d of [a, b]) d.player.bot = H.inp(-1, 0, x ? { grabTap: true } : {}); });
+    for (const d of [a, b]) d.player.bot = {};
+    return { team, secs: H.r(end), over: !R.tug, won: a.holding === R && b.holding === R, dragged: H.r(HANK.x - hx), stumble: HANK.stumble > 0, hankFree: !HANK.rope };
+  });
+  await setup();
+  await hankSetup();
+  const r3 = await h.page.evaluate(() => {
+    const { G, ROPES, HANK } = GAME, R = ROPES[1], a = G.dogs[0]; let t = -1;
+    const end = H.run(30, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; a.player.bot = H.inp(-1, 0, x ? { grabTap: true } : {}); });
+    a.player.bot = {};
+    return { secs: H.r(end), over: !R.tug, won: a.holding === R };
+  });
+  console.log(`     one dog heaving alone: ${r3.won ? 'beats' : 'loses to'} Hank in ${r3.secs} s`);
+  ok(`two dogs heaving beat Hank (${r2.secs} s): dragged ${-r2.dragged} m, stumbles, lets go`, r2.team && r2.over && r2.won && r2.dragged < -1 && r2.stumble && r2.hankFree, r2);
 }
 
 if (want('reset')) {
