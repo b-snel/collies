@@ -2447,6 +2447,53 @@ const WHITE = '#f4f1ea';
 function legGeo(top, bottom, len, r = 0.06) {
   return merge(P(CYL(r * 0.85, r * 0.8, len, 6), bottom, { p: [0, -len / 2, 0] }), P(CYL(r * 1.12, r, len * 0.42, 6), top, { p: [0, -len * 0.2, 0] }));
 }
+// DOG COLLAR (body space): a flat strap hugging the neck, low on the throat, up on the nape. a: 0 throat, π/2 side, π nape.
+// r(a): its inside, just clear of the coat. Bandana, bow tie and bell sit on it (collarAt).
+const COLLAR = { y: 0.74, z: 0.36, tilt: 0.6, w: 0.065, t: 0.028, r: a => 0.201 + 0.016 * Math.cos(a) + 0.019 * Math.cos(2 * a) };
+function collarAt(a, h = 0, out = 0) {   // body-space point: h along the neck, out from the inside of the strap
+  const C = COLLAR, r = C.r(a) + out, x = Math.sin(a) * r, z = Math.cos(a) * r, c = Math.cos(C.tilt), s = Math.sin(C.tilt);
+  return [x, C.y + h * c - z * s, C.z + h * s + z * c];
+}
+// a band round the collar's line: grow out from the coat, w wide, t thick
+function strapGeo(grow = 0, w = COLLAR.w, t = COLLAR.t, n = 28) {
+  const pos = [], nrm = [], rad = a => COLLAR.r(a) + grow, pt = (a, r, y) => [Math.sin(a) * r, y, Math.cos(a) * r];
+  const tri = (A, B, Cc, nA, nB, nC) => {   // wound to face its normals
+    const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], v = [Cc[0] - A[0], Cc[1] - A[1], Cc[2] - A[2]];
+    const f = (u[1] * v[2] - u[2] * v[1]) * nA[0] + (u[2] * v[0] - u[0] * v[2]) * nA[1] + (u[0] * v[1] - u[1] * v[0]) * nA[2];
+    if (f < 0) { [B, Cc] = [Cc, B]; [nB, nC] = [nC, nB]; }
+    pos.push(...A, ...B, ...Cc); nrm.push(...nA, ...nB, ...nC);
+  };
+  const quad = (A, B, Cc, D, nA, nB, nC, nD) => { tri(A, B, Cc, nA, nB, nC); tri(A, Cc, D, nA, nC, nD); };
+  const side = a => { const e = 1e-3, r0 = rad(a - e), r1 = rad(a + e), dx = Math.sin(a + e) * r1 - Math.sin(a - e) * r0, dz = Math.cos(a + e) * r1 - Math.cos(a - e) * r0, l = Math.hypot(dx, dz); return [-dz / l, 0, dx / l]; };
+  const up = [0, 1, 0], dn = [0, -1, 0], h = w / 2;
+  for (let i = 0; i < n; i++) {
+    const a0 = i / n * TAU, a1 = (i + 1) / n * TAU, o0 = side(a0), o1 = side(a1), i0 = o0.map(v => -v), i1 = o1.map(v => -v);
+    const r0 = rad(a0), r1 = rad(a1), R0 = r0 + t, R1 = r1 + t;
+    quad(pt(a0, R0, -h), pt(a1, R1, -h), pt(a1, R1, h), pt(a0, R0, h), o0, o1, o1, o0);       // outside
+    quad(pt(a0, r0, -h), pt(a1, r1, -h), pt(a1, r1, h), pt(a0, r0, h), i0, i1, i1, i0);       // inside
+    quad(pt(a0, r0, h), pt(a1, r1, h), pt(a1, R1, h), pt(a0, R0, h), up, up, up, up);         // top edge
+    quad(pt(a0, r0, -h), pt(a1, r1, -h), pt(a1, R1, -h), pt(a0, R0, -h), dn, dn, dn, dn);     // bottom edge
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  return g.rotateX(COLLAR.tilt).translate(0, COLLAR.y, COLLAR.z);
+}
+// the collar: strap, a buckle on the side (not under a bandana) and a ring and tag (unless something's worn at the throat)
+function collarGeo(color, acc = []) {
+  const tag = !acc.some(id => id === 'bandana' || id === 'bowtie' || id === 'bell');
+  const C = COLLAR, metal = '#d9dee4', ab = Math.PI / 2 + 0.45, R = C.r(ab) + C.t + 0.006;
+  const bar = (w, h, d, x, y) => P(BOX(w, h, d), metal, { p: [x, y, 0] }).rotateY(ab).translate(Math.sin(ab) * R, 0, Math.cos(ab) * R).rotateX(C.tilt).translate(0, C.y, C.z);
+  const parts = [P(strapGeo(), color)];
+  if (!acc.includes('bandana')) parts.push(
+    bar(0.075, 0.012, 0.012, 0, C.w / 2 + 0.008), bar(0.075, 0.012, 0.012, 0, -C.w / 2 - 0.008),   // the buckle's frame
+    bar(0.012, C.w + 0.028, 0.012, 0.032, 0), bar(0.012, C.w + 0.028, 0.012, -0.032, 0), bar(0.07, 0.008, 0.008, 0.002, 0));
+  if (tag) {
+    const [, ry, rz] = collarAt(0, -C.w / 2, C.t * 0.6);
+    parts.push(P(new THREE.TorusGeometry(0.024, 0.0075, 5, 12), metal, { p: [0, ry - 0.012, rz + 0.004] }),
+      P(CYL(0.042, 0.042, 0.012, 14), '#f2c94c', { r: [Math.PI / 2 + 0.25, 0, 0], p: [0, ry - 0.072, rz - 0.008] }));
+  }
+  return merge(...parts);
+}
 // a collie's body, head, legs and tail in its look (coat, collar, and any hat or kit it's wearing). add(parent, geo, mat) adds a part
 // (the world's part() or the barn turntable's barnPart()). Returns the pieces syncDog animates.
 function buildDog(L, add) {
@@ -2456,7 +2503,7 @@ function buildDog(L, add) {
     P(SPH(14), coat, { s: [0.29, 0.27, 0.55], p: [0, 0.57, -0.02] }),
     P(SPH(12), WHITE, { s: [0.23, 0.25, 0.22], p: [0, 0.53, 0.3] }),
     P(SPH(12), WHITE, { s: [0.19, 0.13, 0.36], p: [0, 0.42, 0.02] }),
-    P(new THREE.TorusGeometry(0.19, 0.05, 6, 14), collar, { r: [Math.PI / 2 - 0.6, 0, 0], p: [0, 0.71, 0.36] }),
+    collarGeo(collar, L.acc),
   ));
   const head = new THREE.Group(); head.position.set(0, 0.82, 0.46); body.add(head);
   add(head, merge(
@@ -10143,14 +10190,21 @@ function dogGear(id) {
   if (HAT_GEO[id]) {   // the flock's hats, sat between the collie's ears
     const fit = geo => geo && geo.clone().scale(0.92, 0.92, 0.92).translate(0, -0.03, -0.05);
     g = { fixed: fit(HAT_GEO[id].fixed), tint: fit(HAT_GEO[id].tint), onBody: false };
-  } else if (id === 'bandana') g = { onBody: true, fixed: null,
-    tint: merge(P(new THREE.TorusGeometry(0.2, 0.06, 6, 14), WHITE_TINT, { r: [Math.PI / 2 - 0.6, 0, 0], p: [0, 0.71, 0.36] }),
-      P(CONE(0.2, 0.3, 3), WHITE_TINT, { s: [1, 1, 0.3], r: [Math.PI + 0.75, 0, 0], p: [0, 0.64, 0.56] })) };
-  else if (id === 'bowtie') g = { onBody: true, fixed: null,
-    tint: merge(P(CONE(0.075, 0.14, 4), WHITE_TINT, { r: [0.5, 0, Math.PI / 2], p: [0.07, 0.72, 0.6] }), P(CONE(0.075, 0.14, 4), WHITE_TINT, { r: [0.5, 0, -Math.PI / 2], p: [-0.07, 0.72, 0.6] }),
-      P(SPH(6), '#b8b8b8', { s: [0.04, 0.04, 0.04], p: [0, 0.72, 0.61] })) };
-  else if (id === 'bell') g = { onBody: true, tint: null,
-    fixed: merge(P(CONE(0.075, 0.12, 10), '#ffd23a', { p: [0, 0.66, 0.57] }), P(SPH(8), '#ffd23a', { s: [0.08, 0.03, 0.08], p: [0, 0.6, 0.57] }), P(SPH(5), '#5a4a2a', { s: [0.025, 0.025, 0.025], p: [0, 0.575, 0.57] })) };
+  } else if (id === 'bandana') {   // over the collar, a triangle down the chest
+    const [, by, bz] = collarAt(0, -COLLAR.w / 2, COLLAR.t + 0.012);
+    g = { onBody: true, fixed: null, tint: merge(P(strapGeo(0.011, COLLAR.w + 0.032, 0.032), WHITE_TINT),
+      P(CONE(0.17, 0.22, 3), WHITE_TINT, { s: [1, 1, 0.3], r: [Math.PI + 0.45, 0, 0], p: [0, by - 0.1, bz - 0.045] })) };
+  } else if (id === 'bowtie') {   // on the collar at the throat
+    const [, ty, tz] = collarAt(0, 0, COLLAR.t + 0.012);
+    g = { onBody: true, fixed: null,
+      tint: merge(P(CONE(0.075, 0.14, 4), WHITE_TINT, { r: [0, 0, Math.PI / 2], p: [0.07, 0, 0] }), P(CONE(0.075, 0.14, 4), WHITE_TINT, { r: [0, 0, -Math.PI / 2], p: [-0.07, 0, 0] }),
+        P(SPH(6), '#b8b8b8', { s: [0.04, 0.04, 0.04], p: [0, 0, 0.01] })).rotateX(COLLAR.tilt).translate(0, ty, tz) };
+  } else if (id === 'bell') {   // on the collar's ring
+    const [, ry, rz] = collarAt(0, -COLLAR.w / 2, COLLAR.t * 0.6), y = ry - 0.085, z = rz + 0.03;
+    g = { onBody: true, tint: null,
+      fixed: merge(P(new THREE.TorusGeometry(0.024, 0.0075, 5, 12), '#d9dee4', { p: [0, ry - 0.012, rz + 0.004] }),
+        P(CONE(0.075, 0.12, 10), '#ffd23a', { p: [0, y, z] }), P(SPH(8), '#ffd23a', { s: [0.08, 0.03, 0.08], p: [0, y - 0.06, z] }), P(SPH(5), '#5a4a2a', { s: [0.025, 0.025, 0.025], p: [0, y - 0.085, z] })) };
+  }
   else if (id === 'shades') g = { onBody: false, tint: null,
     fixed: merge(...[-1, 1].flatMap(sd => [P(SPH(10), '#15151c', { s: [0.065, 0.05, 0.024], r: [0, 0.3 * sd, 0], p: [0.085 * sd, 0.055, 0.19] }),
       P(BOX(0.014, 0.014, 0.17), '#15151c', { p: [0.15 * sd, 0.07, 0.1] }), P(SPH(5), '#ffffff', { s: [0.015, 0.011, 0.006], p: [0.07 * sd + 0.02, 0.075, 0.212] })]),
