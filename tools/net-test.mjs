@@ -174,7 +174,7 @@ try {
       let ax = out ? pt.x - cx : ux, az = out ? pt.z - cz : uz; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
       const tx = cx - ax * 7, tz = cz - az * 7, ddx = tx - d.x, ddz = tz - d.z, l = Math.hypot(ddx, ddz);
       const wx = l > 1 ? ddx / l : ax * 0.5, wz = l > 1 ? ddz / l : az * 0.5;
-      G.players[0].bot = { mx: wx * R.x + wz * R.z, my: -(wx * F.x + wz * F.z), grab: !!window.__grab };   // (__grab: carrying a bucket)
+      G.players[0].bot = { mx: wx * R.x + wz * R.z, my: -(wx * F.x + wz * F.z) };
     }, 150);
   });
   await Promise.all([startRecorder(A), startRecorder(B)]);
@@ -271,13 +271,13 @@ try {
   check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 2.5) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
 
   // ---------------------------------------------------------------- water: a bucket on a dog, a pen's water trough, the flock's thirst reach the guest
-  // (the host's dog holds grab the whole time: a bucket stays in its mouth only while it does)
-  const wh = await A.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, b = BUCKETS[2]; window.__grab = true; G.players[0].bot = { ...G.players[0].bot, grab: true }; b.by = G.dogs[0]; b.w = 4.5; pens[2].water.w = 7.5; return { avg: WATER.avg }; });
+  // (a bucket stays in its mouth till a tap sets it down)
+  const wh = await A.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, b = BUCKETS[2]; b.by = G.dogs[0]; b.w = 4.5; pens[2].water.w = 7.5; return { avg: WATER.avg }; });
   await sleep(1200);
   const wg = await B.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, d = G.dogs.find(o => o.player.slot === 0), b = BUCKETS[2]; return { carried: !!d && b.by === d, w: b.w, trough: pens[2].water.w, avg: WATER.avg }; });
-  const wh2 = await A.page.evaluate(() => { const { BUCKETS, G } = GAME, b = BUCKETS[2], d = G.dogs[0]; return { hostCarried: b.by === d, grab: !!(G.players[0].inp && G.players[0].inp.grab), slot: d.player.slot, kind: d.player.kind }; });
+  const wh2 = await A.page.evaluate(() => { const { BUCKETS, G } = GAME, b = BUCKETS[2], d = G.dogs[0]; return { hostCarried: b.by === d, slot: d.player.slot, kind: d.player.kind }; });
   check('water reaches the guest: a bucket on a dog (and how full), a pen\'s water trough, the flock\'s thirst', wg.carried && Math.abs(wg.w - 4.5) < 0.06 && Math.abs(wg.trough - 7.5) < 0.03 && Math.abs(wg.avg - wh.avg) < 0.03, { ...wg, hostAvg: wh.avg, ...wh2 });
-  await A.page.evaluate(() => { const b = GAME.BUCKETS[2]; b.by = null; b.w = 0; b.x = b.hx; b.z = b.hz; GAME.pens[2].water.w = 0; window.__grab = false; GAME.G.players[0].bot = { ...GAME.G.players[0].bot, grab: false }; });
+  await A.page.evaluate(() => { const b = GAME.BUCKETS[2]; b.by = null; b.w = 0; b.x = b.hx; b.z = b.hz; GAME.pens[2].water.w = 0; });
 
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });

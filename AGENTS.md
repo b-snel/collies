@@ -14,7 +14,8 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
 the Trading Post): graze it, pen it at camps by nightfall,
 fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
-desert. Traders on every leg sell troughs, medicine and a shovel for wool;
+desert. A rope on every leg: drag it, or two dogs play tug of war.
+Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 🏖️, which wins.
 
@@ -44,7 +45,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -69,7 +70,8 @@ Run the ones touching your change; report the numbers.
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
 | `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
-| `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
+| `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
+| `rope-test.mjs [layout\|drag\|taps\|sheep\|tug\|even\|tired\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ taps (drop, shake, buffered bite, Ⓑ no shake), tug of war (won over the line, even holds, out of stamina loses), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
@@ -176,9 +178,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
 - **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
-  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Hold
-  grab on a bucket to carry it (one per dog, mouth full); let go: set down
-  (`dropBucket`). A lying one gets shoved by dogs running into it, flies (spilling)
+  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Grab
+  a bucket to carry it (one per dog, mouth full); tap again: set down
+  (`dropBucket`); quick taps slosh some out (`bucketSlosh`). A lying one gets shoved by dogs running into it, flies (spilling)
   when pounced (`bucketPhysics`, `T.water.kick`). Wade/swim to fill, walk up to any water trough to tip in.
   Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
@@ -298,6 +300,18 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
+- **Grab by taps** (Ⓧ / R / , / ✊, `grabPress`, `T.grabTap`, `inp.grabTap`): a tap bites (a press up to `buf` s
+  early still does: `d.grabBuf`); with something in its mouth one tap lets go `win` s later (running: a fling), a
+  quicker next tap shakes it instead (`shakeHold`). Ⓑ only pounces (a held gate: let go first). Bots holding `grab`:
+  each press once.
+- **Ropes** (`ROPES`, `T.rope`, own rng): one coiled off the trail on each leg, none in Falcon Canyon. Bitten
+  anywhere (`ropeGrip`, `d.ropeI`), dragged: Verlet nodes (`ropeSim`), links solved outward from the grips, a little
+  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Quick taps: a wave (`ropeShake`).
+  Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
+- **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
+  grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
+  (`d.tugS`: planted + walking back + Ⓧ taps, each a yank) drags the other. Stamina drains (`grabKinds.tug`,
+  `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
 - **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
   `T.punt.dogK`/`dogUp`); not one under a cougar (that pounce frees it).
 - **Jump** (Ⓨ / X / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
