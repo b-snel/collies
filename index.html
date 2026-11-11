@@ -81,6 +81,9 @@
   #ctlBar .cdCap { font-size:13px; font-weight:500; letter-spacing:.3px; padding:1px 6px; min-width:18px; }
   @media (max-width:1360px) and (min-height:521px) { body:not(.touch).ctlOn #journey, body:not(.touch).ctlOn #joins, body:not(.touch).ctlOn #netChip { bottom:50px; } body:not(.touch).ctlOn.online #joins { bottom:92px; } }
   @media (max-width:760px) { #ctlBar { display:none; } }
+  #map { position:fixed; left:14px; top:170px; width:176px; height:176px; cursor:zoom-in; touch-action:none; transition:opacity .6s; }
+  #map.big { cursor:zoom-out; }
+  #hud.hidden ~ #map { opacity:0; pointer-events:none; }
   #joins { position:absolute; bottom:16px; right:16px; display:flex; flex-direction:column; gap:4px; align-items:flex-end; font-size:14px; }
   #joins div { background:var(--panel); border-radius:10px; padding:3px 10px; opacity:.85; }
   .screen { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
@@ -318,7 +321,7 @@
     body.touch #hint { top:84px; bottom:auto; }
     #banner { top:30%; } #banner .t { font-size:34px; } #banner .s { font-size:15px; }
     #hankBubble { font-size:13px; max-width:min(300px, 44vw); padding:4px 10px 5px; }
-    #netChip { bottom:auto; top:auto; font-size:12px; } body.touch #netChip { left:calc(env(safe-area-inset-left) + 8px); right:auto; bottom:auto; top:96px; }
+    #netChip { bottom:auto; top:auto; font-size:12px; } body.touch #netChip { left:var(--mapR, calc(env(safe-area-inset-left) + 8px)); right:auto; bottom:auto; top:var(--mapT, 96px); }   /* beside the minimap (MAP) */
     #title h1 { font-size:min(11vw, 20vh); } #title h2 { margin:4px 0 10px; } #titleExtras { margin-top:8px; padding:4px 10px; } .tcard { padding:6px 12px 8px; gap:4px; } .tcard h3 { font-size:12px; padding-bottom:3px; }
     #end h1 { font-size:min(7vw, 9vh); } #end .stars { font-size:30px; margin:2px 0; } #eLine { font-size:36px; margin:0 0 2px; } #end .stats { font-size:16px; margin:2px 0 8px; }
     #eMem { max-height:30vh; padding:6px 12px; margin-bottom:8px; } #eMem .dawnObit { font-size:13px; }
@@ -372,6 +375,7 @@
     <div class="tb" data-act="grab" style="right:8px;bottom:86px">✊</div><div class="tb" data-act="lie" style="right:150px;bottom:2px">💤</div>
     <div class="tb" data-act="sprint" style="right:76px;bottom:70px">⚡</div><div class="tb" data-act="jump" style="right:150px;bottom:70px">⤴</div></div>
   <div id="tSys"><div class="tb" id="tPause">⏸</div><div class="tb" id="tBarnBtn">🏚️</div></div></div>
+<canvas id="map" title="Map (M)"></canvas>
 <div id="rotate"><span>📱</span></div>
 <div id="sound" style="display:none">🔇 Click anywhere to turn on sound</div>
 <div id="title" class="screen hidden">
@@ -393,6 +397,7 @@
       <span>Creep (gentle)</span><span>LB</span><span>Q · ;</span>
       <span>Gates</span><span>walk into them to push</span><span>sprint to slam</span>
       <span>Hank’s barn</span><span>View ⧉</span><span>Tab</span>
+      <span>Map</span><span>click R3</span><span>M</span>
     </div>
     </section>
     <section id="tVol" class="tcard" hidden><h3>🔊 Sound<button class="tX" type="button" aria-label="Close">✕</button></h3><span class="hankVol"></span></section>
@@ -611,6 +616,9 @@ const T = {
     reach: 26, circleT: 1.6, circleH: 11, circleR: 6, eatT: 7, dogChance: 0.2, barkR: 16, shy: 12, rest: 15, gloom: 0.6 },
   // camera
   viewMin: 25, viewMax: 46,
+  // MAP: a dog uncovers the land within r m (fading over the outer edge m); the minimap is span m across; uncovering every `every` s;
+  // the host's fog to friends at most every fogEvery s
+  map: { r: 34, edge: 14, span: 150, every: 0.2, fogEvery: 8 },
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
   jump: { dur: 0.5, h: 1.4, cd: 0.2, vault: { dur: 0.62, h: 1.9, v: 16, stamina: 0.08 } },   // Ⓨ: a hop on the spot (over rams, pouncing dogs); sprinting: a long vault
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
@@ -1110,7 +1118,7 @@ function titleMenu(id) {
 }
 addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') touchOn();
-  if (TOUCH.on && !e.target.closest('button, input, a, .npanel, #titleExtras, #tMenu, #barn, .tb, #dawn')) TOUCH.tap = true;   // a tap on open ground: start, join, again
+  if (TOUCH.on && !e.target.closest('button, input, a, .npanel, #titleExtras, #tMenu, #barn, .tb, #dawn, #map')) TOUCH.tap = true;   // a tap on open ground: start, join, again
 }, true);
 addEventListener('contextmenu', e => { if (TOUCH.on) e.preventDefault(); });
 if (/[?&]touch\b/.test(location.search) || (matchMedia('(pointer:coarse)').matches && !matchMedia('(pointer:fine)').matches)) touchOn();
@@ -8902,7 +8910,7 @@ function drawCoyoteArrows() {
     const [px, py, pz] = proj(c.x, c.y + 0.8, c.z);
     if (px > 0 && px < W && py > 0 && py < H && pz < 1) continue;
     const dx = px - cx, dy = py - cy, k = Math.min((W / 2 - pad) / Math.abs(dx || 1e-3), (H / 2 - pad) / Math.abs(dy || 1e-3));
-    const ax = cx + dx * k, ay = cy + dy * k, a = Math.atan2(dy, dx), dist = Math.hypot(c.x - cam.x, c.z - cam.z);
+    const [ax, ay] = mapDodge(cx + dx * k, cy + dy * k, cx, cy), a = Math.atan2(dy, dx), dist = Math.hypot(c.x - cam.x, c.z - cam.z);   // (MAP: not under the minimap)
     const pulse = c.prey ? 1 + Math.sin(G.time * 12) * 0.25 : 1, sz = (c.prey ? 15 : 11) * pulse;
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.globalAlpha = clamp(1.4 - dist / 70, 0.35, 1);
     ctx.fillStyle = c.prey ? '#ff3b2f' : '#e8574a'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 2.5;
@@ -8974,7 +8982,7 @@ function drawOverlay(dt) {
     const off = px < 0 || px > W || py < 0 || py > H;
     if (off && G.mode === 'play') {
       const cx = W / 2, cy = H / 2, dx = px - cx, dy = py - cy, k = Math.min((W / 2 - pad) / Math.abs(dx || 1e-3), (H / 2 - pad) / Math.abs(dy || 1e-3));
-      const ax = cx + dx * k, ay = cy + dy * k, a = Math.atan2(dy, dx);
+      const [ax, ay] = mapDodge(cx + dx * k, cy + dy * k, cx, cy), a = Math.atan2(dy, dx);   // (MAP: not under the minimap)
       ctx.save(); ctx.translate(ax, ay); ctx.rotate(a);
       const alarm = s.grabbed || s.state === 'cast';   // (CAST: a "!" at the edge too)
       ctx.fillStyle = alarm ? '#ff5a4a' : s.hunger >= 1 ? '#ffb36b' : '#fff8e8'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 2;
@@ -9056,6 +9064,249 @@ function drawOverlay(dt) {
     ctx.globalAlpha = 1;
   }
 }
+
+// =====================================================================
+// MAP — a minimap under the flock panel; M / R3 / a tap on it: the whole trail, big. Old parchment where no
+// dog has been: the dogs uncover the land round them (MAP.rv, 0…1 on the terrain's 2 m grid; T.map). Drawn
+// the camera's way round (screen up = CAM_F). Each screen uncovers from the dogs it draws (like G.visited); a
+// friend who joins late gets the host's (NET_TYPES.game.fog). New journey: parchment again (mapReset).
+// Drawing only, never the sim.
+// =====================================================================
+const MAP = { rv: new Float32Array(VN), big: false, t: 0, n: 0, full: true, fogS: '', fogAt: -1e9, fogIn: '', key: '', rect: null, el: $('map') };
+MAP.cx = MAP.el.getContext('2d');
+MAP.layer = document.createElement('canvas'); MAP.layer.width = VX; MAP.layer.height = VZ;
+MAP.lx = MAP.layer.getContext('2d'); MAP.img = MAP.lx.createImageData(VX, VZ);
+const mapSx = (x, z) => x * CAM_R.x + z * CAM_R.z, mapSy = (x, z) => x * CAM_F.x + z * CAM_F.z;   // a ground point's screen right / up, m
+const mapCell = (x, z) => clamp(Math.round((z - GMINZ) / VS), 0, VZ - 1) * VX + clamp(Math.round((x - GMINX) / VS), 0, VX - 1);
+const mapSeen = (x, z) => MAP.rv[mapCell(x, z)] > 0.5;
+{ // per cell: the land bare and grassed (sRGB, lit from the screen's top left), water; the ragged edge's noise
+  const B = MAP.bare = new Uint8ClampedArray(VN * 3), Gc = MAP.grass = new Uint8ClampedArray(VN * 3), N = MAP.nz = new Float32Array(VN);
+  const s8 = c => 255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055), Lx = -0.6, Ly = 0.8;
+  for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) {
+    const v = b * VX + a, q = v * 3, x = GMINX + a * VS, z = GMINZ + b * VS;
+    N[v] = (fbm(x * 0.07 - 2, z * 0.07 + 4, 2) - 0.5) * 0.7;
+    const deep = (WATER_Y - vH[v]) / 5;
+    if (deep > 0 || streamD(x, z) < T.stream.hw + 0.3) { const d = clamp(deep, 0, 1); B[q] = Gc[q] = lerp(118, 52, d); B[q + 1] = Gc[q + 1] = lerp(186, 118, d); B[q + 2] = Gc[q + 2] = lerp(210, 170, d); continue; }
+    const sh = clamp(1 + (vNormal[q] * Lx + vNormal[q + 1] * Ly - Ly) * 1.8, 0.6, 1.25);
+    for (let c = 0; c < 3; c++) { B[q + c] = s8(bareCol[q + c]) * sh; Gc[q + c] = s8(grassCol[q + c]) * sh; }
+  }
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;   // the big map: the whole trail
+  for (let i = 0; i <= PN; i += 2) { const sx = mapSx(pX[i], pZ[i]), sy = mapSy(pX[i], pZ[i]); x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); }
+  MAP.all = { x0: x0 - 75, x1: x1 + 75, y0: y0 - 75, y1: y1 + 75 };
+}
+// the dogs uncover the land round them
+function mapReveal() {
+  const R = T.map.r, E = T.map.edge, rc = Math.ceil(R / VS), rv = MAP.rv;
+  for (const d of G.dogs) {
+    if (!Number.isFinite(d.x) || !Number.isFinite(d.z)) continue;
+    const ci = Math.round((d.x - GMINX) / VS), cj = Math.round((d.z - GMINZ) / VS);
+    for (let j = Math.max(0, cj - rc), j1 = Math.min(VZ - 1, cj + rc); j <= j1; j++) {
+      const dz = GMINZ + j * VS - d.z;
+      for (let i = Math.max(0, ci - rc), i1 = Math.min(VX - 1, ci + rc); i <= i1; i++) {
+        const dd = Math.hypot(GMINX + i * VS - d.x, dz); if (dd >= R) continue;
+        const v = 1 - smooth(R - E, R, dd), k = j * VX + i; if (v > rv[k]) rv[k] = v;
+      }
+    }
+  }
+}
+// rows j0…j1 of the land's picture: see-through where it's still parchment; the land washed onto the paper, inked round
+// its ragged edge, grazed patches bare
+const MAP_INK = [92, 56, 28], MAP_PAPER = [233, 211, 164];
+function mapCompose(j0, j1) {
+  j0 = clamp(Math.floor(j0), 0, VZ - 1); j1 = clamp(Math.ceil(j1), j0, VZ - 1);
+  const d = MAP.img.data, rv = MAP.rv, B = MAP.bare, Gc = MAP.grass, N = MAP.nz;
+  for (let k = j0 * VX, end = (j1 + 1) * VX; k < end; k++) {
+    const o = k * 4, q = k * 3, r = rv[k], a = r > 0 ? smooth(0.3, 0.7, r + N[k]) : 0;
+    d[o + 3] = Math.round(Math.min(1, a * 1.4) * 255);
+    if (a <= 0) continue;
+    const g = smooth(0.03, 0.42, gAmt[k]), e = 2.6 * a * (1 - a);
+    for (let c = 0; c < 3; c++) { const v = (B[q + c] + (Gc[q + c] - B[q + c]) * g) * 0.86 + MAP_PAPER[c] * 0.14; d[o + c] = v + (MAP_INK[c] - v) * e; }
+  }
+  MAP.lx.putImageData(MAP.img, 0, 0, 0, j0, VX, j1 - j0 + 1);
+}
+// where it sits: under the flock panel, or big in the middle (sized to the trail)
+function mapLayout() {
+  const el = MAP.el, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w, h, l, t;
+  if (MAP.big) {
+    const A = MAP.all, bw = A.x1 - A.x0, bh = A.y1 - A.y0, k = Math.min(innerWidth * 0.92 / bw, innerHeight * 0.86 / bh);
+    w = Math.round(bw * k); h = Math.round(bh * k); l = Math.round((innerWidth - w) / 2); t = Math.round((innerHeight - h) / 2);
+  } else {
+    const r = $('flock').getBoundingClientRect(), small = innerHeight <= 520;
+    w = h = small ? 112 : 176; l = Math.round(r.left); t = Math.round(r.bottom + (small ? 6 : 10));
+  }
+  MAP.rect = MAP.big ? null : { l, t, r: l + w, b: t + h };
+  const key = [w, h, l, t, dpr].join();
+  if (key === MAP.key) return;
+  MAP.key = key; Object.assign(el.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px' });
+  if (!MAP.big) { document.body.style.setProperty('--mapR', l + w + 6 + 'px'); document.body.style.setProperty('--mapT', t + 'px'); }   // (touch: the online chip sits beside it)
+  el.width = Math.round(w * dpr); el.height = Math.round(h * dpr); Object.assign(MAP, { w, h, dpr });
+  mapPaper(w, h, dpr);
+}
+// the sheet, made once per size: a torn edge; the parchment (mottled, tea-stained) under the land; grain, folds and a scorched
+// rim over it all (MAP.grain: brown, see-through)
+function mapPaper(w, h, dpr) {
+  const R = mulberry32(w * 131 + h), path = new Path2D(), pts = [], m = 3, sh = 4, b = h - sh - m;
+  const side = (x0, y0, x1, y1, nx, ny) => { const n = Math.max(3, Math.round(Math.hypot(x1 - x0, y1 - y0) / 7)); for (let i = 0; i < n; i++) { const t = i / n, j = R() * 2.6 * (i ? 1 : 0.4); pts.push([lerp(x0, x1, t) + nx * j, lerp(y0, y1, t) + ny * j]); } };
+  side(m + 3, m, w - m - 3, m, 0, 1); side(w - m, m + 3, w - m, b - 3, -1, 0); side(w - m - 3, b, m + 3, b, 0, -1); side(m, b - 3, m, m + 3, 1, 0);
+  pts.forEach(([x, y], i) => i ? path.lineTo(x, y) : path.moveTo(x, y)); path.closePath(); MAP.edge = path;
+  const S = MAP.sheet = document.createElement('canvas'); S.width = Math.round(w * dpr); S.height = Math.round(h * dpr);
+  const sc = S.getContext('2d'); sc.scale(dpr, dpr); sc.fillStyle = `rgb(${MAP_PAPER})`; sc.fillRect(0, 0, w, h);
+  const mw = Math.ceil(w / 6), mh = Math.ceil(h / 6), mo = document.createElement('canvas'); mo.width = mw; mo.height = mh;   // mottling, soft
+  const mc = mo.getContext('2d'), md = mc.createImageData(mw, mh), ox = R() * 99, oy = R() * 99;
+  for (let j = 0; j < mh; j++) for (let i = 0; i < mw; i++) { const n = fbm(i * 0.09 + ox, j * 0.09 + oy, 3), o = (j * mw + i) * 4; md.data[o] = 150; md.data[o + 1] = 105; md.data[o + 2] = 55; md.data[o + 3] = 255 * clamp((n - 0.42) * 0.55, 0, 0.22); }
+  mc.putImageData(md, 0, 0); sc.imageSmoothingEnabled = true; sc.drawImage(mo, 0, 0, w, h);
+  for (let i = 0, n = 1 + Math.round(w * h / 60000); i < n; i++) {   // tea rings
+    const x = R() * w, y = R() * h, r = (0.06 + R() * 0.08) * Math.min(w, h) + 6;
+    sc.fillStyle = 'rgba(150,100,50,.07)'; sc.beginPath(); sc.ellipse(x, y, r, r * (0.85 + R() * 0.2), R() * 3, 0, TAU); sc.fill();
+    sc.strokeStyle = 'rgba(130,80,35,.2)'; sc.lineWidth = 1 + R() * 1.5; sc.beginPath(); sc.ellipse(x, y, r, r * (0.85 + R() * 0.2), R() * 3, R(), R() + 4.5); sc.stroke();
+  }
+  const g = MAP.grain = document.createElement('canvas'); g.width = Math.round(w * dpr); g.height = Math.round(h * dpr);
+  const c = g.getContext('2d'), tile = document.createElement('canvas'); tile.width = tile.height = 96;
+  const tc = tile.getContext('2d'), id = tc.createImageData(96, 96);
+  for (let i = 0; i < id.data.length; i += 4) { id.data[i] = 90; id.data[i + 1] = 58; id.data[i + 2] = 28; id.data[i + 3] = R() < 0.12 ? 30 + R() * 50 : R() * 16; }   // specks
+  tc.putImageData(id, 0, 0); c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(0, 0, g.width, g.height);
+  c.scale(dpr, dpr); c.lineWidth = 1;
+  for (const [x0, y0, x1, y1] of [[w * 0.5, 0, w * 0.5 + 2, h], [0, h * 0.5, w, h * 0.5 - 2]]) { c.strokeStyle = 'rgba(110,70,35,.3)'; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); }   // folds
+  const rg = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.55);
+  rg.addColorStop(0, 'rgba(150,100,50,0)'); rg.addColorStop(0.7, 'rgba(150,100,50,.25)'); rg.addColorStop(1, 'rgba(100,55,20,.85)');
+  c.fillStyle = rg; c.fillRect(0, 0, w, h);
+  c.save(); c.clip(path); c.shadowColor = 'rgba(110,60,20,.9)'; c.shadowBlur = 8 * dpr; c.strokeStyle = 'rgba(140,85,40,.7)'; c.lineWidth = 4; c.stroke(path); c.restore();   // scorched just inside the torn edge
+}
+// world → the sheet (CSS px), for the view in MAP.v
+const mapPt = (x, z) => { const V = MAP.v; return [V.w / 2 + V.k * (mapSx(x, z) - V.sx), V.h / 2 - V.k * (mapSy(x, z) - V.sy)]; };
+function mapDraw() {
+  const c = MAP.cx, { w, h, dpr } = MAP, big = MAP.big, u = big ? 1.3 : w < 150 ? 0.8 : 1;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  c.fillStyle = 'rgba(0,0,0,.35)'; c.translate(0, 3); c.fill(MAP.edge); c.translate(0, -3);   // its shadow
+  c.save(); c.clip(MAP.edge); c.drawImage(MAP.sheet, 0, 0, w, h);
+  const A = MAP.all, k = big ? w / (A.x1 - A.x0) : w / T.map.span;
+  const V = MAP.v = big ? { sx: (A.x0 + A.x1) / 2, sy: (A.y0 + A.y1) / 2, k, w, h } : { sx: mapSx(cam.x, cam.z), sy: mapSy(cam.x, cam.z), k, w, h };
+  const X0 = GMINX - VS / 2, Z0 = GMINZ - VS / 2, kv = dpr * k * VS;   // the land: its picture turned the camera's way
+  c.setTransform(kv * CAM_R.x, -kv * CAM_F.x, kv * CAM_R.z, -kv * CAM_F.z, dpr * (w / 2 + k * (mapSx(X0, Z0) - V.sx)), dpr * (h / 2 - k * (mapSy(X0, Z0) - V.sy)));
+  c.imageSmoothingEnabled = true; c.drawImage(MAP.layer, 0, 0);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  mapMarks(c, u);
+  c.drawImage(MAP.grain, 0, 0, w, h);
+  c.restore();
+  c.strokeStyle = 'rgba(74,42,18,.85)'; c.lineWidth = 1.5; c.stroke(MAP.edge);
+  if (big) { const r = Math.min(w, h) * 0.055; mapCompass(c, r * 2.2, r * 2.4, r); } else mapCompass(c, w - 18 * u, 18 * u, 11 * u);   // (big: the empty corner)
+}
+// what's on it: the trail, camps, traders, salt, graves, the view; the flock, Hank, predators a dog can see, the dogs
+function mapMarks(c, u) {
+  const V = MAP.v, on = ([x, y], p = 12) => x > -p && x < V.w + p && y > -p && y < V.h + p, INK = 'rgba(74,42,18,.9)';
+  c.lineJoin = c.lineCap = 'round';
+  c.strokeStyle = 'rgba(110,60,26,.85)'; c.lineWidth = 1.4 * u; c.setLineDash([3 * u, 3 * u]); c.beginPath();   // the trail, dashed
+  let pen = false; for (let i = 0; i <= PN; i += 3) {
+    const p = mapPt(pX[i], pZ[i]), ok = on(p, 30) && MAP.rv[mapCell(pX[i], pZ[i])] > 0.55;
+    if (ok) pen ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]); pen = ok;
+  }
+  c.stroke(); c.setLineDash([]);
+  for (const p of pens) {   // camps: a ring of fence, the camp's icon
+    const q = mapPt(p.x, p.z); if (!on(q, 20) || !mapSeen(p.x, p.z)) continue;
+    c.fillStyle = 'rgba(207,174,106,.9)'; c.strokeStyle = INK; c.lineWidth = 1.5; c.beginPath(); c.arc(q[0], q[1], Math.max(3, p.R * V.k), 0, TAU); c.fill(); c.stroke();
+    drawArt(c, artOf(p.camp.icon), q[0], q[1], 13 * u);
+  }
+  for (const st of STALLS) { if (st.final) continue; const q = mapPt(st.x, st.z); if (on(q) && mapSeen(st.x, st.z)) drawArt(c, 'shop', q[0], q[1], 11 * u); }   // traders
+  c.strokeStyle = INK; c.lineWidth = 1;
+  for (const r of SALT_ROCKS) {   // salt rocks: white while there's salt on them
+    const q = mapPt(r.x, r.z); if (!on(q) || !mapSeen(r.x, r.z)) continue;
+    const s = 2.6 * u; c.fillStyle = r.taken ? '#b9ad98' : '#fffdf6'; c.beginPath(); c.moveTo(q[0], q[1] - s); c.lineTo(q[0] + s, q[1]); c.lineTo(q[0], q[1] + s); c.lineTo(q[0] - s, q[1]); c.closePath(); c.fill(); c.stroke();
+  }
+  c.lineWidth = 1.3; c.beginPath();
+  for (const g of G.graves) { const q = mapPt(g.x, g.z), s = 2.4 * u; if (!on(q) || !mapSeen(g.x, g.z)) continue; c.moveTo(q[0], q[1] - s); c.lineTo(q[0], q[1] + s * 1.2); c.moveTo(q[0] - s * 0.7, q[1] - s * 0.3); c.lineTo(q[0] + s * 0.7, q[1] - s * 0.3); }   // graves: a cross
+  c.stroke();
+  { const q = mapPt(cam.x, cam.z), vw = cam.view * aspect * V.k, vh = cam.view / SIN_EL * V.k;   // what's on screen
+    c.strokeStyle = 'rgba(255,248,232,.75)'; c.lineWidth = 1; c.strokeRect(q[0] - vw / 2, q[1] - vh / 2, vw, vh); }
+  { const q = mapPt(HANK.x, HANK.z); if (on(q)) drawArt(c, 'hank', q[0], q[1], 12 * u); }
+  const rs = 1.6 * u, blink = G.time % 0.6 < 0.3; c.fillStyle = '#fff8e8'; c.strokeStyle = INK; c.lineWidth = 0.8; c.beginPath();
+  const alarm = [];
+  for (const s of G.sheep) {   // the flock
+    if (s.dead) continue; const q = mapPt(s.x, s.z); if (!on(q, 4)) continue;
+    if (s.grabbed || s.state === 'cast') { alarm.push(q); continue; }
+    c.moveTo(q[0] + rs, q[1]); c.arc(q[0], q[1], s.lamb ? rs * 0.75 : rs, 0, TAU);
+  }
+  c.fill(); c.stroke();
+  for (const q of alarm) { c.fillStyle = blink ? '#ff3b2f' : '#fff8e8'; c.beginPath(); c.arc(q[0], q[1], rs * 1.5, 0, TAU); c.fill(); c.stroke(); }
+  const sees = (x, z) => G.dogs.some(d => Math.hypot(d.x - x, d.z - z) < T.map.r);   // predators: only while a dog can see them
+  const foe = (x, z, col, r) => { const q = mapPt(x, z); if (!on(q) || !sees(x, z)) return; c.fillStyle = col; c.beginPath(); c.arc(q[0], q[1], r * u, 0, TAU); c.fill(); c.stroke(); };
+  c.lineWidth = 1;
+  for (const k of G.coyotes) if (k.state !== 'sleep') foe(k.x, k.z, '#d8473f', 2.4);
+  for (const k of COUGARS) if (!['away', 'perch', 'fed'].includes(k.state)) foe(k.x, k.z, '#e8892f', 3);
+  for (const F of FALCONS) if (['circle', 'dive', 'carry', 'nest'].includes(F.state)) { const q = mapPt(F.x, F.z); if (on(q) && sees(F.x, F.z)) drawArt(c, 'falcon', q[0], q[1], 11 * u); }
+  for (const d of G.dogs) {   // the dogs: an arrow each, their colour, the way they face
+    const q = mapPt(d.x, d.z); if (!on(q, 6)) continue;
+    const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), a = Math.atan2(-mapSy(fx, fz), mapSx(fx, fz)), s = 5 * u;
+    c.save(); c.translate(q[0], q[1]); c.rotate(a); c.fillStyle = d.color; c.strokeStyle = INK; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(s * 1.3, 0); c.lineTo(-s * 0.8, -s * 0.85); c.lineTo(-s * 0.35, 0); c.lineTo(-s * 0.8, s * 0.85); c.closePath(); c.fill(); c.stroke(); c.restore();
+  }
+}
+// a compass rose, N up the trail (world -z)
+function mapCompass(c, x, y, r) {
+  const rot = Math.atan2(-mapSy(0, -1), mapSx(0, -1)) + Math.PI / 2;
+  c.save(); c.translate(x, y); c.rotate(rot); c.lineJoin = 'round'; c.strokeStyle = 'rgba(74,42,18,.9)'; c.lineWidth = 1;
+  c.fillStyle = 'rgba(236,216,170,.7)'; c.beginPath(); c.arc(0, 0, r * 0.62, 0, TAU); c.fill(); c.stroke();
+  for (let i = 0; i < 4; i++) {
+    const L = i % 2 ? r * 0.7 : r, wd = r * 0.2; c.rotate(i ? Math.PI / 2 : 0);
+    c.fillStyle = i === 0 ? '#b8392c' : '#5c3a1e'; c.beginPath(); c.moveTo(0, -L); c.lineTo(wd, 0); c.lineTo(-wd, 0); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#f3e4c0'; c.beginPath(); c.moveTo(0, -L); c.lineTo(-wd, 0); c.lineTo(0, 0); c.closePath(); c.fill();
+  }
+  c.rotate(Math.PI / 2); c.translate(0, -r - 5); c.rotate(-rot);
+  c.font = `700 ${Math.round(r * 0.8)}px Fredoka, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#5c3a1e'; c.fillText('N', 0, 0);
+  c.restore();
+}
+// an edge arrow (stragglers, coyotes) that would sit under the minimap slides back toward the middle, just clear of it
+function mapDodge(x, y, cx, cy, pad = 12) {
+  const r = MAP.rect; if (!r || x < r.l - pad || x > r.r + pad || y < r.t - pad || y > r.b + pad) return [x, y];
+  const dx = x - cx, dy = y - cy, tx = dx > 0 ? (r.l - pad - cx) / dx : dx < 0 ? (r.r + pad - cx) / dx : -1e9, ty = dy > 0 ? (r.t - pad - cy) / dy : dy < 0 ? (r.b + pad - cy) / dy : -1e9;
+  const t = clamp(Math.max(tx, ty), 0, 1); return [cx + dx * t, cy + dy * t];
+}
+function mapToggle(on = !MAP.big) {
+  if (on && G.mode !== 'play') return;
+  if (on !== MAP.big) SFX.rustle(0, 0.2);
+  MAP.big = on; MAP.el.classList.toggle('big', on); MAP.t = 0; MAP.full = true;
+}
+function mapReset() {   // a new journey: all parchment (a friend: as much as the host has uncovered)
+  MAP.rv.fill(0); MAP.full = true; MAP.fogS = ''; MAP.fogAt = -1e9; mapToggle(false);
+  if (NET.role === 'guest' && MAP.fogIn) mapFogMerge(MAP.fogIn);
+}
+// ONLINE: what's uncovered (over half) on a 4 m grid, run lengths in base 36; the host's, refreshed every T.map.fogEvery s
+function mapFogOut() {
+  if (MAP.fogS && G.time - MAP.fogAt < T.map.fogEvery) return MAP.fogS;
+  const out = [], rv = MAP.rv; let cur = 0, n = 0;
+  for (let j = 0; j < VZ; j += 2) for (let i = 0; i < VX; i += 2) { const v = rv[j * VX + i] > 0.5 ? 1 : 0; if (v === cur) n++; else { out.push(n.toString(36)); cur = v; n = 1; } }
+  out.push(n.toString(36)); MAP.fogAt = G.time;
+  return MAP.fogS = out.join('.');
+}
+function mapFogMerge(s) {
+  const cw = Math.ceil(VX / 2), all = cw * Math.ceil(VZ / 2), rv = MAP.rv; let m = 0, cur = 0;
+  for (const run of String(s).split('.')) {
+    const n = Math.min(parseInt(run, 36) || 0, all - m);
+    if (cur) for (let e = m; e < m + n; e++) { const i = (e % cw) * 2, j = Math.floor(e / cw) * 2; for (let b = j; b < Math.min(VZ, j + 2); b++) for (let a = i; a < Math.min(VX, i + 2); a++) rv[b * VX + a] = 1; }
+    m += n; cur ^= 1;
+  }
+  MAP.full = true;
+}
+function mapFogIn(s) { if (typeof s !== 'string' || !s) return; MAP.fogIn = s; mapFogMerge(s); }
+// every frame: M / R3 toggle it; every T.map.every s the dogs uncover more and the picture near the view is redone; then it's drawn
+function updateMap(dt) {
+  if (G.mode !== 'play') { if (MAP.big) mapToggle(false); return; }
+  if (!G.paused && !BARN.open && !DAWN.open) {
+    let hit = keyEdge.has('KeyM');
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (let i = 0; pads && i < pads.length; i++) if (pads[i] && padEdge(i, pads[i], 11)) hit = true;   // R3
+    if (hit) mapToggle();
+  }
+  if ((MAP.t -= dt) <= 0) {
+    MAP.t = T.map.every; MAP.n++;
+    mapReveal(); mapLayout();
+    if (MAP.full || (MAP.big && MAP.n % 5 === 0)) { mapCompose(0, VZ - 1); MAP.full = false; }
+    else { const j = (cam.z - GMINZ) / VS, r = (MAP.big ? 60 : T.map.span * 0.75) / VS; mapCompose(j - r, j + r); }
+  }
+  if (MAP.w) mapDraw();
+}
+MAP.el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Sound.init(); mapToggle(); });
+function mapWarm() { mapLayout(); mapCompose(0, VZ - 1); mapDraw(); MAP.cx.getImageData(0, 0, 1, 1); }   // a canvas's first draw is slow on some GPUs: get it over with behind the loading screen
 
 // =====================================================================
 // HANK — the old shepherd. He ambles along the trail behind the dogs and
@@ -11337,6 +11588,7 @@ function startGame(dev) {
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   joinPlayer(dev);
   G.visited.add(CAMPS[0].name); banner(CAMPS[0].name, `Day ${G.clock.day} — the journey begins`);
+  mapReset();   // MAP: all parchment
   setTimeout(() => hint('start'), 2500);
   hankGameStart();   // HANK: "Over here now!" (and his clips start loading)
 }
@@ -11375,7 +11627,7 @@ function resetGame() {
   G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0 };
   G.wool = 0;   // HANK: shearing: no wool yet, the clippers buried again
   resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
-  G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
+  G.visited = new Set([CAMPS[0].name]); mapReset(); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -11564,6 +11816,7 @@ const NET_TYPES = {
       dawn: { c: 'j', get: o => DAWN.open ? dawnView() : null, set: (o, v) => dawnGuest(G.mode === 'play' ? v : null) },   // DAWN REPORT: guests see the host's card
       wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
+      fog: { c: 's', get: () => mapFogOut(), set: (o, v) => mapFogIn(v) },   // MAP: what the dogs have uncovered (each screen uncovers its own too; this tops up a late friend)
       // (G.visited isn't sent: each screen works out camp arrivals from the synced positions, banner and all)
     },
   },
@@ -11797,7 +12050,7 @@ function controlsHTML(dev) {
       <rect x="296" y="102" width="16" height="10" rx="5" class="cdPart"/><rect x="330" y="102" width="16" height="10" rx="5" class="cdPart"/>
       ${btn(412, 90, '#ffcf3f', 'Y')}${btn(388, 114, '#2f9cff', 'X')}${btn(436, 114, '#e84a3a', 'B')}${btn(412, 138, '#5fd35a', 'A')}
       ${L(206, 24, 140, 24, 'Lie down (hold)', 'end')}${L(196, 48, 140, 56, 'Creep (gentle)', 'end')}${L(210, 112, 140, 110, 'Move · click to sprint', 'end')}${L(262, 164, 140, 170, 'Move', 'end')}${L(304, 107, 140, 230, 'Hank’s barn', 'end')}
-      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 230, 'Pause', 'start')}
+      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 207, 'Pause', 'start')}${L(390, 174, 500, 230, 'Map (click)', 'start')}
     </svg><div class="ctrlNote">Let go of Grab to fling. ${gates}${pads > 1 ? ' Every controller works the same way.' : ''}</div>`;
   }
   const cap = (k, c) => `<kbd class="cdCap" style="--c:${c || '#e8e2d0'}">${k}</kbd>`;
@@ -11808,7 +12061,7 @@ function controlsHTML(dev) {
     [cap('E', R), 'Pounce (shake when holding)'], [cap('R', O) + ' hold', 'Grab (let go to fling)'], [cap('C', B) + ' hold', 'Lie down']];
   const P2 = [[cap('↑', G1) + cap('←', G1) + cap('↓', G1) + cap('→', G1), 'Move'], [cap('R-Shift', G1), 'Sprint'], [cap(';', P), 'Creep (gentle)'], [cap('/', Y), 'Bark'],
     [cap('.', R), 'Pounce (shake when holding)'], [cap(',', O) + ' hold', 'Grab (let go to fling)'], [cap("'", B) + ' hold', 'Lie down']];
-  const SYS = [[cap('P') + cap('Esc'), 'Pause'], [cap('Tab'), 'Hank’s barn']];
+  const SYS = [[cap('P') + cap('Esc'), 'Pause'], [cap('Tab'), 'Hank’s barn'], [cap('M'), 'Map']];
   const two = G.players.some(p => p.kind === 'kb' && p.index === 1);
   return `<div class="kbDiagram">${col(two ? 'Player 1' : 'Keyboard', P1.concat(SYS))}${two ? col('Player 2', P2) : ''}</div><div class="ctrlNote">${gates}${two ? '' : ' A friend can join on the arrow keys, or with a controller.'}</div>`;
 }
@@ -11821,9 +12074,9 @@ function ctlBar(dt = 0) {
   const key = INPUT_DEV + INPUT_KB;
   if (key === ctlBarKey) return; if (ctlBarKey) ctlBarT = Math.min(ctlBarT, T_CTLBAR - 8); ctlBarKey = key;
   const cap = k => `<kbd class="cdCap">${k}</kbd>`;
-  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['LT', 'lie'], ['Ⓨ', 'jump'], ['☰', 'pause']]
-    : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['[', 'jump'], ['P', 'pause']]
-    : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['X', 'jump'], ['P', 'pause']];
+  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['LT', 'lie'], ['Ⓨ', 'jump'], ['R3', 'map'], ['☰', 'pause']]
+    : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['[', 'jump'], ['M', 'map'], ['P', 'pause']]
+    : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Space', 'bark'], ['E', 'pounce'], ['R', 'grab'], ['C', 'lie'], ['X', 'jump'], ['M', 'map'], ['P', 'pause']];
   $('ctlBar').innerHTML = L.map(([k, t]) => `<span>${cap(k)}${t}</span>`).join('');
 }
 // pause: local dogs, ✕ drops one (click, or ←/→ + Ⓧ / Delete)
@@ -12526,7 +12779,7 @@ function netGuestMode(v) {
   if (v === 'end') { if (G.mode !== 'end') { G.mode = 'play'; finishGame(G.sheep.filter(s => s.pen && s.pen.final).length); } endObit(); return; }   // joined at the finish line
   const was = G.mode; G.mode = v;
   if (v === 'play') {
-    if (was !== 'play') { G.visited = new Set([CAMPS[0].name]); hankPrefetch(); }   // a (new) journey: Hank's clips warm up
+    if (was !== 'play') { G.visited = new Set([CAMPS[0].name]); mapReset(); hankPrefetch(); }   // a (new) journey: Hank's clips warm up
     $('title').classList.add('hidden'); $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
     updateCamera(0, true);
   }
@@ -12824,6 +13077,7 @@ function frame(now) {
   renderer.render(scene, camera);
   drawOverlay(dt);
   updateHUD(dt);
+  updateMap(dt);   // MAP
   const oceanNear = biomeW(sAt(cam.x, cam.z))[2];
   Sound.ambience(LIGHT.night, oceanNear, dt, CANYON.k);
   netFrameEnd(now, dt);   // ONLINE: snapshots out, status chip, pause screen
@@ -12836,7 +13090,7 @@ function regrowT(dt) { if (regrowAcc > 0.05) { regrowGrass(regrowAcc); regrowAcc
 function debugKeys() {
   if (keyEdge.has('BracketRight')) G.clock.hour = (G.clock.hour + 1) % 24;
   if (keyEdge.has('KeyN')) G.clock.hour = 19.9;
-  if (keyEdge.has('KeyM')) G.clock.hour = 5.9;
+  if (keyEdge.has('KeyB')) G.clock.hour = 5.9;   // (M is the map)
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
@@ -12873,8 +13127,9 @@ function renderOnce(dt = 1 / 60) {
   for (const k of COUGARS) syncCougar(k);
   for (const F of FALCONS) syncFalcon(F);
   syncCanyon(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
-  renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
+  renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
+Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
@@ -12882,6 +13137,7 @@ resize();
 spawnFlock();
 updateCamera(0, true);
 updateLighting(0);
+if (!SIM) mapWarm();   // MAP
 $('loading').style.opacity = 0; setTimeout(() => $('loading').remove(), 700);
 $('title').classList.remove('hidden');
 if (BUILD.sha) $('buildText').innerHTML = `<a href="https://github.com/b-snel/collies/commit/${BUILD.sha}" target="_blank" rel="noopener">${buildText()}</a>`;
