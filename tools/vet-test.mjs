@@ -66,9 +66,9 @@ ok('then it slides back behind its rock, a while before it comes out again', ['b
 // 3. bitten: sicker and slower as the venom takes hold, dead in a day or so if nobody treats it
 const r3 = await h.page.evaluate(id => {
   const { G, T, sickPep, sheepAilments, AIL } = GAME, s = G.sheep.find(o => o.id === id);
-  const pep = [sickPep(s)]; for (let i = 0; i < 3; i++) { sheepAilments(s, 6); pep.push(+sickPep(s).toFixed(2)); }
+  const dh = T.snake.dieHours[0] / 4, pep = [sickPep(s)]; for (let i = 0; i < 3; i++) { sheepAilments(s, dh); pep.push(+sickPep(s).toFixed(2)); }   // (a quarter of the quickest death each time)
   const hours = Math.round(1 / s.venomRate);
-  let h = 18; while (!s.dead && h < 80) { sheepAilments(s, 1); h++; }
+  let h = dh * 3; while (!s.dead && h < 80) { sheepAilments(s, 1); h++; }
   return { pep, hours, diedAt: h, dead: s.dead, why: (G.lost.at(-1) || {}).why, range: T.snake.dieHours, body: G.graves.some(g => g.name === s.name && !g.stone) };
 }, r2.id);
 ok(`bitten: slower and slower (${r3.pep.join(' → ')})`, r3.pep.every((v, i) => !i || v < r3.pep[i - 1]) && r3.pep.at(-1) < 0.85, r3);

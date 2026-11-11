@@ -248,6 +248,13 @@ try {
   await until(B, () => !GAME.COUGARS[0].models.root.visible && !GAME.G.sheep.some(s => s.grabbed), null, 5000).catch(() => {});
   check('…and is gone again on the guest once it lets go', await B.page.evaluate(() => !GAME.COUGARS[0].models.root.visible && !GAME.G.sheep.some(s => s.grabbed)));
 
+  // ---------------------------------------------------------------- FALCON CANYON: THE GREAT FALCON's hearts; a snake out after a sheep
+  const bsHost = await A.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; Object.assign(B, { hp: 2, max: 4 }); n.x = n.x0 + 3; n.z = n.z0 + 1; return { x: n.x, z: n.z }; });
+  await until(B, w => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return B.hp === 2 && B.max === 4 && Math.hypot(n.x - w.x, n.z - w.z) < 0.1; }, bsHost, 5000).catch(() => {});
+  const bs = await B.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return { on: B.on, hp: B.hp, max: B.max, x: n.x, z: n.z, big: GAME.BOSS ? GAME.BOSS.models.root.scale.x : 0 }; });
+  check('the great falcon (big on the guest too), its hearts, and a slithering snake reach the guest', bs.hp === 2 && bs.max === 4 && bs.big > 1.5 && Math.hypot(bs.x - bsHost.x, bs.z - bsHost.z) < 0.1, bs);
+  await A.page.evaluate(() => { const n = GAME.SNAKES[0]; Object.assign(GAME.CANYON.boss, { hp: 0, max: 0 }); n.x = n.x0; n.z = n.z0; });
+
   // ---------------------------------------------------------------- forage: picked plants, salt, what a dog carries, the troughs and lick reach the guest
   await A.page.evaluate(() => {
     const { PLANTS, SALT_ROCKS, pens, G } = GAME;

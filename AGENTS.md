@@ -71,7 +71,7 @@ Run the ones touching your change; report the numbers.
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; random trees in the grove, hunters by dogs and day |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
-| `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset |
+| `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits\|boss]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset; the Great Falcon: eats undefended (barks or not), eyrie shake, beaten by pounces, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar, again and again till it's home |
@@ -211,6 +211,12 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   anything's in it (`updateCanyon`), one swoops every `every` s (`maxAir` at once) from the nearest rested
   pillar within `reach`: carried to its pillar, eaten (body at its foot). A bark near a perched one: it
   stays put `shy` s. Off in `?sim`. Nothing else goes in it (dens, nests, plants, salt, brambles, apple trees, streams, bogs).
+  - **The Great Falcon** (mini boss: `BOSS`, `F.boss`, `CANYON.eyrie` id 99, `CANYON.boss`, `T.canyon.boss`): big, on the
+    tallest pillar mid-gorge. Swoops on its own clock (`updateBoss`), ❗ over its mark from the start. Barks (team ones too)
+    do nothing (😾, `bossScoff`); a pounce while it's low (diving, or its first `lowT` s struggling off with a sheep) hits
+    it (`bossHit`): drops what it has. `hp` (+`perDog`) hits: gone for the journey, +`bounty` 🧶, the gorge quiet
+    (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
+    (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
 - **Hank never leans on a wall.** Blocked short of his spot he stands easy
   (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
@@ -298,7 +304,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Nobody dies to physics.** Deaths leave a named body (`G.graves`, `g.stone`
   false) that rots into a tombstone over `T.remains.rotDays` (`updateRemains`).
 - **Rattlesnakes** (`SNAKES`, `T.snake`, own rng): behind their own desert rocks
-  past Falcon Canyon's exit. Near: rattle (sheep shy), strike one in reach, back a
+  (`latMin`…`lat` off the trail) past Falcon Canyon's exit. Near: rattle (sheep shy), slither out
+  after its mark (`snakeSlide`, `slither`; `n.x0/z0` home), strike one in reach, back home a
   while (`cd`). Bark or pounce: back. Bite: `s.venom`, slower, sickly, dead in
   `dieHours` untreated.
 - **Wounds** (`T.wound`): a sheep a predator lets go of is cut (`woundSheep`):

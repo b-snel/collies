@@ -1,4 +1,4 @@
-// Headless test: `node tools/canyon-test.mjs [layout|eat|bark|shy|dog|limits]`. FALCON CANYON.
+// Headless test: `node tools/canyon-test.mjs [layout|eat|bark|shy|dog|limits|boss]`. FALCON CANYON.
 //   layout  the gorge between the Promised Land and the snakes: narrow, tall far wall, pillars with falcons, watchers,
 //           bones; nothing else in it; a way through; the same every load
 //   eat     a falcon swoops off its pillar on a sheep in the gorge, takes it up and eats it: body at the pillar's foot
@@ -6,6 +6,9 @@
 //   shy     a bark near perched ones keeps them there a while
 //   dog     one takes a dog: carried, dropped, lands
 //   limits  never more than maxAir out at once; none at night; none on a flock outside the gorge; a new journey: all back
+//   boss    THE GREAT FALCON: on the eyrie mid-gorge; undefended it takes one up and eats it (barks under it do nothing);
+//           a pounce into the eyrie's foot shakes one loose; a bot that pounces it low beats it (hp hits): gone, 🧶 bounty,
+//           the gorge quiet; a new journey: back, hearts full
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
@@ -15,7 +18,7 @@ const ok = (name, cond, info) => { if (!cond) fail++; console.log(cond ? 'ok  ' 
 const setup = (s, o = {}) => h.page.evaluate(([s, o]) => {
   const { G, T, startGame, resetGame, pathPoint, living } = GAME;
   if (G.mode !== 'play') startGame({ kind: 'bot', index: 0 }); else resetGame();
-  G.players[0].bot = {}; T.canyon.on = o.on ?? true; T.canyon.dogChance = o.dogChance ?? 0.2; T.falcon.on = false;
+  G.players[0].bot = {}; T.canyon.on = o.on ?? true; T.canyon.dogChance = o.dogChance ?? 0.2; T.falcon.on = false; T.canyon.boss.on = !!o.boss; T.canyon.boss.dogChance = 0;
   const p = pathPoint(s, 0), L = living();
   L.forEach(sh => { sh.x = p.x + (Math.random() - 0.5) * 8; sh.z = p.z + (Math.random() - 0.5) * 8; sh.vx = sh.vz = 0; sh.pen = null; sh.hunger = 0.3; });
   const d = G.dogs[0], q = pathPoint(o.dogS ?? s, o.dogLat ?? 0); d.x = q.x; d.z = q.z; G.clock.hour = o.hour ?? 10; G.clock.day = 2;
@@ -89,7 +92,7 @@ if (!only || only === 'shy') {
   await setup(905, { on: false });
   const r = await h.page.evaluate(() => {
     const { G, T, step, FALCONS, canyonBird, bark } = GAME, d = G.dogs[0], P = G.players[0];
-    const near = FALCONS.filter(F => F.home && Math.hypot(F.x - d.x, F.z - d.z) < T.canyon.barkR);
+    const near = FALCONS.filter(F => F.home && !F.boss && Math.hypot(F.x - d.x, F.z - d.z) < T.canyon.barkR);
     const before = canyonBird(d);
     P.bot = { bark: true }; step(0.025); P.bot = {}; step(0.025);
     const shy = near.every(F => F.rest > G.time + T.canyon.shy - 1), after = canyonBird(d);
@@ -112,11 +115,13 @@ if (!only || only === 'dog') {
 if (!only || only === 'limits') {
   await setup(910, { dogS: 860 });
   const r1 = await h.page.evaluate(() => {
-    const { G, T, step, FALCONS } = GAME; let most = 0, swoops = 0, was = new Map();
-    for (let i = 0; i < 60 / 0.025; i++) { step(0.025); const out = FALCONS.filter(F => F.home && F.state !== 'perch' && F.state !== 'home').length; most = Math.max(most, out); for (const F of FALCONS) { if (F.home && F.state === 'circle' && was.get(F) !== 'circle') swoops++; was.set(F, F.state); } }
+    const { G, T, step, FALCONS, pathPoint, sAt, living } = GAME; let most = 0, swoops = 0, was = new Map(); const home = pathPoint(915, 0);
+    for (let i = 0; i < 60 / 0.025; i++) {
+      for (const s of living()) if (!s.grabbed && !s.air && Math.abs(sAt(s.x, s.z) - 925) > 25) { s.x = home.x + (Math.random() - 0.5) * 6; s.z = home.z + (Math.random() - 0.5) * 6; s.vx = s.vz = 0; }   // (the flock stays in the gorge)
+      step(0.025); const out = FALCONS.filter(F => F.home && !F.boss && F.state !== 'perch' && F.state !== 'home').length; most = Math.max(most, out); for (const F of FALCONS) { if (F.home && F.state === 'circle' && was.get(F) !== 'circle') swoops++; was.set(F, F.state); } }
     return { most, swoops, max: T.canyon.maxAir };
   });
-  ok(`a minute in the gorge: ${r1.swoops} swoops, never more than ${r1.max} out at once (${r1.most})`, r1.swoops >= 4 && r1.most <= r1.max, r1);
+  ok(`a minute in the gorge: ${r1.swoops} swoops, never more than ${r1.max} out at once (${r1.most})`, r1.swoops >= 8 && r1.most <= r1.max, r1);
   await setup(910, { dogS: 860, hour: 22 });
   const r2 = await h.page.evaluate(() => { const { step, FALCONS } = GAME; let n = 0; for (let i = 0; i < 40 / 0.025; i++) { step(0.025); if (FALCONS.some(F => F.home && F.state !== 'perch')) n++; } return n; });
   ok('none at night', r2 === 0, r2);
@@ -130,6 +135,57 @@ if (!only || only === 'limits') {
     return { busy, back: FALCONS.every(F => !F.home || (F.state === 'perch' && !F.prey && Math.hypot(F.x - F.home.x, F.z - F.home.z) < 0.01)), seen: CANYON.seen, grabbed: G.sheep.some(s => s.grabbed) };
   });
   ok('a new journey: every falcon back on its pillar', r4.busy && r4.back && !r4.seen && !r4.grabbed, r4);
+}
+
+if (!only || only === 'boss') {
+  await setup(925, { on: false, boss: true });
+  const r1 = await h.page.evaluate(() => {   // undefended, and barked at while it carries
+    const { G, step, BOSS: F, CANYON, sdfAt } = GAME, E = CANYON.eyrie, d = G.dogs[0], P = G.players[0];
+    let t = 0, barked = false, carried = null;
+    while (t < 60 && !G.stats.falcon) {
+      if (F.state === 'carry' && F.prey) { carried = carried || F.prey; d.x = F.x + 2; d.z = F.z; P.bot = { bark: !barked }; barked = true; } else P.bot = {};
+      step(0.025); t += 0.025;
+    }
+    const g = G.graves.at(-1);
+    return { eyrie: !!E, up: E ? +(E.top - E.y).toFixed(1) : 0, mid: E ? Math.round(E.s) : 0, t: +t.toFixed(1), barked, stillHeld: !!carried && G.stats.saved === 0, eaten: G.stats.falcon, hp: CANYON.boss.hp, max: CANYON.boss.max, on: CANYON.boss.on,
+      foot: g ? +Math.hypot(g.x - E.x, g.z - E.z).toFixed(1) : null, open: g ? +sdfAt(g.x, g.z).toFixed(2) : null, why: (G.lost.at(-1) || {}).why };
+  });
+  ok(`the great falcon on its eyrie (${r1.up} m up, s ${r1.mid}); undefended it takes one up and eats it (${r1.t}s), barks or not`, r1.eyrie && r1.up > 12 && r1.mid > 910 && r1.mid < 955 && r1.barked && r1.stillHeld && r1.eaten === 1 && r1.why === 'falcon' && r1.on && r1.max === 3 && r1.hp === 3, r1);
+  ok(`the body at the eyrie's foot (${r1.foot} m), on open ground`, r1.foot !== null && r1.foot < 5 && r1.open > 0, r1);
+  await setup(925, { on: false, boss: true });
+  const r2 = await h.page.evaluate(() => {   // on its eyrie with one: a pounce into the pillar's foot
+    const { G, step, BOSS: F, CANYON, CAM_R, CAM_F } = GAME, E = CANYON.eyrie, d = G.dogs[0], P = G.players[0];
+    let t = 0; while (t < 40 && F.state !== 'nest') { step(0.025); t += 0.025; }
+    const s = F.prey, at = F.state; for (let i = 0; i < 40; i++) step(0.025);
+    const ux = Math.cos(E.ta), uz = Math.sin(E.ta); d.x = E.x + ux * (E.r + 2.5); d.z = E.z + uz * (E.r + 2.5); d.vx = d.vz = 0; d.pounceCD = 0;
+    P.bot = { mx: -(ux * CAM_R.x + uz * CAM_R.z), my: ux * CAM_F.x + uz * CAM_F.z, pounce: true }; step(0.025); P.bot = {};
+    for (let i = 0; i < 12; i++) step(0.025);
+    const dropped = !!s && s.grabbed !== F; let tt = 0; while (tt < 4 && s && s.air) { step(0.025); tt += 0.025; }
+    return { at, dropped, alive: !!s && !s.dead, landed: !!s && !s.air, saved: G.stats.saved };
+  });
+  ok('a pounce into the eyrie\'s foot shakes its meal loose: lands alive', r2.at === 'nest' && r2.dropped && r2.alive && r2.landed && r2.saved >= 1, r2);
+  await setup(925, { on: false, boss: true });
+  const r3 = await h.page.evaluate(() => {   // a bot that runs at its mark and pounces it low
+    const { G, T, step, BOSS: F, CANYON, CAM_R, CAM_F, pathPoint, sAt, living, FALCONS, resetGame } = GAME, d = G.dogs[0], P = G.players[0];
+    const toward = (x, z, extra = {}) => { const dx = x - d.x, dz = z - d.z, l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l, ...extra }; };
+    const home = pathPoint(925, 0); let t = 0, hits = [], w0 = G.wool || 0;
+    while (t < 200 && !CANYON.boss.beaten) {
+      for (const s of living()) if (!s.grabbed && !s.air && Math.abs(sAt(s.x, s.z) - 925) > 25) { s.x = home.x + (Math.random() - 0.5) * 6; s.z = home.z + (Math.random() - 0.5) * 6; s.vx = s.vz = 0; }   // (the flock stays in the gorge)
+      const ax = F.x + F.vx * 0.2, az = F.z + F.vz * 0.2, dd = Math.hypot(ax - d.x, az - d.z), low = F.y - GAME.groundY(F.x, F.z) < 3.3;
+      if (F.state === 'carry' || F.state === 'dive') P.bot = toward(ax, az, { sprint: true, pounce: low && dd < 6 });
+      else if (F.state === 'circle' && F.target) P.bot = toward(F.target.x, F.target.z, { sprint: Math.hypot(F.target.x - d.x, F.target.z - d.z) > 2 });
+      else P.bot = {};
+      const hp0 = CANYON.boss.hp; step(0.025); t += 0.025; if (CANYON.boss.hp < hp0) hits.push(+t.toFixed(1));
+    }
+    P.bot = {}; for (let i = 0; i < 40; i++) step(0.025);
+    const out = { t: +t.toFixed(1), hits, beaten: CANYON.boss.beaten, wool: (G.wool || 0) - w0, bounty: T.canyon.boss.bounty, gone: ['leave', 'away'].includes(F.state), on: CANYON.boss.on,
+      calm: FALCONS.filter(o => o.home && !o.boss).every(o => o.rest > G.time + 100) };
+    resetGame();
+    Object.assign(out, { back: F.state === 'perch' && Math.hypot(F.x - F.home.x, F.z - F.home.z) < 0.01, reset: !CANYON.boss.beaten && !CANYON.boss.met });
+    return out;
+  });
+  ok(`pounced low ${r3.hits.length} times (${r3.hits.join(', ')} s) it's beaten: gone, +${r3.wool} 🧶, the gorge quiet`, r3.beaten && r3.hits.length === 3 && r3.gone && !r3.on && r3.wool === r3.bounty && r3.calm, r3);
+  ok('a new journey: back on its eyrie, the fight to come', r3.back && r3.reset, r3);
 }
 
 console.log(fail ? `${fail} failed` : 'all ok', h.errors.slice(0, 5));
