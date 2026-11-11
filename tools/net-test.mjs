@@ -272,7 +272,7 @@ try {
     Object.assign(YETI, { state: 'idle', on: true, hp: 2, max: 3 }); g.state = 'windup'; g.x = g.home.x + 4; PASS.fires[0].fuel = 7; s.snow = 0.6; f.burn = 5;
     return { gx: g.x, id: s.id, fid: f.id };
   });
-  await until(B, w => { const { YETI, GOATS, PASS, G } = GAME, s = G.sheep.find(o => o.id === w.id), f = G.sheep.find(o => o.id === w.fid); return YETI.hp === 2 && YETI.on && GOATS[3].state === 'windup' && PASS.fires[0].fuel > 6 && s && s.snow > 0.5 && f && f.burn > 0; }, mpHost, 5000).catch(() => {});
+  await until(B, w => { const { YETI, GOATS, PASS, G } = GAME, s = G.sheep.find(o => o.id === w.id), f = G.sheep.find(o => o.id === w.fid); return YETI.hp === 2 && YETI.on && GOATS[3].state === 'windup' && Math.abs(GOATS[3].x - w.gx) < 0.1 && PASS.fires[0].fuel > 6 && s && s.snow > 0.5 && f && f.burn > 0; }, mpHost, 5000).catch(() => {});   // (the goat's eased there)
   const mp = await B.page.evaluate(w => { const { YETI, GOATS, PASS, G } = GAME, s = G.sheep.find(o => o.id === w.id), f = G.sheep.find(o => o.id === w.fid); return { on: YETI.on, hp: YETI.hp, max: YETI.max, goat: GOATS[3].state, gx: GOATS[3].x, fire: PASS.fires[0].fuel, snow: s && s.snow, burn: f && f.burn, bar: document.body.classList.contains('boss') }; }, mpHost);
   check('the pass reaches the guest: the yeti\'s hearts, a goat off its ledge, a fire lit, snow and flames on a sheep', mp.on && mp.hp === 2 && mp.max === 3 && mp.goat === 'windup' && Math.abs(mp.gx - mpHost.gx) < 0.1 && mp.fire > 6 && mp.snow > 0.5 && mp.burn > 0, mp);
   await A.page.evaluate(() => { const { YETI, GOATS, PASS, G } = GAME; Object.assign(YETI, { state: 'sleep', on: false, hp: 0, max: 0 }); GOATS[3].state = 'perch'; PASS.fires[0].fuel = 0; G.sheep[1].snow = 0; G.sheep[2].burn = 0; });
