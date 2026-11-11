@@ -175,7 +175,7 @@ const r5e = await h.page.evaluate(() => {
   const p = pens[2]; kitSet(p, 'water', 99); kitSet(p, 'salt', 99); p.water.w = 0; p.lick.salt = 0;
   out.navChanged = Array.from(navFence).reduce((a, v, i) => a + v * (i % 97 + 1), 0) !== nav0;
   const d = G.dogs[0], u = p.water.at.at(-1), b = BUCKETS[0]; b.by = d; b.w = T.water.bucket; d.x = u.x + (p.x - u.x) / Math.hypot(p.x - u.x, p.z - u.z) * 1.3; d.z = u.z + (p.z - u.z) / Math.hypot(p.x - u.x, p.z - u.z) * 1.3;
-  G.players[0].bot = { grab: true }; H.run(0.1); G.players[0].bot = {};
+  H.run(0.1);   // (in its mouth: tipped in going up to it)
   out.tipped = +p.water.w.toFixed(2); b.by = null;
   const L = p.lick.at.at(-1); d.salt = 1; d.x = L.x + (p.x - L.x) / Math.hypot(p.x - L.x, p.z - L.z) * 1.2; d.z = L.z + (p.z - L.z) / Math.hypot(p.x - L.x, p.z - L.z) * 1.2; H.run(0.1);
   out.salted = p.lick.salt; out.saltLeft = d.salt;

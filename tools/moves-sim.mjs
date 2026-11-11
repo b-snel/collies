@@ -23,6 +23,9 @@ await h.page.evaluate(() => {
   H.place = (e, x, z) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = GAME.groundY(x, z); };
   H.run = (sec, fn) => { let t = 0; for (; t < sec; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return t; };
   H.r = v => Math.round(v * 100) / 100;
+  // Ⓧ taps: one (a lone one lets go a moment later); a quick pair shakes what's in its mouth
+  H.tap = (extra = {}) => { H.p.bot = { ...extra, grabTap: true }; step(0.025); H.p.bot = { ...extra }; };
+  H.shake = () => { H.tap(); H.run(0.1); H.tap(); };
   H.river = e => ({ across: H.r(GAME.riverAcross(e.x, e.z)), along: H.r(GAME.riverAlong(e.x, e.z)) });
   H.local = (S, e) => { const dx = e.x - S.x, dz = e.z - S.z; return { p: dx * S.ux + dz * S.uz, q: -dx * S.uz + dz * S.ux }; };
   H.atLocal = (S, p, q) => ({ x: S.x + p * S.ux - q * S.uz, z: S.z + p * S.uz + q * S.ux });
@@ -97,9 +100,9 @@ const tests = {
       H.p.bot = H.to(-P.tz, P.tx, { grab: true }); H.run(1.5);
       const mx = d.x + Math.sin(d.yaw) * GAME.T.grabKinds.dog.reach, mz = d.z + Math.cos(d.yaw) * GAME.T.grabKinds.dog.reach;
       r.atMouth = H.r(Math.hypot(o.x - mx, o.z - mz)); r.lifted = H.r(o.y - GAME.groundY(o.x, o.z)); r.stillHeld = d.holding === o;
-      // run with it, let go: flung
+      // run with it, one tap: let go a moment later, flung
       H.p.bot = H.to(P.tx, P.tz, { grab: true }); H.run(0.4);
-      H.p.bot = H.to(P.tx, P.tz); GAME.step(0.025); H.p.bot = {};
+      H.tap(H.to(P.tx, P.tz)); H.run(0.5, () => !d.holding); H.p.bot = {};
       r.flungKind = o.air && o.air.kind; r.free = !o.heldBy && !d.holding;
       r.flight = H.track(o, 3);
       r.flings = MV.dogFlings;
@@ -122,10 +125,9 @@ const tests = {
       r.sameFlight = { sheep: fl[0], dog: fl[1] };
       // a flung dog bowls a sheep over
       H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3);
-      H.place(G.sheep[0], P.x + P.tx * 6, P.z + P.tz * 6);
-      H.p.bot = { grab: true }; GAME.step(0.025);
-      H.p.bot = H.to(P.tx, P.tz, { grab: true, sprint: true }); H.run(0.2);
-      H.p.bot = H.to(P.tx, P.tz); GAME.step(0.025); H.p.bot = {}; H.run(2.5);
+      H.tap(); H.p.bot = H.to(P.tx, P.tz, { sprint: true }); H.run(0.35);
+      H.place(G.sheep[0], d.x + P.tx * 7, d.z + P.tz * 7);   // (it lets go a moment after the tap, ~4.5 m short of it)
+      H.tap(H.to(P.tx, P.tz, { sprint: true })); H.run(0.5, () => !d.holding); H.p.bot = {}; H.run(2.5);
       r.caroms = MV.caroms;
       const a = r.sameFlight.sheep, b = r.sameFlight.dog;
       r.ok = r.grabbed && r.stillHeld && r.atMouth < 0.3 && r.lifted > 0.2 && r.flungKind === 'fling' && r.free && r.flings === 1 && !r.flight.stillFlying && r.flight.landedAt > 4
@@ -200,8 +202,7 @@ const tests = {
       H.p.bot = H.to(-P.tz, P.tx, { grab: true }); H.run(2);
       H.p.bot = H.to(P.tx, P.tz, { grab: true }); H.run(2);
       const dragged = Math.hypot(s.x - s0.x, s.z - s0.z), stillHeld = d.holding === s, speed = Math.hypot(d.vx, d.vz);
-      H.p.bot = { grab: true }; H.run(0.6);   // stop, then let go: a drop, not a fling
-      H.p.bot = {}; GAME.step(0.025);
+      H.p.bot = {}; H.run(0.6); H.tap(); H.run(0.4);   // stop, then one tap: a drop, not a fling
       return { grabbed, dragged: H.r(dragged), stillHeld, dogSpeedHolding: H.r(speed), staminaUsed: H.r(st0 - d.stamina), droppedNotFlung: !s.heldBy && !s.air };
     });
   },
@@ -211,13 +212,11 @@ const tests = {
       const { G, pens, MV } = GAME, out = [];
       for (const ang of [Math.PI, Math.PI * 0.7, Math.PI * 1.35]) {
         H.reset(); const d = H.d(), pen = pens[1], s = G.sheep[0], a = pen.gateA + ang, ux = Math.cos(a), uz = Math.sin(a);
-        H.place(d, pen.x + ux * (pen.R + 4), pen.z + uz * (pen.R + 4)); d.yaw = Math.atan2(-ux, -uz);
+        H.place(d, pen.x + ux * (pen.R + 6), pen.z + uz * (pen.R + 6)); d.yaw = Math.atan2(-ux, -uz);
         H.place(s, d.x - ux * 1.2, d.z - uz * 1.2);
-        H.p.bot = { grab: true }; GAME.step(0.025);
-        const held = d.holding === s;
-        H.p.bot = H.to(-ux, -uz, { grab: true }); H.run(0.3);
-        const v = Math.hypot(d.vx, d.vz);
-        H.p.bot = H.to(-ux, -uz); GAME.step(0.025); H.p.bot = {};
+        H.tap(); const held = d.holding === s;
+        H.p.bot = H.to(-ux, -uz); H.run(0.3);
+        H.tap(H.to(-ux, -uz)); let v = 0; H.run(0.5, () => { v = Math.hypot(d.vx, d.vz); return !d.holding; }); H.p.bot = {};   // one tap running: let go a moment later, flung
         const r = H.track(s, 3.5);
         out.push({ held, dogSpeed: H.r(v), flung: MV.flings, penned: s.pen === pen, inside: Math.hypot(s.x - pen.x, s.z - pen.z) < pen.R, label: MV.holeInOne, flight: r });
       }
@@ -489,13 +488,13 @@ const tests = {
       H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz);
       H.place(c, P.x + P.tx * 1.4, P.z + P.tz * 1.4); c.yaw = Math.atan2(P.tx, P.tz); H.place(s, c.x + P.tx * 0.9, c.z + P.tz * 0.9);
       grabPrey(c, s);
-      H.p.bot = { grab: true }; GAME.step(0.025);
+      H.tap();
       const held = d.holding === c, stillHasPrey = !!c.prey;
       H.run(0.3);
       const courage = [H.r(c.courage)];
-      H.p.bot = { grab: true, pounce: true }; GAME.step(0.025); H.p.bot = { grab: true }; H.run(0.35);
+      H.shake(); H.run(0.35);
       const dropped = !s.grabbed; courage.push(H.r(c.courage));
-      for (let k = 0; k < 2 && d.holding === c; k++) { H.p.bot = { grab: true, pounce: true }; GAME.step(0.025); H.p.bot = { grab: true }; H.run(0.35); courage.push(H.r(c.courage)); }
+      for (let k = 0; k < 2 && d.holding === c; k++) { H.shake(); H.run(0.35); courage.push(H.r(c.courage)); }
       const c0 = { x: c.x, z: c.z }, released = d.holding !== c, flew = !!c.air;
       H.p.bot = {}; H.run(2);
       return { held, preyStillInItsMouthUntilShaken: stillHasPrey, droppedAfterFirstShake: dropped, courage, shakenLoose: released, flew, state: c.state, ranOff: H.r(Math.hypot(c.x - c0.x, c.z - c0.z)), saved: G.stats.saved };
