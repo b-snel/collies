@@ -200,8 +200,9 @@ const r6 = await h.page.evaluate(() => {
   for (const s of G.sheep) { s.x = away.x + Math.random() * 4; s.z = away.z + Math.random() * 4; } H.run(0.3);
   out.none = buyWare(cabo); out.woolNone = G.wool; out.modeNone = G.mode;
   H.pen(); H.run(0.5); const live = G.sheep.filter(s => !s.dead);
+  out.priceAll = GAME.warePrice(cabo); out.nAll = caboSheep().length;
   live.slice(0, 3).forEach((s, i) => { s.x = away.x + i; s.z = away.z; }); H.run(0.5);   // three stay out
-  const n = caboSheep().length; out.n = n; out.price = GAME.warePrice(cabo); out.want = V.cabo.base + V.cabo.per * n;
+  const n = caboSheep().length; out.n = n; out.price = GAME.warePrice(cabo); out.want = V.cabo.price;
   out.first = buyWare(cabo); out.modeAfterFirst = G.mode; out.woolAfterFirst = G.wool;
   H.run(V.confirm + 0.5); out.late = buyWare(cabo); out.modeLate = G.mode;   // too slow: it asks again
   out.go = buyWare(cabo); out.mode = G.mode; out.woolSpent = 200 - G.wool;
@@ -211,7 +212,7 @@ const r6 = await h.page.evaluate(() => {
   return out;
 });
 ok('🏖️ nobody penned there: a no, nothing spent', r6.none === 'none' && r6.woolNone === 200 && r6.modeNone === 'play', r6);
-ok('🏖️ price: base + per sheep penned there', r6.n === 11 && r6.price === r6.want, r6);
+ok('🏖️ price: flat, however many are penned there', r6.n === 11 && r6.nAll > r6.n && r6.price === r6.want && r6.priceAll === r6.want, r6);
 ok('🏖️ the first bark asks; too slow, it asks again', r6.first === 'arm' && r6.modeAfterFirst === 'play' && r6.woolAfterFirst === 200 && r6.late === 'arm' && r6.modeLate === 'play', r6);
 ok('🏖️ the second bark: wool spent, the penned sheep go, the journey ends', r6.go === 'buy' && r6.mode === 'end' && r6.woolSpent === r6.want && r6.cabo && /Cabo/.test(r6.title) && r6.line.includes(String(r6.n)), r6);
 ok('🏖️ Hank: That\'ll do, and Cabo', r6.hank.some(t => /That'll do/.test(t)) && r6.hank.some(t => /Cabo/.test(t)), r6.hank);

@@ -4,7 +4,8 @@
 //   partner  a second dog pounces the cougar off
 //   ko       a dog on low health is mauled: knocked out, then up again; heals over time
 //   nip      a coyote wise to barking nips a dog standing by it
-//   bonk     a fleeing cougar gets pounced: bonked, then runs faster
+//   bonk     a fleeing cougar gets pounced: bonked, then runs faster (still slower than a sprinting dog)
+//   chase    a dog chases a bonked cougar home: bonked again and again till it's up its tree
 //   barks    barks spook a cougar T.barkWise times, then it comes for the dog
 import { open } from './harness.mjs';
 const h = await open();
@@ -51,7 +52,21 @@ const run = scen => h.page.evaluate(async scen => {
       p.bot = toward(d, k.x, k.z, { pounce: true }); step(0.025); p.bot = {};
       for (let i = 0; i < 20; i++) step(0.025);
     }
-    Object.assign(out, { bonks: (k.bonks || 0) - b0, v0: +v0.toFixed(2), v1: +sp().toFixed(2) });
+    Object.assign(out, { bonks: (k.bonks || 0) - b0, v0: +v0.toFixed(2), v1: +sp().toFixed(2), sprint: T.dogSprint });
+    return out;
+  }
+  if (scen === 'chase') {   // 35 m out, running home; the dog right behind it sprints and pounces whenever it's close
+    stalking(); const L2 = k.lair;
+    k.x = L2.bx + ux * 35; k.z = L2.bz + uz * 35; k.vx = k.vz = 0; k.state = 'retreat'; k.t = 0; k.bonks = 0; k.dazeT = 0; k.y = GAME.groundY(k.x, k.z); k.h = 0;
+    d.x = k.x + ux * 3; d.z = k.z + uz * 3; d.vx = d.vz = 0; d.stamina = 1; d.stunT = 0; d.air = null;
+    let t = 0, home = null;
+    while (t < 20) {
+      const dd = Math.hypot(k.x - d.x, k.z - d.z);
+      p.bot = k.state === 'retreat' ? toward(d, k.x, k.z, { sprint: true, pounce: dd < 5 && d.pounceCD <= 0 }) : {};
+      step(0.025); t += 0.025;
+      if (k.state !== 'retreat') { home = k.state; break; }
+    }
+    Object.assign(out, { bonks: k.bonks, home, t: +t.toFixed(1), fromTree: +Math.hypot(k.x - L2.bx, k.z - L2.bz).toFixed(1) });
     return out;
   }
   if (scen === 'ko') d.hp = 0.2;
@@ -82,7 +97,7 @@ const run = scen => h.page.evaluate(async scen => {
   return out;
 }, scen);
 let fail = 0;
-for (const sc of ['maul', 'mash', 'ko', 'nip', 'barks', 'bonk', 'partner']) {   // (partner last: its second dog stays)
+for (const sc of ['maul', 'mash', 'ko', 'nip', 'barks', 'bonk', 'chase', 'partner']) {   // (partner last: its second dog stays)
   const r = await run(sc);
   let ok = true;
   if (sc === 'maul') ok = r.mauled && r.lost > 0.45 && r.lost < 0.55 && !r.ko && r.cougar !== 'maul';
@@ -90,7 +105,8 @@ for (const sc of ['maul', 'mash', 'ko', 'nip', 'barks', 'bonk', 'partner']) {   
   if (sc === 'partner') ok = r.mauled && r.lost < 0.5 && r.cougar !== 'maul';
   if (sc === 'ko') ok = r.mauled && r.ko && r.upAfter > 3 && r.hpUp >= 0.25 && r.hp30s > r.hpUp + 0.2;
   if (sc === 'nip') ok = r.lost > 0.05 && r.lost < 0.1;
-  if (sc === 'bonk') ok = r.bonks === 2 && r.v1 > r.v0 * 1.3;
+  if (sc === 'bonk') ok = r.bonks === 2 && r.v1 > r.v0 * 1.05 && r.v1 < r.sprint * 0.9;
+  if (sc === 'chase') ok = r.bonks >= 3 && r.home === 'up';
   if (sc === 'barks') ok = r.states.slice(0, -1).every(s => s === 'retreat' || s === 'up') && ['leapDog', 'maul'].includes(r.states.at(-1));
   if (!ok) fail++;
   console.log(ok ? 'ok  ' : 'FAIL', JSON.stringify(r));

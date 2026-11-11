@@ -69,12 +69,12 @@ Run the ones touching your change; report the numbers.
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip; drinking, shoving, thirst deaths, `fillWater` |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
-| `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
+| `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; random trees in the grove, hunters by dogs and day |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
-| `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, wise coyote, 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
-| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
+| `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
+| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar, again and again till it's home |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
@@ -180,7 +180,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
 - **Coyote packs** flank and strike together; chase off the alpha to break
-  them. Shut pens stop them.
+  them. Shut pens stop them. One more a night per extra dog (`T.coyotePerDog`).
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
   gate shut (`c.trap`) → it mauls a penned sheep where it stands
   (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off, then
@@ -191,10 +191,13 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Den defence.** A dog or sheep startling a sleeping den (`defendDen`,
   `T.denDefend`): the pack nips dogs and snaps sheep away, only within `r` of
   the mouth (leash), then goes back to sleep.
-- **Cougars** (`COUGARS`, `LAIRS`, `T.cougar`): night only, nearest one hunts
-  every night (held up only by a dog barking under its tree, `treedR`), lambs first,
+- **Cougars** (`COUGARS`, `GROVES`, `LAIRS`, `T.cougar`): `n` of them; a grove of `trees`
+  trees by each hill camp. Night only: they take random trees in the grove nearest the
+  flock (`perchGrove`, `k.lair`, synced); `hunt[dogs−1]` of them hunt every night, +1 from
+  day `moreFrom` (`cougarHunters`); held up only by a dog barking under its tree (`treedR`). Lambs first,
   never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
-  running away: bonked, yowls (`Sound.yowl`), runs `bonkRun`× faster. `s.grabbed`
+  running away: bonked, yowls (`Sound.yowl`), tumbles toward its tree dazed (`daze`), runs
+  `bonkRun`× faster, still slower than a sprinting dog: bonk it again, all the way home. `s.grabbed`
   may be a cougar (`k.isCougar`).
 - **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
@@ -230,10 +233,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
   `maul.max`; mash pounce to throw it off, or a partner pounces it. Coyotes nip
   (`T.nip`) when bold, screening or striking.
-- **Barks wear off**: each coyote/cougar falls for `T.barkWise` barks a night
-  (a lone coyote: `T.coyoteBark.soloWise`), then turns bold (`barkWorks`): only
-  a bonk moves it, and it lunges at dogs to nip. Packs lose less heart per bark
-  (`packK`).
+- **Barks wear off**: a coyote falls for one bark a night (`T.coyoteBark.wise`,
+  `coyoteBarkWorks`; a team bark too, barks within `same` s are that one), a cougar
+  for `T.barkWise`; then bold (`barkWorks`, hint `coyote-wise`): only a bonk moves it,
+  and it lunges at dogs to nip. Packs lose less heart per bark (`packK`).
 - **Traders** (`STALLS`, `T.vendor`): a stall `before` m short of each camp
   past the first, plus the Trading Post's (`MARKET`); a second row of mats
   (`row2`) for the vet's wares. A dog on a mat barks
@@ -246,8 +249,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
 - **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`): the end of the
   trail, desert, no water. ✂️ free while Hank has none. Too poor or no room: ✖,
-  nothing spent (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark
-  twice: those go, `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
+  nothing spent (`vendorFx`). 🏖️ Cabo: flat `T.vendor.cabo.price`, however many are
+  penned there; bark twice: those go, `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
@@ -288,9 +291,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Jump** (Ⓨ / X / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
   Mid-air: rams, pouncing dogs, flying sheep and cougar leaps miss. Clears fences, not the trough one. Lie is LT.
 - **Team bark** (`T.teamBark`, `teamOf`, `teamBark`, `teamBarkFx`): dogs barking within `win` s and `near` m
-  of each other (chained) → "TEAM BARK!". Predators only: every bark reach × (1 + `grow`·(n−1)), always works
-  (wise, bold, packs; no `barks` counted), a cougar drops its catch or lets a dog go, a falcon drops. A third,
-  fourth joining: a bigger one. Then `cd` s hoarse. First wise predator with 2+ dogs: hint `team-bark`.
+  of each other (chained) → "TEAM BARK!". Predators only: every bark reach × (1 + `grow`·(n−1)). Cougars and
+  falcons: always works (wise or not; no `barks` counted), a cougar drops its catch or lets a dog go, a falcon drops.
+  Coyotes: more heart lost, no `packK`, but still their one bark. A third, fourth joining: a bigger one. Then `cd` s
+  hoarse. First wise cougar with 2+ dogs: hint `team-bark`.
 - **Nobody dies to physics.** Deaths leave a named body (`G.graves`, `g.stone`
   false) that rots into a tombstone over `T.remains.rotDays` (`updateRemains`).
 - **Rattlesnakes** (`SNAKES`, `T.snake`, own rng): behind their own desert rocks
