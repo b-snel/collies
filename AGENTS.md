@@ -73,6 +73,7 @@ Run the ones touching your change; report the numbers.
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
+| `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, wise coyote, 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
 | `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
@@ -283,6 +284,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `T.punt.dogK`/`dogUp`); not one under a cougar (that pounce frees it).
 - **Jump** (Ⓨ / X / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
   Mid-air: rams, pouncing dogs, flying sheep and cougar leaps miss. Clears fences, not the trough one. Lie is LT.
+- **Team bark** (`T.teamBark`, `teamOf`, `teamBark`, `teamBarkFx`): dogs barking within `win` s and `near` m
+  of each other (chained) → "TEAM BARK!". Predators only: every bark reach × (1 + `grow`·(n−1)), always works
+  (wise, bold, packs; no `barks` counted), a cougar drops its catch or lets a dog go, a falcon drops. A third,
+  fourth joining: a bigger one. Then `cd` s hoarse. First wise predator with 2+ dogs: hint `team-bark`.
 - **Nobody dies to physics.** Deaths leave a named body (`G.graves`, `g.stone`
   false) that rots into a tombstone over `T.remains.rotDays` (`updateRemains`).
 - **Rattlesnakes** (`SNAKES`, `T.snake`, own rng): behind their own desert rocks
