@@ -632,7 +632,25 @@ const T = {
   // 🧂 salt), refused if it has under `room` of a batch free. 🏖️ Cabo (Trading Post): base + per sheep penned there, bark twice (confirm s)
   vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, before: 55, clippers: { price: 0 },
     water: { price: 3, amt: 8, add: 6 }, food: { price: 4, amt: 8, add: 6 }, salt: { price: 2, amt: 10, add: 4 }, max: { food: 5, water: 3, salt: 3 },
-    cabo: { base: 20, per: 2 } },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
+    cabo: { base: 20, per: 2 },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
+    row2: 3.2, venom: { price: 3 }, bandage: { price: 1 }, pills: { price: 2 }, shovel: { price: 4 } },   // VET: a second row of mats (row2 m further out): 💉 🩹 💊 🪏, into the dog's bag
+  // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), lat m either side.
+  // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
+  // a hopping dog's missed); then back behind its rock for cd s. A pounce within hitR or a bark within barkR: back for scareCd s.
+  // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp
+  snake: { from: 900, every: 32, lat: 16, warnR: 4.2, strikeR: 2.4, rattleT: 1.1, strikeT: 0.22, hit: 0.85, cd: [25, 40], shy: 0.55,
+    barkR: 5.5, hitR: 2, scareCd: 12, dieHours: [24, 34], lamb: 0.65, dogDmg: 0.12 },
+  // WOUNDS (VET): a sheep a predator lets go of is cut: sev = base[kind] + held s × perS + a pen mauling's damage × maul. sev ≥ deep:
+  // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
+  // and kills in infectHours unless Hank gives antibiotics. Treated: mends over healHours. slow: speed lost at worst
+  wound: { base: { coyote: 0.3, cougar: 0.5, falcon: 0.2 }, perS: 0.06, maul: 0.7, deep: 0.5, bleedHours: [10, 18], infectHours: [30, 42], healHours: 18, slow: 0.55 },
+  // VET: a dog carries what it buys in its bag (bag: most) to Hank (giveR m); he treats one patient in `time` s (reach m away;
+  // can't get to it for giveUp s: it waits skip s). venomSlow: speed lost at worst
+  vet: { bag: 6, giveR: 2.4, time: 2.4, reach: 0.55, giveUp: 25, skip: 20, venomSlow: 0.72, say: 75 },
+  // REMAINS: a sheep that dies lies where it fell (its name over it) and rots into a tombstone over rotDays in-game days. With a
+  // shovel Hank carries one (within reach m of him, from…to o'clock, nothing prowling) to the nearest camp's cemetery (YARDS),
+  // at walk m/s, digs `dig` s and says a few words. A full cemetery gets another row, up to `rows`
+  remains: { rotDays: 1.5, reach: 70, from: 6.5, to: 19.5, walk: 2.4, dig: 3.2, rows: 8 },   // rows: the most a cemetery grows to (3 graves a row)
   // BRAMBLES: thorny patches off the trail. A sheep that walks (snagWalk/s) or runs (snagRun/s, above runSpd m/s) into
   // a bush is snagged till a dog pounces it out. Calm sheep steer round them (avoid m). Off in ?sim (tests turn it on).
   bramble: { on: !SIM, every: 22, chance: [0.6, 0.75, 0.5, 0.45], lat: [6, 17], snagWalk: 0.3, snagRun: 2.2, runSpd: 3, avoid: 1.8, stress: 0.05, stressCap: 0.6, struggle: [1.5, 3.5] },
@@ -1143,11 +1161,22 @@ const FINAL = CAMPS.find(c => c.final);
 // the vendors' stalls (VENDOR): one near the end of each leg, and the Trading Post's past its pen (MARKET). Flat ground, nothing
 // placed on them. Each faces the camera (f = -CAM_F), mats in a row along r = CAM_R
 const STALLS = [...CAMPS.slice(1).map(c => c.s - T.vendor.before), FINAL.s + 28].map((s, i, a) => {
-  const p = pathPoint(s, -11), q = Math.SQRT1_2, final = i === a.length - 1;
-  return { i, s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: final ? 11 : 10, final, sel: 0, pick: -1 };
+  const p = pathPoint(s, -14), q = Math.SQRT1_2, final = i === a.length - 1;
+  return { i, s, x: p.x, z: p.z, fx: q, fz: q, rx: q, rz: -q, yaw: Math.PI / 4, r: final ? 12.5 : 12, final, sel: 0, pick: -1 };   // (r: room for two rows of mats: VET)
 });
 const MARKET = STALLS[STALLS.length - 1];
-const offMarket = (x, z, pad = 0) => STALLS.every(m => Math.hypot(x - m.x, z - m.z) > m.r + pad);
+// REMAINS: a little cemetery by each camp (round the back of the pen, past the campfire): Hank buries the fallen here, in neat
+// rows facing the camera (slots: back row first). Nothing else is placed on it.
+// Full: Hank adds a row at the back and the fence goes round it (yardGrow), while the ground there is clear.
+const YARDS = CAMPS.map((c, i) => {
+  const cols = 3, rows = 4, gap = 1.35, a = c.gateA + 2.15, d = c.R + 7.2, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+  const q = Math.SQRT1_2, Y = { i, camp: c, x, z, r: 4.6, cols, rows, rows0: rows, gap, R: { x: q, z: -q }, F: { x: -q, z: -q }, slots: [], n: 0 };   // R, F = CAM_R, CAM_F (screen right, screen up)
+  for (let r = rows - 1; r >= 0; r--) for (let k = 0; k < cols; k++) Y.slots.push(yardSpot(Y, r, k));
+  return Y;
+});
+// row r (0: the front, by the way in), column k: a grave's place
+function yardSpot(Y, r, k) { const u = (k - (Y.cols - 1) / 2) * Y.gap, v = (r - (Y.rows0 - 1) / 2) * Y.gap; return { x: Y.x + Y.R.x * u + Y.F.x * v, z: Y.z + Y.R.z * u + Y.F.z * v }; }
+const offMarket = (x, z, pad = 0) => STALLS.every(m => Math.hypot(x - m.x, z - m.z) > m.r + pad) && YARDS.every(y => Math.hypot(x - y.x, z - y.z) > y.r + pad);   // (and off the cemeteries)
 
 // the river in the mountain valley: no bridge. Dogs (and Hank) swim it, sheep only fly it (the launcher)
 const RIVER = { s: 385, hw: 12 };
@@ -1707,7 +1736,7 @@ const GEO = {
 };
 const scen = { cactus: [], rock: [], pine: [], oak: [], bush: [], deadbush: [], flowers: [], palm: [] };
 function addScen(type, x, z, sc, collideR, extra = {}) {
-  const it = { x, z, y: terrainH(x, z), sc, rot: wr() * TAU, ...extra };
+  const it = { x, z, y: terrainH(x, z), sc, rot: wr() * TAU, cr: collideR, ...extra };   // cr: its collider (RATTLESNAKES hide behind rocks with one)
   scen[type].push(it);
   if (collideR > 0) { OBSTACLES.push({ x, z, r: collideR }); stampObstacle(x, z, collideR); }
   return it;
@@ -1736,6 +1765,18 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
       if (bi === 1) { if (h < 30 && r < 0.5) addScen('pine', px, pz, 1 + wr() * 0.9, 0); else if (r < 0.56) { const s = 1 + wr() * 2.5; addScen('rock', px, pz, s, 0, { col: rockCol }); } }
       if (bi === 2) { if (r < 0.12) addScen('oak', px, pz, 0.9 + wr() * 0.5, 0); else if (r < 0.16) addScen('palm', px, pz, 1, 0); else if (r < 0.2) { const s = 1 + wr() * 2; addScen('rock', px, pz, s, 0, { col: rockCol }); } }
       if (bi === 3) { if (r < 0.28) addScen('oak', px, pz, 1 + wr() * 0.6, 0); else if (r < 0.4) addScen('flowers', px, pz, 1.2, 0); }
+    }
+  }
+  // RATTLESNAKES: a desert rock to hide behind every ~T.snake.every m from T.snake.from (own rng: the world's stays as it was)
+  const SR = mulberry32(73129), S = T.snake;
+  for (let s0 = S.from + S.every * 0.5; s0 < FINAL.s - 30; s0 += S.every * (0.8 + SR() * 0.4)) {   // (up to the Trading Post)
+    for (let t = 0; t < 12; t++) {
+      const k = pathIdx(s0), side = SR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.75, lat = side * (6 + SR() * Math.max(0.5, Math.min(S.lat, room) - 6));
+      const p = pathPoint(s0 + (SR() - 0.5) * 8, lat), sc = 0.75 + SR() * 0.45;
+      if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)) continue;
+      scen.rock.push({ x: p.x, z: p.z, y: terrainH(p.x, p.z), sc, rot: SR() * TAU, cr: sc * 0.85, col: ROCK_COL[0], snake: true });
+      OBSTACLES.push({ x: p.x, z: p.z, r: sc * 0.85 }); stampObstacle(p.x, p.z, sc * 0.85);
+      break;
     }
   }
   for (const [type, list] of Object.entries(scen)) if (list.length) instanced(GEO[type], list, { outline: type !== 'flowers', shadow: type !== 'flowers' });
@@ -2281,12 +2322,14 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 },
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0 },
   nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
   wool: 0,   // SHARED HOOK: the journey's wool stock 🧶 (whole skeins; shearing adds, the vendor spends)
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
+const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect'];
+const lostCount = () => LOSS_KINDS.reduce((a, k) => a + (G.stats[k] || 0), 0);   // every sheep lost this journey
 
 // =====================================================================
 // SHEEP — the flock's mind. Each sheep keeps the demo's motion model (a
@@ -2381,8 +2424,9 @@ function killSheep(s, why) {
   else if (why === 'cougar') { G.stats.cougar = (G.stats.cougar || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else if (why === 'falcon') { G.stats.falcon = (G.stats.falcon || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // (FALCON: eaten on the nest)   // (its wool flies up in the tree: COUGARS)
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
+  else if (why === 'snake' || why === 'bled' || why === 'infect') { G.stats[why] = (G.stats[why] || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, why === 'bled' ? '#c0392b' : '#a8b878', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }   // VET
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
-  addTombstone(s, why);
+  addRemains(s, why);   // REMAINS: it lies where it fell till it rots to a tombstone (or Hank buries it)
   G.lost.push({ name: s.name, why, day: G.clock.day, looks: describeSheep(s), brave: s.brave ?? 0.5, ram: !!s.ram, lamb: !!s.lamb, age: s.age | 0, words: lookWords(s) });
   mournSheep(s, why);   // FLOCK SAVE: fondly remembered (and Hank says something)
 }
@@ -3035,12 +3079,14 @@ function updateSheep(dt, dtH) {
   const bellR2 = T.bellR * T.bellR, gSp = T.grazeSpace, kSp = T.knotSpace, mvMin = T.moveMin;   // (hoisted for the neighbour loop)
   for (let i = 0; i < N; i++) {
     const s = S[i]; if (s.dead) continue;
+    if (sheepAilments(s, dtH)) continue;   // VET: snakebite, bleeding, a festering cut: worse till Hank treats it
     if (s.snag && (s.grabbed || s.air || s.heldBy)) unsnag(s);   // BRAMBLES: carried or flung out
-    if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.wasGrabbed = true; continue; }
+    if (s.grabbed) { s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.wasGrabbed = true; s.heldT = (s.heldT || 0) + dt; s.grabBy = s.grabbed.isCougar ? 'cougar' : s.grabbed.isFalcon ? 'falcon' : 'coyote'; continue; }   // (VET: the longer it's held, the worse the wound)
     if (s.air) { updateAirborneSheep(s, dt); continue; }   // SHARED HOOK: punted / flung / launched (dog-moves section owns this)
     if (s.heldBy) { updateHeldSheep(s, dt); continue; }    // SHARED HOOK: in a dog's mouth (dog-moves section owns this)
     if (s.state === 'shear') { shearHold(s, dt, dtH); continue; }   // on its rump, Hank clipping it (HANK: shearing)
-    if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; }   // dropped by a coyote: shaken, and jumpy from now on
+    if (s.state === 'treat') { treatHold(s, dt, dtH); continue; }   // VET: standing still while Hank sees to it
+    if (s.wasGrabbed) { s.wasGrabbed = false; s.stress = 1; s.jumpy = true; woundSheep(s); }   // dropped by a coyote: shaken, jumpy from now on, and cut (VET)
     s.goalHold -= dt; s.atTrough = false; s.atLick = false; s.atWater = false; if (s.troughCd > 0) s.troughCd -= dt;
     // ---- neighbours: only flockmates on the same side of a fence count
     let sepX = 0, sepZ = 0, aX = 0, aZ = 0, nA = 0, cX = 0, cZ = 0, nC = 0, nearest = 1e9, nearestO = null, near = 0, mov = 0, nMov = 0, mX = 0, mZ = 0;
@@ -3372,7 +3418,7 @@ function updateSheep(dt, dtH) {
         }
       }
     }
-    spd *= saltPep(s) * thirstPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER)
+    spd *= saltPep(s) * thirstPep(s) * sickPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER; sick ones: VET)
     if (T.bramble.on && !s.snag && spd > 0 && !s.pen) {   // BRAMBLES: calm sheep go round them, bolting ones barely look
       const b = brambleAt(s.x, s.z, T.bramble.avoid);
       if (b) { const ox = s.x - b.x, oz = s.z - b.z, od = Math.hypot(ox, oz) || 1, k = (1 - Math.max(0, od - b.r) / T.bramble.avoid) * (s.state === 'flee' || straight ? 0.25 : 1.3); dX += ox / od * k; dZ += oz / od * k; }
@@ -3474,6 +3520,7 @@ function updateSheep(dt, dtH) {
       const hs = s.scale * s.grow; burst(s.x + Math.sin(s.yaw) * 0.55 * hs, s.y + 1.05 * hs, s.z + Math.cos(s.yaw) * 0.55 * hs, 1, '#8fd8ff', { speed: 0.7, up: 1.8, size: 0.09, life: 0.55, grav: -9 });
     }
     if (s.bell && sp > 1.2) { s.bellT -= dt * sp; if (s.bellT <= 0) { s.bellT = 1.7; bellDing(s); } }
+    sickTrail(s, dt);   // VET: drips, flies, green sweat
     // ---- ambient baa
     s.baaT -= dt; if (s.baaT <= 0) { s.baaT = rnd(20, 60); if (!sleeping) baaAt(s, 0.18); }
     // ---- entering a pen
@@ -3791,6 +3838,7 @@ function bark(d) {
   }
   cougarBark(d);
   falconBark(d);
+  snakeBark(d);   // RATTLESNAKES: back behind its rock
   vendorBark(d);   // VENDOR: on a mat at the Trading Post it buys
   hint('bark-used');
 }
@@ -3886,6 +3934,13 @@ const SFX = (() => {
       const A = R(); if (!A) return; const t = A.ac.currentTime;
       for (const [f, d] of [[1250, 0.22], [1890, 0.16], [2730, 0.1]]) { const o = A.ac.createOscillator(); o.frequency.value = f * (0.97 + Math.random() * 0.06); const g = A.ac.createGain(); A.env(g, t, 0.002, 0.7, d); o.connect(g); g.connect(A.out(vol, pan)); o.start(t); o.stop(t + d + 0.05); }
       const [n, f] = noise(A, t, 'highpass', 2500, 0.7), ng = A.ac.createGain(); A.env(ng, t, 0.001, 0.5, 0.03); f.connect(ng); ng.connect(A.out(vol, pan)); n.stop(t + 0.05);
+    },
+    rattle(pan = 0, vol = 0.3, dur = 1) {   // RATTLESNAKES: a dry buzz, fast and uneven
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, [n, f] = noise(A, t, 'bandpass', 5200, 1.6);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.04); g.gain.setValueAtTime(1, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      const am = ac.createGain(); am.gain.value = 0; const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.setValueAtTime(48, t); lfo.frequency.linearRampToValueAtTime(40, t + dur);
+      const lg = ac.createGain(); lg.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain); const bias = ac.createConstantSource ? ac.createConstantSource() : null; if (bias) { bias.offset.value = 0.5; bias.connect(am.gain); bias.start(t); bias.stop(t + dur + 0.05); }
+      f.connect(am); am.connect(g); g.connect(A.out(vol, pan)); lfo.start(t); lfo.stop(t + dur + 0.05); n.stop(t + dur + 0.05);
     },
     dig(pan = 0, vol = 0.22) {   // paws scrabbling in dirt (dig spots)
       const A = R(); if (!A) return; const t0 = A.ac.currentTime;
@@ -5506,6 +5561,148 @@ function drawBrambleOverlay() {   // a thorn tag over every snagged sheep, and t
 }
 
 // =====================================================================
+// RATTLESNAKES — coiled behind rocks along the desert trail past the
+// Promised Land (own rng: the same on every screen). Something comes near:
+// it rattles (the sheep shy off), then strikes whatever's still in reach and
+// slides back behind its rock a while. A bitten sheep (s.venom) sickens and
+// slows, and dies of it unless Hank gives it anti-venom (VET). A pounce or a
+// bark sends a snake back early. n.k: how far out (0 hidden … 1 up);
+// n.ft: the strike (0 coiled … 1 at its mark, hx/hz).
+// =====================================================================
+const SNAKES = [];
+{
+  for (const r of scen.rock) {   // one behind each rock put down for it (SCENERY), as the camera sees it
+    if (!r.snake) continue;
+    let x = r.x + CAM_F.x * (r.cr + 0.3), z = r.z + CAM_F.z * (r.cr + 0.3);
+    if (sdfAt(x, z) < 0.15 || brambleAt(x, z, 1)) { x = r.x - CAM_R.x * (r.cr + 0.3); z = r.z - CAM_R.z * (r.cr + 0.3); }   // (or beside it)
+    SNAKES.push({ i: SNAKES.length, rock: r, x, z, y: terrainH(x, z), state: 'hide', t: 0, at: 0, k: 0, ft: 0, hx: x - CAM_F.x, hz: z - CAM_F.z, tgt: null, rattleAt: 0, seen: false });
+  }
+  // its model: a coil, the rattle, a neck that reaches and a head that tastes the air
+  const BODY = '#b38a52', DARK = '#6a4c2c';
+  const coilG = merge(P(new THREE.TorusGeometry(0.21, 0.07, 6, 18).rotateX(Math.PI / 2), BODY, { p: [0, 0.07, 0] }), P(new THREE.TorusGeometry(0.12, 0.065, 6, 14).rotateX(Math.PI / 2), BODY, { p: [0, 0.18, 0] }),
+    ...[0, 1, 2, 3, 4, 5, 6].map(i => { const a = i / 7 * TAU; return P(SPH(5), DARK, { s: [0.06, 0.03, 0.05], r: [0, -a, 0], p: [Math.cos(a) * 0.21, 0.13, Math.sin(a) * 0.21] }); }));
+  const rattleG = merge(...[0, 1, 2].map(i => P(SPH(6), '#e3d2a4', { s: [0.045 - i * 0.008, 0.035, 0.045 - i * 0.008], p: [0, 0.03 + i * 0.05, 0] })));
+  const neckG = P(CYL(0.05, 0.065, 1, 6), BODY, { p: [0, 0.5, 0] });
+  const headG = merge(P(SPH(8), '#a2783f', { s: [0.085, 0.055, 0.13] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [0.06, 0.03, 0.05] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [-0.06, 0.03, 0.05] }),
+    P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [0.066, 0.03, 0.06] }), P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [-0.066, 0.03, 0.06] }), P(SPH(6), DARK, { s: [0.05, 0.02, 0.07], p: [0, 0.045, -0.02] }));
+  const tongueG = merge(P(BOX(0.012, 0.006, 0.12), '#e0304a', { p: [0, 0, 0.06] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, 0.4, 0], p: [0.012, 0, 0.135] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, -0.4, 0], p: [-0.012, 0, 0.135] }));
+  for (const n of SNAKES) {
+    const root = new THREE.Group(); root.position.set(n.x, n.y, n.z); scene.add(root);
+    const coil = part(root, coilG), rattle = new THREE.Group(); rattle.position.set(0.21, 0.08, 0); root.add(rattle); part(rattle, rattleG, { shadow: false });
+    const neck = part(root, neckG), head = new THREE.Group(); root.add(head); part(head, headG);
+    const tongue = part(head, tongueG, { outline: false, shadow: false }); tongue.position.set(0, -0.01, 0.1);
+    n.m = { root, coil, rattle, neck, head, tongue };
+  }
+}
+// what it goes for: the nearest sheep (or dog) within r
+function snakeMark(n, r) {
+  let best = null, bd = r * r;
+  for (const s of G.sheep) { if (s.dead || s.grabbed || s.air || s.heldBy || s.pen) continue; const d = (s.x - n.x) ** 2 + (s.z - n.z) ** 2; if (d < bd) { bd = d; best = s; } }
+  for (const d of G.dogs) { if (d.air || d.ko) continue; const e = (d.x - n.x) ** 2 + (d.z - n.z) ** 2; if (e < bd * 0.8) { bd = e; best = d; } }   // (sheep first)
+  return best;
+}
+function snakeBack(n, cd) { n.state = 'back'; n.t = 0; n.at = G.time + cd; n.tgt = null; }
+// a dog sees it off: a bark close by, or a pounce right on it
+function snakeScare(n, d, bonk) {
+  if (n.state === 'hide' && n.k < 0.05) return;
+  if (bonk) { SFX.bonk(panOf(n.x, n.z), 0.25); starBurst(n.x, n.y + 0.4, n.z, 6, undefined, { speed: 3, up: 3 }); floatText('BONK!', n.x, n.y + 1.2, n.z, '#ffd36b', 1.1); }
+  else floatText('🐍 💨', n.x, n.y + 1.1, n.z, '#e8dcc0', 1);
+  snakeBack(n, T.snake.scareCd);
+}
+function snakeBark(d) { for (const n of SNAKES) if (n.state !== 'hide' && Math.hypot(n.x - d.x, n.z - d.z) < T.snake.barkR) snakeScare(n, d, false); }
+function snakeRattle(n) {
+  n.rattleAt = G.time; SFX.rattle(panOf(n.x, n.z), 0.3, 1.1);
+  if (!n.seen) { n.seen = true; floatText('🐍', n.x, n.y + 1.3, n.z, '#ffd36b', 1.3); }
+  if (hankSees(n.x, n.z)) sayOnce('snake', null, 'Rattlesnake! Keep them clear o\' the rocks!');
+  hint('snake');
+}
+// in step() (host): hidden, rattling, striking, sliding back
+function updateSnakes(dt) {
+  const S = T.snake;
+  for (const n of SNAKES) {
+    n.t += dt;
+    for (const d of G.dogs) if (d.pounceT > 0 && n.k > 0.2 && Math.hypot(d.x - n.x, d.z - n.z) < S.hitR) { snakeScare(n, d, true); break; }   // pounced on
+    switch (n.state) {
+      case 'hide': {
+        n.k = Math.max(0, n.k - dt * 3); n.ft = 0;
+        if (G.time < n.at || G.mode !== 'play') break;
+        const m = snakeMark(n, S.warnR); if (!m) break;
+        n.state = 'rattle'; n.t = 0; n.tgt = m; snakeRattle(n);
+        break;
+      }
+      case 'rattle': {
+        n.k = Math.min(1, n.k + dt * 4);
+        const m = snakeMark(n, S.warnR); n.tgt = m;
+        if (!m) { if (n.t > 0.8) snakeBack(n, 2); break; }
+        n.hx = m.x; n.hz = m.z;
+        if (G.time - n.rattleAt > 0.9) { n.rattleAt = G.time; SFX.rattle(panOf(n.x, n.z), 0.26, 0.9); }
+        for (const s of G.sheep) {   // the sheep round it shy off
+          if (s.dead || s.grabbed || s.air || s.heldBy) continue;
+          const dx = s.x - n.x, dz = s.z - n.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd > S.warnR) continue;
+          const q = (1 - dd / S.warnR) * S.shy; if (q > s.fear) { s.fear = q; s.fdx = dx / dd; s.fdz = dz / dd; }
+        }
+        if (n.t > S.rattleT) {
+          const near = snakeMark(n, S.strikeR);
+          if (near) { n.state = 'strike'; n.t = 0; n.tgt = near; n.hx = near.x + (near.vx || 0) * S.strikeT; n.hz = near.z + (near.vz || 0) * S.strikeT; Sound.hiss(panOf(n.x, n.z), 0.22); }
+          else if (n.t > S.rattleT + 3) snakeBack(n, 3);
+        }
+        break;
+      }
+      case 'strike': {
+        n.k = 1; n.ft = Math.min(1, n.t / S.strikeT);
+        if (n.ft < 1) break;
+        const e = n.tgt;
+        if (e && !e.dead && !e.air && !(e.hopT > 0) && Math.hypot(e.x - n.hx, e.z - n.hz) < 1.1 && Math.random() < S.hit) {
+          if (e.isDog) { hurtDog(e, S.dogDmg); nipFx(e, null); floatText('🐍!', e.x, e.y + 2, e.z, '#ff8a6b', 1.1); }
+          else snakeBite(e, n);
+        } else floatText('MISS', n.hx, n.y + 1, n.hz, '#e8dcc0', 0.9);
+        snakeBack(n, rnd(S.cd[0], S.cd[1]));
+        break;
+      }
+      case 'back': {
+        n.ft = Math.max(0, n.ft - dt * 4); n.k = Math.max(0, n.k - dt * 1.6);
+        if (n.k <= 0 && n.ft <= 0) { n.state = 'hide'; n.t = 0; }
+        break;
+      }
+    }
+  }
+}
+function resetSnakes() { for (const n of SNAKES) Object.assign(n, { state: 'hide', t: 0, at: 0, k: 0, ft: 0, tgt: null, seen: false }); }
+// every frame (host and guests, from n.state, n.k, n.ft, hx/hz): the coil, the rattle shaking, the neck reaching for its mark
+const _sn = { a: new THREE.Vector3(), b: new THREE.Vector3(), d: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
+function syncSnakes() {
+  for (const n of SNAKES) {
+    const M = n.m, near = Math.abs(n.x - cam.x) + Math.abs(n.z - cam.z) < 110; M.root.visible = near; if (!near) continue;
+    const k = clamp(n.k || 0, 0, 1), ft = clamp(n.ft || 0, 0, 1), t = G.time + n.i, R = n.rock, SC = 1.45;
+    // out from behind its rock, round the side toward its mark
+    let ox = n.hx - R.x, oz = n.hz - R.z; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+    const bx = lerp(n.x, R.x + ox * (R.cr + 0.55), k * 0.85), bz = lerp(n.z, R.z + oz * (R.cr + 0.55), k * 0.85);
+    M.root.position.set(bx, terrainH(bx, bz) - 0.06 * (1 - k), bz); M.root.scale.setScalar(SC);
+    M.rattle.rotation.set(n.state === 'rattle' ? Math.sin(t * 70) * 0.35 : 0, 0, 0); M.rattle.position.y = 0.08 + 0.08 * k;
+    let dx = n.hx - bx, dz = n.hz - bz; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    const sway = Math.sin(t * 2.6) * 0.05 * k, up = 0.12 + 0.36 * k;
+    const rx = dx * (0.1 + 0.14 * k) - dz * sway, rz = dz * (0.1 + 0.14 * k) + dx * sway;   // reared up, swaying
+    const reach = Math.min(dl, T.snake.strikeR + 0.4) / SC, ex = dx * reach, ez = dz * reach, lunge = ft < 1 ? Math.sin(ft * Math.PI / 2) : 1;
+    const hx = lerp(rx, ex, lunge), hz = lerp(rz, ez, lunge), hy = lerp(up, 0.22, lunge);
+    _sn.a.set(0, 0.18, 0); _sn.b.set(hx, hy, hz); _sn.d.subVectors(_sn.b, _sn.a); const L = _sn.d.length();
+    M.neck.position.copy(_sn.a); M.neck.quaternion.setFromUnitVectors(_sn.up, _sn.d.normalize()); M.neck.scale.set(1, Math.max(0.01, L), 1); M.neck.visible = k > 0.02;
+    M.head.position.copy(_sn.b); M.head.rotation.set(lunge > 0.5 ? 0.15 : -0.25 * k, Math.atan2(dx, dz), 0);
+    const flick = k > 0.4 && (t * 3.3) % 1 < 0.35; M.tongue.visible = flick; M.tongue.scale.z = flick ? 0.6 + 0.4 * Math.sin(t * 40) : 1;
+  }
+}
+// a 🐍 over a rattling snake you can see, so you know where the sound's from
+function drawSnakeOverlay() {
+  if (G.mode !== 'play') return;
+  for (const n of SNAKES) {
+    if (n.state !== 'rattle' && n.state !== 'strike') continue;
+    const [px, py, pz] = proj(n.x, n.y + 1, n.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
+    const d = G.dogs.find(d => Math.hypot(d.x - n.x, d.z - n.z) < 12);
+    if (d && nudge('snake', n.x, n.y + 1.6, n.z, `🐍 ${keyLabel(d.player, 'bark')} / ${keyLabel(d.player, 'pounce')}`, '#ff7a6b')) continue;
+    ctx.font = '600 18px Fredoka, sans-serif'; ctx.fillText('🐍', px + Math.sin(G.time * 40) * 1.5, py);
+  }
+}
+
+// =====================================================================
 // NAVIGATION — A* on the 1 m grid so coyotes find their way round pens,
 // rocks and the river. Fences are rasterized into navFence for the search;
 // line-of-sight checks test the real fence segments (and the gate where it
@@ -6610,18 +6807,85 @@ function syncFalcon(F) {
 }
 
 // =====================================================================
-// TOMBSTONES — every sheep lost gets a little grave where it fell
+// REMAINS & TOMBSTONES — a sheep that dies lies where it fell (G.graves: a
+// body, its name over it when a dog's near) and rots, over T.remains.rotDays,
+// into a little tombstone on the spot. With a shovel Hank carries a body to
+// the cemetery by the nearest camp (YARDS), digs, lays it in under a neat
+// stone and says a few words (VET). g.stone: a tombstone yet; g.rot 0…1;
+// g.by: on Hank's shoulder; g.neat: in a cemetery row. Guests build the same
+// from NET_TYPES.grave (g.s, the sheep itself, is the host's only).
 // =====================================================================
 const graveMat = { stone: null };
 const GRAVE_NAME_MAX = 14;   // = rename limit; the font shrinks to fit
 const graveName = n => { n = String(n || 'Sheep').replace(/\s+/g, ' ').trim() || 'Sheep'; return n.length > GRAVE_NAME_MAX ? n.slice(0, GRAVE_NAME_MAX - 1).trimEnd() + '…' : n; };
 const graveWords = (s, why) => why === 'old' ? 'A long, good life' : s.lamb ? 'Our wee lamb' : s.ram ? 'Brave ram' : s.bell ? 'Led us home' : 'Much loved';
-function addTombstone(s, why) {
+const _cHex = new THREE.Color(), FLY_GEO = ICO(0.035, 0), FLY_MAT = new THREE.MeshBasicMaterial({ color: '#1c1a18' });
+// what the body and the stone need to know about the sheep (plain JSON: it's synced)
+function remainsLook(s) {
+  const L = s.look || {}, o = { wool: '#' + sheepWoolColor(s, _cHex).getHexString(), head: '#' + sheepHeadColor(s, _cHex).getHexString(), sc: +((s.scale || 1) * ageGrow(s)).toFixed(3),
+    ram: !!(s.ram && !s.lamb), lamb: !!s.lamb, bell: !!s.bell };
+  if (L.hat && L.hat !== 'none') { o.hat = L.hat; o.hatColor = L.hatColor; }
+  return o;
+}
+// a sheep that just died: its body, where it fell (out of any wall)
+function addRemains(s, why) {
   let x = s.x, z = s.z;
   if (sdfAt(x, z) < 0.8) { const g = sdfGrad(x, z); x += g.x * (0.8 - sdfAt(x, z)); z += g.z * (0.8 - sdfAt(x, z)); }
-  const y = terrainH(x, z), root = new THREE.Group(); root.position.set(x, y, z);
-  root.rotation.y = Math.PI / 4 + rnd(-0.25, 0.25);   // face the camera, a little crooked
-  const lean = rnd(-0.08, 0.08);
+  const g = makeRemains({ x, z, name: s.name || 'Sheep', why, day: G.clock.day, looks: describeSheep(s), look: remainsLook(s), yaw: rnd(0, TAU) });
+  g.s = s;   // (host: the sheep, for Hank's last words)
+  G.graves.push(g);
+  return g;
+}
+// the entry and its body (or its stone, f.stone): host and guests alike
+function makeRemains(f) {
+  const x = f.x || 0, z = f.z || 0, y = terrainH(x, z), root = new THREE.Group(); root.position.set(x, y, z); scene.add(root);
+  const g = { x, z, y, name: f.name || 'Sheep', why: f.why || '', day: f.day || G.clock.day, root, r: 0.5, looks: f.looks || '', look: f.look || {}, stone: false, rot: f.rot || 0, by: !!f.by, neat: !!f.neat, yaw: f.yaw ?? rnd(0, TAU), born: G.time };
+  if (f.stone) graveStone(g); else buildBody(g);
+  return g;
+}
+// on its side, legs out stiff, x-ed out eyes (the flock's own parts, tinted); it sinks and greys to bones as it rots
+function buildBody(g) {
+  const L = g.look || {}, sc = clamp(+L.sc || 1, 0.4, 1.6), b = new THREE.Group(); b.rotation.y = g.yaw; g.root.add(b);
+  const pose = new THREE.Group(); pose.position.y = 0.4 * sc; pose.rotation.z = Math.PI / 2; pose.scale.setScalar(sc); b.add(pose);
+  const woolM = MAT.vc.clone(), headM = MAT.vc.clone(), legM = MAT.vc.clone();
+  woolM.color.set(L.wool || '#f7f3e8'); headM.color.set(L.head || '#ffffff');
+  const fleece = new THREE.Group(); pose.add(fleece); part(fleece, SHEEP_GEO.body, { mat: woolM });
+  const head = new THREE.Group(); head.position.set(0, 0.12, 0.5); head.rotation.set(0.35, 0, 0.2); pose.add(head); part(head, SHEEP_GEO.head, { mat: headM });
+  part(head, merge(...[-1, 1].flatMap(sd => [0.7, -0.7].map(r => P(BOX(0.075, 0.016, 0.012), '#111111', { r: [0, 0, r], p: [0.082 * sd, 0.06, 0.255] })))), { outline: false, shadow: false });   // ✕ ✕
+  if (L.ram) part(head, SHEEP_GEO.horn);
+  if (L.hat && HAT_GEO[L.hat]) { const H = HAT_GEO[L.hat], hat = new THREE.Group(); hat.userData.hat = L.hat; if (H.fixed) part(hat, H.fixed); if (H.tint) part(hat, H.tint, { mat: tintMat(L.hatColor || '#d8473f') }); head.add(hat); }   // FLOCK LOOKS: its hat stays on
+  const legs = new THREE.Group(); pose.add(legs);
+  for (const [hx, hy, hz] of HIP) { const l = new THREE.Group(); l.position.set(hx, hy - 0.66, hz); l.rotation.x = (hz > 0 ? -1 : 1) * 0.12; legs.add(l); part(l, SHEEP_GEO.leg, { mat: legM }); }
+  // what's left at the end: a skull and a few ribs (shown as it rots)
+  const bones = new THREE.Group(); pose.add(bones); bones.scale.setScalar(0.001); bones.visible = false;
+  part(bones, merge(P(SPH(8), '#f2ead8', { s: [0.13, 0.12, 0.2], p: [0, 0.1, 0.52] }), P(SPH(6), '#3a332c', { s: [0.035, 0.035, 0.02], p: [0.06, 0.13, 0.66] }), P(SPH(6), '#3a332c', { s: [0.035, 0.035, 0.02], p: [-0.06, 0.13, 0.66] }),
+    P(CYL(0.035, 0.035, 0.9, 6), '#efe6d2', { r: [Math.PI / 2, 0, 0], p: [0, 0.14, 0] }),
+    ...[-0.24, -0.08, 0.08, 0.24].map(zz => P(new THREE.TorusGeometry(0.2, 0.025, 4, 10, Math.PI * 1.15), '#f2ead8', { r: [0, Math.PI / 2, 0], p: [0, 0.1, zz] }))));
+  const flies = []; for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(FLY_GEO, FLY_MAT); f.visible = false; g.root.add(f); flies.push(f); }
+  g.body = { b, pose, fleece, head, legs, bones, flies, woolM, headM, legM, wool: new THREE.Color(L.wool || '#f7f3e8'), headC: new THREE.Color(L.head || '#ffffff'), sc };
+  syncBody(g);
+}
+const _rotC = new THREE.Color('#8a7f6c'), _boneC = new THREE.Color('#e9e0cc'), _cBody = new THREE.Color();
+function syncBody(g) {
+  const B = g.body; if (!B) return;
+  const r = clamp(g.rot || 0, 0, 1), sag = smooth(0.3, 0.9, r), bone = smooth(0.55, 0.85, r);
+  B.woolM.color.copy(_cBody.copy(B.wool).lerp(_rotC, 0.75 * smooth(0.15, 0.7, r)));
+  B.headM.color.copy(_cBody.copy(B.headC).lerp(_rotC, 0.6 * smooth(0.2, 0.8, r)));
+  B.legM.color.copy(_cBody.set('#ffffff').lerp(_boneC, bone).multiplyScalar(lerp(1, 2.6, bone)));
+  const k = Math.max(0.02, 1 - 0.95 * sag); B.fleece.scale.set(lerp(1, 0.55, sag), k, lerp(1, 0.8, sag)); B.fleece.visible = k > 0.03;
+  B.head.scale.setScalar(Math.max(0.01, 1 - 0.9 * smooth(0.5, 0.95, r))); B.head.visible = r < 0.95;
+  B.bones.visible = bone > 0.01; B.bones.scale.setScalar(Math.max(0.001, bone));
+  B.pose.position.y = (0.4 - 0.22 * sag) * B.sc;
+}
+// rots away (or is buried): the body gives way to a stone. o.rise: it comes up out of the ground (a burial)
+function graveStone(g, o = {}) {
+  if (g.stone) return g;
+  if (g.body) { g.root.remove(g.body.b); for (const f of g.body.flies) g.root.remove(f); g.body = null; }
+  g.stone = true; g.by = false; if (o.neat) g.neat = true;
+  const L = g.look || {}, root = g.root;
+  g.root.position.set(g.x, g.y = terrainH(g.x, g.z), g.z);
+  const lean = g.neat ? 0 : rnd(-0.08, 0.08);
+  root.rotation.y = Math.PI / 4 + (g.neat ? 0 : rnd(-0.25, 0.25));   // face the camera (a little crooked, unless it's in a row)
   const stone = new THREE.Group(); stone.rotation.set(-0.35, 0, lean); root.add(stone);   // leans back so the camera can read it
   part(stone, merge(
     P(BOX(0.78, 0.8, 0.2), '#a9a9b4', { p: [0, 0.4, 0] }),
@@ -6642,30 +6906,94 @@ function addTombstone(s, why) {
   carve(() => { cx.lineWidth = 3; cx.beginPath(); cx.arc(128, 96, 106, Math.PI, 0); cx.lineTo(234, 292); cx.lineTo(22, 292); cx.closePath(); cx.stroke(); });
   cx.textAlign = 'center'; cx.textBaseline = 'middle';
   carve(() => { cx.save(); cx.translate(128, 46); cx.scale(1.25, 1.25); cx.beginPath(); cx.moveTo(0, 8); cx.bezierCurveTo(-14, -2, -10, -14, 0, -7); cx.bezierCurveTo(10, -14, 14, -2, 0, 8); cx.fill(); cx.restore(); });
-  const name = graveName(s.name);
+  const name = graveName(g.name);
   let fs = 64; cx.font = `700 ${fs}px Fredoka, sans-serif`; while (fs > 24 && cx.measureText(name).width > 208) { fs -= 2; cx.font = `700 ${fs}px Fredoka, sans-serif`; }
   carve(() => cx.fillText(name, 128, 118));
-  cx.font = '500 26px Fredoka, sans-serif'; carve(() => cx.fillText(graveWords(s, why), 128, 172, 196));
+  cx.font = '500 26px Fredoka, sans-serif'; carve(() => cx.fillText(graveWords(L, g.why), 128, 172, 196));
   carve(() => { cx.fillRect(78, 202, 100, 2); });
-  cx.font = '600 28px Fredoka, sans-serif'; carve(() => cx.fillText(`✿ ${G.clock.day} ✿`, 128, 240));
+  cx.font = '600 28px Fredoka, sans-serif'; carve(() => cx.fillText(`✿ ${g.day} ✿`, 128, 240));
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const fm = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, transparent: false });
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.66 * H / W), fm);
   face.position.set(0, 1.008 - 0.33 * H / W + 0.02, 0.105); stone.add(face);
   const back = face.clone(); back.rotation.y = Math.PI; back.position.z = -0.105; stone.add(back);
   root.scale.setScalar(T.graveScale);
-  dressGrave(stone, s);   // FLOCK LOOKS: its hat rests on the stone
-  scene.add(root);
-  const grave = { x, z, y, name: s.name || 'Sheep', why, day: G.clock.day, root, r: 0.5, looks: describeSheep(s) };
-  G.graves.push(grave);
-  return grave;
+  dressGrave(stone, { look: L });   // FLOCK LOOKS: its hat rests on the stone
+  g.stoneG = stone; g.riseT = o.rise ? G.time : -9;
+  return g;
+}
+// a stone at once (tests, old callers): the body and its rotting skipped
+function addTombstone(s, why) { const g = addRemains(s, why); return graveStone(g); }
+// in step() (host): bodies rot; one that's rotted away is a stone where it lay
+function updateRemains(dtH) {
+  if (!(dtH > 0)) return;
+  for (const g of G.graves) {
+    if (g.stone || g.by || g.lay) continue;
+    g.rot = Math.min(1, (g.rot || 0) + dtH / (24 * T.remains.rotDays));
+    if (g.rot >= 1) graveStone(g);
+  }
+}
+// every frame: bodies rot (and buzz), one on Hank's shoulder goes with him, a fresh stone comes up out of the ground
+function syncRemains(dt) {
+  const hk = HANK;
+  for (const g of G.graves) {
+    if (g.stone) { const u = clamp((G.time - (g.riseT ?? -9)) / 0.7, 0, 1); if (u < 1) { const e = 1 - (1 - u) ** 3; g.root.position.y = g.y - 0.9 * (1 - e); } else if (g.root.position.y !== g.y) g.root.position.y = g.y; continue; }
+    const B = g.body; if (!B) continue;
+    if (g.by) {   // over his shoulders, across his back
+      const sx = Math.sin(hk.yaw), cz = Math.cos(hk.yaw);
+      g.root.position.set(hk.x - sx * 0.15, hk.y + 1.72 + (hk.lift || 0), hk.z - cz * 0.15); B.b.rotation.set(0, hk.yaw + Math.PI / 2, 0);
+    } else { g.root.position.set(g.x, g.y = terrainH(g.x, g.z), g.z); B.b.rotation.set(0, g.yaw, 0); }
+    syncBody(g);
+    const r = g.rot || 0, buzz = !g.by && r > 0.18 && r < 0.92;
+    B.flies.forEach((f, i) => { f.visible = buzz; if (!buzz) return; const a = G.time * (3.2 + i * 0.9) + i * 2.1; f.position.set(Math.cos(a) * (0.5 + 0.15 * i), 0.7 + 0.25 * Math.sin(G.time * 5 + i * 2), Math.sin(a * 1.3) * (0.45 + 0.1 * i)); });
+  }
 }
 function collideGraves(e, r) {
   for (const g of G.graves) {
+    if (g.by) continue;   // (on Hank's shoulder)
     const dx = e.x - g.x, dz = e.z - g.z, d = Math.hypot(dx, dz), rr = r + g.r;
     if (d < rr && d > 1e-4) { e.x = g.x + dx / d * rr; e.z = g.z + dz / d * rr; const vn = (e.vx * dx + e.vz * dz) / d; if (vn < 0) { e.vx -= vn * dx / d; e.vz -= vn * dz / d; } }
   }
 }
+// the cemeteries (YARDS, placed in WORLD GENERATION): a low picket fence open to the camera, gateposts, a yew. Built for Y.rows rows
+function buildYard(Y) {
+  if (Y.g) scene.remove(Y.g);
+  const g = new THREE.Group(); g.position.set(Y.x, terrainH(Y.x, Y.z), Y.z); g.rotation.y = Math.PI / 4; scene.add(g);   // local x: screen right, local z: toward the camera
+  const hw = (Y.cols - 1) / 2 * Y.gap + 1.1, hf = (Y.rows0 - 1) / 2 * Y.gap + 1.1, hb = (Y.rows - 1 - (Y.rows0 - 1) / 2) * Y.gap + 1.1, parts = [];   // front (+z) and back (-z) from the middle of the first rows
+  const picket = (x, z) => parts.push(P(BOX(0.12, 0.62, 0.06), '#f2ead6', { p: [x, 0.31, z] }), P(CONE(0.085, 0.14, 4), '#f2ead6', { r: [0, Math.PI / 4, 0], p: [x, 0.69, z] }));
+  const rail = (x0, z0, x1, z1) => { const l = Math.hypot(x1 - x0, z1 - z0); parts.push(P(BOX(l, 0.07, 0.05), '#e2d8c2', { r: [0, -Math.atan2(z1 - z0, x1 - x0), 0], p: [(x0 + x1) / 2, 0.42, (z0 + z1) / 2] })); };
+  for (let x = -hw; x <= hw + 1e-3; x += 0.42) picket(x, -hb);   // the back
+  for (const sd of [-1, 1]) for (let z = -hb + 0.42; z <= hf + 1e-3; z += 0.42) picket(sd * hw, z);   // the sides
+  for (const sd of [-1, 1]) for (let x = hw; x >= 1.2; x -= 0.42) picket(sd * x, hf);   // the front, open in the middle
+  rail(-hw, -hb, hw, -hb); rail(-hw, -hb, -hw, hf); rail(hw, -hb, hw, hf); rail(-hw, hf, -1.2, hf); rail(1.2, hf, hw, hf);
+  // a yew in the back corner and a gatepost each side of the way in
+  parts.push(P(CYL(0.12, 0.16, 0.8, 6), '#6b4a2e', { p: [-hw - 0.7, 0.4, -hb + 0.2] }), P(CONE(0.75, 2.4, 8), '#2f5a3a', { p: [-hw - 0.7, 1.75, -hb + 0.2] }), P(CONE(0.55, 1.6, 8), '#386a45', { p: [-hw - 0.7, 2.5, -hb + 0.2] }));
+  for (const sd of [-1, 1]) parts.push(P(BOX(0.2, 1.0, 0.2), '#d9cdb2', { p: [sd * 1.2, 0.5, hf] }), P(SPH(6), '#d9cdb2', { s: [0.13, 0.13, 0.13], p: [sd * 1.2, 1.06, hf] }));
+  part(g, merge(...parts));
+  part(g, P(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), '#6f8f4a', { s: [hw + 0.2, 1, (hf + hb) / 2 + 0.2], p: [0, 0.03, (hf - hb) / 2] }), { outline: false, shadow: false });   // mown grass
+  Y.g = g;
+}
+// a cemetery with rows rows (more: Hank's added one at the back; fewer: a new journey). Same on every screen (NET_TYPES.yard)
+function yardGrow(Y, rows) {
+  rows = clamp(Math.round(rows) || Y.rows0, Y.rows0, T.remains.rows); if (rows === Y.rows && Y.g) return;
+  Y.rows = rows; Y.slots.length = Y.rows0 * Y.cols;
+  for (let r = Y.rows0; r < rows; r++) for (let k = 0; k < Y.cols; k++) Y.slots.push(yardSpot(Y, r, k));
+  buildYard(Y);
+}
+// room for one more row behind? Open ground, clear of pens, the campfire, buckets and anything put down along the trail
+function yardRoom(Y) {
+  if (Y.rows >= T.remains.rows) return false;
+  const near = (x, z, list, r) => list.some(o => Math.hypot(o.x - x, o.z - z) < r);
+  for (let k = -1; k <= Y.cols; k++) {   // the row, and the fence past its ends and behind it
+    const p = yardSpot(Y, Y.rows, clamp(k, 0, Y.cols - 1)), off = k < 0 ? -1.1 : k >= Y.cols ? 1.1 : 0, x = p.x + Y.R.x * off + Y.F.x * 1.1, z = p.z + Y.R.z * off + Y.F.z * 1.1;
+    for (const [px, pz] of [[p.x, p.z], [x, z]]) {
+      if (sdfAt(px, pz) < 1.3 || wetAt(px, pz) || pens.some(q => Math.hypot(px - q.x, pz - q.z) < q.R + 2 || Math.hypot(px - q.fire.x, pz - q.fire.z) < 3) || !STALLS.every(m => Math.hypot(px - m.x, pz - m.z) > m.r + 1)) return false;
+      if (near(px, pz, DIGS, 2) || near(px, pz, PLANTS, 1.5) || near(px, pz, SALT_ROCKS, 2.5) || near(px, pz, BRAMBLES, 2) || BUCKETS.some(b => Math.hypot(px - b.hx, pz - b.hz) < 2) || near(px, pz, SNAKES, 3) || YARDS.some(o => o !== Y && Math.hypot(px - o.x, pz - o.z) < o.r + 3)) return false;
+    }
+  }
+  return true;
+}
+for (const Y of YARDS) buildYard(Y);
 
 // =====================================================================
 // CLOCK, EVENTS, DAY/NIGHT LIGHTING
@@ -6800,6 +7128,9 @@ function sheepWoolColor(s, out) {
   else { const tint = s.lamb ? 1.0 : 0.97; out.setRGB(tint * st, tint * st, tint * st); }
   const k = oldK(s);   // AGE: old fleece goes a dingy grey (and a black one grizzles)
   if (k > 0) out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k);
+  const sk = Math.max(s.venom || 0, s.infect || 0);   // VET: a bitten or festering sheep goes a sickly green-grey; a bleeding one, pinkish
+  if (sk > 0.02) out.lerp(_cAge.setRGB(0.62 * st, 0.7 * st, 0.48 * st), 0.6 * Math.min(1, sk * 1.3));
+  if ((s.bleed || 0) > 0.02) out.lerp(_cAge.setRGB(0.86 * st, 0.55 * st, 0.52 * st), 0.45 * Math.min(1, s.bleed * 1.5));
   const w = clamp((1 - (s.wool ?? 1)) / 0.8, 0, 1);   // HANK: shearing: shorn, the skin shows through, pinker the less fleece
   return w > 0 ? out.lerp(s.black ? _cAge.setRGB(0.36 * st, 0.29 * st, 0.27 * st) : _cAge.setRGB(0.93 * st, 0.66 * st, 0.6 * st), 0.6 * w * w) : out;
 }
@@ -6818,9 +7149,9 @@ function syncSheep(dt = 1 / 60) {
   for (const s of G.sheep) {
     if (s.dead || n >= T.maxSheep) continue;
     const grow = ageGrow(s), ok = oldK(s); s.grow = grow;   // AGE: lambs and yearlings are smaller; old sheep stoop
-    const sc = s.scale * grow, lying = s.state === 'sleep' || !!s.grabbed;
-    // tells: a stressed sheep trembles; a ram squaring up rocks on its feet
-    const shiver = s.stress > 0.5 && !lying ? Math.sin(G.time * 47 + s.id * 3.1) * 0.12 * (s.stress - 0.5) : 0;
+    const sc = s.scale * grow, lying = s.state === 'sleep' || !!s.grabbed, ill = lying ? 0 : sickK(s);
+    // tells: a stressed sheep trembles; a ram squaring up rocks on its feet; a sick one staggers (VET)
+    const shiver = (s.stress > 0.5 && !lying ? Math.sin(G.time * 47 + s.id * 3.1) * 0.12 * (s.stress - 0.5) : 0) + (ill > 0.05 ? Math.sin(G.time * 2.3 + s.id) * 0.16 * ill : 0);
     const rock = s.rs === 'windup' ? Math.sin(G.time * 17) * 0.08 : s.rs === 'charge' ? 0.12 : 0;
     const shk = s.shK = clamp((s.shK || 0) + (s.state === 'shear' ? 0.08 : -0.08), 0, 1);   // HANK: shearing: sat back on its rump
     _e.set(rock - 0.95 * shk, s.yaw + shiver, s.grabbed ? 1.4 : 0, 'YXZ');
@@ -6834,7 +7165,7 @@ function syncSheep(dt = 1 / 60) {
     SI.body.m.setColorAt(n, sheepWoolColor(s, _c));
     (s.bodyM || (s.bodyM = new THREE.Matrix4())).copy(_mb);   // SHARED HOOK: root transform (yaw, scale) for attachments
     if (s.bell && nb < SI.bell.max) { _mp.compose(_v.set(0, bob, 0), _qa.identity(), _s.set(1, 1, 1)); _ml.multiplyMatrices(_mb, _mp); SI.bell.m.setMatrixAt(nb++, _ml); }
-    _e.set(s.headPitch + (lying ? 0 : 0.35 * ok), s.headYaw, 0, 'YXZ');   // an old sheep carries its head low
+    _e.set(s.headPitch + (lying ? 0 : 0.35 * ok + 0.5 * ill), s.headYaw, 0, 'YXZ');   // an old sheep carries its head low (a sick one too)
     _mp.compose(_v.set(0, (lying ? 0.55 : 0.8 - 0.13 * ok) + bob, 0.5 + 0.03 * ok), _q.setFromEuler(_e), _s.set(1, 1, 1));
     _ml.multiplyMatrices(_mb, _mp); SI.head.m.setMatrixAt(n, _ml);
     (s.headM || (s.headM = new THREE.Matrix4())).copy(_ml);   // SHARED HOOK: head transform for hats, horns, bells
@@ -7181,6 +7512,8 @@ const HINTS = {
   'salt-found': 'A lump of <b>salt</b>! Take it to a pen\'s <b>salt lick</b> (the post on the far side from the troughs).',
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
   bramble: '🌿 Stuck in the brambles! <b>Pounce</b> into it to bonk it free.',
+  snake: '🐍 <b>Rattlesnake!</b> Steer the flock wide of the rocks, or <b>bark</b> / <b>pounce</b> it back. A bitten sheep needs 💉: buy it at a trader, bring it to 🧓 Hank.',
+  wound: 'Hurt! 🩸 needs 🩹, 🦠 needs 💊. Buy them at a trader and bring them to 🧓 Hank.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
@@ -7214,6 +7547,8 @@ const TOUCH_HINTS = {
   'salt-found': '🧂 Salt! To a pen\'s <b>salt lick</b>',
   'salt-lick': 'Salt in the lick! Peppy sheep',
   bramble: '🌿 Stuck! 💥 it free',
+  snake: '🐍 Steer wide, 📣 / 💥 it. Bitten: 💉 ➜ 🧓',
+  wound: '🩸 → 🩹 · 🦠 → 💊 · ➜ 🧓',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   bucket: '🪣! Hold ✊ to carry · wade in to fill',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
@@ -7261,7 +7596,7 @@ function updateHUD(dt) {
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
   const wr = $('hWoolRow'), wv = HANK.clippers || G.wool > 0 ? '' : 'none'; if (wr.style.display !== wv) wr.style.display = wv; $('hWool').textContent = G.wool;   // HANK: shearing
-  $('hBorn').textContent = G.stats.born; $('hLost').textContent = G.stats.eaten + G.stats.starved + (G.stats.old || 0) + (G.stats.salt || 0) + (G.stats.thirst || 0) + (G.stats.cougar || 0) + (G.stats.falcon || 0);
+  $('hBorn').textContent = G.stats.born; $('hLost').textContent = lostCount();
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
   $('dialHand').style.transform = `rotate(${h / 24 * 360}deg)`;
@@ -7277,7 +7612,8 @@ function updateHUD(dt) {
   const ge = $('hGrass'); ge.textContent = gl[0]; ge.style.color = gl[1];
   if (g >= 0 && g < 0.2 && G.mode === 'play') hint('grass');
   const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length, parched = WATER.parched;
-  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : ''].filter(Boolean).join(' ');
+  const sick = AIL.map(A => [A.icon, live.filter(s => ailOf(s) & A.bit).length]).filter(([, n]) => n).map(([ic, n]) => `${ic}${n}`).join(' ');   // VET
+  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : '', sick ? `⚠ ${sick}` : ''].filter(Boolean).join(' ');
   updateSaltHUD(live); updateWaterHUD();
   if (starving) hint('hungry');
   // compass to the next camp
@@ -7333,6 +7669,7 @@ function drawDogCarry(d, px, py) {
   if (b) items.push(['🪣', b.w / T.water.bucket, '#5fb8f0']);
   if (d.salt) items.push(['🧂']);
   if (d.clippers) items.push(['✂️']);
+  for (const k of VET_KINDS) if (d.bag && d.bag[k] > 0) items.push([VET_ICON[k]]);   // VET: what's in its bag for Hank
   const r = 8.5, y = py - 15; ctx.font = '10px Fredoka, sans-serif'; ctx.lineWidth = 2;
   items.forEach(([icon, k, col], i) => {
     const x = px + (i - (items.length - 1) / 2) * (2 * r + 3);
@@ -7347,21 +7684,13 @@ function drawDogCarry(d, px, py) {
 // HANK: shearing: a dog still carrying his clippers thinks so, now and then (T.shear.think)
 const CLIP_THOUGHT = 'I should give these shears to Hank';
 function drawDogThought(d, px, py, dt) {
-  if (!d.clippers) { d._clipT = 0; return; }
+  const bag = bagN(d) > 0;   // VET: its bag for Hank, likewise (icons, no words)
+  if (!d.clippers && !bag) { d._clipT = 0; return; }
   if (!G.paused) d._clipT = (d._clipT || 0) + dt;
   const S = T.shear.think, t = d._clipT - S.first; if (t < 0 || d.mauled) return;
   const u = t % S.every; if (u > S.dur) return;
-  const k = Math.min(1, u / 0.3), sc = 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;   // pops in, fades out
-  ctx.save(); ctx.globalAlpha = Math.min(1, (S.dur - u) / 0.5); ctx.translate(px, py - 56 + Math.sin(u * 3) * 1.5); ctx.scale(sc, sc);
-  ctx.font = 'italic 600 12px Fredoka, sans-serif'; const w = ctx.measureText(CLIP_THOUGHT).width + 18, h = 22;
-  const puffs = [[2, 30, 2], [6, 25, 3]];   // little circles trailing down to the dog's head
-  const n = Math.max(2, Math.round(w / 16)), bumps = [];
-  for (let i = 0; i < n; i++) { const x = -w / 2 + 8 + i * (w - 16) / (n - 1); bumps.push([x, -h / 2 + 1, 7]); if (i < n - 1) bumps.push([x + (w - 16) / (n - 1) / 2, h / 2 - 1, 6.5]); }
-  const shape = () => { rr(-w / 2, -h / 2, w, h, h / 2); for (const [x, y, r] of [...bumps, ...puffs]) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); } };
-  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(42,29,20,.85)'; shape(); ctx.stroke();   // stroke, then fill over it: one outline round the cloud
-  ctx.fillStyle = '#fff8e8'; shape(); ctx.fill();
-  ctx.fillStyle = '#1b1a22'; ctx.fillText(CLIP_THOUGHT, 0, 1);
-  ctx.restore();
+  if (d.clippers) drawCloud(px, py - 56, CLIP_THOUGHT, u, S.dur);
+  else drawCloud(px, py - 56, `${bagIcons(d)} ➜ 🧓`, u, S.dur, '600 14px Fredoka, sans-serif');
 }
 // a dog's health: a thin bar under its name, only while hurt (the chunk just lost lingers in red); claw marks when it's hit; the mash prompt under a cougar
 function drawDogHealth(d, px, py, dt) {
@@ -7431,12 +7760,12 @@ function drawOverlay(dt) {
       ctx.fillText('z', px + 8 + t * 6, py - 6 - t * 18); ctx.globalAlpha = 1;
     }
   }
-  // TOMBSTONES: a dog at a grave shows its name
+  // REMAINS: a dog at a grave (or a body) shows its name; a body on its way to the cemetery shows it all the way
   const tagged = new Set(G.dogs.map(d => { let b = null, bd = T.graveTagR; for (const g of G.graves) { const k = Math.hypot(d.x - g.x, d.z - g.z); if (k < bd) { bd = k; b = g; } } return b; }));
   for (const g of G.graves) {
-    const near = tagged.has(g);
+    const near = tagged.has(g) || g.by || g.lay || (!g.stone && HANK.digging && Math.hypot(g.x - HANK.x, g.z - HANK.z) < 3);
     g.tagA = clamp((g.tagA || 0) + (near ? dt * 4 : -dt * 3), 0, 1); if (!g.tagA) continue;
-    const [px, py, pz] = proj(g.x, g.y + 1.25 * T.graveScale, g.z); if (pz > 1 || px < -80 || px > W + 80 || py < -40 || py > H + 40) continue;
+    const r = g.root.position, [px, py, pz] = proj(r.x, r.y + (g.stone ? 1.25 * T.graveScale : 1.1), r.z); if (pz > 1 || px < -80 || px > W + 80 || py < -40 || py > H + 40) continue;
     const txt = `♥ ${graveName(g.name)}`; ctx.font = '600 15px Fredoka, sans-serif'; const w = ctx.measureText(txt).width + 18;
     ctx.globalAlpha = g.tagA; ctx.fillStyle = 'rgba(40,36,52,.8)'; rr(px - w / 2, py - 12 - 6 * g.tagA, w, 24, 11); ctx.fill();
     ctx.fillStyle = '#ffe9f1'; ctx.fillText(txt, px, py - 6 * g.tagA + 1); ctx.globalAlpha = 1;
@@ -7462,6 +7791,8 @@ function drawOverlay(dt) {
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
   drawVendorOverlay();   // VENDOR: prices over the mats
   drawBrambleOverlay();  // BRAMBLES: snagged sheep
+  drawSnakeOverlay();    // RATTLESNAKES: one rattling
+  drawVetOverlay();      // VET: sick sheep, what Hank's short of, a dog's bag for him
   // dog tags: name, stamina ring beside it, what it carries above, health below (only while hurt)
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
@@ -7544,6 +7875,8 @@ const HANK = {
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
   // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
   clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
+  // VET: what the dogs brought him (HANK.meds: doses of each; HANK.shovel), the job in hand (care), bent over a patient or digging
+  meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, vetSaid: {}, shovelSaid: false,
 };
 try { const v = JSON.parse(localStorage.getItem(HANK_VOL_KEY) || 'null'); if (v) { if (Number.isFinite(+v.vol)) HANK.vol = clamp(+v.vol, 0, 1.5); HANK.mute = !!v.mute; } } catch (e) {}
 
@@ -7626,6 +7959,7 @@ const hankY = (x, z) => Math.max(groundY(x, z), WATER_Y - 1.05);   // wading: ch
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
+  const cg = careGoal(); if (cg) return cg;       // VET: a patient, or a body to bury
   const shg = shearGoal(); if (shg) return shg;   // shearing: in the pen, by the sheep he's after
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
@@ -7646,7 +7980,8 @@ function hankGoal() {
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
-  const hk = HANK; shearStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
+  const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0 });   // shearing: the clippers are buried again
+  Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
@@ -7660,10 +7995,10 @@ function updateHank(dt) {
   // lines said "in a moment" (game time, so they wait while the game does)
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
-  if (hk.climb) { hankClimb(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
-  const g = hankCross(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence)
+  if (hk.climb) { hankClimb(dt); updateCare(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
+  const g = hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
   if (G.mode !== 'play') hk.asleep = false;
-  const spd = (hk.asleep || d < g.stop ? 0 : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4)) * (overWater(hk.x, hk.z) ? 0.45 : 1);   // wading the river: slow
+  const spd = (hk.asleep || d < g.stop ? 0 : g.carry ? Math.min(T.remains.walk, (d - g.stop) * 1.1 + 0.4) : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4)) * (overWater(hk.x, hk.z) ? 0.45 : 1);   // wading the river: slow (VET: a body on his shoulders: steady)
   // keep clear of the flock and of walls: steer round, don't push through
   let ax = 0, az = 0;
   if (!g.noShy && !hk.asleep) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
@@ -7675,7 +8010,7 @@ function updateHank(dt) {
   hk.x += hk.vx * dt; hk.z += hk.vz * dt;
   collideDog(hk, T.hankR);
   if (hk.hopT > 0) hk.hopT -= dt; else collideFences(hk, T.hankR);   // stuck on a fence for a while: he steps over it
-  collideGraves(hk, T.hankR);
+  if (!hk.goal || !hk.goal.yard) collideGraves(hk, T.hankR);   // (VET: not among the rows he's digging in)
   // solid but gentle: a sheep right against him is just eased aside (no fright), and dogs bump off him
   for (const s of G.sheep) {
     if (s.dead || s.grabbed || s.air || s.heldBy || s.state === 'shear') continue;
@@ -7706,6 +8041,7 @@ function updateHank(dt) {
   else if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
   else { const f = (hk.talkT > 0 || !g.face) && G.dogs.length ? nearestDog(hk.x, hk.z).dog : g.face; hk.yaw = lerpA(hk.yaw, f ? Math.atan2(f.x - hk.x, f.z - hk.z) : Math.PI / 4, 1 - Math.exp(-dt * 2)); }
   hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt);
+  updateCare(dt);    // VET: a dog's bag handed over, patients, burials
   updateShear(dt);   // shearing: clippers handed over, picking a sheep, clipping it
   if (G.mode === 'play') hankWatch(dt);
 }
@@ -7804,13 +8140,13 @@ function syncHank(dt) {
   const mk = clamp(hk.lieK * 2.5, 0, 1), lie = clamp((hk.lieK - 0.35) / 0.65, 0, 1), tip = lie * lie * (3 - 2 * lie);
   M.mat.visible = mk > 0.01;
   if (M.mat.visible) { M.mat.position.set(hk.x, groundY(hk.x, hk.z), hk.z); M.mat.rotation.y = hk.yaw; M.roll.scale.z = mk; M.pillow.scale.setScalar(clamp(mk * 5 - 4, 0.01, 1)); }
-  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing: bent over a sheep; a leg over a fence
+  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing || hk.tending || hk.digging ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing (VET: tending, digging): bent over; a leg over a fence
   M.root.position.set(hk.x, hk.y + 0.3 * tip + (hk.lift || 0), hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
   hk.phase += dt * sp * 2.4;
   const k = Math.min(1, sp / 1.6), sw = Math.sin(hk.phase);
   M.legs[0].rotation.x = sw * 0.55 * k - 1.3 * lf; M.legs[1].rotation.x = -sw * 0.55 * k + 0.4 * lf;
   M.torso.rotation.x = 0.14 * (1 - tip) + Math.sin(Math.min(1, hk.stumble / 0.6) * Math.PI) * 0.7 + 0.55 * shk;
-  M.armL.rotation.x = lerp(-sw * 0.3 * k, -1.15 + Math.sin(G.time * 15) * 0.2, shk);
+  M.armL.rotation.x = lerp(-sw * 0.3 * k, hk.digging ? -0.9 + Math.sin(G.time * 5) * 0.65 : -1.15 + Math.sin(G.time * (hk.tending ? 6 : 15)) * 0.2, shk);
   M.body.position.y = Math.abs(sw) * 0.05 * k;
   hk.talkT = Math.max(0, hk.talkT - dt);
   let cx = -0.35 + sw * 0.12 * k, cz = 0;
@@ -7824,6 +8160,7 @@ function syncHank(dt) {
   // the light hangs a little out in front (right at the glass it would bleach his coat): a warm pool on the ground round him
   M.glass.getWorldPosition(_hv); hankLight.position.set(_hv.x + Math.sin(hk.yaw) * 1.1, hk.y + 2.1, _hv.z + Math.cos(hk.yaw) * 1.1); hankLight.intensity = n * 5;
   syncShears();   // shearing: his clippers (belt or hand) and a dog carrying them
+  syncVet(dt);    // VET: his bag and shovel, a dog's bag, the grave he's digging
   // the speech bubble: over his hat, or pinned to the screen edge with an arrow toward him
   const b = hk.bubble; if (!b) return;
   if (hk.sayT > 0) hk.sayT -= dt;
@@ -7917,6 +8254,7 @@ function hankWatch(dt) {
     for (let i = 0; i < a.length && !hk.teamSaid; i++) for (let j = i + 1; j < a.length; j++) if (a[i][1] < 18 && a[j][1] < 18 && Math.abs(wrapA(a[i][0] - a[j][0])) > 2.5) { hk.teamSaid = hank('teamwork', null, { force: true }); break; }
   }
   hankSpotPredators();   // coyotes and cougars, once he can see them
+  vetWatch();            // VET: a sick sheep he can't help yet; a body he could bury
   // the whole flock's safe for the night: a word about the barn
   if (G.ff && !hk.barnHinted) { hk.barnHinted = true; hint('barn'); hank(null, "They're safe now. Come by the barn, if ye like, and give them names!", { force: true, delay: 5 }); }
 }
@@ -7938,7 +8276,7 @@ function hankNap(dt) {
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && !hk.job && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing)
+  const atFire = isNight() && g && g.face && !hk.job && !hk.care && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -8035,7 +8373,7 @@ function giveHankClippers(d = null) {
   return true;
 }
 const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
-const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm;
+const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && G.time - HANK.upT > T.shear.calm;   // (VET: patients and burials first)
 const shearable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !!s.pen && s.pen.gateT < 0.05 && G.sheep.includes(s);
 function shearPick() {   // the woolliest penned sheep (near ones first), not one panicking, squaring up or feeding
   const hk = HANK; let best = null, bs = -1e9;
@@ -8154,6 +8492,342 @@ function syncShears() {
 }
 
 // =====================================================================
+// VET — Hank doctors the flock. A snakebite (s.venom, RATTLESNAKES) and the
+// cuts a predator leaves when a dog makes it let go (woundSheep: a deep one
+// bleeds, s.bleed; a shallow one festers, s.infect) each kill in time unless
+// he treats them: 💉 anti-venom, 🩹 bandages, 💊 antibiotics. A trader sells
+// them (and a 🪏 shovel) into the barking dog's bag (d.bag); the dog carries
+// it to Hank (HANK.meds, HANK.shovel: they last the journey). Stocked, he
+// walks (over a pen fence if need be) to the worst-off he can cure and sees
+// to it (s.state 'treat'); with a shovel, by day, he carries the fallen
+// (REMAINS) to the cemetery by the nearest camp, digs, lays them in under a
+// neat stone and says a few words (lastWords, by the sheep's nature).
+// s.venomRate / bleedRate / infectRate > 0: getting worse (0: treated, mending).
+// HANK.care: the job in hand { kind: 'treat', s, A } | { kind: 'bury', g, Y, slot, phase }.
+// =====================================================================
+const VET_KINDS = ['venom', 'bandage', 'pills', 'shovel'];
+const VET_ICON = { venom: '💉', bandage: '🩹', pills: '💊', shovel: '🪏' };
+const AIL = [   // what's wrong: its progress field, its rate, its tell, its cure, how it kills
+  { key: 'venom', rate: 'venomRate', icon: '🐍', cure: 'venom', bit: 1, why: 'snake' },
+  { key: 'bleed', rate: 'bleedRate', icon: '🩸', cure: 'bandage', bit: 2, why: 'bled' },
+  { key: 'infect', rate: 'infectRate', icon: '🦠', cure: 'pills', bit: 4, why: 'infect' },
+];
+const ailBits = s => (s.venomRate > 0 ? 1 : 0) | (s.bleedRate > 0 ? 2 : 0) | (s.infectRate > 0 ? 4 : 0);
+const ailOf = s => s.ail ?? ailBits(s);   // (host: kept up in sheepAilments; guests: synced)
+const sickK = s => Math.max(s.venom || 0, (s.infect || 0) * 0.9, (s.bleed || 0) * 0.7);   // how ill it looks
+// how fast it can go: worse and worse as the venom or the wound takes hold (and back as it mends)
+const sickPep = s => clamp(1 - T.vet.venomSlow * (s.venom || 0) - T.wound.slow * Math.max(s.bleed || 0, s.infect || 0), 0.22, 1);
+// SHARED HOOK (RATTLESNAKES): a snake bit sheep s (n: the snake)
+function snakeBite(s, n = null) {
+  const S = T.snake, hours = rnd(S.dieHours[0], S.dieHours[1]) * (s.lamb ? S.lamb : 1);
+  if (s.venomRate > 0) s.venom = Math.min(0.9, (s.venom || 0) + 0.25);   // bitten again: worse
+  s.venomRate = Math.max(s.venomRate || 0, 1 / hours); s.venom = Math.max(s.venom || 0, 0.04); s.ail = ailBits(s);
+  s.hopV = 4; s.fear = 1; s.panic = Math.max(s.panic, 0.6); s.stress = Math.min(1, s.stress + 0.4);
+  if (n) { const dx = s.x - n.x, dz = s.z - n.z, l = Math.hypot(dx, dz) || 1; s.fdx = dx / l; s.fdz = dz / l; }
+  baaAt(s, 0.55, 1.3, true); floatText('🐍!', s.x, s.y + 1.6 * s.scale, s.z, '#ff7a6b', 1.3); burst(s.x, s.y + 0.6, s.z, 8, '#a8c070', { speed: 1.6, up: 2, size: 0.12, life: 0.6 });
+  for (const p of G.players) rumble(p, 0.4, 0.3, 150);
+  G.stats.bites = (G.stats.bites || 0) + 1; hint('snake');
+  vetNotice(s, 'venom');
+}
+// SHARED HOOK (sheep mind): a predator let go of s (saved, or dawn): cut, by what had it and for how long
+function woundSheep(s) {
+  const W = T.wound, kind = s.grabBy || 'coyote', mauled = s.maulHp != null ? clamp(1 - s.maulHp, 0, 1) : 0;
+  const sev = clamp((W.base[kind] ?? 0.3) + (s.heldT || 0) * W.perS + mauled * W.maul, 0.15, 1);
+  s.heldT = 0; s.grabBy = null;
+  if (G.mode !== 'play') return 0;
+  if (sev >= W.deep) {
+    const h = lerp(W.bleedHours[1], W.bleedHours[0], (sev - W.deep) / (1 - W.deep));
+    s.bleedRate = Math.max(s.bleedRate || 0, 1 / h); s.bleed = Math.max(s.bleed || 0, 0.03);
+    floatText('🩸', s.x, s.y + 1.6 * s.scale, s.z, '#ff7a6b', 1.3); burst(s.x, s.y + 0.6, s.z, 10, '#c0392b', { speed: 1.8, up: 2, size: 0.1, life: 0.6, grav: -6 });
+    vetNotice(s, 'bandage');
+  } else {
+    s.infectRate = Math.max(s.infectRate || 0, 1 / rnd(W.infectHours[0], W.infectHours[1])); s.infect = Math.max(s.infect || 0, 0.02);
+    floatText('🦠', s.x, s.y + 1.6 * s.scale, s.z, '#c8e07a', 1.2);
+    vetNotice(s, 'pills');
+  }
+  s.ail = ailBits(s); G.stats.wounds = (G.stats.wounds || 0) + 1; hint('wound');
+  return sev;
+}
+// in updateSheep (host), every sheep: worse while untreated, mending once treated; dead at 1. True if it died.
+function sheepAilments(s, dtH) {
+  if (!(s.venom || s.bleed || s.infect)) { if (s.ail) s.ail = 0; return false; }
+  const heal = dtH / T.wound.healHours;
+  for (const A of AIL) { const v = s[A.key]; if (!v) continue; s[A.key] = s[A.rate] > 0 ? Math.min(1, v + s[A.rate] * dtH) : Math.max(0, v - heal); }
+  s.ail = ailBits(s);
+  if (G.mode !== 'play' || s.grabbed || s.air || s.heldBy) return false;
+  for (const A of AIL) if (s[A.rate] > 0 && s[A.key] >= 1) { killSheep(s, A.why); return true; }
+  return false;
+}
+// Hank's cure: it stops getting worse and mends (SHARED HOOK)
+function cureSheep(s, cure) { for (const A of AIL) if (A.cure === cure) s[A.rate] = 0; s.ail = ailBits(s); }
+// a sick sheep's tells (host and guests): a bleeder drips, a festering one draws flies, a bitten one sweats green
+function sickTrail(s, dt) {
+  const b = ailOf(s); if (!b || s.state === 'sleep') return;
+  const hs = s.scale * (s.grow || 1);
+  if ((b & 2) && Math.random() < dt * 4) burst(s.x + rnd(-0.2, 0.2), s.y + 0.5 * hs, s.z + rnd(-0.2, 0.2), 1, '#b3262a', { speed: 0.3, up: 0.2, size: 0.08, life: 0.6, grav: -9 });
+  if ((b & 4) && Math.random() < dt * 2.5) { const a = Math.random() * TAU; burst(s.x + Math.cos(a) * 0.5, s.y + 1.1 * hs, s.z + Math.sin(a) * 0.5, 1, '#1c1a18', { speed: 1.2, up: 0.4, size: 0.05, life: 0.7, grav: 0 }); }
+  if ((b & 1) && Math.random() < dt * 2) burst(s.x + Math.sin(s.yaw) * 0.5 * hs, s.y + 1.0 * hs, s.z + Math.cos(s.yaw) * 0.5 * hs, 1, '#a8c070', { speed: 0.5, up: 1.2, size: 0.08, life: 0.5, grav: -6 });
+}
+// what the flock needs that Hank (with what the dogs carry) hasn't got: a Set of 'venom' | 'bandage' | 'pills'
+function vetWant() {
+  const need = { venom: 0, bandage: 0, pills: 0 }, want = new Set(), meds = HANK.meds || {};
+  for (const s of G.sheep) { if (s.dead) continue; const b = ailOf(s); if (b) for (const A of AIL) if (b & A.bit) need[A.cure]++; }
+  for (const k in need) { if (!need[k]) continue; let have = meds[k] || 0; for (const d of G.dogs) have += (d.bag && d.bag[k]) || 0; if (have < need[k]) want.add(k); }
+  return want;
+}
+// Hank sees a sheep that needs what he hasn't got: he says so (each kind once in a while)
+function vetNotice(s, kind) {
+  const hk = HANK, said = hk.vetSaid;
+  if (G.mode !== 'play' || (hk.meds[kind] || 0) > 0 || G.time - (said[kind] ?? -1e9) < T.vet.say || !hankSees(s.x, s.z)) return false;
+  said[kind] = G.time;
+  return hank(null, kind === 'venom' ? `Snakebite! ${s.name} needs anti-venom 💉! A trader has it.` : kind === 'bandage' ? `${s.name}'s bleedin' bad! Bandages 🩹, quick!` : `${s.name}'s cut is festerin'. Antibiotics 💊!`, { force: true, delay: 0.8 });
+}
+// in hankWatch (a few times a second): the worst off he can see and can't help; a body he could bury with a shovel
+function vetWatch() {
+  const hk = HANK;
+  for (const s of G.sheep) { const b = s.dead ? 0 : ailOf(s); if (b) for (const A of AIL) if ((b & A.bit) && vetNotice(s, A.cure)) return; }
+  if (!hk.shovel && !hk.shovelSaid) for (const g of G.graves) if (!g.stone && hankSees(g.x, g.z, null, 0.6)) {
+    hk.shovelSaid = true; const her = g.look && g.look.ram ? 'him' : 'her';
+    hank(null, `Poor ${g.name}… wi' a shovel 🪏 I'd bury ${her} proper.`, { force: true, delay: 2 }); return;
+  }
+}
+// ---------------- the dog's bag ----------------
+const bagN = d => d && d.bag ? VET_KINDS.reduce((a, k) => a + (d.bag[k] || 0), 0) : 0;
+const bagIcons = d => VET_KINDS.filter(k => d.bag && d.bag[k] > 0).map(k => VET_ICON[k]).join('');
+// SHARED HOOK: dog d hands its bag to Hank (meds into his stock, a shovel on his back); false if it had nothing
+function giveHankBag(d) {
+  const hk = HANK, b = d.bag; if (!bagN(d)) return false;
+  const icons = bagIcons(d), onlyShovel = VET_KINDS.every(k => k === 'shovel' || !(b[k] > 0));
+  for (const k of ['venom', 'bandage', 'pills']) hk.meds[k] = (hk.meds[k] || 0) + (b[k] || 0);
+  if (b.shovel > 0) hk.shovel = true;
+  d.bag = null;
+  if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
+  starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText(`${icons} ✔`, hk.x, hk.y + 2.9, hk.z, '#7ed957', 1.4); Sound.chime([0, 4, 7, 12], 587, 0.14, 0.07);
+  rumble(d.player, 0.3, 0.5, 120);
+  hank(null, onlyShovel ? "A shovel! They'll get a proper burial now." : vetWant().size || G.sheep.some(s => !s.dead && ailOf(s)) ? "Grand! I'll see to them." : "Grand! I'll keep it handy.", { force: true });
+  hk.carePickT = 0;
+  return true;
+}
+// ---------------- Hank's rounds ----------------
+const treatable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && s.state !== 'shear' && G.sheep.includes(s) && !overWater(s.x, s.z);
+const careCan = () => G.mode === 'play' && !HANK.asleep;
+const buryCan = () => careCan() && HANK.shovel && G.clock.hour >= T.remains.from && G.clock.hour < T.remains.to && !hankThreats(T.hankNap.wakeR).length;
+function careNext(treatOnly = false) {
+  const hk = HANK; let best = null, bs = -1e9;
+  if (careCan()) for (const s of G.sheep) {
+    if (!treatable(s) || (s.vetSkip || 0) > G.time) continue;
+    for (const A of AIL) {
+      if (!(s[A.rate] > 0) || !((hk.meds[A.cure] || 0) > 0)) continue;
+      const sc = (s[A.key] || 0) * 2 - 0.01 * Math.hypot(s.x - hk.x, s.z - hk.z);   // the worst off first (near ones before far)
+      if (sc > bs) { bs = sc; best = { s, A }; }
+    }
+  }
+  if (best) return { kind: 'treat', s: best.s, A: best.A, t: 0, on: false, k: 0, fxT: 0 };
+  if (treatOnly || !buryCan()) return null;
+  let g0 = null, gd = T.remains.reach;
+  for (const g of G.graves) { if (g.stone || g.by || g.lay || (g.skip || 0) > G.time) continue; const d = Math.hypot(g.x - hk.x, g.z - hk.z); if (d < gd) { gd = d; g0 = g; } }
+  if (!g0) return null;
+  // the nearest cemetery; full, a row more at the back (if there's room for it); else the next nearest with room
+  let Y = null;
+  for (const y of [...YARDS].sort((a, b) => Math.hypot(a.x - g0.x, a.z - g0.z) - Math.hypot(b.x - g0.x, b.z - g0.z))) {
+    if (y.n < y.slots.length || (yardRoom(y) && (yardGrow(y, y.rows + 1), true))) { Y = y; break; }
+  }
+  return Y ? { kind: 'bury', g: g0, Y, slot: Y.n, phase: 'fetch', t: 0, fxT: 0 } : null;
+}
+function careValid(j) {
+  const hk = HANK;
+  if (j.kind === 'treat') return careCan() && treatable(j.s) && j.s[j.A.rate] > 0 && (hk.meds[j.A.cure] || 0) > 0;
+  return G.graves.includes(j.g) && !j.g.stone && (j.phase === 'dig' ? careCan() : buryCan()) && j.Y.n === j.slot;
+}
+function careStop() {
+  const hk = HANK, j = hk.care; if (!j) return;
+  if (j.kind === 'treat' && j.s.state === 'treat') { j.s.state = 'idle'; j.s.thinkT = 0; }
+  if (j.kind === 'bury' && j.g && !j.g.stone) { const g = j.g; if (g.by) { g.x = hk.x + Math.sin(hk.yaw) * 0.8; g.z = hk.z + Math.cos(hk.yaw) * 0.8; } g.by = false; g.lay = false; g.skip = G.time + 5; }   // put down where he stands
+  hk.care = null; hk.tending = false; hk.digging = false; hk.goal = null;
+}
+// hankGoal: by the patient (in its pen, if it's penned); a body, then a grave's side
+function careGoal() {
+  const hk = HANK, j = hk.care; if (!j || G.mode !== 'play') return null;
+  if (j.kind === 'treat') {
+    const s = j.s, p = s.pen || null;
+    if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: s };
+    let ux = p ? p.x - s.x : hk.x - s.x, uz = p ? p.z - s.z : hk.z - s.z, l = Math.hypot(ux, uz);
+    if (l < 1) { ux = hk.x - s.x; uz = hk.z - s.z; l = Math.hypot(ux, uz) || 1; }
+    const r = s.r + T.hankR + 0.15;
+    return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
+  }
+  const g = j.g, sl = j.Y.slots[j.slot], sx = sl.x + CAM_R.x * 0.95, sz = sl.z + CAM_R.z * 0.95;   // he digs from the grave's side, so you see it
+  if (j.phase === 'fetch') return { x: g.x, z: g.z, stop: 0.6, noShy: true, pen: penAt(g.x, g.z), face: g };
+  if (j.phase === 'carry') return { x: sx, z: sz, stop: 0.1, noShy: true, pen: null, carry: true, yard: true };
+  return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: null, face: sl, yard: true };
+}
+// in updateHank (host): a dog's bag handed over, picking a job, seeing to it
+function updateCare(dt) {
+  const hk = HANK;
+  if (G.mode === 'play') for (const d of G.dogs) if (d.bag && !d.air && Math.hypot(d.x - hk.x, d.z - hk.z) < T.vet.giveR && bagN(d)) giveHankBag(d);
+  let j = hk.care;
+  if (j && !careValid(j)) { careStop(); j = null; }
+  if (j && j.kind === 'bury' && j.phase === 'fetch' && (j.chk = (j.chk || 0) - dt) <= 0) { j.chk = 1; if (careNext(true)) { careStop(); j = null; } }   // a patient first
+  if (!j) {
+    if ((hk.carePickT = (hk.carePickT || 0) - dt) > 0) return;
+    hk.carePickT = 0.5; if (!(j = careNext())) return;
+    if (hk.job) shearStop(); hk.care = j; hk.goal = null;
+  }
+  if (j.kind === 'treat') treatStep(j, dt); else buryStep(j, dt);
+}
+function treatStep(j, dt) {
+  const hk = HANK, s = j.s, V = T.vet;
+  if (!j.on) {   // on his way: in reach (and on its side of any fence) he sees to it
+    if ((j.t += dt) > V.giveUp) { s.vetSkip = G.time + V.skip; careStop(); return; }
+    if (hk.climb || (penAt(hk.x, hk.z) || null) !== (s.pen || null) || Math.hypot(s.x - hk.x, s.z - hk.z) > s.r + T.hankR + V.reach) return;
+    Object.assign(j, { on: true, k: 0 }); hk.tending = true; hk.goal = null;
+    s.state = 'treat'; s.vx = s.vz = 0; s.trX = s.x; s.trZ = s.z; s.fear = 0; s.snag = null;
+  }
+  hk.vx = hk.vz = 0; s.x = s.trX; s.z = s.trZ;
+  j.k = Math.min(1, j.k + dt / V.time);
+  if ((j.fxT -= dt) <= 0) { j.fxT = 0.45; burst(s.x, s.y + 0.9 * s.scale, s.z, 2, '#bff5c8', { speed: 0.8, up: 1.4, size: 0.1, life: 0.6, grav: -2 }); }
+  if (j.k < 1) return;
+  hk.meds[j.A.cure]--; cureSheep(s, j.A.cure); G.stats.cured = (G.stats.cured || 0) + 1;
+  floatText(`${VET_ICON[j.A.cure]} ✔`, s.x, s.y + 1.6 * s.scale, s.z, '#7ed957', 1.3); Sound.chime([0, 4, 7, 12], 880, 0.14, 0.06);
+  burst(s.x, s.y + 1 * s.scale, s.z, 8, '#ff8fb8', { speed: 1.4, up: 2.6, size: 0.12, life: 0.9, grav: 1 });
+  hank(null, pick([`There ye go, ${s.name}.`, `Ye'll mend, ${s.name}.`, `Easy now, ${s.name}. That's the worst of it.`, `Hold still… there. Good ${s.ram && !s.lamb ? 'lad' : 'lass'}.`]), { force: true });
+  careStop();
+}
+function buryStep(j, dt) {
+  const hk = HANK, g = j.g, R = T.remains, sl = j.Y.slots[j.slot];
+  if (j.phase === 'fetch') {
+    if (hk.climb || (penAt(hk.x, hk.z) || null) !== (penAt(g.x, g.z) || null) || Math.hypot(g.x - hk.x, g.z - hk.z) > 1.3) { if ((j.t += dt) > 60) { g.skip = G.time + 30; careStop(); } return; }
+    g.by = true; j.phase = 'carry'; j.t = 0; hk.goal = null;
+    burst(g.x, g.y + 0.3, g.z, 6, '#d8c8a8', { speed: 1.2, up: 1.6, size: 0.14, life: 0.6 });
+    return;
+  }
+  if (j.phase === 'carry') {
+    g.x = hk.x; g.z = hk.z;
+    const sx = sl.x + CAM_R.x * 0.95, sz = sl.z + CAM_R.z * 0.95;
+    if ((j.t += dt) > 120) { careStop(); return; }
+    if (hk.climb || Math.hypot(sx - hk.x, sz - hk.z) > 0.45) return;
+    j.phase = 'dig'; j.t = 0; hk.digging = true; hk.goal = null;
+    g.by = false; g.lay = true; g.x = sl.x - CAM_R.x * 0.95; g.z = sl.z - CAM_R.z * 0.95;   // laid down on the far side of the grave
+    return;
+  }
+  hk.vx = hk.vz = 0; hk.yaw = lerpA(hk.yaw, Math.atan2(sl.x - hk.x, sl.z - hk.z), Math.min(1, dt * 8));
+  if ((j.fxT -= dt) <= 0) { j.fxT = 0.42; burst(sl.x, terrainH(sl.x, sl.z) + 0.2, sl.z, 5, '#7a5634', { speed: 2.2, up: 3.2, size: 0.15, life: 0.7, grav: -9 }); SFX.dig(panOf(sl.x, sl.z), 0.3); }
+  if ((j.t += dt) < R.dig) return;
+  // laid in: a neat stone comes up, and his few words
+  j.Y.n++; g.lay = false; g.x = sl.x; g.z = sl.z;
+  graveStone(g, { neat: true, rise: true }); G.stats.buried = (G.stats.buried || 0) + 1;
+  burst(sl.x, terrainH(sl.x, sl.z) + 0.3, sl.z, 12, '#7a5634', { speed: 2, up: 2.5, size: 0.16, life: 0.8, grav: -9 });
+  floatText('🕊️', sl.x, terrainH(sl.x, sl.z) + 2, sl.z, '#ffffff', 1.4); Sound.chime([0, 4, 7, 12], 392, 0.16, 0.18);
+  hank(null, lastWords(g), { force: true, delay: 0.5 });
+  careStop();
+}
+// in updateSheep: the one he's seeing to stands still for him
+function treatHold(s, dt, dtH) {
+  const j = HANK.care;
+  if (!j || j.kind !== 'treat' || j.s !== s || !j.on) { s.state = 'idle'; return; }
+  s.x = s.trX; s.z = s.trZ; s.vx = s.vz = 0; s.fear = 0;
+  s.yaw = lerpA(s.yaw, Math.atan2(HANK.x - s.x, HANK.z - s.z), Math.min(1, dt * 6));
+  s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH);
+}
+// round a pen that's in the way of a care goal (rather than climbing over it, or through it)
+function hankDetour(g) {
+  if (!g || !g.noShy) return null;
+  const hk = HANK, dx = g.x - hk.x, dz = g.z - hk.z, L2 = dx * dx + dz * dz; if (L2 < 1) return null;
+  for (const p of pens) {
+    if (p === g.pen || insidePen(p, hk.x, hk.z, -1) || insidePen(p, g.x, g.z, -1)) continue;
+    const t = ((p.x - hk.x) * dx + (p.z - hk.z) * dz) / L2; if (t <= 0 || t >= 1) continue;
+    const cx = hk.x + dx * t - p.x, cz = hk.z + dz * t - p.z, c = Math.hypot(cx, cz), m = p.R + 1.4; if (c >= m) continue;
+    const nx = c > 1e-3 ? cx / c : -dz / Math.sqrt(L2), nz = c > 1e-3 ? cz / c : dx / Math.sqrt(L2);   // round the side the path's already on
+    return { x: p.x + nx * (m + 1.5), z: p.z + nz * (m + 1.5), stop: 0.1, noShy: true, carry: g.carry };
+  }
+  return null;
+}
+// his few words at the graveside: by what kind of sheep it was (seeded: every screen hears the same)
+function lastWords(g) {
+  const s = g.s || {}, L = g.look || {};
+  let h = 2166136261; for (const ch of `${g.name}|${g.day | 0}|${g.why}|rip`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const r = mulberry32(h), pk = a => a[Math.floor(r() * a.length)];
+  const n = g.name, lad = L.ram ? 'lad' : 'lass', b = s.brave ?? 0.5;
+  const line = L.lamb ? pk([`Too wee, ${n}. Too soon.`, `Sleep sound, wee ${n}. Ye'd barely started.`, `Wee ${n}… all bounce an' nae sense. Rest now.`])
+    : L.bell ? pk([`${n} led us home wi' that bell. Who'll lead us now?`, `Ring that bell for us up there, ${n}. We'll follow.`])
+    : g.why === 'old' || oldK(s) > 0.5 ? pk([`A long life, ${n}. Ye'd earned yer rest.`, `${n}, ye walked more miles than me. Rest those auld legs.`])
+    : s.trait === 'stubborn' ? pk([`Stubborn to the end, ${n}. I'd not have had ye any other way.`, `Never once went where ye were told, ${n}. Go where ye like now.`])
+    : s.trait === 'skittish' ? pk([`Jumpy wee ${n}. Nothin' to fear where ye're goin'.`, `Ye ran from every shadow, ${n}. No more runnin' now.`])
+    : L.ram && b >= T.brave.ramMin ? pk([`Ye were a grand ram, ${n}. Took on all comers.`, `${n} stood between the flock an' the dark. Rest, ${lad}.`])
+    : b >= 0.75 ? pk([`${n} never backed down from anythin'. Rest now, ye brave thing.`, `Feared nothin', ${n} didn't. Not even me.`])
+    : b >= 0.55 ? pk([`First to the front, always. We'll miss ye, ${n}.`, `Bold as brass, ${n}. Bold as brass.`])
+    : b >= 0.4 ? pk([`Steady ${n}. Ye kept the rest o' them right.`, `Never first, never last, ${n}. Always there.`])
+    : pk([`Timid wee ${n}. Ye were braver than ye knew.`, `${n} jumped at every twig, an' still walked every mile.`]);
+  const coda = g.why === 'snake' ? pk([' Curse that snake.', '']) : g.why === 'bled' || g.why === 'infect' ? pk([' I was too late.', '']) : g.why === 'old' ? '' : pk(['', ' Rest easy.']);
+  return line + coda;
+}
+// ---------------- what they look like: a bag (or a shovel) in a dog's mouth; on Hank, his bag at his hip, the shovel on his back or in his hands ----------------
+const MEDBAG_GEO = merge(P(BOX(0.34, 0.22, 0.16), '#7a4a2a', { p: [0, 0, 0] }), P(BOX(0.36, 0.04, 0.18), '#5e3820', { p: [0, 0.11, 0] }), P(new THREE.TorusGeometry(0.08, 0.018, 4, 10, Math.PI), '#4a2e1a', { p: [0, 0.13, 0] }),
+  P(BOX(0.11, 0.035, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.035, 0.11, 0.012), '#f4ead2', { p: [0, 0, 0.085] }), P(BOX(0.05, 0.04, 0.02), '#e8c050', { p: [0, 0.08, 0.085] }));
+const SHOVEL_GEO = merge(P(CYL(0.025, 0.025, 1.2, 6), '#9a6636', { p: [0, 0.6, 0] }), P(BOX(0.2, 0.04, 0.045), '#7a5230', { p: [0, 1.22, 0] }),
+  P(BOX(0.24, 0.3, 0.025), '#8f969e', { p: [0, -0.13, 0] }), P(CONE(0.12, 0.09, 4), '#8f969e', { r: [Math.PI, Math.PI / 4, 0], s: [1, 1, 0.2], p: [0, -0.32, 0] }));
+const HOLE = (() => { const g = new THREE.Group(); g.visible = false; scene.add(g);
+  part(g, merge(P(CYL(0.42, 0.36, 0.05, 12), '#2e1e10', { p: [0, 0.02, 0] }), ...[0, 1, 2, 3].map(i => P(SPH(7), '#7a5634', { s: [0.3, 0.16, 0.24], p: [0.6 + (i % 2) * 0.12, 0.06 + (i > 1 ? 0.1 : 0), -0.25 + i * 0.16] }))), { outline: false });
+  return { g, t: 0 }; })();
+function syncVet(dt) {
+  const hk = HANK, M = hk.model;
+  if (!M.vet) {
+    const back = part(M.torso, SHOVEL_GEO, { shadow: false }), hand = part(M.armL, SHOVEL_GEO, { shadow: false }), bag = part(M.torso, MEDBAG_GEO, { shadow: false });
+    back.position.set(0.12, 0.2, -0.46); back.rotation.set(0.15, 0, 0.5); hand.position.set(0.05, -0.8, 0.15); hand.rotation.set(Math.PI * 0.55, 0, 0);
+    bag.position.set(-0.5, 0.0, 0.12); bag.rotation.y = -0.4; bag.scale.setScalar(0.85);
+    M.vet = { back, hand, bag };
+  }
+  const meds = hk.meds || {};
+  M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.bag.visible = (meds.venom || 0) + (meds.bandage || 0) + (meds.pills || 0) > 0;
+  for (const d of G.dogs) {
+    const m = d.models; if (!m) continue;
+    if (!m.medbag) {
+      m.medbag = part(m.head, MEDBAG_GEO, { shadow: false }); m.medbag.position.set(0, -0.2, 0.3); m.medbag.scale.setScalar(0.62);
+      m.shovel = part(m.head, SHOVEL_GEO, { shadow: false }); m.shovel.position.set(0.15, -0.12, 0.3); m.shovel.rotation.set(0, 0, Math.PI / 2); m.shovel.scale.setScalar(0.62);
+    }
+    const b = d.bag || {}; m.shovel.visible = b.shovel > 0; m.medbag.visible = (b.venom || 0) + (b.bandage || 0) + (b.pills || 0) > 0 && !(b.shovel > 0 && d.clippers);
+  }
+  // the grave he's digging (in front of him: guests see it too)
+  HOLE.t = hk.digging ? HOLE.t + dt : 0; HOLE.g.visible = !!hk.digging;
+  if (hk.digging) { const fx = Math.sin(hk.yaw), fz = Math.cos(hk.yaw), x = hk.x + fx * 0.95, z = hk.z + fz * 0.95; HOLE.g.position.set(x, terrainH(x, z), z); HOLE.g.rotation.y = hk.yaw; HOLE.g.scale.setScalar(clamp(0.3 + HOLE.t / T.remains.dig, 0.3, 1)); }
+}
+// a thought cloud with a line in it (or icons), over a screen point; u: s since it showed (pops in, fades out over dur)
+function drawCloud(px, py, txt, u = 1, dur = 1e9, font = 'italic 600 12px Fredoka, sans-serif') {
+  const k = Math.min(1, u / 0.3), sc = 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;
+  ctx.save(); ctx.globalAlpha = Math.min(1, (dur - u) / 0.5); ctx.translate(px, py + Math.sin(u * 3) * 1.5); ctx.scale(sc, sc);
+  ctx.font = font; const w = ctx.measureText(txt).width + 18, h = 22;
+  const puffs = [[2, 30, 2], [6, 25, 3]];   // little circles trailing down to whoever's thinking it
+  const n = Math.max(2, Math.round(w / 16)), bumps = [];
+  for (let i = 0; i < n; i++) { const x = -w / 2 + 8 + i * (w - 16) / (n - 1); bumps.push([x, -h / 2 + 1, 7]); if (i < n - 1) bumps.push([x + (w - 16) / (n - 1) / 2, h / 2 - 1, 6.5]); }
+  const shape = () => { rr(-w / 2, -h / 2, w, h, h / 2); for (const [x, y, r] of [...bumps, ...puffs]) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); } };
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(42,29,20,.85)'; shape(); ctx.stroke();   // stroke, then fill over it: one outline round the cloud
+  ctx.fillStyle = '#fff8e8'; shape(); ctx.fill();
+  ctx.fillStyle = '#1b1a22'; ctx.fillText(txt, 0, 1);
+  ctx.restore();
+}
+// over each sick sheep: what's wrong, ringed by the life it has left (green: Hank has the cure); over Hank: what he's short of
+function drawVetOverlay() {
+  if (G.mode !== 'play') return;
+  const hk = HANK, meds = hk.meds || {};
+  for (const s of G.sheep) {
+    const b = s.dead ? 0 : ailOf(s); if (!b) continue;
+    let A = null, v = -1; for (const a of AIL) if ((b & a.bit) && (s[a.key] || 0) > v) { v = s[a.key] || 0; A = a; }
+    const [px, py, pz] = proj(s.x, s.y + 1.7 * s.scale * (s.grow || 1), s.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
+    const has = (meds[A.cure] || 0) > 0, late = v > 0.7, r = 10 * (late ? 1 + Math.sin(G.time * 8) * 0.1 : 1), by = py - 12;
+    ctx.fillStyle = 'rgba(27,26,40,.72)'; ctx.beginPath(); ctx.arc(px, by, r + 2, 0, TAU); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.beginPath(); ctx.arc(px, by, r, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = has ? '#7ed957' : late ? '#ff3b2f' : '#ff9a6b'; ctx.beginPath(); ctx.arc(px, by, r, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(1 - v, 0.02, 1)); ctx.stroke();
+    ctx.font = '12px Fredoka, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(A.icon, px, by + 0.5);
+    if (!has) { ctx.font = '600 11px Fredoka, sans-serif'; ctx.fillText(VET_ICON[A.cure], px + r + 10, by + 0.5); }
+  }
+  const [hx, hy, hz] = proj(hk.x, hk.y + 1.6, hk.z), onH = hz <= 1 && hx > 0 && hx < W && hy > 0 && hy < H;
+  const want = vetWant();
+  if (want.size && onH) drawCloud(hx + 62, hy - 6, [...want].map(k => VET_ICON[k]).join(' ') + ' ?', 1, 1e9, '600 15px Fredoka, sans-serif');   // what he needs (beside him: his speech bubble's above)
+  const dog = G.dogs.find(d => bagN(d));
+  if (dog) nudge('vetbag', hk.x, hk.y + 3, hk.z, `${bagIcons(dog)} ➜ 🧓`);
+}
+
+// =====================================================================
 // FLOCK LOOKS — what each sheep wears: s.look = { wool, hat, hatColor,
 // acc: [], paint: [] } (plain JSON; it's saved). Hats and accessories are
 // drawn on the instanced flock: one InstancedMesh per piece (a fixed-colour
@@ -8188,13 +8862,13 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : why === 'snake' ? `🐍 ${s.name} died of a snakebite` : why === 'bled' ? `🩸 ${s.name} bled to death` : why === 'infect' ? `🦠 ${s.name}'s wounds went bad` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
-  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : `${base}…`;
+  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : why === 'snake' ? `${base}… 💉 ➜ 🧓` : why === 'bled' ? `${base}… 🩹 ➜ 🧓` : why === 'infect' ? `${base}… 💊 ➜ 🧓` : `${base}…`;
 }
-// how a sheep we lost went, for the "Fondly remembered" lists: why is 'eaten', 'starved', 'salt', 'thirst', 'old', 'cougar' or 'falcon'
-const cleanWhy = w => w === 'starved' || w === 'old' || w === 'salt' || w === 'thirst' || w === 'cougar' || w === 'falcon' ? w : 'eaten';
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : `${was}taken by coyotes`;
+// how a sheep we lost went, for the "Fondly remembered" lists: why is one of LOSS_KINDS
+const cleanWhy = w => LOSS_KINDS.includes(w) ? w : 'eaten';
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : why === 'snake' ? 'died of a snakebite' : why === 'bled' ? 'bled to death' : why === 'infect' ? 'died of a festering wound' : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -8895,11 +9569,14 @@ function eulogy(m) {
     : m.why === 'thirst' ? pick([`Dreamed of cool water to the last.`, `The trough ran dry before ${she} did.`])
     : m.why === 'cougar' ? pick([`Taken up a tree in the night.`, `The big cat came, and ${she} was gone.`])
     : m.why === 'falcon' ? pick([`Flew once, and never came down.`, `Carried off into a clear blue sky.`])
+    : m.why === 'snake' ? pick([`One bite from under a rock.`, `The desert's sting found ${her}.`])
+    : m.why === 'bled' ? pick([`Fought to the last drop.`, `The wounds were too deep.`])
+    : m.why === 'infect' ? pick([`A wee cut, and the fever came.`, `Fought the fever to the end.`])
     : pick([`The coyotes got there first.`, `Lost to the pack in the dark.`]);
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠' };
 // 🕯️ Obituaries: icon, name, bravery (and the day, on the end screen), eulogy
 function obitHTML(dead, day = false) {
   if (!dead.length) return '';
@@ -9078,11 +9755,17 @@ const WARE_KINDS = {
   food: { icon: '🌾', col: '#6aa84f' },
   salt: { icon: '🧂', col: '#b9a9cc' },
   cabo: { icon: '🏖️', col: '#f2d9a0' },
+  // VET: the second row, into the barking dog's bag for Hank
+  venom: { icon: '💉', col: '#4fb28a', row: 1 },
+  bandage: { icon: '🩹', col: '#e2c9a2', row: 1 },
+  pills: { icon: '💊', col: '#d86a6a', row: 1 },
+  shovel: { icon: '🪏', col: '#9a7a5a', row: 1, show: () => !HANK.shovel && !G.dogs.some(d => d.bag && d.bag.shovel > 0) },   // (one's enough)
 };
 const ALL_WARES = [];   // every stall's (w.gi); w.i: its place on its stall
-for (const st of STALLS) st.wares = (st.final ? ['pen', 'clippers', 'water', 'food', 'salt', 'cabo'] : ['pen', 'water', 'food', 'salt']).map((id, i) => {
-  const w = { id, ...WARE_KINDS[id], stall: st, i, gi: ALL_WARES.length }; ALL_WARES.push(w); return w;
+for (const st of STALLS) st.wares = [...(st.final ? ['pen', 'clippers', 'water', 'food', 'salt', 'cabo'] : ['pen', 'water', 'food', 'salt']), ...VET_KINDS].map((id, i) => {
+  const w = { id, row: 0, ...WARE_KINDS[id], stall: st, i, gi: ALL_WARES.length }; ALL_WARES.push(w); return w;
 });
+for (const st of STALLS) for (const w of st.wares) { const row = st.wares.filter(o => o.row === w.row); w.ri = row.indexOf(w); w.rn = row.length; }   // its place in its row
 const WARES = MARKET.wares;   // the Trading Post's
 const VENDOR = { hello: false, met: false, bought: {} };
 const wareOn = w => !w.show || w.show();
@@ -9119,9 +9802,14 @@ const warePrice = w => wareDeal(w).price;
       P(BOX(0.36, 0.26, 0.36), '#f3eee6', { r: [0, 0.3, 0], p: [0.05, 0.47, back] }), P(BOX(0.14, 0.06, 0.16), '#f6c9d4', { p: [0.08, 0.62, back - 0.02] })),
     cabo: merge(P(CYL(0.035, 0.035, 2.2, 6), '#f4f1ea', { p: [-0.75, 1.1, back] }), P(CONE(1.1, 0.45, 12), '#ff5a5a', { p: [-0.75, 2.2, back] }), P(CONE(0.55, 0.24, 12), '#ffffff', { p: [-0.75, 2.37, back] }),
       P(BOX(0.6, 0.03, 1.2), '#4dc3ff', { p: [0.4, 0.08, -0.2] }), P(BOX(0.6, 0.035, 0.15), '#ffffff', { p: [0.4, 0.09, -0.62] }), GEO.palm.clone().scale(0.5, 0.5, 0.5).translate(1.05, 0, back - 0.45)),
+    // VET: a crate of little green bottles, a stack of bandage rolls, a pill jar, a shovel stuck in a mound
+    venom: merge(P(BOX(0.6, 0.28, 0.4), '#8a5a32', { p: [0, 0.14, back] }), ...[-0.18, 0, 0.18].flatMap(x => [P(CYL(0.06, 0.07, 0.24, 8), '#4fb28a', { p: [x, 0.4, back] }), P(CYL(0.03, 0.03, 0.06, 6), '#e8e0d0', { p: [x, 0.55, back] })])),
+    bandage: merge(...[[-0.15, 0.1, 0], [0.15, 0.1, 0], [0, 0.29, 0.02]].map(([x, y, z]) => P(CYL(0.12, 0.12, 0.2, 12), '#f6f0e4', { r: [0, 0, Math.PI / 2], p: [x, y, back + z] })), P(BOX(0.05, 0.2, 0.26), '#e6dccb', { p: [0, 0.1, back + 0.02] })),
+    pills: merge(P(CYL(0.16, 0.16, 0.34, 12), '#e9eef2', { p: [0, 0.17, back] }), P(CYL(0.17, 0.17, 0.08, 12), '#d86a6a', { p: [0, 0.38, back] }), P(SPH(6), '#d86a6a', { s: [0.05, 0.03, 0.03], p: [0.28, 0.03, back + 0.1] }), P(SPH(6), '#f6f0e4', { s: [0.05, 0.03, 0.03], p: [0.33, 0.03, back + 0.04] })),
+    shovel: merge(P(SPH(9), '#8a6440', { s: [0.45, 0.16, 0.35], p: [0, 0.03, back] }), SHOVEL_GEO.clone().rotateZ(-0.25).translate(0.05, 0.42, back)),
   };
   for (const w of ALL_WARES) {
-    const M = w.stall, u = (w.i - (M.wares.length - 1) / 2) * T.vendor.gap, f = T.vendor.ring;
+    const M = w.stall, u = (w.ri - (w.rn - 1) / 2) * T.vendor.gap, f = T.vendor.ring + w.row * T.vendor.row2;
     w.x = M.x + M.fx * f + M.rx * u; w.z = M.z + M.fz * f + M.rz * u; w.y = terrainH(w.x, w.z);
     w.shakeAt = w.armT = -9;
     const g = new THREE.Group(); g.position.set(w.x, w.y, w.z); g.rotation.y = M.yaw; scene.add(g); w.g = g;
@@ -9145,14 +9833,17 @@ function vendorBark(d) {
   const st = STALLS.find(m => Math.abs(d.x - m.x) < 13 && Math.abs(d.z - m.z) < 13); if (!st) return null;
   let best = null, bd = T.vendor.matR;
   for (const w of st.wares) { const k = Math.hypot(d.x - w.x, d.z - w.z); if (k < bd && wareOn(w)) { bd = k; best = w; } }
-  return best ? buyWare(best) : null;
+  return best ? buyWare(best, d) : null;
 }
 // -> 'add' (one more, stocked) | 'buy' (a batch, ✂️, 🏖️) | 'pen' (📍: the next pen) | 'poor' (not enough 🧶) | 'full' (no room in the pen)
 //    | 'none' (Cabo: nobody penned) | 'arm' (Cabo: bark again to go)
-function buyWare(w) {
+function buyWare(w, d = null) {
   const V = T.vendor, wool = G.wool || 0, st = w.stall, pen = pens[st.sel] || finalPen, deal = wareDeal(w, pen), price = deal.price;
   let kind = 'buy';
+  const vet = VET_KINDS.includes(w.id), dog = vet ? d || G.dogs.reduce((b, o) => !b || Math.hypot(o.x - w.x, o.z - w.z) < Math.hypot(b.x - w.x, b.z - w.z) ? o : b, null) : null;   // VET: into the buyer's bag (or the nearest dog's)
   if (w.id === 'pen') { pickPen(st); kind = 'pen'; }
+  else if (vet && !dog) kind = 'none';
+  else if (vet && wool >= price && bagN(dog) >= T.vet.bag) kind = 'bag';
   else if (w.id === 'cabo' && !caboSheep().length) kind = 'none';
   else if (wool < price) kind = 'poor';
   else if (w.id === 'cabo') { if (!(w.armT > G.time)) kind = 'arm'; }
@@ -9165,9 +9856,10 @@ function buyWare(w) {
     else if (w.id === 'food') stockTroughs(pen, V.food.amt); else if (w.id === 'water') fillWater(pen, V.water.amt); else lickAdd(pen, V.salt.amt);
   }
   else if (w.id === 'clippers') giveHankClippers();
+  else if (vet) { const b = dog.bag || (dog.bag = {}); b[w.id] = (b[w.id] || 0) + 1; floatText(`${w.icon} 🎒`, dog.x, dog.y + 2.2, dog.z, '#ffffff', 1); }
   if (kind === 'buy' || kind === 'add') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
   vendorFx(w.gi, kind, price, st.sel, KIT[w.id] ? kitN(pens[st.sel] || finalPen, w.id) : 0);
-  if (kind === 'none') hank(null, 'Pen them first! Then Cabo!', { force: true });
+  if (kind === 'none' && w.id === 'cabo') hank(null, 'Pen them first! Then Cabo!', { force: true });
   if (kind === 'buy' && w.id === 'cabo') { const n = caboSheep().length; hank(null, "Cabo! Sun, sand, an' nae coyotes!", { force: true, delay: 3 }); finishGame(n); }
   return kind;
 }
@@ -9193,7 +9885,7 @@ function vendorFx(i, kind, price = 0, pi = -1, n = 0) {
   }
   // a no: the mat shakes, the vendor shakes his head
   w.shakeAt = st.noAt = G.time;
-  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);
+  floatText(kind === 'poor' ? '🧶 ✖' : kind === 'full' ? `${w.icon} 100%` : kind === 'bag' ? '🎒 ✖' : '🐑 0 ✖', w.x, y + 0.6, w.z, '#ff7a6b', 1.3);   // (bag: the dog's is full: take it to Hank first)
   Sound.chime([0, -1], 196, 0.18, 0.12);
 }
 // sim step (host): each stall's pen (picked, or the furthest found); Hank's word at the first trader and at the Trading Post
@@ -9241,6 +9933,7 @@ function drawVendorOverlay() {
   const st = stallNear(); if (!st) return;
   const near = G.dogs.find(d => Math.hypot(d.x - st.x, d.z - st.z) < T.vendor.near) || G.dogs[0];
   const V = T.vendor, wool = G.wool || 0, n = caboSheep().length, bk = keyLabel(near.player, 'bark'), pen = pens[st.sel] || finalPen;
+  const want = vetWant(); if (!HANK.shovel && G.graves.some(g => !g.stone)) want.add('shovel');   // VET
   nudge('vendor', st.x, st.v.y + 3.6, st.z, `${bk} on a mat: buy`);
   ctx.font = '600 13px Fredoka, sans-serif';
   for (const w of st.wares) {
@@ -9252,7 +9945,7 @@ function drawVendorOverlay() {
     const txt = w.armT > G.time ? `${w.icon} ${bk} ✔` : cabo && !n ? `${w.icon} 🐑 0` : w.id === 'pen' ? `📍 ${pen.camp.icon}`
       : kit ? `${w.icon}${deal.kind === 'add' ? '+' : ''} ${kitN(pen, w.id)}/${kitMax(pen, w.id)} · ${room ? price + '🧶' : '100%'}`
       : `${w.icon} ${price ? price + '🧶' : '🆓'}${cabo ? ` · 🐑${n}` : ''}`;
-    const sc = w.armT > G.time ? 1.12 + 0.08 * Math.sin(G.time * 10) : on ? 1.12 : 1;
+    const sc = w.armT > G.time ? 1.12 + 0.08 * Math.sin(G.time * 10) : on ? 1.12 : want.has(w.id) ? 1.08 + 0.08 * Math.sin(G.time * 6) : 1;   // (VET: what Hank's short of pulses)
     ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
     forageChip(0, 0, txt, w.id === 'pen' ? 'rgba(150,50,45,.9)' : ok ? 'rgba(60,140,60,.9)' : 'rgba(130,60,55,.85)');
     if (on) { const tw = ctx.measureText(txt).width + 16; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2.5; rr(-tw / 2, -11, tw, 22, 10); ctx.stroke(); }
@@ -9293,6 +9986,7 @@ function dropPlayer(p) {
     if (d.maul) endMaul(d.maul, 'done');
     if (FALCON.dog === d) falconDrop(FALCON, false);
     for (const k of COUGARS) if (k.dog === d) k.dog = null;
+    if (bagN(d)) giveHankBag(d);   // VET: what it was carrying goes to Hank
   }
   netRemovePlayer(p);
   Sound.chime([7, 0], 660, 0.12);
@@ -9313,7 +10007,7 @@ function startGame(dev) {
 function finishGame(n) {
   if (G.mode !== 'play') return;
   G.mode = 'end';
-  const st = G.stats, lost = st.eaten + st.starved + (st.old || 0) + (st.salt || 0) + (st.thirst || 0) + (st.cougar || 0) + (st.falcon || 0), ratio = n / Math.max(1, st.start);
+  const st = G.stats, lost = lostCount(), ratio = n / Math.max(1, st.start);
   const stars = ratio >= 1.8 ? 3 : ratio >= 1.2 ? 2 : ratio >= 0.7 ? 1 : 0;
   $('eTitle').textContent = n > 0 ? '🏖️ Cabo! 🌴' : 'The flock is gone…';   // n > 0: only Cabo ends a journey well (VENDOR)
   $('end').classList.toggle('cabo', n > 0);
@@ -9340,8 +10034,9 @@ function resetGame() {
   resetDigs();     // DIG SPOTS: every mound back for the new journey
   resetVendor();   // VENDOR
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0 };
-  G.wool = 0; for (const d of G.dogs) d.clippers = false;   // HANK: shearing: no wool yet, the clippers buried again
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0 };
+  G.wool = 0; for (const d of G.dogs) { d.clippers = false; d.bag = null; }   // HANK: shearing: no wool yet, the clippers buried again (VET: bags empty)
+  resetSnakes(); for (const Y of YARDS) { Y.n = 0; yardGrow(Y, Y.rows0); }   // RATTLESNAKES back behind their rocks; REMAINS: empty cemeteries, as they were
   G.visited = new Set([CAMPS[0].name]); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; });
@@ -9454,6 +10149,7 @@ const NET_TYPES = {
       greens: .02, salt: 'i',   // FORAGE: what it's carrying
       hp: .01, mauled: 'b', maulEsc: .05, ko: 'b',   // health, pinned under a cougar (and how close to breaking free), out cold
       clippers: 'b',   // HANK: shearing: Hank's clippers in its mouth
+      bag: 'j',        // VET: what it's carrying to Hank
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -9467,6 +10163,7 @@ const NET_TYPES = {
       look: { c: 's', get: s => netLookJSON(s), set: (s, v) => { try { s.look = v ? JSON.parse(v) : null; } catch (e) {} } },   // the barn: wool, hat, bits, paint
       wool: .02,   // HANK: shearing: its fleece (state 'shear': on its rump being shorn)
       brave: .02,  // RAM NADS: their size
+      venom: .01, bleed: .01, infect: .01, ail: 'i',   // VET: how bad (and which are getting worse: AIL bits)
       ...NET_AIR,
     },
     make: (id, f) => netGuestSheep(id, f), kill: s => { const i = G.sheep.indexOf(s); if (i >= 0) G.sheep.splice(i, 1); }, animate: (s, dt) => netAnimSheep(s, dt),
@@ -9515,9 +10212,10 @@ const NET_TYPES = {
     tag: 'D', all: () => DIGS, id: sp => sp.i, static: true,
     fields: { dug: 'b', prog: .05 },
   },
-  grave: {
+  grave: {   // REMAINS: a body (rotting, on Hank's shoulder) or its stone (in a cemetery row: neat)
     tag: 'g', all: () => G.graves, id: g => g.nid || (g.nid = ++NET.nid),
-    fields: { x: .01, z: .01, name: 's', why: 's', day: 'i', looks: 's', look: 'j' },   // (look: the hat it wears)
+    fields: { x: .01, z: .01, name: 's', why: 's', day: 'i', looks: 's', look: 'j', yaw: .05, rot: .01, by: 'b', neat: 'b',   // (look: its fleece, size and hat)
+      stone: { c: 'b', get: g => g.stone, set: (g, v) => { if (v && !g.stone) graveStone(g, { rise: g.neat }); } } },
     make: (id, f) => netGuestGrave(id, f), kill: g => { scene.remove(g.root); const i = G.graves.indexOf(g); if (i >= 0) G.graves.splice(i, 1); },
   },
   game: {
@@ -9534,13 +10232,16 @@ const NET_TYPES = {
   },
   stall: { tag: 'V', all: () => STALLS, id: st => st.i, static: true, fields: { sel: 'i' } },   // VENDOR: the pen each stall's wares go to
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i' } },
+  snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05 } },   // RATTLESNAKES: out how far, striking at what
+  yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) } } },   // REMAINS: a cemetery Hank's added rows to
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (a flock summary, not a sheep field)
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
-      clippers: 'b', shearing: 'b', lift: .02 },   // shearing: has his clippers, clipping a sheep, over a fence
+      clippers: 'b', shearing: 'b', lift: .02,   // shearing: has his clippers, clipping a sheep, over a fence
+      meds: 'j', shovel: 'b', tending: 'b', digging: 'b' },   // VET: his stock, his shovel, at a patient, digging a grave
     animate: hk => { hk.y = hankY(hk.x, hk.z); },
   },
 };
@@ -9903,6 +10604,7 @@ function netAnimSheep(s, dt) {
   if (s.stress > 0.62 && !sleeping && !s.pen && Math.random() < dt * (1.5 + 8 * (s.stress - 0.62))) {   // nervous sweat
     const hs = s.scale * s.grow; burst(s.x + Math.sin(s.yaw) * 0.55 * hs, s.y + 1.05 * hs, s.z + Math.cos(s.yaw) * 0.55 * hs, 1, '#8fd8ff', { speed: 0.7, up: 1.8, size: 0.09, life: 0.55, grav: -9 });
   }
+  sickTrail(s, dt);   // VET
 }
 function netAnimCoyote(c, dt) {
   const sp = Math.hypot(c.vx, c.vz), lifted = c.air || c.heldBy;
@@ -10527,10 +11229,8 @@ function netGuestCoyote(id, f) {
     prey: null, courage: 1, leg: 0, tumble: 0, crouch: 0, howlT: 1e9, growlT: 0, air: null, heldBy: null, models: makeCoyote(alpha) };
   G.coyotes.push(c); return c;
 }
-function netGuestGrave(id, f) {
-  const day = G.clock.day; G.clock.day = f.day || day;    // carved with the day it happened
-  let g; try { g = addTombstone({ x: f.x || 0, z: f.z || 0, name: f.name || 'Sheep', lamb: false, ram: false, black: false, look: f.look || null }, f.why || ''); } finally { G.clock.day = day; }
-  g.nid = id; g.root.position.set(f.x || 0, terrainH(f.x || 0, f.z || 0), f.z || 0);
+function netGuestGrave(id, f) {   // REMAINS: a body, or (f.stone) its stone, carved with the day it happened
+  const g = makeRemains(f); g.nid = id; G.graves.push(g);
   return g;
 }
 // a friend's controls. Alone, both keyboard layouts and any controller drive their one dog. A second person on
@@ -10703,8 +11403,6 @@ for (const k of Object.keys(Sound)) {
   Sound[k] = fxDef('S.' + k, d.value, { pan: SND_PAN[k] });
 }
 for (const k of Object.keys(SFX)) if (typeof SFX[k] === 'function') SFX[k] = fxDef('X.' + k, SFX[k], { pan: 0 });   // dog-moves synth sounds (pan first)
-// a lost sheep's tombstone remembers the hat she wore, so guests can put it on their copy of the stone
-{ const a0 = addTombstone; addTombstone = function (s, why) { const g = a0(s, why), L = s.look; if (g && L && L.hat && L.hat !== 'none') g.look = { hat: L.hat, hatColor: L.hatColor }; return g; }; }
 { const p0 = panOf; NET.panOf0 = p0; panOf = (x, z) => { FXPOS.x = x; FXPOS.z = z; FXPOS.on = true; return p0(x, z); }; }
 window.NET = NET;
 NET.api = { host: netHost, join: netJoin, leave: netLeave, stop: netStopHosting, rejoin: netRejoin, setPause, snap: netSnapTick, link: netLink, fx, fxDef,
@@ -10720,7 +11418,8 @@ function step(dt) {
   if (G.mode === 'play') {
     // fast-forward the night when the whole flock is penned behind a closed gate (and done with its supper)
     const live = living();
-    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05 && s.state !== 'trough' && s.state !== 'wait') && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state));   // (watch it come over the fence)
+    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && s.pen && s.pen.gateT < 0.05 && s.state !== 'trough' && s.state !== 'wait') && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
+      && !HANK.care && !live.some(s => s.bleedRate > 0);   // VET: not while one's bleeding (time to fetch bandages) or Hank's seeing to one
     const dtH = stepClock(dt);
     regrowAcc += dtH; regrowT();   // in step, not frame, so headless tests (?sim) regrow the grass too
     for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
@@ -10730,6 +11429,8 @@ function step(dt) {
     updateCoyotes(dt);
     updateCougars(dt);
     updateFalcon(dt, dtH);
+    updateSnakes(dt);      // RATTLESNAKES
+    updateRemains(dtH);    // REMAINS: the fallen rot to tombstones
     updateVendor();   // VENDOR: each stall's pen, Hank's word at the stalls
     checkLose();
   } else {
@@ -10769,6 +11470,8 @@ function frame(now) {
   syncWater(dt);          // WATER: water troughs, buckets
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
   syncVendor(dt);         // VENDOR: mats and the vendor
+  syncSnakes();           // RATTLESNAKES
+  syncRemains(dt);        // REMAINS: bodies rotting, carried, stones coming up
   updateParticles(dt); updateRings(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   renderer.render(scene, camera);
@@ -10791,6 +11494,12 @@ function debugKeys() {
   if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
+  if (keyEdge.has('KeyH')) {   // VET: one bitten, one bleeding, one festering, one dead; a dog with a full bag and 🧶 to spend
+    const L = living().filter(s => !s.lamb), d = G.dogs[0];
+    if (L[0]) snakeBite(L[0]); if (L[1]) { L[1].heldT = 6; L[1].grabBy = 'coyote'; woundSheep(L[1]); } if (L[2]) { L[2].heldT = 0; L[2].grabBy = 'falcon'; woundSheep(L[2]); } if (L[3]) killSheep(L[3], 'eaten');
+    if (d) d.bag = { venom: 1, bandage: 1, pills: 1, shovel: 1 }; G.wool = Math.max(G.wool || 0, 30); G.clock.hour = Math.max(8, Math.min(G.clock.hour, 15));
+  }
+  if (keyEdge.has('KeyL')) { const p = pathPoint(T.snake.from + 6, 0); for (const d of G.dogs) { d.x = p.x - 2; d.z = p.z; } for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } HANK.x = p.x; HANK.z = p.z - 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 14)); }   // RATTLESNAKES: to the desert past the Promised Land
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
@@ -10804,6 +11513,8 @@ Object.assign(window.GAME, { FINAL, MARKET, STALLS, finalPen, VENDOR, WARES, ALL
   KIT, kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav });   // VENDOR
 Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
+Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHankBag, bagN, careNext, careStop, updateCare, lastWords,
+  YARDS, yardGrow, yardRoom, yardSpot, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
@@ -10812,7 +11523,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   syncFalcon(FALCON);
-  syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
