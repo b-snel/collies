@@ -18,14 +18,18 @@ desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play t
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 🏖️, which wins.
+The sea (issue #74, not yet on the trail: `?sea`): the flock on a boat's deck, sailed island to island to Cabo
+(wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
-  `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon). `window.GAME` exposes
+  `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon; `Y` to sea / on to the
+  next island, `1`…`5` under way on that sea leg, `T` Hank trims / full manual, `G` a gale). `window.GAME` exposes
   state and functions.
+- `?sea` (`?sea=2`: from the third island): start at sea. `GAME.seaStart({ leg, under })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
@@ -48,7 +52,9 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
-DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
+DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, STATIONS, route, Hank at sea,
+HAZARDS, KRAKEN, drawing, HUD + chart, flow) → game flow → main loop → `window.GAME`.
+(`BOAT`, `deckSdf`, the sea zone: world gen. `DECK`, `deckKit`: pens.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `train(d, trait, amt)` (xp),
@@ -60,7 +66,11 @@ quenched; return what went in / out), `giveHankClippers()` (no-op if he has
 them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `kitSet(pen, kind, n)` (`food`/`water`/`salt`: show bought troughs and licks; `kitN`, `kitMax`),
 `snakeBite(s, n)`, `woundSheep(s)` (uses `s.heldT`, `s.grabBy`), `cureSheep(s, cure)`, `s.venom`/`s.bleed`/`s.infect`
-(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`.
+(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`,
+`waterLevel(x, z)` (the water's top there: flat ashore, the waves at sea), `pen.deck` / `pen.lock` (the boat's deck),
+`seaShove({ heel, yaw, surge, sway, ju, jv })`, `seaOverRail(e, side, out, up, how)`, `seaStress(s)` / `seaSheepDeck(s, dt)`,
+`s.seaHold`, `s.lure`, `seaBark(d, k, team)`, `seaPounce(d)`, `seaFx(kind, k, x, z, a)`, `seaCheckpoint(w)` → `SEA.checkpoint`,
+`SEA.onSave(w, snap)` (for the save system to come).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -101,6 +111,7 @@ Run the ones touching your change; report the numbers.
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `input-test.mjs` | Ⓐ on slow frames: quick taps between frames, held = one bark, early press waits out the cooldown (`padPoll`, `T.barkBuf`) |
+| `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchoring (holds: saved, mended; drags), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the land untouched |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
@@ -376,6 +387,59 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `syncYard`, `T.remains.build`); stopped, it stays half up till he's back.
   Full: he adds a row at the back (`yardGrow`, if `yardRoom`; up to
   `T.remains.rows`); else the next cemetery; none: it rots where it lies.
+
+### Sailing (issue #74)
+
+Not on the trail yet (a snowy mountain leg will lead down to it): `?sea`, `Y`. Guests don't see the sea yet
+(no `NET_TYPES`): host / offline only.
+
+- **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway
+  gate lashed shut: `pen.lock`) out in the sea zone (`x > SEA_X0`: `terrainH` / `sdfIn` / `trailInfo` / grass answer
+  for it), bow up the screen. `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords)
+  is set to her pose undone, the camera and the sun tilted the same (`seaCamTilt`, `seaLight`), so the sea lies level
+  on screen and she heels. Everything aboard runs unchanged. Things in the water drift astern (`seaDrift`).
+- **Waves** (`SWAVES`, `seaEta`, `T.sea.wave`): five trochoid trains (two of swell, in sets; three of wind sea) that
+  grow with the wind (`SEA.state`); the water shader (`SEAW`) draws the same sum, so she floats on what you see.
+  `seaRogue`: a lone great wave. `waterLevel` is a swimmer's y.
+- **Wind** (`WIND`, `T.sea.wind`): from, m/s; veers and breathes; gusts drift down it as dark patches on the water
+  (lulls: glassy), drawn where they are. Each leg has its own (`ROUTE[i].wind`, `seaWeather`).
+- **Sail** (`seaBoatStep`, `sailCoef`, `T.sea.sail`): lift and drag off the apparent wind and the boom's angle. The
+  boom swings to leeward as far as the sheet lets it. From that alone: no-go zone, irons (she drifts astern; helm
+  over, her head pays off), luffing, stalling, heel, leeway (more when slow), weather helm, tack, gybe (the boom
+  crashes across: `seaBoomSlam`, swats dogs and sheep: `seaBoomSweep`; lying down ducks it; sheeted in: gentle).
+  Reefed: less heel, less speed. Hull: drag, keel, a rudder that bites with way on; hard over it brakes.
+- **Heel / pitch / heave** follow the water at bow, stern and sides; the sail heels her; the flock is live ballast
+  (`SEA.bal`, `seaMass`): to windward they hold her up. Past `T.sea.deck.grip` feet slide to the low side
+  (`seaDeckPush`); green water over the low rail washes sheep off (`SEA.awash`). The ride frightens them
+  (`seaUnease`: a floor under stress; on deck they can panic, penned or not).
+- **Stations** (`STATIONS`, `holdKind 'station'`, `T.sea.station`): ✊ bites one, the stick works it, a tap lets go.
+  Tiller: stick steers; let go of the stick, she holds that heading (`SEA.course`); ✊✊ lashes it (`SEA.lash`).
+  Sheet: aft hauls, forward eases; ✊✊ lets it fly. Halyard: up / down, settles on a reef. Anchor: down drops, up
+  weighs. Nobody on the tiller: it swings amidships and she rounds up.
+- **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
+  pressed; lets fly at anchor or with a dog overboard. Calls what he sees (`seaHank`).
+- **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
+  alongside if she's slow; a dog at the rail ✊ hauls it in (`seaHaul`), a swimming dog tows it (`d.tow`). Left: drowned.
+  Dogs: over the rail only by a jump; swim, climb the nets against the hull (`seaSwimDog`).
+- **Anchor** (`T.sea.anchor`): holds in under `depth` m (by islands), she swings head to wind; deeper, it only drags.
+  Anchored in an island's lee: `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), the night
+  fast-forwards (`seaAtRest`).
+- **Route** (`ROUTE`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → Cabo.
+  Anchoring at Cabo (or stopping there): `finishGame(sheep aboard)`.
+- **Hazards, worse each leg** (`HAZ`, `seaHazards`): 🐋 orcas bonk the hull (sheep by that rail go over; a bark
+  turns one; they pick the rail the sheep are by). 🪨 reefs (a ♥ off the hull; at 0 she wallows till mended), gusts,
+  and from here on 🦈 a shark for each sheep in the water (bark: off a while). ⛈️ storm: gale, breaking seas,
+  lightning, a great wave now and then (abeam: sweeps the deck; on the bow: fine), a waterspout that flings sheep.
+  🧜 sirens in fog: sheep walk to that rail and jump (`s.lure`, `seaLure`); a bark frees them, a dog in the way
+  stops them; in the water they swim for the rock. Deaths: `drowned`, `shark`, `siren`, `kraken` (`SEA_LOSS`: no body).
+- **The kraken** (`KRAKEN`, `krakenStep`, `T.sea.kraken`): the wind dies, ink wells up. Arms over one rail haul it
+  down (`SEA.hold.heel`): herd the flock to the high side, pounce each arm off (`seaPounce`; a bold ram butts one).
+  A loose arm snatches a sheep (`s.seaHold`): bonk it and it drops it. Arms off: its head comes up, dazed: a sheep
+  (or a dog) flying into its eye is a hit and bounces back aboard (`krakenEyeHits`). `hp` (+`perDog`) hits: beaten,
+  +`bounty` 🧶, the wind fills in. Barks: 😾. HUD: 🐙 ♥♥♥ (`#bossBar`).
+- **HUD**: the dial (`drawSeaDial`): wind arrow, no-go wedge, boom (green drawing, amber luffing / stalled, dashed:
+  best), rudder, heel + where the flock's weight is, knots, reefs, hull ♥. The sail's cloth tints the same. Compass
+  and journey strip: the next island. Map: a chart (`seaChart`; minimap bow-up, big north-up).
 
 ### Icons
 
