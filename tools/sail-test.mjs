@@ -4,7 +4,7 @@
 // by an island: saved, mended; drags in deep water), and the hazards: orcas (bonk: sheep by that rail go over; a bark turns one), reefs,
 // sharks, the storm (gale, a great wave abeam / on the bow), the waterspout, sirens (lured to the rail and over; a bark, a dog in the way),
 // the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep into its eye; beaten), and Cabo (finishes).
-// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|orca|reef|shark|storm|spout|siren|kraken|arrive|land]
+// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|orca|reef|shark|storm|spout|siren|kraken|arrive|start|land]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [], fails = 0;
@@ -380,6 +380,27 @@ if (want('arrive')) {
     return out;
   });
   ok(`into Cabo: the journey ends with the sheep still aboard (${r.line}; one was in the water)`, r.mode === 'end' && r.line.includes(String(r.n0 - 1)), r);
+}
+
+if (want('start')) {
+  await setup({ calm: true });
+  const r = await h.page.evaluate(() => {
+    const { G, T, SEA, WIND, ROUTE, STATIONS, seaStart, stationOf, boatU, boatV, onDeck, DECK } = GAME, out = {}, d = G.dogs[0], p = d.player, [til, sht, hal, anc] = STATIONS, w = ROUTE[1];
+    // as a player finds it: at anchor off Cold Harbour, sail up and shaking. One dog: weigh, run aft, take the tiller, steer for the next island
+    seaStart(); T.sea.wind.gustRate = 0; T.sea.orca.from = 2;   // (no orcas this time)
+    out.anchored = SEA.anchor === 'down' && SEA.holding; out.aboard = H.aboard(); out.dogs = G.dogs.every(q => onDeck(q.x, q.z)); out.food = H.r(DECK.troughs.reduce((a, t) => a + t.food, 0)); out.water = H.r(DECK.water.w);
+    H.run(4); out.lying = H.r(Math.hypot(SEA.u, SEA.v)); out.sheet0 = H.r(SEA.sheet);
+    const goTo = st => H.run(12, () => { p.bot = H.inp(st.sx - d.x, st.sz - d.z); return Math.hypot(st.sx - d.x, st.sz - d.z) < 0.5; });
+    goTo(anc); p.bot = {}; H.run(0.2); H.tap(p); out.onAnchor = stationOf(d) === anc; p.bot = H.stick(1, 0); H.run(3.2); out.weighed = SEA.anchor === 'up'; p.bot = {}; H.tap(p); H.run(0.5);
+    goTo(til); p.bot = {}; H.run(0.2); H.tap(p); out.onTiller = stationOf(d) === til;
+    const d0 = Math.hypot(SEA.e - w.e, SEA.n - w.n); let minU = 9;
+    H.run(70, t => { const off = H.wrap(Math.atan2(w.e - SEA.e, w.n - SEA.n) - SEA.hdg); p.bot = Math.abs(off) > 0.08 ? H.stick(0, Math.max(-1, Math.min(1, off * 2.5))) : {}; });
+    out.made = H.r(d0 - Math.hypot(SEA.e - w.e, SEA.n - w.n)); out.u = H.r(SEA.u); out.trim = H.r(SEA.trim); out.heel = H.deg(SEA.heel); out.aboard2 = H.aboard();
+    return out;
+  });
+  ok(`she starts at anchor, everyone aboard (${r.aboard} sheep), the troughs stocked (🌾 ${r.food}, 💧 ${r.water}), the sheet let fly`, r.anchored && r.aboard >= 12 && r.dogs && r.food > 10 && r.water > 5 && r.lying < 0.8 && r.sheet0 > 0.9, r);
+  ok('one dog weighs the anchor at the bow, runs aft and takes the tiller', r.onAnchor && r.weighed && r.onTiller, r);
+  ok(`Hank sheets in and she's away: ${r.made} m made good toward the island in 70 s (${r.u} m/s), nobody lost`, r.made > 200 && r.u > 3 && r.aboard2 === r.aboard, r);
 }
 
 if (want('land')) {
