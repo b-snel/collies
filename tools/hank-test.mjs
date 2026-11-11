@@ -46,33 +46,33 @@ ok('clips loaded by prefetch, none missing', r1.loaded >= 30 && r1.missing.lengt
 const r2 = await h.page.evaluate(async () => {
   const { G, HANK, step, hank, T } = GAME; const out = {};
   const adv = s => { for (let i = 0; i < Math.round(s / 0.05); i++) step(0.05); };
-  adv(16);   // clear any start-up lines out of the 15 s window
+  adv(T.hankRepeat + 1);   // clear any start-up lines out of the repeat window
   const stops0 = window.__stops;
   out.a = hank('good_dog', null, { force: true });               // said
   await new Promise(r => setTimeout(r, 200));
   out.aPlayed = HANK.played.at(-1);
-  out.b = hank('thats_it');                                        // unforced within 7 s -> dropped (gap)
+  out.b = hank('thats_it');                                        // unforced within the gap -> dropped
   out.c = hank('good_dog', null, { force: true });               // same line twice in a row -> dropped even when forced
   out.d = hank('in_ye_go', null, { force: true });                // a different forced line -> said, cuts good_dog off
   await new Promise(r => setTimeout(r, 200));
   out.cut = window.__stops > stops0;
-  out.e = hank('good_dog', null, { force: true });               // said 0 s ago (not last) -> dropped (within 15 s)
+  out.e = hank('good_dog', null, { force: true });               // said 0 s ago (not last) -> dropped (repeat window)
   adv(T.hankGap + 0.5);
   out.f = hank('thats_it');                                        // unforced after the gap -> said
   adv(T.hankRepeat - T.hankGap + 0.5);
-  out.g = hank('good_dog', null, { force: true });               // >15 s since good_dog -> said
+  out.g = hank('good_dog', null, { force: true });               // past the repeat window -> said
   out.log = HANK.log.slice(-7).map(l => `${l.id}:${l.said ? 'said' : l.why}`);
   // subtitle only (no clip) still shows in the bubble
   adv(16); out.h = hank(null, 'A wee lamb! Keep it close!', { force: true }); out.bubble = document.querySelector('#hankBubble span').textContent;
   return out;
 });
 ok('forced line said + its clip played', r2.a === true && r2.aPlayed && r2.aPlayed.id === 'good_dog', r2.aPlayed);
-ok('unforced line within 7 s dropped', r2.b === false);
+ok('unforced line within the gap dropped', r2.b === false);
 ok('same line twice in a row dropped (even forced)', r2.c === false);
 ok('another forced line said and cuts the old clip off', r2.d === true && r2.cut === true);
-ok('a line said < 15 s ago dropped (even forced)', r2.e === false);
-ok('unforced line after 7 s said', r2.f === true);
-ok('a line again after 15 s said', r2.g === true, r2.log);
+ok('a line said inside the repeat window dropped (even forced)', r2.e === false);
+ok('unforced line after the gap said', r2.f === true);
+ok('a line again after the repeat window said', r2.g === true, r2.log);
 ok('subtitle-only line shows in the bubble', r2.h === true && r2.bubble === 'A wee lamb! Keep it close!', r2.bubble);
 
 // 3. herding commands: dog circling the flock clockwise / anticlockwise -> come bye / away to me, with the whistle first

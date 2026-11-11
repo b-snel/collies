@@ -712,8 +712,9 @@ const T = {
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
-  hankGap: 7, hankRepeat: 15,      // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
-  hankCmdGap: 8,                   // s between whistled herding commands ("Come bye!")
+  hankGap: 12, hankRepeat: 15,     // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
+  hankCmdGap: 20,                  // s between whistled herding commands ("Come bye!")
+  hankNag: { greedy: 60, easy: 45, gently: 45, bare: 150, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
@@ -2831,7 +2832,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
 const MIND = { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, gzX: 1, gzZ: 0, gzCx: 0, gzCz: 0, gzQ: 0, workedT: -99 };
 const freeSheep = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.pen;
 function sheepSay(id, text, cd = 30) {
-  const t = G.time; if (G.mode !== 'play' || t - MIND.lastSay < 6 || t < (MIND.said[id] || -1e9)) return false;
+  const t = G.time; if (G.mode !== 'play' || t - MIND.lastSay < 12 || t < (MIND.said[id] || -1e9)) return false;
   MIND.said[id] = t + cd; MIND.lastSay = t; hank(id, text); return true;
 }
 function spawnFlock() {
@@ -5570,7 +5571,7 @@ function tipTrough(d, tr, pen) {
   SFX.rustle(panOf(tr.x, tr.z)); Sound.chime([0, 4, 7, 12], 587, 0.18, 0.06);
   for (const c of ['#7cc44a', '#ffffff', '#b48ae6', '#ffc62a']) burst(tr.x, y + 1, tr.z, 5, c, { speed: 1.4, up: 1.6, size: 0.12, life: 0.8, grav: -9 });
   floatText(`🌾 +${Math.round(amt / tr.cap * 100)}%`, tr.x, y + 1.8, tr.z, '#9bdc5a', 1.3); rumble(d.player, 0.3, 0.5, 120);
-  if (FORAGE.tips === 1 || Math.random() < 0.3) hank('good_dog', null, { force: FORAGE.tips === 1 });
+  if (FORAGE.tips === 1 || Math.random() < T.hankNag.tip) hank('good_dog', null, { force: FORAGE.tips === 1 });
   hint('trough');
   return true;
 }
@@ -9067,7 +9068,7 @@ function drawOverlay(dt) {
 // time they're needed, and warmed up once a journey starts), his real
 // whistles in audio/whistle/. A speech bubble over his head (pinned to the
 // screen edge when he's off it) is the subtitle, always shown.
-// Rules from main: no queue; an unforced line within T.hankGap s of the
+// Rules: no queue; an unforced line within T.hankGap s of the
 // last one is dropped; never the same line twice in a row or within
 // T.hankRepeat s; a new line cuts off the one that's playing.
 // hank(id, text, opts): id = clip name (null = subtitle only); text = the
@@ -9439,7 +9440,7 @@ function hankDogJoined(p) {
   hankPrefetch();
   hank('over_here', null, { force: true, delay: 0.6 });
 }
-function hankSheepPenned(s, pen) { if (G.mode === 'play' && Math.random() < 0.12) hank(pick(['good_dog', 'thats_it', 'nice_steady', 'in_ye_go'])); }
+function hankSheepPenned(s, pen) { if (G.mode === 'play' && Math.random() < T.hankNag.penned) hank(pick(['good_dog', 'thats_it', 'nice_steady', 'in_ye_go'])); }
 function hankSaved(s) { if (G.mode === 'play') hank(pick(['missed_him', 'good_dog']), null, { force: true }); }
 function hankGateClosed(pen, inside, total) {
   if (G.mode !== 'play' || inside === 0 || inside !== total) return;
@@ -9470,19 +9471,19 @@ function hankWatch(dt) {
   const t = G.time, out = []; for (const s of G.sheep) if (!s.dead && !s.grabbed && !s.pen) out.push(s);
   let fx = 0, fz = 0; for (const s of out) { fx += s.x; fz += s.z; } if (out.length) { fx /= out.length; fz /= out.length; }
   // one keeps grazing while the rest are being driven on
-  if (out.length >= 4 && t - hk.lastGreedy > 30) {
+  if (out.length >= 4 && t - hk.lastGreedy > T.hankNag.greedy) {
     let mx = 0, mz = 0, nm = 0; for (const s of out) if (s.state === 'move' || s.state === 'flee') { mx += s.x; mz += s.z; nm++; }
     if (nm >= out.length * 0.5) { mx /= nm; mz /= nm;
       if (out.some(s => s.eating && Math.hypot(s.x - mx, s.z - mz) > 9) && hank(pick(['eatin_grass', 'quit_munchin', 'greedy_one', 'no_snackin']), null, { force: true })) hk.lastGreedy = t; }
   }
   // a dog sprinting into the flock scatters it
-  if (t - hk.lastEasy > 25) for (const d of G.dogs) {
+  if (t - hk.lastEasy > T.hankNag.easy) for (const d of G.dogs) {
     if (d.mode !== 'sprint' || Math.hypot(d.vx, d.vz) < 8) continue;
     let scared = 0; for (const s of out) if (s.fear > 0.6 && Math.hypot(s.x - d.x, s.z - d.z) < 12) scared++;
     if (scared >= 5 && hank('easy', null, { force: true })) { hk.lastEasy = t; break; }
   }
   // sheep panicking at an open gate won't go in
-  if (t - hk.lastGently > 25) for (const p of pens) {
+  if (t - hk.lastGently > T.hankNag.gently) for (const p of pens) {
     if (p.gateT < 0.5) continue;
     let near = 0, panicky = 0; for (const s of out) if (Math.hypot(s.x - p.gx, s.z - p.gz) < 10) { near++; if (s.panic > 0.5 || s.fear > 0.7) panicky++; }
     if (near >= 3 && panicky >= 2 && hank('gently', null, { force: true })) { hk.lastGently = t; break; }
@@ -9490,12 +9491,12 @@ function hankWatch(dt) {
   // a dog opens a pen gate in the evening with the flock still out
   for (const p of pens) { if (p.open && !p._hankOpen && G.clock.hour >= 16 && !isNight() && out.length) hank('gate_open', null, { force: true }); p._hankOpen = p.open; }
   // grazed bare / starving: no recording of these, so the subtitle alone
-  if (out.length >= 3 && !isNight() && t - hk.lastBare > 60) {
+  if (out.length >= 3 && !isNight() && t - hk.lastBare > T.hankNag.bare) {
     let g = 0; for (const s of out) g += grassAt(s.x, s.z);
     if (g / out.length < 0.12 && hank(null, "That patch is grazed bare! Move them on!", { force: true })) hk.lastBare = t;
   }
   const starving = living().filter(s => s.hunger >= 1).length;
-  if (starving > hk.starving && t - hk.lastStarve > 60 && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
+  if (starving > hk.starving && t - hk.lastStarve > T.hankNag.starve && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
   hk.starving = starving;
   // nice and steady into the launcher's chute (once a journey)
   if (!hk.bridgeSaid && out.filter(inChute).length >= 3 && hankSees(LAUNCHERS[0].x, LAUNCHERS[0].z)) hk.bridgeSaid = hank('nice_steady', null, { force: true });
