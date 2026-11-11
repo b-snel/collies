@@ -1,39 +1,39 @@
 // Headless checks for the vendors: a stall near the end of every leg and the Trading Post's (a dog on a mat barks to buy
 // with wool): 📍 picks a pen found on the way, 🌾 💧 🧂 add a stocked trough / water trough / lick there up to what the pen
-// holds (by its size), then batches; the desert past the Promised Land and Cabo, the win. `node tools/vendor-test.mjs`
+// holds (by its size), then batches; the desert past the Promised Land; no Cabo (the end's up the MOUNTAIN PASS). `node tools/vendor-test.mjs`
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
 const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}${cond ? '' : '  ' + JSON.stringify(info)}`); if (!cond) fails++; };
 
-// 1. the world: the trail ends in the desert at the Trading Post, no water near it, predators about
+// 1. the world: the Trading Post in the desert, no water near it, predators about; the trail climbs on to the yeti's cave (the end)
 const r1 = await h.page.evaluate(() => {
-  const { CAMPS, PATH_LEN, FINAL, finalPen, pens, WARES, MARKET, DENS, LAIRS, terrainH, sdfAt, sAt, T } = GAME;
-  let wet = 0; for (let a = 0; a < 64; a++) for (const r of [20, 35, 50, 65]) { const x = FINAL.x + Math.cos(a / 64 * 6.283) * r, z = FINAL.z + Math.sin(a / 64 * 6.283) * r; if (sdfAt(x, z) > 0 && terrainH(x, z) < -3 + 0.6) wet++; }
+  const { CAMPS, PATH_LEN, FINAL, POST, finalPen, postPen, pens, WARES, MARKET, DENS, LAIRS, terrainH, sdfAt, sAt, T } = GAME;
+  let wet = 0; for (let a = 0; a < 64; a++) for (const r of [20, 35, 50, 65]) { const x = POST.x + Math.cos(a / 64 * 6.283) * r, z = POST.z + Math.sin(a / 64 * 6.283) * r; if (sdfAt(x, z) > 0 && terrainH(x, z) < -3 + 0.6) wet++; }
   return {
     camps: CAMPS.map(c => c.name), last: CAMPS[CAMPS.length - 1] === FINAL, finals: CAMPS.filter(c => c.final).length, promisedFinal: !!CAMPS[3].final,
-    penFinal: finalPen && finalPen.final && finalPen.camp === FINAL, toEnd: Math.round(PATH_LEN - FINAL.s), wetNear: wet,
+    penFinal: finalPen && finalPen.final && finalPen.camp === FINAL, postFinal: !!postPen.final, toEnd: Math.round(PATH_LEN - POST.s), wetNear: wet,
     mats: GAME.ALL_WARES.map(w => ({ id: w.id, st: w.stall.i, sdf: +sdfAt(w.x, w.z).toFixed(1), inPen: pens.some(p => Math.hypot(w.x - p.x, w.z - p.z) < p.R + 1) })),
-    legs: CAMPS.slice(1).map((c, i) => GAME.STALLS.filter(st => !st.final && st.s > CAMPS[i].s && st.s < c.s).length),
+    legs: CAMPS.slice(1).map((c, i) => GAME.STALLS.filter(st => !st.market && st.s > CAMPS[i].s && st.s < c.s).length),
     river: Math.round(Math.min(...GAME.STALLS.map(st => Math.abs(sAt(st.x, st.z) - GAME.RIVER.s)))),
     gap: Math.round(Math.min(...GAME.STALLS.map(st => Math.min(...DENS.map(d => Math.hypot(d.x - st.x, d.z - st.z)), ...LAIRS.map(l => Math.hypot(l.x - st.x, l.z - st.z)), ...GAME.DIGS.map(d => Math.hypot(d.x - st.x, d.z - st.z)))))),
     wares: GAME.STALLS.map(st => st.wares.map(w => w.id).join(' ')),
-    stallFromPen: Math.round(Math.hypot(MARKET.x - FINAL.x, MARKET.z - FINAL.z)),
-    denNear: Math.round(Math.min(...DENS.map(d => Math.hypot(d.x - FINAL.x, d.z - FINAL.z)))), lairNear: Math.round(Math.min(...LAIRS.map(l => Math.hypot(l.x - FINAL.x, l.z - FINAL.z)))),
+    stallFromPen: Math.round(Math.hypot(MARKET.x - POST.x, MARKET.z - POST.z)),
+    denNear: Math.round(Math.min(...DENS.map(d => Math.hypot(d.x - POST.x, d.z - POST.z)))), lairNear: Math.round(Math.min(...LAIRS.map(l => Math.hypot(l.x - POST.x, l.z - POST.z)))),
     cougarRange: T.cougar.range + 30, denRange: T.denRange,
   };
 });
-ok('the Trading Post is the last camp and the only final one', r1.last && r1.finals === 1 && !r1.promisedFinal && r1.penFinal, r1);
-ok('the trail runs on past the Trading Post a little, like the old end', r1.toEnd > 50 && r1.toEnd < 100, r1);
+ok('the yeti\'s cave is the last camp and the only final one; the Trading Post isn\'t', r1.last && r1.finals === 1 && !r1.promisedFinal && r1.penFinal && !r1.postFinal, r1);
+ok('the trail climbs on past the Trading Post (the MOUNTAIN PASS)', r1.toEnd > 300, r1);
 ok('no water near the Trading Post', r1.wetNear === 0, r1);
 ok('every mat on open ground, none in a pen', r1.mats.every(m => m.sdf > 1 && !m.inPen), r1.mats);
-ok('one trader on every leg, the Trading Post\'s at the end; none by the river, a den, a cougar tree or a dig spot', r1.legs.every(n => n === 1) && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1).includes('cabo') && r1.wares.slice(0, -1).every(w => w === 'pen water food salt venom bandage pills shovel') && r1.wares.every(w => w.endsWith('venom bandage pills shovel')), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
+ok('one trader on every leg up to the Trading Post, its own past its pen, none up the pass; none by the river, a den, a cougar tree or a dig spot', r1.legs.slice(0, -1).every(n => n === 1) && r1.legs.at(-1) === 0 && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1) === 'pen clippers water food salt venom bandage pills shovel' && r1.wares.slice(0, -1).every(w => w === 'pen water food salt venom bandage pills shovel'), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
 ok('the stall stands by the pen', r1.stallFromPen > 15 && r1.stallFromPen < 45, r1);
 ok('a den and a cougar tree near enough to hunt there', r1.denNear < r1.denRange && r1.lairNear < r1.cougarRange, r1);
 
 // set up: a dog, the flock in the Trading Post's pen (every camp found: in ?sim the HUD doesn't mark them)
 await h.page.evaluate(() => {
-  const { G, startGame, finalPen, step, CAMPS } = GAME;
+  const { G, startGame, postPen: finalPen, step, CAMPS } = GAME;
   startGame({ kind: 'bot', index: 0 }); G.players[0].bot = {}; G.clock.hour = 10;
   const H = window.H = {};
   H.pen = (p = finalPen) => { for (const s of G.sheep) { if (s.dead) continue; const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (p.R - 2.5); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } };
@@ -48,16 +48,16 @@ await h.page.evaluate(() => {
 
 // 2. too poor: nothing spent, nothing in the pen, still playing
 const r2 = await h.page.evaluate(() => {
-  const { G, buyWare, finalPen, kitN } = GAME; G.wool = 1;
+  const { G, buyWare, postPen: finalPen, kitN } = GAME; G.wool = 1;
   const food0 = H.food(), salt0 = finalPen.lick.salt, n0 = kitN(finalPen, 'food');
-  const k = { food: buyWare(H.ware('food')), salt: buyWare(H.ware('salt')), water: buyWare(H.ware('water')), cabo: buyWare(H.ware('cabo')) };
+  const k = { food: buyWare(H.ware('food')), salt: buyWare(H.ware('salt')), water: buyWare(H.ware('water')) };
   return { k, wool: G.wool, food: H.food() - food0, salt: finalPen.lick.salt - salt0, troughs: kitN(finalPen, 'food') - n0, mode: G.mode };
 });
 ok('too little wool: a no for each, nothing spent, nothing delivered', Object.values(r2.k).every(k => k === 'poor') && r2.wool === 1 && r2.food === 0 && r2.salt === 0 && r2.troughs === 0 && r2.mode === 'play', r2);
 
 // 3. 🌾 at the Trading Post: a trough at a time, stocked, till the pen holds its most (bigger pen, more); then batches till there's no room
 const r3 = await h.page.evaluate(() => {
-  const { G, buyWare, finalPen: p, T, kitN, kitMax, pens } = GAME; G.wool = 200; const V = T.vendor, out = { adds: [] };
+  const { G, buyWare, postPen: p, T, kitN, kitMax, pens } = GAME; G.wool = 200; const V = T.vendor, out = { adds: [] };
   out.n0 = kitN(p, 'food'); out.max = kitMax(p, 'food'); out.maxSmall = kitMax(pens[0], 'food');
   let k;
   while ((k = buyWare(H.ware('food'))) === 'add' && out.adds.length < 20) { const tr = p.troughs.at(-1); out.adds.push({ n: kitN(p, 'food'), full: tr.food === tr.cap, wool: G.wool }); }
@@ -76,7 +76,7 @@ ok('🌾 at the most: a batch for `price` 🧶, then a no when there\'s no room;
 
 // 4. 💧 and 🧂: one pool per pen; each new one raises the cap and comes stocked; then batches; ✂️ free while Hank has none
 const r4 = await h.page.evaluate(() => {
-  const { G, buyWare, HANK, T, finalPen: p, kitN, kitMax } = GAME, V = T.vendor; G.wool = 200; const out = {};
+  const { G, buyWare, HANK, T, postPen: p, kitN, kitMax } = GAME, V = T.vendor; G.wool = 200; const out = {};
   for (const id of ['water', 'salt']) {
     const pool = () => id === 'water' ? [p.water.w, p.water.cap] : [p.lick.salt, p.lick.cap], o = out[id] = { n0: kitN(p, id), max: kitMax(p, id), steps: [] };
     if (id === 'water') p.water.w = 0; else p.lick.salt = 0;
@@ -96,7 +96,7 @@ ok('✂️ free while Hank has none, then gone; its empty mat sells nothing', r4
 
 // 5. the real thing: a dog stands on the salt mat and barks
 const r5 = await h.page.evaluate(() => {
-  const { G, finalPen, T, step, kitN } = GAME; H.reset(); const d = G.dogs[0], w = H.ware('salt'); G.wool = 10; finalPen.lick.salt = 0;
+  const { G, postPen: finalPen, T, step, kitN } = GAME; H.reset(); const d = G.dogs[0], w = H.ware('salt'); G.wool = 10; finalPen.lick.salt = 0;
   d.x = w.x; d.z = w.z; d.vx = d.vz = 0; d.barkCd = 0; H.run(0.2);
   G.players[0].bot = { bark: true }; step(0.025); G.players[0].bot = {}; H.run(0.2);
   const one = { lick: finalPen.lick.salt, licks: kitN(finalPen, 'salt'), wool: G.wool, bought: GAME.VENDOR.bought.salt };
@@ -112,8 +112,8 @@ const r5b = await h.page.evaluate(() => {
   out.first = st.sel; G.visited.add(CAMPS[1].name); H.run(0.05); out.auto = st.sel;
   out.cycle = [0, 1, 2].map(() => (buyWare(pin), st.sel)); H.run(0.05); out.kept = st.sel;
   G.visited = new Set([CAMPS[0].name]); H.run(0.05); out.only = [buyWare(pin), st.sel]; G.visited.add(CAMPS[1].name); H.run(0.05); out.stuck = st.sel;   // picked the only one: it stays picked
-  G.wool = 50; const p = pens[st.sel], n0 = kitN(p, 'food'), fn0 = kitN(GAME.finalPen, 'food');
-  out.buy = buyWare(H.ware('food', st)); out.to = [kitN(p, 'food') - n0, kitN(GAME.finalPen, 'food') - fn0, pens.indexOf(p)];
+  G.wool = 50; const p = pens[st.sel], n0 = kitN(p, 'food'), fn0 = kitN(GAME.postPen, 'food');
+  out.buy = buyWare(H.ware('food', st)); out.to = [kitN(p, 'food') - n0, kitN(GAME.postPen, 'food') - fn0, pens.indexOf(p)];
   G.visited = new Set([CAMPS[0].name]); H.run(0.05); out.lost = st.sel;   // (a picked pen not found: back to one that is)
   return out;
 });
@@ -192,46 +192,25 @@ ok('a bucket tips into a new water trough, salt into a new lick', r5e.tipped ===
 ok('Hank speaks up at the first trader', r5e.hank.some(t => /trader/i.test(t)), r5e.hank);
 ok('new ones block the coyotes\' paths too; a new journey: bought ones gone, caps and paths back, picks cleared', r5e.navChanged && r5e.kits.join() === r5e.base.join() && r5e.caps[0] === r5e.want.water && r5e.caps[1] === r5e.want.lick && r5e.pick === -1 && !r5e.met && r5e.navBack && r5e.shown, r5e);
 
-// 6. Cabo: nobody penned → no; bark once to ask, again (in time) to go; the penned sheep go and the journey ends
-const r6 = await h.page.evaluate(() => {
-  const { G, buyWare, finalPen, T, pathPoint, caboSheep } = GAME; const V = T.vendor, cabo = H.ware('cabo'), out = {};
-  H.reset(); G.wool = 200;
-  const away = pathPoint(GAME.FINAL.s - 60, 0);
-  for (const s of G.sheep) { s.x = away.x + Math.random() * 4; s.z = away.z + Math.random() * 4; } H.run(0.3);
-  out.none = buyWare(cabo); out.woolNone = G.wool; out.modeNone = G.mode;
-  H.pen(); H.run(0.5); const live = G.sheep.filter(s => !s.dead);
-  out.priceAll = GAME.warePrice(cabo); out.nAll = caboSheep().length;
-  live.slice(0, 3).forEach((s, i) => { s.x = away.x + i; s.z = away.z; }); H.run(0.5);   // three stay out
-  const n = caboSheep().length; out.n = n; out.price = GAME.warePrice(cabo); out.want = V.cabo.price;
-  out.first = buyWare(cabo); out.modeAfterFirst = G.mode; out.woolAfterFirst = G.wool;
-  H.run(V.confirm + 0.5); out.late = buyWare(cabo); out.modeLate = G.mode;   // too slow: it asks again
-  out.go = buyWare(cabo); out.mode = G.mode; out.woolSpent = 200 - G.wool;
-  out.title = document.getElementById('eTitle').textContent; out.line = document.getElementById('eLine').textContent; out.stars = document.getElementById('eStars').textContent;
-  out.cabo = document.getElementById('end').classList.contains('cabo');
-  H.run(4); out.hank = GAME.HANK.log.slice(-4).map(l => l.said ? l.text : '').filter(Boolean);
-  return out;
-});
-ok('🏖️ nobody penned there: a no, nothing spent', r6.none === 'none' && r6.woolNone === 200 && r6.modeNone === 'play', r6);
-ok('🏖️ price: flat, however many are penned there', r6.n === 11 && r6.nAll > r6.n && r6.price === r6.want && r6.priceAll === r6.want, r6);
-ok('🏖️ the first bark asks; too slow, it asks again', r6.first === 'arm' && r6.modeAfterFirst === 'play' && r6.woolAfterFirst === 200 && r6.late === 'arm' && r6.modeLate === 'play', r6);
-ok('🏖️ the second bark: wool spent, the penned sheep go, the journey ends', r6.go === 'buy' && r6.mode === 'end' && r6.woolSpent === r6.want && r6.cabo && /Cabo/.test(r6.title) && r6.line.includes(String(r6.n)), r6);
-ok('🏖️ Hank: That\'ll do, and Cabo', r6.hank.some(t => /That'll do/.test(t)) && r6.hank.some(t => /Cabo/.test(t)), r6.hank);
+// 6. no Cabo anywhere: the journey's won up the MOUNTAIN PASS (pass-test)
+const r6 = await h.page.evaluate(() => ({ cabo: GAME.ALL_WARES.filter(w => w.id === 'cabo').length }));
+ok('🏖️ no Cabo for sale', r6.cabo === 0, r6);
 
-// 7. the old finish is gone: the whole flock penned at the Trading Post, gate shut → the journey goes on; losing them all still ends it
+// 7. the whole flock penned at the Trading Post, gate shut → the journey goes on; losing them all still ends it
 const r7 = await h.page.evaluate(() => {
-  const { G, finalPen, onGateClosed, setGate, killSheep } = GAME; const out = {};
+  const { G, postPen: finalPen, onGateClosed, setGate, killSheep } = GAME; const out = {};
   H.reset(); setGate(finalPen, true); H.run(0.2); H.pen(); H.run(0.5);
   out.inside = G.sheep.filter(s => s.pen === finalPen).length; setGate(finalPen, false); onGateClosed(finalPen); H.run(3); out.mode = G.mode;
   for (const s of G.sheep) if (!s.dead) killSheep(s, 'eaten'); H.run(0.2);
-  out.lostMode = G.mode; out.lostTitle = document.getElementById('eTitle').textContent; out.cabo = document.getElementById('end').classList.contains('cabo');
+  out.lostMode = G.mode; out.lostTitle = document.getElementById('eTitle').textContent; out.won = document.getElementById('end').classList.contains('won');
   return out;
 });
 ok('shutting the whole flock in at the Trading Post doesn\'t end the journey', r7.inside > 10 && r7.mode === 'play', r7);
-ok('losing the whole flock still ends it', r7.lostMode === 'end' && !/Cabo/.test(r7.lostTitle) && !r7.cabo, r7);
+ok('losing the whole flock still ends it', r7.lostMode === 'end' && !/pass/.test(r7.lostTitle) && !r7.won, r7);
 
 // 8. a new journey: the vendor's ready again
-const r8 = await h.page.evaluate(() => { GAME.resetGame(); return { mode: GAME.G.mode, armed: GAME.WARES.some(w => w.armT > GAME.G.time), hello: GAME.VENDOR.hello }; });
-ok('a new journey resets the stall', r8.mode === 'play' && !r8.armed && !r8.hello, r8);
+const r8 = await h.page.evaluate(() => { GAME.resetGame(); return { mode: GAME.G.mode, hello: GAME.VENDOR.hello }; });
+ok('a new journey resets the stall', r8.mode === 'play' && !r8.hello, r8);
 
 ok('no page errors', h.errors.length === 0, h.errors.slice(0, 5));
 console.log(fails ? `${fails} FAILED` : 'all ok');

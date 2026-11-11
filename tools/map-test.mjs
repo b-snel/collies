@@ -57,12 +57,12 @@ ok('and is drawn', r4.mid === 255 && r4.op === '1', r4);
 
 // 4b. at a trader: its pen pinned on the minimap (📍; the Trading Post's stall: no 🏪 of its own on the map)
 const r4b = await h.page.evaluate(() => {
-  const { G, MAP, STALLS, pens, finalPen, renderOnce } = GAME, d = G.dogs[0], st = STALLS.find(s => s.final), x0 = st.x, z0 = st.z;
+  const { G, MAP, MARKET: st, pens, postPen, renderOnce } = GAME, d = G.dogs[0], x0 = st.x, z0 = st.z;
   const cx = MAP.el.getContext('2d'), orig = cx.drawImage; let n = 0;
   cx.drawImage = function (...a) { n++; return orig.apply(this, a); };
   const draws = () => { n = 0; MAP.redraw = true; renderOnce(1 / 60); return n; };
   const away = draws(); st.x = d.x; st.z = d.z; const at = draws(); st.x = x0; st.z = z0; const after = draws(); cx.drawImage = orig;
-  return { away, at, after, pen: !!(pens[st.sel] || finalPen) };
+  return { away, at, after, pen: !!(pens[st.sel] || postPen) };
 });
 ok('at a trader, its pen gets a 📍 on the minimap', r4b.pen && r4b.at === r4b.away + 1 && r4b.after === r4b.away, r4b);
 

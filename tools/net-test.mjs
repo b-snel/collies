@@ -263,7 +263,19 @@ try {
   const bsHost = await A.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; Object.assign(B, { hp: 2, max: 4 }); n.x = n.x0 + 3; n.z = n.z0 + 1; return { x: n.x, z: n.z }; });
   await until(B, w => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return B.hp === 2 && B.max === 4 && Math.hypot(n.x - w.x, n.z - w.z) < 0.1; }, bsHost, 5000).catch(() => {});
   const bs = await B.page.evaluate(() => { const B = GAME.CANYON.boss, n = GAME.SNAKES[0]; return { on: B.on, hp: B.hp, max: B.max, x: n.x, z: n.z, big: GAME.BOSS ? GAME.BOSS.models.root.scale.x : 0 }; });
-  check('the great falcon (big on the guest too), its hearts, and a slithering snake reach the guest', bs.hp === 2 && bs.max === 4 && bs.big > 1.5 && Math.hypot(bs.x - bsHost.x, bs.z - bsHost.z) < 0.1, bs);
+  const snNow = await A.page.evaluate(() => { const n = GAME.SNAKES[0]; return { x: n.x, z: n.z }; });   // (it may have slid back home since: where the host has it now)
+  check('the great falcon (big on the guest too), its hearts, and a slithering snake reach the guest', bs.hp === 2 && bs.max === 4 && bs.big > 1.5 && Math.min(Math.hypot(bs.x - bsHost.x, bs.z - bsHost.z), Math.hypot(bs.x - snNow.x, bs.z - snNow.z)) < 0.15, { ...bs, host: snNow });
+
+  // ---------------------------------------------------------------- MOUNTAIN PASS: the yeti's hearts, a goat off its ledge, a fire lit, snow and fire on a sheep, a dog down a crack
+  const mpHost = await A.page.evaluate(() => {
+    const { YETI, GOATS, PASS, G } = GAME, g = GOATS[3], s = G.sheep[1], f = G.sheep[2];
+    Object.assign(YETI, { state: 'idle', on: true, hp: 2, max: 3 }); g.state = 'windup'; g.x = g.home.x + 4; PASS.fires[0].fuel = 7; s.snow = 0.6; f.burn = 5;
+    return { gx: g.x, id: s.id, fid: f.id };
+  });
+  await until(B, w => { const { YETI, GOATS, PASS, G } = GAME, s = G.sheep.find(o => o.id === w.id), f = G.sheep.find(o => o.id === w.fid); return YETI.hp === 2 && YETI.on && GOATS[3].state === 'windup' && Math.abs(GOATS[3].x - w.gx) < 0.1 && PASS.fires[0].fuel > 6 && s && s.snow > 0.5 && f && f.burn > 0; }, mpHost, 5000).catch(() => {});   // (the goat's eased there)
+  const mp = await B.page.evaluate(w => { const { YETI, GOATS, PASS, G } = GAME, s = G.sheep.find(o => o.id === w.id), f = G.sheep.find(o => o.id === w.fid); return { on: YETI.on, hp: YETI.hp, max: YETI.max, goat: GOATS[3].state, gx: GOATS[3].x, fire: PASS.fires[0].fuel, snow: s && s.snow, burn: f && f.burn, bar: document.body.classList.contains('boss') }; }, mpHost);
+  check('the pass reaches the guest: the yeti\'s hearts, a goat off its ledge, a fire lit, snow and flames on a sheep', mp.on && mp.hp === 2 && mp.max === 3 && mp.goat === 'windup' && Math.abs(mp.gx - mpHost.gx) < 0.1 && mp.fire > 6 && mp.snow > 0.5 && mp.burn > 0, mp);
+  await A.page.evaluate(() => { const { YETI, GOATS, PASS, G } = GAME; Object.assign(YETI, { state: 'sleep', on: false, hp: 0, max: 0 }); GOATS[3].state = 'perch'; PASS.fires[0].fuel = 0; G.sheep[1].snow = 0; G.sheep[2].burn = 0; });
   await A.page.evaluate(() => { const n = GAME.SNAKES[0]; Object.assign(GAME.CANYON.boss, { hp: 0, max: 0 }); n.x = n.x0; n.z = n.z0; });
 
   // ---------------------------------------------------------------- forage: picked plants, salt, what a dog carries, the troughs and lick reach the guest
@@ -549,7 +561,7 @@ try {
   await sleep(500);
   await A.page.evaluate(() => GAME.setGate(GAME.finalPen, false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
   await sleep(300);
-  await A.page.evaluate(() => { GAME.G.wool = 999; const w = GAME.WARES.find(o => o.id === 'cabo'); GAME.buyWare(w); GAME.buyWare(w); });   // Cabo (bark twice): the end
+  await A.page.evaluate(() => { GAME.yetiBeaten('fire'); GAME.setGate(GAME.finalPen, false); });   // MOUNTAIN PASS: the yeti beaten, the flock shut in his cave: the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
   const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent, stars: document.getElementById('eStars').textContent, obit: document.getElementById('eMem').textContent }));

@@ -12,19 +12,21 @@ file, comments, commits and PRs: short.
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a breed,
 better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
-the Trading Post): graze it, pen it at camps by nightfall,
+the Trading Post → the Mountain Pass → the yeti's cave): graze it, pen it at camps by nightfall,
 fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
-Hank treats the sick and buries the dead; the Trading Post also sells Cabo
-🏖️, which wins.
+Hank treats the sick and buries the dead. Up the icy pass: cold, blizzards,
+fires, ice, crevasses, goats; the yeti on top. Beat him, shut the flock in his
+cave: that wins.
 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
-  `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon). `window.GAME` exposes
+  `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
+  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard). `window.GAME` exposes
   state and functions.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
@@ -48,6 +50,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
+MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, GOATS, SNOWBALLS, YETI, the spire) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -61,7 +64,10 @@ quenched; return what went in / out), `giveHankClippers()` (no-op if he has
 them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `kitSet(pen, kind, n)` (`food`/`water`/`salt`: show bought troughs and licks; `kitN`, `kitMax`),
 `snakeBite(s, n)`, `woundSheep(s)` (uses `s.heldT`, `s.grabBy`), `cureSheep(s, cure)`, `s.venom`/`s.bleed`/`s.infect`
-(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`.
+(0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`,
+`downhill(x, z)` (unit + slope), `heatAt(x, z)` (0…1), `startSlide(e, 'ice'|'roll', o)`, `crevOut(e, hop)`,
+`s.cold`/`d.cold`/`s.snow` (0…1), `s.burn` (s left), `hankTumble(vx, vz, vy)`; `passSheepStep`, `passSheepMove`,
+`passHeld`, `passAir`, `passDogMove` (where the pass takes over).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -94,7 +100,8 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
-| `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
+| `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
+| `pass-test.mjs [layout\|cold\|fire\|blizzard\|ice\|crev\|goat\|yeti\|rock\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the spire falls on him; burning sheep; the cave finish |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
@@ -279,10 +286,38 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
   A dog stepping on a mat: the ware hops, its name plate pops up (`WARE_KINDS`
   `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
-- **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`): the end of the
-  trail, desert, no water. ✂️ free while Hank has none. Too poor or no room: ✖,
-  nothing spent (`vendorFx`). 🏖️ Cabo: flat `T.vendor.cabo.price`, however many are
-  penned there; bark twice: those go, `finishGame(n)`. Only Cabo wins; a shut final pen doesn't.
+- **Trading Post** (`POST`, `postPen`, `MARKET`, `WARES`): desert, no water, the foot of
+  the pass. ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
+  (`vendorFx`). No trader up the pass, none delivers to the yeti's cave (`penFound`).
+- **Mountain pass** (`PASS`, `T.pass`, `passK`, `liftArr`): past the Trading Post the floor
+  climbs `rise` m (flat at each fire camp); `blk` is by height over the floor. Walls in ledges
+  west, a lip then the drop east. Nothing else up there (dens, nests, plants, salt, brambles, digs).
+  No coyotes while the flock's up there; at night by a fire is safe (`passSafe`: the night hurries).
+  - **Cold** (`T.cold`, `sheepCold`, `dogCold`): builds in the snow × (1 − `wool`·`s.wool`) × snow on it,
+    night, blizzard, lamb; huddled less; `heatAt` warms; below thaws. At 1 for `dieHours`: dead ('cold').
+    Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
+  - **Fires** (`PASS.fires`, camps without pens): Hank lights the one by the flock (`passFireGoal`,
+    `hankFire`, `light` s), `burn` h of fuel; by night he sits by it. Cold ones take the `spots`
+    round it, the coldest first (`warmGo`, state 'warm'); nobody's jostled into it (`fireShove`).
+  - **Snow** (`s.snow`, `T.snow`): a blizzard piles it on; running sheds it; heat melts it.
+    **Blizzards** (`PASS.blizz`, `T.blizz`): now and then while the flock's up there; whiteout.
+  - **Ice** (`ICES`, `T.ice`, `startSlide`): onto it moving: slide downhill, spinning, legs going,
+    slide whistle (`SFX.slip`). Dogs barely steer; a jump gets out. Hank too. Calm sheep go round.
+  - **Crevasses** (`CREVS`, `T.crev`, `crevFall`): sheep or dogs (not hopping/lunging) drop in
+    ('crev', sunk). A sheep: grabbed out. A dog alone: mash Ⓑ out (`crevEsc`); with friends
+    (`crevAlone` false): only a friend's grab gets it out. Calm sheep go round.
+  - **Goats** (`GOATS`, `T.goat`): on ledges; by day one bounds down at a sheep, dog or Hank in reach,
+    windup ❗, charges, bonks it down the mountain (launched 'tumble', lands, rolls 'roll').
+    A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
+  - **Burning** (`s.burn`, `T.burn`): a sheep carried, flung or bolting into a lit fire catches;
+    too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`).
+  - **The yeti** (`YETI`, `T.yeti`, `SNOWBALLS`): wakes when something's past `arena`; rolls snowballs
+    that grow, headbutts what's close; a pounce bounces off him. A burning sheep flying into him:
+    a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`). HUD 🦍 ♥♥♥.
+  - **The spire** (`SIDE`, `ROCK`): the hidden side trail (`sideD`, single file) up behind the west
+    rim to a ledge; `cracks` sheep flying into the spire: it falls on him ('crushed', an arm out).
+  - **His cave** (`FINAL`, `finalPen`): iced shut (`p.frozen`) till he's beaten. Then the flock
+    shut in it (all, or some for `finish` s): `finishGame(n)`. The only win.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
