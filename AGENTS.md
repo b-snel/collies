@@ -311,9 +311,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 
 ### Icons
 
-Our own, no emoji: `ART` (32×32 SVG paths, sticker outline). Overlay text goes through
-`richText` / `richW`, which swap any emoji in `EMOJI_ART` for its icon; DOM: `artSVG(name)` or
-`data-art`. New icon → `ART` + `EMOJI_ART`.
+Our own, no emoji: `ART` (32×32 SVG paths, sticker outline; helpers `ART_H`). Write the emoji
+as usual: every 2D canvas's `fillText` / `strokeText` / `measureText` draws its icon instead, and
+a DOM observer swaps it into any text (`artDOM`; the emoji stays hidden inside, so `textContent`
+reads the same). Not in tooltips (`title`): use words. New emoji → an `ART` icon + `EMOJI_ART`.
+Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 
 ### Gotchas
 
