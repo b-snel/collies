@@ -78,7 +78,7 @@ const c = await run('cast', () => {
   const s = G.sheep.find(o => o.state === 'cast'); out.cast = !!s; if (!s) return out;
   out.full = (s.wool ?? 1) >= T.cast.wool; T.cast.perHour = 0;
   const x0 = s.x, z0 = s.z; H.run(8); out.drift = +Math.hypot(s.x - x0, s.z - z0).toFixed(2); out.still = s.state === 'cast'; out.n = G.sheep.filter(o => o.state === 'cast').length;
-  H.place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; G.players[0].bot = H.inp(1, 0, { grab: true }); H.run(0.5); out.grabbed = d.holding === s; G.players[0].bot = {}; H.run(0.3);
+  H.place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; G.players[0].bot = H.inp(1, 0, { grab: true }); H.run(0.5); out.grabbed = d.holding === s; G.players[0].bot = {}; if (d.holding) GAME.releaseHold(d, false); H.run(0.3);   // (whatever it bit instead: let go)
   H.place(d, s.x - 2.2, s.z); H.pounce(d, s.x, s.z);
   out.flip = s.air && s.air.kind; out.up = s.state !== 'cast'; H.run(3);
   out.landed = !s.air; out.stress = +s.stress.toFixed(2); out.fled = s.state === 'flee'; out.saved = G.stats.saved; out.alive = !s.dead;
@@ -107,7 +107,7 @@ const m = await run('mud', () => {
   T.mud.on = true; T.mud.stickRun = 60; s.breakT = 3; s.bdx = 1; s.bdz = 0;
   out.secs = +H.run(3, () => !!s.bog).toFixed(2); out.bog = !!s.bog; T.mud.stickRun = 1.4; if (!s.bog) return out;
   const x0 = s.x, z0 = s.z; H.run(8); out.drift = +Math.hypot(s.x - x0, s.z - z0).toFixed(2); out.still = !!s.bog; out.sink = +(s.sink || 0).toFixed(2); out.stress = +s.stress.toFixed(2);
-  H.place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; G.players[0].bot = H.inp(1, 0, { grab: true }); H.run(0.5); out.grabbed = d.holding === s; G.players[0].bot = {}; H.run(0.3);
+  H.place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; G.players[0].bot = H.inp(1, 0, { grab: true }); H.run(0.5); out.grabbed = d.holding === s; G.players[0].bot = {}; if (d.holding) GAME.releaseHold(d, false); H.run(0.3);   // (whatever it bit instead: let go)
   H.place(d, s.x - 2.2, s.z); H.pounce(d, s.x, s.z); out.freed = !s.bog;
   H.run(4); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.calm = s.state !== 'flee'; out.mud = +(s.mud || 0).toFixed(2); out.reBog = !!s.bog;
   // calm walkers steer round the bogs

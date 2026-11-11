@@ -82,7 +82,7 @@ const r3 = await h.page.evaluate(() => {
   // grip: hold a ram 1.5 s (stamina it costs) and drag it (top speed)
   const ram = live[1]; ram.ram = true; ram.lamb = false; ram.brave = 0.1;
   const grip = b => {
-    as(b); d.yaw = Math.PI / 2; d.grabLock = false;
+    as(b); d.yaw = Math.PI / 2; if (d.holding) GAME.releaseHold(d, false);   // (Ⓧ is a tap: let go of the last one)
     Object.assign(ram, { x: d.x + 1.5, z: d.z, heldBy: null, air: null, vx: 0, vz: 0, state: 'idle', rs: 'idle', rcd: 99, fear: 0, panic: 0, stress: 0, grudge: null });
     p.bot = { grab: true }; step(0.025); const held = d.holdKind; d.holdWob = Math.PI / 2;   // (it tugs sideways: the same for each)
     p.bot = { grab: true, ...go }; const st0 = d.stamina, x0 = d.x;

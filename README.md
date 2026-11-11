@@ -10,8 +10,8 @@ Live at **https://collies.app**
 | --- | --- | --- | --- |
 | Move | left stick | WASD | arrows |
 | Bark | A | Space | / |
-| Pounce (shake while holding) | B | E | . |
-| Grab / drag (hold; let go while moving to fling) | X | R | , |
+| Pounce | B | E | . |
+| Grab / drag (tap; tap again to drop, moving: fling; tap fast to shake) | X | R | , |
 | Lie down (hold) | Y or LT | C | ' |
 | Sprint | RT or RB | Left Shift | Right Shift |
 | Creep (gentle pressure) | LB | Q | ; |
@@ -43,11 +43,13 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
 ## The dog's moves
 
 - **Pounce** lunges you forward. Pounce into a sheep and it goes flying. Flying sheep carom into others (CAROM!, CHAIN x3!) and bowl coyotes over, and a punt that lands in a pen is a HOLE IN ONE. Pounce into a coyote to knock it flying and make it drop what it's carrying.
-- **Grab** a sheep, a ram or a coyote and drag it. It fights back and tires you out.
-  - Pounce while holding to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
-  - Let go while moving to fling it, over a fence into a pen if you like.
+- **Grab** (tap) a sheep, a ram or a coyote and drag it. It fights back and tires you out.
+  - Tap fast to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
+  - Tap once to let go; moving, you fling it, over a fence into a pen if you like.
   - A stubborn sheep can be hauled where it won't be driven.
   - You can grab a gate and drag it round.
+- **Ropes**: one lies coiled off the trail on every leg. Grab it anywhere and drag it about; tap fast to send a wave down it. Carrying it costs no stamina.
+  - **Tug of war**: when a second dog grabs it, the knot (a red rag) starts on a white line with each side's line 3 m away. Walk back and tap grab to heave. Drag the knot over your line, or outlast the other dog: whoever runs out of stamina lets go and loses.
 - **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to slam it open or shut. Dogs hop fences when they push into them; sheep and coyotes can't.
 - **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
 
@@ -61,7 +63,7 @@ Each camp has a round pen with a gate and funnel wings. Pen the flock and shut t
 
 Run over **daisies** and **alfalfa** to carry greens, then walk up to a pen's trough (either side of the fence) to tip them in. Salt rocks are the same: break off a lump, take it to the pen's salt lick. Penned sheep eat and lick till full, shoving the weak ones aside.
 
-Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: hold grab on the bucket to carry it (let go and it's set down), wade into a river or the sea to fill it, walk up to the water trough to tip it in. Left parched too long, a sheep dies. The desert has no water.
+Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: grab the bucket to carry it (tap again to set it down), wade into a river or the sea to fill it, walk up to the water trough to tip it in. Left parched too long, a sheep dies. The desert has no water.
 
 ## Shearing and the Trading Post
 
