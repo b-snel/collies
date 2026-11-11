@@ -2,7 +2,7 @@
 // Pounce/punt distance, carom chains, pouncing a coyote off its prey, grab-drag, fling over a fence into a pen,
 // pushing a gate open and shut (latch → gateT 0 → onGateClosed), slamming a gate by sprinting, grab-dragging a gate shut,
 // the river launcher (pounce-fired, and loaded by driving sheep into its chute), splash-and-swim, shaking a coyote,
-// a flung sheep bowling a coyote, lying down, and the final pen (shutting it no longer ends the game: Cabo does).
+// a flung sheep bowling a coyote, lying down, and the Trading Post's pen (shutting it doesn't end the game: the yeti's cave does, pass-test).
 import { open } from './harness.mjs';
 const only = process.argv.slice(2);
 const h = await open({ query: '?sim' });
@@ -526,10 +526,10 @@ const tests = {
       return r;
     });
   },
-  // 15. the final pen: whole flock inside, push the gate shut → it latches and the journey goes on (only Cabo ends it: vendor-test)
+  // 15. the Trading Post's pen: whole flock inside, push the gate shut → it latches and the journey goes on (only the yeti's cave ends it: pass-test)
   async finalPen() {
     return h.page.evaluate(() => {
-      const { G, finalPen, toggleGate } = GAME; H.reset(); const d = H.d(), pen = finalPen;
+      const { G, postPen: finalPen, toggleGate } = GAME; H.reset(); const d = H.d(), pen = finalPen;
       toggleGate(pen); H.run(1.2);   // open it
       for (const s of G.sheep) { const a = Math.random() * 6.283, r = Math.random() * (pen.R - 2.5); H.place(s, pen.x + Math.cos(a) * r, pen.z + Math.sin(a) * r); }
       H.run(0.2);

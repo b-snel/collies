@@ -8,11 +8,11 @@ const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name
 // 1. placement
 const r1 = await h.page.evaluate(() => {
   const { BRAMBLES, sAt, sdfAt, PATH_LEN, CAMPS, trailInfo } = GAME, s = BRAMBLES.map(b => sAt(b.x, b.z));
-  return { n: BRAMBLES.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, minSdf: Math.min(...BRAMBLES.map(b => sdfAt(b.x, b.z))),
+  return { n: BRAMBLES.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, pass: GAME.T.pass.s0, minSdf: Math.min(...BRAMBLES.map(b => sdfAt(b.x, b.z))),
     onTrail: BRAMBLES.filter(b => Math.abs(trailInfo(b.x, b.z).lat) < 5).length, nearCamp: BRAMBLES.filter(b => CAMPS.some(c => Math.hypot(b.x - c.x, b.z - c.z) < c.R + 16)).length };
 });
 ok(`${r1.n} bramble bushes`, r1.n >= 40, r1);
-ok('spread down the trail', r1.first < 150 && r1.last > r1.len - 250, r1);
+ok('spread down the trail to the foot of the pass (none in the snow)', r1.first < 150 && r1.last > r1.pass - 250 && r1.last < r1.pass, r1);
 ok('none on the trail, in rock or in a camp', r1.onTrail === 0 && r1.minSdf > 2 && r1.nearCamp === 0, r1);
 
 // 2. snag, held, grab fails, pounce frees

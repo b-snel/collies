@@ -1,6 +1,6 @@
 # Collies
 
-A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies and, at last, Cabo. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
+A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies, then up an icy mountain pass to the yeti's cave. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
 Live at **https://collies.app**
 
@@ -70,7 +70,15 @@ Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: grab
 
 Hank's ✂️ clippers are buried in a dig spot between the first two camps. Dig them up and bring them to him. When the flock is penned with the gate shut, Hank climbs in and shears the woolliest sheep, one by one, for 🧶. Wool grows back in a few days.
 
-A trader waits near the end of every leg: stand on a mat and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. At the end of the trail, the Trading Post sells the same, and 🏖️ Cabo takes every sheep penned there, Hank and the dogs too, and wins the journey (bark twice).
+A trader waits near the end of every leg: stand on a mat and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. The Trading Post, at the foot of the pass, sells the same.
+
+## The mountain pass
+
+Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sheep get colder by the hour, faster at night, with snow on them, or shorn; a thick fleece keeps them warm. Frozen too long, a sheep dies. Blizzards blow in now and then and pile snow on the flock: run them to shake it off, or get them to a fire. There are camps on the way up but no pens: Hank lights a fire at each, and the coldest sheep crowd in close.
+
+Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
+
+At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden side trail up behind the rim, bring sheep up it single file, and bonk three of them into the cracked rock there. Once he's beaten his cave is open: pen the flock in it and shut the gate to win the journey.
 
 ## Snakes, wounds and Hank the vet
 
