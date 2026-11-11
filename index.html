@@ -9754,13 +9754,13 @@ function mapLayout() {
   mapPaper(w, h, dpr);
 }
 // the sheet, made once per size: a torn edge; the parchment (mottled, tea-stained) under the land; grain, folds and a scorched
-// rim over it all (MAP.grain: brown, see-through)
+// rim over it all (MAP.base under the land, MAP.top over it)
 function mapPaper(w, h, dpr) {
   const R = mulberry32(w * 131 + h), path = new Path2D(), pts = [], m = 3, sh = 4, b = h - sh - m;
   const side = (x0, y0, x1, y1, nx, ny) => { const n = Math.max(3, Math.round(Math.hypot(x1 - x0, y1 - y0) / 7)); for (let i = 0; i < n; i++) { const t = i / n, j = R() * 2.6 * (i ? 1 : 0.4); pts.push([lerp(x0, x1, t) + nx * j, lerp(y0, y1, t) + ny * j]); } };
   side(m + 3, m, w - m - 3, m, 0, 1); side(w - m, m + 3, w - m, b - 3, -1, 0); side(w - m - 3, b, m + 3, b, 0, -1); side(m, b - 3, m, m + 3, 1, 0);
-  pts.forEach(([x, y], i) => i ? path.lineTo(x, y) : path.moveTo(x, y)); path.closePath(); MAP.edge = path;
-  const S = MAP.sheet = document.createElement('canvas'); S.width = Math.round(w * dpr); S.height = Math.round(h * dpr);
+  pts.forEach(([x, y], i) => i ? path.lineTo(x, y) : path.moveTo(x, y)); path.closePath();
+  const S = document.createElement('canvas'); S.width = Math.round(w * dpr); S.height = Math.round(h * dpr);
   const sc = S.getContext('2d'); sc.scale(dpr, dpr); sc.fillStyle = `rgb(${MAP_PAPER})`; sc.fillRect(0, 0, w, h);
   const mw = Math.ceil(w / 6), mh = Math.ceil(h / 6), mo = document.createElement('canvas'); mo.width = mw; mo.height = mh;   // mottling, soft
   const mc = mo.getContext('2d'), md = mc.createImageData(mw, mh), ox = R() * 99, oy = R() * 99;
@@ -9771,36 +9771,39 @@ function mapPaper(w, h, dpr) {
     sc.fillStyle = 'rgba(150,100,50,.07)'; sc.beginPath(); sc.ellipse(x, y, r, r * (0.85 + R() * 0.2), R() * 3, 0, TAU); sc.fill();
     sc.strokeStyle = 'rgba(130,80,35,.2)'; sc.lineWidth = 1 + R() * 1.5; sc.beginPath(); sc.ellipse(x, y, r, r * (0.85 + R() * 0.2), R() * 3, R(), R() + 4.5); sc.stroke();
   }
-  const g = MAP.grain = document.createElement('canvas'); g.width = Math.round(w * dpr); g.height = Math.round(h * dpr);
-  const c = g.getContext('2d'), tile = document.createElement('canvas'); tile.width = tile.height = 96;
+  const mk = () => { const e = document.createElement('canvas'); e.width = Math.round(w * dpr); e.height = Math.round(h * dpr); const x = e.getContext('2d'); x.scale(dpr, dpr); return [e, x]; };
+  const [base, bc] = mk(); MAP.base = base;   // under the land: its shadow, the paper
+  bc.fillStyle = 'rgba(0,0,0,.35)'; bc.translate(0, 3); bc.fill(path); bc.translate(0, -3); bc.save(); bc.clip(path); bc.drawImage(S, 0, 0, w, h); bc.restore();
+  const [top, c] = mk(); MAP.top = top;   // over it: grain, folds, a scorched rim, the edge, the compass
+  const tile = document.createElement('canvas'); tile.width = tile.height = 96;
   const tc = tile.getContext('2d'), id = tc.createImageData(96, 96);
   for (let i = 0; i < id.data.length; i += 4) { id.data[i] = 90; id.data[i + 1] = 58; id.data[i + 2] = 28; id.data[i + 3] = R() < 0.12 ? 30 + R() * 50 : R() * 16; }   // specks
-  tc.putImageData(id, 0, 0); c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(0, 0, g.width, g.height);
-  c.scale(dpr, dpr); c.lineWidth = 1;
+  tc.putImageData(id, 0, 0); c.save(); c.clip(path); c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(0, 0, w, h); c.lineWidth = 1;
   for (const [x0, y0, x1, y1] of [[w * 0.5, 0, w * 0.5 + 2, h], [0, h * 0.5, w, h * 0.5 - 2]]) { c.strokeStyle = 'rgba(110,70,35,.3)'; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); }   // folds
   const rg = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.55);
   rg.addColorStop(0, 'rgba(150,100,50,0)'); rg.addColorStop(0.7, 'rgba(150,100,50,.25)'); rg.addColorStop(1, 'rgba(100,55,20,.85)');
   c.fillStyle = rg; c.fillRect(0, 0, w, h);
-  c.save(); c.clip(path); c.shadowColor = 'rgba(110,60,20,.9)'; c.shadowBlur = 8 * dpr; c.strokeStyle = 'rgba(140,85,40,.7)'; c.lineWidth = 4; c.stroke(path); c.restore();   // scorched just inside the torn edge
+  c.shadowColor = 'rgba(110,60,20,.9)'; c.shadowBlur = 8 * dpr; c.strokeStyle = 'rgba(140,85,40,.7)'; c.lineWidth = 4; c.stroke(path); c.restore();   // scorched just inside the torn edge
+  c.strokeStyle = 'rgba(74,42,18,.85)'; c.lineWidth = 1.5; c.stroke(path);
+  const u = mapU(w); if (MAP.big) { const r = Math.min(w, h) * 0.055; mapCompass(c, r * 2.2, r * 2.4, r); } else mapCompass(c, w - 18 * u, 18 * u, 11 * u);   // (big: the empty corner)
+  MAP.inner = [m + 3, m + 3, w - 2 * m - 6, b - m - 6];   // the land and marks stay inside the deepest notch of the torn edge
 }
+const mapU = w => MAP.big ? 1.3 : w < 150 ? 0.8 : 1;   // how big the marks are
 // world → the sheet (CSS px), for the view in MAP.v
 const mapPt = (x, z) => { const V = MAP.v; return [V.w / 2 + V.k * (mapSx(x, z) - V.sx), V.h / 2 - V.k * (mapSy(x, z) - V.sy)]; };
+// the sheet's two layers (made once per size) round what changes: the land turned the camera's way, the marks
 function mapDraw() {
-  const c = MAP.cx, { w, h, dpr } = MAP, big = MAP.big, u = big ? 1.3 : w < 150 ? 0.8 : 1;
-  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
-  c.fillStyle = 'rgba(0,0,0,.35)'; c.translate(0, 3); c.fill(MAP.edge); c.translate(0, -3);   // its shadow
-  c.save(); c.clip(MAP.edge); c.drawImage(MAP.sheet, 0, 0, w, h);
+  const c = MAP.cx, { w, h, dpr } = MAP, big = MAP.big;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); c.drawImage(MAP.base, 0, 0, w, h);
+  c.save(); c.beginPath(); c.rect(...MAP.inner); c.clip();
   const A = MAP.all, k = big ? w / (A.x1 - A.x0) : w / T.map.span;
   const V = MAP.v = big ? { sx: (A.x0 + A.x1) / 2, sy: (A.y0 + A.y1) / 2, k, w, h } : { sx: mapSx(cam.x, cam.z), sy: mapSy(cam.x, cam.z), k, w, h };
-  const X0 = GMINX - VS / 2, Z0 = GMINZ - VS / 2, kv = dpr * k * VS;   // the land: its picture turned the camera's way
+  const X0 = GMINX - VS / 2, Z0 = GMINZ - VS / 2, kv = dpr * k * VS;
   c.setTransform(kv * CAM_R.x, -kv * CAM_F.x, kv * CAM_R.z, -kv * CAM_F.z, dpr * (w / 2 + k * (mapSx(X0, Z0) - V.sx)), dpr * (h / 2 - k * (mapSy(X0, Z0) - V.sy)));
   c.imageSmoothingEnabled = true; c.drawImage(MAP.layer, 0, 0);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
-  mapMarks(c, u);
-  c.drawImage(MAP.grain, 0, 0, w, h);
-  c.restore();
-  c.strokeStyle = 'rgba(74,42,18,.85)'; c.lineWidth = 1.5; c.stroke(MAP.edge);
-  if (big) { const r = Math.min(w, h) * 0.055; mapCompass(c, r * 2.2, r * 2.4, r); } else mapCompass(c, w - 18 * u, 18 * u, 11 * u);   // (big: the empty corner)
+  mapMarks(c, mapU(w));
+  c.restore(); c.drawImage(MAP.top, 0, 0, w, h);
 }
 // what's on it: the trail, camps, traders, salt, graves, the view; the flock, Hank, predators a dog can see, the dogs
 function mapMarks(c, u) {
@@ -9917,7 +9920,8 @@ function updateMap(dt) {
   if (MAP.w && ((MAP.dt = (MAP.dt || 0) - dt) <= 0 || MAP.redraw)) { MAP.dt = 1 / T.map.hz; MAP.redraw = false; mapDraw(); }
 }
 MAP.el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Sound.init(); mapToggle(); });
-function mapWarm() { mapLayout(); mapCompose(0, VZ - 1); mapDraw(); MAP.cx.getImageData(0, 0, 1, 1); }   // a canvas's first draw is slow on some GPUs: get it over with behind the loading screen
+function mapWarm() { mapLayout(); mapCompose(0, VZ - 1); mapDraw(); MAP.cx.getImageData(0, 0, 1, 1); }
+if (document.fonts) document.fonts.ready.then(() => { MAP.key = ''; });   // the compass's N again, in the game's font   // a canvas's first draw is slow on some GPUs: get it over with behind the loading screen
 
 // =====================================================================
 // HANK — the old shepherd. He ambles along the trail behind the dogs and
