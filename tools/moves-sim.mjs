@@ -19,6 +19,7 @@ await h.page.evaluate(() => {
     for (const k of Object.keys(GAME.MV)) if (typeof GAME.MV[k] === 'number') GAME.MV[k] = 0;
     G.gateClosedN = 0;
   };
+  H.solo = () => { while (G.dogs.length > 1) { const p = G.players.pop(), d = G.dogs.pop(); GAME.scene.remove(d.models.root); p.dog = null; } };   // the second dog leaves (else it leashes the first)
   H.place = (e, x, z) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = GAME.groundY(x, z); };
   H.run = (sec, fn) => { let t = 0; for (; t < sec; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return t; };
   H.r = v => Math.round(v * 100) / 100;
@@ -80,7 +81,57 @@ const tests = {
       H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
       const r = H.track(o, 4); r.dogPunts = GAME.MV.dogPunts; r.sheepPunts = GAME.MV.punts;
       r.ok = r.dogPunts === 1 && r.sheepPunts === 0 && r.landedAt > 6 && r.peak > 1.5 && !r.stillFlying;
-      return r;
+      H.solo(); return r;
+    });
+  },
+  // 1c2. grab another dog: carried at the mouth, flung like a sheep (and flies like one), wriggles free by mashing pounce
+  async dogGrab() {
+    return h.page.evaluate(() => {
+      const { G, pathPoint, MV } = GAME; H.reset();
+      if (G.dogs.length < 2) GAME.joinPlayer({ kind: 'bot', index: 1 });
+      const d = H.d(), o = G.dogs[1], p2 = G.players[1], P = pathPoint(330, 0), r = {};
+      for (const s of G.sheep) H.place(s, P.x - P.tx * 40, P.z - P.tz * 40);
+      H.place(d, P.x, P.z); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3); d.yaw = Math.atan2(P.tx, P.tz); p2.bot = {};
+      H.p.bot = { grab: true }; GAME.step(0.025);
+      r.grabbed = d.holding === o && o.heldBy === d && d.holdKind === 'dog';
+      H.p.bot = H.to(-P.tz, P.tx, { grab: true }); H.run(1.5);
+      const mx = d.x + Math.sin(d.yaw) * GAME.T.grabKinds.dog.reach, mz = d.z + Math.cos(d.yaw) * GAME.T.grabKinds.dog.reach;
+      r.atMouth = H.r(Math.hypot(o.x - mx, o.z - mz)); r.lifted = H.r(o.y - GAME.groundY(o.x, o.z)); r.stillHeld = d.holding === o;
+      // run with it, let go: flung
+      H.p.bot = H.to(P.tx, P.tz, { grab: true }); H.run(0.4);
+      H.p.bot = H.to(P.tx, P.tz); GAME.step(0.025); H.p.bot = {};
+      r.flungKind = o.air && o.air.kind; r.free = !o.heldBy && !d.holding;
+      r.flight = H.track(o, 3);
+      r.flings = MV.dogFlings;
+      // grabbed again: mash pounce to wriggle free (and no lunge from it)
+      H.place(d, P.x, P.z); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3); d.yaw = Math.atan2(P.tx, P.tz); o.stunT = 0; H.run(0.3);
+      H.p.bot = { grab: true }; GAME.step(0.025);
+      const held2 = o.heldBy === d; let presses = 0;
+      for (let i = 0; i < 10 && o.heldBy; i++) { p2.bot = { pounce: true }; GAME.step(0.025); presses++; p2.bot = {}; GAME.step(0.025); }
+      r.wriggle = { held2, presses, free: !o.heldBy && !d.holding, lunged: o.pounceT > 0 };
+      H.p.bot = {}; H.run(0.5);
+      // same flight as a sheep: punt one of each from the same spot
+      const fl = [];
+      for (const k of ['sheep', 'dog']) {
+        H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); const e = k === 'dog' ? o : G.sheep[0];
+        for (const s of G.sheep) H.place(s, P.x - P.tx * 40, P.z - P.tz * 40);
+        H.place(o, P.x - P.tx * 30, P.z - P.tz * 30); H.place(e, P.x + P.tx * 1.4, P.z + P.tz * 1.4);
+        H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
+        fl.push(H.track(e, 4));
+      }
+      r.sameFlight = { sheep: fl[0], dog: fl[1] };
+      // a flung dog bowls a sheep over
+      H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3);
+      H.place(G.sheep[0], P.x + P.tx * 6, P.z + P.tz * 6);
+      H.p.bot = { grab: true }; GAME.step(0.025);
+      H.p.bot = H.to(P.tx, P.tz, { grab: true, sprint: true }); H.run(0.2);
+      H.p.bot = H.to(P.tx, P.tz); GAME.step(0.025); H.p.bot = {}; H.run(2.5);
+      r.caroms = MV.caroms;
+      const a = r.sameFlight.sheep, b = r.sameFlight.dog;
+      r.ok = r.grabbed && r.stillHeld && r.atMouth < 0.3 && r.lifted > 0.2 && r.flungKind === 'fling' && r.free && r.flings === 1 && !r.flight.stillFlying && r.flight.landedAt > 4
+        && r.wriggle.held2 && r.wriggle.free && r.wriggle.presses <= GAME.T.dogHeld.mash + 1 && !r.wriggle.lunged
+        && a.bounces === b.bounces && Math.abs(a.firstTouch - b.firstTouch) < 1.5 && Math.abs(a.peak - b.peak) < 0.3 && r.caroms >= 1;
+      H.solo(); return r;
     });
   },
   // 1d. Ⓨ: a dog jumping as another pounces into it isn't punted; a sprinting jump is a long vault
@@ -107,6 +158,7 @@ const tests = {
       const vaultDur = d.hopT, vaultH = d.hopH; x0 = d.x; z0 = d.z;
       H.p.bot = {}; H.run(vaultDur);
       const vault = H.r(Math.hypot(d.x - x0, d.z - z0));
+      H.solo();
       return { dodged, hop, hopDur: H.r(hopDur), vault, vaultDur: H.r(vaultDur), vaultH,
         ok: dodged && hop < 0.5 && hopDur > 0.4 && vault > 8 && vaultH > 1.6 };
     });
@@ -311,8 +363,7 @@ const tests = {
       H.p.bot = H.to(S.ux, S.uz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
       let flew = false, peak = 0; H.run(4, () => { if (d2.air) { flew = true; peak = Math.max(peak, d2.air.h - GAME.groundY(d2.x, d2.z)); } });
       const r = { flew, peak: H.r(peak), landed: !d2.air, ...H.river(d2) };
-      // tidy up: the second dog leaves again
-      const p2 = G.players[1]; GAME.scene.remove(d2.models.root); G.dogs.splice(1, 1); G.players.splice(1, 1); p2.dog = null;
+      H.solo();   // tidy up: the second dog leaves again
       return r;
     });
   },
