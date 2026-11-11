@@ -663,6 +663,7 @@ const T = {
     dog: { speed: 0.7, pull: 6, grip: 0.07, reach: 1.15, lift: 0.4 },   // another dog, by the scruff
     gate: { speed: 0.75, pull: 0, grip: 0.015 },
     rope: { speed: 0.92, pull: 0, grip: 0 }, tug: { speed: 0.42, pull: 1, grip: 0.03 },   // ROPES: dragging one (free); heaving in a tug of war (trains grip)
+    bone: { speed: 1, pull: 0, grip: 0 },   // BONES: light, free to carry
   },
   // ROPES: one coiled off the trail on each leg (lat m out). n nodes seg m apart, r m thick; grav m/s²; slide m/s²: sliding friction on the
   // ground; fric/air: drag /s on the ground / in the air; iters: passes; bend: stiffness (0…1, folds tighter than bendMin× two links resisted); reach/mouthY: where a dog holds it; kick: a dog
@@ -671,6 +672,15 @@ const T = {
   // exhausted; a tap yanks it back yank m/s and costs tapCost stamina, walking back backDrain/s (holding on: grabKinds.tug.grip). The knot
   // past a side's line (win m from the start) or that side letting go: the other wins; losers are yanked (lose m/s, stun s). slack: grips kept
   // that taut. cd s before another can start
+  // BONES: m kg, r m round; e: how bouncy a hit is; max on the map. A hit gives the thing J = (1+e)·v / (1/m + 1/its mass), its speed
+  // changes J/its mass (mass: kg, × size³ for sheep, × build for dogs, × 1.56 an alpha coyote); show: × that for how far it's knocked.
+  // Over knock (m/s) a dog's bowled over, over bowl a sheep flies; irk: a ram takes it personally; scare: × courage off a coyote;
+  // a cougar drops its catch over cougarDrop, a stalking one slinks off over cougarShy. hitV m/s: slower isn't a hit.
+  // toss: thrown with the dog's run × mul + add m/s forward, up m/s; bounce: kept off the ground (over bounceMin m/s), keep: of its speed;
+  // slide m/s²: sliding friction; a pounce kicks a lying one (kick, kickUp m/s, within kickR m). save: kept on this device (off in ?sim)
+  bone: { save: !SIM, m: 1.2, r: 0.3, e: 0.5, max: 24, show: 2.5, hitV: 2.5, knock: 2.5, bowl: 3, irk: 0.15, scare: 0.25, cougarDrop: 0.6, cougarShy: 0.3,
+    toss: { add: 9, mul: 1.15, up: 6.5 }, bounce: 0.35, bounceMin: 2.5, keep: 0.6, slide: 12, kick: 14, kickUp: 6, kickR: 0.9,
+    mass: { dog: 22, sheep: 55, coyote: 14, cougar: 60, hank: 80 } },   // (sheep: × size³, so a ewe ~70 kg, a ram ~130, a new lamb ~12)
   rope: { n: 28, seg: 0.36, r: 0.075, grav: 22, slide: 9, fric: 1.5, air: 0.6, iters: 14, bend: 0.25, bendMin: 0.8, reach: 0.95, mouthY: 0.82, kick: 0.6, wave: 7, near: 3, lat: [5, 10],
     tug: { base: 2, back: 1.5, tap: 2.5, tapT: 0.4, tired: 0.5, yank: 5, tapCost: 0.012, backDrain: 0.05, win: 3, slack: 0.97, lose: 7, stun: 0.6, cd: 1.5 } },
   // CARRY SWING (drawing only): what's in a dog's mouth hangs on a pendulum L m long; damp /s; clonks off the chest past
@@ -702,7 +712,7 @@ const T = {
     slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, shore: [3, 5], shoreWall: 1.2, tipR: 1.9, hold: 1.5, crowd: 4, slosh: 0.15,   // slosh: share spilt by a shake
     kick: { r: 0.75, k: 1.1, fric: 4, pounce: 14, up: 9, spill: 0.5, bounce: 0.35 } },   // kick: a dog running into a lying bucket shoves it (k× its speed), a pounce sends it flying (spills share). hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
-  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15] },   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
+  dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15], bone: 0.35 },   // bone: share of the junk that's a bone (BONES)   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
   // vendors (VENDOR): a stall `before` m short of the end of each leg, and the Trading Post's. A dog on a mat (matR m; mats ring m in front
   // of the stall, gap m apart) barks to buy with 🧶 (G.wool) for the pen picked on the 📍 mat (a discovered one). 💧 🌾 🧂: one more trough
   // (`add` 🧶, arrives stocked) till the pen has max (for a 9 m pen; × R/9), then a batch (`price` 🧶; amt: 💧 sheep quenched, 🌾 hunger,
@@ -5061,13 +5071,15 @@ function tryGrab(d) {
     if (r < 0.8 || q.d > 1.3) continue;
     if (q.d - 0.2 < bd) { bd = q.d - 0.2; best = p; kind = 'gate'; grip = r; }
   }
-  const rg = ropeGrip(d, mx, mz, bd); if (rg) { best = rg.R; kind = 'rope'; grip = rg.i; }   // ROPES: anywhere along it
+  const rg = ropeGrip(d, mx, mz, bd); if (rg) { best = rg.R; kind = 'rope'; grip = rg.i; bd = rg.dd; }   // ROPES: anywhere along it
+  const bg = boneGrip(d, mx, mz, bd); if (bg) { best = bg.b; kind = 'bone'; bd = bg.dd; }   // BONES
   if (!best) return false;
   d.holding = best; d.holdKind = kind; d.holdT = 0; d.holdWob = rnd(0, TAU); d.lastShake = 0; d.shakes = 0;
   const pan = panOf(d.x, d.z);
   rumble(d.player, 0.3, 0.5, 120); hint('grab-used');
   if (kind === 'gate') { d.holdR = clamp(grip, 0.9, best.gateLen); d.holdOff = wrapA(best.phi - gatePsi(best, d.x, d.z)); SFX.creak(pan, 0.2, 1.2); Sound.growl(pan, 0.1); return true; }
   if (kind === 'rope') { ropeBite(best, d, grip); return true; }
+  if (kind === 'bone') { bonePick(best, d); return true; }
   best.heldBy = d;
   if (kind === 'coyote') {
     if (best.state === 'pack') best.state = 'held';   // out of the pack's plans while it's in your jaws
@@ -5103,6 +5115,7 @@ function releaseHold(d, fling) {
   const H = d.holding, kind = d.holdKind; if (!H) return;
   d.holding = null; d.holdKind = null; d.dropAt = 0; d.grabBuf = 0;
   if (kind === 'gate') return;
+  if (kind === 'bone') { boneLetGo(H, d, fling); return; }   // BONES: a tap tosses it
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), sp = Math.hypot(d.vx, d.vz), F = T.fling, pan = panOf(d.x, d.z), kg = Math.sqrt(dogK(d, 'grip'));   // BREEDS: a good grip throws further
   const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
   if (throwIt) train(d, 'grip', T.train.fling);
@@ -5142,6 +5155,7 @@ function shakeHold(d) {
   if (!H) { const b = bucketOf(d); if (b) bucketSlosh(b, d); return; }   // WATER: it slops over
   if (kind === 'rope') { ropeShake(H, d); return; }   // ROPES: a wave runs down it
   Sound.growl(pan, 0.12);
+  if (kind === 'bone') return;   // BONES: a good worrying
   if (kind === 'gate') { SFX.creak(pan, 0.25, 1.4); return; }   // a rattle
   if (kind === 'coyote') {
     d.shakes++; train(d, 'grip', T.train.fling);
@@ -5520,6 +5534,7 @@ function updateWorldPhysics(dt) {
   updateForage(dt);   // dogs gathering greens and salt, tipping them into troughs and licks; regrowth (FORAGE section)
   updateWater(dt);    // WATER: buckets picked up, filled, tipped into the pens' water troughs
   updateRopes(dt);    // ROPES: dragged, shaken, tugs of war
+  updateBones(dt);    // BONES: carried, thrown, bonking things
   updateDigs(dt);     // DIG SPOTS: dogs digging up treasure for the barn
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
@@ -6201,7 +6216,7 @@ const DIGS = [];
     d.glow = new THREE.Sprite(FIND_GLOW.dig); d.glow.position.y = 0.45; d.glow.scale.setScalar(1.6); g.add(d.glow);
   }
 }
-const DIG_JUNK = ['AN OLD BOOT!', 'A BONE!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
+const DIG_JUNK = ['AN OLD BOOT!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPOON!', 'A BIG STICK!'];
 const CLIP_DIG = DIGS.find(sp => sp.clip) || null;   // HANK: shearing: where his clippers are buried
 const clippersOut = () => HANK.clippers;
 function resetDigs() { for (const d of DIGS) { d.dug = false; d.prog = 0; } }
@@ -6238,7 +6253,8 @@ function digUp(sp, d) {
     burst(sp.x, sp.y + 0.6, sp.z, 16, '#ffe27a', { speed: 4, up: 2.5, size: 0.12, life: 0.7, grav: -2 });   // a gold flash out of the hole
     floatText(`${it.icon} ${it.name.toUpperCase()}!`, sp.x, sp.y + 1.6, sp.z, '#ffd36b', 1.8);
     toast(`${d.player.name || PCOL[d.player.slot].name} dug up a ${it.name.toLowerCase()}! ` + (DOGS.found.length === 1 ? 'Try it on in Hank’s barn.' : `(${DOGS.found.length}/${DOG_ITEMS.length})`), 'good');
-  } else {
+  } else if (BONES.length < T.bone.max && Math.random() < T.dig.bone) digBone(sp);   // BONES: here to stay
+  else {
     floatText(pick(DIG_JUNK), sp.x, sp.y + 1.5, sp.z, '#e8dcc0', 1.25); Sound.chime([0, 3], 330, 0.1);
     burst(sp.x, sp.y + 0.6, sp.z, 6, '#fff6c0', { speed: 2.5, up: 2, size: 0.1, life: 0.5, grav: -3 });
   }
@@ -6795,7 +6811,7 @@ function ropeGrip(d, mx, mz, best) {
     for (let k = 0; k < R.n; k++) {
       if (R.y[k] - R.gy[k] > 1.6 || others.some(o => Math.abs(o.ropeI - k) < K.near)) continue;
       const dd = Math.hypot(R.x[k] - mx, R.z[k] - mz) - 0.1;
-      if (dd < best && !fenceBetween(d.x, d.z, R.x[k], R.z[k])) { best = dd; out = { R, i: k }; }
+      if (dd < best && !fenceBetween(d.x, d.z, R.x[k], R.z[k])) { best = dd; out = { R, i: k, dd }; }
     }
   }
   return out;
@@ -7063,6 +7079,211 @@ function drawRopeOverlay() {
     nudge('rope', R.cx, R.y[0] + 1.6, R.cz, `${keyLabel(d.player, 'grab')} grab`, '#c8a46a');
   }
 }
+
+// =====================================================================
+// BONES — dug up at a dig spot (T.dig.bone of the junk), a bone stays on
+// the map for good (saved on this device: BONE_KEY). A dog bites it (Ⓧ),
+// carries it crosswise in its jaws, and one more tap throws it (running:
+// further). It flies, tumbles, bounces and slides. Whatever it hits takes
+// a real impulse: J = (1 + e)·v / (1/m_bone + 1/m), so the change in speed
+// is J/m: a lamb or a coyote is bowled over, a sheep nudged, a cougar or
+// Hank barely budges (boneMass). A pounce kicks a lying one.
+// =====================================================================
+const BONES = [], BONE_KEY = 'collies.bones.v1';
+const BONE_GEO = (() => {
+  const C = '#efe6cf', S = '#ddd2b5';
+  return merge(P(CYL(0.055, 0.055, 0.46, 8), C, { r: [0, 0, Math.PI / 2] }),
+    ...[[-0.25, 0.06], [-0.25, -0.06], [0.25, 0.06], [0.25, -0.06]].map(([x, z], i) => P(SPH(8), i % 2 ? S : C, { s: [0.085, 0.08, 0.085], p: [x, 0, z] })));
+})();
+function spawnBone(x, z, vx = 0, vz = 0, vy = 0, opt = {}) {
+  const b = { isBone: true, x, z, h: vy > 0 ? 0.05 : 0, vx, vz, vy, rot: opt.rot ?? Math.random() * TAU, roll: 0, spin: vy > 0 ? rnd(-10, 10) : 0, by: null, from: null, t0: -9, hitE: null, hitT: -9, moved: false };
+  const g = new THREE.Group(); part(g, BONE_GEO); scene.add(g); b.mesh = g;
+  BONES.push(b); boneDirty = true; return b;
+}
+function killBone(b) { const i = BONES.indexOf(b); if (i >= 0) BONES.splice(i, 1); if (b.mesh) scene.remove(b.mesh); }
+// the ground (or the water's surface) under it
+const boneBase = (x, z) => wetAt(x, z) ? Math.max(groundY(x, z), WATER_Y - 0.08) : groundY(x, z);
+// how heavy each thing is (kg), by its size: a sheep by its scale and growth, a dog by its breed's build
+function boneMass(e, kind) {
+  const M = T.bone.mass;
+  if (kind === 'sheep') { const k = (e.scale || 1) * (e.grow || 1); return M.sheep * k * k * k; }   // (a ram's bigger scale makes him heavier)
+  if (kind === 'dog') { const z = breedOf(e.breed).size || [1, 1, 1]; return M.dog * z[0] * z[1] * z[2]; }
+  if (kind === 'coyote') return M.coyote * (e.alpha ? 1.56 : 1);
+  return M[kind] || 50;
+}
+// tryGrab: the nearest bone in reach (lying, or flying low past: a catch); { b, dd } or null
+function boneGrip(d, mx, mz, best) {
+  let out = null;
+  for (const b of BONES) {
+    if (b.by || b.h > 1.6 || Math.abs(b.x - mx) > 3 || Math.abs(b.z - mz) > 3) continue;
+    const dd = Math.hypot(b.x - mx, b.z - mz) - (b.h > 0.1 ? 0.4 : 0.1);
+    if (dd < best && !fenceBetween(d.x, d.z, b.x, b.z)) { best = dd; out = { b, dd }; }
+  }
+  return out;
+}
+function bonePick(b, d) {
+  const caught = b.h > 0.3 && Math.hypot(b.vx, b.vz) > 4;
+  b.by = d; b.vx = b.vz = b.vy = 0; b.h = 0; b.spin = 0; boneDirty = true;
+  boneFx(caught ? 'catch' : 'pick', b.x, b.z);
+  if (caught) sayOnce('bone-catch', 'catch', 'What a catch!');
+  hint('bone');
+}
+// let go: tossed (a tap: from the jaws, the dog's run carried into it) or just dropped (knocked about, swimming)
+function boneLetGo(b, d, toss) {
+  const K = T.bone.toss, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), kg = Math.sqrt(dogK(d, 'grip'));
+  b.by = null; b.x = d.x + fx * 0.95; b.z = d.z + fz * 0.95; b.h = T.rope.mouthY - 0.1; b.rot = d.yaw; b.from = d; b.t0 = G.time; b.hitE = null; boneDirty = true;
+  if (!toss) { b.vx = d.vx * 0.5; b.vz = d.vz * 0.5; b.vy = 0; b.spin = rnd(-3, 3); return; }
+  b.vx = (d.vx * K.mul + fx * K.add) * kg; b.vz = (d.vz * K.mul + fz * K.add) * kg; b.vy = K.up; b.spin = rnd(8, 14) * (Math.random() < 0.5 ? -1 : 1);
+  boneFx('toss', b.x, b.z);
+}
+let boneDirty = false, boneSaveT = 0;
+// in step(): flying, bouncing, sliding; what it hits; pounces kick it; a held one rides at its dog's mouth
+function updateBones(dt) {
+  const K = T.bone;
+  for (const b of BONES) {
+    const d = b.by;
+    if (d) {
+      if (d.holding !== b || !G.dogs.includes(d)) { b.by = null; b.vx = b.vz = b.vy = 0; continue; }   // its dog let go some other way
+      const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw); b.x = d.x + fx * 0.95; b.z = d.z + fz * 0.95; b.h = T.rope.mouthY - 0.1; b.rot = d.yaw; b.roll = 0;
+      continue;
+    }
+    for (const o of G.dogs) {   // a pounce into a lying one kicks it away
+      if (!(o.pounceT > 0) || b.h > 0.4 || Math.abs(o.x - b.x) > 1.2 || Math.abs(o.z - b.z) > 1.2 || Math.hypot(o.x - b.x, o.z - b.z) > K.kickR) continue;
+      if (b.from === o && G.time - b.t0 < 0.4) continue;
+      b.vx = o.pdx * K.kick + (b.x - o.x) * 2; b.vz = o.pdz * K.kick + (b.z - o.z) * 2; b.vy = K.kickUp; b.h = Math.max(b.h, 0.05); b.spin = rnd(-14, 14);
+      b.from = o; b.t0 = G.time; b.hitE = null; boneFx('kick', b.x, b.z);
+    }
+    const sp = Math.hypot(b.vx, b.vz);
+    if (!(b.h > 0 || b.vy > 0 || sp > 0.02)) continue;   // at rest
+    b.moved = true;
+    const n = Math.max(1, Math.ceil(Math.max(sp, Math.abs(b.vy)) * dt / 0.25)), h = dt / n;   // (fast: sub-steps, so it can't skip through a sheep)
+    for (let i = 0; i < n; i++) boneStep(b, h);
+  }
+  // saved once things settle (and now and then while they don't)
+  boneSaveT -= dt;
+  if (boneDirty && boneSaveT <= 0 && BONES.every(b => b.by || (b.h <= 0 && Math.hypot(b.vx, b.vz) < 0.02))) { boneDirty = false; boneSaveT = 2; saveBones(); }
+}
+function boneStep(b, dt) {
+  const K = T.bone;
+  if (b.h > 0 || b.vy > 0) { b.vy -= T.airGrav * dt; b.h += b.vy * dt; b.roll += b.spin * dt; }
+  b.x += b.vx * dt; b.z += b.vz * dt;
+  if (b.h <= 0) {   // down: a bounce, a clatter, then sliding to a stop
+    b.h = 0;
+    if (b.vy < -K.bounceMin) { b.vy = -b.vy * K.bounce; b.vx *= K.keep; b.vz *= K.keep; b.spin *= 0.6; boneFx('clack', b.x, b.z, Math.min(1, -b.vy / 4)); }
+    else { b.vy = 0; b.roll = Math.round(b.roll / Math.PI) * Math.PI; b.spin = 0; const sp = Math.hypot(b.vx, b.vz), q = sp > K.slide * dt ? (sp - K.slide * dt) / sp : 0; b.vx *= q; b.vz *= q; }
+  }
+  if (b.h < 1.5) {   // rocks and walls bounce it back; fences only stop a low one
+    const sd = sdfAt(b.x, b.z);
+    if (sd < K.r) { const g = sdfGrad(b.x, b.z), vn = b.vx * g.x + b.vz * g.z; b.x += g.x * (K.r - sd); b.z += g.z * (K.r - sd); if (vn < 0) { b.vx -= (1 + K.e) * vn * g.x; b.vz -= (1 + K.e) * vn * g.z; boneFx('clack', b.x, b.z, Math.min(1, -vn / 6)); } }
+    if (b.h < T.fenceClear) { const vx = b.vx, vz = b.vz; _bTmp.x = b.x; _bTmp.z = b.z; _bTmp.vx = vx; _bTmp.vz = vz; if (collideFences(_bTmp, K.r * 0.5)) { const vn = vx * HIT.nx + vz * HIT.nz; b.x = _bTmp.x; b.z = _bTmp.z; if (vn < 0) { b.vx = vx - (1 + K.e) * vn * HIT.nx; b.vz = vz - (1 + K.e) * vn * HIT.nz; } } }
+  }
+  if (Math.hypot(b.vx, b.vz) > K.hitV * 0.5) boneHits(b);
+}
+const _bTmp = { x: 0, z: 0, vx: 0, vz: 0 };
+// everything it can hit: [thing, kind, radius, height]
+function boneTargets() {
+  const L = [];
+  for (const d of G.dogs) if (!d.air && !d.heldBy && !d.maul) L.push([d, 'dog', T.dogR, 1.05]);
+  for (const s of G.sheep) if (!s.dead && !s.air && !s.heldBy && !s.grabbed) L.push([s, 'sheep', s.r, 1.15 * (s.scale || 1) * (s.grow || 1)]);
+  for (const c of G.coyotes) if (!c.air && !c.heldBy && !c.gone) L.push([c, 'coyote', T.coyoteR, 0.95]);
+  for (const k of COUGARS) if (k.state !== 'away') L.push([k, 'cougar', T.cougar.r, 1.2]);
+  if (HANK && G.mode === 'play') L.push([HANK, 'hank', T.hankR, 1.8]);
+  return L;
+}
+function boneHits(b) {
+  const K = T.bone, base = boneBase(b.x, b.z);
+  for (const [e, kind, r, ht] of boneTargets()) {
+    if (e === b.by || (e === b.from && G.time - b.t0 < 0.35) || (e === b.hitE && G.time - b.hitT < 0.3)) continue;
+    const dx = e.x - b.x, dz = e.z - b.z; if (Math.abs(dx) > r + 1 || Math.abs(dz) > r + 1) continue;
+    const dd = Math.hypot(dx, dz); if (dd > r + K.r || dd < 1e-4) continue;
+    const eh = kind === 'cougar' ? e.h || 0 : 0, bh = b.h + base - groundY(e.x, e.z); if (bh < eh - 0.1 || bh > eh + ht) continue;   // over its head or under it
+    const nx = dx / dd, nz = dz / dd, vn = (b.vx - (e.vx || 0)) * nx + (b.vz - (e.vz || 0)) * nz; if (vn < K.hitV) continue;   // a glancing touch
+    const m = boneMass(e, kind), J = (1 + K.e) * vn / (1 / K.m + 1 / m), dv = J / m;   // the impulse: what it gives, what it gets back
+    b.vx -= nx * J / K.m; b.vz -= nz * J / K.m; b.vy = Math.max(b.vy, 1.5); b.h = Math.max(b.h, 0.05); b.spin = -b.spin * 0.7;
+    b.hitE = e; b.hitT = G.time;
+    boneHit(b, e, kind, dv, nx, nz);
+    if (G.stats) G.stats.bonks = (G.stats.bonks || 0) + 1;
+    break;   // one thing at a time
+  }
+}
+// what a hit does: dv is the change in its speed (m/s), the same physics for all, so the small go flying and the big just flinch
+function boneHit(b, e, kind, dv, nx, nz) {
+  const K = T.bone, kv = dv * K.show, by = b.from && G.dogs.includes(b.from) ? b.from : null;
+  e.lastBone = { dv, at: G.time, m: boneMass(e, kind), vn: dv * boneMass(e, kind) / ((1 + K.e) / (1 / K.m + 1 / boneMass(e, kind))) };   // (tests: what it got, its mass, how fast the bone came in)
+  boneFx('hit', e.x, e.z, Math.min(1, dv / 2));
+  if (kind === 'dog') {
+    if (kv > K.knock) knockDog(e, nx * kv, nz * kv, clamp(0.15 + 0.2 * dv, 0.15, 0.8), 'BONK!');
+    else { e.vx += nx * kv; e.vz += nz * kv; floatText('BONK!', e.x, e.y + 1.8, e.z, '#ffd36b', 0.9); Sound.yelp(panOf(e.x, e.z)); }
+    if (by) train(by, 'bonk', T.train.bonk);
+  } else if (kind === 'sheep') {
+    if (kv > K.bowl) { launchSheep(e, nx * kv, nz * kv, Math.min(6, 1.5 + dv), 'whack', by).bounces = 1; floatText('BONK!', e.x, e.y + 1.6, e.z, '#ffffff', 1.2); }   // a lamb: bowled over
+    else { e.vx += nx * kv; e.vz += nz * kv; e.hopV = Math.max(e.hopV || 0, 1 + dv); floatText('BONK!', e.x, e.y + 1.6, e.z, '#ffffff', 0.9); }
+    startleSheep(e, nx, nz, Math.min(1, 0.3 + 0.5 * dv)); Sound.baa(e.pitch * 1.15, 0.4, panOf(e.x, e.z), true);
+    if (e.ram && by && dv > K.irk) provokeRam(e, by);   // a ram takes it personally
+  } else if (kind === 'coyote') {
+    hitCoyote(e, Math.min(1, K.scare * dv), nx * kv, nz * kv, by || { x: e.x - nx, z: e.z - nz }, 'BONK!'); Sound.yelp(panOf(e.x, e.z));
+    if (dv > 1) dizzy(e, Math.min(2, dv * 0.6), 1.5);
+  } else if (kind === 'cougar') {
+    e.vx += nx * kv; e.vz += nz * kv; floatText('BONK!', e.x, (e.y || 0) + 1.9, e.z, '#ffffff', 1);
+    if (e.state === 'retreat') { Sound.yowl(panOf(e.x, e.z)); dizzy(e, 0.8, 1.2); }
+    else if (e.state === 'drag' && dv > K.cougarDrop) cougarDrop(e, true);
+    else if ((e.state === 'stalk' || e.state === 'down') && dv > K.cougarShy) cougarSpooked(e, 0.5);
+    else Sound.hiss(panOf(e.x, e.z), 0.18);
+  } else if (kind === 'hank') {
+    e.vx += nx * kv; e.vz += nz * kv; e.stumble = Math.max(e.stumble, Math.min(0.6, 0.25 + dv)); if (e.asleep) { e.asleep = false; e.upT = G.time; }
+    if (e.bumpCD <= 0) { e.bumpCD = 2; hank(pick(['watch_it', 'manners', 'not_me']), null, { force: true }); }
+  }
+}
+// what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
+function boneFx(kind, x, z, k = 1) {
+  const y = groundY(x, z), pan = panOf(x, z);
+  if (kind === 'pick') { SFX.clack(pan, 0.18); }
+  else if (kind === 'catch') { floatText('NICE CATCH!', x, y + 2, z, '#ffd36b', 1.4); starBurst(x, y + 1, z, 8); Sound.chime([0, 7, 12], 784, 0.16); }
+  else if (kind === 'toss' || kind === 'kick') SFX.whoosh(pan, kind === 'kick' ? 0.25 : 0.18, 0.25);
+  else if (kind === 'clack') { if (k > 0.15) { SFX.clack(pan, 0.1 + 0.2 * k); burst(x, y + 0.1, z, 3, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.16, life: 0.4, grav: 0 }); } }
+  else if (kind === 'hit') { SFX.bonk(pan, 0.15 + 0.25 * k); starBurst(x, y + 1.1, z, 3 + Math.round(6 * k), undefined, { speed: 2 + 3 * k, up: 2 + 2 * k }); shakeCam(0.08 + 0.2 * k); }
+  else if (kind === 'dig') { floatText('A BONE!', x, y + 1.6, z, '#efe6cf', 1.4); Sound.chime([0, 4, 7], 523, 0.12); }
+}
+// DIG SPOTS: one comes up out of the hole
+function digBone(sp) {
+  const a = Math.random() * TAU; spawnBone(sp.x + Math.cos(a) * 0.3, sp.z + Math.sin(a) * 0.3, Math.cos(a) * 1.6, Math.sin(a) * 1.6, 6.5);
+  boneFx('dig', sp.x, sp.z);
+}
+// in frame(): lying, flying (tumbling), or crosswise in its dog's jaws as drawn
+const _bv = new THREE.Vector3();
+function syncBones() {
+  for (const b of BONES) {
+    const g = b.mesh, d = b.by;
+    if (d && d.models) {
+      d.models.head.updateWorldMatrix(true, false); d.models.head.localToWorld(_bv.set(0, -0.1, 0.33));
+      g.position.copy(_bv); g.rotation.set(0, d.yaw, -(d.models.head.rotation.z || 0)); continue;
+    }
+    g.position.set(b.x, boneBase(b.x, b.z) + 0.08 + b.h, b.z); g.rotation.set(0, b.rot, b.roll, 'YXZ');
+  }
+}
+// the overlay: what to press, the first few times
+function drawBoneOverlay() {
+  if (G.mode !== 'play') return;
+  for (const b of BONES) {
+    if (b.by) { const d = b.by; if (d.player && d.player.kind !== 'net') nudge('bone-throw', d.x, d.y + 2.3, d.z, `${keyLabel(d.player, 'grab')} throw`, '#efe6cf'); continue; }
+    if (b.h > 0) continue;
+    const d = G.dogs.find(d => !d.holding && Math.abs(d.x - b.x) < 6 && Math.abs(d.z - b.z) < 6); if (!d) continue;
+    nudge('bone', b.x, groundY(b.x, b.z) + 1.2, b.z, `${keyLabel(d.player, 'grab')} grab`, '#efe6cf');
+  }
+}
+// FLOCK SAVE's neighbour: where the bones lie, on this device (the host's, online)
+function saveBones() {
+  if (!T.bone.save || NET.role === 'guest') return;
+  try { localStorage.setItem(BONE_KEY, JSON.stringify(BONES.map(b => [Math.round(b.x * 10) / 10, Math.round(b.z * 10) / 10, Math.round(b.rot * 100) / 100]))); } catch (e) {}
+}
+function loadBones() {
+  if (!T.bone.save) return;
+  let L = null; try { L = JSON.parse(localStorage.getItem(BONE_KEY) || 'null'); } catch (e) {}
+  if (!Array.isArray(L)) return;
+  for (const q of L.slice(0, T.bone.max)) if (Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])) spawnBone(q[0], q[1], 0, 0, 0, { rot: +q[2] || 0 });
+  boneDirty = false;
+}
+loadBones();
 
 // =====================================================================
 // NAVIGATION — A* on the 1 m grid so coyotes find their way round pens,
@@ -8907,7 +9128,7 @@ function nadsSkin(s, N, out) {
 // hang it from the mouth and turn it by d.cw.
 // =====================================================================
 const _cwv = new THREE.Vector3(), _ce = new THREE.Euler();
-const carryKind = d => { if (bucketOf(d)) return 'bucket'; const k = d.holding && (d.holdKind || netKindOf(d.holding)); return k && k !== 'gate' && k !== 'rope' ? k : null; };   // (guests: from what it holds; ROPES: their own physics)
+const carryKind = d => { if (bucketOf(d)) return 'bucket'; const k = d.holding && (d.holdKind || netKindOf(d.holding)); return k && k !== 'gate' && k !== 'rope' && k !== 'bone' ? k : null; };   // (guests: from what it holds; ROPES: their own physics)
 function carrySwing(d, dt) {
   const C = T.carrySwing, kind = d.models ? carryKind(d) : null;
   const w = d.cw || (d.cw = { kind: null, p: 0, r: 0, vp: 0, vr: 0, jolt: 0, hit: 0, clonkT: 0 });
@@ -9361,6 +9582,7 @@ const HINTS = {
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! <b>Grab</b> it to carry it (tap again: set it down). Wade into a river, lake or the sea to fill it.',
   rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too: <b>tug of war</b>!',
+  bone: 'A <b>bone</b>! Tap <b>Ⓧ</b> / <b>R</b> again to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
   tug: '<b>Tug of war!</b> Walk back and tap <b>Ⓧ</b> / <b>R</b> to heave. Knot over your line, or out-last them.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
@@ -9405,6 +9627,7 @@ const TOUCH_HINTS = {
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   bucket: '🪣! ✊ to carry · wade in to fill',
   rope: 'Rope! Two dogs: <b>tug of war</b>',
+  bone: 'Bone! ✊ again: <b>throw</b>',
   tug: 'Tug! Walk back, ✊✊✊',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
@@ -9636,6 +9859,7 @@ function drawOverlay(dt) {
   drawWaterOverlay();    // WATER: buckets, each pen's water
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
   drawRopeOverlay();     // ROPES: grab it; in a tug, heave
+  drawBoneOverlay();     // BONES: grab it; throw it
   drawVendorOverlay();   // VENDOR: prices over the mats
   drawBrambleOverlay();  // BRAMBLES: snagged sheep
   drawBonkOverlay();     // BONK SPOTS: cast, bogged and balking sheep, apple trees
@@ -12222,6 +12446,11 @@ const NET_TYPES = {
     fields: { pts: { c: 's', get: R => ropeEnc(R), set: (R, v) => ropeDec(R, v) },
       tug: { c: 'j', get: R => R.tug ? R.tug.net : null, set: (R, v) => { R.tug = v && typeof v === 'object' ? Object.assign({ off: 0, net: v }, v) : null; } } },
   },
+  bone: {   // BONES: where each lies (or flies, how high, tumbling), which dog has it
+    tag: 'O', all: () => BONES, id: b => b.nid || (b.nid = ++NET.nid),
+    fields: { x: 'p', z: 'p', h: .02, rot: 'a', roll: 'a', by: '@dog' },
+    make: (id, f) => netGuestBone(id, f), kill: b => killBone(b),
+  },
   dig: {   // DIG SPOTS: dug or not, and how far down
     tag: 'D', all: () => DIGS, id: sp => sp.i, static: true,
     fields: { dug: 'b', prog: .05 },
@@ -12401,6 +12630,7 @@ function netRefStr(v) {
   if (v.isCougar) return 'Q' + v.i;
   if (v.isFalcon) return 'A' + v.i;
   if (v.isRope) return 'R' + v.i;
+  if (v.isBone) return 'O' + NET_TYPES.bone.id(v);
   const pi = pens.indexOf(v); if (pi >= 0) return 'p' + pi;
   if (G.dogs.includes(v)) return 'd' + v.player.slot;
   return null;
@@ -12637,7 +12867,7 @@ function netAnimCoyote(c, dt) {
 // what it draws onto that. Bark, pounce, grab and gates it pushes go the same way (netPredPress, netPredPost).
 // Airborne, stunned or hopping: the host's state, smoothed.
 const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
-function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : G.dogs.includes(h) ? 'dog' : h.isRope ? 'rope' : ''; }
+function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : G.dogs.includes(h) ? 'dog' : h.isRope ? 'rope' : h.isBone ? 'bone' : ''; }
 function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug); }   // (ROPES: in a tug of war the host moves it)
 function netPredPick(d) {   // what tryGrab would bite
   if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
@@ -12654,7 +12884,8 @@ function netPredPick(d) {   // what tryGrab would bite
     const q = distSeg(mx, mz, p.gateSeg), r = q.t * p.gateLen; if (r < 0.8 || q.d > 1.3) continue;
     if (q.d - 0.2 < bd) { bd = q.d - 0.2; o = p; grip = r; }
   }
-  const rg = ropeGrip(d, mx, mz, bd); if (rg) { o = rg.R; grip = rg.i; }   // ROPES
+  const rg = ropeGrip(d, mx, mz, bd); if (rg) { o = rg.R; grip = rg.i; bd = rg.dd; }   // ROPES
+  const bg = boneGrip(d, mx, mz, bd); if (bg) { o = bg.b; bd = bg.dd; }   // BONES
   return o ? { o, grip } : null;
 }
 // what this dog holds at time t: our own bite or let-go the host hasn't run yet, else what the host says
@@ -13152,6 +13383,7 @@ function netGuestWipe() {
   for (const d of G.dogs) scene.remove(d.models.root);
   for (const c of G.coyotes) scene.remove(c.models.root);
   for (const g of G.graves) scene.remove(g.root);
+  for (const b of [...BONES]) killBone(b);   // (BONES: the host's come next; this screen's own are kept on this device)
   G.dogs = []; G.players = []; G.sheep = []; G.coyotes = []; G.packs = []; G.graves = [];
   particles.length = 0; floats.length = 0;
   for (const T of NET_LIST) if (T.make) NET.ids[T.tag] = new Map();
@@ -13263,6 +13495,7 @@ function netGuestCoyote(id, f) {
     prey: null, courage: 1, leg: 0, tumble: 0, crouch: 0, howlT: 1e9, growlT: 0, air: null, heldBy: null, models: makeCoyote(alpha) };
   G.coyotes.push(c); return c;
 }
+function netGuestBone(id, f) { const b = spawnBone(f.x || 0, f.z || 0); b.nid = id; return b; }   // BONES
 function netGuestGrave(id, f) {   // REMAINS: a body, or (f.stone) its stone, carved with the day it happened
   const g = makeRemains(f); g.nid = id; G.graves.push(g);
   return g;
@@ -13433,7 +13666,8 @@ hitStop = fxDef('hitStop', hitStop);
 finishGame = fxDef('finishGame', finishGame);
 vendorFx = fxDef('vendorFx', vendorFx);   // VENDOR: a sale, a no, Cabo's second bark
 waterFx = fxDef('waterFx', waterFx);
-ropeFx = fxDef('ropeFx', ropeFx);                                    // ROPES: biting, shaking, a tug starting, won
+ropeFx = fxDef('ropeFx', ropeFx);
+boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won
 treeFx = fxDef('treeFx', treeFx);                                    // APPLES: a tree shaken                                 // WATER: picking up, filling, tipping a bucket
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
@@ -13511,6 +13745,7 @@ function frame(now) {
   syncWater(dt);          // WATER: water troughs, buckets
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
   syncRopes(dt);          // ROPES: the tube through its nodes, the tug's rag and lines
+  syncBones();            // BONES: lying, flying, in a dog's jaws
   syncVendor(dt);         // VENDOR: mats and the vendor
   syncBonk(dt);           // BONK SPOTS: apples, shaken trees, splashes and bog bubbles
   syncSnakes();           // RATTLESNAKES
@@ -13561,6 +13796,7 @@ Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, m
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
+Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
 Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, syncRopes, grabPress, tryGrab, releaseHold, shakeHold });   // ROPES, grab taps
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
@@ -13570,7 +13806,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   for (const F of FALCONS) syncFalcon(F);
-  syncCanyon(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncRopes(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncCanyon(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt);
 }
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,

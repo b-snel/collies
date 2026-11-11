@@ -14,7 +14,7 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
 the Trading Post): graze it, pen it at camps by nightfall,
 fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or two dogs play tug of war.
+desert. A rope on every leg: drag it, or two dogs play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 🏖️, which wins.
@@ -45,7 +45,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
@@ -71,6 +71,7 @@ Run the ones touching your change; report the numbers.
 | `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
+| `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
 | `rope-test.mjs [layout\|drag\|taps\|sheep\|tug\|even\|tired\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ taps (drop, shake, buffered bite, Ⓑ no shake), tug of war (won over the line, even holds, out of stamina loses), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard]` | cougar behaviour |
@@ -229,7 +230,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
-  `localStorage['collies.dogs.v1']`.
+  `localStorage['collies.dogs.v1']`. Some junk is a bone (`T.dig.bone`, `digBone`): BONES.
 - **Breeds** (`BREEDS`, `T.breeds`, `T.traits`): 📣 bark (reach, scare), 💥 bonk (punts,
   predator hits), ⤴ jump (height, air time), ⚡ speed, 💨 stamina, 🛡 grit (damage, heal, KO,
   mashing free), ✊ grip (hold cost, drag speed, flings, shakes). ★ 1…3 each, 14 in all; ★★ =
@@ -312,6 +313,13 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
   (`d.tugS`: planted + walking back + Ⓧ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
+- **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
+  off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
+  one tap tosses it (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
+  slides (`boneStep`, sub-stepped), bounces off rock and fences. Hits (`boneHits`) by real physics: J = (1+e)·vn / (1/m_bone
+  + 1/m), Δv = J/m (`boneMass`: × size³ for sheep, × build for dogs), the bone gets J back. `boneHit`: dog knocked, sheep
+  pushed or (light) bowled, ram provoked, coyote scared, cougar spooked / drops its catch, Hank staggers. Never its own
+  thrower at first; a pounce kicks a lying one; caught in the air. Online: `NET_TYPES.bone` (made and killed on guests).
 - **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
   `T.punt`); not one under a cougar (that pounce frees it).
 - **Dogs fly as sheep do.** `launchDog(d, vx, vz, vy, kind, by)`: same kinds, spin (`airSpin`),
