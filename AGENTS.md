@@ -44,7 +44,7 @@ Hank treats the sick and buries the dead; the Trading Post also sells Cabo
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS) → HUD → HANK, VET, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS) → HUD (ART icons) → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → game flow → main loop → `window.GAME`.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -87,7 +87,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
-| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, burial + last words, reset |
+| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
@@ -206,6 +206,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   anything's in it (`updateCanyon`), one swoops every `every` s (`maxAir` at once) from the nearest rested
   pillar within `reach`: carried to its pillar, eaten (body at its foot). A bark near a perched one: it
   stays put `shy` s. Off in `?sim`. Nothing else goes in it (dens, nests, plants, salt, brambles, apple trees, streams, bogs).
+- **Hank never leans on a wall.** Blocked short of his spot he stands easy
+  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
@@ -238,6 +240,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   water trough / lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9
   (slots prebuilt along the fence), then batches. Water and salt: one pool per
   pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
+  A dog stepping on a mat: the ware hops, its name plate pops up (`WARE_KINDS`
+  `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
 - **Trading Post** (`FINAL`, `finalPen`, `MARKET`, `WARES`): the end of the
   trail, desert, no water. ✂️ free while Hank has none. Too poor or no room: ✖,
   nothing spent (`vendorFx`). 🏖️ Cabo = base + per sheep penned there, bark
@@ -294,8 +298,17 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Burial** (`YARDS`, `T.remains`): with a shovel, by day, nothing prowling,
   Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,
   a neat stone rises, `lastWords` (by bravery, trait, bell, lamb, age; seeded).
+  No cemetery till the first body: he sets it down by the spot and builds one,
+  mallet in hand, picket by picket round the fence (`Y.built` 0…1, `yardStep`,
+  `syncYard`, `T.remains.build`); stopped, it stays half up till he's back.
   Full: he adds a row at the back (`yardGrow`, if `yardRoom`; up to
   `T.remains.rows`); else the next cemetery; none: it rots where it lies.
+
+### Icons
+
+Our own, no emoji: `ART` (32×32 SVG paths, sticker outline). Overlay text goes through
+`richText` / `richW`, which swap any emoji in `EMOJI_ART` for its icon; DOM: `artSVG(name)` or
+`data-art`. New icon → `ART` + `EMOJI_ART`.
 
 ### Gotchas
 
