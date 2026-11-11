@@ -99,11 +99,11 @@ const r9 = await h.page.evaluate(() => {
   const { MAP, mapCompose, mapReveal, updateMap, mapToggle } = GAME, t = () => performance.now();
   let a = t(); for (let i = 0; i < 10; i++) mapCompose(0, 1e9); const full = (t() - a) / 10;
   a = t(); for (let i = 0; i < 50; i++) { MAP.t = 0; updateMap(0.016); } const tick = (t() - a) / 50;
-  a = t(); for (let i = 0; i < 50; i++) updateMap(0.001); const draw = (t() - a) / 50;
-  mapToggle(true); updateMap(0.016); a = t(); for (let i = 0; i < 20; i++) updateMap(0.001); const bigDraw = (t() - a) / 20; mapToggle(false);
+  a = t(); for (let i = 0; i < 50; i++) { MAP.redraw = true; updateMap(0.001); } const draw = (t() - a) / 50;
+  mapToggle(true); updateMap(0.016); a = t(); for (let i = 0; i < 20; i++) { MAP.redraw = true; updateMap(0.001); } const bigDraw = (t() - a) / 20; mapToggle(false);
   return { full: +full.toFixed(2), tick: +tick.toFixed(2), draw: +draw.toFixed(2), bigDraw: +bigDraw.toFixed(2) };
 });
-console.log(`     ms: whole picture ${r9.full}, a tick (uncover + redo near view + draw) ${r9.tick}, a frame ${r9.draw}, a big-map frame ${r9.bigDraw}`);
+console.log(`     ms: whole picture ${r9.full}, a tick (uncover + redo near view) ${r9.tick}, a draw ${r9.draw}, a big-map draw ${r9.bigDraw} (T.map.hz a second)`);
 ok('cheap enough', r9.tick < 8 && r9.draw < 4, r9);
 
 ok('no page errors', h.errors.length === 0, h.errors);

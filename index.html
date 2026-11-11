@@ -649,8 +649,8 @@ const T = {
   // camera
   viewMin: 25, viewMax: 46,
   // MAP: a dog uncovers the land within r m (fading over the outer edge m); the minimap is span m across; uncovering every `every` s;
-  // the host's fog to friends at most every fogEvery s
-  map: { r: 34, edge: 14, span: 150, every: 0.2, fogEvery: 8 },
+  // drawn hz times a second; the host's fog to friends at most every fogEvery s
+  map: { r: 34, edge: 14, span: 150, every: 0.2, hz: 15, fogEvery: 8 },
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
   jump: { dur: 0.5, h: 1.4, cd: 0.2, vault: { dur: 0.62, h: 1.9, v: 16, stamina: 0.08 } },   // Ⓨ: a hop on the spot (over rams, pouncing dogs); sprinting: a long vault
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
@@ -9348,7 +9348,7 @@ function mapLayout() {
   if (key === MAP.key) return;
   MAP.key = key; Object.assign(el.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px' });
   if (!MAP.big) { document.body.style.setProperty('--mapR', l + w + 6 + 'px'); document.body.style.setProperty('--mapT', t + 'px'); }   // (touch: the online chip sits beside it)
-  el.width = Math.round(w * dpr); el.height = Math.round(h * dpr); Object.assign(MAP, { w, h, dpr });
+  el.width = Math.round(w * dpr); el.height = Math.round(h * dpr); Object.assign(MAP, { w, h, dpr, redraw: true });   // (a new size clears it)
   mapPaper(w, h, dpr);
 }
 // the sheet, made once per size: a torn edge; the parchment (mottled, tea-stained) under the land; grain, folds and a scorched
@@ -9472,7 +9472,7 @@ function mapDodge(x, y, cx, cy, pad = 12) {
 function mapToggle(on = !MAP.big) {
   if (on && G.mode !== 'play') return;
   if (on !== MAP.big) SFX.rustle(0, 0.2);
-  MAP.big = on; MAP.el.classList.toggle('big', on); MAP.t = 0; MAP.full = true;
+  MAP.big = on; MAP.el.classList.toggle('big', on); MAP.t = 0; MAP.full = true; MAP.redraw = true;
 }
 function mapReset() {   // a new journey: all parchment (a friend: as much as the host has uncovered)
   MAP.rv.fill(0); MAP.full = true; MAP.fogS = ''; MAP.fogAt = -1e9; mapToggle(false);
@@ -9496,7 +9496,8 @@ function mapFogMerge(s) {
   MAP.full = true;
 }
 function mapFogIn(s) { if (typeof s !== 'string' || !s) return; MAP.fogIn = s; mapFogMerge(s); }
-// every frame: M / R3 toggle it; every T.map.every s the dogs uncover more and the picture near the view is redone; then it's drawn
+// every frame: M / R3 toggle it; every T.map.every s the dogs uncover more and the picture near the view is redone; drawn T.map.hz
+// times a second (a sprinting dog moves about a pixel on it in that time)
 function updateMap(dt) {
   if (G.mode !== 'play') { if (MAP.big) mapToggle(false); return; }
   if (!G.paused && !BARN.open && !DAWN.open) {
@@ -9511,7 +9512,7 @@ function updateMap(dt) {
     if (MAP.full || (MAP.big && MAP.n % 5 === 0)) { mapCompose(0, VZ - 1); MAP.full = false; }
     else { const j = (cam.z - GMINZ) / VS, r = (MAP.big ? 60 : T.map.span * 0.75) / VS; mapCompose(j - r, j + r); }
   }
-  if (MAP.w) mapDraw();
+  if (MAP.w && ((MAP.dt = (MAP.dt || 0) - dt) <= 0 || MAP.redraw)) { MAP.dt = 1 / T.map.hz; MAP.redraw = false; mapDraw(); }
 }
 MAP.el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Sound.init(); mapToggle(); });
 function mapWarm() { mapLayout(); mapCompose(0, VZ - 1); mapDraw(); MAP.cx.getImageData(0, 0, 1, 1); }   // a canvas's first draw is slow on some GPUs: get it over with behind the loading screen
