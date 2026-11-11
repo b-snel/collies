@@ -714,7 +714,8 @@ const T = {
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
   hankGap: 12, hankRepeat: 15,     // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankCmdGap: 20,                  // s between whistled herding commands ("Come bye!")
-  hankNag: { greedy: 60, easy: 45, gently: 45, bare: 150, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
+  hankNag: { greedy: 60, easy: 45, gently: 45, move: 90, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
+  hankMove: { bare: 0.35, late: 16.5, idle: 10 },   // "Get that greedy one movin'!": grass round the flock eaten under bare× what it grows, or out from late (h); no dog on it for idle s
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
@@ -1545,12 +1546,14 @@ function collideWorld(e, r, F = SDF) {
 const gCap = new Float32Array(VN), gAmt = new Float32Array(VN), gInit = new Float32Array(VN);
 const gTexData = new Uint8Array(VN);
 let grassDirty = true;
-function grassAt(x, z) {
+function gridAt(A, x, z) {
   const fx = (x - GMINX) / VS, fz = (z - GMINZ) / VS;
   const i = clamp(Math.floor(fx), 0, VX - 2), j = clamp(Math.floor(fz), 0, VZ - 2);
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * VX + i;
-  return lerp(lerp(gAmt[k], gAmt[k + 1], u), lerp(gAmt[k + VX], gAmt[k + VX + 1], u), v);
+  return lerp(lerp(A[k], A[k + 1], u), lerp(A[k + VX], A[k + VX + 1], u), v);
 }
+function grassAt(x, z) { return gridAt(gAmt, x, z); }
+function grassCapAt(x, z) { return gridAt(gCap, x, z); }   // what it grows back to
 function eatGrass(x, z, amt) {
   const fx = (x - GMINX) / VS, fz = (z - GMINZ) / VS;
   const i = clamp(Math.floor(fx), 0, VX - 2), j = clamp(Math.floor(fz), 0, VZ - 2);
@@ -9092,7 +9095,7 @@ const HANK_LINES = {
   morning: 'Morning! You did well.',
   thatll_do: "That'll do. That'll do.",
   good_dog: 'Good dog!', thats_it: "That's it!", nice_steady: 'Nice and steady!', in_ye_go: 'In ye go!',
-  eatin_grass: "That one's eatin' grass!", quit_munchin: "Quit yer munchin'!", greedy_one: "Get that greedy one movin'!", no_snackin: "Oi! No snackin'!",
+  quit_munchin: "Quit yer munchin'!", greedy_one: "Get that greedy one movin'!", no_snackin: "Oi! No snackin'!",
   easy: "Easy! Ye'll scatter them!", gently: "Gently! They won't go in scared!",
   teamwork: 'Grand teamwork, the pair of ye!',
   watch_it: 'Oi! Watch it!', manners: 'Mind yer manners!', not_me: 'Not me, the sheep!',
@@ -9108,7 +9111,7 @@ const HANK = {
   line: null, sayT: 0, talkT: 0, lastSay: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
   buf: {}, loading: {}, missing: {}, src: null, wsrc: null, gain: null, vol: 1, mute: false, prefetched: false, bubble: null,
   // what he keeps an eye on
-  cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99, starving: 0,
+  cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99, starving: 0,
   thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
   // asleep on his mat (sim); lieK 0 standing…1 lying (render)
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
@@ -9223,7 +9226,7 @@ function resetHank() {
   Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
-    lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastBare: -99, lastStarve: -99,
+    lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
 }
@@ -9474,7 +9477,7 @@ function hankWatch(dt) {
   if (out.length >= 4 && t - hk.lastGreedy > T.hankNag.greedy) {
     let mx = 0, mz = 0, nm = 0; for (const s of out) if (s.state === 'move' || s.state === 'flee') { mx += s.x; mz += s.z; nm++; }
     if (nm >= out.length * 0.5) { mx /= nm; mz /= nm;
-      if (out.some(s => s.eating && Math.hypot(s.x - mx, s.z - mz) > 9) && hank(pick(['eatin_grass', 'quit_munchin', 'greedy_one', 'no_snackin']), null, { force: true })) hk.lastGreedy = t; }
+      if (out.some(s => s.eating && Math.hypot(s.x - mx, s.z - mz) > 9) && hank(pick(['quit_munchin', 'greedy_one', 'no_snackin']), null, { force: true })) hk.lastGreedy = t; }
   }
   // a dog sprinting into the flock scatters it
   if (t - hk.lastEasy > T.hankNag.easy) for (const d of G.dogs) {
@@ -9490,11 +9493,13 @@ function hankWatch(dt) {
   }
   // a dog opens a pen gate in the evening with the flock still out
   for (const p of pens) { if (p.open && !p._hankOpen && G.clock.hour >= 16 && !isNight() && out.length) hank('gate_open', null, { force: true }); p._hankOpen = p.open; }
-  // grazed bare / starving: no recording of these, so the subtitle alone
-  if (out.length >= 3 && !isNight() && t - hk.lastBare > T.hankNag.bare) {
-    let g = 0; for (const s of out) g += grassAt(s.x, s.z);
-    if (g / out.length < 0.12 && hank(null, "That patch is grazed bare! Move them on!", { force: true })) hk.lastBare = t;
+  // time to move them (grazed bare, or evening with the flock still out) and no dog on it: "Get that greedy one movin'!" at the next quiet moment
+  const M = T.hankMove;
+  if (out.length >= 3 && !isNight() && t - hk.lastMove > T.hankNag.move && t - MIND.workedT > M.idle) {
+    let g = 0, c = 0; for (const s of out) for (let q = 0; q < 5; q++) { const x = s.x + (q && Math.cos(q * 1.57) * 3), z = s.z + (q && Math.sin(q * 1.57) * 3); g += grassAt(x, z); c += grassCapAt(x, z); }   // under it and a few steps round
+    if ((g < c * M.bare || G.clock.hour >= M.late) && hank('greedy_one')) hk.lastMove = t;
   }
+  // starving: no recording, so the subtitle alone
   const starving = living().filter(s => s.hunger >= 1).length;
   if (starving > hk.starving && t - hk.lastStarve > T.hankNag.starve && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
   hk.starving = starving;

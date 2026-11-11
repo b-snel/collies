@@ -87,7 +87,7 @@ const r3 = await h.page.evaluate(async () => {
   const R = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }, F = { x: -Math.SQRT1_2, z: -Math.SQRT1_2 };
   const run = (dir) => { let a = 0; const fc0 = flockCenter(); d.x = fc0.x + 12; d.z = fc0.z;
     for (let i = 0; i < 60; i++) { const fc = flockCenter(); a = Math.atan2(d.z - fc.z, d.x - fc.x); const tx = -Math.sin(a) * dir, tz = Math.cos(a) * dir;
-      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastBare = HANK.lastStarve = HANK.lastGreedy = G.time; step(0.05);
+      G.players[0].bot = { mx: tx * R.x + tz * R.z, my: -(tx * F.x + tz * F.z) }; HANK.cmdT = -99; HANK.cmdTry = -99; HANK.lastSay = -99; HANK.lastMove = HANK.lastStarve = HANK.lastGreedy = G.time; step(0.05);
       const b = Math.atan2(d.z - fc.z, d.x - fc.x); d.x = fc.x + Math.cos(b) * 12; d.z = fc.z + Math.sin(b) * 12; } G.players[0].bot = {}; };
   HANK.lastSay = -99; HANK.said = {}; HANK.lastKey = null; HANK.cmd = ''; G.hints.dig = true;   // (no other lines crowding the commands out: dig spots, greedy grazers)
   run(1); out.cw = HANK.log.slice(-3).map(l => `${l.id}:${l.said ? 'said' : l.why}`);
@@ -100,6 +100,24 @@ const r3 = await h.page.evaluate(async () => {
 ok('dog circling clockwise (angle increasing) -> "Come bye!"', r3.cw.some(x => x === 'come_bye:said'), r3.cw);
 ok('whistle plays before the words', r3.cwPlayed.join() === 'whistle:come_bye,voice:come_bye', r3.cwPlayed);
 ok('dog circling anticlockwise -> "Away to me!"', r3.ccw.some(x => x === 'away_to_me:said'), r3.ccw);
+
+// 3b. time to move them: grazed bare, or evening with the flock out, no dog on it -> "Get that greedy one movin'!"; not while a dog works them
+const r3b = await h.page.evaluate(() => {
+  const { G, HANK, MIND, step, pathPoint } = GAME, GR = GAME.grass, P = pathPoint(120, 0), d = G.dogs[0];
+  const grass = bare => { for (let b = 0; b < GR.VZ; b++) for (let a = 0; a < GR.VX; a++) { const k = b * GR.VX + a; if (Math.hypot(GR.GMINX + a * GR.VS - P.x, GR.GMINZ + b * GR.VS - P.z) < 30) GR.gAmt[k] = bare ? 0 : GR.gCap[k]; } };
+  const trial = (bare, hour, work) => {
+    grass(bare); d.x = P.x + 60; d.z = P.z; G.players[0].bot = {};
+    for (const s of G.sheep) if (!s.dead) { s.x = P.x + (Math.random() - .5) * 6; s.z = P.z + (Math.random() - .5) * 6; s.pen = null; s.vx = s.vz = 0; }
+    Object.assign(HANK, { lastSay: -99, said: {}, lastKey: null, lastMove: -99, lastGreedy: G.time + 999, lastStarve: G.time + 999, asleep: false }); HANK.log.length = 0; MIND.workedT = -99;
+    for (let i = 0; i < 60; i++) { G.clock.hour = hour; if (work) MIND.workedT = G.time; step(0.05); }
+    return HANK.log.filter(e => e.said && e.id === 'greedy_one').length;
+  };
+  const out = { bare: trial(true, 10), bareWorked: trial(true, 10, true), lush: trial(false, 10), evening: trial(false, 17), eveningWorked: trial(false, 17, true) };
+  grass(false); return out;
+});
+ok('grazed bare, no dog on them -> "Get that greedy one movin\'!"', r3b.bare === 1, r3b);
+ok('evening, flock still out -> same line', r3b.evening === 1, r3b);
+ok('…not on good grass by day, nor while a dog works them', r3b.lush === 0 && r3b.bareWorked === 0 && r3b.eveningWorked === 0, r3b);
 
 // 4. the barn: open, rename + hat + wool + accessory, close; it shows on the sheep in the world
 const r4 = await h.page.evaluate(() => {
