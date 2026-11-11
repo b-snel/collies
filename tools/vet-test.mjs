@@ -2,7 +2,7 @@
 // a bite sickens and slows a sheep and kills it in time; a sheep a predator lets go of is cut (deep: bleeds, shallow:
 // festers); the trader's 💉 🩹 💊 🪏 go in the dog's bag and the dog takes them to Hank; Hank treats the sick (over a
 // pen fence too); a body lies with its name, rots into a tombstone, or Hank (with a shovel) buries it in the cemetery
-// with a few words (a full one gets another row). node tools/vet-test.mjs
+// with a few words (none there yet: he builds one first; a full one gets another row). node tools/vet-test.mjs
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -186,7 +186,23 @@ ok('a sheep that dies lies where it fell, named', r10.body && r10.name && r10.mo
 ok(`it rots (bones, flies at ${r10.mid.rot}) and in ${T_rot()} days is a tombstone on the spot`, r10.mid.bones && r10.mid.flies && r10.stone, r10);
 function T_rot() { return 1.5; }
 
-// 11. with a shovel, by day: Hank carries a body to the nearest cemetery, digs, lays it in under a neat stone, and says a few words
+// 10b. no cemeteries till Hank builds one; a half-built one shows that much of its fence, gateposts first
+const r10b = await h.page.evaluate(() => {
+  const { YARDS, syncYard } = GAME, Y = YARDS[2], seen = [];
+  for (const y of YARDS) syncYard(y, false);
+  const none = YARDS.every(y => y.built === 0 && !y.g.visible);
+  for (const b of [0, 0.001, 0.5, 1]) { Y.built = b; syncYard(Y, false); seen.push({ b, vis: Y.g.visible, n: Y.fence[0].drawRange.count, yew: +Y.yew.scale.x.toFixed(2), lawn: +Y.lawn.scale.x.toFixed(2) }); }
+  Y.built = 0; syncYard(Y, false);
+  const all = Y.fence[0].attributes.position.count, first = Y.marks[0], last = Y.marks.at(-1);
+  return { none, seen, all, marks: Y.marks.length, ends: [first.u, +(last.u - Y.len).toFixed(3)], outline: Y.fence[1].drawRange.count === Y.fence[0].drawRange.count };
+});
+const [s0, s1, s5, s10] = r10b.seen;
+ok('no cemetery anywhere at the start', r10b.none, r10b);
+ok(`it goes up in order (${r10b.marks} pieces, a gatepost first and last): none → a gatepost → half → all`, !s0.vis && s1.vis && s1.n > 0 && s1.n < s5.n && s5.n < r10b.all && s10.n === r10b.all && r10b.ends[0] === 0 && r10b.ends[1] === 0 && r10b.outline, r10b);
+ok('the yew shoots up and the grass spreads as it goes', s1.yew < 0.01 && s10.yew === 1 && s1.lawn < s5.lawn && s10.lawn === 1, r10b);
+
+// 11. with a shovel, by day: Hank carries a body to the nearest cemetery, digs, lays it in under a neat stone, and says a few words.
+// None there yet: he sets the body down by the way in and builds one first, round the fence
 const r11 = await h.page.evaluate(() => {
   const { G, T, HANK, YARDS, killSheep, living, CAMPS } = GAME;
   for (const g of G.graves) g.stone = g.stone || false;
@@ -198,21 +214,51 @@ const r11 = await h.page.evaluate(() => {
   killSheep(s, 'eaten');
   const g = G.graves.at(-1), Y = YARDS.slice().sort((a, b) => Math.hypot(a.x - g.x, a.z - g.z) - Math.hypot(b.x - g.x, b.z - g.z))[0], n0 = Y.n;
   HANK.x = c.x + 34; HANK.z = c.z + 12; HANK.vx = HANK.vz = 0; HANK.goal = null; HANK.asleep = false;
-  const phases = []; let carried = false, dug = false, maxStep = 0, px = HANK.x, pz = HANK.z;
-  for (let k = 0; k < 40 * 120 && !g.stone; k++) {
-    GAME.step(0.025); const j = HANK.care;
+  const phases = [], built0 = Y.built; let carried = false, dug = false, maxStep = 0, px = HANK.x, pz = HANK.z, buildT = 0, stall = 0, down = 0, mallet = false, back = true, laid = null;
+  for (let k = 0; k < 40 * 160 && !g.stone; k++) {
+    const b0 = Y.built; GAME.step(0.025); const j = HANK.care;
     maxStep = Math.max(maxStep, Math.hypot(HANK.x - px, HANK.z - pz)); px = HANK.x; pz = HANK.z;
     if (j && j.kind === 'bury' && phases.at(-1) !== j.phase) phases.push(j.phase);
     if (g.by) carried = true; if (HANK.digging) dug = true;
+    if (j && j.phase === 'build') {
+      buildT += 0.025; if (HANK.building) mallet = true; if (Y.built < b0) back = false; if (!g.by && !laid) laid = +Math.hypot(g.x - Y.x, g.z - Y.z).toFixed(1);
+      if (b0 > 0 && Y.built === b0) stall += 0.025;   // started, and he's fallen behind
+    }
+    if (j && j.phase === 'dig' && Y.built < 1) down++;
   }
   H.run(2);
   const slot = Y.slots[n0];
-  return { phases, carried, dug, stone: g.stone, neat: g.neat, inYard: +Math.hypot(g.x - slot.x, g.z - slot.z).toFixed(2), yardN: Y.n - n0, maxStep: +maxStep.toFixed(2), said: HANK.log.slice(-4).map(l => l.text), name: g.name, buried: G.stats.buried };
+  return { phases, carried, dug, stone: g.stone, neat: g.neat, inYard: +Math.hypot(g.x - slot.x, g.z - slot.z).toFixed(2), yardN: Y.n - n0, maxStep: +maxStep.toFixed(2), said: HANK.log.slice(-4).map(l => l.text), name: g.name, buried: G.stats.buried,
+    built: [built0, Y.built], buildT: +buildT.toFixed(1), stall: +stall.toFixed(2), down, mallet, back, laid, building: HANK.building, len: +Y.len.toFixed(1) };
 });
-ok(`Hank fetches the body, carries it, digs (${r11.phases.join(' → ')})`, r11.phases.join() === 'fetch,carry,dig' && r11.carried && r11.dug, r11);
+ok(`no cemetery there: he sets the body down by it (${r11.laid} m out) and builds one, round its ${r11.len} m of fence in ${r11.buildT}s`, r11.built[0] === 0 && r11.built[1] === 1 && r11.back && r11.laid > 2 && r11.laid < 6 && r11.buildT > 8 && r11.buildT < 30 && r11.down === 0, r11);
+ok(`…mallet in hand, keeping up with the fence as it goes up (held up ${r11.stall}s)`, r11.mallet && !r11.building && r11.stall < 0.5, r11);
+ok(`then fetches the body again, carries it in, digs (${r11.phases.join(' → ')})`, r11.phases.join() === 'fetch,carry,build,fetch,carry,dig' && r11.carried && r11.dug, r11);
 ok('a neat stone in the cemetery\'s next row slot', r11.stone && r11.neat && r11.inYard < 0.05 && r11.yardN === 1 && r11.buried >= 1, r11);
-ok(`his last words name it (${(r11.said.find(t => t.includes(r11.name)) || '').slice(0, 60)}…)`, r11.said.some(t => t.includes(r11.name)), r11);
+ok(`his last words name it (${(r11.said.at(-1) || '').slice(0, 60)}…)`, (r11.said.at(-1) || '').includes(r11.name), r11);
 ok(`no teleports on the way (max ${r11.maxStep} m a step)`, r11.maxStep < 0.4, r11);
+
+// 11b. a cemetery already there: straight in to dig. Night falls mid-build elsewhere: the body's set down, the fence stays half up; by day he finishes it
+const r11b = await h.page.evaluate(() => {
+  const { G, HANK, YARDS, killSheep, living, CAMPS } = GAME;
+  G.clock.hour = 9; H.calm(); HANK.care = null;
+  const near = (x, z) => YARDS.slice().sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0];
+  const c = CAMPS[1], s = living().find(o => !o.lamb && !o.ail); for (const o of living()) H.place(o, c.x + 40, c.z + 4);
+  H.place(s, c.x + 30, c.z + 8); killSheep(s, 'eaten'); const g = G.graves.at(-1), Y = near(g.x, g.z);
+  HANK.x = c.x + 34; HANK.z = c.z + 12; HANK.goal = null; HANK.asleep = false;
+  const ph = []; for (let k = 0; k < 40 * 120 && !g.stone; k++) { GAME.step(0.025); const j = HANK.care; if (j && j.g === g && ph.at(-1) !== j.phase) ph.push(j.phase); }
+  const c2 = CAMPS[2], s2 = living().find(o => !o.lamb && !o.ail); for (const o of living()) if (o !== s2) H.place(o, c2.x + 40, c2.z + 4);
+  H.place(s2, c2.x + 28, c2.z + 8); killSheep(s2, 'eaten'); const g2 = G.graves.at(-1), Y2 = near(g2.x, g2.z);
+  H.place(G.dogs[0], c2.x + 50, c2.z + 20); HANK.x = c2.x + 32; HANK.z = c2.z + 12; HANK.goal = null; HANK.care = null;
+  for (let k = 0; k < 40 * 120 && !(Y2.built > 0.4); k++) GAME.step(0.025);
+  G.clock.hour = 21; H.run(3);
+  const night = { built: Y2.built, building: HANK.building, job: !!HANK.care, down: !g2.by };
+  H.run(5); const still = Y2.built;
+  G.clock.hour = 9; HANK.asleep = false; for (let k = 0; k < 40 * 160 && !g2.stone; k++) GAME.step(0.025);
+  return { ph, same: Y !== Y2, night, still, built: Y2.built, stone: g2.stone, neat: g2.neat };
+});
+ok(`a cemetery already there: straight in (${r11b.ph.join(' → ')})`, r11b.ph.join() === 'fetch,carry,dig', r11b);
+ok(`nightfall mid-build: body down, the fence stays ${Math.round(r11b.night.built * 100)}% up; next day he finishes it and buries the body`, r11b.same && r11b.night.built > 0.3 && r11b.night.built < 1 && !r11b.night.building && !r11b.night.job && r11b.night.down && r11b.still === r11b.night.built && r11b.built === 1 && r11b.stone && r11b.neat, r11b);
 
 // 12. his words fit the sheep: a lamb, the bell ewe, a timid one, a stubborn one differ
 const r12 = await h.page.evaluate(() => {
@@ -254,9 +300,10 @@ ok(`every camp's cemetery has room to grow (${r13b.room.join(' ')})`, r13b.room.
 const r14 = await h.page.evaluate(() => {
   const { G, HANK, YARDS, resetGame, SNAKES } = GAME; G.dogs[0].bag = { venom: 2 };
   resetGame();
-  return { bag: G.dogs[0].bag, meds: HANK.meds, shovel: HANK.shovel, graves: G.graves.length, yards: YARDS.map(y => y.n).join(''), rows: YARDS.map(y => y.rows).join(''), snakes: SNAKES.every(n => n.state === 'hide') };
+  return { bag: G.dogs[0].bag, meds: HANK.meds, shovel: HANK.shovel, graves: G.graves.length, yards: YARDS.map(y => y.n).join(''), rows: YARDS.map(y => y.rows).join(''), snakes: SNAKES.every(n => n.state === 'hide'),
+    built: YARDS.map(y => y.built).join(''), shown: YARDS.some(y => y.g.visible) };
 });
-ok('a new journey: empty bags, no stock, no shovel, no bodies, empty cemeteries (back to their size), snakes hidden', !r14.bag && !r14.meds.venom && !r14.shovel && r14.graves === 0 && /^0+$/.test(r14.yards) && /^4+$/.test(r14.rows) && r14.snakes, r14);
+ok('a new journey: empty bags, no stock, no shovel, no bodies, no cemeteries (back to their size), snakes hidden', !r14.bag && !r14.meds.venom && !r14.shovel && r14.graves === 0 && /^0+$/.test(r14.yards) && /^4+$/.test(r14.rows) && /^0+$/.test(r14.built) && !r14.shown && r14.snakes, r14);
 
 ok('no page errors', h.errors.length === 0, h.errors.slice(0, 5));
 await h.close();

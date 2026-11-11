@@ -87,7 +87,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg, 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, Cabo wins, old finish gone |
-| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 into the bag, to Hank, treating (in a pen too), bodies rotting to stones, burial + last words, reset |
+| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 into the bag, to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
 | `shear-test.mjs` | clippers spot, carrying to Hank, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
@@ -300,6 +300,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Burial** (`YARDS`, `T.remains`): with a shovel, by day, nothing prowling,
   Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,
   a neat stone rises, `lastWords` (by bravery, trait, bell, lamb, age; seeded).
+  No cemetery till the first body: he sets it down by the spot and builds one,
+  mallet in hand, picket by picket round the fence (`Y.built` 0…1, `yardStep`,
+  `syncYard`, `T.remains.build`); stopped, it stays half up till he's back.
   Full: he adds a row at the back (`yardGrow`, if `yardRoom`; up to
   `T.remains.rows`); else the next cemetery; none: it rots where it lies.
 
