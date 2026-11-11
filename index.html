@@ -57,6 +57,9 @@
   #hint.show { opacity:1; }
   #hint b { color:#c0392b; }
   #toasts { position:absolute; top:84px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:6px; }
+  #bossBar { top:84px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:10px; padding:4px 16px; font-size:24px; }
+  #bossBar b { color:#ff5a5a; letter-spacing:3px; text-shadow:0 2px 0 rgba(0,0,0,.35); }
+  body.boss #bossBar { display:flex; } body.boss #toasts { top:136px; }
   .toast { background:var(--panel); border:2px solid rgba(255,248,232,.7); border-radius:14px; padding:5px 14px; font-size:16px; font-weight:500;
     animation:toastIn .35s ease-out; transition:opacity .5s; white-space:nowrap; }
   .toast.good { border-color:#7ed957; } .toast.bad { border-color:#ff7a6b; } .toast.warn { border-color:#ffd36b; }
@@ -328,6 +331,7 @@
     #journey .me { font-size:15px; top:-2px; margin-left:-8px; } #journey .camp { width:12px; height:12px; margin-left:-6px; top:10px; border-width:2px; } #journey .line { top:14px; height:3px; } #journey .gorge { top:12.5px; height:6px; }
     #compass { bottom:8px; padding:3px 10px 3px 6px; gap:4px; } #cArrow { font-size:18px; width:20px; } #cName { display:none; } #cDist { font-size:13px; }
     #toasts { top:80px; } .toast { font-size:13px; padding:3px 10px; }
+    #bossBar { top:80px; font-size:16px; padding:2px 10px; gap:6px; } body.boss #toasts { top:112px; }
     #hint { font-size:13px; padding:6px 12px; bottom:44px; }
     body.touch #hint { top:84px; bottom:auto; }
     #banner { top:30%; } #banner .t { font-size:34px; } #banner .s { font-size:15px; }
@@ -372,6 +376,7 @@
     <div class="bar"><div id="hMoodBar"></div></div>
     <div id="hStarving"></div>
   </div>
+  <div id="bossBar" class="panel"><span>🦅</span><b id="bossHp"></b></div>
   <div id="compass" class="panel"><span id="cArrow">➤</span><div><div id="cName">—</div><div id="cDist"></div></div></div>
   <div id="hint"></div>
   <div id="ctlBar"></div>
@@ -598,30 +603,33 @@ const T = {
   pressR: { walk: 9, creep: 5.5, sprint: 12, lie: 3.5 },
   pressK: { walk: 1.0, creep: 0.5, sprint: 1.5, lie: 0.15 },
   barkR: 13, barkCd: 0.6, barkBuf: 0.25,   // a bark pressed up to barkBuf s before the cooldown's up still goes off
-  barkWise: 3,           // a coyote or cougar barked off this many times in a night stops falling for it (and comes at the dogs)
-  coyoteBark: { amt: 0.45, packK: 0.4, soloWise: 1, lungeR: 8 },   // bark scare / (1 + packK*(pack-1)); a lone one falls for soloWise barks, then needs a bonk; bold ones lunge at dogs within lungeR
+  barkWise: 2,           // a cougar barked off this many times in a night stops falling for it (and comes at the dogs)
+  coyoteBark: { amt: 0.45, packK: 0.4, wise: 1, same: 0.45, lungeR: 8 },   // bark scare / (1 + packK*(pack-1)); a coyote falls for `wise` barks (team barks too; barks within `same` s of the first are the same one), then only a bonk moves it; bold ones lunge at dogs within lungeR
   // TEAM BARK: dogs barking within `win` s and `near` m of each other (chained). Predators only: every bark radius x (1 + grow*(n-1)),
-  // always works (wise, bold, packs: amt*n courage, no packK), drops a cougar's or falcon's catch, throws a cougar off a dog. Then `cd` s hoarse.
+  // always works on cats and birds (wise or not: drops a cougar's or falcon's catch, throws a cougar off a dog); a coyote: amt*n courage,
+  // no packK, but it's still its one bark (T.coyoteBark.wise). Then `cd` s hoarse.
   teamBark: { win: 0.45, near: 26, grow: 0.4, amt: 0.5, cd: 3 },
   // dog health (d.hp 0..1): back after `wait` s unhurt at regen/s (x lieRegen lying down); under limp it limps; at 0 it's out for koT s, up again at revive
   dogHp: { regen: 0.012, lieRegen: 3, wait: 5, limp: 0.3, koT: 6, revive: 0.25 },
   nip: { r: 1.7, dmg: 0.09, cd: [1.6, 2.6], knock: 5, stun: 0.3 },   // a coyote's nip (bold ones, screens and strikers)
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
-  coyoteBase: 2, coyotePerDay: 1, coyoteMax: 7, coyoteDragTime: 9,
+  coyoteBase: 2, coyotePerDay: 1, coyotePerDog: 1, coyoteMax: 7, coyoteDragTime: 9,   // perDog: one more each night for every dog past the first
   coyoteMaul: { time: 14, every: 0.9, rest: 3, dodgeR: 5 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it; then `rest` s and the next (dodges dogs within dodgeR)
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
   // within r of the mouth, never past leash; nobody inside r for calm s (or hold s in all) → back to sleep, cd s before it'll defend again
   denDefend: { r: 16, leash: 24, sheepWake: 3, calm: 2.5, hold: 30, cd: 25, snapR: 1.7, snapCd: [1.2, 2], lunge: 11 },   // lunge: speed on its last few metres (catches a sheep)
-  // cougars: one lies up in the big old tree off the trail by each hill camp (and a couple between). By day it's gone;
-  // at nightfall the one nearest the flock hunts (chance), coming down after delay in-game hours (held up treedT s by a dog
+  // cougars: a grove of `trees` big old trees off the trail by each hill camp (and a couple between). By day they're gone;
+  // at nightfall the `n` cougars take random trees in the grove nearest the flock and hunt[dogs-1] of them (one more from day
+  // moreFrom) hunt (chance), each coming down after its own delay in-game hours (held up treedT s by a dog
   // barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway). It stalks in slow
   // and low, shies from dogs (shyR from it, guardR from its target), leaps from leapR, and drags its catch, crying, back
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
-  cougar: { range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9, bonkRun: 1.5, bonkKick: 9,   // bonked while it runs: yowls, runs bonkRun× faster after
+  cougar: { n: 3, trees: 4, hunt: [1, 2, 2, 3], moreFrom: 4, range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
+    bonkRun: 1.1, bonkKick: 9, daze: 0.4,   // bonked while it runs: yowls, skids dazed `daze` s, runs bonkRun× faster (a sprinting dog still catches it: bonk it again)
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
@@ -639,8 +647,15 @@ const T = {
   // reach m: up (circleH, circleR) circleT s, then the dive. A sheep (never rams) goes to its pillar, eaten after eatT s; a dog
   // (dogChance): carried, dropped. A bark within barkR of a perched one: it stays put `shy` s; back from a swoop it rests `rest` s.
   // gloom: how dark it gets. Off in ?sim (tests turn it on).
-  canyon: { on: !SIM, s0: 896, s1: 968, pinch: 16, hwW: 11, hwE: 9, roosts: 11, birds: 16, from: 6.5, to: 19.5, every: [5, 8], first: 3, maxAir: 2,
-    reach: 26, circleT: 1.6, circleH: 11, circleR: 6, eatT: 7, dogChance: 0.2, barkR: 16, shy: 12, rest: 15, gloom: 0.6 },
+  // boss: THE GREAT FALCON (CANYON.boss, CANYON.eyrie): on the tallest pillar mid-gorge. While anything's in the gorge by day it swoops
+  // every `every` s (first after `first`), off its own clock; a ❗ over its mark from the start. Barks (team ones too) do nothing:
+  // only a pounce hits it, low in its dive or in its first lowT s carrying (it struggles along lowH m up at carry m/s). A hit: it
+  // drops what it has, hurt s before it comes again. hp (+perDog for each dog past the first) hits and it's gone for the journey:
+  // +bounty 🧶, the rest of the gorge quiet calm s. Eating on its pillar (eatT s): a pounce into the pillar's foot shakes the sheep loose.
+  canyon: { on: !SIM, s0: 896, s1: 968, pinch: 16, hwW: 11, hwE: 9, roosts: 11, birds: 16, from: 6.5, to: 19.5, every: [3, 5.5], first: 2, maxAir: 3,
+    reach: 30, circleT: 1.3, circleH: 11, circleR: 6, eatT: 6, dogChance: 0.25, barkR: 13, shy: 7, rest: 10, gloom: 0.6,
+    boss: { on: !SIM, hp: 3, perDog: 1, first: 2.5, every: [3.5, 6], circleT: 1.1, circleH: 13, circleR: 8, spd: 14, diveSpd: 26, hitR: 2.8, lowT: 2.2, lowH: 2.1,
+      carry: 5.2, eatT: 9, dogChance: 0.2, hurt: 3, bounty: 15, calm: 600, scale: 2.1 } },
   // camera
   viewMin: 25, viewMax: 46,
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
@@ -716,17 +731,18 @@ const T = {
   // vendors (VENDOR): a stall `before` m short of the end of each leg, and the Trading Post's. A dog on a mat (matR m; mats ring m in front
   // of the stall, gap m apart) barks to buy with 🧶 (G.wool) for the pen picked on the 📍 mat (a discovered one). 💧 🌾 🧂: one more trough
   // (`add` 🧶, arrives stocked) till the pen has max (for a 9 m pen; × R/9), then a batch (`price` 🧶; amt: 💧 sheep quenched, 🌾 hunger,
-  // 🧂 salt), refused if it has under `room` of a batch free. 🏖️ Cabo (Trading Post): base + per sheep penned there, bark twice (confirm s)
+  // 🧂 salt), refused if it has under `room` of a batch free. 🏖️ Cabo (Trading Post): a flat price for every sheep penned there, bark twice (confirm s)
   vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, confirm: 4, room: 0.25, before: 55, clippers: { price: 0 },
     water: { price: 3, amt: 8, add: 6 }, food: { price: 4, amt: 8, add: 6 }, salt: { price: 2, amt: 10, add: 4 }, max: { food: 5, water: 3, salt: 3 },
-    cabo: { base: 20, per: 2 },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35, Cabo for it is 48
+    cabo: { price: 50 },   // a fleece is ~3 🧶 (T.shear): a 14-sheep flock shears ~35; the same however many go
     row2: 3.2, venom: { price: 3 }, bandage: { price: 1 }, pills: { price: 2 }, shovel: { price: 4 } },   // VET: a second row of mats (row2 m further out): 💉 🩹 💊 🪏, into the dog's bag
-  // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), lat m either side.
+  // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), latMin…lat m either side.
   // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
   // a hopping dog's missed); then back behind its rock for cd s. A pounce within hitR or a bark within barkR: back for scareCd s.
-  // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp
-  snake: { from: 966, every: 22, lat: 16, warnR: 4.2, strikeR: 2.4, rattleT: 1.1, strikeT: 0.22, hit: 0.85, cd: [25, 40], shy: 0.55,
-    barkR: 5.5, hitR: 2, scareCd: 12, dieHours: [24, 34], lamb: 0.65, dogDmg: 0.12 },
+  // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp.
+  // slither: rattling, it slides out after its mark (spd m/s, up to r m from its rock); back home at `back` m/s
+  snake: { from: 966, every: 10, lat: 10, latMin: 3.5, warnR: 7, strikeR: 3.2, rattleT: 0.6, strikeT: 0.2, hit: 0.9, cd: [8, 14], shy: 0.55,
+    barkR: 4.5, hitR: 2.2, scareCd: 6, dieHours: [9, 15], lamb: 0.65, dogDmg: 0.22, slither: { r: 6, spd: 2.6, back: 1.2 } },
   // WOUNDS (VET): a sheep a predator lets go of is cut: sev = base[kind] + held s × perS + a pen mauling's damage × maul. sev ≥ deep:
   // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
   // and kills in infectHours unless Hank gives antibiotics. Treated: mends over healHours. slow: speed lost at worst
@@ -2101,7 +2117,7 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
   const SR = mulberry32(73129), S = T.snake;
   for (let s0 = S.from + S.every * 0.5; s0 < FINAL.s - 30; s0 += S.every * (0.8 + SR() * 0.4)) {   // (up to the Trading Post)
     for (let t = 0; t < 12; t++) {
-      const k = pathIdx(s0), side = SR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.75, lat = side * (6 + SR() * Math.max(0.5, Math.min(S.lat, room) - 6));
+      const k = pathIdx(s0), side = SR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.75, lat = side * (S.latMin + SR() * Math.max(0.5, Math.min(S.lat, room) - S.latMin));
       const p = pathPoint(s0 + (SR() - 0.5) * 8, lat), sc = 0.75 + SR() * 0.45;
       if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)) continue;
       scen.rock.push({ x: p.x, z: p.z, y: terrainH(p.x, p.z), sc, rot: SR() * TAU, cr: sc * 0.85, col: ROCK_COL[0], snake: true });
@@ -2313,28 +2329,21 @@ const DENS = [];
     d.id = DENS.length; DENS.push(d);
   }
 }
-// ---------------- cougar trees: a big old tree with a long low limb, off the trail by each hill camp ----------------
+// ---------------- cougar trees: big old trees with a long low limb, a grove off the trail by each hill camp ----------------
 // Own rng, so every screen online grows the same ones. L.px/py/pz is the perch on the limb, L.bx/bz the foot of the trunk
-// on the limb side (where it climbs), L.yaw the way the limb points (toward the trail).
-const LAIRS = [];
+// on the limb side (where it climbs), L.yaw the way the limb points (toward the trail). GROVES[i].trees: T.cougar.trees of them
+// (the first as it always was); at nightfall the cougars take random ones in the grove nearest the flock (COUGARS).
+const LAIRS = [], GROVES = [];
 {
   const kr = mulberry32(80812), krr = (a, b) => a + kr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
-  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }, { s: FINAL.s, camp: FINAL }]) {
-    let best = null, bs = -1e9;
-    for (let t = 0; t < 160; t++) {
-      const ss = sp.s + krr(-34, 34), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
-      if (hw < 15) continue;
-      const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
-      if (!clear(p.x, p.z, 3)) continue;
-      if (CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15) || !offMarket(p.x, p.z, 8)) continue;
-      if (Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50) continue;
-      if (DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) || LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < 45)) continue;
-      const sc = (sp.camp ? -Math.abs(Math.hypot(p.x - sp.camp.x, p.z - sp.camp.z) - 30) : -Math.abs(ss - sp.s) * 0.2) + Math.abs(lat) * 0.2 + kr();
-      if (sc > bs) { bs = sc; best = { x: p.x, z: p.z, s: ss, lat }; }
-    }
-    if (!best) continue;
-    const L = best, tp = pathPoint(L.s), dx = tp.x - L.x, dz = tp.z - L.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
+  const barn = pathPoint(CAMPS[3].s + 30, -26);
+  const fits = (p, ss, lat, farOff) => clear(p.x, p.z, 3) && !CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15) && offMarket(p.x, p.z, 8) && Math.hypot(p.x - barn.x, p.z - barn.z) > 14
+    && !(Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50)
+    && !DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) && !LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < farOff)
+    && !(ss > T.canyon.s0 - 20 && ss < T.canyon.s1 + 20);   // (nothing in Falcon Canyon)
+  const grow = (L, krr) => {
+    const tp = pathPoint(L.s), dx = tp.x - L.x, dz = tp.z - L.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
     L.y = terrainH(L.x, L.z); L.yaw = Math.atan2(ux, uz);
     L.px = L.x + ux * 2.45; L.pz = L.z + uz * 2.45; L.py = L.y + 3.25;
     L.bx = L.x + ux * 1.05; L.bz = L.z + uz * 1.05;
@@ -2355,6 +2364,33 @@ const LAIRS = [];
       P(SPH(7), '#efe6d2', { s: [0.13, 0.1, 0.12], p: [krr(1, 1.8), 0.08, krr(-0.7, 0.7)] })), { outline: false, shadow: false });
     OBSTACLES.push({ x: L.x, z: L.z, r: 0.85 }); stampObstacle(L.x, L.z, 0.85);
     L.id = LAIRS.length; LAIRS.push(L);
+  };
+  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }, { s: FINAL.s, camp: FINAL }]) {
+    let best = null, bs = -1e9;
+    for (let t = 0; t < 160; t++) {
+      const ss = sp.s + krr(-34, 34), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+      if (hw < 15) continue;
+      const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
+      if (!fits(p, ss, lat, 45)) continue;
+      const sc = (sp.camp ? -Math.abs(Math.hypot(p.x - sp.camp.x, p.z - sp.camp.z) - 30) : -Math.abs(ss - sp.s) * 0.2) + Math.abs(lat) * 0.2 + kr();
+      if (sc > bs) { bs = sc; best = { x: p.x, z: p.z, s: ss, lat }; }
+    }
+    if (!best) continue;
+    best.grove = GROVES.length; GROVES.push({ i: GROVES.length, s: best.s, trees: [best] });
+    grow(best, krr);
+  }
+  // the rest of each grove: round the first tree, 14+ m apart (own rng: the first trees stay where they were)
+  const gr = mulberry32(80813), grr = (a, b) => a + gr() * (b - a);
+  for (const gv of GROVES) {
+    const L0 = gv.trees[0];
+    for (let t = 0; t < 400 && gv.trees.length < T.cougar.trees; t++) {
+      const ss = gv.s + grr(-42, 42), idx = pathIdx(ss), side = gr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+      if (hw < 13) continue;
+      const lat = side * grr(9, hw - 4), p = pathPoint(ss, lat);
+      if (Math.hypot(p.x - L0.x, p.z - L0.z) > 48 || !fits(p, ss, lat, 14)) continue;
+      const L = { x: p.x, z: p.z, s: ss, lat, grove: gv.i }; gv.trees.push(L);
+      grow(L, grr);
+    }
   }
 }
 // ---------------- falcon nests: a tall rock spire off the trail with a stick nest on top (FALCON) ----------------
@@ -2394,7 +2430,8 @@ const NESTS = [];
 // ---------------- FALCON CANYON: rock pillars down the gorge, a falcon (or two) on each; bones and feathers everywhere ----------------
 // Own rng (same on every screen). A perch (CANYON.perches): where one bird sits (x, z, top), id 100 + its index (NET: a
 // falcon's nest), ta: the way off the pillar down to the trail. The birds: FALCONS past the first (FALCON section).
-const CANYON = { roosts: [], perches: [], k: 0, next: T.canyon.first, cand: [], scanT: 0, seen: false, hankSaid: false, perched: null, drift: null };
+const CANYON = { roosts: [], perches: [], k: 0, next: T.canyon.first, cand: [], scanT: 0, seen: false, hankSaid: false, perched: null, drift: null, eyrie: null,
+  boss: { hp: 0, max: 0, on: false, beaten: false, met: false, next: 0 } };   // boss: THE GREAT FALCON's fight (NET)
 {
   const C = T.canyon, cr = mulberry32(66613), crr = (a, b) => a + cr() * (b - a), span = C.s1 - C.s0 - 10;
   const RED = ['#7a3b2c', '#9a5236', '#6a3328', '#a8653f'], BONE = '#efe6d2', BONE2 = '#d6c8aa', HOLE = '#2e211b', STICK = '#5a4126', GUANO = '#e2ddd0';
@@ -2474,6 +2511,34 @@ const CANYON = { roosts: [], perches: [], k: 0, next: T.canyon.first, cand: [], 
   watchers.forEach((w, i) => { w.look = w.rot; _m4.compose(_v.set(w.x, w.y, w.z), _q.setFromEuler(_e.set(0, w.rot, 0)), _s.setScalar(w.sc)); m.setMatrixAt(i, _m4); });
   m.computeBoundingSphere(); om.instanceMatrix = m.instanceMatrix; om.boundingSphere = m.boundingSphere; m.castShadow = true; m.receiveShadow = true; scene.add(m, om);
   CANYON.perched = { m, om, list: watchers, t: 0 };
+  // the eyrie: THE GREAT FALCON's pillar, tallest and thickest, mid-gorge against the far wall, a great nest on top and its leavings
+  // heaped at its foot (own rng). id 99 (NET: its nest); foot: where a body falls; top: where it sits
+  const er = mulberry32(66614), err = (a, b) => a + er() * (b - a), mid = (C.s0 + C.s1) / 2;
+  for (let t = 0; t < 80 && !CANYON.eyrie; t++) {
+    const s = mid + err(-14, 14), idx = pathIdx(s), lat = -(hwWArr[idx] - err(3, 3.8)), p = pathPoint(s, lat);
+    if (!clearOf(p.x, p.z, 2) || CANYON.roosts.some(R => Math.hypot(R.x - p.x, R.z - p.z) < 5)) continue;
+    const ta = Math.atan2(p.nz, p.nx), y = terrainH(p.x, p.z), H = 13.5;
+    CANYON.eyrie = { id: 99, x: p.x, z: p.z, y, top: y + H + 0.75, ta, yaw: Math.atan2(Math.cos(ta), Math.sin(ta)), r: 1.8, foot: 3.6, s };
+  }
+  const E = CANYON.eyrie;
+  if (E) {
+    const g = new THREE.Group(); g.position.set(E.x, E.y, E.z); scene.add(g);
+    const H = E.top - 0.75 - E.y, ux = Math.cos(E.ta), uz = Math.sin(E.ta), parts = [], nseg = 5, sh = H / nseg;
+    for (let i = 0; i < nseg; i++) parts.push(P(CYL(lerp(1.75, 1.15, (i + 1) / nseg) * err(0.9, 1), lerp(1.85, 1.2, i / nseg), sh * 1.03, 9), RED[(i + 1) % 4], { r: [0, err(0, 3), 0], p: [err(-0.12, 0.12), sh * (i + 0.5), err(-0.12, 0.12)] }));
+    parts.push(P(CYL(1.55, 1.15, 0.6, 9), '#4a2019', { p: [0, H, 0] }),
+      P(new THREE.TorusGeometry(1.05, 0.32, 6, 14), STICK, { r: [Math.PI / 2, 0, 0], p: [0, H + 0.4, 0] }),
+      ...[0, 1, 2, 3, 4, 5].map(i => P(CYL(0.05, 0.05, 1.9, 3), '#4a3620', { r: [Math.PI / 2, i * 0.55, 0.3], p: [0, H + 0.45, 0] })),
+      ...[-0.7, -0.2, 0.3, 0.75].map(o => { const L = err(1.5, H * 0.45); return P(BOX(0.12, L, 0.05), GUANO, { r: [0, -E.ta + Math.PI / 2, 0], p: [ux * 1.3 - uz * o, H - 0.2 - L / 2, uz * 1.3 + ux * o] }); }),
+      ...[0, 1, 2, 3].map(i => { const a = E.ta + (i - 1.5) * 1.3 + Math.PI; return P(SPH(7), RED[i], { s: [1.1, 0.6, 0.95], p: [Math.cos(a) * 1.9, 0.25, Math.sin(a) * 1.9] }); }));
+    part(g, merge(...parts));
+    const heap = [];   // its leavings, on the trail side
+    for (let i = 0; i < 16; i++) {
+      const a = E.ta + err(-1.1, 1.1), d = err(2.3, 4.2), kind = ['skull', 'ramskull', 'ribs', 'bone', 'bone', 'featherD', 'featherL'][Math.floor(er() * 7)];
+      heap.push(GEO_C[kind].clone().rotateY(err(0, TAU)).translate(Math.cos(a) * d, 0.02, Math.sin(a) * d));
+    }
+    part(g, merge(...heap), { shadow: false });
+    OBSTACLES.push({ x: E.x, z: E.z, r: E.r }); stampObstacle(E.x, E.z, E.r);
+  }
 }
 // ---------------- APPLE TREES: off the trail in the valley and the Promised Land (own rng). A pounce into the trunk shakes
 // apples down (APPLES: T.apple.n per tree, hanging, on the ground or eaten; the APPLES section) ----------------
@@ -4427,9 +4492,18 @@ function nipFx(d, c) {
 function barkWorks(e, wise = T.barkWise) {
   e.barks = (e.barks || 0) + 1;
   if (e.barks <= wise) return true;
-  if (!e.wiseShown) { e.wiseShown = true; floatText('😾', e.x, (e.y || 0) + 2, e.z, '#fff', 1.4); if (G.dogs.length > 1) hint('team-bark'); }
+  if (!e.wiseShown) { e.wiseShown = true; floatText('😾', e.x, (e.y || 0) + 2, e.z, '#fff', 1.4); if (e.isCougar && G.dogs.length > 1) hint('team-bark'); }
   Sound.growl(panOf(e.x, e.z), 0.14);
   return false;
+}
+// a coyote falls for one bark (T.coyoteBark.wise): barks within `same` s of it (a team bark joining in) are that one; after, only a bonk
+function coyoteBarkWorks(c) {
+  const B = T.coyoteBark;
+  if (c.barkAt !== undefined && c.barks > 0 && G.time - c.barkAt <= B.same) return true;
+  if (!c.barks) c.barkAt = G.time;
+  const ok = barkWorks(c, B.wise);
+  if (!ok) { c.bold = true; hint('coyote-wise'); }
+  return ok;
 }
 function bark(d) {
   d.barkCd = T.barkCd; d.barkAgo = 0; G.barks = (G.barks || 0) + 1;
@@ -4454,7 +4528,7 @@ function bark(d) {
       if (c.air || c.heldBy || Math.hypot(c.x - d.x, c.z - d.z) >= R + 2) continue;
       const n = packSize(c), B = T.coyoteBark;
       if (!['leave', 'dead', 'sleep'].includes(c.state)) foes++;
-      if (['pack', 'flee', 'drag'].includes(c.state) && !barkWorks(c, n <= 1 ? B.soloWise : T.barkWise)) { c.bold = true; continue; }   // wise to it: it comes on anyway (a lone one after one bark)
+      if (['pack', 'flee', 'drag'].includes(c.state) && !coyoteBarkWorks(c)) continue;   // wise to it after one bark: it comes on anyway
       scareCoyote(c, B.amt * kb / (1 + B.packK * (n - 1)), d);   // a pack shrugs barks off
     }
     foes += cougarBark(d);
@@ -4490,7 +4564,9 @@ function teamBark(team) {
   for (const c of G.coyotes) {
     if (c.air || c.heldBy || ['leave', 'dead', 'sleep'].includes(c.state)) continue;
     const m = teamNear(team, c.x, c.z, R + 2); if (!m) continue;
-    c.bold = false; scareCoyote(c, c.role === 'screen' ? amt * 2 : amt, m); foes++;   // (a screen takes half)
+    foes++;
+    if (['pack', 'flee', 'drag'].includes(c.state) && !coyoteBarkWorks(c)) continue;   // still its one bark: wise to it, only a bonk now
+    scareCoyote(c, c.role === 'screen' ? amt * 2 : amt, m);   // (a screen takes half)
   }
   const KC = T.cougar;
   for (const k of COUGARS) {
@@ -4503,6 +4579,7 @@ function teamBark(team) {
   }
   const C = T.falcon, K = T.canyon;
   for (const F of FALCONS) {
+    if (F.boss) continue;   // THE GREAT FALCON: only a pounce
     const m = teamNear(team, F.x, F.z, Math.max(C.barkR, K.barkR) * kb * f);
     if (F.state === 'nest' && F.prey && teamNear(team, F.nest.x, F.nest.z, C.nestR * f)) { falconDrop(F, true); foes++; }
     if (!m) continue;
@@ -4710,6 +4787,7 @@ function pounceHits(d) {
     if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
   }
   for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
+  if (eyrieShake(d)) return;   // FALCON CANYON: THE GREAT FALCON eating on its pillar
   if (launcherPounce(d)) return;
   for (const o of G.dogs) {   // another dog: punted like a sheep (not one under a cougar: that pounce frees it)
     if (o === d || o.air || o.heldBy || o.maul || o.mauled || o.hopT > 0) continue;   // (jumped over it)
@@ -6296,7 +6374,7 @@ const BRAMBLES = [];
 {
   const BR = mulberry32(240617), brr = (a, b) => a + BR() * (b - a), B = T.bramble, L0 = LAUNCHERS[0];
   const camps = CAMPS.map(c => ({ x: c.x, z: c.z, r: c.R + 20 }));
-  const okAt = (x, z) => sdfAt(x, z) > 2.2 && !wetAt(x, z) && Math.abs(trailInfo(x, z).lat) > 5 && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 6) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 12)
+  const okAt = (x, z) => sdfAt(x, z) > 2.2 && !wetAt(x, z) && Math.abs(trailInfo(x, z).lat) > 5 && canyonK(sAt(x, z)) <= 0.1 && camps.every(c => Math.hypot(x - c.x, z - c.z) > c.r) && offMarket(x, z, 6) && (!L0 || Math.hypot(x - L0.x, z - L0.z) > 12)
     && !PLANTS.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 6) && !SALT_ROCKS.some(o => Math.hypot(o.x - x, o.z - z) < 5) && !DIGS.some(o => Math.hypot(o.x - x, o.z - z) < 4)
     && !BRAMBLES.some(o => Math.hypot(o.x - x, o.z - z) < 1.6);
   for (let s = 30; s < PATH_LEN - 25; s += B.every * brr(0.7, 1.3)) {
@@ -6591,7 +6669,8 @@ function drawBonkOverlay() {
 // slides back behind its rock a while. A bitten sheep (s.venom) sickens and
 // slows, and dies of it unless Hank gives it anti-venom (VET). A pounce or a
 // bark sends a snake back early. n.k: how far out (0 hidden … 1 up);
-// n.ft: the strike (0 coiled … 1 at its mark, hx/hz).
+// n.ft: the strike (0 coiled … 1 at its mark, hx/hz). Rattling, it slithers
+// out after its mark (n.x/z; home n.x0/z0 behind its rock: T.snake.slither).
 // =====================================================================
 const SNAKES = [];
 {
@@ -6599,7 +6678,7 @@ const SNAKES = [];
     if (!r.snake) continue;
     let x = r.x + CAM_F.x * (r.cr + 0.3), z = r.z + CAM_F.z * (r.cr + 0.3);
     if (sdfAt(x, z) < 0.15 || brambleAt(x, z, 1)) { x = r.x - CAM_R.x * (r.cr + 0.3); z = r.z - CAM_R.z * (r.cr + 0.3); }   // (or beside it)
-    SNAKES.push({ i: SNAKES.length, rock: r, x, z, y: terrainH(x, z), state: 'hide', t: 0, at: 0, k: 0, ft: 0, hx: x - CAM_F.x, hz: z - CAM_F.z, tgt: null, rattleAt: 0, seen: false });
+    SNAKES.push({ i: SNAKES.length, rock: r, x, z, x0: x, z0: z, y: terrainH(x, z), state: 'hide', t: 0, at: 0, k: 0, ft: 0, hx: x - CAM_F.x, hz: z - CAM_F.z, tgt: null, rattleAt: 0, seen: false });
   }
   // its model: a coil, the rattle, a neck that reaches and a head that tastes the air
   const BODY = '#b38a52', DARK = '#6a4c2c';
@@ -6626,6 +6705,14 @@ function snakeMark(n, r) {
   return best;
 }
 function snakeBack(n, cd) { n.state = 'back'; n.t = 0; n.at = G.time + cd; n.tgt = null; }
+// slide over the sand toward (tx, tz) at spd, never more than slither.r from its rock, nor into a rock
+function snakeSlide(n, tx, tz, spd, dt) {
+  const dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz); if (d < 0.05) return;
+  const st = Math.min(d, spd * dt); let x = n.x + dx / d * st, z = n.z + dz / d * st;
+  const ox = x - n.x0, oz = z - n.z0, o = Math.hypot(ox, oz), R = T.snake.slither.r; if (o > R) { x = n.x0 + ox / o * R; z = n.z0 + oz / o * R; }
+  if (o > 0.5 && sdfAt(x, z) < 0.3) return;
+  n.x = x; n.z = z; n.y = terrainH(x, z);
+}
 // a dog sees it off: a bark close by, or a pounce right on it
 function snakeScare(n, d, bonk) {
   if (n.state === 'hide' && n.k < 0.05) return;
@@ -6649,6 +6736,7 @@ function updateSnakes(dt) {
     switch (n.state) {
       case 'hide': {
         n.k = Math.max(0, n.k - dt * 3); n.ft = 0;
+        snakeSlide(n, n.x0, n.z0, S.slither.back, dt);   // home behind its rock
         if (G.time < n.at || G.mode !== 'play') break;
         const m = snakeMark(n, S.warnR); if (!m) break;
         n.state = 'rattle'; n.t = 0; n.tgt = m; snakeRattle(n);
@@ -6659,6 +6747,7 @@ function updateSnakes(dt) {
         const m = snakeMark(n, S.warnR); n.tgt = m;
         if (!m) { if (n.t > 0.8) snakeBack(n, 2); break; }
         n.hx = m.x; n.hz = m.z;
+        if (Math.hypot(m.x - n.x, m.z - n.z) > S.strikeR * 0.7) snakeSlide(n, m.x, m.z, S.slither.spd, dt);   // after it
         if (G.time - n.rattleAt > 0.9) { n.rattleAt = G.time; SFX.rattle(panOf(n.x, n.z), 0.26, 0.9); }
         for (const s of G.sheep) {   // the sheep round it shy off
           if (s.dead || s.grabbed || s.air || s.heldBy) continue;
@@ -6685,13 +6774,14 @@ function updateSnakes(dt) {
       }
       case 'back': {
         n.ft = Math.max(0, n.ft - dt * 4); n.k = Math.max(0, n.k - dt * 1.6);
+        snakeSlide(n, n.x0, n.z0, S.slither.back, dt);
         if (n.k <= 0 && n.ft <= 0) { n.state = 'hide'; n.t = 0; }
         break;
       }
     }
   }
 }
-function resetSnakes() { for (const n of SNAKES) Object.assign(n, { state: 'hide', t: 0, at: 0, k: 0, ft: 0, tgt: null, seen: false }); }
+function resetSnakes() { for (const n of SNAKES) Object.assign(n, { state: 'hide', t: 0, at: 0, k: 0, ft: 0, tgt: null, seen: false, x: n.x0, z: n.z0, y: terrainH(n.x0, n.z0) }); }
 // every frame (host and guests, from n.state, n.k, n.ft, hx/hz): the coil, the rattle shaking, the neck reaching for its mark
 const _sn = { a: new THREE.Vector3(), b: new THREE.Vector3(), d: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
 function syncSnakes() {
@@ -6700,7 +6790,8 @@ function syncSnakes() {
     const k = clamp(n.k || 0, 0, 1), ft = clamp(n.ft || 0, 0, 1), t = G.time + n.i, R = n.rock, SC = 1.45;
     // out from behind its rock, round the side toward its mark
     let ox = n.hx - R.x, oz = n.hz - R.z; const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
-    const bx = lerp(n.x, R.x + ox * (R.cr + 0.55), k * 0.85), bz = lerp(n.z, R.z + oz * (R.cr + 0.55), k * 0.85);
+    const w = clamp(Math.hypot(n.x - (n.x0 ?? n.x), n.z - (n.z0 ?? n.z)) / 1.5, 0, 1);   // out in the open (slithering): where it is
+    const bx = lerp(lerp(n.x, R.x + ox * (R.cr + 0.55), k * 0.85), n.x, w), bz = lerp(lerp(n.z, R.z + oz * (R.cr + 0.55), k * 0.85), n.z, w);
     M.root.position.set(bx, terrainH(bx, bz) - 0.06 * (1 - k), bz); M.root.scale.setScalar(SC);
     M.rattle.rotation.set(n.state === 'rattle' ? Math.sin(t * 70) * 0.35 : 0, 0, 0); M.rattle.position.y = 0.08 + 0.08 * k;
     let dx = n.hx - bx, dz = n.hz - bz; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
@@ -7872,17 +7963,20 @@ function updateCoyotes(dt) {
 }
 
 // =====================================================================
-// COUGARS — one lives in each big old tree by the hill camps (LAIRS). By
-// day it's gone. At nightfall it's up on its limb, eyes catching the light,
-// and the one nearest the flock may hunt: some hours later it comes down,
+// COUGARS — T.cougar.n of them roam the groves of big old trees by the hill
+// camps (GROVES, LAIRS). By day they're gone. At nightfall they're up on the
+// limbs of random trees in the grove nearest the flock, eyes catching the
+// light (k.lair: tonight's tree), and some of them hunt (more with more dogs,
+// and later on): some hours later each comes down,
 // stalks in slow and low, shies off from dogs, then leaps on a sheep (lambs
 // first, always) and drags it, crying, back to its tree. Once it's up the
 // tree the sheep is gone. Catch it before then: a pounce, or just running
 // into it, makes it drop the sheep and bolt up the tree. Shut pens keep it
 // out. A grabbed sheep's s.grabbed is the cougar (k.isCougar), as with coyotes.
 // =====================================================================
-const COUGARS = LAIRS.map((L, i) => ({ i, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
-  state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, models: makeCougar() }));
+const COUGARS = Array.from({ length: T.cougar.n }, (_, i) => { const L = GROVES.length ? GROVES[0].trees[i % GROVES[0].trees.length] : LAIRS[0];
+  return { i, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
+    state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, dazeT: 0, models: makeCougar() }; });
 function perchCougar(k) { const L = k.lair; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
 const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;   // a shut pen doesn't stop it: it jumps the fence
 // the pen the cougar is standing in (open or shut), if any
@@ -7901,6 +7995,7 @@ function cougarTarget(k, exclude = null, range = T.cougar.range) {
     const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > range) continue;
     let sc = Math.hypot(s.x - k.x, s.z - k.z) + dl * 0.3 - Math.max(0, 5 - (s.near || 0)) * 3 - oldK(s) * 6 - (s.weak || 0) * 6;
     for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 20) sc += (20 - dd) * 4; }
+    for (const o of COUGARS) if (o !== k && o.target === s) sc += 25;   // another one's after it: pick a different one
     if (s.lamb) sc -= 1000;   // lambs first, always
     if (sc < bs) { bs = sc; best = s; }
   }
@@ -7997,6 +8092,10 @@ function cougarBonked(k, d) {
   const dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz) || 1, kick = T.cougar.bonkKick * dogK(d, 'bonk'); k.vx = dx / dl * kick; k.vz = dz / dl * kick;
   k.bonks = (k.bonks || 0) + 1; train(d, 'bonk', T.train.bonkFoe);
   cougarSpooked(k, 1);
+  if (k.state === 'retreat') {   // it tumbles on toward its tree, seeing stars: a dog can catch it and bonk it again, all the way home
+    const L = k.lair, tx = L.bx - k.x, tz = L.bz - k.z, tl = Math.hypot(tx, tz) || 1; k.vx = tx / tl * T.cougar.bonkKick; k.vz = tz / tl * T.cougar.bonkKick;
+    k.dazeT = T.cougar.daze; k.yaw = Math.atan2(k.vx, k.vz);
+  }
 }
 function startMaul(k, d) {
   if (d.holding) releaseHold(d, false);
@@ -8040,14 +8139,32 @@ function maulEndFx(d, k, by) {
   SFX.bonk(panOf(k.x, k.z), 0.4); starBurst(k.x, k.y + 0.9, k.z, 12, undefined, { speed: 5, up: 4 }); shakeCam(0.45); hitStop(0.08);
   if (by) rumble(by.player, 1, 0.8, 250);
 }
-function cougarsAtNightfall() {
-  const fc = flockCenter(); let best = null, bd = T.cougar.range + 30;
+// how many hunt tonight: more with more dogs, one more from day moreFrom
+function cougarHunters() { const C = T.cougar; return Math.min(COUGARS.length, C.hunt[clamp(G.dogs.length, 1, C.hunt.length) - 1] + (G.clock.day >= C.moreFrom ? 1 : 0)); }
+// the grove nearest the flock, and how far its nearest tree is
+function nearGrove() {
+  const fc = flockCenter(); let best = null, bd = Infinity;
+  for (const gv of GROVES) for (const L of gv.trees) { const d = Math.hypot(L.x - fc.x, L.z - fc.z); if (d < bd) { bd = d; best = gv; } }
+  return { grove: best, d: bd };
+}
+// up the trees of grove gv (random ones: nobody knows which one it'll come from), all but one still out with its catch
+function perchGrove(gv) {
+  const busy = COUGARS.filter(k => k.prey), free = gv.trees.filter(L => !busy.some(k => k.lair === L));
+  for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [free[i], free[j]] = [free[j], free[i]]; }
+  const out = [];
   for (const k of COUGARS) {
     if (k.prey) continue;
-    perchCougar(k); k.state = 'perch'; k.t = 0; k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.bonks = 0; k.wiseShown = false;
-    const d = Math.hypot(k.lair.x - fc.x, k.lair.z - fc.z); if (d < bd) { bd = d; best = k; }
+    k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.bonks = 0; k.wiseShown = false; k.dazeT = 0; k.t = 0;
+    if (!free.length) { k.state = 'away'; continue; }
+    k.lair = free.pop(); perchCougar(k); k.state = 'perch'; out.push(k);
   }
-  if (best && Math.random() < T.cougar.chance) cougarHunt(best, rnd(T.cougar.delay[0], T.cougar.delay[1]));
+  return out;
+}
+function cougarsAtNightfall() {
+  const C = T.cougar, { grove, d } = nearGrove(); if (!grove) return;
+  const up = perchGrove(grove);
+  if (d > C.range + 30 || !(Math.random() < C.chance)) return;
+  for (const k of up.slice(0, cougarHunters())) cougarHunt(k, rnd(C.delay[0], C.delay[1]));
 }
 function cougarHunt(k, hours = 0) {   // (also the debug key J, and tests)
   if (k.state === 'away') { perchCougar(k); k.state = 'perch'; k.t = 0; }
@@ -8061,7 +8178,7 @@ function cougarsAtDawn() {
     else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.dazeT = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -8201,6 +8318,11 @@ function updateCougars(dt) {
         break;
       }
       case 'retreat': {
+        if (k.dazeT > 0) {   // bonked: skidding, seeing stars
+          k.dazeT -= dt; const q = Math.max(0, 1 - 5 * dt); k.vx *= q; k.vz *= q;
+          k.x += k.vx * dt; k.z += k.vz * dt; collideWorld(k, C.r); collideFences(k, C.r); k.y = groundY(k.x, k.z); k.h = 0;
+          k.t = 0; break;
+        }
         const run = C.run * (k.bonks ? C.bonkRun : 1);
         if (cougarOut(k, 'retreat', run, dt)) break;
         moveCougar(k, L.bx, L.bz, run, dt);
@@ -8221,11 +8343,16 @@ function updateCougars(dt) {
 // FALCON CANYON: FALCONS[1…] sit on the gorge's pillars (F.home, a perch):
 // 'perch' (watching whatever's down there), a swoop on something in the gorge
 // (updateCanyon: circle, dive, carry, eaten on its pillar), 'home' (back to it).
+// The last is THE GREAT FALCON (F.boss, on CANYON.eyrie): a mini boss. Barks
+// don't touch it; a pounce as it swoops low or struggles off with a sheep does
+// (bossHit). Hit it CANYON.boss.max times and it's gone (bossBeaten).
 // =====================================================================
 const FALCON = { isFalcon: true, i: 0, state: 'away', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, bank: 0, t: 0, prey: null, dog: null, target: null, nest: null, dest: null, ang: 0, models: makeFalcon() };
-const FALCONS = [FALCON, ...CANYON.perches.map((P, k) => ({ isFalcon: true, i: k + 1, home: P, state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, bank: 0, t: 0,
+const FALCONS = [FALCON, ...[...CANYON.perches, ...(CANYON.eyrie ? [CANYON.eyrie] : [])].map((P, k) => ({ isFalcon: true, i: k + 1, home: P, boss: P === CANYON.eyrie, state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, bank: 0, t: 0,
   prey: null, dog: null, target: null, nest: null, dest: null, ang: 0, rest: 0, flap: 0, look: P.yaw, watchT: 0, models: makeFalcon() }))];
-const nestById = v => v >= 100 ? CANYON.perches[v - 100] || null : NESTS[v] || null;   // (NET: a falcon's nest: a spire, or its pillar)
+const BOSS = FALCONS.find(F => F.boss) || null;   // THE GREAT FALCON
+if (BOSS) BOSS.models.root.scale.setScalar(T.canyon.boss.scale);
+const nestById = v => v === 99 ? CANYON.eyrie : v >= 100 ? CANYON.perches[v - 100] || null : NESTS[v] || null;   // (NET: a falcon's nest: a spire, a pillar, the eyrie)
 const falconSheepOK = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;
 const falconDogOK = d => !d.air && !d.heldBy && !d.ko && !d.maul && !(d.stunT > 0) && G.dogs.includes(d);
 function falconPick() {
@@ -8247,7 +8374,7 @@ function falconFly(F, tx, ty, tz, spd, dt, turn = 3) {
   if (sp > 0.5) { const ny = Math.atan2(F.vx, F.vz); F.bank = lerp(F.bank, clamp(wrapA(ny - F.yaw) / Math.max(dt, 1e-3) * 0.08, -0.8, 0.8), Math.min(1, dt * 4)); F.yaw = lerpA(F.yaw, ny, Math.min(1, dt * 8)); }
 }
 function falconHold(F) {
-  if (F.prey) { const s = F.prey; s.x = F.x; s.z = F.z; s.y = Math.max(groundY(s.x, s.z), F.y - 1.25); s.vx = F.vx; s.vz = F.vz; s.yaw = F.yaw; }
+  if (F.prey) { const s = F.prey; s.x = F.x; s.z = F.z; s.y = Math.max(groundY(s.x, s.z), F.y - (F.boss ? 1.9 : 1.25)); s.vx = F.vx; s.vz = F.vz; s.yaw = F.yaw; }
   if (F.dog) { const d = F.dog; d.x = F.x; d.z = F.z; d.y = Math.max(groundY(d.x, d.z), F.y - 1.1); d.air.h = d.y; d.vx = F.vx; d.vz = F.vz; d.yaw = F.yaw; }
 }
 function falconGo(F) {
@@ -8306,6 +8433,7 @@ function falconBark(d) {   // → how many it saw off (TRAINING)
   const C = T.falcon, K = T.canyon, kb = dogK(d, 'bark'); let ruffled = null, n = 0;   // BREEDS: a bigger bark carries further
   for (const F of FALCONS) {
     const hd = Math.hypot(F.x - d.x, F.z - d.z);
+    if (F.boss) { if (F.state !== 'perch' && F.state !== 'away' && hd < C.barkR * kb) bossScoff(F); continue; }   // THE GREAT FALCON: barks don't touch it
     if (F.state === 'carry' && (F.prey || (F.dog && F.dog !== d)) && hd < C.barkR * kb) { falconDrop(F, true); n++; }
     else if (F.state === 'nest' && F.prey && Math.hypot(F.nest.x - d.x, F.nest.z - d.z) < C.nestR * kb) { falconDrop(F, true); n++; }
     else if ((F.state === 'dive' || F.state === 'circle') && F.target && (hd < C.barkR * kb || F.target === d)) { Sound.screech(panOf(F.x, F.z), 0.12); falconGo(F); n++; }   // its mark barking (dog too) sends it off
@@ -8323,6 +8451,7 @@ function resetFalcon() {
     else F.state = 'away';
   }
   G.falconIn = T.falcon.first; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
+  Object.assign(CANYON.boss, { hp: 0, max: 0, on: false, beaten: false, met: false, next: T.canyon.boss.first });
 }
 function updateFalcon(dt, dtH) { updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH); }
 function falconStep(F, dt, dtH) {
@@ -8331,7 +8460,7 @@ function falconStep(F, dt, dtH) {
   if (F.dog && (!G.dogs.includes(F.dog) || !F.dog.air || F.dog.air.kind !== 'falcon')) F.dog = null;
   switch (F.state) {
     case 'away': {
-      if (!C.on || G.mode !== 'play' || G.clock.hour < C.from || G.clock.hour >= C.to) break;
+      if (F !== FALCON || !C.on || G.mode !== 'play' || G.clock.hour < C.from || G.clock.hour >= C.to) break;   // (a beaten GREAT FALCON stays gone)
       if ((G.falconIn = (G.falconIn ?? C.first) - dtH) > 0) break;
       G.falconIn = rnd(C.every[0], C.every[1]);
       falconCome(falconPick());
@@ -8349,32 +8478,34 @@ function falconStep(F, dt, dtH) {
     }
     case 'circle': {   // high up, round and round over its mark (from a pillar: up off it and round, lower and quicker)
       const e = F.target; if (!falconTargetOK(e)) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
-      const t = F.target, cr = F.home ? K.circleR : C.circleR, ch = F.home ? K.circleH : C.circleH;
+      const KB = K.boss, t = F.target, cr = F.boss ? KB.circleR : F.home ? K.circleR : C.circleR, ch = F.boss ? KB.circleH : F.home ? K.circleH : C.circleH;
       F.ang += dt * (F.home ? 1.6 : 0.9);
-      falconFly(F, t.x + Math.cos(F.ang) * cr, groundY(t.x, t.z) + ch, t.z + Math.sin(F.ang) * cr, F.home ? 13 : 11, dt, 4);
-      if (F.t > (F.home ? K.circleT : C.circleT)) { F.state = 'dive'; F.t = 0; Sound.screech(panOf(F.x, F.z), 0.22); if (hankSees(t.x, t.z, t.y)) hank('falcon'); floatText('❗', t.x, (t.y || 0) + 2.2, t.z, '#ff5a5a', 1.4); }
+      falconFly(F, t.x + Math.cos(F.ang) * cr, groundY(t.x, t.z) + ch, t.z + Math.sin(F.ang) * cr, F.boss ? KB.spd : F.home ? 13 : 11, dt, 4);
+      if (F.t > (F.boss ? KB.circleT : F.home ? K.circleT : C.circleT)) { F.state = 'dive'; F.t = 0; Sound.screech(panOf(F.x, F.z), 0.22); if (hankSees(t.x, t.z, t.y)) hank('falcon'); floatText('❗', t.x, (t.y || 0) + 2.2, t.z, '#ff5a5a', 1.4); }
       break;
     }
     case 'dive': {
       const e = F.target; if (!falconTargetOK(e) || F.t > C.diveMax) { falconGo(F); break; }
-      const gy = groundY(e.x, e.z) + (e.isDog ? 0.9 : 1.1);
-      falconFly(F, e.x + (e.vx || 0) * 0.15, gy, e.z + (e.vz || 0) * 0.15, C.diveSpd, dt, 6);
+      const gy = groundY(e.x, e.z) + (e.isDog ? 0.9 : 1.1) + (F.boss ? 0.6 : 0);
+      falconFly(F, e.x + (e.vx || 0) * 0.15, gy, e.z + (e.vz || 0) * 0.15, F.boss ? K.boss.diveSpd : C.diveSpd, dt, 6);
       if (Math.random() < dt * 25) burst(F.x, F.y, F.z, 1, '#ffffff', { speed: 0.3, up: 0.1, size: 0.12, life: 0.35, grav: 0 });
+      if (F.boss) { const d = bossPounced(F); if (d) { bossHit(F, d); break; } }   // THE GREAT FALCON: a pounce as it comes down hurts it
       const low = F.y - groundY(F.x, F.z) < 2.6;
-      if (low) for (const d of G.dogs) if (d !== e && d.pounceT > 0 && Math.hypot(d.x - F.x, d.z - F.z) < C.hitR) {   // pounced in mid-dive
+      if (low && !F.boss) for (const d of G.dogs) if (d !== e && d.pounceT > 0 && Math.hypot(d.x - F.x, d.z - F.z) < C.hitR) {   // pounced in mid-dive
         SFX.bonk(panOf(F.x, F.z), 0.3); starBurst(F.x, F.y, F.z, 8, undefined, { speed: 4, up: 3 }); floatText('BONK!', F.x, F.y + 1, F.z, '#fff', 1.2); falconGo(F); break;
       }
       if (F.state !== 'dive') break;
-      if (Math.hypot(e.x - F.x, e.z - F.z) < 1.6 && Math.abs(F.y - gy) < 1.4) falconGrab(F, e);
+      if (Math.hypot(e.x - F.x, e.z - F.z) < (F.boss ? 2 : 1.6) && Math.abs(F.y - gy) < 1.4) falconGrab(F, e);
       break;
     }
     case 'carry': {
       if (!F.prey && !F.dog) { falconGo(F); break; }
       const tg = F.prey ? F.nest : F.dest, ground = groundY(F.x, F.z);
       if (!tg) { falconDrop(F, false); break; }
-      const hd = Math.hypot(tg.x - F.x, tg.z - F.z);
-      const ty = F.prey ? (hd < 6 ? tg.top + 1.3 : Math.max(ground + C.cruiseH, tg.top + 2)) : ground + C.cruiseH * 0.8;
-      falconFly(F, tg.x, ty, tg.z, F.prey ? C.carry : C.carryDog, dt, 3);
+      const hd = Math.hypot(tg.x - F.x, tg.z - F.z), KB = K.boss, heavy = F.boss && F.prey && F.t < KB.lowT;   // THE GREAT FALCON: struggling off low with it at first
+      if (F.boss) { const d = bossPounced(F); if (d) { bossHit(F, d); break; } }
+      const ty = heavy ? ground + KB.lowH : F.prey ? (hd < 6 ? tg.top + 1.3 : Math.max(ground + C.cruiseH, tg.top + 2)) : ground + C.cruiseH * 0.8;
+      falconFly(F, tg.x, ty, tg.z, heavy ? KB.carry : F.prey ? C.carry : C.carryDog, dt, 3);
       falconHold(F);
       if (F.prey && (F.cryT = (F.cryT || 0) - dt) <= 0) { F.cryT = rnd(0.5, 0.9); Sound.baa(F.prey.pitch * 1.25, 0.45, panOf(F.x, F.z), true); }
       if (F.dog && (hd < 1.5 || F.t > 12)) { falconDrop(F, false); break; }
@@ -8388,10 +8519,10 @@ function falconStep(F, dt, dtH) {
       if (!s) { falconGo(F); break; }
       s.x = N.x + Math.sin(F.yaw) * 0.5; s.z = N.z + Math.cos(F.yaw) * 0.5; s.y = N.top; s.vx = s.vz = 0;
       if ((F.cryT = (F.cryT || 0) - dt) <= 0) { F.cryT = rnd(0.7, 1.3); Sound.baa(s.pitch * 1.25, 0.45, panOf(s.x, s.z), true); }
-      if (F.t > (F.home ? K.eatT : C.eatT)) {   // gone. Its body (then its stone) at the foot of the spire, the trail side of a pillar
+      if (F.t > (F.boss ? K.boss.eatT : F.home ? K.eatT : C.eatT)) {   // gone. Its body (then its stone) at the foot of the spire, the trail side of a pillar
         burst(N.x, N.top + 0.6, N.z, 18, '#f7f3e8', { speed: 2, up: 1.5 });
         F.prey = null; s.grabbed = null;
-        const a = N.ta !== undefined ? N.ta + rnd(-0.5, 0.5) : Math.random() * TAU; s.x = N.x + Math.cos(a) * 2.6; s.z = N.z + Math.sin(a) * 2.6; s.y = groundY(s.x, s.z);
+        const a = N.ta !== undefined ? N.ta + rnd(-0.5, 0.5) : Math.random() * TAU, ft = N.foot || 2.6; s.x = N.x + Math.cos(a) * ft; s.z = N.z + Math.sin(a) * ft; s.y = groundY(s.x, s.z);
         killSheep(s, 'falcon');
         falconGo(F);
       }
@@ -8425,18 +8556,76 @@ function updateCanyon(dt) {
   const cs = CANYON.cand;
   if (!CANYON.seen && cs.length) { CANYON.seen = true; banner('🦅 Falcon Canyon', '🦴 🦴 🦴'); Sound.omen(0.22); hint('canyon'); }
   if (CANYON.seen && !CANYON.hankSaid && sAt(HANK.x, HANK.z) > K.s0 - 24) { CANYON.hankSaid = true; hank(null, "Bones... Falcon country. Keep 'em close, and keep barkin'!", { force: true, delay: 0.6 }); }
-  if (!K.on || G.clock.hour < K.from || G.clock.hour >= K.to || !cs.length) { CANYON.next = Math.max(CANYON.next, K.first); return; }
+  const day = G.clock.hour >= K.from && G.clock.hour < K.to;
+  updateBoss(dt, day && cs.length > 0);
+  if (!K.on || !day || !cs.length) { CANYON.next = Math.max(CANYON.next, K.first); return; }
   if ((CANYON.next -= dt) > 0) return;
-  if (FALCONS.filter(F => F.home && F.state !== 'perch').length >= K.maxAir) { CANYON.next = 0.5; return; }
+  if (FALCONS.filter(F => F.home && !F.boss && F.state !== 'perch').length >= K.maxAir) { CANYON.next = 0.5; return; }
   const e = canyonMark(cs), F = e && canyonBird(e);
   if (!F) { CANYON.next = rnd(1, 2); return; }
   canyonSwoop(F, e); CANYON.next = rnd(K.every[0], K.every[1]);
 }
+// THE GREAT FALCON (host): while something's in the gorge by day it comes every boss.every s, off its own clock; the fight's
+// state (CANYON.boss: hp, on) drives the HUD's 🦅 ♥♥♥ on every screen
+function updateBoss(dt, busy) {
+  const KB = T.canyon.boss, B = CANYON.boss, F = BOSS;
+  if (!F || !KB.on || B.beaten) { B.on = false; return; }
+  B.on = busy || (B.on && F.state !== 'perch');
+  if (!busy) { B.next = Math.max(B.next, KB.first); return; }
+  if (!B.met) {   // the first time: its size and its hearts
+    B.met = true; B.max = B.hp = KB.hp + Math.max(0, G.dogs.length - 1) * KB.perDog; B.next = KB.first;
+    Sound.screech(panOf(F.x, F.z), 0.3); F.flap = 1; hint('canyon-boss');
+    if (hankSees(F.x, F.z, F.y)) hank(null, "That's the big one up there! Barkin' won't shift her. Bonk her when she swoops low!", { force: true, delay: 1.2 });
+  }
+  if (F.state !== 'perch' || (B.next -= dt) > 0) return;
+  const e = canyonMark(CANYON.cand, KB.dogChance);
+  if (!e) { B.next = 1; return; }
+  canyonSwoop(F, e); B.next = rnd(KB.every[0], KB.every[1]);
+}
+// a dog pouncing into it while it's low (its dive, or struggling off with a sheep)
+function bossPounced(F) {
+  if (F.y - groundY(F.x, F.z) > 3.4) return null;
+  for (const d of G.dogs) if (d.pounceT > 0 && !d.air && Math.hypot(d.x - F.x, d.z - F.z) < T.canyon.boss.hitR) return d;
+  return null;
+}
+function bossHit(F, d) {
+  const B = CANYON.boss, KB = T.canyon.boss;
+  B.hp = Math.max(0, B.hp - 1); G.stats.bossHits = (G.stats.bossHits || 0) + 1;
+  SFX.bonk(panOf(F.x, F.z), 0.45); starBurst(F.x, F.y, F.z, 14, undefined, { speed: 6, up: 4 }); floatText('BONK!', F.x, F.y + 1.6, F.z, '#ffffff', 1.5);
+  burst(F.x, F.y, F.z, 12, '#4d5866', { speed: 4, up: 2, size: 0.16, life: 1.4, grav: -2 }); burst(F.x, F.y, F.z, 8, '#efe3c8', { speed: 4, up: 2, size: 0.14, life: 1.4, grav: -2 });
+  Sound.screech(panOf(F.x, F.z), 0.3); shakeCam(0.55); hitStop(0.1); rumble(d.player, 1, 0.8, 260); dizzy(F, 1.2, 2.2);
+  if (d.pounceT > 0) endLunge(d);
+  if (F.prey || F.dog) falconDrop(F, true); else falconGo(F);
+  F.vy = 7; B.next = Math.max(B.next, KB.hurt);
+  if (B.hp <= 0) bossBeaten(F);
+}
+function bossBeaten(F) {
+  const B = CANYON.boss, KB = T.canyon.boss; B.beaten = true; B.on = false;
+  F.state = 'leave'; F.t = 0; F.target = null; F.dest = { x: F.x + Math.cos(F.home.ta + Math.PI) * 150, z: F.z + Math.sin(F.home.ta + Math.PI) * 150 };
+  G.wool = (G.wool || 0) + KB.bounty;
+  banner('🦅 ✖', `+${KB.bounty} 🧶`); confetti(F.x, F.y, F.z, 50); Sound.chime([0, 4, 7, 12], 523, 0.16);
+  hank(null, pick(["Ye beat her! The great falcon's away! The rest'll leave us be.", "Away she goes! That's the gorge ours now!"]), { force: true, delay: 1 });
+  for (const o of FALCONS) if (o.home && !o.boss) { o.rest = Math.max(o.rest || 0, G.time + KB.calm); if ((o.state === 'circle' || o.state === 'dive') && !o.prey && !o.dog) falconGo(o); }
+}
+// a bark at it: it doesn't care (a 😾, now and then)
+function bossScoff(F) {
+  if (G.time < (F.scoffAt || 0)) return;
+  F.scoffAt = G.time + 1.5; floatText('😾', F.x, F.y + 1.8, F.z, '#fff', 1.4); hint('canyon-boss');
+}
+// its eyrie shaken: a pounce into the pillar's foot while it eats there knocks the sheep loose
+function eyrieShake(d) {
+  const E = CANYON.eyrie, F = BOSS;
+  if (!E || !F || F.state !== 'nest' || !F.prey || Math.hypot(d.x - E.x, d.z - E.z) > E.r + 1.5) return false;
+  SFX.thud(panOf(E.x, E.z), 0.5); shakeCam(0.45); burst(E.x, E.y + 1, E.z, 14, '#9a5236', { speed: 3, up: 2, size: 0.24, life: 0.8, grav: 0 });
+  floatText('💥', E.x, E.y + 2, E.z, '#fff', 1.4); rumble(d.player, 0.9, 0.7, 220);
+  falconDrop(F, true); endLunge(d);
+  return true;
+}
 // what one goes for: a dog now and then, else a sheep in the gorge proper (lambs and stragglers likelier, never rams), not one already marked
-function canyonMark(cs) {
+function canyonMark(cs, dogChance = T.canyon.dogChance) {
   const K = T.canyon, marked = new Set(FALCONS.map(F => F.target).filter(Boolean)), gorge = e => { const s = sAt(e.x, e.z); return s > K.s0 - 4 && s < K.s1; };
   const dogs = cs.filter(e => e.isDog && falconDogOK(e) && !marked.has(e) && gorge(e));
-  if (dogs.length && Math.random() < K.dogChance) return pick(dogs);
+  if (dogs.length && Math.random() < dogChance) return pick(dogs);
   let tot = 0; const w = [];
   for (const s of cs) { if (s.isDog || !falconSheepOK(s) || marked.has(s) || !gorge(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
   let r = Math.random() * tot; for (const [s, k] of w) if ((r -= k) <= 0) return s;
@@ -8445,12 +8634,13 @@ function canyonMark(cs) {
 // who goes: the nearest bird within reach that's perched, rested and not kept on its pillar by a bark
 function canyonBird(e) {
   let best = null, bd = T.canyon.reach;
-  for (const F of FALCONS) { if (!F.home || F.state !== 'perch' || G.time < F.rest) continue; const d = Math.hypot(F.x - e.x, F.z - e.z); if (d < bd) { bd = d; best = F; } }
+  for (const F of FALCONS) { if (!F.home || F.boss || F.state !== 'perch' || G.time < F.rest) continue; const d = Math.hypot(F.x - e.x, F.z - e.z); if (d < bd) { bd = d; best = F; } }
   return best;
 }
 function canyonSwoop(F, e) {   // (also tests)
   F.target = e; F.state = 'circle'; F.t = 0; F.ang = Math.atan2(F.z - e.z, F.x - e.x); F.vy = 5; F.flap = 1; F.prey = F.dog = null;
-  Sound.screech(panOf(F.x, F.z), 0.12); burst(F.x, F.y, F.z, 5, '#4d5866', { speed: 1.2, up: 0.6, size: 0.1, life: 1.4, grav: -1.5 });
+  Sound.screech(panOf(F.x, F.z), F.boss ? 0.24 : 0.12); burst(F.x, F.y, F.z, F.boss ? 12 : 5, '#4d5866', { speed: 1.2, up: 0.6, size: 0.1, life: 1.4, grav: -1.5 });
+  if (F.boss) floatText('❗', e.x, (e.y || 0) + 2.2, e.z, '#ff5a5a', 1.6);   // THE GREAT FALCON: its mark, from the start
   return true;
 }
 // wings beating (gliding while it circles, tucked in the dive, folded on a perch), the shadow on the ground (host and guests alike)
@@ -8472,7 +8662,7 @@ function syncFalcon(F) {
   M.head.rotation.x = st === 'nest' ? 0.4 + Math.max(0, Math.sin(t * 5)) * 0.4 : st === 'perch' ? (LIGHT.night > 0.6 ? 1.2 : 0.6 + Math.max(0, Math.sin(t * 0.8 + F.i * 1.7)) * 0.25) : 0;   // (asleep at night)
   M.head.rotation.y = st === 'perch' && LIGHT.night <= 0.6 ? Math.sin(t * 0.55 + F.i * 2.3) * 0.45 : 0;
   const gy = groundY(F.x, F.z), h = F.y - gy;
-  M.shadow.position.set(F.x, gy + 0.08, F.z); M.shadow.scale.setScalar(1.2 + h * 0.04); M.shadow.material.opacity = clamp(0.45 - h * 0.008, 0.15, 0.45);
+  M.shadow.position.set(F.x, gy + 0.08, F.z); M.shadow.scale.setScalar((1.2 + h * 0.04) * (F.boss ? T.canyon.boss.scale * 0.8 : 1)); M.shadow.material.opacity = clamp(0.45 - h * 0.008, 0.15, 0.45);
 }
 // FALCON CANYON, every frame on every screen: the watchers on the cliffs turn their heads to the flock, feathers drift down
 const _cf = { m: new THREE.Matrix4() };
@@ -8767,7 +8957,7 @@ function stepClock(dt) {
   if (crossed(prev, now, 19.6)) toast('Night is coming — pen the flock!', 'warn');
   if (crossed(prev, now, T.nightStart)) {
     const fc = flockCenter();
-    const n = Math.min(T.coyoteMax, T.coyoteBase + (G.clock.day - 1) * T.coyotePerDay + Math.floor(fc.n / 18));
+    const n = Math.min(T.coyoteMax, T.coyoteBase + (G.clock.day - 1) * T.coyotePerDay + Math.floor(fc.n / 18) + Math.max(0, G.dogs.length - 1) * T.coyotePerDog);
     wakeDens(Math.min(T.denMax, n)); Sound.howl(-0.6, 0.18); setTimeout(() => Sound.howl(0.5, 0.14), 900);
     const allIn = living().every(s => s.pen && s.pen.gateT < 0.05);
     toast(allIn ? 'Coyotes are out — but your flock is safe.' : 'Coyotes are on the prowl!', allIn ? 'good' : 'bad');
@@ -9563,7 +9753,9 @@ const HINTS = {
   'cougar-grab': 'A cougar! Catch it before it climbs its tree: <b>pounce</b> on it, or run right into it, and it drops the sheep.',
   'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
   'team-bark': '😾 Wise to barks! Two dogs <b>bark together</b>: it carries further and always works.',
+  'coyote-wise': '😾 A coyote falls for one bark. Now <b>pounce</b> it.',
   canyon: '🦅 Falcons! <b>Bark</b> near one on its rock and it stays put a while. Keep the flock tight and keep moving.',
+  'canyon-boss': '🦅 The great falcon! Barks don\'t work: <b>pounce</b> it when it swoops low.',
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
   gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / R) and drag it round.',
@@ -9608,7 +9800,9 @@ const TOUCH_HINTS = {
   'cougar-grab': 'Cougar! 💥 it or run into it',
   'falcon-grab': '🦅 📣 under it',
   'team-bark': '😾 📣 + 📣 <b>together</b>',
+  'coyote-wise': '😾 📣 ✖ → 💥',
   canyon: '🦅 📣 near them · keep moving',
+  'canyon-boss': '🦅 📣 ✖ → 💥',
   dawn: 'Morning! <b>Open the gate</b>, let them graze',
   hungry: 'Starving sheep! Find lush grass',
   gates: 'Shut gate: back off, shove again. ⚡ into it: vault. ✊: drag',
@@ -9674,6 +9868,8 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
   $('hCount').textContent = live.length; $('hPen').textContent = `${penned}/${live.length}`;
+  { const B = CANYON.boss, on = !!B.on && G.mode === 'play'; document.body.classList.toggle('boss', on);   // FALCON CANYON: THE GREAT FALCON's hearts
+    if (on) { const hp = '♥'.repeat(clamp(B.hp, 0, 9)) + '♡'.repeat(clamp(B.max - B.hp, 0, 9)); if ($('bossHp').textContent !== hp) $('bossHp').textContent = hp; } }
   const wr = $('hWoolRow'), wv = HANK.clippers || G.wool > 0 ? '' : 'none'; if (wr.style.display !== wv) wr.style.display = wv; $('hWool').textContent = G.wool;   // HANK: shearing
   $('hBorn').textContent = G.stats.born; $('hLost').textContent = lostCount();
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
@@ -11926,7 +12122,6 @@ function lickAdd(p, amt) { const L = p.lick, got = Math.min(amt, Math.max(0, L.c
 // what a bark on w buys now, for pen p: { kind: 'add' (one more, stocked) | 'fill' (a batch) | its id, price }
 function wareDeal(w, p = pens[w.stall.sel] || finalPen) {
   const V = T.vendor;
-  if (w.id === 'cabo') return { kind: 'cabo', price: V.cabo.base + V.cabo.per * caboSheep().length };
   if (!KIT[w.id]) return { kind: w.id, price: (V[w.id] && V[w.id].price) || 0 };
   const add = kitN(p, w.id) < kitMax(p, w.id);
   return { kind: add ? 'add' : 'fill', price: add ? V[w.id].add : V[w.id].price };
@@ -12432,9 +12627,9 @@ const NET_TYPES = {
     tag: 'L', all: () => LAUNCHERS, id: S => LAUNCHERS.indexOf(S), static: true,
     fields: { k: 'a' },
   },
-  cougar: {   // COUGARS: one per lair tree, built the same on every screen
+  cougar: {   // COUGARS: built the same on every screen; lair: tonight's tree
     tag: 'Q', all: () => COUGARS, id: k => k.i, static: true,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's' },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's', lair: { c: 'i', get: k => k.lair.id, set: (k, v) => { if (LAIRS[v]) k.lair = LAIRS[v]; } } },
     animate: (k, dt) => { k.y = groundY(k.x, k.z) + k.h; k.leg += Math.hypot(k.vx, k.vz) * dt * 2.4; },
   },
   falcon: {   // FALCON (and FALCON CANYON's, built the same on every screen); prey travel as s.grabbed ('A' + F.i) or a dog's air kind 'falcon'
@@ -12480,7 +12675,8 @@ const NET_TYPES = {
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
   stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i' } },
-  snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05 } },   // RATTLESNAKES: out how far, striking at what
+  boss: { tag: 'E', one: () => CANYON.boss, fields: { hp: 'i', max: 'i', on: 'b', beaten: 'b' } },   // FALCON CANYON: THE GREAT FALCON's fight (the HUD's hearts)
+  snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05, x: .05, z: .05 } },   // RATTLESNAKES: out how far, striking at what
   yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (a flock summary, not a sheep field)
@@ -13769,7 +13965,7 @@ function debugKeys() {
   if (keyEdge.has('KeyN')) G.clock.hour = 19.9;
   if (keyEdge.has('KeyM')) G.clock.hour = 5.9;
   if (keyEdge.has('KeyK')) spawnCoyotes(1);
-  if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const k = [...COUGARS].sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
+  if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
   if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
   if (keyEdge.has('KeyU')) { const p = pathPoint(T.canyon.s0 - 26, 0); for (const d of G.dogs) { d.x = p.x + 3; d.z = p.z + 3; } for (const s of G.sheep) if (!s.dead) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); s.pen = null; } HANK.x = p.x + 6; HANK.z = p.z + 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 13)); }   // FALCON CANYON: to its mouth
   if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
@@ -13782,7 +13978,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = finalPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
-window.GAME = { FALCON, FALCONS, CANYON, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarHunters, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
