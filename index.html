@@ -2835,7 +2835,7 @@ const NESTS = [];
 {
   const nr = mulberry32(51237), nrr = (a, b) => a + nr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
-  for (const s0 of [150, 330, 470, 640, 664, 1000]) {
+  for (const s0 of [150, 330, 470, 640, 664]) {   // (none past FALCON CANYON: the falcon's gone by then)
     let best = null;
     for (let t = 0; t < 120 && !best; t++) {
       const ss = s0 + nrr(-30, 30), idx = pathIdx(ss), side = nr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
@@ -9400,14 +9400,17 @@ const nestById = v => v === 99 ? CANYON.eyrie : v >= 100 ? CANYON.perches[v - 10
 const falconSheepOK = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;
 const falconDogOK = d => !d.air && !d.heldBy && !d.ko && !d.maul && !(d.stunT > 0) && G.dogs.includes(d);
 function falconPick() {
-  const C = T.falcon, dogs = G.dogs.filter(falconDogOK);
+  const C = T.falcon, dogs = G.dogs.filter(d => falconDogOK(d) && falconLand(d));
   if (dogs.length && Math.random() < C.dogChance) return pick(dogs);
   let tot = 0; const w = [];
-  for (const s of G.sheep) { if (!falconSheepOK(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
+  for (const s of G.sheep) { if (!falconSheepOK(s) || !falconLand(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
   let r = Math.random() * tot; for (const [s, k] of w) if ((r -= k) <= 0) return s;
   return dogs.length ? pick(dogs) : null;
 }
 const falconTargetOK = e => e && (e.isDog ? falconDogOK(e) : falconSheepOK(e));
+// FALCON: hunts only short of FALCON CANYON's far end. Once the flock's past it (the snakes, the MOUNTAIN PASS, the sea): gone
+// for the journey (G.falconGone)
+const falconLand = e => e.x < SEA_X0 && sAt(e.x, e.z) < T.canyon.s1;
 // fly toward (tx, ty, tz) at spd, turning and banking
 function falconFly(F, tx, ty, tz, spd, dt, turn = 3) {
   const dx = tx - F.x, dy = ty - F.y, dz = tz - F.z, d = Math.hypot(dx, dy, dz) || 1, v = d < 2 ? spd * d / 2 : spd, q = Math.min(1, turn * dt);
@@ -9494,10 +9497,13 @@ function resetFalcon() {
     if (F.home) { const P = F.home; Object.assign(F, { state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, look: P.yaw, bank: 0, rest: 0, flap: 0 }); }
     else F.state = 'away';
   }
-  G.falconIn = T.falcon.first; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
+  G.falconIn = T.falcon.first; G.falconGone = false; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
   Object.assign(CANYON.boss, { hp: 0, max: 0, on: false, beaten: false, met: false, next: T.canyon.boss.first });
 }
-function updateFalcon(dt, dtH) { updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH); }
+function updateFalcon(dt, dtH) {
+  if (!G.falconGone) { const fc = flockCenter(); if (fc.n && !falconLand(fc)) G.falconGone = true; }   // the flock's through FALCON CANYON
+  updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH);
+}
 function falconStep(F, dt, dtH) {
   const C = T.falcon, K = T.canyon; F.t += dt;
   if (F.prey && (F.prey.dead || !G.sheep.includes(F.prey))) F.prey = null;
@@ -9505,6 +9511,7 @@ function falconStep(F, dt, dtH) {
   switch (F.state) {
     case 'away': {
       if (F !== FALCON || !C.on || G.mode !== 'play' || G.clock.hour < C.from || G.clock.hour >= C.to) break;   // (a beaten GREAT FALCON stays gone)
+      if (G.falconGone) break;   // past FALCON CANYON: gone for good
       if ((G.falconIn = (G.falconIn ?? C.first) - dtH) > 0) break;
       G.falconIn = rnd(C.every[0], C.every[1]);
       falconCome(falconPick());
@@ -9521,7 +9528,7 @@ function falconStep(F, dt, dtH) {
       break;
     }
     case 'circle': {   // high up, round and round over its mark (from a pillar: up off it and round, lower and quicker)
-      const e = F.target; if (!falconTargetOK(e)) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
+      const e = F.target; if (!falconTargetOK(e) || (!F.home && !falconLand(e))) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
       const KB = K.boss, t = F.target, cr = F.boss ? KB.circleR : F.home ? K.circleR : C.circleR, ch = F.boss ? KB.circleH : F.home ? K.circleH : C.circleH;
       F.ang += dt * (F.home ? 1.6 : 0.9);
       falconFly(F, t.x + Math.cos(F.ang) * cr, groundY(t.x, t.z) + ch, t.z + Math.sin(F.ang) * cr, F.boss ? KB.spd : F.home ? 13 : 11, dt, 4);
@@ -9529,7 +9536,7 @@ function falconStep(F, dt, dtH) {
       break;
     }
     case 'dive': {
-      const e = F.target; if (!falconTargetOK(e) || F.t > C.diveMax) { falconGo(F); break; }
+      const e = F.target; if (!falconTargetOK(e) || (!F.home && !falconLand(e)) || F.t > C.diveMax) { falconGo(F); break; }
       const gy = groundY(e.x, e.z) + (e.isDog ? 0.9 : 1.1) + (F.boss ? 0.6 : 0);
       falconFly(F, e.x + (e.vx || 0) * 0.15, gy, e.z + (e.vz || 0) * 0.15, F.boss ? K.boss.diveSpd : C.diveSpd, dt, 6);
       if (Math.random() < dt * 25) burst(F.x, F.y, F.z, 1, '#ffffff', { speed: 0.3, up: 0.1, size: 0.12, life: 0.35, grav: 0 });
