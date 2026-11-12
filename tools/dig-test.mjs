@@ -9,7 +9,7 @@ const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name
 
 // 1. the spots: spread down the trail up to the MOUNTAIN PASS (none in the snow), on dry open ground off the worn path
 const r1 = await h.page.evaluate(() => {
-  const { DIGS, sAt, sdfAt, CAMPS, T, passK } = GAME, PATH_LEN = T.pass.s0;   // (the pass: none)
+  const { sAt, sdfAt, CAMPS, T, passK } = GAME, PATH_LEN = T.pass.s0, DIGS = GAME.DIGS.filter(d => !d.isle);   // (the pass: none; the islands' chests: sail-test)
   const s = DIGS.map(d => sAt(d.x, d.z));
   return { n: DIGS.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, up: s.filter(v => passK(v) > 0.3).length, minSdf: Math.min(...DIGS.map(d => sdfAt(d.x, d.z))),
     nearCamp: DIGS.filter(d => CAMPS.some(c => Math.hypot(d.x - c.x, d.z - c.z) < c.R + 5)).length };
