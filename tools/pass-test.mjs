@@ -10,7 +10,7 @@
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
 //   rock      three sheep flung into the spire up the side trail: it falls on him (an arm sticks out), his cave thaws
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
-//   finish    the yeti beaten, the flock shut in his cave: down through the mountain to the quay at Cold Harbour (SAILING); one left outside is left behind
+//   finish    the yeti beaten, the flock shut in his cave: through the mountain, out of its lower mouth above Cold Harbour (SAILING); one left outside is left behind
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
@@ -235,10 +235,10 @@ if (!only || only === 'finish') {
     p.phi = 0; GAME.updateGateGeometry(p); run(1); const soon = { mode: G.mode, sea: SEA.on };
     run(T.pass.finish + 0.5);
     return { inn, n: L.length, soon, mode: G.mode, sea: SEA.on, docked: SEA.docked, quay: QUAY.on, gate: DECK.gateT, live: living().length, left: G.lost.filter(m => m.why === 'left').length, lastDead: last.dead,
-      onQuay: living().filter(s => onQuay(s.x, s.z, 0.2) || onDeck(s.x, s.z)).length, dogs: G.dogs.every(d => onQuay(d.x, d.z)) };
+      onQuay: living().filter(s => onQuay(s.x, s.z, 0.2) || onDeck(s.x, s.z)).length, dogs: G.dogs.every(d => onQuay(d.x, d.z)), up: +(Math.min(...living().map(s => GAME.groundY(s.x, s.z))) - GAME.BOAT.y).toFixed(1) };
   });
-  ok(`the cave shut on ${r.inn}/${r.n}: it waits for the last, then it's down through the mountain to Cold Harbour, the boat alongside`, r.inn === r.n - 1 && r.soon.mode === 'play' && !r.soon.sea && r.mode === 'play' && r.sea && r.docked && r.quay && r.gate > 0.9, r);
-  ok(`${r.onQuay} sheep and the dogs on the quay; the one not shut in is left on the mountain`, r.live === r.inn && r.onQuay === r.inn && r.dogs && r.left === 1 && r.lastDead, r);
+  ok(`the cave shut on ${r.inn}/${r.n}: it waits for the last, then it's through the mountain: Cold Harbour below, the boat alongside`, r.inn === r.n - 1 && r.soon.mode === 'play' && !r.soon.sea && r.mode === 'play' && r.sea && r.docked && r.quay && r.gate > 0.9, r);
+  ok(`${r.onQuay} sheep and the dogs out of its lower mouth, ${r.up} m up the path; the one not shut in is left on the mountain`, r.live === r.inn && r.onQuay === r.inn && r.dogs && r.up > 15 && r.left === 1 && r.lastDead, r);
 }
 
 if (!only || only === 'rock') {

@@ -18,8 +18,8 @@ desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play t
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass: cold, blizzards,
 fires, ice, crevasses, goats; the yeti on top. Beat him, shut the flock in his
-cave: it leads down to Cold Harbour.
-The sea (issue #74): herd the flock up the gangway, cast off; the flock on a boat's deck, sailed island to island to Cabo
+cave: it comes out lower down, above Cold Harbour.
+The sea (issue #74): herd the flock down the path and up the gangway, cast off; the flock on a boat's deck, sailed island to island to Cabo
 (wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Cabo: that wins.
 
 ### Run
@@ -31,7 +31,7 @@ The sea (issue #74): herd the flock up the gangway, cast off; the flock on a boa
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
   state and functions.
-- `?sea` (`?sea=2`: from the third island; `?sea=dock`: at the quay, as out of the cave): start at sea. `GAME.seaStart({ leg, under, dock })`.
+- `?sea` (`?sea=2`: from the third island; `?sea=dock`: above the harbour, as out of the cave): start at sea. `GAME.seaStart({ leg, under, dock })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
@@ -77,8 +77,8 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `waterLevel(x, z)` (the water's top there: flat ashore, the waves at sea), `pen.deck` / `pen.lock` (the boat's deck),
 `seaShove({ heel, yaw, surge, sway, ju, jv })`, `seaOverRail(e, side, out, up, how)`, `seaStress(s)` / `seaSheepDeck(s, dt)`,
 `s.seaHold`, `s.lure`, `seaBark(d, k, team)`, `seaPounce(d)`, `seaFx(kind, k, x, z, a)`, `seaCheckpoint(w)` → `SEA.checkpoint`,
-`SEA.onSave(w, snap)` (for the save system to come), `seaFromCave(inn)` (the pass's cave → the quay), `seaCastOff()`,
-`QUAY` / `seaGround(x, z)` (what there is to stand on out there).
+`SEA.onSave(w, snap)` (for the save system to come), `seaFromCave(inn, pen)` (the pass's cave → its lower mouth above the quay), `seaCastOff()`,
+`QUAY` / `seaGround(x, z)` / `seaH(x, z)` (what there is to stand on out there, and how high).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -112,7 +112,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|blizzard\|ice\|crev\|goat\|yeti\|rock\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the spire falls on him; burning sheep; the cave: down to the quay, one left behind |
+| `pass-test.mjs [layout\|cold\|fire\|blizzard\|ice\|crev\|goat\|yeti\|rock\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the spire falls on him; burning sheep; the cave: out above the harbour, one left behind |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
@@ -120,7 +120,7 @@ Run the ones touching your change; report the numbers.
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `input-test.mjs` | Ⓐ on slow frames: quick taps between frames, held = one bark, early press waits out the cooldown (`padPoll`, `T.barkBuf`) |
-| `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchoring (holds: saved, mended; drags), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the first minute (weigh, take the tiller, away), the quay (still, no leaving sheep, the edge, herded aboard, lashed, cast off, away), the land untouched |
+| `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchoring (holds: saved, mended; drags), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the first minute (weigh, take the tiller, away), Cold Harbour (out of the cave up the path, rock off it, the quay's edge, herded down and aboard, lashed, cast off, away), the land untouched |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
@@ -329,7 +329,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   - **The spire** (`SIDE`, `ROCK`): the hidden side trail (`sideD`, single file) up behind the west
     rim to a ledge; `cracks` sheep flying into the spire: it falls on him ('crushed', an arm out).
   - **His cave** (`FINAL`, `finalPen`): iced shut (`p.frozen`) till he's beaten. Then the flock
-    shut in it (all, or some for `finish` s): through the mountain to the quay at Cold Harbour (`seaFromCave`); the ones
+    shut in it (all, or some for `finish` s): through the mountain, out of its lower mouth above Cold Harbour (`seaFromCave`); the ones
     not shut in are left behind (`'left'`). Online with friends it still ends there (`finishGame(n)`): they can't see the sea yet.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
@@ -431,14 +431,17 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 The yeti's cave leads down to it (`seaFromCave`); dev: `?sea`, `I`. Guests don't see the sea yet (no `NET_TYPES`):
 host / offline only, so with friends online the journey still ends at the cave.
 
-- **Cold Harbour's quay** (`QUAY`, `DOCK`, `SEA.docked`, `seaStart({ dock })`): she lies alongside, still (`seaMoored`), sheet let
-  fly; the quay is ground while she does (`seaGround`: deck ∪ quay, lapping at the gangway), the flock and the dogs on it. The
-  gangway (the deck pen's gate, unlocked, at the quay's aft end: the open leaf lies along the rail) is open: herd them aboard
-  (stocked troughs draw the hungry). Dogs stop at the quay's edge (a leap goes in; up the ladder); a sheep in the harbour
-  scrambles out. Every sheep and dog aboard: Hank shuts and lashes it (`seaGangway`). Bow station, stick up: `seaCastOff` (not
-  with sheep ashore: 🐑 n ✖): the quay's left behind, Hank shoves off and minds the helm down the fairway (`SEA.pilot`) till a
-  dog takes the tiller. No morning rush off the deck, nobody leaves it to graze; once aboard a sheep doesn't walk back off (`pen.mouthSeg`).
-
+- **Cold Harbour** (`QUAY`, `DOCK`, `SEA.docked`, `seaStart({ dock })`): the cave's lower mouth, a landing, a path down the
+  mountainside (`QUAY.path`: [u, v, height, half width], deck coords), the pier, the quay; she lies alongside, still (`seaMoored`),
+  sheet let fly. All of it is ground while she does (`seaGround`: deck ∪ quay ∪ path; `seaH` its height; `quayM` the mountain's
+  shape, drawn from the same function). Off the path: rock, solid but not walkable (dogs are walled in: `seaDogSdf`; a sheep
+  bonked onto it slides back). The flock and the dogs come out at the top: herd them down. The gangway (the deck pen's gate,
+  unlocked, at the quay's aft end: the open leaf lies along the rail) is open (stocked troughs draw the hungry); once aboard
+  a sheep doesn't walk back off (`pen.mouthSeg`). Dogs stop at the pier's and the quay's edge (a leap goes in; up the ladder);
+  a sheep in the harbour scrambles out. Every sheep and dog aboard: Hank shuts and lashes it (`seaGangway`). Bow station, stick
+  up: `seaCastOff` (not with sheep ashore: 🐑 n ✖): the land's left behind, Hank shoves off and minds the helm down the
+  fairway (`SEA.pilot`) till a dog takes the tiller. Alongside, the camera follows the dogs as ashore; the compass and an edge
+  arrow point to the boat. No morning rush off the deck, nobody leaves it to graze. Its "island" (`ROUTE[0]`) is that mountain.
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway
   gate lashed shut: `pen.lock`) out in the sea zone (`x > SEA_X0`: `terrainH` / `sdfIn` / `trailInfo` / grass answer
   for it), bow up the screen. `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords)
