@@ -1,8 +1,9 @@
-// Headless checks for ROPES and the Ⓧ taps: one rope a leg; tap to bite (anywhere along it), drag it (it follows, links hold,
-// on the ground, no stamina), one tap drops it, quick taps shake it (a wave); taps on a sheep (buffered bite, shake, drop;
-// Ⓑ no longer shakes); TUG OF WAR: two dogs on it, the knot over a line wins, equal heaves hold, out of stamina loses; reset.
-// TEAMS: 3 and 4 dogs on it, each side heaving as one; HANK: brought it, he takes the far end and tugs (one planted dog loses, two win).
-// node tools/rope-test.mjs [layout|drag|taps|sheep|tug|even|tired|team|hank|reset]
+// Headless checks for ROPES and Ⓧ held: one rope a leg; hold to bite (anywhere along it), drag it (it follows, links hold,
+// on the ground, no stamina), let go drops it, Ⓑ shakes it (a wave); on a sheep (bites as it gets there, no re-bite after a
+// slip till let go, Ⓑ shakes, let go drops); TUG OF WAR: two dogs on it, Ⓑ heaves, the knot over a line wins, equal heaves
+// hold, out of stamina loses; reset. TEAMS: 3 and 4 dogs on it, each side heaving as one; HANK: brought it, he takes the far
+// end and tugs (one planted dog loses, two win).
+// node tools/rope-test.mjs [layout|drag|hold|sheep|tug|even|tired|team|hank|reset]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [];
@@ -16,7 +17,10 @@ const setup = async () => { errors.push(...h.errors); await h.close(); h = await
   const H = window.H = {};
   H.inp = (dx, dz, x = {}) => { const l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l, ...x }; };
   H.run = (sec, fn) => { for (let t = 0; t < sec - 1e-9; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return sec; };
-  H.tap = (p, extra = {}) => { p.bot = { ...extra, grabTap: true }; step(0.025); p.bot = { ...extra }; };
+  // Ⓧ held: H.grab bites (and keeps holding), H.hold walks holding on (x.pounce: Ⓑ, a shake / a heave), H.shake: Ⓑ once
+  H.grab = (p, extra = {}) => { p.bot = { ...extra, grab: true }; step(0.025); };
+  H.hold = (dx, dz, x = {}) => H.inp(dx, dz, { grab: true, ...x });
+  H.shake = p => { p.bot = { grab: true, pounce: true }; step(0.025); p.bot = { grab: true }; };
   H.place = (e, x, z, yaw) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = groundY(x, z); if (yaw !== undefined) e.yaw = yaw; if (e.isDog && e.air && e.air.swim) e.air = null; };   // (out of the river if it was put in it)
   H.far = (x, z) => G.sheep.forEach((o, i) => H.place(o, x + 70 + (i % 6) * 2, z + 70 + Math.floor(i / 6) * 2));
   H.links = R => { let m = 0; for (let k = 0; k < R.n - 1; k++) m = Math.max(m, Math.abs(Math.hypot(R.x[k + 1] - R.x[k], R.y[k + 1] - R.y[k], R.z[k + 1] - R.z[k]) - T.rope.seg) / T.rope.seg); return +m.toFixed(3); };
@@ -42,42 +46,39 @@ if (want('drag')) {
     const { G, T, ROPES } = GAME, d = G.dogs[0], p = d.player, R = ROPES[0], out = {};
     H.far(R.cx, R.cz); H.place(d, R.cx - 1.5, R.cz, Math.PI / 2); p.bot = {};
     H.run(0.2); out.notYet = !d.holding;
-    H.tap(p); out.bit = d.holding === R && d.holdKind === 'rope' && d.ropeI >= 0; out.grip = d.ropeI;
+    H.grab(p); out.bit = d.holding === R && d.holdKind === 'rope' && d.ropeI >= 0; out.grip = d.ropeI;
     const c0 = { x: R.cx, z: R.cz }; d.stamina = 0.6;
-    p.bot = H.inp(1, 0.25); let worst = 0, low = 9; H.run(3, () => { worst = Math.max(worst, H.links(R)); low = Math.min(low, H.under(R)); });
+    p.bot = H.hold(1, 0.25); let worst = 0, low = 9; H.run(3, () => { worst = Math.max(worst, H.links(R)); low = Math.min(low, H.under(R)); });
     out.moved = H.r(Math.hypot(R.cx - c0.x, R.cz - c0.z)); out.worstLink = worst; out.under = low; out.stamina = H.r(d.stamina);
     const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw); let back = 0; for (let k = 0; k < R.n; k++) back = Math.min(back, (R.x[k] - d.x) * fx + (R.z[k] - d.z) * fz);
     out.trails = H.r(back); out.still = d.holding === R;
     p.bot = {}; H.run(1.5); out.settled = R.live <= 0.5 || true; out.links = H.links(R);
     return out;
   });
-  ok('nothing till Ⓧ; a tap bites it', r.notYet && r.bit, r);
+  ok('nothing till Ⓧ; held, it bites', r.notYet && r.bit, r);
   ok(`dragged ${r.moved} m, trailing ${-r.trails} m behind`, r.moved > 15 && r.trails < -4 && r.still, r);
   ok(`links hold (worst ${Math.round(r.worstLink * 100)}%), never under the ground`, r.worstLink < 0.1 && r.under > 0.03, r);
   ok(`carrying it costs no stamina (0.6 → ${r.stamina})`, r.stamina > 0.6, r);
 }
 
-if (want('taps')) {
+if (want('hold')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { G, T, ROPES } = GAME, d = G.dogs[0], p = d.player, R = ROPES[0], out = {};
     H.far(R.cx, R.cz); H.line(R, R.hx, R.hz, 1, 0); H.place(d, R.x[3] - 1.05, R.z[3], Math.PI / 2); p.bot = {};
-    H.tap(p); out.bit = d.holding === R; out.grip = d.ropeI;
-    H.run(0.5);
-    H.tap(p); out.heldAfterTap = d.holding === R; H.run(0.45); out.droppedAfter = !d.holding;
-    H.place(d, R.x[3] - 1.05, R.z[3], Math.PI / 2); H.run(0.4); H.tap(p); out.again = d.holding === R; H.run(0.5);
+    H.grab(p); out.bit = d.holding === R; out.grip = d.ropeI;
+    H.run(0.5); out.held = d.holding === R;
+    p.bot = {}; GAME.step(0.025); out.dropped = !d.holding;
+    H.place(d, R.x[3] - 1.05, R.z[3], Math.PI / 2); H.run(0.4); H.grab(p); out.again = d.holding === R; H.run(0.5);
     const x0 = Array.from(R.x), z0 = Array.from(R.z);
-    for (let i = 0; i < 5; i++) { H.tap(p); H.run(0.1); }
-    out.shook = d.shakeT > 0 || true; H.run(0.05);
+    d.pounceCD = 0; for (let i = 0; i < 4; i++) { H.shake(p); H.run(0.3); }
     let wave = 0; for (let k = d.ropeI + 3; k < R.n; k++) wave = Math.max(wave, Math.hypot(R.x[k] - x0[k], R.z[k] - z0[k]));
-    out.wave = H.r(wave); H.run(0.6); out.keptShaking = d.holding === R;
-    // Ⓑ with it in its mouth: no pounce, still held
-    d.pounceCD = 0; p.bot = { pounce: true }; GAME.step(0.025); p.bot = {}; out.noPounce = !(d.pounceT > 0) && d.holding === R;
+    out.wave = H.r(wave); out.noPounce = !(d.pounceT > 0); H.run(0.6); out.keptShaking = d.holding === R;
+    p.bot = {}; GAME.step(0.025);
     return out;
   });
-  ok('one tap: still held a moment, then dropped', r.bit && r.heldAfterTap && r.droppedAfter, r);
-  ok(`quick taps shake it: a wave runs down (${r.wave} m), still held`, r.again && r.wave > 0.15 && r.keptShaking, r);
-  ok('Ⓑ with it in its mouth: no pounce', r.noPounce, r);
+  ok('Ⓧ held: bites, keeps it; let go: dropped at once', r.bit && r.held && r.dropped, r);
+  ok(`Ⓑ holding it: a wave runs down (${r.wave} m), still held, no pounce`, r.again && r.wave > 0.15 && r.keptShaking && r.noPounce, r);
 }
 
 if (want('sheep')) {
@@ -86,18 +87,18 @@ if (want('sheep')) {
     const { G, T } = GAME, d = G.dogs[0], p = d.player, out = {};
     const s = G.sheep.find(o => !o.ram && !o.lamb), x = s.x, z = s.z;
     for (const o of G.sheep) if (o !== s) H.place(o, x + 40, z + 40);
-    // pressed out of reach: it bites as it gets there (a moment later); pressed too long before, it doesn't
-    H.place(d, x - 6, z, Math.PI / 2); p.bot = {}; H.tap(p); H.run(0.3); H.place(s, x, z); H.place(d, x - 2, z, Math.PI / 2); H.run(0.1); out.stale = !d.holding;
-    H.place(d, x - 6, z, Math.PI / 2); H.tap(p); out.early = !d.holding; H.place(s, x, z); H.place(d, x - 2, z, Math.PI / 2); H.run(0.1); out.buffered = d.holding === s;
+    // held out of reach: it bites as it gets there; lost (a slip) with Ⓧ still down: no bite till it's let go
+    H.place(d, x - 6, z, Math.PI / 2); p.bot = {}; H.grab(p); out.early = !d.holding; H.place(s, x, z); H.place(d, x - 2, z, Math.PI / 2); H.run(0.1); out.reached = d.holding === s;
+    GAME.releaseHold(d, false); H.place(s, x, z); H.place(d, x - 2, z, Math.PI / 2); H.run(0.2); out.locked = !d.holding;
+    p.bot = {}; GAME.step(0.025); H.grab(p); out.again = d.holding === s;
     H.run(0.6); const st = s.stress;
-    H.tap(p); H.run(0.08); H.tap(p); H.run(0.08); H.tap(p); out.shakes = d.shakeT > 0; H.run(0.6); out.held = d.holding === s; out.stressUp = s.stress > st;
-    d.pounceCD = 0; p.bot = { pounce: true }; GAME.step(0.025); p.bot = {}; out.noPounce = !(d.pounceT > 0) && d.holding === s;
-    H.run(0.5); H.tap(p); out.heldAfterTap = d.holding === s; H.run(0.45); out.dropped = !d.holding && !s.heldBy;
+    d.pounceCD = 0; H.shake(p); out.shakes = d.shakeT > 0; out.noPounce = !(d.pounceT > 0); H.run(0.6); out.held = d.holding === s; out.stressUp = s.stress > st;
+    p.bot = {}; GAME.step(0.025); out.dropped = !d.holding && !s.heldBy;
     return out;
   });
-  ok('pressed a moment early, it still bites (not long before)', r.stale && r.early && r.buffered, r);
-  ok('quick taps shake it (stress up), still held; Ⓑ: no pounce', r.shakes && r.held && r.stressUp && r.noPounce, r);
-  ok('one tap: dropped a moment later', r.heldAfterTap && r.dropped, r);
+  ok('Ⓧ held out of reach: bites as it gets there; after a slip, not till let go', r.early && r.reached && r.locked && r.again, r);
+  ok('Ⓑ shakes it (stress up), still held, no pounce', r.shakes && r.held && r.stressUp && r.noPounce, r);
+  ok('let go: dropped', r.dropped, r);
 }
 
 // two dogs on a straight rope, A at node ~2 facing +x, B at node ~25 facing -x
@@ -108,7 +109,7 @@ const tugSetup = () => h.page.evaluate(() => {
   H.far(R.hx, R.hz); H.line(R, R.hx - 5, R.hz, 1, 0);
   H.place(a, R.x[2] - 1.05, R.z[2], Math.PI / 2); H.place(b, R.x[25] + 1.05, R.z[25], -Math.PI / 2); pa.bot = {}; pb.bot = {};
   for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; }
-  H.tap(pa); H.tap(pb); H.run(0.05);
+  H.grab(pa); H.grab(pb); H.run(0.05);
   return { a: a.ropeI, b: b.ropeI, tug: !!R.tug, k: R.tug && R.tug.k };
 });
 
@@ -119,13 +120,13 @@ if (want('tug')) {
   const r = await h.page.evaluate(() => {
     const { G, ROPES, T } = GAME, [a, b] = G.dogs, pa = a.player, pb = b.player, R = ROPES[1], out = {}, bx = b.x, st = a.stamina;
     let t = 0;
-    const end = H.run(8, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25); if (k !== t) { t = k; pa.bot = H.inp(-1, 0, { grabTap: true }); } else pa.bot = H.inp(-1, 0); });
+    const end = H.run(8, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25); if (k !== t) { t = k; pa.bot = H.hold(-1, 0, { pounce: true }); } else pa.bot = H.hold(-1, 0); });
     pa.bot = {};
     out.secs = H.r(end); out.over = !R.tug; out.aHolds = a.holding === R; out.bLost = !b.holding; out.bDown = b.stunT > 0; out.dragged = H.r(bx - b.x);
     out.staminaUsed = H.r(st - a.stamina); out.tugs = G.stats.tugs;
     return out;
   });
-  ok(`walking back and tapping wins it (${r.secs} s): the other's dragged ${r.dragged} m, yanked off its feet`, r.over && r.aHolds && r.bLost && r.bDown && r.dragged > 2 && r.tugs === 1, r);
+  ok(`walking back and tapping Ⓑ wins it (${r.secs} s): the other's dragged ${r.dragged} m, yanked off its feet`, r.over && r.aHolds && r.bLost && r.bDown && r.dragged > 2 && r.tugs === 1, r);
   ok(`heaving costs stamina (${r.staminaUsed})`, r.staminaUsed > 0.05, r);
 }
 
@@ -134,7 +135,7 @@ if (want('even')) {
   await tugSetup();
   const r = await h.page.evaluate(() => {
     const { G, ROPES } = GAME, pa = G.dogs[0].player, pb = G.dogs[1].player, R = ROPES[1];
-    pa.bot = H.inp(-1, 0); pb.bot = H.inp(1, 0); let worst = 0;
+    pa.bot = H.hold(-1, 0); pb.bot = H.hold(1, 0); let worst = 0;
     H.run(2.5, () => { worst = Math.max(worst, Math.abs(R.tug ? R.tug.off : 9)); });
     pa.bot = pb.bot = {};
     return { on: !!R.tug, worst: H.r(worst), links: H.links(R), gap: H.r(Math.hypot(G.dogs[0].x - G.dogs[1].x, G.dogs[0].z - G.dogs[1].z)) };
@@ -148,7 +149,7 @@ if (want('tired')) {
   const r = await h.page.evaluate(() => {
     const { G, ROPES } = GAME, [a, b] = G.dogs, pa = a.player, pb = b.player, R = ROPES[1];
     b.stamina = 0.15; let t = -1;
-    const end = H.run(8, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; pa.bot = H.inp(-1, 0, x ? { grabTap: true } : {}); pb.bot = H.inp(1, 0, x ? { grabTap: true } : {}); });
+    const end = H.run(8, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; pa.bot = H.hold(-1, 0, x ? { pounce: true } : {}); pb.bot = H.hold(1, 0, x ? { pounce: true } : {}); });
     pa.bot = pb.bot = {};
     return { secs: H.r(end), over: !R.tug, aHolds: a.holding === R, bLost: !b.holding, bStamina: H.r(b.stamina) };
   });
@@ -161,12 +162,12 @@ if (want('team')) {
   const r = await h.page.evaluate(() => {
     const { G, ROPES, joinPlayer } = GAME, R = ROPES[1], out = {};
     joinPlayer({ kind: 'bot', index: 2 }); joinPlayer({ kind: 'bot', index: 3 });
-    const [a, b, c, e] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = {}; }
+    const [a, b, c, e] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = d.holding ? { grab: true } : {}; }
     H.place(c, R.x[7] - 0.4, R.z[7] + 0.9, Math.PI); H.place(e, R.x[20] + 0.4, R.z[20] + 0.9, Math.PI);
-    c.player.bot = {}; H.tap(c.player); out.third = c.holding === R; out.thirdSide = c.tugSide;
+    c.player.bot = {}; H.grab(c.player); out.third = c.holding === R; out.thirdSide = c.tugSide;
     // 2 v 1: both walking back beat one walking back and tapping
-    a.player.bot = H.inp(-1, 0); c.player.bot = H.inp(-1, 0); let t = -1;
-    const end = H.run(10, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; b.player.bot = H.inp(1, 0, x ? { grabTap: true } : {}); });
+    a.player.bot = H.hold(-1, 0); c.player.bot = H.hold(-1, 0); let t = -1;
+    const end = H.run(10, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; b.player.bot = H.hold(1, 0, x ? { pounce: true } : {}); });
     for (const d of G.dogs) d.player.bot = {};
     out.secs = H.r(end); out.over = !R.tug; out.aWins = a.holding === R && c.holding === R; out.bLost = !b.holding;
     // 4 dogs: 2 v 2 on a fresh rope, the 4th bites too, even heaves hold
@@ -174,9 +175,9 @@ if (want('team')) {
     const R2 = ROPES[2]; H.far(R2.hx, R2.hz); H.line(R2, R2.hx - 5, R2.hz, 1, 0);
     H.place(a, R2.x[2] - 1.05, R2.z[2], Math.PI / 2); H.place(b, R2.x[25] + 1.05, R2.z[25], -Math.PI / 2);
     H.place(c, R2.x[6] - 0.4, R2.z[6] + 0.9, Math.PI); H.place(e, R2.x[21] + 0.4, R2.z[21] + 0.9, Math.PI);
-    for (const d of G.dogs) H.tap(d.player); H.run(0.05);
+    for (const d of G.dogs) H.grab(d.player); H.run(0.05);
     out.four = G.dogs.filter(d => d.holding === R2).length; out.tug4 = !!R2.tug;
-    a.player.bot = c.player.bot = H.inp(-1, 0); b.player.bot = e.player.bot = H.inp(1, 0); let worst = 0;
+    a.player.bot = c.player.bot = H.hold(-1, 0); b.player.bot = e.player.bot = H.hold(1, 0); let worst = 0;
     H.run(2.5, () => { worst = Math.max(worst, Math.abs(R2.tug ? R2.tug.off : 9)); });
     for (const d of G.dogs) d.player.bot = {};
     out.worst4 = H.r(worst); out.links4 = H.links(R2);
@@ -194,7 +195,7 @@ if (want('hank')) {
     if (G.dogs.length < 2) joinPlayer({ kind: 'bot', index: 1 });
     const [a, b] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = {}; }
     H.far(R.hx, R.hz); H.line(R, R.hx - 5, R.hz, 1, 0);
-    H.place(a, R.x[2] - 1.05, R.z[2], Math.PI / 2); H.place(b, R.hx, R.hz + 30); H.tap(a.player);
+    H.place(a, R.x[2] - 1.05, R.z[2], Math.PI / 2); H.place(b, R.hx, R.hz + 30); H.grab(a.player);
     H.place(HANK, R.x[2] - 1.2, R.z[2] + 2.2); HANK.goal = null; HANK.ropeAgain = 0;
     const t = H.run(10, () => !!R.tug);
     return { held: a.holding === R, want: !!HANK.ropeWant || HANK.rope === R, secs: H.r(t), tug: !!R.tug, hank: HANK.rope === R, end: HANK.ropeI, k: R.tug && R.tug.k };
@@ -212,9 +213,9 @@ if (want('hank')) {
   await hankSetup();
   const r2 = await h.page.evaluate(() => {
     const { G, ROPES, HANK } = GAME, R = ROPES[1], [a, b] = G.dogs;
-    H.place(b, R.x[5] - 0.9, R.z[5], Math.PI / 2); H.tap(b.player); const team = b.holding === R && b.tugSide === a.tugSide;
+    H.place(b, R.x[5] - 0.9, R.z[5], Math.PI / 2); H.grab(b.player); const team = b.holding === R && b.tugSide === a.tugSide;
     const hx = HANK.x; let t = -1;
-    const end = H.run(15, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; for (const d of [a, b]) d.player.bot = H.inp(-1, 0, x ? { grabTap: true } : {}); });
+    const end = H.run(15, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; for (const d of [a, b]) d.player.bot = H.hold(-1, 0, x ? { pounce: true } : {}); });
     for (const d of [a, b]) d.player.bot = {};
     return { team, secs: H.r(end), over: !R.tug, won: a.holding === R && b.holding === R, dragged: H.r(HANK.x - hx), stumble: HANK.stumble > 0, hankFree: !HANK.rope };
   });
@@ -222,7 +223,7 @@ if (want('hank')) {
   await hankSetup();
   const r3 = await h.page.evaluate(() => {
     const { G, ROPES, HANK } = GAME, R = ROPES[1], a = G.dogs[0]; let t = -1;
-    const end = H.run(30, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; a.player.bot = H.inp(-1, 0, x ? { grabTap: true } : {}); });
+    const end = H.run(30, tt => { if (!R.tug) return true; const k = Math.floor(tt / 0.25), x = k !== t; t = k; a.player.bot = H.hold(-1, 0, x ? { pounce: true } : {}); });
     a.player.bot = {};
     return { secs: H.r(end), over: !R.tug, won: a.holding === R };
   });
@@ -234,8 +235,8 @@ if (want('reset')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { G, ROPES, resetRopes } = GAME, d = G.dogs[0], p = d.player, R = ROPES[2];
-    H.far(R.cx, R.cz); H.place(d, R.cx - 1.5, R.cz, Math.PI / 2); H.tap(p); const held = d.holding === R;
-    p.bot = H.inp(1, 0); H.run(2); p.bot = {}; const moved = Math.hypot(R.cx - R.hx, R.cz - R.hz);
+    H.far(R.cx, R.cz); H.place(d, R.cx - 1.5, R.cz, Math.PI / 2); H.grab(p); const held = d.holding === R;
+    p.bot = H.hold(1, 0); H.run(2); p.bot = {}; const moved = Math.hypot(R.cx - R.hx, R.cz - R.hz);
     resetRopes();
     return { held, moved: H.r(moved), back: H.r(Math.hypot(R.cx - R.hx, R.cz - R.hz)), free: !d.holding };
   });

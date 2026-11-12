@@ -1,4 +1,4 @@
-// Headless checks for BONES: dug up (and there for good), bitten, carried crosswise (free), thrown by a tap (further running),
+// Headless checks for BONES: dug up (and there for good), bitten (Ⓧ held), carried crosswise (free), thrown by letting go (further running),
 // bouncing and sliding to rest; hits by real physics (the change in speed is J/m: lighter things fly, heavier ones barely move,
 // the bone bounces back off heavy ones); reactions (lamb bowled, dog knocked, coyote scared, cougar spooked, Hank stumbles);
 // not its own thrower; a pounce kicks a lying one; caught in the air; kept on this device; still there on a new journey.
@@ -13,7 +13,7 @@ const setup = async () => { errors.push(...h.errors); await h.close(); h = await
   H.P = pathPoint(330, 6);   // open ground
   H.inp = (dx, dz, x = {}) => { const l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l, ...x }; };
   H.run = (sec, fn) => { for (let t = 0; t < sec - 1e-9; t += 0.025) { if (fn && fn(t)) return t; step(0.025); } return sec; };
-  H.tap = (p, extra = {}) => { p.bot = { ...extra, grabTap: true }; step(0.025); p.bot = { ...extra }; };
+  H.grab = (p, extra = {}) => { p.bot = { ...extra, grab: true }; step(0.025); };   // Ⓧ held (p.bot = {}: let go)
   H.place = (e, x, z, yaw) => { e.x = x; e.z = z; e.vx = e.vz = 0; e.y = groundY(x, z); if (yaw !== undefined) e.yaw = yaw; };
   H.away = () => { G.sheep.forEach((o, i) => H.place(o, H.P.x + 80 + (i % 6) * 2, H.P.z + 80 + Math.floor(i / 6) * 2)); GAME.HANK.x = H.P.x - 70; GAME.HANK.z = H.P.z - 70; };
   H.r = v => +(+v).toFixed(2);
@@ -39,21 +39,21 @@ await setup();
 const r2 = await h.page.evaluate(() => {
   const { G, BONES, spawnBone, T } = GAME, d = G.dogs[0], p = d.player, out = {};
   H.away(); const b = spawnBone(H.P.x, H.P.z); H.place(d, H.P.x - 1.6, H.P.z, Math.PI / 2); p.bot = {}; H.run(0.1);
-  H.tap(p); out.held = d.holding === b && b.by === d && d.holdKind === 'bone';
-  d.stamina = 0.6; p.bot = H.inp(1, 0); H.run(1.5); p.bot = {}; H.run(0.6);
+  H.grab(p); out.held = d.holding === b && b.by === d && d.holdKind === 'bone';
+  d.stamina = 0.6; p.bot = H.inp(1, 0, { grab: true }); H.run(1.5); p.bot = { grab: true }; H.run(0.6);
   out.atMouth = H.r(Math.hypot(b.x - (d.x + Math.sin(d.yaw) * 0.95), b.z - (d.z + Math.cos(d.yaw) * 0.95))); out.stamina = H.r(d.stamina);
   // standing toss
-  H.tap(p); out.notYet = b.by === d; let x0, z0; H.run(0.5, () => { if (!b.by) { x0 = b.x; z0 = b.z; return true; } });
+  p.bot = {}; let x0, z0; H.run(0.5, () => { if (!b.by) { x0 = b.x; z0 = b.z; return true; } });
   H.run(3, () => H.rest(b)); out.stand = H.r(Math.hypot(b.x - x0, b.z - z0)); out.restS = H.rest(b);
   // running toss
-  const ya = Math.atan2(H.P.tx, H.P.tz); H.place(d, b.x - H.P.tx * 1.6, b.z - H.P.tz * 1.6, ya); H.run(0.4); H.tap(p); out.again = d.holding === b;   // (up the trail: open ground)
-  p.bot = H.inp(H.P.tx, H.P.tz, { sprint: true }); H.run(0.8); H.tap(p, H.inp(H.P.tx, H.P.tz, { sprint: true })); H.run(0.5, () => { if (!b.by) { x0 = b.x; z0 = b.z; return true; } }); p.bot = {};
+  const ya = Math.atan2(H.P.tx, H.P.tz); H.place(d, b.x - H.P.tx * 1.6, b.z - H.P.tz * 1.6, ya); H.run(0.4); H.grab(p); out.again = d.holding === b;   // (up the trail: open ground)
+  p.bot = H.inp(H.P.tx, H.P.tz, { sprint: true, grab: true }); H.run(1.1); p.bot = H.inp(H.P.tx, H.P.tz, { sprint: true }); H.run(0.5, () => { if (!b.by) { x0 = b.x; z0 = b.z; return true; } }); p.bot = {};
   H.run(4, () => H.rest(b)); out.run = H.r(Math.hypot(b.x - x0, b.z - z0)); out.restR = H.rest(b);
   return out;
 });
-ok('a tap bites it: carried at its mouth', r2.held && r2.atMouth < 0.2, r2);
+ok('Ⓧ held bites it: carried at its mouth', r2.held && r2.atMouth < 0.2, r2);
 ok(`carrying it costs no stamina (0.6 → ${r2.stamina})`, r2.stamina > 0.6, r2);
-ok(`one tap throws it (a moment later): standing ${r2.stand} m, running ${r2.run} m, then it lies still`, r2.notYet && r2.stand > 2.5 && r2.stand < 9 && r2.again && r2.run > r2.stand * 1.5 && r2.restS && r2.restR, r2);
+ok(`let go: thrown, standing ${r2.stand} m, running ${r2.run} m, then it lies still`, r2.stand > 2.5 && r2.stand < 9 && r2.again && r2.run > r2.stand * 1.5 && r2.restS && r2.restR, r2);
 
 // 3. the same throw into each kind of thing: the change in speed is J/m (lighter: more), the bone bounces back off heavy ones
 await setup();
@@ -97,13 +97,13 @@ await setup();
 const r4 = await h.page.evaluate(() => {
   const { G, BONES, spawnBone, knockDog } = GAME, d = G.dogs[0], p = d.player, out = {};
   H.away(); const b = spawnBone(H.P.x, H.P.z); H.place(d, H.P.x - 1.6, H.P.z, Math.PI / 2); p.bot = {};
-  H.tap(p); H.run(0.5); H.tap(p); d.lastBone = null; H.run(2); out.selfHit = !!d.lastBone;
+  H.grab(p); H.run(0.5); p.bot = {}; d.lastBone = null; H.run(2); out.selfHit = !!d.lastBone;
   // a pounce kicks it
   const x0 = b.x, z0 = b.z; H.place(d, b.x - 2.6, b.z, Math.PI / 2); d.pounceCD = 0; p.bot = H.inp(1, 0, { pounce: true }); GAME.step(0.025); p.bot = {};
   H.run(3, () => H.rest(b) && Math.hypot(b.x - x0, b.z - z0) > 1); out.kicked = H.r(Math.hypot(b.x - x0, b.z - z0));
-  // a catch: thrown at its mouth, a tap as it comes
+  // a catch: thrown at its mouth, Ⓧ held as it comes
   const c = spawnBone(d.x + Math.sin(d.yaw) * 4, d.z + Math.cos(d.yaw) * 4); c.h = 0.8; c.vx = -Math.sin(d.yaw) * 8; c.vz = -Math.cos(d.yaw) * 8; c.vy = 1; c.from = null;
-  H.run(0.4, () => Math.hypot(c.x - d.x, c.z - d.z) < 2.6); H.tap(p); H.run(0.05); out.caught = d.holding === c && c.by === d;
+  H.run(0.4, () => Math.hypot(c.x - d.x, c.z - d.z) < 2.6); H.grab(p); H.run(0.05); out.caught = d.holding === c && c.by === d;
   knockDog(d, 3, 0, 0.5); H.run(0.1); out.dropped = !c.by && !d.holding;
   return out;
 });

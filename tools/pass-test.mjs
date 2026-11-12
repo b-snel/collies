@@ -142,9 +142,9 @@ if (!only || only === 'crev') {
     const sIn = s.state === 'crev' && !!s.crev;
     run(1); const stuck = s.state === 'crev';
     const d = G.dogs[0], nx = -c.az, nz = c.ax; d.x = s.x + nx * 1.9; d.z = s.z + nz * 1.9; d.yaw = Math.atan2(-nx, -nz); d.vx = d.vz = 0;
-    G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; run(0.3);
+    G.players[0].bot = { grab: true }; GAME.step(0.025); run(0.3);
     const grabbed = s.heldBy === d && !s.crev;
-    G.players[0].bot = toward(nx, nz); run(1); G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; run(1);
+    G.players[0].bot = toward(nx, nz, { grab: true }); run(1); G.players[0].bot = {}; GAME.step(0.025); run(1);
     const out = !s.crev && !s.heldBy;
     // a dog alone: mash pounce
     d.x = c.x; d.z = c.z; crevFall(d, c); const dIn = !!d.crev; let presses = 0;
@@ -156,7 +156,7 @@ if (!only || only === 'crev') {
     for (let i = 0; i < 30; i++) { G.players[0].bot = { pounce: true }; GAME.step(0.025); G.players[0].bot = {}; GAME.step(0.025); }
     const mashNo = !!d.crev;
     o.x = d.x + nx * 1.9; o.z = d.z + nz * 1.9; o.yaw = Math.atan2(-nx, -nz); o.vx = o.vz = 0;
-    p2.bot = { grabTap: true }; GAME.step(0.025); p2.bot = {}; run(0.2);
+    p2.bot = { grab: true }; GAME.step(0.025); run(0.2);
     const pulled = !d.crev && d.heldBy === o;
     GAME.dropPlayer(p2);
     return { sIn, stuck, grabbed, out, dIn, climbed, presses, mashNo, pulled };
@@ -262,8 +262,8 @@ if (!only || only === 'burn') {
     const f = PASS.fires[1]; setup(f.s, { hour: 11 }); f.fuel = 6;
     const s = living().filter(o => !o.ram)[0], d = G.dogs[0]; s.wool = 1; const w0 = s.wool;
     s.x = f.x + 3; s.z = f.z; d.x = f.x + 4.6; d.z = f.z; d.yaw = -Math.PI / 2; d.vx = d.vz = 0;
-    G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; const held = s.heldBy === d;
-    G.players[0].bot = toward(-1, 0, { creep: true }); let lit = false, dropped = false;
+    G.players[0].bot = { grab: true }; GAME.step(0.025); const held = s.heldBy === d;
+    G.players[0].bot = toward(-1, 0, { creep: true, grab: true }); let lit = false, dropped = false;
     for (let t = 0; t < 4; t += 0.025) { GAME.step(0.025); if (s.burn > 0) lit = true; if (lit && !s.heldBy) { dropped = true; break; } }
     G.players[0].bot = {};
     let ran = 0, rolled = false; const x0 = s.x, z0 = s.z;

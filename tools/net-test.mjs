@@ -174,7 +174,7 @@ try {
       let ax = out ? pt.x - cx : ux, az = out ? pt.z - cz : uz; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
       const tx = cx - ax * 7, tz = cz - az * 7, ddx = tx - d.x, ddz = tz - d.z, l = Math.hypot(ddx, ddz);
       const wx = l > 1 ? ddx / l : ax * 0.5, wz = l > 1 ? ddz / l : az * 0.5;
-      G.players[0].bot = { mx: wx * R.x + wz * R.z, my: -(wx * F.x + wz * F.z) };
+      G.players[0].bot = { mx: wx * R.x + wz * R.z, my: -(wx * F.x + wz * F.z), grab: !!window.__grab };   // (__grab: Ⓧ held, carrying)
     }, 150);
   });
   await Promise.all([startRecorder(A), startRecorder(B)]);
@@ -294,13 +294,13 @@ try {
   check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 2.5) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
 
   // ---------------------------------------------------------------- water: a bucket on a dog, a pen's water trough, the flock's thirst reach the guest
-  // (a bucket stays in its mouth till a tap sets it down)
-  const wh = await A.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, b = BUCKETS[2]; b.by = G.dogs[0]; b.w = 4.5; pens[2].water.w = 7.5; return { avg: WATER.avg }; });
+  // (a bucket stays in its mouth while grab's held)
+  const wh = await A.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, b = BUCKETS[2]; window.__grab = true; G.dogs[0].player.bot = { grab: true }; b.by = G.dogs[0]; b.w = 4.5; pens[2].water.w = 7.5; return { avg: WATER.avg }; });
   await sleep(1200);
   const wg = await B.page.evaluate(() => { const { BUCKETS, pens, G, WATER } = GAME, d = G.dogs.find(o => o.player.slot === 0), b = BUCKETS[2]; return { carried: !!d && b.by === d, w: b.w, trough: pens[2].water.w, avg: WATER.avg }; });
   const wh2 = await A.page.evaluate(() => { const { BUCKETS, G } = GAME, b = BUCKETS[2], d = G.dogs[0]; return { hostCarried: b.by === d, slot: d.player.slot, kind: d.player.kind }; });
   check('water reaches the guest: a bucket on a dog (and how full), a pen\'s water trough, the flock\'s thirst', wg.carried && Math.abs(wg.w - 4.5) < 0.06 && Math.abs(wg.trough - 7.5) < 0.03 && Math.abs(wg.avg - wh.avg) < 0.03, { ...wg, hostAvg: wh.avg, ...wh2 });
-  await A.page.evaluate(() => { const b = GAME.BUCKETS[2]; b.by = null; b.w = 0; b.x = b.hx; b.z = b.hz; GAME.pens[2].water.w = 0; });
+  await A.page.evaluate(() => { const b = GAME.BUCKETS[2]; window.__grab = false; GAME.G.dogs[0].player.bot = {}; b.by = null; b.w = 0; b.x = b.hx; b.z = b.hz; GAME.pens[2].water.w = 0; });
 
   // ---------------------------------------------------------------- a sheep dies: tombstone + toast on the guest
   await A.page.evaluate(() => { const s = GAME.G.sheep[GAME.G.sheep.length - 1]; GAME.killSheep(s, 'eaten'); });
@@ -401,14 +401,14 @@ try {
   await B.page.keyboard.up('KeyC'); await sleep(500);
   const upA = await gdog();
   check('the guest pounces (once per press) and lies down (held)', pounced > 0.1 && lieA.mode === 'lie' && lieB === 'lie' && upA.mode !== 'lie', { pounceT: r2(pounced), lyingHost: lieA.mode, lyingGuest: lieB, after: upA.mode });
-  // ROPES: the host's dog bites a rope and drags it (the guest sees it, nodes and who holds it); the guest taps R by its far end:
-  // a tug of war on both screens, and the guest's taps heave on the host
+  // ROPES: the host's dog bites a rope and drags it (the guest sees it, nodes and who holds it); the guest holds R by its far end:
+  // a tug of war on both screens, and the guest's E taps heave on the host
   const ropeAt = await A.page.evaluate(() => {
     const { G, ROPES, CAM_R, CAM_F, flockCenter } = GAME, fc = flockCenter(), R = [...ROPES].sort((a, b) => Math.hypot(b.cx - fc.x, b.cz - fc.z) - Math.hypot(a.cx - fc.x, a.cz - fc.z))[0];
     const d = G.dogs.find(d => d.player.kind !== 'net'), b = G.dogs.find(d => d.player.kind === 'net'), back = [d.x, d.z, b.x, b.z];
     d.x = R.cx - 1.5; d.z = R.cz; d.yaw = Math.PI / 2; d.vx = d.vz = 0; b.x = R.cx + 14; b.z = R.cz; b.vx = b.vz = 0;
-    d.player.bot = { grabTap: true };
-    requestAnimationFrame(() => { d.player.bot = { mx: CAM_R.x, my: -CAM_F.x }; setTimeout(() => { d.player.bot = {}; }, 1200); });
+    d.player.bot = { grab: true };
+    requestAnimationFrame(() => { d.player.bot = { mx: CAM_R.x, my: -CAM_F.x, grab: true }; setTimeout(() => { d.player.bot = { grab: true }; }, 1200); });
     return { i: R.i, back };
   });
   await sleep(3500);   // (dragged 1.2 s, then it slides to a stop)
@@ -421,25 +421,26 @@ try {
     b.x = R.x[k] + tx / l * 1.05; b.z = R.z[k] + tz / l * 1.05; b.yaw = Math.atan2(-tx, -tz); b.vx = b.vz = 0;
   }, ropeAt.i);
   await sleep(300);
-  await B.page.keyboard.press('KeyR');
+  await B.page.keyboard.down('KeyR');
   await sleep(1000);
   const tugH = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
   const tugG = await B.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
-  for (let k = 0; k < 3; k++) { await B.page.keyboard.press('KeyR'); await sleep(100); }
+  for (let k = 0; k < 3; k++) { await B.page.keyboard.press('KeyE'); await sleep(100); }
   const heave = await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').tugK || 0);
-  check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest taps it: a tug of war on both, its taps heave',
+  await B.page.keyboard.up('KeyR');
+  check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest grabs it: a tug of war on both, E heaves',
     ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave) });
-  await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'), g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
+  await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; const g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
   // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
   await A.page.evaluate(() => {
     const { G, spawnBone } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
     window.__bone = spawnBone(d.x + Math.sin(d.yaw) * 1.1, d.z + Math.cos(d.yaw) * 1.1);
-    d.player.bot = { grabTap: true }; requestAnimationFrame(() => { d.player.bot = {}; });
+    d.player.bot = { grab: true };
   });
   await sleep(800);
   const boneG1 = await B.page.evaluate(() => { const b = GAME.BONES[0], d = GAME.G.dogs.find(d => d.player.slot === 0); return { n: GAME.BONES.length, held: !!b && b.by === d && d.holding === b }; });
-  await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = { grabTap: true }; requestAnimationFrame(() => { d.player.bot = {}; }); });
+  await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; });   // let go: thrown
   await sleep(3500);
   const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
   const boneG2 = await B.page.evaluate(() => { const b = GAME.BONES[0]; return b ? { x: b.x, z: b.z, by: !!b.by } : null; });
