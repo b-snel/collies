@@ -481,24 +481,28 @@ const tests = {
       return out;
     });
   },
-  // 12. grab a coyote that's dragging a sheep, shake it: it drops the sheep, and a couple more shakes send it packing
+  // 12. grab a coyote that's dragging a sheep, shake it: it drops the sheep; the longer it's shaken (Ⓑ or right-stick swings),
+  // the longer it stands dazed once let go (T.shake), then it runs; shaken toss times: tossed aside
   async shakeCoyote() {
     return h.page.evaluate(() => {
-      const { G, pathPoint, spawnPack, grabPrey } = GAME; H.reset(21); const d = H.d(), P = pathPoint(330, 0), s = G.sheep[0];
-      const c = spawnPack(1, { howl: false }).members[0];
-      H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz);
-      H.place(c, P.x + P.tx * 1.4, P.z + P.tz * 1.4); c.yaw = Math.atan2(P.tx, P.tz); H.place(s, c.x + P.tx * 0.9, c.z + P.tz * 0.9);
-      grabPrey(c, s);
-      H.grab();
-      const held = d.holding === c, stillHasPrey = !!c.prey;
-      H.run(0.3);
-      const courage = [H.r(c.courage)];
-      H.shake(); H.run(0.35);
-      const dropped = !s.grabbed; courage.push(H.r(c.courage));
-      for (let k = 0; k < 2 && d.holding === c; k++) { H.shake(); H.run(0.35); courage.push(H.r(c.courage)); }
-      const c0 = { x: c.x, z: c.z }, released = d.holding !== c, flew = !!c.air;
-      H.p.bot = {}; H.run(2);
-      return { held, preyStillInItsMouthUntilShaken: stillHasPrey, droppedAfterFirstShake: dropped, courage, shakenLoose: released, flew, state: c.state, ranOff: H.r(Math.hypot(c.x - c0.x, c.z - c0.z)), saved: G.stats.saved };
+      const { G, T, pathPoint, spawnPack, grabPrey } = GAME;
+      const one = (n, stick) => {
+        H.reset(21); const d = H.d(), P = pathPoint(330, 0), s = G.sheep[0];
+        const c = spawnPack(1, { howl: false }).members[0];
+        H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz);
+        H.place(c, P.x + P.tx * 1.4, P.z + P.tz * 1.4); c.yaw = Math.atan2(P.tx, P.tz); H.place(s, c.x + P.tx * 0.9, c.z + P.tz * 0.9);
+        grabPrey(c, s);
+        H.grab(); const held = d.holding === c, hadPrey = !!c.prey; H.run(0.3);
+        for (let k = 0; k < n && d.holding === c; k++) { H.p.bot = stick ? { grab: true, shake: true } : { grab: true, pounce: true }; GAME.step(0.025); H.p.bot = { grab: true }; H.run(T.shakeCd + 0.03); }
+        const dropped = !s.grabbed, still = d.holding === c, tossed = !still && !!c.air;
+        if (still) { H.p.bot = {}; GAME.step(0.025); }
+        H.run(0.6); const dazeT = H.r(c.dazeT || 0), at = { x: c.x, z: c.z };
+        let stood = 0; H.run(12, t => { if (!(c.dazeT > 0)) return true; stood = t; });
+        const moved = H.r(Math.hypot(c.x - at.x, c.z - at.z)); H.run(2);
+        return { held, hadPrey, dropped, dazeT, stood: H.r(stood), movedDazed: moved, tossed, ranOff: H.r(Math.hypot(c.x - at.x, c.z - at.z)), state: c.state };
+      };
+      const two = one(2), eight = one(8, true), toss = one(T.shake.toss + 2);
+      return { two, eight, toss, ok: two.held && two.hadPrey && two.dropped && eight.dazeT > two.dazeT * 2.5 && eight.stood > 2.5 && eight.movedDazed < 1.5 && eight.ranOff > 3 && toss.tossed && toss.dazeT > eight.dazeT };
     });
   },
   // 13. a flung sheep bowls over a coyote
