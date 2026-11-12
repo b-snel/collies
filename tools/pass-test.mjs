@@ -1,6 +1,6 @@
 // Headless test: `node tools/pass-test.mjs [layout|cold|fire|blizzard|ice|crev|goat|yeti|rock|burn|finish]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
-//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the spire; nothing else up there
+//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
 //   fire      Hank lights the fire camp the flock's at; the coldest take the places round it and warm up
 //   blizzard  a blizzard piles snow on them; running shakes it off; a fire melts it
@@ -8,7 +8,7 @@
 //   crev      a sheep in a crack: grabbed out; a dog alone: mashing pounce climbs out; with a friend: mashing won't, the friend grabs it out
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
-//   rock      three sheep flung into the spire up the side trail: it falls on him (an arm sticks out), his cave thaws
+//   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
 //   finish    the yeti beaten, the flock shut in his cave: through the mountain, out of its lower mouth above Cold Harbour (SAILING); one left outside is left behind
 import { open } from './harness.mjs';
@@ -60,7 +60,7 @@ if (!only || only === 'layout') {
   ok(`${r.fires.length} fire camps, level and clear`, r.fires.length === 3 && r.fires.every(f => f.lvl < 0.6 && f.sdf > 2), r.fires);
   ok(`${r.ices} ice patches, ${r.crevs} cracks, ${r.goats} goats`, r.ices >= 8 && r.crevs >= 5 && r.goats >= 9, r);
   ok('a way from the Trading Post up to the cave; the hidden side trail up to its ledge', r.path && r.side && r.ledge > 1, r);
-  ok('the spire stands, the yeti sleeps', r.rock === 'stand' && r.yeti === 'sleep', r);
+  ok('the rock wall stands, the yeti sleeps', r.rock === 'stand' && r.yeti === 'sleep', r);
   ok('nothing else up there (dens, nests, plants, salt, brambles, digs, snakes, apples, groves)', Object.values(r.inPass).every(v => v === 0), r.inPass);
 }
 
@@ -142,9 +142,9 @@ if (!only || only === 'crev') {
     const sIn = s.state === 'crev' && !!s.crev;
     run(1); const stuck = s.state === 'crev';
     const d = G.dogs[0], nx = -c.az, nz = c.ax; d.x = s.x + nx * 1.9; d.z = s.z + nz * 1.9; d.yaw = Math.atan2(-nx, -nz); d.vx = d.vz = 0;
-    G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; run(0.3);
+    G.players[0].bot = { grab: true }; GAME.step(0.025); run(0.3);
     const grabbed = s.heldBy === d && !s.crev;
-    G.players[0].bot = toward(nx, nz); run(1); G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; run(1);
+    G.players[0].bot = toward(nx, nz, { grab: true }); run(1); G.players[0].bot = {}; GAME.step(0.025); run(1);
     const out = !s.crev && !s.heldBy;
     // a dog alone: mash pounce
     d.x = c.x; d.z = c.z; crevFall(d, c); const dIn = !!d.crev; let presses = 0;
@@ -156,7 +156,7 @@ if (!only || only === 'crev') {
     for (let i = 0; i < 30; i++) { G.players[0].bot = { pounce: true }; GAME.step(0.025); G.players[0].bot = {}; GAME.step(0.025); }
     const mashNo = !!d.crev;
     o.x = d.x + nx * 1.9; o.z = d.z + nz * 1.9; o.yaw = Math.atan2(-nx, -nz); o.vx = o.vz = 0;
-    p2.bot = { grabTap: true }; GAME.step(0.025); p2.bot = {}; run(0.2);
+    p2.bot = { grab: true }; GAME.step(0.025); run(0.2);
     const pulled = !d.crev && d.heldBy === o;
     GAME.dropPlayer(p2);
     return { sIn, stuck, grabbed, out, dIn, climbed, presses, mashNo, pulled };
@@ -256,7 +256,7 @@ if (!only || only === 'rock') {
     run(3);
     return { cracks, state: R.state, yeti: YETI.state, how: YETI.how, beaten: YETI.beaten, thawed: !finalPen.frozen };
   });
-  ok(`three sheep into the spire: cracks ${r.cracks.join(' → ')}, it falls on him (${r.yeti})`, r.cracks.join() === '1,2,3' && r.state === 'down' && r.yeti === 'crushed' && r.how === 'rock', r);
+  ok(`three sheep into the rock wall: cracks ${r.cracks.join(' → ')}, it falls on him (${r.yeti})`, r.cracks.join() === '1,2,3' && r.state === 'down' && r.yeti === 'crushed' && r.how === 'rock', r);
   ok('his cave thaws', r.beaten && r.thawed, r);
 }
 
@@ -266,8 +266,8 @@ if (!only || only === 'burn') {
     const f = PASS.fires[1]; setup(f.s, { hour: 11 }); f.fuel = 6;
     const s = living().filter(o => !o.ram)[0], d = G.dogs[0]; s.wool = 1; const w0 = s.wool;
     s.x = f.x + 3; s.z = f.z; d.x = f.x + 4.6; d.z = f.z; d.yaw = -Math.PI / 2; d.vx = d.vz = 0;
-    G.players[0].bot = { grabTap: true }; GAME.step(0.025); G.players[0].bot = {}; const held = s.heldBy === d;
-    G.players[0].bot = toward(-1, 0, { creep: true }); let lit = false, dropped = false;
+    G.players[0].bot = { grab: true }; GAME.step(0.025); const held = s.heldBy === d;
+    G.players[0].bot = toward(-1, 0, { creep: true, grab: true }); let lit = false, dropped = false;
     for (let t = 0; t < 4; t += 0.025) { GAME.step(0.025); if (s.burn > 0) lit = true; if (lit && !s.heldBy) { dropped = true; break; } }
     G.players[0].bot = {};
     let ran = 0, rolled = false; const x0 = s.x, z0 = s.z;

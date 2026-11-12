@@ -74,11 +74,11 @@ A trader waits near the end of every leg: stand on a mat and bark to buy with wo
 
 ## The mountain pass
 
-Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sheep get colder by the hour, faster at night, with snow on them, or shorn; a thick fleece keeps them warm. Frozen too long, a sheep dies. Blizzards blow in now and then and pile snow on the flock: run them to shake it off, or get them to a fire. There are camps on the way up but no pens: Hank lights a fire at each, and the coldest sheep crowd in close.
+Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sheep get colder by the hour, faster at night, with snow on them, or shorn; a thick fleece keeps them warm. Frozen too long, a sheep dies. Blizzards blow in now and then and pile snow on the flock: run them to shake it off, or get them to a fire. There are camps on the way up but no pens: Hank lights a fire at each, and the coldest sheep crowd in close. It's the ruin of an old shepherd kingdom: two stone kings at its gate, a worn road and stairs, a watchtower at each camp whose beacon burns while the fire does.
 
 Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
 
-At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden side trail up behind the rim, bring sheep up it single file, and bonk three of them into the cracked rock there. Once he's beaten his cave is open: pen the flock in it and shut the gate to win the journey.
+At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten his cave is open: pen the flock in it and shut the gate to win the journey.
 
 ## Snakes, wounds and Hank the vet
 
