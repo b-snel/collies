@@ -425,6 +425,7 @@ if (want('dock')) {
     // the dog follows them aboard: Hank swings the gangway shut and lashes it
     const way = [boatXZ(QUAY.gu, -7.5), boatXZ(QUAY.gu, -2)]; for (const w of way) H.run(8, () => { p.bot = H.inp(w.x - d.x, w.z - d.z); return Math.hypot(w.x - d.x, w.z - d.z) < 0.6; });
     p.bot = {}; H.run(4); out.lashed = DECK.lock && DECK.gateT < 0.05 && SEA.docked && H.aboard() === n;
+    if (!out.lashed) out.dbg = { u: H.r(boatU(d.x, d.z)), v: H.r(boatV(d.x, d.z)), deck: onDeck(d.x, d.z, 0.3), air: !!d.air, gateT: H.r(DECK.gateT), auto: DECK.auto, lock: DECK.lock, aT: H.r(SEA.aboardT), ashore: seaAshore(), ab: H.aboard(), hold: d.holdKind || null };
     // to the bow: lines in (stick up), and she's off; the gangway's shut and lashed, the quay's left behind
     H.place(d, anc.su, anc.sv); d.yaw = anc.yaw; H.run(0.2); H.tap(p); out.onBow = stationOf(d) === anc; p.bot = H.stick(1, 0); H.run(3.2); p.bot = {};
     out.cast = !SEA.docked && !QUAY.on && DECK.lock && DECK.gateT < 0.05 && SEA.pilot != null; H.tap(p); H.run(0.3);
