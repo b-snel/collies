@@ -625,6 +625,11 @@ const T = {
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
   coyoteBase: 2, coyotePerDay: 1, coyotePerDog: 1, coyoteMax: 7, coyoteDragTime: 9,   // perDog: one more each night for every dog past the first
   coyoteMaul: { time: 14, every: 0.9, rest: 3, dodgeR: 5 },   // shut in a pen with its catch: mauls it, dead in `time` s unless a dog saves it; then `rest` s and the next (dodges dogs within dodgeR)
+  // BURROWS: from the night of day fromDay, `chance` of packs a night: one that's prowled a shut pen `wait` s digs under its fence, away from the gate and the dogs (`time` s;
+  // scared off, it keeps what it dug). Open: one at a time they go under (`through` s, from `mouth` m) and drag a sheep out the same way.
+  // A dog standing still on either end fills it (`fill` s for a whole one; within r, under maxSpeed): every pack there loses `dismay` heart.
+  // out: its mouths, m either side of the fence; up to `max` at once
+  burrow: { on: !SIM, fromDay: 2, chance: 0.7, wait: 10, time: 9, through: 0.9, mouth: 0.8, fill: 2.6, r: 1.4, maxSpeed: 3.2, dismay: 0.4, max: 8, out: 0.95, shy: 8 },   // shy: a dog this near and it won't dig or go under
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
@@ -5887,7 +5892,7 @@ function startPounce(d, wx, wz, mag) {
 function pounceHits(d) {
   if (seaPounce(d)) return;   // SAILING: one of the kraken's arms
   for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone) continue;   // coyotes can always be bonked, even running home or asleep in the den
+    if (c.air || c.heldBy || c.gone || c.state === 'burrow') continue;   // coyotes can always be bonked, even running home or asleep in the den
     if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
   }
   for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
@@ -6055,7 +6060,7 @@ const airBounce = a => a.kind === 'launch' ? 0.35 : T.bounceUp;
 function airHits(s, a, sv) {
   if (sv > 6) for (const tr of APPLE_TREES) if (Math.abs(tr.x - s.x) < 2 && Math.abs(tr.z - s.z) < 2 && Math.hypot(tr.x - s.x, tr.z - s.z) < T.apple.trunkR + s.r + 0.4) shakeTree(tr, a.by);   // APPLES: a sheep into the trunk
   if (sv > 4) for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone) continue;
+    if (c.air || c.heldBy || c.gone || c.state === 'burrow') continue;
     if (Math.hypot(c.x - s.x, c.z - s.z) > 1.6) continue;
     const B = T.coyoteBowl, k = Math.max(B.kick, sv * 0.8) / sv;
     hitCoyote(c, B.courage, s.vx * k, s.vz * k, s, 'BOWLED!');
@@ -6245,7 +6250,7 @@ function tryGrab(d) {
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), mx = d.x + fx * 1.1, mz = d.z + fz * 1.1;   // the dog's mouth
   let best = null, bd = T.grabReach, kind = null, grip = 0;
   for (const c of G.coyotes) {
-    if (c.air || c.heldBy || c.gone) continue;
+    if (c.air || c.heldBy || c.gone || c.state === 'burrow') continue;
     const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3;
     if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
   }
@@ -6565,7 +6570,7 @@ function sweepGate(p, prev) {
     }
   }
   for (const c of G.coyotes) {
-    if (c.air || c.heldBy) continue;
+    if (c.air || c.heldBy || c.state === 'burrow') continue;
     const vt = shove(c, T.coyoteR + 0.1);
     if (Math.abs(vt) > 8) { hitCoyote(c, 0.4, E.nx * vt * 0.6, E.nz * vt * 0.6, p.pushedBy || { x: c.x - E.nx * vt, z: c.z - E.nz * vt }, 'THWACK!'); dizzy(c, 1, 1.5); }
   }
@@ -8649,7 +8654,7 @@ function boneTargets() {
   const L = [];
   for (const d of G.dogs) if (!d.air && !d.heldBy && !d.maul) L.push([d, 'dog', T.dogR, 1.05]);
   for (const s of G.sheep) if (!s.dead && !s.air && !s.heldBy && !s.grabbed) L.push([s, 'sheep', s.r, 1.15 * (s.scale || 1) * (s.grow || 1)]);
-  for (const c of G.coyotes) if (!c.air && !c.heldBy && !c.gone) L.push([c, 'coyote', T.coyoteR, 0.95]);
+  for (const c of G.coyotes) if (!c.air && !c.heldBy && !c.gone && c.state !== 'burrow') L.push([c, 'coyote', T.coyoteR, 0.95]);
   for (const k of COUGARS) if (k.state !== 'away') L.push([k, 'cougar', T.cougar.r, 1.2]);
   if (HANK && G.mode === 'play') L.push([HANK, 'hank', T.hankR, 1.8]);
   return L;
@@ -9013,10 +9018,10 @@ function setPhase(p, ph) {
     ms.forEach((c, i) => { c.role = i === 0 ? 'driver' : i < 3 ? 'ambush' : 'decoy'; c.side = i === 1 ? 1 : i === 2 ? -1 : (i === 0 ? (Math.random() < 0.5 ? 1 : -1) : 0); });
     if (ms.length === 1) ms[0].role = 'solo';
   }
-  if (ph === 'retreat') for (const c of p.den ? p.den.coyotes : p.members) { if (c.state !== 'drag' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; } }
+  if (ph === 'retreat') for (const c of p.den ? p.den.coyotes : p.members) { if (c.state === 'burrow') c.bur.next = c.prey ? 'drag' : 'leave'; else if (c.state !== 'drag' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; } }   // (BURROWS: out the far end first)
 }
 function scareCoyote(c, amt, dog, bump = false) {
-  if (c.state === 'leave' || c.state === 'dead') return;
+  if (c.state === 'leave' || c.state === 'dead' || c.state === 'burrow') return;   // (BURROWS: under the fence: out of reach)
   const screening = c.role === 'screen' && !bump;
   c.courage -= screening ? amt * 0.5 : amt;
   if (c.prey) dropPrey(c, true);
@@ -9041,6 +9046,7 @@ function scareCoyote(c, amt, dog, bump = false) {
 }
 // SHARED HOOK: something hit a coyote hard (a pounce, a ram, a flung sheep). src needs x/z (and .player if it's a dog)
 function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
+  if (c.state === 'burrow') return;   // BURROWS: under the fence
   floatText(label, c.x, c.y + 1.7, c.z, '#ffd36b', 1.2);
   scareCoyote(c, amt, src || { x: c.x - vx, z: c.z - vz }, true);
   c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
@@ -9077,7 +9083,7 @@ function updatePack(p, dt, fc) {
   p.phaseT += dt;
   const L = p.leader, dc = dogCentroid();
   const anyTarget = G.sheep.some(huntable);
-  if (p.phase !== 'retreat' && p.phase !== 'escape' && p.phase !== 'defend' && !anyTarget && p.phase !== 'prowl') setPhase(p, 'prowl');
+  if (!['retreat', 'escape', 'defend', 'prowl', 'dig', 'raid'].includes(p.phase) && !anyTarget) setPhase(p, 'prowl');   // (BURROWS: dig, raid)
   const avgCourage = p.members.reduce((a, c) => a + c.courage, 0) / p.members.length;
   if (p.phase !== 'retreat' && p.phase !== 'escape' && avgCourage <= 0.15) { setPhase(p, 'retreat'); return; }
   const post = (c, x, z, spd, crouch = 1) => { c.gx = x; c.gz = z; c.spd = spd; c.crouchW = crouch; };
@@ -9197,8 +9203,32 @@ function updatePack(p, dt, fc) {
         post(c, pen.x + Math.cos(a) * R, pen.z + Math.sin(a) * R, 2.8, 0.6);
       });
       if (p.phaseT > 2 && anyTarget) setPhase(p, 'gather');
+      else if (pen && !anyTarget && burrowOK(pen)) {   // BURROWS: under the fence (some nights), then (open) in
+        if (p.digNight !== nightOf()) { p.digNight = nightOf(); p.digs = Math.random() < T.burrow.chance; }
+        const h = holeOf(pen, false);
+        if (h && h.open) { p.hole = h; setPhase(p, 'raid'); }
+        else if (p.digs && p.phaseT > T.burrow.wait && (p.hole = h || newBurrow(pen, L))) setPhase(p, 'dig');
+      } else p.digs = false;
       p.howlT = (p.howlT || rnd(4, 8)) - dt;
       if (p.howlT <= 0) { p.howlT = rnd(9, 16); if (Math.hypot(L.x - cam.x, L.z - cam.z) < 70) packHowl(p); }
+      break;
+    }
+    case 'dig': case 'raid': {
+      // BURROWS: the nearest one outside digs (dig) or goes under (raid: one at a time); the rest keep watch out from the hole
+      const h = p.hole, q = h && h.pen;
+      if (!h || !BURROWS.includes(h) || !penShut(q) || !G.sheep.some(s => !s.dead && !s.grabbed && s.pen === q)) { setPhase(p, 'prowl'); break; }
+      const under = p.members.some(c => c.inPen === q || c.state === 'burrow');
+      if (anyTarget && !under) { setPhase(p, 'gather'); break; }
+      if (p.phase === 'dig' && h.open) setPhase(p, 'raid');
+      let w = null, wd = 1e9;
+      for (const c of p.members) { if (c.state !== 'pack' || c.inPen) continue; const d = Math.hypot(c.x - h.ox, c.z - h.oz) - (c === p.digger ? 4 : 0); if (d < wd) { wd = d; w = c; } }
+      p.digger = w;
+      let k = 0;
+      for (const c of p.members) {
+        if (c === w && !under) { const d = Math.hypot(c.x - h.ox, c.z - h.oz); post(c, h.ox, h.oz, d > 8 ? T.coyoteTrot * 1.3 : 3, d < 4 ? 1 : 0.5); continue; }
+        const a = h.a + (k % 2 ? 1 : -1) * (0.4 + 0.3 * (k >> 1)); k++;
+        post(c, q.x + Math.cos(a) * (q.R + 6), q.z + Math.sin(a) * (q.R + 6), T.coyoteTrot, 0.7);
+      }
       break;
     }
   }
@@ -9237,6 +9267,8 @@ function updateCoyotes(dt) {
   for (const c of G.coyotes) {
     if (c.heldBy) { updateHeldCoyote(c, dt); continue; }   // SHARED HOOK: in a dog's jaws (dog-moves section owns this)
     if (c.air) { updateAirborneCoyote(c, dt); continue; }   // knocked flying / flung / swimming out (dog-moves section owns this)
+    if (c.state === 'burrow') { if (c.bur) burrowStep(c, dt); else c.state = 'pack'; continue; }   // BURROWS: under the fence
+    c.digOn = false; c.sink = c.bt = 0;
     c.stateT += dt; c.tumble = Math.max(0, c.tumble - dt); c.growlT -= dt;
     if (c.dazeT > 0) {   // shaken silly (coyoteDazed): sways where it stands, then comes to and runs
       c.dazeT = Math.max(0, c.dazeT - dt); const k = Math.exp(-dt * 5); c.vx *= k; c.vz *= k;
@@ -9280,10 +9312,19 @@ function updateCoyotes(dt) {
           const n = navSteer(c, nd.x, nd.z); dX = n.x; dZ = n.z; spd = T.coyoteRun; crouchW = 0.6;
           if (c.growlT <= 0) { c.growlT = 1.5; Sound.growl(panOf(c.x, c.z), 0.14); }
         }
+        const P = c.pack, h = P && P.digger === c && (P.phase === 'dig' || P.phase === 'raid') ? P.hole : null;   // BURROWS: at its mouth
+        if (h && !c.inPen && BURROWS.includes(h) && Math.hypot(h.ox - c.x, h.oz - c.z) < T.burrow.mouth && !(nd && ndd < T.burrow.shy)) {
+          if (!h.open) { burrowDig(c, h, dt); dX = dZ = spd = 0; crouchW = 1; }
+          else if (P.phase === 'raid' && !P.members.some(o => o !== c && (o.inPen === h.pen || o.state === 'burrow'))) { burrowGo(c, h, true, 'pack'); dX = dZ = spd = 0; }
+        }
         break;
       }
       case 'drag': {
         const s = c.prey; if (!s) { c.state = 'pack'; break; }
+        if (c.trap && burrowOut(c, 'drag')) {   // BURROWS: out the way it came
+          if (c.state === 'drag') { dX = c.hx; dZ = c.hz; spd = T.coyoteDrag; c.stateT = Math.min(c.stateT, 2); } else spd = 0;
+          break;
+        }
         if (c.trap) { coyoteMaul(c, dt); spd = 0; break; }   // can't get out: mauls it here
         c.mauling = false;
         if (c.fromPen && Math.hypot(c.x - c.fromPen.x, c.z - c.fromPen.z) > c.fromPen.R + 4) c.fromPen = null;   // out and away
@@ -9310,6 +9351,7 @@ function updateCoyotes(dt) {
         break;
       }
       case 'leave': {
+        if (c.trap && burrowOut(c, 'leave')) { if (c.state === 'leave') { dX = c.hx; dZ = c.hz; spd = 6; c.stateT = Math.min(c.stateT, 3); } else spd = 0; break; }   // BURROWS: out under the fence
         if (c.trap && penHavoc(c, nd, ndd)) { dX = c.hx; dZ = c.hz; spd = c.hs; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: havoc
         if (c.inPen) { const q = c.inPen, tx = c.trap ? lerp(q.x, q.gx, 0.8) : q.exitX, tz = c.trap ? lerp(q.z, q.gz, 0.8) : q.exitZ, n = navSteer(c, tx, tz); dX = n.x; dZ = n.z; spd = Math.hypot(tx - c.x, tz - c.z) < 1 ? 0 : 5; c.stateT = Math.min(c.stateT, 3); break; }   // shut in: waits by the gate
         if (c.den) {   // home to the den, then sleep
@@ -9340,6 +9382,147 @@ function updateCoyotes(dt) {
   }
   for (const c of G.coyotes) if (c.gone) { if (c.prey) dropPrey(c, false); scene.remove(c.models.root); }
   G.coyotes = G.coyotes.filter(c => !c.gone);
+}
+
+// ---------------- burrows: under a shut pen's fence ----------------
+// The whole flock shut in: a pack prowls a while, then digs under the fence (p.phase 'dig': the one nearest digs, the rest keep watch),
+// away from the gate and the dogs. Open (h.open): one at a time they go under (state 'burrow', c.bur) and drag a sheep out the same
+// way ('raid'). A dog standing still on either end fills it (updateBurrows): every pack there loses heart. Stays till filled.
+// h: { pen, a, x, z (under the fence), ox, oz / ix, iz (its mouths: out / in), nx, nz (out), prog 0…1, open, by (digging it) }
+const BURROWS = [];
+let burrowIds = 0;
+const nightOf = () => G.clock.hour < 12 ? G.clock.day - 1 : G.clock.day;   // (after midnight: still that evening's night)
+const burrowOK = p => T.burrow.on && !p.deck && !p.final && penShut(p) && nightOf() >= T.burrow.fromDay;
+const holeOf = (p, open = true) => BURROWS.find(h => h.pen === p && (!open || h.open)) || null;
+const BURROW_GEO = {
+  hole: merge(P(CYL(0.48, 0.4, 0.05, 14), '#22160b', { s: [1, 1, 0.82] }),
+    ...[0, 1, 2, 3, 4, 5].map(i => { const a = i / 6 * TAU + 0.3; return P(SPH(7), '#7a5634', { s: [0.2, 0.1, 0.17], p: [Math.cos(a) * 0.5, 0.03, Math.sin(a) * 0.42] }); })),
+  heap: merge(P(SPH(10), '#8a6440', { s: [0.62, 0.28, 0.5] }), P(SPH(8), '#7a5634', { s: [0.34, 0.2, 0.3], p: [-0.32, 0.1, 0.14] }),
+    P(SPH(6), '#8a6440', { s: [0.14, 0.1, 0.14], p: [0.62, 0.04, -0.3] }), P(ICO(1, 0), '#9a948a', { s: [0.08, 0.06, 0.08], p: [0.4, 0.08, -0.2] })),
+};
+// where to dig: round the fence, off the gateway and clear of the troughs inside, open ground outside; far from dogs and Hank, near the pack
+function burrowSpot(p, L) {
+  const ri = p.R - T.forage.ring.in, kit = Object.entries(kitRing(p)).flatMap(([k, as]) => as.map(a => [a, (KIT_LEN[k] / 2 + 0.55) / ri])), O = T.burrow.out;   // (a hole fits in the gaps between them)
+  let best = null, bs = -1e9;
+  for (let i = 0; i < 240; i++) {
+    const a = p.gateA + p.gapHalf + 0.6 + i / 239 * (TAU - 2 * p.gapHalf - 1.2);
+    if (kit.some(([ka, w]) => Math.abs(wrapA(a - ka)) < w)) continue;
+    const ox = p.x + Math.cos(a) * (p.R + O), oz = p.z + Math.sin(a) * (p.R + O);
+    if (sdfAt(ox, oz) < 1.2 || wetAt(ox, oz) || pens.some(q => q !== p && insidePen(q, ox, oz, -1.5))) continue;
+    let sc = Math.min(40, ...G.dogs.map(d => Math.hypot(d.x - ox, d.z - oz))) + Math.min(20, Math.hypot(HANK.x - ox, HANK.z - oz)) * 0.3 + Math.random() * 3;
+    if (L) sc -= Math.hypot(L.x - ox, L.z - oz) * 0.2;
+    if (sc > bs) { bs = sc; best = a; }
+  }
+  return best;
+}
+function makeBurrow(p, a, prog = 0, id = ++burrowIds) {
+  const nx = Math.cos(a), nz = Math.sin(a), O = T.burrow.out;
+  const h = { id, pen: p, a, nx, nz, x: p.x + nx * p.R, z: p.z + nz * p.R, ox: p.x + nx * (p.R + O), oz: p.z + nz * (p.R + O), ix: p.x + nx * (p.R - O), iz: p.z + nz * (p.R - O),
+    prog, open: prog >= 1, by: null, byT: -9, fillT: -9, fxT: 0 };
+  h.y = terrainH(h.x, h.z);
+  const g = new THREE.Group(); g.position.set(h.x, h.y, h.z); g.rotation.y = Math.atan2(nx, nz); scene.add(g); h.root = g;   // local +z: out of the pen
+  const yo = terrainH(h.x + nx * 0.5, h.z + nz * 0.5) - h.y + 0.03, yi = p.y + 0.07 - h.y;
+  h.outM = part(g, BURROW_GEO.hole, { shadow: false }); h.outM.position.set(0, yo, 0.48);
+  h.inM = part(g, BURROW_GEO.hole, { shadow: false }); h.inM.position.set(0, yi, -0.48);
+  h.heapM = part(g, BURROW_GEO.heap); h.heapM.position.set(0.25, terrainH(h.x + nx * 2.1, h.z + nz * 2.1) - h.y, 2.1);
+  BURROWS.push(h); syncBurrow(h);
+  return h;
+}
+function newBurrow(p, L) { if (BURROWS.length >= T.burrow.max) return null; const a = burrowSpot(p, L); return a === null ? null : makeBurrow(p, a); }
+function killBurrow(h) {
+  const i = BURROWS.indexOf(h); if (i >= 0) BURROWS.splice(i, 1); scene.remove(h.root);
+  for (const p of G.packs) if (p.hole === h) p.hole = null;
+}
+function resetBurrows() { for (const h of BURROWS.slice()) killBurrow(h); }
+// in frame(): the hole and its heap grow as it's dug and shrink as it's filled; the inside end once it's through
+function syncBurrow(h) {
+  const k = clamp(h.prog, 0, 1), s = 0.3 + 0.7 * k;
+  h.outM.scale.set(s, 1, s); h.heapM.visible = k > 0.03; h.heapM.scale.setScalar(Math.max(0.05, k));
+  h.inM.visible = h.open; h.inM.scale.set(s, 1, s);
+}
+// the digger at the outer mouth: scrabbling, earth flying out behind it
+function burrowDig(c, h, dt) {
+  if (h.prog <= 0 && (onScreen(h.x, h.y, h.z) || G.dogs.some(d => Math.hypot(d.x - h.x, d.z - h.z) < 30))) hint('burrow');
+  h.prog = Math.min(1, h.prog + dt / T.burrow.time); h.by = c; h.byT = G.time; c.digOn = true;
+  c.yaw = lerpA(c.yaw, Math.atan2(-h.nx, -h.nz), Math.min(1, dt * 8));
+  if ((h.fxT -= dt) <= 0) { h.fxT = 0.3; burrowFx('dig', h.x + h.nx * 1.6, h.z + h.nz * 1.6); }
+  if (h.prog >= 1) burrowOpen(h);
+}
+function burrowOpen(h) {
+  h.open = true; h.prog = 1; h.by = null;
+  burrowFx('open', h.x, h.z); hint('burrow');
+  toast('🐺 🕳 ' + (h.pen.camp.name || ''), 'bad');
+  if (hankSees(h.x, h.z)) hank(null, pick(["They've dug under the fence!", "Coyotes! Under the fence!"]), { force: true });
+}
+// into the tunnel (in: from outside) and out the far end; next: its state after
+function burrowGo(c, h, inward, next = c.state) {
+  c.bur = { h, inward, next, t: 0, x0: inward ? h.ox : h.ix, z0: inward ? h.oz : h.iz, x1: inward ? h.ix : h.ox, z1: inward ? h.iz : h.oz };
+  c.state = 'burrow'; c.vx = c.vz = 0; c.digOn = false; c.bt = 0; c.x = c.bur.x0; c.z = c.bur.z0;
+  burrowFx('in', c.x, c.z);
+}
+function burrowStep(c, dt) {
+  const B = c.bur, t = B.t = Math.min(1, B.t + dt / T.burrow.through);
+  c.x = lerp(B.x0, B.x1, t); c.z = lerp(B.z0, B.z1, t); c.yaw = Math.atan2(B.x1 - B.x0, B.z1 - B.z0);
+  c.bt = t; c.sink = Math.sin(t * Math.PI) * 1.15; c.y = groundY(c.x, c.z) - c.sink; c.leg += dt * 16; c.crouch = 1;
+  if (c.prey) { const s = c.prey; s.x = c.x + Math.sin(c.yaw) * 0.9; s.z = c.z + Math.cos(c.yaw) * 0.9; s.y = c.y; s.yaw = c.yaw + Math.PI / 2; s.vx = s.vz = 0; }
+  if (t < 1) return;
+  c.state = B.next; c.bur = null; c.sink = c.bt = 0; c.y = groundY(c.x, c.z); c.inPen = penAt(c.x, c.z);
+  if (!B.inward) c.fromPen = null;   // out: away, not round by the gateway
+  burrowFx('out', c.x, c.z);
+}
+// a coyote inside a shut pen heads for its burrow's inner mouth (with or without a catch): true while it's on its way
+function burrowOut(c, next) {
+  const h = c.inPen && holeOf(c.inPen); if (!h) return false;
+  if (Math.hypot(h.ix - c.x, h.iz - c.z) < T.burrow.mouth) { burrowGo(c, h, false, next); return true; }
+  const n = navSteer(c, h.ix, h.iz); c.hx = n.x; c.hz = n.z; return true;
+}
+// in step(): dogs standing still on either end fill it in
+function updateBurrows(dt) {
+  if (G.mode !== 'play') return;
+  const B = T.burrow;
+  for (const h of BURROWS.slice()) {
+    let dog = null, ex = 0, ez = 0;
+    for (const d of G.dogs) {
+      if (d.air || d.heldBy || d.holding || d.ko || d.stunT > 0 || d.pounceT > 0 || d.hopT > 0 || Math.hypot(d.vx, d.vz) >= B.maxSpeed) continue;
+      if (Math.hypot(d.x - h.ox, d.z - h.oz) < B.r) { dog = d; ex = h.x + h.nx * 0.5; ez = h.z + h.nz * 0.5; break; }
+      if (Math.hypot(d.x - h.ix, d.z - h.iz) < B.r) { dog = d; ex = h.x - h.nx * 0.5; ez = h.z - h.nz * 0.5; break; }
+    }
+    if (!dog) continue;
+    const was = h.prog; h.prog = Math.max(0, h.prog - dt / B.fill); h.fillT = G.time; dog.digK = 1;
+    if (Math.floor(was * 7) !== Math.floor(h.prog * 7)) burrowFx('fill', ex, ez);
+    if (h.prog <= 0) burrowFilled(h, dog);
+  }
+}
+function burrowFilled(h, d) {
+  killBurrow(h);
+  burrowFx('done', h.x, h.z); floatText('✔', h.x, h.y + 1.5, h.z, '#7ed957', 1.2); rumble(d.player, 0.3, 0.3, 120);
+  for (const p of G.packs) {   // every pack at this pen loses heart, and has to start again
+    const L = p.leader; if (!L || (p.hole !== h && Math.hypot(L.x - h.x, L.z - h.z) > h.pen.R + 35)) continue;
+    for (const c of p.members) c.courage -= T.burrow.dismay;
+    if (p.phase === 'dig' || p.phase === 'raid') setPhase(p, 'prowl');
+  }
+  if (hankSees(h.x, h.z)) hank(null, pick(["That's it, fill it in!", "Good dog! Stamp it down!"]), { force: true });
+}
+// dirt flying, paws scrabbling (host and guests alike)
+function burrowFx(kind, x, z) {
+  const y = groundY(x, z), pan = panOf(x, z), near = Math.hypot(x - cam.x, z - cam.z) < 70;
+  if (kind === 'dig') { burst(x, y + 0.3, z, 3, '#8a6440', { speed: 2.4, up: 3.6, size: 0.13, life: 0.6, grav: -9 }); if (near) SFX.dig(pan, 0.12); }
+  else if (kind === 'fill') { burst(x, y + 0.25, z, 4, '#8a6440', { speed: 2, up: 2.6, size: 0.14, life: 0.55, grav: -9 }); if (near) SFX.dig(pan, 0.2); }
+  else if (kind === 'in' || kind === 'out') { burst(x, y + 0.3, z, 7, '#7a5634', { speed: 2.6, up: 3, size: 0.14, life: 0.6, grav: -9 }); if (near) SFX.dig(pan, 0.16); }
+  else if (kind === 'open') { burst(x, y + 0.4, z, 14, '#7a5634', { speed: 3.2, up: 4, size: 0.16, life: 0.8, grav: -9 }); if (near) { SFX.dig(pan, 0.25); Sound.yips(pan, 0.16); } }
+  else if (kind === 'done') { burst(x, y + 0.3, z, 12, '#8a6440', { speed: 2.6, up: 3, size: 0.15, life: 0.7, grav: -9 }); Sound.chime([0, 7], 520, 0.1); }
+}
+function drawBurrowOverlay() {
+  if (G.mode !== 'play') return;
+  for (const h of BURROWS) {
+    const [px, py, pz] = proj(h.x, h.y + 1.7, h.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
+    const filling = G.time - h.fillT < 0.2;
+    if (h.open && G.dogs.some(d => Math.hypot(d.x - h.x, d.z - h.z) < 10)) nudge('burrow', h.x, h.y + 2.6, h.z, '⬇ 🕳 Stand here: fill');
+    if (h.open && !filling) forageChip(px, py - 18, '🕳', G.time % 0.8 < 0.4 ? 'rgba(216,71,63,.85)' : 'rgba(27,26,40,.7)');
+    if (h.prog <= 0.02 || (h.open && !filling)) continue;
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px, py, 11, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = filling ? '#7ed957' : '#ff7a6b'; ctx.beginPath(); ctx.arc(px, py, 11, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, h.prog)); ctx.stroke();
+  }
 }
 
 // =====================================================================
@@ -11298,7 +11481,7 @@ function stepClock(dt) {
   if (crossed(prev, now, T.nightEnd)) {
     for (const c of G.coyotes) if (c.prey) dropPrey(c, true);
     for (const p of G.packs) setPhase(p, 'retreat');
-    for (const c of G.coyotes) if (c.state !== 'leave' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; }
+    for (const c of G.coyotes) if (c.state === 'burrow') c.bur.next = 'leave'; else if (c.state !== 'leave' && c.state !== 'sleep') { c.state = 'leave'; c.stateT = 0; }   // (BURROWS: out the far end first)
     cougarsAtDawn();
   }
   hankClock(prev, now);   // HANK: morning, dusk and nightfall lines
@@ -11780,6 +11963,13 @@ function syncCoyote(c) {
     return;
   }
   M.body.scale.set(1, 1, 1); M.head.rotation.y = c.dazeT > 0 ? Math.sin(G.time * 11) * 0.5 : 0; M.tail.rotation.y = 0;
+  M.body.rotation.x = c.state === 'burrow' ? Math.cos((c.bt || 0) * Math.PI) * 0.7 : c.digOn ? 0.28 : 0;   // BURROWS: nose down into it, up out of it; head down digging
+  if (c.digOn) {   // front paws a blur, hind legs braced, tail up
+    M.root.rotation.z = 0; M.body.position.y = lerp(M.body.position.y, -0.12, 0.2);
+    M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -0.6 + Math.sin(G.time * 26 + i * Math.PI) * 0.75 : 0.35; });
+    M.head.rotation.x = 0.7; M.tail.rotation.x = -0.2 + Math.sin(G.time * 9) * 0.25;
+    return;
+  }
   M.root.rotation.z = c.tumble > 0 ? Math.sin(c.tumble * 12) * 0.6 : c.dazeT > 0 ? Math.sin(G.time * 3.5) * 0.16 : 0;   // (shaken silly: it sways)
   const stalk = c.crouch || 0;
   M.body.position.y = lerp(M.body.position.y, -0.14 * stalk + Math.abs(Math.sin(c.leg * 2)) * 0.05 * Math.min(1, sp / 6), 0.2);
@@ -11988,6 +12178,8 @@ const ART = (({ C, E, R, band, leaf, W }) => {
     rabbit: { L: [['M9.51 11.08Q13.93 7.34 12.07 1.86Q7.65 5.6 9.51 11.08ZM12.27 11.45Q17.49 9.53 17.62 3.97Q12.4 5.89 12.27 11.45Z', '#bca58c'], ['M10.25 10.34Q12.8 7.42 12.12 3.6Q9.57 6.52 10.25 10.34ZM12.92 10.71Q16.14 8.94 16.77 5.33Q13.55 7.09 12.92 10.71Z', '#f2b8b8', 0, 0, 'n'], ['M23.68 19.36a2.76 2.76 0 1 0 5.52 0a2.76 2.76 0 1 0 -5.52 0Z', '#fff8e8'], ['M9.88 21.57a8.28 6.62 0 1 0 16.56 0a8.28 6.62 0 1 0 -16.56 0Z', '#bca58c'], ['M15.77 23.96a5.15 4.23 0 1 0 10.3 0a5.15 4.23 0 1 0 -10.3 0Z', '#a8917a', 0, 0, 'n'], ['M13.65 28.19a4.97 1.66 0 1 0 9.94 0a4.97 1.66 0 1 0 -9.94 0ZM8.22 27.64a2.58 1.47 0 1 0 5.16 0a2.58 1.47 0 1 0 -5.16 0Z', '#bca58c'], ['M4.73 14.76a5.15 5.15 0 1 0 10.3 0a5.15 5.15 0 1 0 -10.3 0Z', '#bca58c'], ['M5.1 16.97a2.39 1.84 0 1 0 4.78 0a2.39 1.84 0 1 0 -4.78 0Z', '#f6f1e3', 0, 0, 'n'], ['M7.81 13.66a0.97 0.97 0 1 0 1.94 0a0.97 0.97 0 1 0 -1.94 0Z', ART_INK, 0, 0, 'n'], ['M4.27 15.68a0.83 0.83 0 1 0 1.66 0a0.83 0.83 0 1 0 -1.66 0Z', '#e88a8a', 0, 0, 'n']] },
     ram: { L: [['M11.81 8.55L10.87 8.3L9.91 8.16L8.95 8.14L8.01 8.22L7.1 8.41L6.22 8.7L5.4 9.09L4.64 9.56L3.94 10.1L3.32 10.72L2.78 11.39L2.34 12.12L1.98 12.87L1.71 13.66L1.55 14.45L1.47 15.25L1.49 16.04L1.6 16.81L1.79 17.55L2.06 18.26L2.41 18.91L2.83 19.52L3.3 20.06L3.83 20.53L4.4 20.93L5 21.26L5.62 21.51L6.26 21.69L6.9 21.78L7.54 21.81L8.16 21.75L8.76 21.63L9.33 21.44L9.87 21.19L10.36 20.89L10.8 20.53L11.19 20.14L11.52 19.71L11.8 19.26L12.01 18.78L12.17 18.3L12.26 17.81L12.29 17.33L12.27 16.86L12.19 16.4L12.06 15.97L11.88 15.57L11.67 15.2L11.42 14.87L11.13 14.58L10.83 14.34L10.5 14.14L10.17 13.99L9.83 13.88L9.49 13.82L9.15 13.8L8.83 13.82L8.52 13.88L8.24 13.98L7.98 14.1L7.74 14.26L7.54 14.43L7.37 14.62L7.23 14.83L8.02 15.99L8.05 15.92L8.09 15.85L8.14 15.78L8.21 15.73L8.28 15.67L8.37 15.63L8.46 15.6L8.57 15.58L8.68 15.58L8.79 15.58L8.91 15.61L9.03 15.65L9.14 15.71L9.26 15.79L9.36 15.88L9.45 15.99L9.54 16.11L9.61 16.25L9.66 16.4L9.7 16.56L9.71 16.73L9.71 16.9L9.68 17.08L9.64 17.26L9.56 17.43L9.47 17.6L9.35 17.76L9.22 17.91L9.06 18.05L8.88 18.17L8.68 18.27L8.47 18.34L8.25 18.39L8.01 18.42L7.77 18.42L7.53 18.39L7.29 18.33L7.05 18.24L6.82 18.12L6.6 17.97L6.4 17.79L6.21 17.59L6.05 17.36L5.91 17.11L5.8 16.84L5.72 16.56L5.67 16.26L5.66 15.96L5.69 15.65L5.75 15.34L5.85 15.03L5.98 14.73L6.15 14.45L6.36 14.18L6.6 13.94L6.87 13.72L7.16 13.53L7.49 13.38L7.83 13.26L8.19 13.18L8.56 13.15L8.93 13.15L9.31 13.2L9.69 13.3ZM20.19 8.55L21.13 8.3L22.09 8.16L23.05 8.14L23.99 8.22L24.9 8.41L25.78 8.7L26.6 9.09L27.36 9.56L28.06 10.1L28.68 10.72L29.22 11.39L29.66 12.12L30.02 12.87L30.29 13.66L30.45 14.45L30.53 15.25L30.51 16.04L30.4 16.81L30.21 17.55L29.94 18.26L29.59 18.91L29.17 19.52L28.7 20.06L28.17 20.53L27.6 20.93L27 21.26L26.38 21.51L25.74 21.69L25.1 21.78L24.46 21.81L23.84 21.75L23.24 21.63L22.67 21.44L22.13 21.19L21.64 20.89L21.2 20.53L20.81 20.14L20.48 19.71L20.2 19.26L19.99 18.78L19.83 18.3L19.74 17.81L19.71 17.33L19.73 16.86L19.81 16.4L19.94 15.97L20.12 15.57L20.33 15.2L20.58 14.87L20.87 14.58L21.17 14.34L21.5 14.14L21.83 13.99L22.17 13.88L22.51 13.82L22.85 13.8L23.17 13.82L23.48 13.88L23.76 13.98L24.02 14.1L24.26 14.26L24.46 14.43L24.63 14.62L24.77 14.83L23.98 15.99L23.95 15.92L23.91 15.85L23.86 15.78L23.79 15.73L23.72 15.67L23.63 15.63L23.54 15.6L23.43 15.58L23.32 15.58L23.21 15.58L23.09 15.61L22.97 15.65L22.86 15.71L22.74 15.79L22.64 15.88L22.55 15.99L22.46 16.11L22.39 16.25L22.34 16.4L22.3 16.56L22.29 16.73L22.29 16.9L22.32 17.08L22.36 17.26L22.44 17.43L22.53 17.6L22.65 17.76L22.78 17.91L22.94 18.05L23.12 18.17L23.32 18.27L23.53 18.34L23.75 18.39L23.99 18.42L24.23 18.42L24.47 18.39L24.71 18.33L24.95 18.24L25.18 18.12L25.4 17.97L25.6 17.79L25.79 17.59L25.95 17.36L26.09 17.11L26.2 16.84L26.28 16.56L26.33 16.26L26.34 15.96L26.31 15.65L26.25 15.34L26.15 15.03L26.02 14.73L25.85 14.45L25.64 14.18L25.4 13.94L25.13 13.72L24.84 13.53L24.51 13.38L24.17 13.26L23.81 13.18L23.44 13.15L23.07 13.15L22.69 13.2L22.31 13.3Z', '#d6a466'], ['M3.83 17.3L4.05 17.8L4.32 18.27L4.64 18.7L5 19.07L5.4 19.39L5.83 19.65L6.28 19.86L6.74 20L7.21 20.09L7.67 20.12L8.13 20.08L8.56 20L8.98 19.86L9.37 19.68L9.72 19.46L10.03 19.2L10.31 18.91L10.54 18.59L10.72 18.26L10.86 17.92L10.95 17.56L11 17.21L11 16.87L10.96 16.54L10.87 16.22L10.76 15.93L10.61 15.66L10.43 15.42L10.23 15.22L10.01 15.04L9.78 14.9L9.54 14.8L9.3 14.73L9.06 14.69L8.83 14.69L8.6 14.72L8.39 14.77L8.2 14.85L8.03 14.95L7.88 15.07M28.17 17.3L27.95 17.8L27.68 18.27L27.36 18.7L27 19.07L26.6 19.39L26.17 19.65L25.72 19.86L25.26 20L24.79 20.09L24.33 20.12L23.87 20.08L23.44 20L23.02 19.86L22.63 19.68L22.28 19.46L21.97 19.2L21.69 18.91L21.46 18.59L21.28 18.26L21.14 17.92L21.05 17.56L21 17.21L21 16.87L21.04 16.54L21.13 16.22L21.24 15.93L21.39 15.66L21.57 15.42L21.77 15.22L21.99 15.04L22.22 14.9L22.46 14.8L22.7 14.73L22.94 14.69L23.17 14.69L23.4 14.72L23.61 14.77L23.8 14.85L23.97 14.95L24.12 15.07', null, '#a8743f', 1.2], ['M16 8C20.6 8 22 11.2 21.6 15.2L20.4 24C19.8 27.6 18 29.4 16 29.4S12.2 27.6 11.6 24L10.4 15.2C10 11.2 11.4 8 16 8Z', '#3a3330'], ['M10 9.4a3 3 0 1 0 6 0a3 3 0 1 0 -6 0ZM12.8 7.6a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM16 9.4a3 3 0 1 0 6 0a3 3 0 1 0 -6 0ZM13.4 10.6a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0Z', '#f6f1e3'], ['M12.35 16.2a1.05 1.05 0 1 0 2.1 0a1.05 1.05 0 1 0 -2.1 0ZM17.55 16.2a1.05 1.05 0 1 0 2.1 0a1.05 1.05 0 1 0 -2.1 0Z', '#ffffff', 0, 0, 'n'], ['M13.7 26.4a0.7 1 0 1 0 1.4 0a0.7 1 0 1 0 -1.4 0ZM16.9 26.4a0.7 1 0 1 0 1.4 0a0.7 1 0 1 0 -1.4 0Z', '#7d6f66', 0, 0, 'n']] },
     lamb_new: { L: [['M11.4 26h2.6v4.2h-2.6ZM18 26h2.6v4.2H18Z', '#3a3330'], ['M5.2 22.6a4.8 4.8 0 1 0 9.6 0a4.8 4.8 0 1 0 -9.6 0ZM10.4 21a5.6 5.6 0 1 0 11.2 0a5.6 5.6 0 1 0 -11.2 0ZM17.2 22.6a4.8 4.8 0 1 0 9.6 0a4.8 4.8 0 1 0 -9.6 0ZM11.4 25.4a4.6 4.6 0 1 0 9.2 0a4.6 4.6 0 1 0 -9.2 0Z', '#fff8e8'], ['M10.8 12.8C8.2 11 5 11.2 3.6 12.6 4.6 14.8 7.6 15.6 10.6 15ZM21.2 12.8C23.8 11 27 11.2 28.4 12.6 27.4 14.8 24.4 15.6 21.4 15Z', '#f6e6d6'], ['M9.6 13.2C7.8 12.4 6.2 12.4 5.4 13 6.4 14.2 8 14.6 9.6 14.4ZM22.4 13.2C24.2 12.4 25.8 12.4 26.6 13 25.6 14.2 24 14.6 22.4 14.4Z', '#f5b5b8', 0, 0, 'n'], ['M10 14a6 5.4 0 1 0 12 0a6 5.4 0 1 0 -12 0Z', '#f6e6d6'], ['M11 9.6a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0ZM13.4 8.4a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0ZM16.2 9.6a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0Z', '#fff8e8'], ['M12.65 14.2a0.95 0.95 0 1 0 1.9 0a0.95 0.95 0 1 0 -1.9 0ZM17.45 14.2a0.95 0.95 0 1 0 1.9 0a0.95 0.95 0 1 0 -1.9 0Z', ART_INK, 0, 0, 'n'], ['M10.8 16.4a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0ZM18.8 16.4a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0Z', '#ffb3b3', 0, 0, 'n'], ['M15 16.8c0.60.6 1.40.6 2 0', null, ART_INK, 0.9], ['M26 4.6C26 2.6 23 2.4 23 4.8 23 6.6 25 7.6 26 8.8 27 7.6 29 6.6 29 4.8 29 2.4 26 2.6 26 4.6Z', '#ff6f91']] },
+    hole: { L: [[E(16, 19.5, 13.5, 8.6), '#9a6a3e'], [E(16, 20.4, 8.8, 5), '#22160b'], ['M9.4 17.4c1.9-1.5 4.2-2.3 6.6-2.4', null, '#c99a66', 1.4],
+      [C(5.4, 11, 2.2) + C(26.2, 9.6, 1.8) + C(28.6, 14, 1.3), '#8a6440']] },   // BURROWS: dug under a fence
     bone: { rot: -0.7, L: [['M1.6 12.4a4 4 0 1 0 8 0a4 4 0 1 0 -8 0ZM1.6 19.6a4 4 0 1 0 8 0a4 4 0 1 0 -8 0ZM22.4 12.4a4 4 0 1 0 8 0a4 4 0 1 0 -8 0ZM22.4 19.6a4 4 0 1 0 8 0a4 4 0 1 0 -8 0Z', '#f6f1e3'], ['M8 12.6h16a2 2 0 0 1 2 2v2.8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-2.8a2 2 0 0 1 2 -2Z', '#f6f1e3'], ['M9 14.6h13', null, '#ffffff', 1.4], ['M8.6 18.6h14.8', null, '#ddd3bf', 1.2]] },
     dove: { L: [['M16.6 16.23C16.98 11.16 19.24 7.4 23.18 5.33 23.18 9.46 22.24 13.22 20.18 16.42Z', '#dfe3e8'], ['M9.84 19.62L1.94 16.98 3.26 21.5 2.32 24.5 10.4 22.62Z', '#f6f1e3'], ['M22.62 11.91C25.82 11.91 27.32 13.98 26.76 16.04 25.63 20.93 20.36 24.32 14.35 24.32 10.4 24.32 7.96 23 6.26 21.31 10.4 20.56 13.22 18.68 16.42 16.04 18.3 13.6 19.8 11.91 22.62 11.91Z', '#fff8e8'], ['M17.54 17.74C14.54 14.16 11.34 9.28 9.27 5.14 7.2 7.02 7.02 12.1 8.71 16.04 10.21 19.24 13.03 20.74 17.54 17.74Z', '#fff8e8'], ['M9.84 9.28c1.13 3.01 2.82 5.83 5.26 8.08M8.33 12.66c0.75 2.26 2.26 4.32 4.32 5.64', null, '#c8ced6', 1], ['M26.57 13.98L29.2 14.92 26.57 16.04Z', '#ffb38a'], ['M27.7 15.48C27.88 18.86 26.94 21.87 24.69 24.88', null, '#4f8f3a', 1.2, 'o'], ['M27.7 17.36Q27.39 19.8 29.73 20.52Q30.04 18.09 27.7 17.36ZM26.94 19.8Q24.24 19.65 23.62 22.28Q26.32 22.43 26.94 19.8ZM26.19 21.68Q26.12 24.13 28.53 24.63Q28.6 22.17 26.19 21.68ZM25.06 24.32Q22.88 24.63 22.81 26.84Q24.99 26.53 25.06 24.32Z', '#7cc455'], ['M22.29 14.16a0.89 0.89 0 1 0 1.78 0a0.89 0.89 0 1 0 -1.78 0Z', ART_INK, 0, 0, 'n']] },
     straw_hat: { L: [['M1.4 19.2a14.6 5.6 0 1 0 29.2 0a14.6 5.6 0 1 0 -29.2 0Z', '#f0cf7a'], ['M8.6 18C8.4 10 11.4 5.2 16 5.2S23.6 10 23.4 18C19 19.4 13 19.4 8.6 18Z', '#f0cf7a'], ['M4.4 20c1.8 1.8 4.4 3 7.4 3.6M27.6 20c-1.8 1.8-4.4 3-7.4 3.6M11 10.2c3.4 1 6.6 1 10 0', null, '#c99b45', 1], ['M8.7 13.2C13 14.6 19 14.6 23.3 13.2L23.4 17.2C19 18.6 13 18.6 8.6 17.2Z', '#e04a3f'], ['M21.6 16.2C24 18.6 25.8 22 26 26.4L23.4 25.2C23 22 21.8 19.4 20 17.2ZM20.4 17C21.2 20 21.2 23.2 20 27L18 25.2C18.8 22.6 18.8 20 18.4 17.6Z', '#e04a3f'], ['M10.6 9c0.6-1.6 1.6-2.6 3-3.2', null, W, 1.4]] },
@@ -12031,7 +12223,7 @@ const EMOJI_ART = {
   '🔊': 'sound', '🔒': 'lock', '🔄': 'reload', '⏳': 'hourglass', '🎲': 'die', '✏': 'pencil', '🖌': 'brush', '🤖': 'bot', '🏠': 'home', '🏚': 'barn',
   '🌱': 'sprout', '🌼': 'daisy', '🌸': 'blossom', '🍃': 'leaves', '🍎': 'apple', '🌴': 'palm', '☀': 'sun', '🌅': 'sunrise', '🕯': 'candle', '🛟': 'lifebuoy',
   '💎': 'gem', '🛡': 'shield', '🔔': 'bell', '🍼': 'bottle', '▶': 'play', '🦅': 'falcon', '🐺': 'coyote', '🐕': 'dog', '🐆': 'cougar', '😾': 'cougar_mad', '🦁': 'brave',
-  '🐇': 'rabbit', '♈': 'ram', '🐣': 'lamb_new', '🦴': 'bone', '🕊': 'dove', '👒': 'straw_hat', '🤠': 'cowboy_hat', '🥳': 'party_hat', '👑': 'crown',
+  '🐇': 'rabbit', '♈': 'ram', '🐣': 'lamb_new', '🦴': 'bone', '🕳': 'hole', '🕊': 'dove', '👒': 'straw_hat', '🤠': 'cowboy_hat', '🥳': 'party_hat', '👑': 'crown',
   '🎩': 'top_hat', '🧣': 'scarf', '🎀': 'bow', '🕶': 'shades', '🔻': 'bandana', '❄': 'snow', '🔥': 'fire', '🐐': 'goat', '🦍': 'yeti', '🌨': 'blizzard', '🏔': 'peak' };   // (MOUNTAIN PASS: the last six)
 const ART_RE = new RegExp(`((?:${Object.keys(EMOJI_ART).join('|')})\uFE0F?)`, 'u'), ART_ANY = new RegExp(ART_RE.source.slice(1, -1), 'u');   // split on (keeps each emoji as written) / test for
 const artPaths = a => a.P || (a.P = a.L.map(([d, f, s, w, fl = '']) => ({ p: new Path2D(d), f, s, w, e: fl.includes('e'), o: fl.includes('o'), n: fl.includes('n') })));
@@ -12146,6 +12338,7 @@ const HINTS = {
   'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
   'team-bark': '😾 Wise to barks! Two dogs <b>bark together</b>: it carries further and always works.',
   'coyote-wise': '😾 A coyote falls for one bark. Now <b>pounce</b> it.',
+  burrow: '🐺 🕳 Digging under the fence! Chase it off, then <b>stand on the hole</b> to fill it in.',
   canyon: '🦅 Falcons! <b>Bark</b> near one on its rock and it stays put a while. Keep the flock tight and keep moving.',
   'canyon-boss': '🦅 The great falcon! Barks don\'t work: <b>pounce</b> it when it swoops low.',
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
@@ -12205,6 +12398,7 @@ const TOUCH_HINTS = {
   'falcon-grab': '🦅 📣 under it',
   'team-bark': '😾 📣 + 📣 <b>together</b>',
   'coyote-wise': '😾 📣 ✖ → 💥',
+  burrow: '🐺 🕳 <b>Stand on the hole</b>: fill it',
   canyon: '🦅 📣 near them · keep moving',
   'canyon-boss': '🦅 📣 ✖ → 💥',
   dawn: 'Morning! <b>Open the gate</b>, let them graze',
@@ -12467,6 +12661,7 @@ function drawOverlay(dt) {
   drawForageOverlay();   // what the dogs carry, trough and salt-lick levels, salt rocks (FORAGE section)
   drawWaterOverlay();    // WATER: buckets, each pen's water
   drawDigOverlay();      // DIG SPOTS: how far down a dog has dug
+  drawBurrowOverlay();   // BURROWS: how far dug (or filled), 🕳 over an open one
   drawRopeOverlay();     // ROPES: grab it; in a tug, heave
   drawBoneOverlay();     // BONES: grab it; throw it
   drawVendorOverlay();   // VENDOR: prices over the mats
@@ -12665,6 +12860,7 @@ function mapMarks(c, u) {
   c.lineWidth = 1.3; c.beginPath();
   for (const g of G.graves) { const q = mapPt(g.x, g.z), s = 2.4 * u; if (!on(q) || !mapSeen(g.x, g.z)) continue; c.moveTo(q[0], q[1] - s); c.lineTo(q[0], q[1] + s * 1.2); c.moveTo(q[0] - s * 0.7, q[1] - s * 0.3); c.lineTo(q[0] + s * 0.7, q[1] - s * 0.3); }   // graves: a cross
   c.stroke();
+  for (const h of BURROWS) { if (!h.open) continue; const q = mapPt(h.x, h.z); if (on(q) && mapSeen(h.x, h.z)) drawArt(c, 'hole', q[0], q[1], (G.time % 0.8 < 0.4 ? 12 : 10) * u); }   // BURROWS: open ones
   { const q = mapPt(cam.x, cam.z), vw = cam.view * aspect * V.k, vh = cam.view / SIN_EL * V.k;   // what's on screen
     c.strokeStyle = 'rgba(255,248,232,.75)'; c.lineWidth = 1; c.strokeRect(q[0] - vw / 2, q[1] - vh / 2, vw, vh); }
   { const q = mapPt(HANK.x, HANK.z); if (on(q)) drawArt(c, 'hank', q[0], q[1], 12 * u); }
@@ -17527,7 +17723,7 @@ function finishGame(n) {
 }
 function resetGame() {
   seaReset();   // SAILING: back ashore
-  for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens();
+  for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens(); resetBurrows();   // (BURROWS: filled)
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   resetCougars();
   resetFalcon();
@@ -17686,7 +17882,8 @@ const NET_TYPES = {
   },
   coyote: {
     tag: 'c', all: () => G.coyotes, id: c => c.nid || (c.nid = ++NET.nid),
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', alpha: 'b', tumble: .02, crouch: .02, dazeT: .05, prey: '@sheep', heldBy: '@dog', ...NET_AIR },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', alpha: 'b', tumble: .02, crouch: .02, dazeT: .05, prey: '@sheep', heldBy: '@dog',
+      sink: .02, bt: .02, digOn: 'b', ...NET_AIR },   // BURROWS: how far under, how far through, digging
     make: (id, f) => netGuestCoyote(id, f), kill: c => { scene.remove(c.models.root); const i = G.coyotes.indexOf(c); if (i >= 0) G.coyotes.splice(i, 1); },
     animate: (c, dt) => netAnimCoyote(c, dt),
   },
@@ -17737,6 +17934,11 @@ const NET_TYPES = {
   dig: {   // DIG SPOTS: dug or not, and how far down
     tag: 'D', all: () => DIGS, id: sp => sp.i, static: true,
     fields: { dug: 'b', prog: .05 },
+  },
+  burrow: {   // BURROWS: which pen, where round it, how far dug (or filled), through, being filled
+    tag: 'U', all: () => BURROWS, id: h => h.id,
+    fields: { pi: { c: 'i', get: h => pens.indexOf(h.pen) }, a: .001, prog: .02, open: 'b', fill: { c: 'b', get: h => G.time - h.fillT < 0.2, set: (h, v) => { if (v) h.fillT = G.time; } } },
+    make: (id, f) => makeBurrow(pens[f.pi] || pens[0], f.a || 0, f.prog || 0, id), kill: h => killBurrow(h),
   },
   grave: {   // REMAINS: a body (rotting, on Hank's shoulder) or its stone (in a cemetery row: neat)
     tag: 'g', all: () => G.graves, id: g => g.nid || (g.nid = ++NET.nid),
@@ -18133,7 +18335,7 @@ function netAnimDog(d, dt) {
 }
 function netAnimSheep(s, dt) {
   const sp = Math.hypot(s.vx, s.vz), sleeping = s.state === 'sleep', lifted = s.air || s.heldBy;
-  s.y = groundY(s.x, s.z) + (lifted || s.grabbed ? s.lift || 0 : 0);
+  s.y = groundY(s.x, s.z) + (lifted || s.grabbed ? s.lift || 0 : 0) - (s.grabbed && s.grabbed.sink || 0);   // (BURROWS: under the fence in its jaws)
   if (lifted) {   // flying, carried or swimming: poseSheep spins, wiggles or tilts it
     s.pose = s.pose || {}; s.leg += dt * 22;
     if (s.air) { s.air.spin = s.airSpin || 0; s.air.vy = s.vlift || 0; s.air.h = s.y;
@@ -18155,7 +18357,7 @@ function netAnimSheep(s, dt) {
 }
 function netAnimCoyote(c, dt) {
   const sp = Math.hypot(c.vx, c.vz), lifted = c.air || c.heldBy;
-  c.y = groundY(c.x, c.z) + (lifted ? c.lift || 0 : 0); c.leg += lifted ? dt * 22 : sp * dt * 2.6; c.tumble = Math.max(0, c.tumble - dt); if (c.dazeT > 0) c.dazeT = Math.max(0, c.dazeT - dt);
+  c.y = groundY(c.x, c.z) + (lifted ? c.lift || 0 : 0) - (c.sink || 0); c.leg += lifted ? dt * 22 : sp * dt * 2.6; c.tumble = Math.max(0, c.tumble - dt); if (c.dazeT > 0) c.dazeT = Math.max(0, c.dazeT - dt);
   if (c.air) { c.air.spin = c.airSpin || 0; c.air.vy = c.vlift || 0; }
 }
 
@@ -18171,7 +18373,7 @@ function netPredPick(d) {   // what tryGrab would bite
   if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
   const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
   let o = null, bd = T.grabReach, grip = 0;
-  for (const c of G.coyotes) { if (c.air || c.heldBy || c.gone) continue; const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3; if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; o = c; } }
+  for (const c of G.coyotes) { if (c.air || c.heldBy || c.gone || c.state === 'burrow') continue; const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3; if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; o = c; } }
   for (const s of G.sheep) {
     if (s.dead || s.heldBy || s.grabbed || (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8))) continue;
     const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0); if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; o = s; }
@@ -18687,7 +18889,7 @@ function netGuestWipe() {
   for (const c of G.coyotes) scene.remove(c.models.root);
   for (const g of G.graves) scene.remove(g.root);
   for (const b of [...BONES]) killBone(b);   // (BONES: the host's come next; this screen's own are kept on this device)
-  G.dogs = []; G.players = []; G.sheep = []; G.coyotes = []; G.packs = []; G.graves = [];
+  G.dogs = []; G.players = []; G.sheep = []; G.coyotes = []; G.packs = []; G.graves = []; resetBurrows();   // (BURROWS: the host's come next)
   particles.length = 0; floats.length = 0;
   for (const T of NET_LIST) if (T.make) NET.ids[T.tag] = new Map();
 }
@@ -19001,7 +19203,9 @@ function step(dt) {
     // fast-forward the night when the whole flock is penned behind a closed gate (and done with its supper)
     const live = living();
     G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && (s.pen && (s.pen.gateT < 0.05 || s.pen.deck && SEA.docked && SEA.berth > 0) || passSafe(s)) && s.state !== 'trough' && s.state !== 'wait')   // (MOUNTAIN PASS: or warm by a fire)
-      && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
+      && !G.coyotes.some(c => c.prey) && !G.packs.some(p => p.phase === 'dig' || p.phase === 'raid' || (p.phase === 'prowl' && p.digs))   // (BURROWS: they're coming to dig: watch them,
+      && !BURROWS.some(h => h.open && live.some(s => s.pen === h.pen))                                                                   //  and fill it)
+      && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
       && !HANK.care && !live.some(s => s.bleedRate > 0)   // VET: not while one's bleeding (time to fetch bandages) or Hank's seeing to one
       && (!SEA.on || seaAtRest());   // SAILING: only at anchor
     const dtH = stepClock(dt);
@@ -19013,6 +19217,7 @@ function step(dt) {
     updateSheep(dt, dtH);
     if (!SEA.on) {   // (nothing of the land's comes to sea, or down to the harbour)
     updateCoyotes(dt);
+    updateBurrows(dt);     // BURROWS: dogs filling them in
     updateCougars(dt);
     updateFalcon(dt, dtH);
     updateSnakes(dt);      // RATTLESNAKES
@@ -19062,6 +19267,7 @@ function frame(now) {
   syncForage(dt);         // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
   syncWater(dt);          // WATER: water troughs, buckets
   syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
+  for (const h of BURROWS) syncBurrow(h);   // BURROWS: dug, filled
   syncRopes(dt);          // ROPES: the tube through its nodes, the tug's rag and lines
   syncBones();            // BONES: lying, flying, in a dog's jaws
   syncVendor(dt);         // VENDOR: mats and the vendor
@@ -19159,6 +19365,7 @@ const DEV_CHEATS = [
   { code: 'KeyN', key: 'N', icon: '🕯', tip: 'Dusk', fn: () => { G.clock.hour = 19.9; } },
   { code: 'KeyB', key: 'B', icon: '🌅', tip: 'Dawn', fn: () => { G.clock.hour = 5.9; } },   // (M is the map)
   { code: 'KeyK', key: 'K', icon: '🐺', tip: 'A coyote', land: true, fn: () => spawnCoyotes(1) },
+  { code: 'KeyX', key: 'X', icon: '🕳', tip: 'Coyotes dig into a pen', land: true, fn: () => devBurrow() },   // BURROWS
   { code: 'KeyJ', key: 'J', icon: '🐆', tip: 'A cougar hunts', land: true, fn: () => { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } } },   // COUGARS
   { code: 'KeyV', key: 'V', icon: '🦅', tip: 'A falcon comes', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); } },   // FALCON
   { code: 'KeyG', key: 'G', icon: '🐐', tip: 'A goat comes (the pass)', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; const e = G.dogs[0], g = e && [...GOATS].filter(g => g.state === 'perch').sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z))[0]; if (g) goatGo(g, goatPick(g) || e); } },
@@ -19183,6 +19390,14 @@ const DEV_CHEATS = [
   { code: 'Digit9', key: '9', icon: '⛈', tip: 'A gale', sea: true, fn: () => { SEA.lockWx = !SEA.lockWx; if (SEA.lockWx) { WIND.baseSpd = 20; WIND.gustK = 1.4; SEA.storm = 1; SEA.rain = 1; } toast(SEA.lockWx ? '⛈️' : '⛈️ ✖', ''); } },
 ];
 const devCan = c => !(c.sea && !SEA.on) && !(c.land && SEA.on);
+function devBurrow() {   // BURROWS: night, the flock shut in the nearest pen, a pack on its way to dig (half done already)
+  const d = G.dogs[0]; if (!d) return;
+  const p = pens.filter(q => !q.deck && !q.final).sort((a, b) => Math.hypot(a.x - d.x, a.z - d.z) - Math.hypot(b.x - d.x, b.z - d.z))[0];
+  for (const s of living()) { const a = Math.random() * TAU, r = Math.random() * (p.R - 2.5); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; s.pen = p; }
+  setGate(p, false); T.burrow.on = true; G.clock.day = Math.max(G.clock.day, T.burrow.fromDay); if (!isNight()) G.clock.hour = 21;
+  const k = spawnPack(2); if (!k) return;
+  k.hole = holeOf(p, false) || newBurrow(p, k.leader); if (k.hole) { k.hole.prog = Math.max(k.hole.prog, 0.5); setPhase(k, k.hole.open ? 'raid' : 'dig'); }
+}
 function debugKeys() {
   if (keyEdge.has('Backquote')) devToggle();
   for (const c of DEV_CHEATS) if (c.code && keyEdge.has(c.code) && devCan(c)) c.fn();
@@ -19298,6 +19513,7 @@ Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, m
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
+Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut });   // BURROWS
 Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
 Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
@@ -19313,7 +19529,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   for (const F of FALCONS) syncFalcon(F);
-  syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
+  syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass();
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,

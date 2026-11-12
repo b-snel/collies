@@ -13,7 +13,7 @@ file, comments, commits and PRs: short.
 better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → Cabo): graze it, pen it at camps by nightfall,
-fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
+fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass: cold, blizzards,
@@ -27,7 +27,7 @@ A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + dev menu (`` ` `` or click the FPS line; `DEV_STOPS`, `DEV_CHEATS`): the whole journey as a strip, click a
-  spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
+  spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `X` coyotes dig into a pen, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
@@ -55,7 +55,7 @@ A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
+DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
@@ -121,6 +121,7 @@ Run the ones touching your change; report the numbers.
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple\|carry]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held out and taken, into a pen, snatched, eaten with a dog by the tree |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
+| `burrow-test.mjs [dig\|fill\|raid\|trap\|dismay\|leave\|mid\|guard\|rules]` | burrows: a pack digs under a shut pen's fence (off the gateway, no fast-forward), goes under, drags one out, gate shut; a dog standing on either end fills it (not a few m off, not running); filled with one inside: shut in, mauls; fills: heart lost, gives up; out the same way at dawn, or when the pack gives up mid-tunnel; dug away from a dog; not night one, not off, gone on a new journey |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`); RB grabs, RT sprints; right-stick swings shake (one a swing, between frames too, held over: one) |
 | `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|isle\|ring\|cam\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore: flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey |
@@ -211,11 +212,18 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
 - **Coyote packs** flank and strike together; chase off the alpha to break
-  them. Shut pens stop them. One more a night per extra dog (`T.coyotePerDog`).
+  them. Shut pens stop them (till they dig under: Burrows). One more a night per extra dog (`T.coyotePerDog`).
 - **Trapped coyote.** A catch in a pen goes out by the gateway (`c.fromPen`);
   gate shut (`c.trap`) → it mauls a penned sheep where it stands
   (`coyoteMaul`, `s.maulHp`, `T.coyoteMaul`) till a dog scares it off, then
   runs down the next (`penHavoc`), dodging dogs, till the gate opens.
+- **Burrows** (`BURROWS`, `T.burrow`, COYOTES): from night `fromDay`, some packs a night (`chance`, `p.digs`) that find the flock
+  all shut in prowl `wait` s, then dig under the fence (`p.phase 'dig'`, `burrowSpot`: off the gateway, between the troughs, far
+  from dogs; `p.digger`, `burrowDig`, `c.digOn`), not with a dog within `shy`. Open (`h.open`): one at a time under it (`'raid'`,
+  state `'burrow'`, `c.bur`, `burrowGo`/`burrowStep`; out of reach down there), a sheep grabbed and dragged out the same way
+  (`burrowOut`; leaving at dawn too). A dog standing still on either end fills it (`updateBurrows`, `fill` s): every pack there
+  loses `dismay` heart, starts over. Filled with one inside: trapped as above. Stays till filled; no night fast-forward while
+  they're coming to dig or one's open. Off in `?sim` (`T.burrow.on`). Online: `NET_TYPES.burrow`, coyote `sink`/`bt`/`digOn`.
 - **Ram bravery** (`s.brave` 0…1, `T.brave`): under `ramMin` a ram never
   fights, braver ones charge more and further, past `cougar` cougars too.
   Lambs take mostly the sire's (`sireBrave`). Scales everyone's stress gain.
