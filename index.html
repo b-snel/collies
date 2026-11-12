@@ -2058,7 +2058,7 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 420 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.05;
-scene.add(hemi, sun, sun.target);
+scene.add(hemi, sun, sun.target); sun.target.userData.sea = true;   // (SAILING: never the land's)
 // fixed light count (changing it would recompile every shader mid-game)
 const dogLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight('#fff0dc', 0, 13, 1.5); scene.add(l); return l; });
 const fireLights = [0, 1].map(() => { const l = new THREE.PointLight('#ff9a4a', 0, 24, 1.5); scene.add(l); return l; });
@@ -7145,7 +7145,7 @@ for (const p of pens) {
   // its bucket: just outside the fence beside it (or inside, if the ground out there won't do)
   let h = onRing(p, a + 2.2 / p.R, p.R + 1.5); if (sdfAt(h.x, h.z) < 1.2) h = onRing(p, a + 2.6 / p.R, p.R - 2.2);
   if (p.deck) h = deckKit('bucket', 0);   // SAILING: on deck, by the rail
-  const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root);
+  const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root); if (p.deck) seaKeep(pl.root);
   BUCKETS.push({ i: BUCKETS.length, pen: p, hx: h.x, hz: h.z, x: h.x, z: h.z, w: 0, by: null, drop: null, root: pl.root, water: pl.water });
 }
 // SHARED HOOK: add amt water to a pen's water trough (1 = one sheep from parched to quenched); returns what went in (it's capped)
@@ -12687,9 +12687,9 @@ function makeHank() {
   const glassMat = new THREE.MeshBasicMaterial({ color: '#5a4a2a' });
   const glass = new THREE.Mesh(inHand(CYL(0.075, 0.075, 0.16, 12).translate(0, -0.21, 0), -1, 0, -0.84, 0, 0.2), glassMat); armL.add(glass);
   root.rotation.order = 'YXZ';   // yaw, then tipped back onto the mat
-  scene.add(root);
+  scene.add(root); seaKeep(root);
   // his bedroll and pillow: rolled out from his feet toward where his head goes
-  const mat = new THREE.Group(); mat.visible = false; scene.add(mat);
+  const mat = new THREE.Group(); mat.visible = false; scene.add(mat); seaKeep(mat);
   const roll = new THREE.Group(); mat.add(roll);
   part(roll, merge(P(BOX(1.0, 0.06, 2.3), '#3f6e8c', { p: [0, 0.03, -1.05] }),
     ...[-0.25, 0.25].map(x => P(BOX(0.09, 0.065, 2.3), '#d8473f', { p: [x, 0.035, -1.05] }))), { shadow: false });
@@ -17212,8 +17212,14 @@ function seaLoose(s) {
 function seaLooseDog(d) { if (d.holding) releaseHold(d, false); dropBucket(d); Object.assign(d, { vx: 0, vz: 0, air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null, slide: null, crev: null }); }
 // SHARED HOOK (main loop: step, while the voyage hasn't begun): something's come through the gap and down the harbour road: she wakes
 function seaWake() {
-  if (HARB.ice || G.mode !== 'play' || !seaWay()) return;
+  if (G.mode !== 'play') return;
   const at = e => e.x > 0 && (inSea(e.x, e.z) || HARB.mask[cellIdxAt(e.x, e.z)]);
+  if (HARB.ice || !seaWay()) {   // (the gap's still shut: one knocked over the rim and onto the road scrambles back up into the arena)
+    const P = HARB.pts[0], T0 = 1.1, up = e => { const y = groundY(P.x, P.z) - groundY(e.x, e.z); return T.airGrav * T0 / 2 + y / T0; };
+    for (const s of G.sheep) if (!s.dead && !s.air && !s.heldBy && !s.grabbed && at(s)) { const a = launchSheep(s, (P.x - s.x) / T0, (P.z - s.z) / T0, up(s), 'drop', null); a.ghost = 1.5; a.bounces = 0; a.rescue = true; }
+    for (const d of G.dogs) if (!d.air && !d.heldBy && at(d)) { const a = launchDog(d, (P.x - d.x) / T0, (P.z - d.z) / T0, up(d), 'drop'); a.ghost = 1.5; a.bounces = 0; }
+    return;
+  }
   if (G.dogs.some(at) || G.sheep.some(s => !s.dead && at(s))) seaStart({ dock: true });
 }
 // SHARED HOOK (main loop: step): one step of the voyage

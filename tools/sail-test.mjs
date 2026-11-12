@@ -569,10 +569,14 @@ if (want('land')) {
     out.flockAtCamp = G.sheep.every(s => !inSea(s.x, s.z)); for (let t = 0; t < 20; t += 0.025) step(0.025);
     out.none = !G.sheep.some(s => inSea(s.x, s.z)) && !G.dogs.some(d => inSea(d.x, d.z)) && !SEA.on; out.kit = [DECK.troughs.length, DECK.water.at.length, DECK.lick.at.length].join();
     const off = boatXZ(0, 30); out.deckY = groundY(DECK.x, DECK.z) - (-3); out.sea = groundY(off.x, off.z); out.gap = sdfAt(HARB.gap.x, HARB.gap.z) < 0;
+    // the gap shut: a sheep knocked over the rim onto the road scrambles back up into the arena, and nothing wakes
+    const P = HARB.pts, s = G.sheep.find(q => !q.dead); s.x = (P[1].x + P[2].x) / 2; s.z = (P[1].z + P[2].z) / 2; s.pen = null; for (let t = 0; t < 4; t += 0.025) step(0.025);
+    out.hop = !s.dead && !s.air && Math.hypot(s.x - P[0].x, s.z - P[0].z) < 6 && sdfAt(s.x, s.z) > 1 && !SEA.on;
     return out;
   });
   ok('a new journey: the land back where it was, she alongside at Cold Harbour, her gangway lashed, the gap iced shut; nobody out there', !r.on && r.pens === 1 && r.deck && r.gate === 0 && r.back && r.flockAtCamp && r.none && r.gap, r);
   ok(`the deck: ground ${r.deckY} m over the water, with its troughs (${r.kit}); the sea beyond`, Math.abs(r.deckY - 1.45) < 1e-6 && r.sea === -9 && r.kit === '3,1,1', r);
+  ok('the gap still shut: a sheep knocked onto the harbour road hops back up into the arena; she sleeps on', r.hop, r);
 }
 
 errors.push(...h.errors); await h.close();

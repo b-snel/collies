@@ -451,6 +451,7 @@ Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with frie
   Something through the gap: `seaWake` → `seaStart({ dock })`: nobody's moved, the gangway opens (stocked troughs draw the hungry); Hank
   walks down (`seaHankGoal`). Once aboard a sheep doesn't walk back off (`pen.mouthSeg`). Every sheep and dog aboard: Hank lashes it
   (`seaGangway`). Bow station, stick up: `seaCastOff` (not with sheep or dogs ashore: 🐑 / 🐕 n ✖). Sheep never brought down: `'left'`.
+  The gap still shut: anything knocked onto the road hops back up (`seaWake`).
 - **What's sea** (`inSea`): past the pier's shore end (`SEAM_V`), and everywhere once she's cast off (`SEA_AWAY`).
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway gate lashed at sea:
   `pen.lock`). `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords) is set to her pose undone. Cast off
