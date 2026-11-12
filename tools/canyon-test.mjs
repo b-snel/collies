@@ -1,5 +1,5 @@
 // Headless test: `node tools/canyon-test.mjs [layout|eat|bark|shy|dog|limits|boss]`. FALCON CANYON.
-//   layout  the gorge between the Promised Land and the snakes: narrow, tall far wall, pillars with falcons, watchers,
+//   layout  the gorge between Sweetgrass Meadow and the snakes: narrow, tall far wall, pillars with falcons, watchers,
 //           bones; nothing else in it; a way through; the same every load
 //   eat     a falcon swoops off its pillar on a sheep in the gorge, takes it up and eats it: body at the pillar's foot
 //   bark    a bark under one carrying a sheep: dropped, lands alive
@@ -39,7 +39,7 @@ if (!only || only === 'layout') {
       watchers: CANYON.perched.list.length, bones: CANYON.bones, feet: Math.min(...CANYON.perches.map(P => sdfAt(P.x + Math.cos(P.ta) * 2.6, P.z + Math.sin(P.ta) * 2.6))),
       inGorge: { dens: inG(DENS), nests: inG(NESTS), plants: inG(PLANTS), salt: inG(SALT_ROCKS), brambles: inG(BRAMBLES), apples: inG(APPLE_TREES), bogs: inG(MUDS), streams: inG(STREAMS.flatMap(S => S.pts)) }, path: !!(path && path.length), x0: CANYON.roosts[0].x };
   });
-  ok(`the gorge (s ${r.s0}–${r.s1}) is past the Promised Land (${r.promised}) and before the snakes (first at ${Math.round(r.snakes)})`, r.s0 > r.promised + 30 && r.snakes > r.s1, r);
+  ok(`the gorge (s ${r.s0}–${r.s1}) is past Sweetgrass Meadow (${r.promised}) and before the snakes (first at ${Math.round(r.snakes)})`, r.s0 > r.promised + 30 && r.snakes > r.s1, r);
   ok(`narrow (${r.free} m of floor), a tall far wall (${r.wall} m)`, r.free < 26 && r.free > 12 && r.wall > 15, r);
   ok(`${r.birds} falcons on ${r.roosts} pillars (≥ ${r.up.toFixed(1)} m up), ${r.watchers} more on the cliffs, ${r.bones} bones and feathers`, r.birds >= 14 && r.roosts >= 10 && r.perched && r.up > 4.5 && r.watchers >= 16 && r.bones >= 100, r);
   ok('below every pillar: open ground (where a body falls)', r.feet > 0.3, r);

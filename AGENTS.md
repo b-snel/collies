@@ -11,17 +11,17 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a breed,
 better with practice), local or online, drive a flock along one trail
-(desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
-the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → Cabo): graze it, pen it at camps by nightfall,
+(desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
+the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes, cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass: cold, blizzards,
 fires, ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
-The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to Cabo
+The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to the Promised Land
 (wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
-A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
+A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
 
 ### Run
 
@@ -239,7 +239,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Only short of Falcon Canyon's far end (`falconLand`, nests too); once the flock's past it, gone for the journey
   (`G.falconGone`): none in the snakes, up the pass, at sea. Off in `?sim` (`T.falcon.on`).
 - **Falcon Canyon** (`CANYON`, `T.canyon`, `canyonK`, own rng): a narrow red gorge (`s0`…`s1`)
-  between the Promised Land and the snakes; the only way on. Bones and feathers at its mouth, a ram's
+  between Sweetgrass Meadow and the snakes; the only way on. Bones and feathers at its mouth, a ram's
   skull on a stake each side, gloom (`GLOOM`, `CANYON.k`), moaning wind. `FALCONS[1…]` sit on rock
   pillars (`F.home`, `CANYON.perches`, ids 100+); more watch from the cliffs (decor). By day, while
   anything's in it (`updateCanyon`), one swoops every `every` s (`maxAir` at once) from the nearest rested
@@ -295,7 +295,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   for `T.barkWise`; then bold (`barkWorks`, hint `coyote-wise`): only a bonk moves it,
   and it lunges at dogs to nip. Packs lose less heart per bark (`packK`).
 - **Traders** (`STALLS`, `T.vendor`): a stall `before` m short of each camp
-  past the first, plus the Trading Post's (`MARKET`); a second row of mats
+  past the first (the Trading Post's: `MARKET`, the only one there); a second row of mats
   (`row2`) for the vet's wares. A dog on a mat barks
   (`vendorBark`, host) to buy with `G.wool`. 📍 picks the pen (found ones,
   `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough /
@@ -359,7 +359,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     back by day (state `'cast'`, legs kicking, a "!" over it, off screen too).
     Only a pounce rights it (`castFlip`); left `die` h it dies (`'cast'`).
     Shearing stops it.
-  - **Mud** (`MUDS`, `T.mud`): bogs in the Promised Land. Sheep slow, may
+  - **Mud** (`MUDS`, `T.mud`): bogs in Sweetgrass Meadow. Sheep slow, may
     stick (`s.bog`, sinking), calm ones go round; a pounce pops it out over
     the nearest edge, muddy a while (`s.mud`). Dogs wade slow.
   - **Balker** (`T.balk`): of an evening (day 2 on) the bell ewe may plant
@@ -522,10 +522,10 @@ Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with frie
   hooks glow and 🛟 ✊ while one's in the water, the flight dotted, a ring where it'll land, 🛟 ✔, HEAVE!, a bar, SAVED! (`drawRingOverlay`, `ringFx`).
 - **Anchor** (`T.sea.anchor`): holds in under `depth` m, she swings head to wind; deeper, it only drags. The night
   fast-forwards at rest (`seaAtRest`: alongside, or holding).
-- **Route** (`ROUTE`, `DOCKS`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → Cabo. Each island
+- **Route** (`ROUTE`, `DOCKS`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → the Promised Land. Each island
   to port of the way in, a jetty on that side.
 - **Alongside an island** (`seaMoorStep`, `seaMoor`, `SEA.berth`, `SEA.warp`): in by its jetty and slow (Hank spills her wind), or her
-  anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. Cabo: `finishGame`.
+  anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
 - **Islands** (`ISLES`, `ISLE`, `T.sea.isle`): ground in deck coords while she's alongside (`sdf`, `h`): beach, meadow, a crag (rock),
   a spring (`fresh`: the bucket fills). Drawn from the same shape. On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
   a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard.
