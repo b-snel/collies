@@ -45,7 +45,7 @@ The sea (issue #74): herd the flock down the path and up the gangway, cast off; 
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
   joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
-- One keyboard player: WASD and arrows drive the same dog.
+- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space jump, E grab, F bark, R pounce; mouse on the game (`#gl`): click bark, right click pounce (`Mouse0` / `Mouse2` in `KB`).
 - Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 - Map: minimap bottom left (over the controls bar while it's up; touch: under the flock
   panel); `M` / R3 / tap it → the whole trail, big. At a trader: 📍 its pen.
@@ -381,7 +381,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
-- **Grab: hold Ⓧ** (R / , / ✊, `inp.grab`): held, it bites what comes in reach and keeps hold; let go: dropped
+- **Grab: hold Ⓧ** (E / , / ✊, `inp.grab`): held, it bites what comes in reach and keeps hold; let go: dropped
   (running: a fling). Lost while held (slip, buck, knocked): no bite again till Ⓧ is let go (`d.grabLock`). Ⓑ with
   something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: let go,
   pounce. Bots: `grab: true` is held.
@@ -411,7 +411,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Grab a dog** (`grabKinds.dog`, `grabbableDog`, `d.heldBy`): by the scruff, like a sheep; it drops what
   it had (a rope too: a tug lost). Its holder carries it (`updateHeldDog`, after it moves); let go moving: flung (`'fling'`). Held:
   barks work, its stick tugs the holder, mash pounce to wriggle free (`heldDogInput`, `T.dogHeld`).
-- **Jump** (Ⓨ / X / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
+- **Jump** (Ⓨ / Space / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
   Mid-air: rams, pouncing dogs, flying sheep and cougar leaps miss. Clears fences, not the trough one. Lie is LT.
 - **Team bark** (`T.teamBark`, `teamOf`, `teamBark`, `teamBarkFx`): dogs barking within `win` s and `near` m
   of each other (chained) → "TEAM BARK!". Predators only: every bark reach × (1 + `grow`·(n−1)). Cougars and
