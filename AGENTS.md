@@ -90,11 +90,11 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
+| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
-| `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
+| `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset\|beat\|teamheave\|dig\|give\|row]` | ropes: one a leg, drag (links hold, no stamina), grab held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset; the beat (pulses, on it big and cheap, mashing weak: beats mashing and off-beat), team heave, dig in (holds, breath back, never gains, broken on the beat), give slack (stumbles, Hank too), row and right-stick heaves |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; loners: a territory each, more each leg, off the pens, random trees, one out at a time |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|day1\|odds\|gone]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only, not day one; past the canyon gone (snakes, pass, sea) |
@@ -122,7 +122,7 @@ Run the ones touching your change; report the numbers.
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple\|carry]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held out and taken, into a pen, snatched, eaten with a dog by the tree |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
-| `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`) |
+| `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`); RB grabs, RT sprints; right-stick swings shake (one a swing, between frames too, held over: one) |
 | `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|isle\|ring\|cam\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore: flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
@@ -386,22 +386,33 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
-- **Grab: hold Ⓧ** (E / , / ✊, `inp.grab`): held, it bites what comes in reach and keeps hold; let go: dropped
-  (running: a fling). Lost while held (slip, buck, knocked): no bite again till Ⓧ is let go (`d.grabLock`). Ⓑ with
-  something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: let go,
-  pounce. Bots: `grab: true` is held.
+- **Grab: hold RB** (or Ⓧ; E / , / ✊, `inp.grab`; RB leaves the thumb free): held, it bites what comes in reach and keeps hold; let go: dropped
+  (running: a fling). Lost while held (slip, buck, knocked): no bite again till it's let go (`d.grabLock`). Ⓑ or a
+  right-stick swing (`inp.shake`: out from rest or across, counted in `padPoll` like presses, `T.shake`; not a station) with
+  something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: Ⓑ lets go,
+  pounces. A coyote: each shake dazes it longer once let go (`c.shook` → `c.dazeT`, `coyoteDazed`: it sways, seeing stars,
+  then runs); `toss` shakes: shaken loose. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
 - **Ropes** (`ROPES`, `T.rope`, own rng): one coiled off the trail on each leg, none in Falcon Canyon. Bitten
   anywhere (`ropeGrip`, `d.ropeI`), dragged: Verlet nodes (`ropeSim`), links solved outward from the grips, a little
-  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Ⓑ: a wave (`ropeShake`).
+  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Ⓑ: a wave (`ropeShake`). A dog near
+  one, mouth free: the grab key (RB ✊) over it (`drawRopeOverlay`, this screen's dogs).
   Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
 - **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
-  (`d.tugS`: planted + walking back + Ⓑ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
+  (`d.tugS`: planted + walking back + heaves, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
   Up to 4 dogs: across the knot each side's heaves add up and it moves as one (`ropeHold`).
+  - **Heaves** (`tugTap`): Ⓑ, a right-stick swing, or a flick of the stick back (row: `rowB`). Full only wound up
+    (`gap` / `beat.T`, from `min`): mashing is weak and dear. **The beat** (`beat`, `U.t0`, `tugBeatOff`): the knot jumps every `T` s
+    (`ropeFx('beat')`, `R.draw.beatAt`), the heave key over it; a heave within `win` of it: × `k`, × `yank`, cheap.
+  - **Team heave** (`team`): same-side heaves on the beat within `win` s: TEAM HEAVE!, × `k` each.
+  - **Dig in** (LT, `d.dugIn`, `dig`): crouched, can't walk or heave, stamina back; its side's an anchor (`ropeHold`): it gives
+    only as far as the other side out-heaves `dig.s`. Walkers and mashers tire on it; heaves on the beat break it.
+  - **Give slack** (`give`, `tugGiven`): a dog stepping in toward the knot (`d.giving`, under `t` s) as a foe heaves: the foe
+    over-yanks, stumbles (`tugStumT`: × `k`, OOF!), wary `cd` s; the stepper's next heave counts on the beat (`feintT`).
 - **Hank's tug** (`hankRope`, `hankTug`, `HANK.rope`, `T.rope.tug.hank`): a dog brings a rope within `r` of him, he's free
   (`hankRopeFree`: awake, no job, nothing prowling): he walks to the far end, takes it, tugs every dog on it; walks back,
-  heaves every `every` s, tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
+  heaves on every `beats`th beat (step in just before it: he stumbles), tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
   let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,

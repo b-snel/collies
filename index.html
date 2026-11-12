@@ -412,10 +412,11 @@
       <span>Move</span><span>Left stick</span><span>WASD · Arrows</span>
       <span>Bark</span><span>Ⓐ</span><span>Click · F</span>
       <span>Pounce (shake when holding)</span><span>Ⓑ</span><span>Right click · R</span>
-      <span>Grab &amp; drag (let go to fling)</span><span>hold Ⓧ</span><span>hold E</span>
+      <span>Grab &amp; drag (let go to fling)</span><span>hold RB · Ⓧ</span><span>hold E</span>
+      <span>Shake (holding)</span><span>waggle right stick</span><span>Right click · R</span>
       <span>Lie down</span><span>hold LT</span><span>hold C</span>
       <span>Jump (sprint: vault)</span><span>Ⓨ</span><span>Space</span>
-      <span>Sprint</span><span>RT or RB</span><span>Shift</span>
+      <span>Sprint</span><span>RT</span><span>Shift</span>
       <span>Creep (gentle)</span><span>LB</span><span>Q</span>
       <span>Gates</span><span>walk into them to push</span><span>sprint to slam</span>
       <span>Hank’s barn</span><span>View ⧉</span><span>Tab</span>
@@ -721,7 +722,8 @@ const T = {
   fenceClear: 0.7,             // flying things above this height pass over fences
   grabReach: 1.9, wriggle: 0.35, ramBuck: 1.3,
   dogHeld: { mash: 4, decay: 0.25, tug: 9 },   // a dog in another's jaws: mash pounce this many times to wriggle free; its stick tugs the holder
-  shakeCd: 0.25,   // Ⓑ holding something: shakes ≥ this many s apart
+  shakeCd: 0.25,   // Ⓑ (or a right-stick swing) holding something: shakes ≥ this many s apart
+  shake: { daze: 0.5, max: 7, toss: 14, swing: 0.6, rest: 0.3 },   // a coyote: each shake dazes it daze s more once let go (up to max); toss shakes: shaken loose. swing/rest: right-stick past swing (from rest, or the other way) is a swing
   grabKinds: {                 // speed: dog top-speed factor; pull: how hard it fights; grip: stamina per second
     sheep: { speed: 0.75, pull: 5, grip: 0, reach: 1.15, lift: 0.35 },   // a ewe or lamb stays held as long as you like (grip 0)
     lamb: { speed: 0.9, pull: 3, grip: 0, reach: 0.95, lift: 0.42 },
@@ -738,11 +740,16 @@ const T = {
   // ROPES: one coiled off the trail on each leg (lat m out). n nodes seg m apart, r m thick; grav m/s²; slide m/s²: sliding friction on the
   // ground; fric/air: drag /s on the ground / in the air; iters: passes; bend: stiffness (0…1, folds tighter than bendMin× two links resisted); reach/mouthY: where a dog holds it; kick: a dog
   // or sheep walking through shoves it (× its speed); wave m/s: a shake's flick; near: no biting within that many nodes of another's grip.
-  // tug (TUG OF WAR): how hard a dog heaves: base (planted) + back × walking back + tap × a tap's boost (fading over tapT s), × tired when
-  // exhausted; a tap yanks it back yank m/s and costs tapCost stamina, walking back backDrain/s (holding on: grabKinds.tug.grip). The knot
+  // tug (TUG OF WAR): how hard a dog heaves: base (planted) + back × walking back + tap × a heave's boost (fading over tapT s), × tired when
+  // exhausted; a heave (Ⓑ, a right-stick swing, a flick of the stick back: row) yanks it back yank m/s and costs tapCost stamina, walking back
+  // backDrain/s (holding on: grabKinds.tug.grip). A heave's boost and yank × (s since its last one / beat.T, wind-up min…1): mashing is weak.
+  // beat: every T s the knot pulses; a heave within win s of it (and gap s after the last): boost × k, yank × yank, else stamina × off.
+  // team: same-side heaves within win s: TEAM HEAVE! (× k). dig (LT): s heave, no heaving or walking, stamina back × regen.
+  // give: stepping in toward the knot (stick past toward) for under t s as a foe heaves: it over-yanks, stumbles stum s at × k (not again
+  // for cd s); the one that gave it: its next heave within next s counts as on the beat. The knot
   // past a side's line (win m from the start) or that side letting go: the other wins; losers are yanked (lose m/s, stun s). slack: grips kept
   // that taut. cd s before another can start. hank: a dog's mouth within r m of him with it: he walks to its far end (want s), takes it within take m;
-  // heaves base + back (walking back walk m/s) + heave every s (fading over heaveT, a yank m/s); past tire s weaker tireR/s down to tireMin×; again s before he plays again
+  // heaves base + back (walking back walk m/s) + heave every beats beats (fading over heaveT, a yank m/s); past tire s weaker tireR/s down to tireMin×; again s before he plays again
   // BONES: m kg, r m round; e: how bouncy a hit is; max on the map. A hit gives the thing J = (1+e)·v / (1/m + 1/its mass), its speed
   // changes J/its mass (mass: kg, × size³ for sheep, × build for dogs, × 1.56 an alpha coyote); show: × that for how far it's knocked.
   // Over knock (m/s) a dog's bowled over, over bowl a sheep flies; irk: a ram takes it personally; scare: × courage off a coyote;
@@ -753,8 +760,10 @@ const T = {
     toss: { add: 9, mul: 1.15, up: 6.5 }, bounce: 0.35, bounceMin: 2.5, keep: 0.6, slide: 12, kick: 14, kickUp: 6, kickR: 0.9,
     mass: { dog: 22, sheep: 55, coyote: 14, cougar: 60, hank: 80 } },   // (sheep: × size³, so a ewe ~70 kg, a ram ~130, a new lamb ~12)
   rope: { n: 28, seg: 0.36, r: 0.075, grav: 22, slide: 9, fric: 1.5, air: 0.6, iters: 14, bend: 0.25, bendMin: 0.8, reach: 0.95, mouthY: 0.82, kick: 0.6, wave: 7, near: 3, lat: [5, 10],
-    tug: { base: 2, back: 1.5, tap: 2.5, tapT: 0.4, tired: 0.5, yank: 5, tapCost: 0.012, backDrain: 0.05, win: 3, slack: 0.97, lose: 7, stun: 0.6, cd: 1.5,
-      hank: { r: 3, take: 1.1, want: 8, base: 4.5, back: 1.5, heave: 2.2, every: 1.1, heaveT: 0.4, yank: 2.5, walk: 0.9, tire: 8, tireR: 0.04, tireMin: 0.5, again: 6 } } },
+    tug: { base: 2, back: 1.5, tap: 2.5, tapT: 0.4, tired: 0.5, yank: 5, tapCost: 0.012, backDrain: 0.05, win: 3, slack: 0.97, lose: 7, stun: 0.6, cd: 1.5, min: 0.15,
+      beat: { T: 0.8, win: 0.14, gap: 0.35, k: 2.2, yank: 1.6, off: 2.5 }, team: { win: 0.22, k: 1.4 }, dig: { s: 6, regen: 1 }, row: { on: 0.7, off: 0.3 },
+      give: { toward: 0.5, t: 0.5, stum: 0.8, k: 0.15, cd: 2.5, next: 0.6 },
+      hank: { r: 3, take: 1.1, want: 8, base: 4.5, back: 1.5, heave: 2.2, beats: 1, heaveT: 0.4, yank: 2.5, walk: 0.9, tire: 8, tireR: 0.04, tireMin: 0.5, again: 6 } } },
   // CARRY SWING (drawing only): what's in a dog's mouth hangs on a pendulum L m long; damp /s; clonks off the chest past
   // back rad (bounce kept, clonk rad/s for a sound), fwd/side as far as it goes; kick: a held animal's wriggles; jolt: the head
   carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
@@ -1252,7 +1261,7 @@ const KB = [
     grab: ['Comma', 'Numpad1'], lie: ['Quote', 'ControlRight'], jump: ['BracketLeft', 'Numpad2'], sprint: ['ShiftRight'], creep: ['Semicolon'], join: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash', 'Numpad0'] },
 ];
 // what to print for a player's buttons in hints and prompts
-const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'Ⓧ', lie: 'LT', jump: 'Ⓨ' }, kb0: { bark: 'Click', pounce: 'R-click', grab: 'E', lie: 'C', jump: 'Space' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'", jump: '[' } };
+const KEY_LABEL = { pad: { bark: 'Ⓐ', pounce: 'Ⓑ', grab: 'RB', lie: 'LT', jump: 'Ⓨ' }, kb0: { bark: 'Click', pounce: 'R-click', grab: 'E', lie: 'C', jump: 'Space' }, kb1: { bark: '/', pounce: '.', grab: ',', lie: "'", jump: '[' } };
 KEY_LABEL.touch = { bark: '📣', pounce: '💥', grab: '✊', lie: '💤', jump: '⤴' };
 const keyLabel = (player, act) => (player && player.kind === 'kb' ? KEY_LABEL['kb' + INPUT_KB] : player && player.kind === 'touch' ? KEY_LABEL.touch : KEY_LABEL.pad)[act];
 const GAME_KEYS = new Set(KB.flatMap(k => [...k.up, ...k.down, ...k.left, ...k.right, ...k.bark, ...k.pounce, ...k.grab, ...k.lie, ...k.jump, ...k.sprint, ...k.creep, 'Enter']));
@@ -1361,18 +1370,25 @@ function padPressed(gp, b) { const btn = gp.buttons[b]; return !!btn && (btn.pre
 // presses up to its start (padHit); one that comes in mid-frame is the next frame's (never marked seen unread).
 function padEdge(i, gp, b) { return !!(padHit[i] && padHit[i].has(b)); }
 const padSeen = {}, padTap = {}, padHit = {};   // gamepad index -> last polled buttons / pressed since the last frame's start / this frame's presses
+const padStk = {}, padSwg = {}, padSwgHit = {};   // the right stick: where it last swung to / swings since the last frame's start / this frame's
 function padPoll() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
     const was = padSeen[i] || [], now = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
     for (let b = 0; b < now.length; b++) if (now[b] && !was[b]) (padTap[i] ||= new Set()).add(b);
+    // a swing: pushed out from rest, or across to the other side (a waggle: shake, heave)
+    const x = gp.axes[2] || 0, y = gp.axes[3] || 0, m = Math.hypot(x, y), S = padStk[i] ||= { x: 0, y: 0, rest: true };
+    if (m > T.shake.swing) { const ux = x / m, uy = y / m; if (S.rest || ux * S.x + uy * S.y < -0.3) { S.x = ux; S.y = uy; S.rest = false; padSwg[i] = (padSwg[i] || 0) + 1; } }
+    else if (m < T.shake.rest) S.rest = true;
   }
 }
 function padFrame() {
   padPoll();
   for (const i in padHit) delete padHit[i];
   for (const i in padTap) { padHit[i] = padTap[i]; delete padTap[i]; }
+  for (const i in padSwgHit) delete padSwgHit[i];
+  for (const i in padSwg) { padSwgHit[i] = padSwg[i]; delete padSwg[i]; }
 }
 let padPollId = 0;
 if (!SIM) addEventListener('gamepadconnected', () => { if (!padPollId) padPollId = setInterval(() => { if (!document.hidden) padPoll(); }, 4); });
@@ -1382,11 +1398,11 @@ function rumble(player, strong = 0.4, weak = 0.6, ms = 120) {
   try { gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }); } catch (e) {}
 }
 
-// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie,jump}
-// bark, pounce and jump are one-shot (edge) presses; sprint, creep, grab and lie are held.
-// Grab: hold to bite and keep hold, let go to drop (running: fling); Ⓑ while holding shakes.
+// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie,jump,shake}
+// bark, pounce, jump and shake are one-shot (edge) presses; sprint, creep, grab and lie are held.
+// Grab: hold to bite and keep hold, let go to drop (running: fling); Ⓑ or a right-stick swing while holding shakes.
 function readInput(p) {
-  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false, jump: false };
+  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false, jump: false, shake: false };
   if (p.kind === 'bot') return Object.assign(r, p.bot || {});   // scripted player for automated tests
   if (p.kind === 'net') return netReadInput(p, r);              // ONLINE: a friend's dog, driven by what their browser sends
   if (p.kind === 'touch') {   // a light push creeps; ⚡ sprints
@@ -1402,13 +1418,14 @@ function readInput(p) {
     if (m < 0.18) { x = 0; y = 0; } else { const k = Math.min(1, (m - 0.18) / 0.72) / m; x *= k; y *= k; }
     if (padPressed(gp, 14)) x = -1; if (padPressed(gp, 15)) x = 1; if (padPressed(gp, 12)) y = -1; if (padPressed(gp, 13)) y = 1;
     r.mx = x; r.my = y;
-    r.sprint = padPressed(gp, 7) || padPressed(gp, 5) || padPressed(gp, 10);   // RT, RB, L3
+    r.sprint = padPressed(gp, 7) || padPressed(gp, 10);                     // RT, L3
     r.creep = padPressed(gp, 4);                                              // LB
     r.lie = padPressed(gp, 6);                                                // LT
     r.jump = padEdge(p.index, gp, 3);                                         // Y
-    r.grab = padPressed(gp, 2);                                               // X (hold)
+    r.grab = padPressed(gp, 5) || padPressed(gp, 2);                          // RB or X (hold: RB leaves the thumb free)
     r.bark = padEdge(p.index, gp, 0);                                         // A
     r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
+    r.shake = (padSwgHit[p.index] || 0) > 0;                                  // right stick: a swing (shakes while holding)
   } else {
     for (const k of KB) {   // one keyboard player: WASD and arrows both drive it
       r.mx += (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
@@ -1437,6 +1454,7 @@ function pollJoins(players) {
 function endInputFrame() {
   keyEdge.clear(); TOUCH.edge = {}; TOUCH.tap = false;
   for (const i in padHit) delete padHit[i];   // (read: gone. Presses since the frame's start wait in padTap)
+  for (const i in padSwgHit) delete padSwgHit[i];
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
@@ -5356,24 +5374,31 @@ function updateDog(d, inp, dt) {
   else if (!d.holding && !d.grabLock && !bucketOf(d) && !inp.lie && d.hopT <= 0 && d.pounceT <= 0) tryGrab(d);
   d.grabHeld = !!inp.grab && !d.grabLock;   // (WATER: mouth free, it picks up a bucket)
   // pounce, or shake whatever's in its mouth (a gate it lets go of first; ROPES: in a tug of war, a heave)
+  const tug = d.holdKind === 'rope' && d.holding.tug ? d.holding : null;
+  d.dugIn = !!(tug && inp.lie);   // ROPES: LT in a tug: dug in
   if (d.pounceBuf > 0) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
-    if (d.holdKind === 'rope' && d.holding.tug) { tugTap(d.holding, d); d.pounceBuf = 0; }
+    if (tug) { tugTap(tug, d); d.pounceBuf = 0; }
     else if (d.holding || bucketOf(d)) { shakeHold(d); d.pounceBuf = 0; }
     else if (inp.lie) d.pounceBuf = 0;
     else if (startPounce(d, wx, wz, mag)) d.pounceBuf = 0;
   }
+  if (inp.shake && d.holdKind !== 'station') {   // right stick: a swing shakes what's in its mouth (ROPES: in a tug, a heave; SAILING: not a station)
+    if (tug) tugTap(tug, d);
+    else if (d.holding || bucketOf(d)) shakeHold(d);
+  }
   if (inp.jump) startJump(d);
   let mode = 'walk';
-  if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
+  if (d.dugIn) mode = 'creep';   // ROPES: haunches down, paws planted
+  else if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
   else if (inp.creep) mode = 'creep';
   else if (inp.sprint && mag > 0.2 && !d.exhausted) mode = 'sprint';
   if (mode === 'lie' && d.mode !== 'lie') sayOnce('lie', 'lie_down', 'Lie down!');
   const hk = d.holding ? T.grabKinds[d.holdKind === 'rope' && d.holding.tug ? 'tug' : d.holdKind] : null, wind = dogK(d, 'wind'), grip = dogK(d, 'grip'), st0 = d.stamina;   // BREEDS & TRAINING (ROPES: heaving in a tug of war)
   if (mode === 'sprint') { d.stamina -= T.staminaDrain / wind * dt; if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; } }
-  else if (!hk || !hk.grip) { d.stamina = Math.min(1, d.stamina + T.staminaRegen * wind * (mode === 'lie' ? 1.5 : 1) * dt); if (d.stamina > 0.35) d.exhausted = false; }
+  else if (!hk || !hk.grip || d.dugIn) { d.stamina = Math.min(1, d.stamina + T.staminaRegen * wind * (mode === 'lie' ? 1.5 : d.dugIn ? T.rope.tug.dig.regen : 1) * dt); if (d.stamina > 0.35) d.exhausted = false; }   // (ROPES: dug in, it gets its breath back)
   if (hk) {   // keeping hold of something that fights back is tiring
-    d.stamina -= hk.grip / grip * dt;
+    if (!d.dugIn) d.stamina -= hk.grip / grip * dt;
     if (hk.pull) train(d, 'grip', T.train.grip * dt);
     if (d.stamina <= 0) { d.stamina = 0; d.exhausted = true; floatText('SLIP!', d.x, d.y + 1.9, d.z, '#ff8a6b', 1.1); releaseHold(d, false); }
   }
@@ -5381,6 +5406,7 @@ function updateDog(d, inp, dt) {
   d.mode = mode;
   let max = mode === 'sprint' ? T.dogSprint * dogK(d, 'speed') : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk * dogK(d, 'speed');
   if (hk) max *= hk.speed ** (1 / grip);   // a good grip carries it nearer full speed
+  if (d.dugIn) max = 0;   // ROPES: dug in, going nowhere
   if (d.hp < T.dogHp.limp) max *= lerp(0.7, 1, d.hp / T.dogHp.limp);   // hurt: it limps
   if (T.mud.on && MUDS.length && mudK(d.x, d.z) > 0.5) max *= T.mud.dogSlow;   // MUD: heavy going (a pounce still flies through)
   if (d.cold > 0) max *= dogColdK(d);   // MOUNTAIN PASS: frozen stiff
@@ -5433,7 +5459,7 @@ function heldDogInput(d, inp, dt) {
   if (d.ko) return true;
   const wx = inp.mx * CAM_R.x - inp.my * CAM_F.x, wz = inp.mx * CAM_R.z - inp.my * CAM_F.z, m = Math.min(1, Math.hypot(wx, wz));
   if (m > 0.2) { h.vx += wx * H.tug * dt; h.vz += wz * H.tug * dt; }
-  if (inp.pounce) {
+  if (inp.pounce || inp.shake) {   // (a right-stick swing too)
     d.heldWrig += dogK(d, 'grit') / H.mash; mashFx(d);   // (BREEDS: as under a cougar)
     if (d.heldWrig >= 1) {
       d.heldWrig = 0; releaseHold(h, false);
@@ -6305,6 +6331,7 @@ function releaseHold(d, fling) {
     if (throwIt) { launchCoyote(H, (d.vx * F.mul + fx * F.add) * kg, (d.vz * F.mul + fz * F.add) * kg, F.up * 0.8, d); H.air.ghost = 0.15; SFX.whoosh(pan, 0.3); floatText('YEET!', H.x, H.y + 1.8, H.z, '#ffd36b', 1.3); MV.flings++; }
     else { H.vx = fx * 3; H.vz = fz * 3; H.y = groundY(H.x, H.z); }
     if (H.state !== 'leave' && !H.prey) { H.state = 'flee'; H.stateT = 0; H.fleeDur = rnd(1.8, 2.8); H.fx = d.x; H.fz = d.z; }
+    coyoteDazed(H);
     return;
   }
   const s = H;
@@ -6320,7 +6347,7 @@ function releaseHold(d, fling) {
 // Ⓑ with something in its mouth
 function shakeHold(d) {
   if ((d.shakeCD || 0) > G.time) return;
-  d.shakeCD = G.time + T.shakeCd; d.shakeT = 0.3; d.lastShake = 0;
+  d.shakeCD = G.time + T.shakeCd; d.shakeT = 0.3; d.lastShake = 0; MV.shakes = (MV.shakes || 0) + 1;
   const H = d.holding, kind = d.holdKind, pan = panOf(d.x, d.z), fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
   SFX.shake(pan); rumble(d.player, 0.45, 0.6, 130);
   if (!H) { const b = bucketOf(d); if (b) bucketSlosh(b, d); return; }   // WATER: it slops over
@@ -6332,15 +6359,17 @@ function shakeHold(d) {
   if (kind === 'bone' || kind === 'apple') return;   // BONES (APPLES): a good worrying
   if (kind === 'gate') { SFX.creak(pan, 0.25, 1.4); return; }   // a rattle
   if (kind === 'coyote') {
+    const K = T.shake;
     d.shakes++; train(d, 'grip', T.train.fling);
     if (H.state !== 'leave') { if (H.state === 'held') H.state = 'flee'; scareCoyote(H, T.coyoteShake * dogK(d, 'grip'), d, true); } else if (H.prey) dropPrey(H, true);   // drops its prey, loses heart
-    floatText(d.shakes > 1 ? 'SHAKE SHAKE!' : 'SHAKE!', H.x, H.y + 1.8, H.z, '#ff8a6b', 1.2 + d.shakes * 0.1);
+    H.shook = Math.min(K.max, (H.shook || 0) + K.daze * dogK(d, 'grip'));   // the longer it's shaken, the longer it's dazed once let go (coyoteDazed)
+    floatText(d.shakes > 1 ? 'SHAKE SHAKE!' : 'SHAKE!', H.x, H.y + 1.8, H.z, '#ff8a6b', Math.min(2, 1.2 + d.shakes * 0.06));
     starBurst(H.x, H.y + 1, H.z, 5); shakeCam(0.18); dizzy(H, 1.5, 1.5);
-    if (H.courage <= 0.05 || H.state === 'leave' || d.shakes >= 3) {   // shaken loose: tossed aside and it bolts
+    if (d.shakes >= K.toss) {   // shaken loose: tossed aside, seeing stars
       d.holding = null; d.holdKind = null; H.heldBy = null; d.grabLock = true;
       launchCoyote(H, fx * 9 + d.vx, fz * 9 + d.vz, 6, d); H.air.ghost = 0.15;
       if (H.state !== 'leave') { H.state = 'flee'; H.stateT = 0; H.fleeDur = 3; H.fx = d.x; H.fz = d.z; }
-      floatText('AND STAY OUT!', H.x, H.y + 2.2, H.z, '#ffd36b', 1.3);
+      floatText('AND STAY OUT!', H.x, H.y + 2.2, H.z, '#ffd36b', 1.3); coyoteDazed(H);
     }
   } else if (kind === 'dog') {   // shaken silly
     dizzy(H, 1.2, 1.6); Sound.yelp(panOf(H.x, H.z)); rumble(H.player, 0.6, 0.5, 120);
@@ -6418,7 +6447,14 @@ function updateHeldCoyote(c, dt) {
     c.y = groundY(c.x, c.z); c.vx = Math.cos(d.yaw) * 6; c.vz = -Math.sin(d.yaw) * 6;
     floatText('WRIGGLE!', c.x, c.y + 1.6, c.z, '#ff8a6b', 1.1); Sound.yelp(panOf(c.x, c.z));
     if (c.state === 'held' || (c.state !== 'leave' && !c.prey)) { c.state = 'flee'; c.stateT = 0; c.fleeDur = 1.5; c.fx = d.x; c.fz = d.z; }
+    coyoteDazed(c);
   }
+}
+// let go after a shaking: it stands there seeing stars as long as it was shaken (T.shake), then runs (updateCoyotes)
+function coyoteDazed(c) {
+  if (!(c.shook > 0)) return;
+  c.dazeT = Math.max(c.dazeT || 0, c.shook); c.shook = 0;
+  dizzy(c, c.dazeT + (c.air ? 1 : 0), 1.5);
 }
 
 // ---------------- gates you push ----------------
@@ -8238,22 +8274,49 @@ function tugStart(R) {
   const k = Math.round((lo.ropeI + hi.ropeI) / 2), a = ropeMouth(lo, _rmA), b = ropeMouth(hi, _rmB);
   let ux = b.x - a.x, uz = b.z - a.z, l = Math.hypot(ux, uz);
   if (l < 0.5) { ux = R.x[k + 1] - R.x[k - 1]; uz = R.z[k + 1] - R.z[k - 1]; l = Math.hypot(ux, uz) || 1; }
-  R.tug = { k, sx: (a.x + b.x) / 2, sz: (a.z + b.z) / 2, ux: ux / l, uz: uz / l, a: lo.color, b: hi.color, off: 0 };
+  R.tug = { k, sx: (a.x + b.x) / 2, sz: (a.z + b.z) / 2, ux: ux / l, uz: uz / l, a: lo.color, b: hi.color, off: 0, t0: G.time, bi: -1 };
   R.tug.net = { k, sx: +R.tug.sx.toFixed(2), sz: +R.tug.sz.toFixed(2), ux: +R.tug.ux.toFixed(3), uz: +R.tug.uz.toFixed(3), a: lo.color, b: hi.color };
-  for (const o of H) o.tugK = 0;
+  for (const o of H) Object.assign(o, { tugK: 0, heaveAt: -9, heaveOk: false, tugStumT: 0, wary: 0, giving: false, giveAt: -9, feintT: 0, rowB: 1 });
   MV.tugs = (MV.tugs || 0) + 1;
   ropeFx('tug', R.x[k], R.z[k]); for (const o of H) rumble(o.player, 0.5, 0.6, 160);
-  if (hk) { HANK.tugT = 0; HANK.heaveT = 0; hank(null, pick(["Ye want a tug, eh? Heave!", "Right, ye wee rascal. Pull!", "Come on then!"]), { force: true }); }
+  if (hk) { HANK.tugT = 0; hank(null, pick(["Ye want a tug, eh? Heave!", "Right, ye wee rascal. Pull!", "Come on then!"]), { force: true }); }
   else sayOnce('tug', null, "Tug o' war! Heave!");
   hint('tug');
 }
-// Ⓑ in a tug: a heave (a yank back, heavier a moment)
+// BEAT: s from the nearest beat (the knot pulses on it: tugStep)
+const tugBeatOff = U => { const B = T.rope.tug.beat, b = (G.time - U.t0) / B.T; return (b - Math.round(b)) * B.T; };
+// a heave (Ⓑ, a right-stick swing, a row: tugStep): a yank back, heavier a moment. Full only wound up (a beat since the last: mashing is
+// weak); on the beat more, and cheaper; with a mate on the beat too, TEAM HEAVE!; into a foe giving slack (GIVE), a stumble
 function tugTap(R, d) {
-  const U = R.tug, K = T.rope.tug, sd = tugSide(R, d);
-  d.tugK = 1; d.stamina = Math.max(0, d.stamina - K.tapCost); d.shakeT = 0.12;
-  d.vx += sd * U.ux * K.yank; d.vz += sd * U.uz * K.yank;
-  burst(d.x - sd * U.ux * 0.3, groundY(d.x, d.z) + 0.1, d.z - sd * U.uz * 0.3, 2, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.2, life: 0.4, grav: 0 });
-  rumble(d.player, 0.35, 0.3, 70);
+  const U = R.tug, K = T.rope.tug, B = K.beat; if (!U || d.dugIn || G.time < (d.tugStumT || 0)) return;   // (dug in, or on its backside)
+  const sd = tugSide(R, d), gap = G.time - (d.heaveAt ?? -9); d.heaveAt = G.time;
+  if (tugGiven(R, d, sd)) return;   // GIVE: nothing there to pull on
+  const wind = clamp(gap / B.T, K.min, 1), beat = (Math.abs(tugBeatOff(U)) < B.win && gap >= B.gap) || G.time < (d.feintT || 0);
+  let k = wind * (beat ? B.k : 1); d.feintT = 0; d.heaveOk = beat; d.heaveK = k;
+  if (beat) {   // TEAM HEAVE: mates on this side heaving on the beat with it
+    const mates = R.holders.filter(o => o !== d && o !== HANK && o.tugSide === sd && o.heaveOk && G.time - o.heaveAt <= K.team.win);
+    if (mates.length) {
+      k *= K.team.k; for (const o of mates) o.tugK = Math.max(o.tugK || 0, (o.heaveK || 1) * K.team.k);
+      if (G.time - (U['team' + sd] || -9) > K.team.win * 2) { U['team' + sd] = G.time; ropeFx('team', R.x[U.k], R.z[U.k], d.color); }
+    }
+  }
+  d.tugK = Math.max(d.tugK || 0, k); d.stamina = Math.max(0, d.stamina - K.tapCost * (beat ? 1 : B.off)); d.shakeT = 0.12;
+  const y = K.yank * wind * (beat ? B.yank : 1); d.vx += sd * U.ux * y; d.vz += sd * U.uz * y;
+  if (beat) ropeFx('heave', d.x - sd * U.ux * 0.3, d.z - sd * U.uz * 0.3, d.color);
+  else burst(d.x - sd * U.ux * 0.3, groundY(d.x, d.z) + 0.1, d.z - sd * U.uz * 0.3, 2, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.2, life: 0.4, grav: 0 });
+  rumble(d.player, beat ? 0.6 : 0.3, beat ? 0.5 : 0.25, beat ? 110 : 60);
+}
+// GIVE: e heaves (side sd) just as a foe steps in toward the knot: it over-yanks and stumbles (not again for give.cd s);
+// the foe's next heave counts as on the beat. true: it did
+function tugGiven(R, e, sd) {
+  const K = T.rope.tug.give;
+  if (G.time < (e.wary || 0)) return false;
+  const foe = R.holders.find(o => o !== HANK && o.tugSide === -sd && o.giving && G.time - o.giveAt < K.t); if (!foe) return false;
+  e.tugStumT = G.time + K.stum; e.wary = G.time + K.cd; e.tugK = 0; foe.feintT = G.time + K.next;
+  if (e === HANK) { e.stumble = 0.6; hank(null, pick(["Whoa!", "Ye sly wee thing!", "Ach! Sneaky!"]), { force: true }); }
+  else { landDog(e, 0.35); rumble(e.player, 0.6, 0.4, 160); }
+  ropeFx('stum', e.x, e.z, e === HANK ? 2.8 : 1.9); rumble(foe.player, 0.3, 0.6, 90);
+  return true;
 }
 // where a heaving dog looks: along the rope toward the knot
 function tugFace(R, d) {
@@ -8266,16 +8329,23 @@ function tugStep(R, dt) {
   if (!nA || !nB) { tugEnd(R, nA ? -1 : nB ? 1 : 0); return; }   // a side let go (out of puff, knocked off)
   U.off = (R.x[U.k] - U.sx) * U.ux + (R.z[U.k] - U.sz) * U.uz;
   if (Math.abs(U.off) > K.win) { tugEnd(R, U.off < 0 ? -1 : 1); return; }   // the knot over a side's line
-  for (const d of H) {   // how hard each heaves: planted, walking back, tapping
-    if (d === HANK) { hankTug(R, dt); continue; }
-    const ax = d.tugSide * U.ux, az = d.tugSide * U.uz, back = Math.max(0, d.wx * ax + d.wz * az) * (d.inMag || 0);
+  const bi = Math.floor((G.time - U.t0) / K.beat.T + 1e-6), tick = bi !== U.bi;   // BEAT: the knot pulses (every screen)
+  if (tick) { U.bi = bi; ropeFx('beat', R.x[U.k], R.z[U.k], R.i); }
+  for (const d of H) {   // how hard each heaves: planted, walking back, heaving, dug in
+    if (d === HANK) { hankTug(R, dt, tick && bi % K.hank.beats === 0); continue; }
+    const ax = d.tugSide * U.ux, az = d.tugSide * U.uz, away = (d.wx * ax + d.wz * az) * (d.inMag || 0), back = d.dugIn ? 0 : Math.max(0, away);
+    const giving = !d.dugIn && -away > K.give.toward; if (giving && !d.giving) d.giveAt = G.time; d.giving = giving;   // GIVE: stepping in toward the knot
+    const rb = back > K.row.on ? 1 : back < K.row.off ? 0 : d.rowB; if (rb && !d.rowB) tugTap(R, d); d.rowB = rb;   // ROW: a flick of the stick back is a heave
     d.tugK = Math.max(0, (d.tugK || 0) - dt / K.tapT);
-    d.tugS = (K.base + K.back * back + K.tap * d.tugK) * (d.exhausted ? K.tired : 1) * dogK(d, 'grip');   // (BREEDS: a good grip heaves harder)
+    d.tugS = (d.dugIn ? K.dig.s : (K.base + K.back * back + K.tap * d.tugK) * (d.exhausted ? K.tired : 1)) * (G.time < (d.tugStumT || 0) ? K.give.k : 1) * dogK(d, 'grip');   // (BREEDS: a good grip heaves harder)
     d.stamina -= K.backDrain * back * dt;
+    if (!d.dugIn) d.dugX = undefined;
+    else if (d.dugX === undefined || Math.hypot(d.x - d.dugX, d.z - d.dugZ) > 0.3) { if (d.dugX !== undefined) ropeFx('dig', d.x + Math.sin(d.yaw) * 0.4, d.z + Math.cos(d.yaw) * 0.4, 0); d.dugX = d.x; d.dugZ = d.z; }   // DIG: dragged, its paws plough
   }
 }
 // two or more on it: the rope between grips can't stretch. Whoever heaves harder stays put, the other's dragged.
-// In a tug, across the knot each side heaves as one: its heaves add up, and the whole side moves together
+// In a tug, across the knot each side heaves as one: its heaves add up, and the whole side moves together.
+// DIG: a side with a dog dug in is an anchor: it gives only as far as the other side out-heaves it
 function ropeHold(R) {
   const K = T.rope.tug, S = R.holders.filter(d => d.ropeI >= 0).sort((a, b) => a.ropeI - b.ropeI);
   for (const d of S) if (!R.tug) d.tugS = K.base;
@@ -8284,8 +8354,9 @@ function ropeHold(R) {
     const a = S[j], b = S[j + 1], L = (b.ropeI - a.ropeI) * T.rope.seg * K.slack, ma = ropeMouth(a, _rmA), mb = ropeMouth(b, _rmB);
     const dx = mb.x - ma.x, dz = mb.z - ma.z, dd = Math.hypot(dx, dz); if (dd <= L) continue;
     const across = R.tug && a.tugSide < 0 && b.tugSide > 0, ga = across ? team : [a], gb = across ? teamB : [b];
-    const wa = 1 / (across ? sum(ga) : a.tugS), wb = 1 / (across ? sum(gb) : b.tugS), e = (dd - L) / dd / (wa + wb);
-    for (const o of ga) tugMove(o, dx * e * wa, dz * e * wa); for (const o of gb) tugMove(o, -dx * e * wb, -dz * e * wb);
+    const sa = across ? sum(ga) : a.tugS, sb = across ? sum(gb) : b.tugS, da = ga.some(o => o.dugIn), db = gb.some(o => o.dugIn);
+    const fb = da === db ? sa / (sa + sb) : db ? Math.max(0, 1 - sb / sa) : Math.min(1, sa / sb), c = (dd - L) / dd;   // b's share of the give
+    for (const o of ga) tugMove(o, dx * c * (1 - fb), dz * c * (1 - fb)); for (const o of gb) tugMove(o, -dx * c * fb, -dz * c * fb);
   }
 }
 function tugMove(d, mx, mz) { d.x += mx; d.z += mz; const r = d === HANK ? T.hankR : T.dogR; collideDog(d, r); collideFences(d, r); }
@@ -8338,15 +8409,15 @@ function hankRope(R) {
 }
 // hankGoal: the far end of the rope he's after
 function hankRopeGoal() { const hk = HANK, R = hk.ropeWant; if (!R || !(hk.ropeEnd >= 0)) return null; return { x: R.x[hk.ropeEnd], z: R.z[hk.ropeEnd], stop: 0.35, noShy: true }; }
-// tugStep: he walks back, heaving every so often (tiring in the end)
-function hankTug(R, dt) {
+// tugStep: he walks back, heaving on the beat (tiring in the end); a dog stepping in just then: he stumbles (GIVE)
+function hankTug(R, dt, beat) {
   const hk = HANK, U = R.tug, K = T.rope.tug.hank, sd = hk.tugSide;
   hk.tugT = (hk.tugT || 0) + dt;
-  if ((hk.heaveT = (hk.heaveT || 0) - dt) <= 0) { hk.heaveT = K.every; hk.tugK = 1; burst(hk.x - sd * U.ux * 0.4, groundY(hk.x, hk.z) + 0.1, hk.z - sd * U.uz * 0.4, 3, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.22, life: 0.4, grav: 0 }); }
+  if (beat && G.time >= (hk.tugStumT || 0) && !tugGiven(R, hk, sd)) { hk.tugK = 1; ropeFx('heave', hk.x - sd * U.ux * 0.4, hk.z - sd * U.uz * 0.4, hk.color); }
   hk.tugK = Math.max(0, (hk.tugK || 0) - dt / K.heaveT);
-  const tire = hk.tugT > K.tire ? Math.max(K.tireMin, 1 - (hk.tugT - K.tire) * K.tireR) : 1;
-  hk.tugS = (K.base + K.back + K.heave * hk.tugK) * tire;
-  const v = (K.walk + K.yank * hk.tugK) * tire; hk.vx = sd * U.ux * v; hk.vz = sd * U.uz * v;
+  const tire = hk.tugT > K.tire ? Math.max(K.tireMin, 1 - (hk.tugT - K.tire) * K.tireR) : 1, stum = G.time < (hk.tugStumT || 0);
+  hk.tugS = (K.base + K.back + K.heave * hk.tugK) * tire * (stum ? T.rope.tug.give.k : 1);
+  const v = (K.walk + K.yank * hk.tugK) * tire * (stum ? 0.2 : 1); hk.vx = sd * U.ux * v; hk.vz = sd * U.uz * v;
   hk.x += hk.vx * dt; hk.z += hk.vz * dt; collideDog(hk, T.hankR); collideFences(hk, T.hankR);
   hk.yaw = lerpA(hk.yaw, Math.atan2(-sd * U.ux, -sd * U.uz), Math.min(1, dt * 8));
 }
@@ -8358,12 +8429,17 @@ function hankTugEnd(R, won, ax, az) {
   else { hk.stumble = 0.8; hk.vx = ax * 3; hk.vz = az * 3; floatText('OOF!', hk.x, hk.y + 2.8, hk.z, '#ffffff', 1.4); hank(null, pick(["Ach! Strong dogs!", "Fair beat me, ye did!"]), { force: true }); }
 }
 // what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
-function ropeFx(kind, x, z) {
+function ropeFx(kind, x, z, a) {
   const y = groundY(x, z), pan = panOf(x, z);
   if (kind === 'bite') burst(x, y + 0.2, z, 4, '#c8a46a', { speed: 1.2, up: 1.2, size: 0.12, life: 0.4, grav: -6 });
   else if (kind === 'shake') { burst(x, y + 0.5, z, 3, '#e8dcc0', { speed: 1.6, up: 1.4, size: 0.14, life: 0.4, grav: -4 }); }
   else if (kind === 'tug') { floatText('TUG!', x, y + 2.2, z, '#ffd36b', 1.6); SFX.thud(pan, 0.3); Sound.growl(pan, 0.16); shakeCam(0.12); spawnRing(x, y, z, 2.5, '#ffd36b', 0.5); }
   else if (kind === 'win') { confetti(x, y + 1, z, 30); Sound.chime([0, 4, 7, 12], 660, 0.14); SFX.thud(pan, 0.35); shakeCam(0.2); }
+  else if (kind === 'beat') { const R = ROPES[a]; if (R) R.draw.beatAt = performance.now(); SFX.thud(pan, 0.1); }   // the knot pulses (a: which rope)
+  else if (kind === 'heave') { spawnRing(x, y, z, 1.1, a, 0.35); burst(x, y + 0.1, z, 5, '#e8dcc0', { speed: 2, up: 1, size: 0.24, life: 0.45, grav: 0 }); SFX.thud(pan, 0.22); }   // on the beat (a: colour)
+  else if (kind === 'team') { floatText('TEAM HEAVE!', x, y + 2.4, z, a, 1.5); spawnRing(x, y, z, 2.6, a, 0.5); Sound.chime([0, 7], 523, 0.12); shakeCam(0.15); }
+  else if (kind === 'stum') { floatText('OOF!', x, y + a, z, '#ffffff', 1.2); burst(x, y + 0.2, z, 6, '#e8dcc0', { speed: 2.2, up: 1.4, size: 0.24, life: 0.5, grav: -2 }); SFX.thud(pan, 0.3); Sound.chime([7, 0], 330, 0.08); }   // over-yanked (a: text height)
+  else if (kind === 'dig') burst(x, y + 0.1, z, 3, '#8a6a44', { speed: 1.6, up: 1.8, size: 0.18, life: 0.5, grav: -9 });   // dug in, dragged: clods
 }
 // ---------------- drawing (every screen): a twisted tube through the nodes, knotted ends, the rag, the lines ----------------
 const ROPE_DRAW = (() => {
@@ -8432,6 +8508,7 @@ function syncRopes(dt) {
     const U = R.tug; D.rag.visible = !!U; for (const l of D.lines) l.visible = !!U;
     if (!U) continue;
     D.rag.position.set(D.vx[U.k], D.vy[U.k] + 0.02, D.vz[U.k]); D.rag.rotation.y = Math.atan2(U.ux, U.uz) + Math.sin(G.time * 9) * 0.15;
+    D.rag.scale.setScalar(1 + 0.9 * Math.exp(-(performance.now() - (D.beatAt || -1e9)) / 110));   // BEAT: it jumps on each one
     const yaw = Math.atan2(U.ux, U.uz);
     D.lines.forEach((l, j) => {
       const o = (j - 1) * K.tug.win, x = U.sx + U.ux * o, z = U.sz + U.uz * o, px = -U.uz * 1.3, pz = U.ux * 1.3;
@@ -8440,18 +8517,30 @@ function syncRopes(dt) {
     });
   }
 }
-// the overlay: a rope nobody's found yet; in a tug, what to press
+// the overlay: near a rope, the grab key on it; in a tug, the heave key over the knot, jumping on the beat
 function drawRopeOverlay() {
   if (G.mode !== 'play') return;
+  const mine = d => { if (NET.role === 'guest') { const L = d.player && netLocalOf(d.player.slot); return L ? { kind: L.kind || 'pad' } : null; } return d.player && d.player.kind !== 'net' ? d.player : null; }, now = performance.now();   // this screen's own dog: its player (for the keys)
   for (const R of ROPES) {
     if (R.tug) {
-      const H = G.dogs.filter(d => d.holding === R), d = H.find(d => d.player && d.player.kind !== 'net') || H[0]; if (!d) continue;
-      const g = keyLabel(d.player, 'pounce'); nudge('tug', R.x[R.tug.k], R.y[R.tug.k] + 2.4, R.z[R.tug.k], `${g} ${g} ${g}`, '#ffd36b');
+      const d = G.dogs.find(d => d.holding === R && mine(d)); if (!d) continue;
+      const k = R.tug.k, [px, py, pz] = proj(R.x[k], R.y[k] + 1.7, R.z[k]); if (pz > 1) continue;
+      const b = Math.exp(-(now - (R.draw.beatAt || -1e9)) / 140), g = keyLabel(mine(d), 'pounce');
+      ctx.save(); ctx.translate(px, py); ctx.scale(0.9 + 0.5 * b, 0.9 + 0.5 * b); ctx.globalAlpha = 0.55 + 0.45 * b;
+      forageChip(0, 0, g, b > 0.3 ? 'rgba(232,71,63,.95)' : 'rgba(60,50,40,.8)'); ctx.restore();
       continue;
     }
-    if (R.found) continue;
-    const d = G.dogs.find(d => !d.holding && Math.hypot(d.x - R.cx, d.z - R.cz) < 8); if (!d) continue;
-    nudge('rope', R.cx, R.y[0] + 1.6, R.cz, `${keyLabel(d.player, 'grab')} grab`, '#c8a46a');
+    // a dog near it, mouth free: the grab key (RB) over the nearest bit
+    for (const d of G.dogs) {
+      if (!mine(d) || d.holding || bucketOf(d) || d.air || d.heldBy || Math.abs(d.x - R.cx) > R.rad + 4 || Math.abs(d.z - R.cz) > R.rad + 4) continue;
+      const mx = d.x + Math.sin(d.yaw) * 0.9, mz = d.z + Math.cos(d.yaw) * 0.9; let bi = -1, bd = 3;
+      for (let i = 0; i < R.n; i++) { const q = Math.hypot(R.x[i] - mx, R.z[i] - mz); if (q < bd) { bd = q; bi = i; } }
+      if (bi < 0) continue;
+      const [px, py, pz] = proj(R.x[bi], R.y[bi] + 0.9, R.z[bi]); if (pz > 1) continue;
+      const g = keyLabel(mine(d), 'grab');
+      ctx.save(); ctx.globalAlpha = Math.min(1, (3 - bd) * 1.5); forageChip(px, py + Math.sin(now / 160) * 2, g === '✊' ? g : `${g} ✊`, 'rgba(143,107,58,.92)'); ctx.restore();
+      break;
+    }
   }
 }
 
@@ -8804,7 +8893,7 @@ function guarded(s, r = 9) { for (const d of G.dogs) if (Math.hypot(d.x - s.x, d
 let packIds = 0;
 function newCoyote(x, z, pack, alpha, yaw = 0, state = 'pack') {
   const c = { x, z, vx: 0, vz: 0, y: groundY(x, z), yaw, state, stateT: 0, role: 'follow', side: 0, pack, alpha,
-    prey: null, courage: coyoteCourage(alpha), leg: 0, tumble: 0, crouch: 0, howlT: rnd(2, 8), growlT: 0, models: makeCoyote(alpha) };
+    prey: null, courage: coyoteCourage(alpha), leg: 0, tumble: 0, dazeT: 0, shook: 0, crouch: 0, howlT: rnd(2, 8), growlT: 0, models: makeCoyote(alpha) };
   G.coyotes.push(c); return c;
 }
 const coyoteCourage = alpha => (alpha ? 1.5 : 1) + (G.clock.day - 1) * 0.1;
@@ -9149,6 +9238,13 @@ function updateCoyotes(dt) {
     if (c.heldBy) { updateHeldCoyote(c, dt); continue; }   // SHARED HOOK: in a dog's jaws (dog-moves section owns this)
     if (c.air) { updateAirborneCoyote(c, dt); continue; }   // knocked flying / flung / swimming out (dog-moves section owns this)
     c.stateT += dt; c.tumble = Math.max(0, c.tumble - dt); c.growlT -= dt;
+    if (c.dazeT > 0) {   // shaken silly (coyoteDazed): sways where it stands, then comes to and runs
+      c.dazeT = Math.max(0, c.dazeT - dt); const k = Math.exp(-dt * 5); c.vx *= k; c.vz *= k;
+      c.x += c.vx * dt; c.z += c.vz * dt; collideWorld(c, T.coyoteR); collideFences(c, T.coyoteR); c.y = groundY(c.x, c.z);
+      c.crouch = lerp(c.crouch, 0.4, Math.min(1, dt * 5)); c.stateT = 0;
+      if (c.dazeT <= 0 && c.state !== 'leave') { c.state = 'flee'; c.fleeDur = rnd(1.8, 2.8); const nd = nearestDog(c.x, c.z).dog; c.fx = nd ? nd.x : c.x - Math.sin(c.yaw); c.fz = nd ? nd.z : c.z - Math.cos(c.yaw); }
+      continue;
+    }
     const { dog: nd, d: ndd } = nearestDog(c.x, c.z);
     if (c.state === 'sleep') {   // curled up at the den: a dog nosing too close wakes it, and it slinks off and comes back later
       c.vx = c.vz = 0; c.crouch = 0;
@@ -11683,8 +11779,8 @@ function syncCoyote(c) {
     M.head.rotation.x = 0.55; M.head.rotation.y = 0.5; M.tail.rotation.x = 1.4; M.tail.rotation.y = -1.1;
     return;
   }
-  M.body.scale.set(1, 1, 1); M.head.rotation.y = 0; M.tail.rotation.y = 0;
-  M.root.rotation.z = c.tumble > 0 ? Math.sin(c.tumble * 12) * 0.6 : 0;
+  M.body.scale.set(1, 1, 1); M.head.rotation.y = c.dazeT > 0 ? Math.sin(G.time * 11) * 0.5 : 0; M.tail.rotation.y = 0;
+  M.root.rotation.z = c.tumble > 0 ? Math.sin(c.tumble * 12) * 0.6 : c.dazeT > 0 ? Math.sin(G.time * 3.5) * 0.16 : 0;   // (shaken silly: it sways)
   const stalk = c.crouch || 0;
   M.body.position.y = lerp(M.body.position.y, -0.14 * stalk + Math.abs(Math.sin(c.leg * 2)) * 0.05 * Math.min(1, sp / 6), 0.2);
   const amp = Math.min(0.9, sp * 0.12);
@@ -12039,12 +12135,12 @@ const HINTS = {
   modes: 'Hold <b>LB</b> / <b>Q</b> to creep up gently. Hold <b>RT</b> / <b>Shift</b> to sprint (they’ll scatter!).',
   bark: 'Press <b>Ⓐ</b> / <b>click</b> to bark — it spooks sheep and scares coyotes off.',
   pounce: 'Tap <b>Ⓑ</b> / <b>right click</b> to <b>pounce</b>: a quick dash to get round the flock. Pounce into a sheep and it goes flying!',
-  grab: 'Hold <b>Ⓧ</b> / <b>E</b> to <b>grab</b> a stubborn sheep and drag it along. Let go while running to <b>fling</b> it — even over a fence. <b>Ⓑ</b> / <b>right click</b> while holding: <b>shake</b>.',
+  grab: 'Hold <b>RB</b> / <b>E</b> to <b>grab</b> a stubborn sheep and drag it along. Let go while running to <b>fling</b> it — even over a fence. <b>Ⓑ</b>, the right stick / <b>right click</b> while holding: <b>shake</b>.',
   lie: 'Hold <b>LT</b> / <b>C</b> to <b>lie down</b>. A dog lying still settles the flock.',
   travel: 'Follow the trail to the next camp and pen the flock before nightfall.',
   grass: 'The grass here is getting thin. Hungry sheep wander off — <b>move on</b> to greener pasture.',
   dusk: 'Dusk is coming! Drive the flock into a pen and <b>push the gate shut</b> behind them — it clacks when it latches.',
-  night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (hold Ⓧ + Ⓑ / E + right click). Keep the flock together.',
+  night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (hold RB, waggle the right stick / E + right click): the longer, the dizzier. Keep the flock together.',
   'coyote-grab': 'Chase it down! <b>Pounce</b> on the coyote, or grab it and <b>shake</b>, to make it drop the sheep!',
   'cougar-grab': 'A cougar! Catch it before it climbs its tree: <b>pounce</b> on it, or run right into it, and it drops the sheep.',
   'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
@@ -12054,7 +12150,7 @@ const HINTS = {
   'canyon-boss': '🦅 The great falcon! Barks don\'t work: <b>pounce</b> it when it swoops low.',
   dawn: 'Morning! <b>Push the gate open</b> and let them graze — but don’t stay so long the pasture is eaten bare.',
   hungry: 'Some sheep are starving! Find lush grass and let them graze in peace.',
-  gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (Ⓧ / E) and drag it round.',
+  gates: 'A shut gate stays latched: back off, then shove it again to reopen. <b>Sprint</b> into a gate to vault it, or <b>grab</b> it (RB / E) and drag it round.',
   forage: 'Your dog gathers <b>alfalfa and daisies</b> just by running over them. Take them to a pen and go up to a <b>trough</b> to tip them in.',
   deliver: 'Your dog can\'t carry any more! Go up to one of the <b>troughs</b> in a pen (or reach over the fence beside it) to tip the greens in.',
   trough: 'In the trough! Penned sheep eat from the <b>troughs</b> from late afternoon and through the night. Fill all of them so more can feed at once.',
@@ -12070,8 +12166,8 @@ const HINTS = {
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too, or bring it to 🧓 Hank: <b>tug of war</b>!',
-  bone: 'A <b>bone</b>! Let go of <b>Ⓧ</b> / <b>E</b> to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
-  tug: '<b>Tug of war!</b> Hold on, walk back and tap <b>Ⓑ</b> / <b>right click</b> to heave. Knot over your line, or out-last them.',
+  bone: 'A <b>bone</b>! Let go of <b>RB</b> / <b>E</b> to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
+  tug: '<b>Tug of war!</b> Walk back; <b>heave on the beat</b>: <b>Ⓑ</b>, the right stick, a flick back / <b>right click</b>. Together: team heave. <b>LT</b> / <b>C</b>: dig in. Step in as they heave: they stumble.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
   thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
@@ -12082,9 +12178,9 @@ const HINTS = {
   cold: '❄️ Frozen! Get it by a 🔥, or keep it moving. Shorn sheep freeze fastest.',
   blizzard: '🌨️ Blizzard! Snow piles on: <b>run</b> them to shake it off, or get them to a 🔥.',
   ice: '🧊 Ice! Running onto it, anything slides downhill. Calm sheep go round. <b>Jump</b> (Ⓨ / X) out of a slide.',
-  crev: 'Down a crack! <b>Grab</b> it out (Ⓧ / R).',
+  crev: 'Down a crack! <b>Grab</b> it out (RB / E).',
   'crev-solo': 'Down a crack! Mash <b>pounce</b> (Ⓑ / E) to climb out.',
-  'crev-team': 'Down a crack! A friend has to <b>grab</b> you out (Ⓧ / R).',
+  'crev-team': 'Down a crack! A friend has to <b>grab</b> you out (RB / E).',
   goat: '🐐 Goats bonk you down the mountain. <b>Bark</b> them home, or <b>pounce</b> one.',
   yeti: '🦍 Snowballs! <b>Jump</b> them. Fire hurts him: <b>grab</b> a sheep into a 🔥, then <b>pounce</b> it at him. ×3',
   'yeti-fire': '🔥 Now <b>pounce</b> it at the yeti!',
@@ -12130,7 +12226,7 @@ const TOUCH_HINTS = {
   bucket: '🪣! Hold ✊ to carry · wade in to fill',
   rope: 'Rope! 2+ dogs or 🧓: <b>tug of war</b>',
   bone: 'Bone! Let go ✊: <b>throw</b>',
-  tug: 'Tug! Hold ✊, walk back, 💥💥💥',
+  tug: 'Tug! Walk back, 💥 on the beat · 💤 dig in',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
   thirst: 'Thirsty! 🪣 → water → 💧 trough',
@@ -17524,7 +17620,7 @@ const NET_BUILD = (() => {
   return (h >>> 0).toString(36) + '.' + t.length;
 })();
 // one-shot buttons (fire once per press): guests send them as events, the host applies each exactly once
-const NET_EDGES = new Set(['bark', 'pounce', 'jump']);
+const NET_EDGES = new Set(['bark', 'pounce', 'jump', 'shake']);
 const NET = {
   role: null,                 // null offline · 'host' · 'guest'
   peer: null, conn: null, code: '', myName: '', cid: '', status: '', statusErr: false,
@@ -17590,7 +17686,7 @@ const NET_TYPES = {
   },
   coyote: {
     tag: 'c', all: () => G.coyotes, id: c => c.nid || (c.nid = ++NET.nid),
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', alpha: 'b', tumble: .02, crouch: .02, prey: '@sheep', heldBy: '@dog', ...NET_AIR },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', alpha: 'b', tumble: .02, crouch: .02, dazeT: .05, prey: '@sheep', heldBy: '@dog', ...NET_AIR },
     make: (id, f) => netGuestCoyote(id, f), kill: c => { scene.remove(c.models.root); const i = G.coyotes.indexOf(c); if (i >= 0) G.coyotes.splice(i, 1); },
     animate: (c, dt) => netAnimCoyote(c, dt),
   },
@@ -17907,7 +18003,7 @@ function controlsHTML(dev) {
       <rect x="296" y="102" width="16" height="10" rx="5" class="cdPart"/><rect x="330" y="102" width="16" height="10" rx="5" class="cdPart"/>
       ${btn(412, 90, '#ffcf3f', 'Y')}${btn(388, 114, '#2f9cff', 'X')}${btn(436, 114, '#e84a3a', 'B')}${btn(412, 138, '#5fd35a', 'A')}
       ${L(206, 24, 140, 24, 'Lie down (hold)', 'end')}${L(196, 48, 140, 56, 'Creep (gentle)', 'end')}${L(210, 112, 140, 110, 'Move · click to sprint', 'end')}${L(262, 164, 140, 170, 'Move', 'end')}${L(304, 107, 140, 230, 'Hank’s barn', 'end')}
-      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 207, 'Pause', 'start')}${L(390, 174, 500, 230, 'Map (click)', 'start')}
+      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Grab (hold)', 'start')}${L(425, 90, 500, 88, 'Jump', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 207, 'Pause', 'start')}${L(390, 174, 500, 230, 'Waggle: shake · click: map', 'start')}
     </svg><div class="ctrlNote">Let go of Grab to fling. ${gates}${pads > 1 ? ' Every controller works the same way.' : ''}</div>`;
   }
   const cap = (k, c) => `<kbd class="cdCap" style="--c:${c || '#e8e2d0'}">${k}</kbd>`;
@@ -17931,7 +18027,7 @@ function ctlBar(dt = 0) {
   const key = INPUT_DEV + INPUT_KB;
   if (key === ctlBarKey) return; if (ctlBarKey) ctlBarT = Math.min(ctlBarT, T_CTLBAR - 8); ctlBarKey = key;
   const cap = k => `<kbd class="cdCap">${k}</kbd>`;
-  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['Ⓧ', 'grab'], ['LT', 'lie'], ['Ⓨ', 'jump'], ['R3', 'map'], ['☰', 'pause']]
+  const L = INPUT_DEV === 'pad' ? [['🕹', 'move'], ['RT', 'sprint'], ['LB', 'creep'], ['Ⓐ', 'bark'], ['Ⓑ', 'pounce'], ['RB', 'grab'], ['LT', 'lie'], ['Ⓨ', 'jump'], ['R3', 'map'], ['☰', 'pause']]
     : INPUT_KB === 1 ? [['↑←↓→', 'move'], ['R-Shift', 'sprint'], [';', 'creep'], ['/', 'bark'], ['.', 'pounce'], [',', 'grab'], ["'", 'lie'], ['[', 'jump'], ['M', 'map'], ['P', 'pause']]
     : [['WASD', 'move'], ['Shift', 'sprint'], ['Q', 'creep'], ['Click', 'bark'], ['R-click', 'pounce'], ['E', 'grab'], ['C', 'lie'], ['Space', 'jump'], ['M', 'map'], ['P', 'pause']];
   $('ctlBar').innerHTML = L.map(([k, t]) => `<span>${cap(k)}${t}</span>`).join('');
@@ -18059,7 +18155,7 @@ function netAnimSheep(s, dt) {
 }
 function netAnimCoyote(c, dt) {
   const sp = Math.hypot(c.vx, c.vz), lifted = c.air || c.heldBy;
-  c.y = groundY(c.x, c.z) + (lifted ? c.lift || 0 : 0); c.leg += lifted ? dt * 22 : sp * dt * 2.6; c.tumble = Math.max(0, c.tumble - dt);
+  c.y = groundY(c.x, c.z) + (lifted ? c.lift || 0 : 0); c.leg += lifted ? dt * 22 : sp * dt * 2.6; c.tumble = Math.max(0, c.tumble - dt); if (c.dazeT > 0) c.dazeT = Math.max(0, c.dazeT - dt);
   if (c.air) { c.air.spin = c.airSpin || 0; c.air.vy = c.vlift || 0; }
 }
 
@@ -18131,9 +18227,11 @@ function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
   const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
   const hk = d._hold ? T.grabKinds[d._hk === 'rope' && d._hold.tug ? 'tug' : d._hk] : null;
-  const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
+  const dig = h.lie && d._hk === 'rope' && d._hold && d._hold.tug;   // (ROPES: dug in)
+  const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep || dig ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
   let max = mode === 'sprint' ? T.dogSprint * dogK(d, 'speed') : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk * dogK(d, 'speed');   // (BREEDS)
   if (hk) max *= hk.speed ** (1 / dogK(d, 'grip'));
+  if (dig) max = 0;
   if (d.hp < T.dogHp.limp) max *= lerp(0.7, 1, d.hp / T.dogHp.limp);   // hurt: it limps
   if (T.mud.on && MUDS.length && mudK(d.x, d.z) > 0.5) max *= T.mud.dogSlow;   // MUD: heavy going (a pounce still flies through)
   if (d.pounceT > 0) {   // the lunge
@@ -18697,7 +18795,7 @@ function netGuestSheep(id, f) {
 function netGuestCoyote(id, f) {
   const x = f.x || 0, z = f.z || 0, alpha = !!f.alpha;
   const c = { nid: id, x, z, vx: 0, vz: 0, y: groundY(x, z), yaw: f.yaw || 0, state: f.state || 'pack', stateT: 0, role: 'follow', side: 0, pack: null, alpha,
-    prey: null, courage: 1, leg: 0, tumble: 0, crouch: 0, howlT: 1e9, growlT: 0, air: null, heldBy: null, models: makeCoyote(alpha) };
+    prey: null, courage: 1, leg: 0, tumble: 0, dazeT: 0, crouch: 0, howlT: 1e9, growlT: 0, air: null, heldBy: null, models: makeCoyote(alpha) };
   G.coyotes.push(c); return c;
 }
 function netGuestBone(id, f) { const b = spawnBone(f.x || 0, f.z || 0); b.nid = id; return b; }   // BONES
@@ -18908,7 +19006,7 @@ function step(dt) {
       && (!SEA.on || seaAtRest());   // SAILING: only at anchor
     const dtH = stepClock(dt);
     regrowAcc += dtH; regrowT();   // in step, not frame, so headless tests (?sim) regrow the grass too
-    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
+    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; p.inp.shake = false; } }   // button presses fire once per frame, not once per sub-step
     leashDogs();
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b || a.heldBy === b || b.heldBy === a) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     if (SEA.on) seaStep(dt, dtH); else seaWake();   // SAILING: wind, waves, the boat, her stations, what's out there (till then: has the flock come down to her?)
@@ -18943,7 +19041,7 @@ function frame(now) {
   if (G.mode === 'play' && G.paused) pauseDogs();
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
-  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = false; p.skipInput = false; } }
+  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = p.inp.shake = false; p.skipInput = false; } }
   const simDt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // hit-stop: a few near-frozen frames on a big hit
   const n = Math.ceil(simDt / 0.025), sdt = simDt / n;
   for (let i = 0; i < n; i++) step(sdt);
@@ -19201,7 +19299,7 @@ Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetS
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
 Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
-Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, syncRopes, tryGrab, releaseHold, shakeHold });   // ROPES, grab
+Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 Object.assign(window.GAME, { SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail,
   HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground, seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea,
