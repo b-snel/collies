@@ -290,6 +290,23 @@ const r13a = await h.page.evaluate(() => {
 });
 ok('a burial gives way: shearing to do, the body waits', r13a.bury && r13a.shear && r13a.dropped, r13a);
 
+// 13a2. healing beats shearing: the one he's clipping is cut, bandages in his bag: he stops and treats it
+const r13heal = await h.page.evaluate(() => {
+  const { G, HANK, pens, setGate, living, giveHankClippers, woundSheep } = GAME, pen = pens[1];
+  G.clock.hour = 10; H.calm(); HANK.care = null; HANK.job = null; HANK.shearing = false; HANK.meds = { venom: 0, bandage: 0, pills: 0 }; setGate(pen, false);
+  living().forEach((o, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.5; H.place(o, pen.x + Math.cos(a) * rr, pen.z + Math.sin(a) * rr); o.wool = 1; });
+  H.place(HANK, pen.x, pen.z); HANK.goal = null; HANK.asleep = false; HANK.upT = -99; HANK.clippers = false; giveHankClippers();
+  H.run(20, () => HANK.shearing); const shearing = HANK.shearing, s = HANK.job && HANK.job.s;
+  if (!s) return { shearing };
+  s.heldT = 6; s.grabBy = 'coyote'; woundSheep(s); HANK.meds.bandage = 3;
+  H.run(15, () => HANK.care && HANK.care.s === s && HANK.care.on);
+  const out = { shearing, treat: !!(HANK.care && HANK.care.kind === 'treat' && HANK.care.s === s), job: !!HANK.job, state: s.state };
+  H.run(30, () => !s.ail); out.cured = !s.ail;
+  HANK.care = null; HANK.job = null; HANK.clippers = false; HANK.shearing = false; HANK.meds = { venom: 0, bandage: 0, pills: 0 }; H.run(1);
+  return out;
+});
+ok('healing beats shearing: the one being shorn is cut, he treats it first', r13heal.shearing && r13heal.treat && !r13heal.job && r13heal.cured, r13heal);
+
 // 13b. a full cemetery: Hank adds a row at the back (the fence goes round it) and buries the next one there
 const r13b = await h.page.evaluate(() => {
   const { G, T, HANK, YARDS, killSheep, living, CAMPS, yardRoom } = GAME;
