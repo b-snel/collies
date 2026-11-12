@@ -25,13 +25,14 @@ The sea (issue #74): herd the flock down the path and up the gangway, cast off; 
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
-- `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
+- `?debug`: FPS + dev menu (`` ` `` or click the FPS line; `DEV_STOPS`, `DEV_CHEATS`): the whole journey as a strip, click a
+  spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
   state and functions.
-- `?sea` (`?sea=2`: from the third island; `?sea=dock`: above the harbour, as out of the cave): start at sea. `GAME.seaStart({ leg, under, dock })`.
+- `?sea` (`?sea=2`: from the third island, `?sea=2u` under way from it; `?sea=dock`: above the harbour, as out of the cave): start at sea. `GAME.seaStart({ leg, under, dock })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
@@ -57,7 +58,7 @@ DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPO
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, STATIONS, route, Hank at sea,
-HAZARDS, KRAKEN, drawing, HUD + chart, flow) → game flow → main loop → `window.GAME`.
+HAZARDS, KRAKEN, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`BOAT`, `deckSdf`, the sea zone: world gen. `DECK`, `deckKit`: pens.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
