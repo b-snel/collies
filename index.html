@@ -684,9 +684,9 @@ const T = {
   // YETI (YETI): the boss on the top. Wakes when something's past `arena`. Every `every` s rolls a snowball at a dog or sheep within see m:
   // r0 m, + grow m per m rolled up to rMax; roll m/s, downhill g m/s²; gone after life s. Hit: flies (kick, up), snowed on.
   // Within buttR: windup s, a headbutt (within buttHit: kick, up), buttCd s. hp burning sheep flying into him (hitR) and he's done
-  // (+bounty 🧶); leash m from home. ROCK: the cracked spire up the hidden side trail: `cracks` sheep flying into it (r m) and it falls on him
+  // (+bounty 🧶); leash m from home. ROCK: the cracked rock wall up the hidden side trail: `cracks` sheep flying into it (`cd` s apart) and it falls on him (`fall` s)
   yeti: { see: 42, every: [2.6, 4.2], first: 2.5, r0: 0.55, grow: 0.07, rMax: 2.4, roll: 8, g: 6, life: 9, kick: 12, up: 8, buttR: 5, windup: 0.7, buttHit: 3.2, buttCd: 2.5,
-    hp: 3, hitR: 2.8, hurt: 2, leash: 6, bounty: 20, scale: 2.6, rock: { cracks: 3, r: 2.3, fall: 1.7, cd: 0.5 } },
+    hp: 3, hitR: 2.8, hurt: 2, leash: 6, bounty: 20, scale: 2.6, rock: { cracks: 3, fall: 1.7, cd: 0.5 } },
   // BURNING (s.burn s left): a sheep in a lit fire (within r m) burns `time` s: runs mad (run m/s) the first frantic s, then rolls it out.
   // Singed: wool down to `wool`. A dog holding one: HOT!, drops it after hold s
   burn: { r: 1.0, time: 11, frantic: 7.5, run: 6.5, wool: 0.05, hold: 0.35 },
@@ -1506,26 +1506,27 @@ function sAt(x, z) { return trailInfo(x, z).s; }
 const DOWN = { x: 0, z: 0, k: 0 };
 function downhill(x, z) { const ci = trailInfo(x, z), i = ci.idx; DOWN.x = -tX[i]; DOWN.z = -tZ[i]; DOWN.k = slopeArr[i]; return DOWN; }
 
-// ---------------- MOUNTAIN PASS layout: fire camps, ice, crevasses, the hidden side trail and its cracked spire, the yeti's top ----------------
+// ---------------- MOUNTAIN PASS layout: fire camps, ice, crevasses, the hidden side trail and its cracked rock wall, the yeti's top ----------------
 // Own rng (the same on every screen). PASS.fires[i]: a camp (no pen) where Hank lights a fire (x, z; fuel h left). ICES: lumpy ice patches
 // (blobs). CREVS: cracks across part of the floor (x, z the middle, ax/az along it, hl half its length). SIDE: the hidden side trail, a
-// single-file ledge up behind the west rim from the floor below the top to a ledge by the cracked spire (SIDE.rock) over the yeti's spot
+// single-file ledge up behind the west rim from the floor below the top to a ledge by the cracked rock wall (SIDE.rock) over the yeti's spot
 // (SIDE.home: where he stands, in front of his cave, FINAL's pen); sideDist: m to it (exact, near it).
-const PASS = { fires: [], k: 0, cand: [], scanT: 0, seen: false };
+const PASS = { fires: [], ledges: [], k: 0, cand: [], scanT: 0, seen: false };
 const ICES = [], CREVS = [], SIDE = { pts: [], hw: 1.7, ledge: null, rock: null, entry: null, s0: 1434, s1: 1512 };
 let sideDist = null;
 {
   const P = T.pass, PR = mulberry32(27182), prr = (a, b) => a + PR() * (b - a);
   for (const [fs, lat] of P.fires) { const p = pathPoint(fs, lat); PASS.fires.push({ i: PASS.fires.length, s: fs, lat, x: p.x, z: p.z, y: 0, fuel: 0, top: PASS.fires.length === P.fires.length - 1, by: [] }); }
-  // the side trail: in through a gap in the west rim, then up behind it (off: m outside the floor's edge), to the ledge by the spire
+  // the side trail: in through a gap in the west rim, then up behind it (off: m outside the floor's edge), to the ledge by the rock wall
   const off = 6.2;
   for (let ss = SIDE.s0; ss <= SIDE.s1; ss += 0.5) {
     const k = pathIdx(ss), u = smooth(SIDE.s0, SIDE.s0 + 12, ss), p = pathPoint(ss, -(hwWArr[k] - 2 + (off + 2) * u));
     SIDE.pts.push({ x: p.x, z: p.z, s: ss });
   }
   { const k = pathIdx(SIDE.s1 + 3); const p = pathPoint(SIDE.s1 + 3, -(hwWArr[k] + off + 0.6)); SIDE.ledge = { x: p.x, z: p.z, r: 3.2 }; }
-  { const k = pathIdx(SIDE.s1 + 6.5); const p = pathPoint(SIDE.s1 + 6.5, -(hwWArr[k] + 2.4)); SIDE.rock = { x: p.x, z: p.z, r: 1.5, H: 21 }; }
+  { const k = pathIdx(SIDE.s1 + 6.5); const p = pathPoint(SIDE.s1 + 6.5, -(hwWArr[k] + 2.4)); SIDE.rock = { x: p.x, z: p.z, r: 1.5, H: 21, W: 6.2, TH: 2 }; }   // (the rock wall: W wide, TH thick, H tall)
   { const p = pathPoint(SIDE.s1 + 9, 1); SIDE.home = { x: p.x, z: p.z }; }
+  { const R = SIDE.rock; R.yaw = Math.atan2(SIDE.home.x - R.x, SIDE.home.z - R.z); R.ax = Math.cos(R.yaw); R.az = -Math.sin(R.yaw); }   // it faces the yeti's spot (yaw); ax/az: along it
   { const k = pathIdx(SIDE.s0 + 4); const p = pathPoint(SIDE.s0 + 4, -(hwWArr[k] - 1)); SIDE.entry = { x: p.x, z: p.z }; }
   sideDist = new Float32Array(GN).fill(1e3);
   const near = (ax, az, bx, bz) => {   // every cell within 6 m of segment a-b: its distance to it
@@ -1539,7 +1540,7 @@ let sideDist = null;
   };
   for (let i = 1; i < SIDE.pts.length; i++) near(SIDE.pts[i - 1].x, SIDE.pts[i - 1].z, SIDE.pts[i].x, SIDE.pts[i].z);
   { const L = SIDE.ledge, e = SIDE.pts[SIDE.pts.length - 1]; near(e.x, e.z, L.x, L.z); for (let a = 0; a < TAU; a += 0.2) for (let r = 0; r <= L.r - SIDE.hw; r += 0.5) near(L.x + Math.cos(a) * r, L.z + Math.sin(a) * r, L.x + Math.cos(a) * r, L.z + Math.sin(a) * r);
-    const R = SIDE.rock, ux = R.x - L.x, uz = R.z - L.z, ul = Math.hypot(ux, uz), k = Math.max(0, ul - R.r - 0.6) / ul; near(L.x, L.z, L.x + ux * k, L.z + uz * k); }   // (a cut from the ledge to the spire's foot)
+    const R = SIDE.rock, ux = R.x - L.x, uz = R.z - L.z, ul = Math.hypot(ux, uz), k = Math.max(0, ul - R.r - 0.6) / ul; near(L.x, L.z, L.x + ux * k, L.z + uz * k); }   // (a cut from the ledge to the rock wall's foot)
   // ice: lumpy patches on the floor, clear of the camps, the side trail's way in and the top
   const floorAt = (ss, r) => { const k = pathIdx(ss); return [-(hwWArr[k] - r - 2.5), hwEArr[k] - r - 2.5]; };
   const offCamp = (ss, pad) => P.fires.every(([fs]) => Math.abs(ss - fs) > pad) && Math.abs(ss - SIDE.s0 - 4) > 14 && ss < P.arena - 10 && ss > P.snow + 4;
@@ -1560,7 +1561,17 @@ let sideDist = null;
     if (CREVS.some(c => Math.abs(c.s - ss) < 20) || ICES.some(m => Math.hypot(p.x - m.x, p.z - m.z) < m.r + len / 2 + 3)) continue;
     CREVS.push({ i: CREVS.length, s: ss, x: p.x, z: p.z, ax, az, hl: len / 2, hw: T.crev.hw });
   }
+  // the goats' ledges: shelves cut in the cliff up the west side (h m over the floor), a few on this side's lip (own rng)
+  const GL = mulberry32(31416), glr = (a, b) => a + GL() * (b - a);
+  for (let s0 = P.snow + 8; s0 < P.arena - 10 && PASS.ledges.length < T.goat.n; s0 += glr(17, 27)) for (let t = 0; t < 40; t++) {
+    const east = GL() < 0.22, ss = s0 + glr(-4, 4), k = pathIdx(ss), lat = east ? hwEArr[k] + glr(4.8, 6) : -(hwWArr[k] + glr(5, 7.5)), p = pathPoint(ss, lat), sg = Math.sign(lat);
+    if (sdfIn(sideDist, p.x, p.z) < 10 || PASS.fires.some(f => Math.hypot(p.x - f.x, p.z - f.z) < 13) || PASS.ledges.some(g => Math.hypot(p.x - g.x, p.z - g.z) < 10)) continue;
+    PASS.ledges.push({ x: p.x, z: p.z, s: ss, east, h: east ? glr(2, 2.4) : glr(3.6, 7), yaw: Math.atan2(-p.nx * sg, -p.nz * sg) });
+    break;
+  }
 }
+// m to the rock wall's line (SIDE.rock)
+function wallD(x, z) { const R = SIDE.rock, rx = x - R.x, rz = z - R.z, u = clamp(rx * R.ax + rz * R.az, -R.W / 2, R.W / 2); return Math.hypot(rx - R.ax * u, rz - R.az * u); }
 const sideD = (x, z) => sdfIn(sideDist, x, z);   // m to the hidden side trail's line (or into its ledge)
 function iceK(x, z) {   // 0 dry … 1 on the ice (a soft edge)
   let k = 0;
@@ -1663,9 +1674,22 @@ function eastProfile(o, x, z, w) {
 // FALCON CANYON: sheer banded cliffs with ledges on the far side; a low broken rim on this side (the camera looks over it)
 function canyonWall(o, x, z) { const n = fbm(x * 0.05 + 21, z * 0.05 - 4, 3); return terrace(Math.max(0, Math.min(o * 2.6, 34) + (n - 0.5) * 9), 4.5); }
 function canyonRim(o, x, z) { const n = vnoise(x * 0.15 + 3, z * 0.15 - 7); return Math.min(o * 0.8, 4.2) + smooth(12, 26, o) * 7 + (n - 0.5) * 2.4 * Math.min(1, o / 3); }
-// MOUNTAIN PASS: icy cliffs in ledges up the west side (the goats' ledges), a low snowy lip on this side and then down the mountain
-function passWall(o, x, z) { const n = fbm(x * 0.06 + 7, z * 0.06 - 3, 3); return terrace(Math.max(0, Math.min(o * 1.9, 42) + (n - 0.5) * 9), 3.4); }
-function passRim(o, x, z, L) { const n = vnoise(x * 0.14 + 2, z * 0.14 - 5); return Math.min(o * 0.9, 2.4) + (n - 0.5) * 1.6 * Math.min(1, o / 3) - smooth(6, 26, o) * Math.min(L * 0.85 + 2, 34); }
+// MOUNTAIN PASS: up the west side a cliff in big ledges, then crags: sharp crests and deep couloirs (ridged noise); on this side a
+// broken lip, then down the mountain into the mist, far peaks coming up out of it. nk: how much of that (0: as it always was: within
+// 3 m of the floor's edge and of the hidden side trail, and below the snow line, so what's walkable and where the grass is stay put)
+function passWall(o, x, z, nk) {
+  const n = fbm(x * 0.06 + 7, z * 0.06 - 3, 3), old = terrace(Math.max(0, Math.min(o * 1.9, 42) + (n - 0.5) * 9), 3.4);
+  if (nk <= 0) return old;
+  const r1 = 1 - Math.abs(2 * fbm(x * 0.04 + 31, z * 0.04 + 17, 3) - 1), r2 = 1 - Math.abs(2 * vnoise(x * 0.13 + 5, z * 0.13 - 9) - 1), up = smooth(10, 46, o);
+  const cliff = terrace(Math.max(0, Math.min((o - 1) * 2.6, 17) + (n - 0.5) * 7), 5.4), peaks = 20 + 54 * r1 * r1 + 9 * r2 * r2;
+  return lerp(old, cliff * (1 - up * 0.5) + up * peaks + r2 * r2 * 3.2 * smooth(3, 12, o), nk);
+}
+function passRim(o, x, z, L, nk) {
+  const n = vnoise(x * 0.14 + 2, z * 0.14 - 5), lip = Math.min(o * 0.9, 2.4) + (n - 0.5) * 1.6 * Math.min(1, o / 3), old = lip - smooth(6, 26, o) * Math.min(L * 0.85 + 2, 34);
+  if (nk <= 0) return old;
+  const r = 1 - Math.abs(2 * fbm(x * 0.05 - 13, z * 0.05 + 41, 3) - 1), drop = Math.min(L * 1.1 + 3, 50);
+  return lerp(old, lip + r * r * 1.6 * smooth(2, 5, o) * (1 - smooth(6, 11, o)) - smooth(5, 30, o) * drop * (0.7 + 0.3 * r) + smooth(36, 85, o) * r * r * 30 * smooth(8, 20, L), nk);
+}
 function heightAt(x, z, carve = true) {
   const ci = trailInfo(x, z), w = biomeW(ci.s), pk = passK(ci.s), L = liftArr[ci.idx];
   let h = (fbm(x * 0.022, z * 0.022, 3) - 0.5) * 2.0 + (vnoise(x * 0.18 + 40, z * 0.18) - 0.5) * 0.25;
@@ -1680,13 +1704,17 @@ function heightAt(x, z, carve = true) {
     if (o === ci.oW) wall = ck > 0 ? lerp(westProfile(oo, x, z, w), canyonWall(oo, x, z), ck) : westProfile(oo, x, z, w);
     else if (o === ci.oE) wall = ck > 0 ? lerp(eastProfile(oo, x, z, w), canyonRim(oo, x, z), ck) : eastProfile(oo, x, z, w);
     else wall = ci.cap < 0 ? eastProfile(oo, x, z, [1, 0, 0, 0]) : westProfile(oo, x, z, [1, 0, 0, 0]);   // both ends desert: low ridge, mesas
-    if (pk > 0) wall = lerp(wall, o === ci.oE ? passRim(oo, x, z, L) : passWall(oo, x, z), pk);   // (the yeti's cave end: a cliff)
+    if (pk > 0) {   // (the yeti's cave end: a cliff)
+      const nk = smooth(T.pass.snow, T.pass.snow + 25, ci.s) * smooth(3, 6, o) * smooth(SIDE.hw + 3, SIDE.hw + 7, sideD(x, z));
+      wall = lerp(wall, o === ci.oE ? passRim(oo, x, z, L, nk) : passWall(oo, x, z, nk), pk);
+    }
     h += wall;
   }
   if (pk > 0.5) {   // the hidden side trail: a gully cut along the rim, a low lip between it and the floor (so it's seen from here)
     const sd = sideD(x, z);
     if (sd < SIDE.hw + 7 && ci.lat > -(hwWArr[ci.idx] + 6.2)) h = Math.min(h, 1.75 + 0.3 * Math.max(0, sd - SIDE.hw - 1.5));
     if (sd < SIDE.hw + 3) h = lerp(h, 0.2, 1 - smooth(SIDE.hw - 0.3, SIDE.hw + 3, sd));
+    if (o > 3) for (const g of PASS.ledges) { const d = Math.hypot(x - g.x, z - g.z); if (d < 3.8) h = lerp(h, g.h, (1 - smooth(1.4, 3.8, d)) * smooth(3, 4.2, o)); }   // (off the floor) the goats' ledges
   }
   h += L;
   // river channel
@@ -1776,9 +1804,8 @@ function swimGrad(x, z) {
   GRAD.x = gx / l; GRAD.z = gz / l; return GRAD;
 }
 const collideDog = (e, r = T.dogR) => collideWorld(e, r, SWIM_SDF);
-const ROCK_DOWN = { on: false };   // (MOUNTAIN PASS: the spire's down: collideRubble)   // dogs and Hank: walls, but they wade into the river
+// dogs and Hank: walls, but they wade into the river
 function collideWorld(e, r, F = SDF) {
-  if (ROCK_DOWN.on) collideRubble(e, r);   // MOUNTAIN PASS: the fallen spire
   for (let it = 0; it < 2; it++) {
     const d = sdfIn(F, e.x, e.z); if (d >= r) return;
     const g = F === SDF ? sdfGrad(e.x, e.z) : swimGrad(e.x, e.z), push = r - d;
@@ -1969,7 +1996,8 @@ const vNormal = new Float32Array(VN * 3);
   const CLIFF_O = new THREE.Color('#b3a385'), HILLS_P = new THREE.Color('#6f9a48'), DIRT_P = new THREE.Color('#8a7a5a');
   const C_STRATA = ['#6e3226', '#8c4630', '#552620', '#9a5a38', '#5f2c24'].map(h => new THREE.Color(h)), C_FLOOR = new THREE.Color('#b08866'), C_DRY = new THREE.Color('#a39a62');   // FALCON CANYON
   const LUSH = new THREE.Color('#2f9a3a'), MUD = new THREE.Color('#4e3822');
-  const P_SNOW = new THREE.Color('#eef3f9'), P_PACK = new THREE.Color('#dde6f0'), P_ROCK = ['#6f7480', '#5d6270', '#7c808b'].map(h => new THREE.Color(h)), P_ALP = new THREE.Color('#aebda6'), P_ICE = new THREE.Color('#a6d6f2');   // MOUNTAIN PASS
+  const P_SNOW = new THREE.Color('#f6f9fd'), P_PACK = new THREE.Color('#e2eaf3'), P_ROCK = ['#666c7a', '#565c6b', '#737a88', '#4f5564', '#7d8490'].map(h => new THREE.Color(h)), P_ALP = new THREE.Color('#aebda6'), P_ICE = new THREE.Color('#a6d6f2');   // MOUNTAIN PASS
+  const P_WARM = new THREE.Color('#8a7f78'), P_HAZE = new THREE.Color('#aab6cc'), P_DEEP = new THREE.Color('#7f93b5'), P_SHADE = new THREE.Color('#c3d6f2'), P_GLOW = new THREE.Color('#fff6e6'), P_TRAIL = new THREE.Color('#cdd7e4');
   const corral = CAMPS[0];
   for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) {
     const v = b * VX + a, x = GMINX + a * VS, z = GMINZ + b * VS, h = vH[v];
@@ -2012,8 +2040,15 @@ const vNormal = new Float32Array(VN * 3);
     }
     const pk = passK(ci.s), ik = pk > 0.001 ? iceK(x, z) : 0;   // MOUNTAIN PASS: snow, grey rock in ledges with snow on them, thin alpine grass, blue ice
     if (pk > 0.001) {
-      const rel = h - liftArr[ci.idx];
-      if (!walk && steep) tmp.copy(P_ROCK[Math.floor((rel + 60) / 3.4) % 3]); else tmp.copy(walk ? P_PACK : P_SNOW);
+      const rel = h - liftArr[ci.idx], nx0 = vNormal[v * 3], nz0 = vNormal[v * 3 + 2];
+      // snow: warm where it faces the sun, blue in the lee and on the steeps; the worn trail packed down
+      tmp.copy(walk ? P_PACK : P_SNOW).lerp(P_SHADE, clamp(0.25 - nz0 * 1.3 - nx0 * 0.5 + (1 - ny) * 0.6, 0, 0.8)).lerp(P_GLOW, clamp(nz0 * 0.9 + nx0 * 0.3, 0, 0.5));
+      if (walk) tmp.lerp(P_TRAIL, (1 - smooth(1, 3.4, Math.abs(lat))) * (0.45 + 0.4 * n2));
+      if (!walk) {   // rock where it's steep: strata in slate and warm grey, paler up in the haze, blue down the mountain
+        const rk = 1 - smooth(0.6, 0.86, ny), band = Math.floor((rel + 90 + n2 * 2.6) / 2.2) % 5;
+        if (rk > 0) { tmp2.copy(P_ROCK[band]).lerp(P_WARM, smooth(0.42, 0.66, fbm(x * 0.035 + 9, z * 0.035 + 2, 2)) * 0.6); if (rel > 16) tmp2.lerp(P_HAZE, Math.min(0.42, (rel - 16) / 110)); tmp.lerp(tmp2, rk); }
+        if (rel < -3) tmp.lerp(P_DEEP, Math.min(0.62, (-rel - 3) / 34));
+      }
       cA.lerp(tmp, pk); cB.lerp(walk ? P_ALP : tmp, pk); visCap *= 1 - pk;
       if (ik > 0) { cA.lerp(P_ICE, ik); cB.lerp(P_ICE, ik); }
     }
@@ -2766,7 +2801,10 @@ const APPLE_TREES = [], APPLES = [];
     }
   }
 }
-// ---------------- MOUNTAIN PASS: fire camps, ice, cracks, the hidden way in, the cracked spire, the yeti's cave ----------------
+// ---------------- MOUNTAIN PASS: what's built and what's grown up there (own rngs: the rest of the world's scenery stays where it was). ----------------
+// The ruins of an old mountain kingdom: two great statues at its gate, its road (flagstones, stair treads), a watchtower with a beacon at each
+// fire camp, the hidden stair, the old wall over the yeti's spot, his hall. Rock needles, frozen waterfalls, ice crystals, drifts, bones; the
+// mist in the valley below. And the fire camps themselves, the ice, the cracks
 // drape: a flat geometry laid over the ground at (x0, z0), turned yaw, its own y kept as height above the ground
 function drape(g, x0, z0, yaw = 0, dy = 0.04) {
   const p = g.attributes.position, c = Math.cos(yaw), s = Math.sin(yaw);
@@ -2775,15 +2813,86 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
 }
 {
   const SNOWC = '#f4f8fc', ROCKC = ['#7a7f8c', '#6c717e', '#868b97'], PR = mulberry32(16180), prr = (a, b) => a + PR() * (b - a);
+  const DR = mulberry32(60221), drr = (a, b) => a + DR() * (b - a), dpick = a => a[Math.floor(DR() * a.length)];   // the scenery's own rng
+  const P0 = T.pass, _dq = new THREE.Quaternion(), _dv = new THREE.Vector3(), UPY = new THREE.Vector3(0, 1, 0);
+  const RK = ['#6e7482', '#5c6270', '#7b828f', '#868d99'], COB = ['#8d919b', '#7b7f8a', '#9a9ea6', '#868b97', '#a3a7ae', '#70747e', '#7a7f8c'], ICE = ['#cdeafa', '#b4dcf5', '#e6f6ff'];
+  const facet = g => { const q = g.index ? g.toNonIndexed() : g; q.computeVertexNormals(); return q; };   // flat faces
+  const h3 = (x, y, z, k) => { const v = Math.sin(Math.round(x * 40) * 12.9898 + Math.round(y * 40) * 78.233 + Math.round(z * 40) * 37.719 + k * 4.31) * 43758.5453; return v - Math.floor(v); };
+  const lumpy = (g, amp, k = 0) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), f = 1 + (h3(x, y, z, k) - 0.5) * 2 * amp; p.setXYZ(i, x * f, y, z * f); } return g; };   // knocked about (in x, z)
+  const seg = (a, b, r0, r1, col, n = 7) => {   // a tapered limb from a (r0) to b (r1)
+    const d = _dv.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = d.length(), g = facet(CYL(r1, r0, L, n));
+    g.applyQuaternion(_dq.setFromUnitVectors(UPY, d.normalize())); g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2); return paint(g, col);
+  };
+  const tilt = (x, z) => { const e = 0.7, hx = terrainH(x + e, z) - terrainH(x - e, z), hz = terrainH(x, z + e) - terrainH(x, z - e); return [-Math.atan2(hz, 2 * e), Math.atan2(hx, 2 * e)]; };   // rx, rz to lie on the slope
+  const grown = (x, z, r) => scen.snowpine.some(o => Math.hypot(o.x - x, o.z - z) < r + 1) || scen.rock.some(o => Math.hypot(o.x - x, o.z - z) < r + o.sc);   // a pine or a rock in the way
+  const clearS = (s, lat, r) => { for (const d of [0, 2, -2, 4, -4, 6, -6, 8, -8]) { const p = pathPoint(s + d, lat); if (!grown(p.x, p.z, r)) return { ...p, s: s + d }; } return { ...pathPoint(s, lat), s }; };   // the nearest clear spot along the trail
+  const wallAng = s => { const p = pathPoint(s); return Math.atan2(-p.nz, -p.nx); };   // toward the west wall
+  const block = (x, z, r) => { OBSTACLES.push({ x, z, r }); stampObstacle(x, z, r); };
+  // what's instanced: rock needles, rim teeth, cobbles (the old kingdom's walls and towers), flagstones and stair slabs (its road), snow drifts
+  const D = { needleA: [], needleB: [], tooth: [], cobble: [], flag: [], slab: [], drift: [] };
+  const needleGeo = (k, lean) => merge(
+    P(facet(lumpy(CYL(0.72, 1.25, 3.6, 6), 0.16, k)), RK[0], { r: [0, k, -lean * 0.2], p: [0, 1.8, 0] }),
+    P(facet(lumpy(CYL(0.42, 0.78, 2.9, 5), 0.16, k + 1)), RK[2], { r: [lean * 0.15, k * 2, -lean * 0.45], p: [lean * 0.45, 4.7, 0] }),
+    P(facet(CONE(0.46, 2.3, 5)), RK[1], { r: [0, k, -lean * 0.7], p: [lean * 1.25, 6.95, 0] }),
+    P(facet(lumpy(CYL(0.3, 0.6, 2.4, 5), 0.15, k + 2)), RK[1], { r: [0.1, k * 3, 0.32], p: [-1.0, 1.5, 0.35] }),   // a lesser one leaning off it
+    P(facet(CONE(0.33, 1.3, 5)), RK[3], { r: [0.1, k, 0.42], p: [-1.52, 3.15, 0.4] }),
+    P(facet(lumpy(CYL(0.26, 0.5, 1.6, 5), 0.15, k + 4)), RK[2], { r: [-0.2, k * 5, -0.1], p: [0.5, 0.9, -0.95] }), P(facet(CONE(0.28, 0.9, 5)), RK[0], { r: [-0.25, 0, -0.1], p: [0.56, 2.1, -1.2] }),
+    P(SPH(7), SNOWC, { s: [0.56, 0.2, 0.56], p: [lean * 0.2, 3.62, 0] }), P(SPH(7), SNOWC, { s: [0.36, 0.16, 0.36], p: [lean * 0.78, 6.0, 0] }),   // snow on its shoulders
+    P(CONE(0.2, 0.7, 5), SNOWC, { r: [0, 0, -lean * 0.7], p: [lean * 1.62, 7.82, 0] }), P(SPH(6), SNOWC, { s: [0.3, 0.13, 0.3], p: [-1.26, 2.6, 0.38] }));
+  const toothGeo = merge(P(facet(lumpy(CONE(0.7, 1.5, 5), 0.2, 2)), RK[2], { r: [0.08, 0.4, 0.12], p: [0, 0.7, 0] }), P(facet(CONE(0.42, 0.9, 4)), RK[0], { r: [0, 0.9, -0.3], p: [0.55, 0.4, 0.15] }),
+    P(facet(CONE(0.3, 0.7, 4)), RK[1], { r: [0.2, 0.2, 0.25], p: [-0.5, 0.3, -0.2] }), P(SPH(6), SNOWC, { s: [0.3, 0.12, 0.3], p: [0.0, 1.34, 0] }));
+  const GEOS = { needleA: needleGeo(1.3, 0.45), needleB: needleGeo(4.1, -0.3), tooth: toothGeo, cobble: paint(facet(lumpy(ICO(1, 0), 0.1, 9)), '#ffffff'), chunk: paint(facet(lumpy(ICO(1, 0), 0.13, 5)), '#ffffff'),
+    flag: P(facet(lumpy(CYL(1, 1.08, 0.1, 6), 0.2, 7)), '#ffffff', { p: [0, 0.02, 0] }), slab: P(BOX(1, 0.2, 1), '#ffffff', { p: [0, 0.06, 0] }), drift: P(SPH(8), SNOWC, { s: [1, 0.26, 0.6], p: [0, 0.05, 0] }) };
+  // a cobble at (x, y, z): w along (ux, uz), h tall, d deep (half sizes)
+  const cob = (x, y, z, ux, uz, w, h, d) => D.cobble.push({ x, y, z, sx: w, sy: h, sz: d, rot: Math.atan2(-uz, ux) + drr(-0.12, 0.12), rx: drr(-0.1, 0.1), rz: drr(-0.1, 0.1), col: dpick(COB) });
+  // a ruined cobble wall from a to b: up to `rows` courses, ragged (less at its ends and here and there); on the ground as it lies, or level
+  // from o.y0 to o.y1 (what the hill buries isn't built)
+  const cobWall = (ax, az, bx, bz, rows, o = {}) => {
+    const L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, hh = o.h ?? 0.3, th = o.th ?? 0.36, ph = drr(0, 9);
+    for (let c = 0; c < rows; c++) {
+      let u = c % 2 ? 0.25 : 0;
+      while (u < L) {
+        const w = drr(0.36, 0.56), k = (u + w) / L, top = rows * (o.even ? 1 : (0.45 + 0.55 * Math.abs(Math.sin(k * 5.3 + ph))) * Math.min(1, 0.35 + Math.min(k, 1 - k) * 5));
+        if (c < top) { const x = ax + ux * (u + w), z = az + uz * (u + w), g = terrainH(x, z), y = (o.y0 === undefined ? g + (o.y ?? 0) : lerp(o.y0, o.y1, k)) + hh * (2 * c + 0.7) * 0.92;
+          if (y > g - 0.3) cob(x, y, z, ux, uz, w, hh * drr(0.9, 1.12), th * drr(0.9, 1.15)); }
+        u += w * 1.9;
+      }
+    }
+  };
+  // a round cobble tower at (x, z): r across, about h tall, its top broken; a dark core inside; → the height of its top course
+  const cobTower = (x, z, r, h, y0, door) => {   // (door: the angle its doorway's at: a gap in the bottom courses, a slit higher up)
+    const hh = 0.31, n = Math.round(TAU * r / 0.98), rows = Math.round(h / (hh * 1.84)), ph = drr(0, 9); let top = 0;
+    for (let c = 0; c < rows; c++) for (let k = 0; k < n; k++) {
+      const a = (k + (c % 2) * 0.5) / n * TAU, lim = rows * (0.74 + 0.26 * Math.sin(a * 2 + ph) * Math.sin(a * 3.3 + ph * 2)); if (c > lim) continue;
+      const da = Math.abs(wrapA(a - door)); if ((c < 3 && da < 0.34) || ((c === 6 || c === 7) && da < 0.14)) continue;
+      const cx = x + Math.cos(a) * r, cz = z + Math.sin(a) * r, y = y0 + hh * (2 * c + 0.9) * 0.92; top = Math.max(top, y);
+      cob(cx, y, cz, -Math.sin(a), Math.cos(a), TAU * r / n * 0.52, hh * drr(0.92, 1.1), 0.36 * drr(0.9, 1.15));
+    }
+    const g = new THREE.Group(); g.position.set(x, y0, z); scene.add(g);
+    part(g, P(CYL(r - 0.2, r - 0.12, h * 0.7, 12), '#2f323b', { p: [0, h * 0.35, 0] }), { outline: false });
+    return { g, top };
+  };
+  const cobArc = (x, z, r, a0, a1, rows, y = 0) => {   // a curved one, round (x, z)
+    const hh = 0.3, n = Math.round((a1 - a0) * r / 0.95), ph = drr(0, 9);
+    for (let c = 0; c < rows; c++) for (let k = 0; k < n; k++) {
+      const t = (k + (c % 2) * 0.5) / n, a = lerp(a0, a1, t), top = rows * (0.5 + 0.5 * Math.abs(Math.sin(t * 6.1 + ph))) * Math.min(1, 0.4 + Math.min(t, 1 - t) * 5); if (c >= top) continue;
+      const cx = x + Math.cos(a) * r, cz = z + Math.sin(a) * r;
+      cob(cx, terrainH(cx, cz) + y + hh * (2 * c + 0.7) * 0.92, cz, -Math.sin(a), Math.cos(a), (a1 - a0) * r / n * 0.52, hh * drr(0.92, 1.1), 0.36 * drr(0.9, 1.15));
+    }
+  };
+  const FLAGC = ['#aab2bf', '#9aa2ae', '#b6bdc8', '#8f97a4', '#a39f9c'];
+  const flag = (x, z, sc = 1, col = dpick(FLAGC)) => { const [rx, rz] = tilt(x, z); D.flag.push({ x, y: terrainH(x, z) + 0.015, z, sx: sc * drr(0.34, 0.55), sy: 1, sz: sc * drr(0.3, 0.5), rot: 0, rx, rz, col }); };
+  const paveDisc = (x, z, r0, r1, n) => { for (let k = 0; k < n; k++) { const a = DR() * TAU, r = Math.sqrt(lerp(r0 * r0, r1 * r1, DR())); flag(x + Math.cos(a) * r, z + Math.sin(a) * r); } };
   const snowRock = (x, z, sc, coll = true, col = ROCKC[Math.floor(PR() * 3)]) => {
     const y = terrainH(x, z), g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = PR() * TAU; scene.add(g);
     part(g, merge(P(ICO(1, 0), col, { s: [sc, sc * 0.75, sc], p: [0, sc * 0.3, 0] }), P(SPH(8), SNOWC, { s: [sc * 0.8, sc * 0.28, sc * 0.75], p: [sc * 0.05, sc * 0.85, 0] })));
-    if (coll) { OBSTACLES.push({ x, z, r: sc * 0.85 }); stampObstacle(x, z, sc * 0.85); }
+    if (coll) block(x, z, sc * 0.85);
     return g;
   };
-  // the fire camps: a ring of stones, logs, a woodpile, a windbreak of big snowy rocks on the wall side; flames (lit) and a light
+  // the fire camps: a ring of stones and logs on the old paving, a woodpile, a ruined curve of wall for a windbreak on the wall side;
+  // behind it what's left of a watchtower, a beacon on top that burns while the camp's fire does (f.beacon); flames (lit) and a light
   for (const f of PASS.fires) {
-    f.y = terrainH(f.x, f.z); const p = pathPoint(f.s), wa = Math.atan2(-p.nz, -p.nx);   // wa: toward the west wall
+    f.y = terrainH(f.x, f.z); const wa = wallAng(f.s);
     const g = new THREE.Group(); g.position.set(f.x, f.y, f.z); scene.add(g); f.g = g;
     for (let k = 0; k < 8; k++) { const a = k / 8 * TAU; part(g, P(ICO(0.24, 0), '#8f8f96', { p: [Math.cos(a) * 0.72, 0.1, Math.sin(a) * 0.72] }), { outline: false }); }
     part(g, merge(P(CYL(0.09, 0.09, 1.1, 5), '#5b3a22', { r: [0, 0.5, Math.PI / 2], p: [0, 0.12, 0] }), P(CYL(0.09, 0.09, 1.1, 5), '#6b4628', { r: [0, -0.7, Math.PI / 2], p: [0, 0.2, 0] }), P(CYL(0.08, 0.08, 1, 5), '#5b3a22', { r: [0, 2, Math.PI / 2], p: [0, 0.27, 0] })));
@@ -2793,7 +2902,17 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
     const wx = f.x + Math.cos(wa + 0.9) * 3.1, wz = f.z + Math.sin(wa + 0.9) * 3.1;   // the woodpile
     const wp = new THREE.Group(); wp.position.set(wx, terrainH(wx, wz), wz); wp.rotation.y = -wa; scene.add(wp);
     part(wp, merge(...[[0, 0.12, -0.2], [0, 0.12, 0.2], [0, 0.33, 0], [0, 0.12, 0.6], [0, 0.33, 0.4]].map(([x, y, z], i) => P(CYL(0.13, 0.13, 1.4, 6), i % 2 ? '#7a5232' : '#6a4428', { r: [0, 0, Math.PI / 2], p: [x, y, z] })), P(SPH(8), SNOWC, { s: [0.75, 0.12, 0.5], p: [0, 0.48, 0.2] })));
-    for (let k = -2; k <= 2; k++) { const a = wa + k * 0.42, r = 3.9 + Math.abs(k) * 0.3; snowRock(f.x + Math.cos(a) * r, f.z + Math.sin(a) * r, prr(0.9, 1.4)); }
+    for (let k = -2; k <= 2; k++) { const a = wa + k * 0.42; block(f.x + Math.cos(a) * 4.4, f.z + Math.sin(a) * 4.4, 0.75); }   // the windbreak
+    cobArc(f.x, f.z, 4.4, wa - 1.05, wa + 1.05, 5); cobArc(f.x, f.z, 4.75, wa - 0.9, wa + 0.95, 3);
+    paveDisc(f.x, f.z, 1.3, 4, 46);
+    // the watchtower (the top camp's: a stump, so it doesn't hide the hidden way behind it)
+    let ta = wa + 0.42, tx = 0, tz = 0; for (const da of [0, 0.25, -0.25, 0.5, -0.5]) { tx = f.x + Math.cos(ta + da) * 8.2; tz = f.z + Math.sin(ta + da) * 8.2; if (!grown(tx, tz, 2.6)) break; }
+    const th = f.top ? 3.3 : 6.4, ty = terrainH(tx, tz) - 0.15, tw = cobTower(tx, tz, 1.9, th, ty, Math.atan2(f.z - tz, f.x - tx)), top = tw.top - ty; block(tx, tz, 2.25);
+    part(tw.g, merge(P(CYL(1.75, 1.75, 0.22, 12), '#565a66', { p: [0, top - 0.25, 0] }), P(facet(CYL(0.95, 0.62, 0.42, 8)), '#4a4d57', { p: [0, top + 0.08, 0] }),   // the beacon: a stone bowl, logs
+      P(CYL(0.1, 0.1, 1.5, 5), '#5b3a22', { r: [0, 0.4, 1.25], p: [0, top + 0.5, 0] }), P(CYL(0.1, 0.1, 1.5, 5), '#6b4628', { r: [0, 2.1, 1.25], p: [0, top + 0.5, 0] }), P(CYL(0.1, 0.1, 1.5, 5), '#5b3a22', { r: [0, 4.0, 1.25], p: [0, top + 0.5, 0] }),
+      P(SPH(7), SNOWC, { s: [0.5, 0.14, 0.4], p: [1.2, top - 0.05, 0.6] }), P(SPH(7), SNOWC, { s: [0.45, 0.12, 0.4], p: [-1.1, top - 0.05, -0.7] }), P(SPH(7), SNOWC, { s: [0.9, 0.2, 0.8], p: [0.4, 0.1, 2.1] })));
+    const bf = [['#ff9a2a', 0.62, 2.0], ['#ffe07a', 0.36, 1.3]].map(([c, r, h]) => { const m = new THREE.Mesh(CONE(r, h, 6).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: c })); m.position.y = top + 0.35; m.visible = false; tw.g.add(m); return m; });
+    f.beacon = { x: tx, y: ty + top + 0.5, z: tz, flames: bf };
   }
   // ice: a pale blue glaze over each patch, a sheen on top
   { const gs = []; for (const m of ICES) for (const [bi, b] of m.blobs.entries()) { gs.push(paint(drape(new THREE.CircleGeometry(b.r + 0.1, 24).rotateX(-Math.PI / 2), b.x, b.z, 0, 0.05), '#b8e2f8')); if (!bi) gs.push(paint(drape(new THREE.CircleGeometry(b.r * 0.45, 16).rotateX(-Math.PI / 2), b.x + b.r * 0.25, b.z - b.r * 0.2, 0, 0.07), '#e8f7ff')); }
@@ -2808,27 +2927,260 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
     }
     const m = new THREE.Mesh(merge(...gs), MAT.vc); m.receiveShadow = true; scene.add(m);
   }
-  // the hidden side trail's way in: two big snowy boulders, nearly closing it off
-  { const e = SIDE.pts[0], k = pathIdx(SIDE.s0); for (const [ds, dl, sc] of [[-4, 1.5, 1.9], [9, 2.4, 2.1], [3, -1.2, 1.3]]) { const p = pathPoint(SIDE.s0 + ds, -(hwWArr[pathIdx(SIDE.s0 + ds)] - dl)); if (sideD(p.x, p.z) > SIDE.hw + sc * 0.6) snowRock(p.x, p.z, sc); } }
+  const mix = (a, b, t) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
+  const busyAt = (x, z, r) => grown(x, z, r) || ICES.some(m => Math.hypot(m.x - x, m.z - z) < m.r + r) || !!crevAt(x, z, r + 1) || PASS.fires.some(f => Math.hypot(f.x - x, f.z - z) < r + 7) || sideD(x, z) < r + SIDE.hw + 0.5;
+  const freeS = (s, lat, r) => { for (const d of [0, 2, -2, 4, -4, 6, -6, 9, -9]) { const p = pathPoint(s + d, lat); if (!busyAt(p.x, p.z, r)) return { ...p, s: s + d }; } return { ...pathPoint(s, lat), s }; };
+  // THE SHEPHERD KINGS: two great statues at the gate of the pass (the snow line): an old shepherd in a wide hat, his crook in one hand,
+  // the other raised, his dog at his feet. The west one stands; the east one's fallen: a stump on its plinth, its head in the snow
+  {
+    const ST = '#8b909b', ST2 = '#767b87', ST3 = '#9da2ac';
+    const stoneDog = (x, z) => merge(   // sitting on the plinth, looking out
+      P(SPH(8), ST3, { s: [0.48, 0.74, 0.56], r: [-0.3, 0, 0], p: [x, 2.42, z] }), P(SPH(8), ST, { s: [0.4, 0.5, 0.4], p: [x, 2.95, z + 0.28] }),
+      P(SPH(8), ST3, { s: [0.34, 0.33, 0.38], p: [x, 3.55, z + 0.42] }), P(CONE(0.17, 0.5, 6), ST, { r: [Math.PI / 2, 0, 0], p: [x, 3.48, z + 0.86] }),
+      P(CONE(0.12, 0.32, 4), ST2, { r: [0, 0, -0.2], p: [x + 0.2, 3.92, z + 0.36] }), P(CONE(0.12, 0.32, 4), ST2, { r: [0, 0, 0.2], p: [x - 0.2, 3.92, z + 0.36] }),
+      P(CYL(0.11, 0.1, 1.0, 6), ST, { p: [x + 0.2, 2.2, z + 0.52] }), P(CYL(0.11, 0.1, 1.0, 6), ST, { p: [x - 0.2, 2.2, z + 0.52] }),
+      P(SPH(6), ST2, { s: [0.14, 0.14, 0.5], r: [0.5, 0, 0], p: [x, 1.95, z - 0.62] }), P(SPH(6), SNOWC, { s: [0.3, 0.1, 0.34], p: [x, 3.86, z + 0.34] }));
+    const plinth = () => [P(BOX(4.6, 1.2, 4.6), ST2, { p: [0, 0.6, 0] }), P(BOX(3.9, 0.5, 3.9), ST, { p: [0, 1.45, 0] }), P(BOX(4.72, 0.14, 4.72), SNOWC, { p: [0, 1.24, 0] })];
+    const head = () => [P(SPH(9), ST3, { s: [0.7, 0.8, 0.72], p: [0, 0, 0.08] }), P(CONE(0.6, 1.9, 6), ST, { r: [Math.PI - 0.1, 0, 0], p: [0, -1.05, 0.62] }), P(SPH(6), ST, { s: [0.13, 0.2, 0.2], p: [0, 0, 0.78] }),
+      P(CYL(1.55, 1.55, 0.15, 12), ST2, { r: [-0.1, 0, 0.04], p: [0, 0.62, 0] }), P(facet(CONE(0.8, 1.9, 8)), ST, { r: [-0.22, 0, 0.08], p: [0, 1.5, -0.2] })];   // face, beard, nose, his hat's brim and crown
+    const king = merge(...plinth(),
+      P(facet(CYL(1.5, 2.1, 6.8, 7)), ST2, { s: [1, 1, 0.6], p: [0, 5.1, -0.5] }), P(facet(CYL(1.12, 1.7, 6.3, 9)), ST, { p: [0, 4.85, 0] }), P(CYL(1.2, 1.24, 0.34, 9), ST2, { p: [0, 6.6, 0] }),   // cloak, robe, belt
+      P(facet(CYL(1.42, 1.15, 2.3, 9)), ST3, { p: [0, 9.1, 0] }), P(SPH(8), ST, { s: [2.0, 0.62, 1.0], p: [0, 10.1, 0] }),   // chest, shoulders
+      ...head().map(g => g.translate(0, 11.1, 0)),
+      seg([1.7, 9.95, 0.1], [2.05, 9.3, 2.0], 0.44, 0.36, ST), seg([2.05, 9.3, 2.0], [2.1, 10.3, 3.1], 0.36, 0.3, ST3), P(BOX(0.8, 1.0, 0.24), ST3, { r: [-0.35, 0, 0], p: [2.1, 10.85, 3.3] }),   // an arm raised, palm out
+      seg([-1.7, 9.95, 0.1], [-2.1, 7.7, 1.05], 0.44, 0.36, ST), P(SPH(7), ST3, { s: [0.36, 0.36, 0.36], p: [-2.1, 7.6, 1.1] }),   // the other on his crook
+      seg([-2.1, 1.7, 1.15], [-2.1, 12.4, 1.15], 0.17, 0.15, ST2, 6), P(new THREE.TorusGeometry(0.55, 0.15, 6, 12, Math.PI * 1.15), ST2, { r: [0, Math.PI / 2, 0], p: [-2.1, 12.4, 1.7] }),
+      stoneDog(1.25, 1.35),
+      P(SPH(8), SNOWC, { s: [1.5, 0.16, 1.5], p: [0, 11.86, 0] }), P(SPH(8), SNOWC, { s: [1.9, 0.2, 0.9], p: [0, 10.5, -0.1] }), P(SPH(6), SNOWC, { s: [0.3, 0.1, 0.9], r: [0.35, 0, 0], p: [2.02, 9.78, 1.1] }));
+    const stump = merge(...plinth(),
+      P(facet(CYL(1.35, 1.7, 2.6, 9)), ST, { p: [0, 3.0, 0] }), P(facet(CYL(1.6, 2.1, 2.4, 7)), ST2, { s: [1, 1, 0.6], p: [0, 2.9, -0.5] }),
+      P(facet(CONE(0.6, 1.3, 4)), ST, { r: [0.1, 0.5, 0.2], p: [0.5, 4.7, 0.2] }), P(facet(CONE(0.5, 1.0, 4)), ST3, { r: [-0.1, 1.5, -0.3], p: [-0.6, 4.6, -0.3] }), P(facet(CONE(0.42, 0.8, 4)), ST2, { r: [0.2, 2.5, 0.1], p: [0, 4.5, 0.7] }),   // snapped off
+      seg([-2.1, 1.7, 1.15], [-2.1, 4.9, 1.15], 0.17, 0.16, ST2, 6), stoneDog(1.25, 1.35), P(SPH(8), SNOWC, { s: [1.3, 0.2, 1.3], p: [0, 4.2, 0] }));
+    const s0 = P0.snow - 4, kW = pathIdx(s0);
+    const put = (geo, p, fx, fz, y = 0) => { const g = new THREE.Group(); g.position.set(p.x, terrainH(p.x, p.z) + y, p.z); g.rotation.y = Math.atan2(fx, fz); scene.add(g); part(g, geo); return g; };
+    const pw = freeS(s0, -(hwWArr[kW] - 3), 3), pe = freeS(s0, hwEArr[kW] - 3, 3);
+    put(king, pw, -pw.tx + pw.nx * 0.45, -pw.tz + pw.nz * 0.45, -0.25); block(pw.x, pw.z, 2.8);       // facing down the trail, turned in a little
+    put(stump, pe, -pe.tx - pe.nx * 0.45, -pe.tz - pe.nz * 0.45, -0.25); block(pe.x, pe.z, 2.8);
+    const ph = freeS(pe.s + 7, hwEArr[kW] - 7.5, 1.6), hg = put(merge(...head()), ph, 0.3, -1, 0.5); hg.rotation.z = 1.25; hg.rotation.x = 0.2; block(ph.x, ph.z, 1.25);   // his head, on its side
+    const hs = new THREE.Group(); hs.position.set(ph.x, terrainH(ph.x, ph.z), ph.z); scene.add(hs);
+    part(hs, merge(P(SPH(8), SNOWC, { s: [1.5, 0.3, 1.2], p: [-0.5, 0.05, 0.4] }), P(SPH(7), SNOWC, { s: [0.6, 0.2, 0.6], p: [0.1, 1.28, 0] })), { outline: false });
+    const pa = freeS(pe.s + 2.5, hwEArr[kW] - 7, 1.2), ag = put(merge(seg([0, 0, 0], [0, 0.2, 1.9], 0.38, 0.3, ST), P(BOX(0.8, 0.26, 1.0), ST3, { p: [0, 0.22, 2.35] }), P(SPH(7), SNOWC, { s: [0.5, 0.14, 0.8], p: [0, 0.42, 1.0] })), pa, 1, 0.4, 0.1);   // and his arm
+  }
+  // the old road: worn flagstones up the middle of the trail, stair treads where it's steep; gone in places, and where ice or a crack lies.
+  // Whole from the top camp to his hall
+  for (let s = P0.s0 + 14, on = false, run = 0; s < FINAL.s - FINAL.R - 1.5; s += 0.75) {
+    if ((run -= 0.75) <= 0) { on = !on; run = on ? drr(9, 24) : drr(3, 8); }
+    if (!on && s < P0.arena - 6) continue;
+    const i = pathIdx(s), k = passK(s), sand = c => k < 1 ? mix(c, '#c2a57c', (1 - k) * 0.8) : c, busy = (x, z) => iceK(x, z) > 0.02 || !!crevAt(x, z, 1.3);
+    if (slopeArr[i] > 0.1) {
+      if (Math.round(s / 0.75) % 2) continue;
+      const p = pathPoint(s, drr(-0.15, 0.15)); if (busy(p.x, p.z)) continue;
+      D.slab.push({ x: p.x, y: terrainH(p.x, p.z) + 0.03, z: p.z, sx: drr(2.7, 3.4), sy: drr(1.1, 1.5), sz: drr(0.5, 0.64), rot: Math.atan2(-p.nz, p.nx) + drr(-0.04, 0.04), col: sand(dpick(FLAGC)) });
+    } else for (let q = -1; q <= 1; q++) { const p = pathPoint(s + drr(-0.3, 0.3), q * 0.95 + drr(-0.3, 0.3)); if (!busy(p.x, p.z)) flag(p.x, p.z, 1.15, sand(dpick(FLAGC))); }
+  }
+  // rock needles: clusters at the foot of the west cliff; teeth along this side's lip; great ones down the mountain, coming up out of the mist
+  const inSide = s => s > SIDE.s0 - 8 && s < SIDE.s1 + 16;
+  const needle = (x, z, sc, dy = -0.4) => D[DR() < 0.5 ? 'needleA' : 'needleB'].push({ x, y: terrainH(x, z) + dy, z, sc, sy: sc * drr(0.9, 1.35), rot: DR() * TAU });
+  for (let s = P0.snow + 6; s < PATH_LEN - 14; s += drr(10, 18)) {
+    if (inSide(s) || P0.fires.some(([fs]) => Math.abs(s - fs) < 15)) continue;
+    const k = pathIdx(s), n = 1 + Math.floor(DR() * 3);
+    for (let j = 0; j < n; j++) { const p = pathPoint(s + drr(-3, 3), -(hwWArr[k] + drr(1.8, 5.5))); if (!PASS.ledges.some(g => Math.hypot(g.x - p.x, g.z - p.z) < 5)) needle(p.x, p.z, drr(0.55, 1.25)); }
+  }
+  for (let s = P0.snow + 3; s < PATH_LEN - 4; s += drr(3.5, 8)) {
+    const k = pathIdx(s), p = pathPoint(s, hwEArr[k] + drr(0.9, 2.3)); if (PASS.ledges.some(g => Math.hypot(g.x - p.x, g.z - p.z) < 4.5)) continue;
+    D.tooth.push({ x: p.x, y: terrainH(p.x, p.z) - 0.15, z: p.z, sc: drr(0.7, 1.5), rot: DR() * TAU });
+  }
+  for (let s = P0.snow + 20; s < PATH_LEN; s += drr(6, 12)) {   // (their tips under the floor: nothing between the camera and the trail)
+    const k = pathIdx(s), p = pathPoint(s, hwEArr[k] + drr(11, 46)), g = terrainH(p.x, p.z) - 1.2, tall = liftArr[k] - drr(0.6, 5) - g, sc = clamp(tall / 14, 1.3, 2.9); if (tall < 9) continue;
+    D[DR() < 0.5 ? 'needleA' : 'needleB'].push({ x: p.x, y: g, z: p.z, sc, sy: Math.min(tall / 8.2, sc * 2.3), rot: DR() * TAU });
+  }
+  // snow drifted up against both sides of the floor
+  for (let s = P0.snow; s < PATH_LEN - 2; s += drr(1.6, 3.6)) for (const sd of [-1, 1]) {
+    if (DR() < 0.35) continue;
+    const k = pathIdx(s), p = pathPoint(s, sd * ((sd < 0 ? hwWArr[k] : hwEArr[k]) - drr(0.2, 2.4)));
+    if (iceK(p.x, p.z) > 0 || crevAt(p.x, p.z, 1.5) || sideD(p.x, p.z) < SIDE.hw + 1.5 || PASS.fires.some(f => Math.hypot(f.x - p.x, f.z - p.z) < 6)) continue;
+    D.drift.push({ x: p.x, y: terrainH(p.x, p.z) + 0.02, z: p.z, sx: drr(0.9, 2.3), sy: drr(0.8, 1.7), sz: drr(0.9, 1.9), rot: DR() * TAU, col: dpick(['#ffffff', '#f1f6fc', '#e8f0f9']) });
+  }
+  // frozen waterfalls down the west cliff: organ pipes of ice where it's steep, sheets where it isn't, a heap of ice at the foot
+  for (const s of [1216, 1300, 1342, 1412]) {
+    const k = pathIdx(s), gs = [], w = drr(1.5, 2.2);
+    const at = (o, u) => { const lat = -(hwWArr[k] + o); return { x: pX[k] - tZ[k] * lat + tX[k] * u, z: pZ[k] + tX[k] * lat + tZ[k] * u }; };
+    for (let o = 17; o > -0.4; o -= 0.9) for (let j = -1; j <= 1; j++) {
+      const u = j * w * 0.62 + drr(-0.2, 0.2), a = at(o + 0.9, u), b = at(o, u), ya = terrainH(a.x, a.z), yb = terrainH(b.x, b.z), r = drr(0.34, 0.52) * (1 - Math.abs(j) * 0.22);
+      if (ya - yb > 0.8) gs.push(seg([b.x, yb - 0.3, b.z], [a.x, ya + 0.25, a.z], r, r * 0.78, dpick(ICE), 5));
+      else gs.push(P(SPH(6), dpick(ICE), { s: [0.62, 0.1, 0.62], p: [b.x, yb + 0.04, b.z] }));
+    }
+    for (let j = 0; j < 6; j++) { const q = at(drr(-0.7, 0.9), drr(-w, w)), sc = drr(0.3, 0.6); gs.push(P(facet(ICO(1, 0)), dpick(ICE), { s: [sc, sc * 0.8, sc], r: [drr(0, 3), drr(0, 3), 0], p: [q.x, terrainH(q.x, q.z) + sc * 0.3, q.z] })); }
+    part(scene, merge(...gs));
+  }
+  // ice crystals (they glow: unlit): a cluster at (x, z)
+  const GLOW = [];
+  const crystals = (x, z, sc = 1, n = 4) => { const y = terrainH(x, z); for (let k = 0; k < n; k++) { const a = DR() * TAU, r = k ? drr(0.15, 0.5) * sc : 0, h = (k ? drr(0.35, 0.75) : drr(0.8, 1.15)) * sc;
+    GLOW.push(P(new THREE.OctahedronGeometry(1), dpick(['#9fe6ff', '#c8f4ff', '#7fd0f5']), { s: [h * 0.26, h, h * 0.26], r: [drr(-0.35, 0.35), drr(0, 3), drr(-0.35, 0.35)], p: [x + Math.cos(a) * r, y + h * 0.55, z + Math.sin(a) * r] })); } };
+  // THE HIDDEN STAIR (SIDE): the old kingdom's back way up, behind the rim. Its way in: two great leaning stones and a rune stone that glows;
+  // flagstones and treads all the way; a retaining wall of cobbles along the cliff, a stone here and there on the lip; arches over it; ice
+  // crystals at the cliff's foot; its ledge paved, a parapet round it
+  {
+    const pts = SIDE.pts, n = pts.length, at = i => { const a = pts[Math.max(0, i - 2)], b = pts[Math.min(n - 1, i + 2)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1, tx = (b.x - a.x) / l, tz = (b.z - a.z) / l; return { x: pts[i].x, z: pts[i].z, tx, tz, wx: tz, wz: -tx }; };   // (wx, wz): toward the cliff
+    for (let i = 3; i < n; i++) {   // (pts: every 0.5 m)
+      const p = at(i);
+      if (i % 3 === 0) D.slab.push({ x: p.x, y: terrainH(p.x, p.z) + 0.03, z: p.z, sx: drr(2.5, 3.0), sy: drr(1.1, 1.5), sz: drr(0.45, 0.6), rot: Math.atan2(-p.wz, p.wx) + drr(-0.05, 0.05), col: dpick(FLAGC) });
+      else for (const q of [-0.85, 0.05, 0.9]) { const o = q + drr(-0.2, 0.2); flag(p.x + p.wx * o, p.z + p.wz * o, 0.95); }
+    }
+    for (let i = 26; i < n - 6;) {   // a low parapet along its lip, in runs (level with the stair); crystals at the cliff's foot in the gaps
+      const len = Math.floor(drr(10, 24)), j = Math.min(n - 3, i + len), o = -(SIDE.hw + 0.55);
+      for (let k = i; k < j; k += 4) { const a = at(k), b = at(Math.min(j, k + 4)); cobWall(a.x + a.wx * o, a.z + a.wz * o, b.x + b.wx * o, b.z + b.wz * o, 2, { y0: terrainH(a.x, a.z) + 0.12, y1: terrainH(b.x, b.z) + 0.12, even: k > i && k + 4 < j }); }
+      const c = at(Math.min(n - 1, j + 3)); crystals(c.x + c.wx * (SIDE.hw + 0.5), c.z + c.wz * (SIDE.hw + 0.5), drr(1, 1.5), 5);
+      i = j + 6;
+    }
+    for (const [n0, i] of [38, 82, 124].entries()) {   // arches over it: two piers, a ring of blocks, a keystone with a rune; snow on top, icicles under
+      const p = at(i), base = terrainH(p.x, p.z), AR = SIDE.hw + 0.95, PH = 2.3, gs = [], ice = [], B = ['#8a8f9a', '#787d89', '#999ea8'];
+      const g = new THREE.Group(); g.position.set(p.x, base, p.z); g.rotation.y = Math.atan2(-p.wz, p.wx); scene.add(g);   // local x: toward the cliff
+      for (const sd of [-1, 1]) {
+        gs.push(P(BOX(1.25, 0.5, 1.3), B[1], { p: [sd * AR, -0.1, 0] }), P(BOX(1.0, PH + 2.4, 1.05), B[0], { p: [sd * AR, (PH - 2.4) / 2, 0] }), P(BOX(1.22, 0.3, 1.25), B[2], { p: [sd * AR, PH + 0.05, 0] }));
+        if (sd < 0) gs.push(P(SPH(7), SNOWC, { s: [0.7, 0.2, 0.7], p: [sd * (AR + 0.5), 0.15, 0.3] }));
+      }
+      for (let k = 0; k < 9; k++) { if (k === 4) continue; const a = (k + 0.5) / 9 * Math.PI; gs.push(P(BOX(0.95, 0.8, 0.95 + (k % 2) * 0.08), B[k % 3], { r: [0, 0, a - Math.PI / 2], p: [Math.cos(a) * AR, PH + 0.2 + Math.sin(a) * AR, 0] })); }
+      gs.push(P(BOX(0.9, 1.25, 1.12), B[2], { p: [0, PH + 0.35 + AR, 0] }), P(SPH(7), SNOWC, { s: [1.5, 0.2, 0.62], p: [0, PH + 1.05 + AR, 0] }),
+        P(SPH(6), SNOWC, { s: [0.6, 0.14, 0.55], p: [-AR * 0.72, PH + 0.75 + AR * 0.7, 0] }), P(SPH(6), SNOWC, { s: [0.6, 0.14, 0.55], p: [AR * 0.72, PH + 0.75 + AR * 0.7, 0] }));
+      for (let k = -3; k <= 3; k++) { const a = Math.PI / 2 + k * 0.3, len = drr(0.45, 1.0) * (1 - Math.abs(k) * 0.1), r = AR - 0.42; ice.push(P(CONE(0.085, len, 5), dpick(ICE), { r: [Math.PI, 0, 0], p: [Math.cos(a) * r, PH + 0.2 + Math.sin(a) * r - len / 2, (k % 2) * 0.2] })); }
+      part(g, merge(...gs)); part(g, merge(...ice), { outline: false });
+      for (const z of [-0.58, 0.58]) part(g, merge(P(BOX(0.07, 0.5, 0.04), '#9fe6ff', { p: [0, PH + 0.35 + AR, z] }), P(BOX(0.07, 0.3, 0.04), '#9fe6ff', { r: [0, 0, n0 ? 0.8 : -0.8], p: [n0 === 1 ? -0.12 : 0.12, PH + 0.45 + AR, z] }),
+        ...(n0 === 2 ? [P(BOX(0.07, 0.3, 0.04), '#9fe6ff', { r: [0, 0, -0.8], p: [-0.12, PH + 0.25 + AR, z] })] : [])), { mat: MAT.basic, outline: false, shadow: false });
+    }
+    // its way in: two tall stones leaning together over it, a rune stone by the trail that glows
+    { const p = at(9), gs = [];
+      for (const sd of [-1, 1]) {
+        const x = p.x + p.tx * sd * 2.55, z = p.z + p.tz * sd * 2.55, y = terrainH(x, z) - 0.3, g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(p.tx * sd, p.tz * sd); scene.add(g);   // (local +z: away from the way through)
+        part(g, merge(P(facet(lumpy(CYL(0.5, 0.95, 6.2, 5), 0.18, sd + 3)), RK[sd > 0 ? 0 : 2], { r: [-0.3, 0.4, 0], p: [0, 2.9, -0.75] }), P(facet(lumpy(CYL(0.3, 0.6, 2.4, 5), 0.2, sd + 6)), RK[1], { r: [0.15, 1, 0.1], p: [0.5, 1.1, 0.5] }),
+          P(SPH(7), SNOWC, { s: [0.5, 0.16, 0.5], p: [0, 5.85, -1.62] }), P(SPH(7), SNOWC, { s: [0.7, 0.18, 0.6], p: [0.3, 0.1, 0.9] })));
+        if (!isBlocked(x, z)) block(x, z, 0.85);
+      }
+      const k = pathIdx(SIDE.s0 - 3), q = pathPoint(SIDE.s0 - 3, -(hwWArr[k] - 3.4)), ry = terrainH(q.x, q.z), rg = new THREE.Group(); rg.position.set(q.x, ry - 0.1, q.z); rg.rotation.y = Math.atan2(q.nx - q.tx * 0.3, q.nz - q.tz * 0.3); scene.add(rg); block(q.x, q.z, 0.6);
+      part(rg, merge(P(facet(lumpy(CYL(0.36, 0.52, 1.9, 5), 0.12, 2)), RK[3], { s: [1, 1, 0.55], p: [0, 0.95, 0] }), P(SPH(6), SNOWC, { s: [0.34, 0.1, 0.2], p: [0, 1.92, 0] })));
+      part(rg, merge(P(BOX(0.07, 0.9, 0.04), '#9fe6ff', { p: [0, 1.0, 0.3] }), P(BOX(0.07, 0.42, 0.04), '#9fe6ff', { r: [0, 0, 0.75], p: [-0.14, 1.32, 0.3] }), P(BOX(0.07, 0.42, 0.04), '#9fe6ff', { r: [0, 0, -0.75], p: [0.14, 1.32, 0.3] }),
+        P(BOX(0.07, 0.3, 0.04), '#9fe6ff', { r: [0, 0, 0.75], p: [-0.11, 0.86, 0.3] })), { mat: MAT.basic, outline: false, shadow: false });   // (the rune: an arrow, up the stair)
+    }
+    // the ledge: paved, a parapet round it (not where the stair comes in, nor toward the old wall), crystals
+    { const L = SIDE.ledge, R = SIDE.rock, e = pts[n - 1], aIn = Math.atan2(e.z - L.z, e.x - L.x), aR = Math.atan2(R.z - L.z, R.x - L.x);
+      paveDisc(L.x, L.z, 0, L.r - 0.3, 60);
+      for (let a = 0; a < TAU; a += 0.5) { const m = a + 0.25; if (Math.abs(wrapA(m - aIn)) < 1.0 || Math.abs(wrapA(m - aR)) < 1.25) continue; cobArc(L.x, L.z, L.r + 0.25, a, a + 0.5, 3, -0.05); }
+      crystals(L.x + Math.cos(aR + 1.9) * (L.r + 0.9), L.z + Math.sin(aR + 1.9) * (L.r + 0.9), 1.5, 5); crystals(L.x + Math.cos(aR - 2.2) * (L.r + 0.8), L.z + Math.sin(aR - 2.2) * (L.r + 0.8), 1.2, 4);
+    }
+  }
+  // the hidden side trail's way in: big snowy boulders, nearly closing it off
+  for (const [ds, dl, sc] of [[-4, 1.5, 1.9], [9, 2.4, 2.1], [3, -1.2, 1.3]]) { const p = pathPoint(SIDE.s0 + ds, -(hwWArr[pathIdx(SIDE.s0 + ds)] - dl)); if (sideD(p.x, p.z) > SIDE.hw + sc * 0.6) snowRock(p.x, p.z, sc); }
   SIDE.floor = liftArr[pathIdx(SIDE.s1)] + 0.2;
-  // the cracked spire: tall, leaning a little toward the top; its cracks show one by one (SIDE.rock.crk)
-  { const R = SIDE.rock, g = new THREE.Group(); g.position.set(R.x, SIDE.floor - 0.6, R.z); scene.add(g); R.g = g;
-    const rk = new THREE.Group(); g.add(rk); R.mesh = rk;
-    part(rk, merge(P(CYL(1.25, 1.6, 7, 8), '#7c818e', { p: [0, 3.5, 0] }), P(CYL(1.0, 1.3, 7, 8), '#6f7480', { r: [0, 0.4, 0.02], p: [0.05, 10.3, 0] }), P(CYL(0.7, 1.05, 6, 7), '#7c818e', { r: [0, 0.8, -0.03], p: [-0.05, 16.6, 0] }),
-      P(ICO(1, 0), '#868b97', { s: [1, 1.2, 0.95], p: [0, 20, 0] }), P(SPH(8), SNOWC, { s: [1.05, 0.45, 1], p: [0, 20.9, 0] }), P(SPH(8), SNOWC, { s: [1.3, 0.3, 1.3], p: [0, 7.1, 0] }), P(SPH(8), SNOWC, { s: [1.1, 0.25, 1.1], p: [0, 13.8, 0] })));
-    R.crk = [0, 1, 2].map(i => { const c = new THREE.Mesh(merge(...[0, 1, 2].map(j => P(BOX(0.09, 1.1, 0.06), '#1b1f2a', { r: [0, 0, (j - 1) * 0.6 + i * 0.3], p: [Math.cos(i * 2.1 + j) * 0.2, 0.8 + i * 0.9 + j * 0.45, 0] })).map(gm => gm.translate(0, 0, 1.55))), MAT.vc); c.rotation.y = i * 1.9 + 0.4; c.visible = false; rk.add(c); return c; });
-    OBSTACLES.push({ x: R.x, z: R.z, r: R.r }); stampObstacle(R.x, R.z, R.r);
+  // THE ROCK WALL (SIDE.rock): a great fin of frost-split rock on the ledge's edge, over the yeti's spot: the mountain's own stone, in the
+  // blocks it's cracked into (R.stones: where each sits: u across, v up, w through; one instanced mesh, placed whenever it moves: rockDraw);
+  // the rock behind them; snow on its teeth and in its joints; scree at its foot; three cracks
+  { const R = SIDE.rock, g = new THREE.Group(); g.position.set(R.x, SIDE.floor - 0.5, R.z); scene.add(g); R.g = g;
+    const pv = new THREE.Group(); pv.rotation.order = 'YXZ'; g.add(pv); R.pivot = pv;
+    const WR = mulberry32(8128), wq = (a, b) => a + WR() * (b - a), S = R.stones = [], COLS = [...ROCKC, RK[0], RK[2], RK[3]], core = [], snow = [];
+    const halfW = v => R.W / 2 * (1.06 - 0.3 * v / R.H + 0.07 * Math.sin(v * 0.6 + 1.2)), deep = v => lerp(1.2, 0.62, v / R.H);   // wide and thick at its foot
+    const topAt = u => R.H * (0.76 + 0.24 * Math.max(0, Math.sin(u * 0.95 + 0.9)) - 0.1 * Math.max(0, Math.sin(u * 2.3 + 2.6)));   // its top: a tooth, a notch, a shoulder
+    const stone = (u, v, w, sx, sy, sz, low) => S.push({ u, v, w, sx, sy, sz, rx: wq(-0.16, 0.16), ry: wq(-0.5, 0.5), rz: wq(-0.14, 0.14), id: WR(), a: WR(), b: WR(), c: WR(), col: COLS[Math.floor(WR() * COLS.length)], low });
+    for (let v = 0, row = 0; v < R.H; row++) {
+      const rh = wq(1.25, 1.75) * lerp(1, 0.72, v / R.H), hw = halfW(v + rh / 2), d = deep(v + rh / 2); let u = -hw - (row % 2 ? 0.5 : 0), u0 = 1e9, u1 = -1e9;
+      while (u < hw - 0.3) {
+        const bw = Math.min(wq(1.2, 2.3) * lerp(1, 0.75, v / R.H), hw - u + 0.4), uc = u + bw / 2; u += bw;
+        if (v + rh * 0.6 > topAt(uc)) { WR(); continue; }
+        const top = v + rh * 1.6 > topAt(uc);   // nothing on it: a tooth, snow on its tip
+        stone(uc, v + rh * (top ? 0.75 : 0.5), wq(-0.12, 0.12), bw * (top ? 0.5 : 0.62), rh * (top ? 1.05 : 0.64), d * wq(0.92, 1.12) * (top ? 0.85 : 1), v < 3);
+        u0 = Math.min(u0, uc - bw / 2); u1 = Math.max(u1, uc + bw / 2);
+        if (top) snow.push(P(SPH(6), SNOWC, { s: [bw * 0.3, 0.2, d * 0.55], p: [uc, v + rh * 1.6, 0] }));
+        else if (WR() < 0.3) { const sd = WR() < 0.5 ? -1 : 1; snow.push(P(SPH(6), SNOWC, { s: [bw * 0.36, 0.11, 0.34], p: [uc, v + rh, sd * d * 0.92] })); }   // snow in a joint
+        if (WR() < 0.55) { const sd = WR() < 0.5 ? -1 : 1, r = wq(0.34, 0.6); stone(uc + bw * wq(-0.5, 0.5), v + rh * wq(0.1, 0.9), sd * d * 0.86, r * 1.25, r, r * 0.9, false); }   // a lesser one wedged in its face
+      }
+      if (u1 > u0) core.push(P(BOX(Math.max(0.6, u1 - u0 - 0.9), rh + 0.05, d * 1.25), '#4d515c', { p: [(u0 + u1) / 2, v + rh / 2, 0] }));
+      v += rh;
+    }
+    R.core = new THREE.Group(); pv.add(R.core); part(R.core, merge(...core), { outline: false }); part(R.core, merge(...snow), { outline: false });
+    R.crk = [[-1.3, 6.5], [1.0, 9.5], [-0.2, 13]].map(([x0, top], i) => {   // cracks right through it, one more each time it's hit
+      const gs = []; let x = x0, y = 0.5, k = 0;
+      while (y < top) { const len = 0.9 + ((k * 7 + i * 3) % 5) * 0.14, a = (k % 2 ? 1 : -1) * (0.35 + ((k + i) % 3) * 0.12); gs.push(P(BOX(0.17, len, deep(y) * 2.5), '#14161c', { r: [0, 0, a], p: [x - Math.sin(a) * len / 2, y + Math.cos(a) * len / 2, 0] })); x -= Math.sin(a) * len; y += Math.cos(a) * len; k++; }
+      const m = new THREE.Mesh(merge(...gs), MAT.vc); m.visible = false; R.core.add(m); return m; });
+    R.im = new THREE.InstancedMesh(GEOS.chunk, MAT.vc, S.length); R.imo = new THREE.InstancedMesh(outlineGeo(GEOS.chunk), OUTLINE, S.length); R.imo.instanceMatrix = R.im.instanceMatrix;
+    for (const m of [R.im, R.imo]) { m.frustumCulled = false; scene.add(m); } R.im.castShadow = R.im.receiveShadow = true;
+    S.forEach((st, i) => R.im.setColorAt(i, _c.set(st.col)));
+    for (let k = -2; k <= 2; k++) block(R.x + R.ax * k * 1.3, R.z + R.az * k * 1.3, 1.1);
+    { const gs = [];   // scree at its ends
+      for (const [k, w, sc] of [[-1.25, 0.3, 0.95], [1.2, -0.2, 0.8], [-1.6, -0.8, 0.5], [1.55, 0.7, 0.45], [-1.05, 1.5, 0.4], [0.9, 1.6, 0.5]]) {
+        const x = R.x + R.ax * k * R.W / 2 + Math.sin(R.yaw) * w, z = R.z + R.az * k * R.W / 2 + Math.cos(R.yaw) * w, y = terrainH(x, z);
+        gs.push(P(facet(lumpy(ICO(1, 0), 0.13, k * 7)), COLS[Math.floor(WR() * COLS.length)], { s: [sc * 1.15, sc * 0.8, sc], r: [wq(-0.3, 0.3), wq(0, 3), wq(-0.3, 0.3)], p: [x, y + sc * 0.3, z] }), P(SPH(6), SNOWC, { s: [sc * 0.7, sc * 0.2, sc * 0.6], p: [x, y + sc * 0.95, z] }));
+      }
+      part(scene, merge(...gs)); }
     const ap = pathPoint(SIDE.s1 + 9, 1); SIDE.home.yaw = Math.atan2(-ap.tx, -ap.tz); SIDE.home.s = SIDE.s1 + 9;
   }
-  // the yeti's cave: a ring of big rocks round the back of its pen, a dark mouth behind, a lintel hung with icicles
-  { const c = FINAL, bx = -Math.cos(c.gateA), bz = -Math.sin(c.gateA), px = -bz, pz = bx, y0 = terrainH(c.x, c.z);
-    for (let k = -5; k <= 5; k++) { const a = Math.atan2(bz, bx) + k * 0.3, r = c.R + 2 + Math.abs(k) * 0.15; snowRock(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, prr(1.8, 2.8), Math.abs(k) > 3); }
-    const g = new THREE.Group(); g.position.set(c.x + bx * (c.R + 3.5), y0, c.z + bz * (c.R + 3.5)); g.rotation.y = Math.atan2(bx, bz); scene.add(g);
-    const dark = new THREE.Mesh(SPH(16).scale(c.R + 1.5, 7.5, 3.2), new THREE.MeshBasicMaterial({ color: '#0a0e18' })); dark.position.y = 1.2; g.add(dark);
-    part(g, merge(P(ICO(1, 1), '#6c717e', { s: [c.R + 4, 2.4, 4.2], p: [0, 8.6, 0.6] }), P(SPH(10), SNOWC, { s: [c.R + 3.6, 1, 3.8], p: [0, 10.4, 0.4] }),
-      ...[...Array(13).keys()].map(i => P(CONE(0.22 + (i % 3) * 0.08, 1.2 + (i % 4) * 0.5, 6), '#cfeeff', { r: [Math.PI, 0, 0], p: [(i - 6) * (c.R + 2) / 7, 6.4 - (i % 4) * 0.25, 2.3 + (i % 2) * 0.4] }))));
+  // THE YETI'S HALL: the old kingdom's gate in the cliff behind his pen: two great pillars, a pointed arch of blocks, the dark behind; runes
+  // over it that glow; icicles; walls of cobbles either side; boulders; ice crystals
+  { const c = FINAL, bx = -Math.cos(c.gateA), bz = -Math.sin(c.gateA), y0 = terrainH(c.x, c.z), S = 1.3, HD = c.R + 3.3, Y = Math.atan2(-bx, -bz);
+    for (let k = -5; k <= 5; k++) { const sc = prr(1.8, 2.8); if (Math.abs(k) < 3) continue; const a = Math.atan2(bz, bx) + k * 0.3, r = c.R + 2 + Math.abs(k) * 0.15; snowRock(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, sc, Math.abs(k) > 3); }
+    const g = new THREE.Group(); g.position.set(c.x + bx * HD, y0, c.z + bz * HD); g.rotation.y = Y; g.scale.setScalar(S); scene.add(g);   // local +z: out, toward the pen
+    const W = (lx, lz) => ({ x: g.position.x + (lx * Math.cos(Y) + lz * Math.sin(Y)) * S, z: g.position.z + (-lx * Math.sin(Y) + lz * Math.cos(Y)) * S });   // local → world
+    const B1 = '#7d828e', B2 = '#6b707c', B3 = '#8c919c', PH = 7.4, AR = 5.3, OFF = 0.45, gs = [], glow = [], ice = [];
+    for (const sd of [-1, 1]) {
+      const x = sd * 5.75;
+      gs.push(P(BOX(2.9, 0.9, 2.9), B2, { p: [x, 0.45, 0] }), P(BOX(2.8, 0.7, 2.8), B2, { p: [x, PH - 0.05, 0] }), P(BOX(3.0, 0.16, 3.0), SNOWC, { p: [x, PH + 0.36, 0] }));
+      for (let k = 0; k < 4; k++) gs.push(P(BOX(2.15, (PH - 1.3) / 4 - 0.04, 2.15), k % 2 ? B1 : B3, { r: [0, (k % 2 ? 0.04 : -0.03) * sd, 0], p: [x + (k % 2 ? 0.05 : -0.04), 0.9 + (k + 0.5) * (PH - 1.3) / 4, 0] }));   // its drums
+      for (let k = 0; k < 7; k++) {   // its half of the arch: blocks along a curve to the point
+        const th = (k + 0.5) / 7 * Math.acos(OFF / AR), px = sd * (-OFF + AR * Math.cos(th)), py = PH + 0.3 + AR * Math.sin(th);
+        gs.push(P(BOX(1.5, 1.32, 1.9), k % 2 ? B3 : B1, { r: [0, 0, sd * th], p: [px, py, 0] }));
+        if (k % 2 === 0) glow.push(P(BOX(0.08, 0.5, 0.05), '#9fe6ff', { r: [0, 0, sd * th + 0.5], p: [px, py, 0.98] }), P(BOX(0.08, 0.34, 0.05), '#9fe6ff', { r: [0, 0, sd * th - 0.6], p: [px + 0.14 * sd, py + 0.1, 0.98] }));   // a rune on it
+        const ir = AR - 0.75, len = 0.7 + k * 0.28; ice.push(P(CONE(0.13, len, 5), dpick(ICE), { r: [Math.PI, 0, 0], p: [sd * (-OFF + ir * Math.cos(th)), PH + 0.3 + ir * Math.sin(th) - len / 2, 0.5] }));
+      }
+      const a = W(sd * 7.4, -0.3), b = W(sd * 13, -1.2); cobWall(a.x, a.z, b.x, b.z, 10, { y: -0.3 }); cobWall(a.x, a.z, b.x, b.z, 6, { y: 5.1 });   // the wall either side of it
+      const q = W(sd * 7.6, 1.9); crystals(q.x, q.z, 1.9, 6);
+    }
+    const apex = PH + 0.3 + Math.sqrt(AR * AR - OFF * OFF);
+    gs.push(P(BOX(1.7, 1.9, 2.1), B2, { p: [0, apex + 0.1, 0] }), P(SPH(7), SNOWC, { s: [1.2, 0.26, 1.3], p: [0, apex + 1.1, 0] }),   // the keystone
+      P(BOX(12.6, 0.34, 1.0), B2, { p: [0, 0.17, 1.75] }), P(BOX(11.4, 0.34, 0.8), B3, { p: [0, 0.5, 1.4] }));   // steps up to it
+    part(g, merge(...gs)); part(g, merge(...ice), { outline: false });
+    part(g, merge(...glow), { mat: MAT.basic, outline: false, shadow: false });
+    const dark = new THREE.MeshBasicMaterial({ color: '#080b14' }), deep = new THREE.MeshBasicMaterial({ color: '#111c36' });
+    for (const [geo, m, p] of [[BOX(9.6, PH + 0.6, 0.3), dark, [0, (PH + 0.6) / 2, -0.55]], [SPH(14).scale(4.85, AR - 0.5, 0.2), dark, [0, PH + 0.3, -0.55]], [SPH(12).scale(3.1, 4.6, 0.12), deep, [0, 4.6, -0.36]]]) { const d = new THREE.Mesh(geo, m); d.position.set(p[0], p[1], p[2]); g.add(d); }
     // a few bones by the way in
-    part(g, merge(...[0, 1, 2, 3].map(i => P(CYL(0.05, 0.05, 0.5, 5), '#efe6d2', { r: [Math.PI / 2, 0, prr(0, 3)], p: [prr(-4, 4), -y0 + terrainH(c.x, c.z) + 0.05, prr(4.5, 6)] }))), { shadow: false });
+    part(g, merge(...[0, 1, 2, 3, 4].map(i => P(CYL(0.05, 0.05, 0.5, 5), '#efe6d2', { r: [Math.PI / 2, 0, prr(0, 3)], p: [prr(-4, 4), 0.72, prr(1.3, 2.2)] }))), { shadow: false });
+  }
+  // the bones of some great beast in the snow below his hall: ribs, a skull, tusks
+  { const k = pathIdx(P0.arena + 16), p = freeS(P0.arena + 16, -(hwWArr[k] - 4.2), 3), g = new THREE.Group(), BN = '#e9e2cf', BN2 = '#d8cfb8', gs = [];
+    g.position.set(p.x, terrainH(p.x, p.z) - 0.25, p.z); g.rotation.y = Math.atan2(CAM_DIR.x, CAM_DIR.z) - 0.62; scene.add(g);   // (three-quarters on to the camera: its ribs show as arches)
+    for (let i = 0; i < 5; i++) { const z = -i * 1.35 - 0.2, sc = 1 - Math.abs(i - 1.5) * 0.1;   // ribs: thick, arching in over the spine, the far ones more sunk
+      for (const sd of [-1, 1]) { const t = new THREE.TorusGeometry(2.3 * sc, 0.22 - i * 0.012, 6, 10, Math.PI * (0.62 - i * 0.03)); if (sd < 0) t.rotateY(Math.PI); gs.push(P(t, i % 2 ? BN : BN2, { r: [(i - 2) * 0.05, 0, 0], p: [-sd * 0.5 * sc, 0.15 - i * 0.1, z] })); }
+      gs.push(P(SPH(6), BN2, { s: [0.42, 0.34, 0.5], p: [0, 0.3 - i * 0.05, z] })); }
+    gs.push(P(CYL(0.2, 0.26, 6.4, 6), BN2, { r: [Math.PI / 2, 0, 0], p: [0, 0.22, -2.7] }));   // the spine
+    gs.push(P(SPH(9), BN, { s: [0.95, 0.85, 1.25], p: [0, 0.75, 2.2] }), P(SPH(7), BN2, { s: [0.5, 0.45, 0.8], p: [0, 0.5, 3.3] }), P(SPH(6), '#2a2622', { s: [0.2, 0.24, 0.1], p: [0.5, 0.95, 3.02] }), P(SPH(6), '#2a2622', { s: [0.2, 0.24, 0.1], p: [-0.5, 0.95, 3.02] }));
+    for (const sd of [-1, 1]) { const t = new THREE.TorusGeometry(1.9, 0.19, 6, 12, Math.PI * 0.72).rotateY(Math.PI / 2).rotateZ(sd * 0.3); gs.push(P(t, BN, { p: [sd * 0.62, 0.1, 5.0] })); }   // tusks, curving up
+    gs.push(P(SPH(7), SNOWC, { s: [0.8, 0.14, 1.0], p: [0, 1.56, 2.15] }), P(SPH(7), SNOWC, { s: [1.6, 0.2, 2.6], p: [0, 0.05, -2.2] }));
+    part(g, merge(...gs)); block(p.x + Math.sin(g.rotation.y) * 2.4, p.z + Math.cos(g.rotation.y) * 2.4, 1.15);
+  }
+  // crystals here and there up the west cliff's foot, and by the cracks
+  for (let s = P0.snow + 14; s < P0.arena; s += drr(26, 44)) { if (inSide(s) || P0.fires.some(([fs]) => Math.abs(s - fs) < 14)) continue; const k = pathIdx(s), p = pathPoint(s, -(hwWArr[k] + drr(0.3, 1.2))); crystals(p.x, p.z, drr(1, 1.6), 5); }
+  if (GLOW.length) part(scene, merge(...GLOW), { mat: MAT.basic, shadow: false });
+  // all of the above that's instanced
+  for (const k of ['needleA', 'needleB', 'tooth', 'cobble']) if (D[k].length) instanced(GEOS[k], D[k]);
+  for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false });
+  // the mist below this side's lip: three sheets under the floor, drifting, thicker the deeper; it lies in the valley all the way up
+  { const pos = [], al = [], idx = []; let v = 0;
+    for (const [dy, a0] of [[-4.2, 0.36], [-7.5, 0.42], [-12, 0.5]]) {
+      let prev = -1;
+      for (let i = pathIdx(P0.snow); i <= PN; i += 4) {
+        const L = liftArr[i], k = smooth(7, 18, L), e = hwEArr[i];
+        for (const [o, a] of [[5, 0], [13, 1], [70, 1], [95, 0]]) { const lat = e + o; pos.push(pX[i] - tZ[i] * lat, L + dy, pZ[i] + tX[i] * lat); al.push(a * a0 * k); }
+        if (prev >= 0) for (let q = 0; q < 3; q++) idx.push(prev + q, v + q, prev + q + 1, prev + q + 1, v + q, v + q + 1);
+        prev = v; v += 4;
+      }
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('alpha', new THREE.Float32BufferAttribute(al, 1)); geo.setIndex(idx); geo.computeBoundingSphere();
+    const mat = new THREE.ShaderMaterial({ uniforms: { uTime: U.uTime, uLight: U.uWaterLight }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: `attribute float alpha; varying float vA; varying vec2 vXZ; void main(){ vA = alpha; vec4 wp = modelMatrix * vec4(position, 1.0); vXZ = wp.xz; gl_Position = projectionMatrix * viewMatrix * wp; }`,
+      fragmentShader: `uniform float uTime; uniform vec3 uLight; varying float vA; varying vec2 vXZ;
+        void main(){
+          float n = 0.5 + 0.25 * sin(vXZ.x * 0.11 + uTime * 0.07 + sin(vXZ.y * 0.09 + uTime * 0.03) * 1.9) + 0.25 * sin(vXZ.y * 0.13 - uTime * 0.05 + sin(vXZ.x * 0.07 + 1.3) * 2.2);
+          gl_FragColor = vec4(vec3(0.93, 0.96, 1.0) * mix(vec3(1.0), uLight, 0.8), vA * (0.55 + 0.45 * n));
+          #include <colorspace_fragment>
+        }` });
+    const m = new THREE.Mesh(geo, mat); m.renderOrder = 2; scene.add(m);
   }
 }
 buildSDF();
@@ -5190,7 +5542,7 @@ function updateAirborneSheep(s, dt) {
   const res = airStep(s, a, s.r, dt);
   a.spin += dt * airSpin(a);
   s.y = a.h; s.hopY = 0; s.leg += dt * 24; s.pose = s.pose || {};
-  passAir(s, a, dt);   // MOUNTAIN PASS: on fire; into the spire or the yeti
+  passAir(s, a, dt);   // MOUNTAIN PASS: on fire; into the rock wall or the yeti
   if (s.air !== a || s.dead) return;
   const sp = Math.hypot(s.vx, s.vz);
   if (sp > 0.5) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 6));
@@ -9089,7 +9441,7 @@ function syncCanyon(dt) {
 // mountain (launched 'tumble', then a 'roll'). THE YETI (YETI) on the top
 // rolls snowballs that grow (SNOWBALLS) and headbutts; a sheep set alight in
 // a fire (s.burn: 'burn' runs mad, then 'roll's it out) bonked into him:
-// T.yeti.hp of them and he's done. Or sheep bonked into the cracked spire up
+// T.yeti.hp of them and he's done. Or sheep bonked into the cracked rock wall up
 // the hidden side trail (SIDE.rock): it falls on him, an arm sticking out.
 // Then his cave's pen (finalPen) thaws: shut the flock in, the journey's won.
 // =====================================================================
@@ -9142,11 +9494,12 @@ function hankFire(dt) {
   if (Math.hypot(g.x - hk.x, g.z - hk.z) > g.stop + 0.8 || f.fuel > T.pass.burn * 0.8) { hk.lightAt = 0; return; }
   hk.lighting = true; hk.lightAt = (hk.lightAt || 0) + dt;
   if (Math.random() < dt * 3) burst(f.x, f.y + 0.3, f.z, 2, '#ffd36b', { speed: 0.6, up: 1.2, size: 0.08, life: 0.5, grav: 2 });
-  if (hk.lightAt > T.pass.light) { hk.lightAt = 0; const was = f.fuel; f.fuel = T.pass.burn; fireFx(f.i, was > 0); if (was <= 0) passSay('fire', pick(["There! Bring the cold ones in by the fire.", "A good blaze! Get 'em in close to it."])); }
+  if (hk.lightAt > T.pass.light) { hk.lightAt = 0; const was = f.fuel; f.fuel = T.pass.burn; fireFx(f.i, was > 0); if (was <= 0) passSay('fire', pick(["The beacon's lit! Bring the cold ones in by the fire.", "The beacon's lit! Get 'em in close to it."])); }
 }
 function fireFx(i, stoke) {
   const f = PASS.fires[i]; if (!f) return;
   SFX.whoosh(panOf(f.x, f.z), 0.3, 0.5); burst(f.x, f.y + 0.6, f.z, stoke ? 10 : 24, '#ffb340', { speed: 1.6, up: 3, size: 0.16, life: 0.9, grav: 3 });
+  if (!stoke) { const B = f.beacon; burst(B.x, B.y + 0.6, B.z, 26, '#ffb340', { speed: 2.4, up: 4, size: 0.2, life: 1.1, grav: 3 }); floatText('🔥', B.x, B.y + 3, B.z, '#fff', 1.8); }   // the beacon on its watchtower goes up
   burst(f.x, f.y + 0.4, f.z, 10, '#fff1a0', { speed: 1, up: 2.5, size: 0.12, life: 0.7, grav: 2 }); if (!stoke) floatText('🔥', f.x, f.y + 2.2, f.z, '#fff', 1.6);
 }
 function passSay(key, text, o = {}) { if (PASS.said[key] || G.mode !== 'play') return false; PASS.said[key] = true; hank(null, text, { force: true, ...o }); return true; }
@@ -9397,22 +9750,8 @@ function slideDogStep(d, inp, dt) {
   if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
 }
 // ---------------- GOATS: on the ledges up the walls ----------------
-const GOATS = [];
-{
-  const GR = mulberry32(31415), grr = (a, b) => a + GR() * (b - a), K = T.goat;
-  for (let s0 = T.pass.snow + 8; s0 < T.pass.arena - 10 && GOATS.length < K.n; s0 += grr(17, 27)) {
-    for (let t = 0; t < 40; t++) {
-      const east = GR() < 0.22, ss = s0 + grr(-4, 4), k = pathIdx(ss), lat = east ? hwEArr[k] + grr(1.2, 2.8) : -(hwWArr[k] + grr(2.5, 8.5)), p = pathPoint(ss, lat);
-      if (sideD(p.x, p.z) < 5 || PASS.fires.some(f => Math.hypot(p.x - f.x, p.z - f.z) < 10)) continue;
-      const h = terrainH(p.x, p.z), rel = h - liftAt(ss);
-      if (rel < (east ? 1.2 : 2.6) || rel > 14) continue;
-      if (![[0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]].every(([a, b]) => Math.abs(terrainH(p.x + a, p.z + b) - h) < 0.75)) continue;
-      const sg = Math.sign(lat), yaw = Math.atan2(-p.nx * sg, -p.nz * sg);
-      GOATS.push({ i: GOATS.length, home: { x: p.x, z: p.z, y: h, yaw }, state: 'perch', x: p.x, y: h, z: p.z, vx: 0, vz: 0, vy: 0, yaw, look: yaw, t: 0, rest: 0, target: null, hop: null, watchT: GR() * 2, chew: GR() * 9 });
-      break;
-    }
-  }
-}
+const GOATS = PASS.ledges.map((g, i) => { const y = terrainH(g.x, g.z);   // one on each ledge cut for them (PASS.ledges)
+  return { i, home: { x: g.x, z: g.z, y, yaw: g.yaw }, state: 'perch', x: g.x, y, z: g.z, vx: 0, vz: 0, vy: 0, yaw: g.yaw, look: g.yaw, t: 0, rest: 0, target: null, hop: null, watchT: (i * 0.37) % 2, chew: i * 1.7 }; });
 const goatTargetOK = e => e && (e === HANK ? !HANK.air && !HANK.rope && G.mode === 'play' : e.isDog ? G.dogs.includes(e) && !e.air && !e.heldBy && !e.crev && !e.ko && !e.maul : !e.dead && !e.air && !e.heldBy && !e.grabbed && !e.crev && !e.pen && G.sheep.includes(e));
 // a bound: from where it is to (x, z) on the ground, dur s, peaking up m over the higher end
 function goatHop(G0, x, z, dur, up = 1.6) { const y1 = groundY(x, z); G0.hop = { x0: G0.x, y0: G0.y, z0: G0.z, x1: x, y1, z1: z, T: dur, t: 0, up }; G0.yaw = Math.atan2(x - G0.x, z - G0.z); }
@@ -9674,60 +10013,96 @@ function yetiBeatenFx(how) {
   confetti(Y.x, Y.y + 3, Y.z, 40); shakeCam(0.8);
   burst(p.gx, p.y + 1, p.gz, 30, '#bfe6fa', { speed: 4, up: 4, size: 0.2, life: 1 }); SFX.crack(panOf(p.gx, p.gz), 0.4);   // the ice on his gate shatters
 }
-// ---------------- the cracked spire up the hidden side trail ----------------
+// ---------------- the cracked rock wall up the hidden side trail ----------------
 const ROCK = SIDE.rock;
-Object.assign(ROCK, { cracks: 0, state: 'stand', t: 0, dir: 0, len: ROCK.H, hitAt: 0 });
+Object.assign(ROCK, { cracks: 0, state: 'stand', t: 0, dir: ROCK.yaw, len: ROCK.H, hitAt: 0, stamp: null });
 function rockStruck(s, a) {
   const R = ROCK; if (R.state !== 'stand' || G.time < R.hitAt) return false;
-  if (Math.hypot(s.x - R.x, s.z - R.z) > T.yeti.rock.r + s.r || a.h - SIDE.floor > 4) return false;
+  if (wallD(s.x, s.z) > R.TH * 0.5 + 0.7 + s.r || a.h - SIDE.floor > 5) return false;
   R.hitAt = G.time + T.yeti.rock.cd; R.cracks++; s.vx *= -0.4; s.vz *= -0.4; a.vy = Math.max(a.vy, 3);
   rockCrackFx(R.cracks);
   if (R.cracks >= T.yeti.rock.cracks) rockFall();
-  else if (R.cracks === 1) hank(null, "It's crackin'! Again!", { force: true, delay: 0.5 });
+  else if (R.cracks === 1) hank(null, "That rock's crackin'! Again!", { force: true, delay: 0.5 });
   return true;
 }
 function rockCrackFx(n) {
   const R = ROCK, pan = panOf(R.x, R.z); SFX.crack(pan, 0.45); SFX.thud(pan, 0.3); shakeCam(0.3 + n * 0.1);
-  floatText('CRACK!', R.x, SIDE.floor + 3, R.z, '#fff', 1.5); burst(R.x, SIDE.floor + 1.5, R.z, 16, '#8a8f9c', { speed: 3, up: 3, size: 0.22, life: 0.9 }); burst(R.x, SIDE.floor + 6, R.z, 10, '#f4f8fc', { speed: 2, up: 1, size: 0.18, life: 1.2 });
+  floatText('CRACK!', R.x, SIDE.floor + 3, R.z, '#fff', 1.5); burst(R.x, SIDE.floor + 1.5, R.z, 18, '#8a8f9c', { speed: 3.5, up: 3, size: 0.26, life: 0.9 }); burst(R.x, SIDE.floor + 7, R.z, 12, '#7b7f8a', { speed: 2.5, up: 1, size: 0.3, life: 1.3 });
+  burst(R.x, SIDE.floor + 12, R.z, 10, '#f4f8fc', { speed: 2, up: 1, size: 0.18, life: 1.4 });
 }
 function rockFall() {
   const R = ROCK, Y = YETI, tx = Y.state === 'dead' ? SIDE.home.x : Y.x, tz = Y.state === 'dead' ? SIDE.home.z : Y.z;
-  R.state = 'fall'; R.t = 0; R.dir = Math.atan2(tx - R.x, tz - R.z); R.len = clamp(Math.hypot(tx - R.x, tz - R.z), R.H * 0.7, R.H * 1.35);
+  R.state = 'fall'; R.t = 0; R.dir = Math.atan2(tx - R.x, tz - R.z); R.len = clamp(Math.hypot(tx - R.x, tz - R.z), R.H * 0.75, R.H * 1.3);
   if (yetiOK()) { Y.state = 'look'; Y.t = 0; Y.target = null; for (const b of [...SNOWBALLS]) snowballBurst(b); }
   rockFallFx();
 }
 function rockFallFx() { const R = ROCK; SFX.crack(panOf(R.x, R.z), 0.6); Sound.omen(0.18); floatText('❗', YETI.x, YETI.y + 7, YETI.z, '#ff5a5a', 2); }
 function updateRock(dt) {
-  const R = ROCK; if (R.state !== 'fall') return;
+  const R = ROCK;
+  if (R.state === 'down') { if (R.t < 2) R.t = Math.min(2, R.t + dt); return; }   // (its stones settling)
+  if (R.state !== 'fall') return;
   R.t += dt;
   if (R.t >= T.yeti.rock.fall) {
-    R.state = 'down'; R.t = 0; ROCK_DOWN.on = true;
-    const tx = R.x + Math.sin(R.dir) * R.len, tz = R.z + Math.cos(R.dir) * R.len;
-    for (const s of G.sheep) if (!s.dead && !s.air && !s.heldBy && rubbleD(s.x, s.z) < 2.2) launchSheep(s, (s.x - tx) * 2 + rnd(-3, 3), (s.z - tz) * 2 + rnd(-3, 3), 8, 'tumble');   // (nobody under it: thrown clear)
-    for (const d of G.dogs) if (!d.air && !d.heldBy && rubbleD(d.x, d.z) < 2.2) launchDog(d, rnd(-6, 6), rnd(-6, 6), 8, 'tumble');
+    R.state = 'down'; R.t = 0;
+    const tx = R.x + Math.sin(R.dir) * R.len, tz = R.z + Math.cos(R.dir) * R.len, off = e => {   // nobody under it: thrown clear, off to the nearer side
+      const q = distSeg(e.x, e.z, { ax: R.x, az: R.z, bx: tx, bz: tz }), qx = R.x + (tx - R.x) * q.t, qz = R.z + (tz - R.z) * q.t, l = Math.hypot(e.x - qx, e.z - qz); return l > 0.05 ? [(e.x - qx) / l, (e.z - qz) / l] : [Math.cos(R.dir), -Math.sin(R.dir)]; };
+    for (const s of G.sheep) if (!s.dead && !s.air && !s.heldBy && rubbleD(s.x, s.z) < 0.9) { const [nx, nz] = off(s); launchSheep(s, nx * 7.5 + rnd(-1, 1), nz * 7.5 + rnd(-1, 1), 8, 'tumble'); }
+    for (const d of G.dogs) if (!d.air && !d.heldBy && rubbleD(d.x, d.z) < 0.9) { const [nx, nz] = off(d); launchDog(d, nx * 7.5, nz * 7.5, 8, 'tumble'); }
+    if (!HANK.air && rubbleD(HANK.x, HANK.z) < 0.9) { const [nx, nz] = off(HANK); hankTumble(nx * 6, nz * 6, 7); }
+    rubbleStamp(true);
     rockDownFx(tx, tz);
     if (!YETI.beaten) yetiBeaten('rock'); else if (YETI.state === 'dead') YETI.state = 'crushed';
   }
 }
 function rockDownFx(x, z) {
-  const y = groundY(x, z); SFX.thud(panOf(x, z), 0.7); SFX.crack(panOf(x, z), 0.5); Sound.roar(panOf(x, z), 0.35); shakeCam(1.1); hitStop(0.15);
-  burst(x, y + 1.5, z, 50, '#f4f8fc', { speed: 6, up: 5, size: 0.3, life: 1.4 }); burst(x, y + 1, z, 24, '#8a8f9c', { speed: 5, up: 4, size: 0.25, life: 1 });
+  const R = ROCK, y = groundY(x, z); SFX.thud(panOf(x, z), 0.7); SFX.crack(panOf(x, z), 0.5); Sound.roar(panOf(x, z), 0.35); shakeCam(1.1); hitStop(0.15);
+  for (const k of [0.35, 0.65, 1]) { const bx = lerp(R.x, x, k), bz = lerp(R.z, z, k), by = groundY(bx, bz); burst(bx, by + 1.2, bz, 22, '#f4f8fc', { speed: 6, up: 5, size: 0.3, life: 1.4 }); burst(bx, by + 0.8, bz, 12, '#8a8f9c', { speed: 5, up: 4.5, size: 0.28, life: 1.1 }); }
   floatText('KA-BOOM!', x, y + 5, z, '#ffd36b', 2.2);
 }
-// the fallen spire: a capsule from its foot to its tip (things walk round it)
-function rubbleD(x, z) {
-  const R = ROCK; if (R.state !== 'down') return 1e9;
-  const tx = R.x + Math.sin(R.dir) * R.len, tz = R.z + Math.cos(R.dir) * R.len, q = distSeg(x, z, { ax: R.x, az: R.z, bx: tx, bz: tz });
-  return q.d - 1.3 * (1 - 0.35 * q.t);
+// the heap it falls in: from its foot to where its top came down, wider at the foot. rubbleD: m to its edge (inside: < 0) once it's down
+const rubbleAt = (x, z) => { const R = ROCK, q = distSeg(x, z, { ax: R.x, az: R.z, bx: R.x + Math.sin(R.dir) * R.len, bz: R.z + Math.cos(R.dir) * R.len }); return q.d - lerp(2.5, 1.8, q.t); };
+function rubbleD(x, z) { return ROCK.state === 'down' ? rubbleAt(x, z) : 1e9; }
+// ...and it's in the way from then on: stamped into what's walkable and the distance fields round it (kept, to put back on a new journey)
+function rubbleStamp(on) {
+  const R = ROCK; if (!!R.stamp === on) return;
+  if (!on) { const S = R.stamp, w = S.i1 - S.i0 + 1; for (let j = S.j0; j <= S.j1; j++) for (let i = S.i0; i <= S.i1; i++) { const k = j * GX + i, q = (j - S.j0) * w + i - S.i0; blk[k] = S.blk[q]; SDF[k] = S.sdf[q]; SWIM_SDF[k] = S.swim[q]; } R.stamp = null; return; }
+  const bx = R.x + Math.sin(R.dir) * R.len, bz = R.z + Math.cos(R.dir) * R.len, pad = 18;
+  const i0 = Math.max(0, Math.floor(Math.min(R.x, bx) - pad - GMINX)), i1 = Math.min(GX - 1, Math.ceil(Math.max(R.x, bx) + pad - GMINX)), j0 = Math.max(0, Math.floor(Math.min(R.z, bz) - pad - GMINZ)), j1 = Math.min(GZ - 1, Math.ceil(Math.max(R.z, bz) + pad - GMINZ));
+  const w = i1 - i0 + 1, n = w * (j1 - j0 + 1), S = R.stamp = { i0, i1, j0, j1, blk: new Uint8Array(n), sdf: new Float32Array(n), swim: new Float32Array(n) };
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const k = j * GX + i, q = (j - j0) * w + i - i0, d = rubbleAt(GMINX + i, GMINZ + j);
+    S.blk[q] = blk[k]; S.sdf[q] = SDF[k]; S.swim[q] = SWIM_SDF[k];
+    if (d < 0) blk[k] = 1; if (d < SDF[k]) SDF[k] = d; if (d < SWIM_SDF[k]) SWIM_SDF[k] = d;
+  }
 }
-function collideRubble(e, r) {
-  const R = ROCK; if (R.state !== 'down') return;
-  const d = rubbleD(e.x, e.z); if (d >= r) return;
-  const tx = R.x + Math.sin(R.dir) * R.len, tz = R.z + Math.cos(R.dir) * R.len, abx = tx - R.x, abz = tz - R.z, L2 = abx * abx + abz * abz || 1, t = clamp(((e.x - R.x) * abx + (e.z - R.z) * abz) / L2, 0, 1);
-  let nx = e.x - (R.x + abx * t), nz = e.z - (R.z + abz * t); const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
-  e.x += nx * (r - d); e.z += nz * (r - d); const vn = (e.vx || 0) * nx + (e.vz || 0) * nz; if (vn < 0) { e.vx -= vn * nx; e.vz -= vn * nz; }
+// where every stone of it is: standing (leaning a little more each crack, a shudder when it's hit, a few knocked out), toppling over
+// toward him, or strewn in its heap (they bounce as they land)
+const _wq = new THREE.Quaternion(), _we = new THREE.Euler(), _wv = new THREE.Vector3(), _ws = new THREE.Vector3(), _wm = new THREE.Matrix4();
+function rockDraw() {
+  const R = SIDE.rock, S = R.stones, st = R.state, K = T.yeti.rock;
+  R.core.visible = st !== 'down'; R.crk.forEach((c, i) => { c.visible = R.cracks > i; });
+  if (st !== 'down') {
+    const u = st === 'fall' ? clamp(R.t / K.fall, 0, 1) : 0, lean = Math.min(R.cracks, K.cracks) * 0.045, wob = R.wob > 0 ? Math.sin(R.wob * 34) * 0.03 * R.wob : 0, gone = R.cracks * 0.05;
+    R.pivot.rotation.set(lean + wob + (Math.PI / 2 - lean) * u * u, st === 'fall' ? lerpA(R.yaw, R.dir, Math.min(1, u * 3)) : R.yaw, 0);
+    R.g.updateMatrixWorld(true);
+    for (let i = 0; i < S.length; i++) {
+      const q = S[i];
+      if (!q.low && q.id < gone) _wm.makeScale(0, 0, 0);   // knocked out
+      else _wm.compose(_wv.set(q.u, q.v, q.w), _wq.setFromEuler(_we.set(q.rx, q.ry, q.rz)), _ws.set(q.sx, q.sy, q.sz)).premultiply(R.pivot.matrixWorld);
+      R.im.setMatrixAt(i, _wm);
+    }
+  } else {
+    const dx = Math.sin(R.dir), dz = Math.cos(R.dir), px = Math.cos(R.dir), pz = -Math.sin(R.dir), k = R.len / R.H, t = R.t;
+    for (let i = 0; i < S.length; i++) {
+      const q = S[i], a = 0.5 + q.v * k * (0.95 + 0.1 * q.a) + (q.b - 0.5) * 1.3, b = q.u * 0.6 + (q.c - 0.5) * 2.6 * (0.45 + 0.55 * q.v / R.H), x = R.x + dx * a + px * b, z = R.z + dz * a + pz * b;
+      const hop = t < 0.7 ? Math.abs(Math.sin(t * 9 + q.a * 6)) * (1 - t / 0.7) * (0.3 + q.b * 1.4) : 0;
+      _wm.compose(_wv.set(x, groundY(x, z) + 0.45 * Math.min(q.sx, q.sy, q.sz) + Math.max(0, 1 - Math.abs(b) / 2.7) * (0.15 + q.c * 0.85) + hop, z), _wq.setFromEuler(_we.set(q.a * 6.3, q.b * 6.3, q.c * 6.3)), _ws.set(q.sx, q.sy, q.sz));
+      R.im.setMatrixAt(i, _wm);
+    }
+  }
+  R.im.instanceMatrix.needsUpdate = true;
 }
-// SHARED HOOK (updateAirborneSheep): a flying sheep into the spire or the yeti; burning, low over a fire
+// SHARED HOOK (updateAirborneSheep): a flying sheep into the rock wall or the yeti; burning, low over a fire
 function passAir(s, a, dt) {
   if (s.burn > 0) burnTick(s, dt);
   if (G.mode !== 'play') return;
@@ -9791,7 +10166,7 @@ function makeYeti() {
     part(g, merge(P(SPH(9), fur, { s: [0.26, 0.26, 0.26] }), P(CYL(0.21, 0.17, 1.15, 9), fur, { p: [0, -0.6, 0] }), P(SPH(9), shade, { s: [0.22, 0.2, 0.24], p: [0, -1.22, 0.04] }),
       ...[-1, 0, 1].map(k => P(CONE(0.045, 0.16, 5), dark, { r: [Math.PI + 0.3, 0, 0], p: [k * 0.09, -1.38, 0.12] })))); g.rotation.z = 0.25 * sd; return g; };
   const armL = arm(-1), armR = arm(1);
-  // flattened by the spire: just an arm sticking out from under it
+  // flattened by the rock wall: just an arm sticking out from under it
   const stub = new THREE.Group(); stub.visible = false; scene.add(stub);
   const sg = new THREE.Group(); stub.add(sg); sg.scale.setScalar(T.yeti.scale);
   part(sg, merge(P(CYL(0.21, 0.17, 1.15, 9), fur, { p: [0, 0.5, 0] }), P(SPH(9), shade, { s: [0.22, 0.2, 0.24], p: [0, 1.12, 0] }), ...[-1, 0, 1].map(k => P(CONE(0.045, 0.18, 5), dark, { p: [k * 0.09, 1.3, 0.03] }))));
@@ -9842,7 +10217,7 @@ function resetPass() {
   for (const g of GOATS) Object.assign(g, { state: 'perch', x: g.home.x, y: g.home.y, z: g.home.z, yaw: g.home.yaw, look: g.home.yaw, t: 0, rest: 0, target: null, hop: null });
   SNOWBALLS.length = 0;
   Object.assign(YETI, { state: 'sleep', x: SIDE.home.x, z: SIDE.home.z, yaw: SIDE.home.yaw, t: 0, hp: 0, max: 0, on: false, beaten: false, how: '', next: 0, buttCd: 0, target: null, hurtT: 0 });
-  Object.assign(ROCK, { cracks: 0, state: 'stand', t: 0, dir: 0, len: ROCK.H, hitAt: 0 }); ROCK_DOWN.on = false;
+  Object.assign(ROCK, { cracks: 0, state: 'stand', t: 0, dir: ROCK.yaw, len: ROCK.H, hitAt: 0, wob: 0, shown: 0 }); rubbleStamp(false); rockDraw();   // (the rock wall up again, its heap out of the way)
   finalPen.frozen = true;
 }
 resetPass();
@@ -9854,6 +10229,8 @@ function syncPass(dt) {
   for (const f of PASS.fires) {
     const lit = f.fuel > 0, k = Math.min(1, f.fuel / 1.5), s = (0.55 + 0.45 * k) * (0.9 + 0.15 * Math.sin(t * 11 + f.i) + 0.1 * Math.sin(t * 17.3 + f.i * 2));
     f.flames[0].visible = f.flames[1].visible = lit; if (lit) { f.flames[0].scale.set(s, 1.15 * s, s); f.flames[1].scale.set(s, 1.25 * s, s); }
+    const B = f.beacon; B.flames[0].visible = B.flames[1].visible = lit;   // its watchtower's beacon burns with it
+    if (lit) { B.flames[0].scale.set(s, 1.2 * s, s); B.flames[1].scale.set(s, 1.3 * s, s); if (Math.abs(f.x - cam.x) + Math.abs(f.z - cam.z) < 90 && Math.random() < dt * 9) burst(B.x + rnd(-0.4, 0.4), B.y + 1.2, B.z + rnd(-0.4, 0.4), 1, Math.random() < 0.5 ? '#ffb340' : '#ff7a2a', { speed: 0.4, up: 2.2, size: 0.1, life: 1.2, grav: 1.5 }); }
     if (lit && Math.abs(f.x - cam.x) + Math.abs(f.z - cam.z) < 70 && Math.random() < dt * 6) burst(f.x + rnd(-0.3, 0.3), f.y + 0.9, f.z + rnd(-0.3, 0.3), 1, Math.random() < 0.5 ? '#ffb340' : '#ff7a2a', { speed: 0.3, up: 1.5, size: 0.07, life: 0.9, grav: 1.5 });
   }
   // goats: bounding, charging, perched (chewing), dazed
@@ -9888,15 +10265,16 @@ function syncPass(dt) {
       if (st === 'sleep' && Math.random() < dt * 0.6) floatText('z', Y.x, Y.y + 5.4, Y.z, '#cfe3ff', 1.1);
       if ((dead || Y.hurtT > 0) && Math.random() < dt * 8) burst(Y.x + rnd(-1, 1), Y.y + (dead ? 1.5 : 4), Y.z + rnd(-1, 1), 1, '#e6e9ee', { speed: 0.5, up: 2, size: 0.4, life: 1.5, grav: 1.5 });
     }
-    if (M.stub.visible) { const R = ROCK, a = R.dir, tx = R.x + Math.sin(a) * R.len * 0.93, tz = R.z + Math.cos(a) * R.len * 0.93, sx = Math.cos(a), sz = -Math.sin(a);
-      M.stub.position.set(tx + sx * 1.3, groundY(tx, tz) + 0.2, tz + sz * 1.3); M.stub.rotation.set(0, a, -0.9 + Math.max(0, Math.sin(t * 2.3)) * Math.sin(t * 30) * 0.06, 'YXZ'); }
+    if (M.stub.visible) { const R = ROCK, a = R.dir, tx = R.x + Math.sin(a) * R.len * 0.9, tz = R.z + Math.cos(a) * R.len * 0.9, sd = Math.cos(a) - Math.sin(a) > 0 ? 1 : -1, sx = Math.cos(a) * sd, sz = -Math.sin(a) * sd;   // (out on the side we can see)
+      M.stub.position.set(tx + sx * 1.9, groundY(tx + sx * 1.9, tz + sz * 1.9) + 0.15, tz + sz * 1.9); M.stub.rotation.set(0, a, -sd * (0.95 - Math.max(0, Math.sin(t * 2.3)) * Math.sin(t * 30) * 0.06), 'YXZ'); }
   }
-  // the spire: its cracks; falling (slow, then fast); lying where it fell
-  { const R = ROCK; R.crk.forEach((c, i) => { c.visible = R.cracks > i; });
-    if (R.state === 'stand') R.mesh.rotation.set(0, 0, R.cracks > 0 ? Math.sin(t * 40) * 0.002 * R.cracks : 0);
-    else { const u = R.state === 'down' ? 1 : clamp(R.t / T.yeti.rock.fall, 0, 1), ang = Math.PI / 2 * u * u;
-      _pax.set(Math.cos(R.dir), 0, -Math.sin(R.dir)); R.mesh.quaternion.setFromAxisAngle(_pax, ang); R.mesh.scale.set(1, R.len / R.H, 1);
-    } }
+  // the rock wall: a shudder and a crack more when it's hit; toppling; its blocks settling in their heap (which is in the way: here too)
+  { const R = ROCK;
+    if (R.shown !== R.cracks) { if (R.cracks > (R.shown || 0)) R.wob = 0.8; R.shown = R.cracks; R.dirty = true; }
+    if (R.wob > 0) { R.wob = Math.max(0, R.wob - dt); R.dirty = true; }
+    if (R.drawn !== R.state || R.state === 'fall' || (R.state === 'down' && R.t < 0.75)) { R.drawn = R.state; R.dirty = true; }
+    rubbleStamp(R.state === 'down');
+    if (R.dirty) { R.dirty = false; rockDraw(); } }
   // snowballs
   { let n = 0; for (const b of SNOWBALLS) { if (n >= SB_MAX) break; _pax.set(b.az, 0, -b.ax); _pq.setFromAxisAngle(_pax, b.rot); _m4.compose(_pp.set(b.x, b.y, b.z), _pq, _s.set(b.r, b.r, b.r)); SBM.setMatrixAt(n++, _m4); }
     SBM.count = SBO.count = n; SBM.instanceMatrix.needsUpdate = true; }
@@ -10279,7 +10657,7 @@ function updateLighting(dt) {
   // MOUNTAIN PASS: a thin, cold light and a pale sky; a blizzard greys everything out
   const pk = PASS.k = lerp(PASS.k, passK(sAt(cam.x, cam.z)), Math.min(1, dt * 1.5)), bz = (PASS.blizz.k || 0) * pk;
   if (pk > 0.002) {
-    sun.color.lerp(_cb.set('#e6efff'), 0.45 * pk); hemi.color.lerp(_cb.set('#dfe9f7'), 0.45 * pk); hemi.groundColor.lerp(_cb.set('#8a96aa'), 0.5 * pk);
+    sun.color.lerp(_cb.set('#fff0da'), 0.5 * pk * (1 - night)); hemi.color.lerp(_cb.set('#cfe1ff'), 0.6 * pk); hemi.groundColor.lerp(_cb.set('#8fa5cf'), 0.65 * pk);   // (a warm sun, blue shade)
     scene.background.lerp(_cb.set('#c3d4e8'), 0.45 * pk * (1 - night));
     if (bz > 0.005) { sun.intensity *= 1 - 0.55 * bz; hemi.intensity *= 1 + 0.15 * bz; scene.background.lerp(_cb.set(night > 0.5 ? '#4a5266' : '#e4e9f0'), 0.85 * bz); }
   }
@@ -14029,7 +14407,7 @@ function resetGame() {
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   resetCougars();
   resetFalcon();
-  resetPass();   // MOUNTAIN PASS: fires out, goats on their ledges, the yeti asleep, the spire up, his gate iced
+  resetPass();   // MOUNTAIN PASS: fires out, goats on their ledges, the yeti asleep, the rock wall up, his gate iced
   for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
   for (const p of pens) resetGate(p);
   for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
@@ -14263,7 +14641,7 @@ const NET_TYPES = {
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
   stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i' } },
   boss: { tag: 'E', one: () => CANYON.boss, fields: { hp: 'i', max: 'i', on: 'b', beaten: 'b' } },   // FALCON CANYON: THE GREAT FALCON's fight (the HUD's hearts)
-  // MOUNTAIN PASS: goats (built the same on every screen), the yeti, his snowballs, the fire camps, the blizzard, the cracked spire
+  // MOUNTAIN PASS: goats (built the same on every screen), the yeti, his snowballs, the fire camps, the blizzard, the cracked rock wall
   goat: { tag: 'T', all: () => GOATS, id: g => g.i, static: true, fields: { x: 'p', z: 'p', y: .02, yaw: 'a', state: 's' } },
   yeti: { tag: 'X', one: () => YETI, fields: { x: 'p', z: 'p', yaw: 'a', state: 's', t: .02, hp: 'i', max: 'i', on: 'b', beaten: 'b', how: 's', hurtT: .05, walk: .05 }, animate: Y => { Y.y = groundY(Y.x, Y.z); } },
   snowball: { tag: 'b', all: () => SNOWBALLS, id: b => b.nid || (b.nid = ++NET.nid), fields: { x: 'p', z: 'p', r: .02, rot: 'a', ax: .02, az: .02 },
@@ -14272,7 +14650,7 @@ const NET_TYPES = {
   fire: { tag: 'F', all: () => PASS.fires, id: f => f.i, static: true, fields: { fuel: .02 } },
   pass: { tag: 'P', one: () => PASS, fields: { bk: { c: .02, get: o => o.blizz.k, set: (o, v) => { o.blizz.k = v; } }, wind: { c: 'a', get: o => o.blizz.wind || 0, set: (o, v) => { o.blizz.wind = v; } },
     frozen: { c: 'b', get: () => !!finalPen.frozen, set: (o, v) => { finalPen.frozen = v; } } } },
-  rock: { tag: 'K', one: () => ROCK, fields: { cracks: 'i', state: 's', t: .02, dir: 'a', len: .05 } },
+  rock: { tag: 'K', one: () => ROCK, fields: { cracks: 'i', state: 's', t: .02, dir: 'a', len: .05 }, animate: (R, dt) => { if (R.state === 'fall' || (R.state === 'down' && R.t < 2)) R.t += dt; } },
   snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05, x: .05, z: .05 } },   // RATTLESNAKES: out how far, striking at what
   yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
@@ -15503,7 +15881,7 @@ function step(dt) {
     updateCoyotes(dt);
     updateCougars(dt);
     updateFalcon(dt, dtH);
-    updatePass(dt, dtH);   // MOUNTAIN PASS: fires, blizzards, goats, the yeti, snowballs, the spire, his cave
+    updatePass(dt, dtH);   // MOUNTAIN PASS: fires, blizzards, goats, the yeti, snowballs, the rock wall, his cave
     updateSnakes(dt);      // RATTLESNAKES
     updateRemains(dtH);    // REMAINS: the fallen rot to tombstones
     updateVendor();   // VENDOR: each stall's pen, Hank's word at the stalls
@@ -15540,7 +15918,7 @@ function frame(now) {
   for (const k of COUGARS) syncCougar(k);
   for (const F of FALCONS) syncFalcon(F);
   syncCanyon(dt);         // FALCON CANYON: watchers on the cliffs, feathers in the air
-  syncPass(dt);           // MOUNTAIN PASS: fires, goats, the yeti, snowballs, the spire, snow on the sheep, flames, flakes
+  syncPass(dt);           // MOUNTAIN PASS: fires, goats, the yeti, snowballs, the rock wall, snow on the sheep, flames, flakes
   syncSheep(dt);
   syncMoves(dt);
   syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
