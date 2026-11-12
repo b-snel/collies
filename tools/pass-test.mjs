@@ -10,7 +10,7 @@
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
 //   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
-//   finish    the yeti beaten, the flock shut in his cave: the journey's won
+//   finish    the yeti beaten, the flock shut in his cave: through the mountain, out of its lower mouth above Cold Harbour (SAILING); one left outside is left behind
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
@@ -227,14 +227,18 @@ if (!only || only === 'yeti' || only === 'finish') {
 
 if (!only || only === 'finish') {
   const r = await ev(() => {
-    const { G, living, finalPen, toggleGate, setGate } = GAME;
-    const p = finalPen, L = living();
+    const { G, T, SEA, QUAY, DECK, living, finalPen, onQuay, onDeck } = GAME;
+    const p = finalPen, L = living(), last = L[L.length - 1];
     L.forEach((s, i) => { s.x = p.x + Math.cos(i) * 3; s.z = p.z + Math.sin(i) * 3; s.vx = s.vz = 0; s.air = null; s.slide = null; s.crev = null; s.burn = 0; s.state = 'idle'; });
+    last.x = p.exitX + Math.cos(p.camp.gateA) * 6; last.z = p.exitZ + Math.sin(p.camp.gateA) * 6;   // one's still outside
     GAME.step(0.025); const inn = L.filter(s => s.pen === p).length;
-    p.phi = 0; GAME.updateGateGeometry(p); run(1);
-    return { inn, n: L.length, mode: G.mode };
+    p.phi = 0; GAME.updateGateGeometry(p); run(1); const soon = { mode: G.mode, sea: SEA.on };
+    run(T.pass.finish + 0.5);
+    return { inn, n: L.length, soon, mode: G.mode, sea: SEA.on, docked: SEA.docked, quay: QUAY.on, gate: DECK.gateT, live: living().length, left: G.lost.filter(m => m.why === 'left').length, lastDead: last.dead,
+      onQuay: living().filter(s => onQuay(s.x, s.z, 0.2) || onDeck(s.x, s.z)).length, dogs: G.dogs.every(d => onQuay(d.x, d.z)), up: +(Math.min(...living().map(s => GAME.groundY(s.x, s.z))) - GAME.BOAT.y).toFixed(1) };
   });
-  ok(`the flock shut in his cave (${r.inn}/${r.n}): the journey's won`, r.mode === 'end', r);
+  ok(`the cave shut on ${r.inn}/${r.n}: it waits for the last, then it's through the mountain: Cold Harbour below, the boat alongside`, r.inn === r.n - 1 && r.soon.mode === 'play' && !r.soon.sea && r.mode === 'play' && r.sea && r.docked && r.quay && r.gate > 0.9, r);
+  ok(`${r.onQuay} sheep and the dogs out of its lower mouth, ${r.up} m up the path; the one not shut in is left on the mountain`, r.live === r.inn && r.onQuay === r.inn && r.dogs && r.up > 15 && r.left === 1 && r.lastDead, r);
 }
 
 if (!only || only === 'rock') {

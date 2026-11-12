@@ -28,7 +28,7 @@ await h.page.evaluate(() => {
 // 1. every pen: a water trough at the back, room outside it, a bucket on open ground beside it; the first camp's starts full
 const r1 = await h.page.evaluate(() => {
   const { pens, BUCKETS, T, sdfAt, troughSpots } = GAME; H.reset();
-  return pens.map((p, i) => {
+  return pens.filter(p => !p.deck).map((p, i) => {   // (the boat's deck is a pen too: SAILING; no open ground outside that one)
     const b = BUCKETS[i], o = H.outside(p, p.water, 0.6); troughSpots(p);
     return { camp: p.camp.name, w: p.water.w, cap: p.water.cap, spots: p.waterSpots.length, roomOutside: H.r(sdfAt(o.x, o.z)), bucket: b && b.pen === p ? H.r(sdfAt(b.x, b.z)) : null, bucketFromTrough: b ? H.r(Math.hypot(b.x - p.water.x, b.z - p.water.z)) : null };
   });
