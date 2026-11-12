@@ -9,13 +9,13 @@ const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name
 
 // 1. the spots: spread down the trail up to the MOUNTAIN PASS (none in the snow), on dry open ground off the worn path
 const r1 = await h.page.evaluate(() => {
-  const { DIGS, sAt, sdfAt, CAMPS, T } = GAME, PATH_LEN = T.pass.s0;   // (the pass: none)
+  const { DIGS, sAt, sdfAt, CAMPS, T, passK } = GAME, PATH_LEN = T.pass.s0;   // (the pass: none)
   const s = DIGS.map(d => sAt(d.x, d.z));
-  return { n: DIGS.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, minSdf: Math.min(...DIGS.map(d => sdfAt(d.x, d.z))),
+  return { n: DIGS.length, first: Math.min(...s), last: Math.max(...s), len: PATH_LEN, up: s.filter(v => passK(v) > 0.3).length, minSdf: Math.min(...DIGS.map(d => sdfAt(d.x, d.z))),
     nearCamp: DIGS.filter(d => CAMPS.some(c => Math.hypot(d.x - c.x, d.z - c.z) < c.R + 5)).length };
 });
 ok(`${r1.n} dig spots along the trail`, r1.n >= r1.len / 90 && r1.n <= r1.len / 40, r1);   // about one every T.dig.every m
-ok('they run from the start to the foot of the pass', r1.first < 100 && r1.last > r1.len - 150 && r1.last < r1.len, r1);
+ok('they run from the start to the foot of the pass, none up it', r1.first < 100 && r1.last > r1.len - 150 && r1.up === 0, r1);
 ok('none in a rock or a camp', r1.minSdf > 2 && r1.nearCamp === 0, r1);
 
 // 2. a dog digs one up: the first find of all is always treasure, and it goes on the dog
