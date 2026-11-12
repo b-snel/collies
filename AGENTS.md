@@ -430,7 +430,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   fast-forward while one bleeds.
 - **Vet** (`VET`, `T.vet`): traders' second row 💉 🩹 💊 🪏 goes straight
   to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
-  (`HANK.care`, `s.state 'treat'`), before shearing. Over sick sheep: icon +
+  (`HANK.care`, `s.state 'treat'`), before shearing (even the one he is shearing). His jobs: fire, patients, a tug, shearing, burials last. Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
 - **Burial** (`YARDS`, `T.remains`): his last job (`buryCan`): with a shovel, by day, nothing prowling, no
   patient, shearing or tug to do, not while the flock's up the pass, Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,

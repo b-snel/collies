@@ -228,6 +228,20 @@ if (want('hank')) {
     return { secs: H.r(end), over: !R.tug, won: a.holding === R };
   });
   console.log(`     one dog heaving alone: ${r3.won ? 'beats' : 'loses to'} Hank in ${r3.secs} s`);
+  // shearing gives way: shearing in a shut pen, a dog brings him a rope: he leaves it for the tug
+  await setup();
+  const r4 = await h.page.evaluate(() => {
+    const { G, HANK, pens, setGate, ROPES, giveHankClippers } = GAME, R = ROPES[1], p = pens[1], a = G.dogs[0];
+    G.clock.hour = 10; setGate(p, false);
+    G.sheep.forEach((o, i) => { const t = i * 2.4, rr = 1.5 + (i % 4) * 1.5; H.place(o, p.x + Math.cos(t) * rr, p.z + Math.sin(t) * rr); o.wool = 1; o.hunger = 0.1; o.thirst = 0; o.stress = 0; });
+    H.place(HANK, p.x, p.z); HANK.goal = null; HANK.asleep = false; HANK.upT = -99; HANK.ropeAgain = 0; giveHankClippers();
+    const t0 = H.run(20, () => HANK.shearing); const sheared = HANK.shearing;
+    let ux = p.x - HANK.x, uz = p.z - HANK.z; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l;   // the rope laid from beside him across the pen
+    H.line(R, HANK.x + uz * 1.5 - ux * 2, HANK.z - ux * 1.5 - uz * 2, ux, uz); H.place(a, R.x[2] - ux * 1.05, R.z[2] - uz * 1.05, Math.atan2(ux, uz)); a.player.bot = {}; H.grab(a.player);
+    const t = H.run(20, () => HANK.rope === R);
+    return { sheared, t0: H.r(t0), held: a.holding === R, hank: HANK.rope === R, secs: H.r(t), job: !!HANK.job, shearing: HANK.shearing };
+  });
+  ok(`mid-shear, brought a rope: he leaves the clippers for the tug (${r4.secs} s)`, r4.sheared && r4.held && r4.hank && !r4.job && !r4.shearing, r4);
   ok(`two dogs heaving beat Hank (${r2.secs} s): dragged ${-r2.dragged} m, stumbles, lets go`, r2.team && r2.over && r2.won && r2.dragged < -1 && r2.stumble && r2.hankFree, r2);
 }
 
