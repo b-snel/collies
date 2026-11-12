@@ -1,5 +1,5 @@
 // Headless checks for BONK SPOTS: streams (walkable, wet, lush banks), mud bogs, cast sheep, the balking lead ewe,
-// apple trees. node tools/bonk-test.mjs [world|cast|mud|balk|apple]
+// apple trees, carrying apples. node tools/bonk-test.mjs [world|cast|mud|balk|apple|carry]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
@@ -168,7 +168,7 @@ const a = await run('apple', () => {
   const tr = APPLE_TREES[0], d = G.dogs[0], s = G.sheep.find(o => !o.ram && !o.lamb);
   const mates = G.sheep.filter(o => o !== s && !o.ram && !o.lamb).slice(0, 3);   // (not on its own: a lost sheep wants its flock first)
   H.away([s, ...mates], tr.x + 80, tr.z + 80); H.place(s, tr.x + 9, tr.z + 2); s.hunger = 0.5; s.stress = 0; s.state = 'graze';
-  mates.forEach((o, i) => { H.place(o, tr.x + 10 + i * 1.5, tr.z + 4); o.hunger = 0.05; o.stress = 0; });
+  mates.forEach((o, i) => { H.place(o, tr.x + 10 + i * 1.5, tr.z + 4); o.hunger = 0; o.stress = 0; });
   H.place(d, tr.x - 3, tr.z); H.pounce(d, tr.x, tr.z); H.run(0.5);
   const down = APPLES.filter(x => x.tree === tr && x.st === 1); out.down = down.length; out.near = down.every(x => Math.hypot(x.x - tr.x, x.z - tr.z) < T.apple.spread[1] + 0.2);
   H.place(d, tr.x + 40, tr.z - 40);
@@ -190,6 +190,64 @@ if (a) {
   ok(`a second shake drops more (${a.down2})`, a.down2 >= 3, a);
   ok(`they grow back (${a.back}/6)`, a.back === 6, a);
   ok("a full sheep doesn't bother", !a.fullWent, a);
+}
+
+// 7. carrying one: grabbed, carried, dropped at the nose / lobbed on the run; held out (standing still): a hungry sheep comes
+// and takes it; walking about with it, nobody does; one tossed into a pen: the penned eat it; one being munched: snatched;
+// the whole flock about, a dog standing near: all the apples shaken down get eaten
+const cr = await run('carry', () => {
+  const { G, T, APPLE_TREES, APPLES, pens, step } = GAME; const out = {};
+  const tr = APPLE_TREES[0], d = G.dogs[0], p = d.player, fx = (dx, dz) => H.inp(dx, dz, { grab: true });
+  const down = () => { H.place(d, tr.x - 3, tr.z); H.pounce(d, tr.x, tr.z); H.run(0.6); return APPLES.filter(a => a.tree === tr && a.st === 1); };
+  const grab = a => { H.place(d, a.x - 1.1, a.z); d.yaw = Math.PI / 2; p.bot = { grab: true }; step(0.025); return d.holding === a; };
+  // grabbed and carried
+  H.fresh(); H.away([], tr.x + 90, tr.z + 90); let A = down(), a = A[0]; for (const o of A.slice(1)) o.st = 2;
+  out.grab = grab(a) && d.holdKind === 'apple' && a.dog === d;
+  p.bot = fx(1, 0); H.run(2); out.carried = +Math.hypot(a.x - d.x - Math.sin(d.yaw) * 0.95, a.z - d.z - Math.cos(d.yaw) * 0.95).toFixed(2); out.moved = +Math.hypot(a.x - tr.x, a.z - tr.z).toFixed(1);
+  // let go standing: at its nose
+  p.bot = { grab: true }; H.run(1); p.bot = {}; H.run(1); out.drop = +Math.hypot(a.x - d.x, a.z - d.z).toFixed(1); out.dropFree = !a.dog && d.holding === null && a.h === 0;
+  // let go running: lobbed ahead
+  out.regrab = grab(a); p.bot = fx(-1, 0); H.run(1.2); const x0 = d.x; p.bot = H.inp(-1, 0); step(0.025); const t0 = a.h; H.run(2.5, () => false); out.flew = t0 > 0; out.toss = +(x0 - a.x).toFixed(1); out.lands = a.h === 0 && Math.hypot(a.vx, a.vz) < 0.05;
+  // held out, standing still: a hungry sheep comes over and takes it from the mouth, without running off
+  H.fresh(); A = down(); a = A[0]; for (const o of A.slice(1)) o.st = 2;
+  const s = G.sheep.find(o => !o.ram && !o.lamb), mates = G.sheep.filter(o => o !== s && !o.ram && !o.lamb).slice(0, 3);
+  H.away([s, ...mates], tr.x + 90, tr.z + 90); grab(a);
+  H.place(d, tr.x - 8, tr.z); d.yaw = Math.PI / 2; p.bot = { grab: true }; H.run(0.2);
+  H.place(s, tr.x + 6, tr.z + 1); s.hunger = 0.4; s.stress = 0; s.state = 'graze'; s.fear = 0; s.alert = 0;
+  mates.forEach((o, i) => { H.place(o, tr.x + 7 + i * 1.5, tr.z + 4); o.hunger = 0; o.stress = 0; });
+  let fled = 0; out.came = +H.run(20, () => { if (s.state === 'flee') fled++; return !a.dog; }).toFixed(1); out.fled = fled; out.taken = !a.dog && a.by === s && d.holding === null;
+  H.run(4, () => a.st === 2); out.heldEaten = a.st === 2;
+  // walking about with it: nobody comes for it
+  H.fresh(); A = down(); a = A[0]; for (const o of A.slice(1)) o.st = 2; grab(a);
+  H.place(d, tr.x - 8, tr.z); H.place(s, tr.x + 6, tr.z + 1); s.hunger = 0.4; s.stress = 0; s.state = 'graze';
+  mates.forEach((o, i) => { H.place(o, tr.x + 7 + i * 1.5, tr.z + 4); o.hunger = 0; o.stress = 0; });
+  let went = false; for (let k = 0; k < 8; k++) { p.bot = fx(0, k % 2 ? 1 : -1); H.run(1, () => { if (s.state === 'apple') went = true; }); } out.walkWent = went;
+  // tossed into a pen: penned sheep eat it
+  H.fresh(); const pen = pens[1]; A = down(); a = A[0]; for (const o of A.slice(1)) o.st = 2;
+  const ps = G.sheep.filter(o => !o.ram && !o.lamb).slice(0, 4); H.away(ps, tr.x + 90, tr.z + 90);
+  ps.forEach((o, i) => { H.place(o, pen.x + (i - 1.5) * 2, pen.z + 2); o.pen = o.wasPen = pen; o.hunger = i ? 0 : 0.4; o.stress = 0; o.state = 'idle'; });
+  GAME.setGate ? GAME.setGate(pen, 0) : (pen.gateT = 0); a.dog = null; a.x = pen.x; a.z = pen.z - 2; a.h = 0; a.vx = a.vz = a.vy = 0; H.place(d, pen.x + 40, pen.z + 40);
+  H.run(15, () => a.st === 2); out.penEat = a.st === 2;
+  // munching one: a dog snatches it
+  H.fresh(); A = down(); a = A[0]; for (const o of A.slice(1)) o.st = 2; H.place(d, tr.x - 40, tr.z);
+  const s3 = G.sheep.find(o => !o.ram && !o.lamb); H.away([s3], tr.x + 90, tr.z + 90); H.place(s3, a.x + 1, a.z); s3.hunger = 0.4; s3.stress = 0; s3.state = 'idle'; s3.thinkT = 0;
+  H.run(6, () => s3.state === 'apple' && s3.appleT > 0.3); out.munching = s3.state === 'apple';
+  H.place(d, a.x - 1.1, a.z); d.yaw = Math.PI / 2; p.bot = { grab: true }; step(0.025); out.snatched = d.holding === a && s3.apple !== a; p.bot = {}; step(0.025);
+  // the whole flock about, the dog standing 6 m off the tree: all of them eaten
+  H.fresh(); G.sheep.forEach((o, i) => { const q = i * 2.4, r = 5 + (i % 7) * 1.6; H.place(o, tr.x + 10 + Math.cos(q) * r, tr.z + Math.sin(q) * r); o.hunger = 0.25 + (i % 5) * 0.05; o.stress = 0; o.state = 'graze'; });
+  H.run(2); A = down(); H.place(d, tr.x - 6, tr.z); const e0 = G.stats.apples || 0;
+  out.flockT = +H.run(30, () => A.every(o => o.st === 2)).toFixed(1); out.flockAte = (G.stats.apples || 0) - e0; out.flockDown = A.length; out.flockSt = A.map(o => [o.st, !!o.dog, +o.h.toFixed(2)]); out.dogHold = d.holdKind;
+  return out;
+});
+if (cr) { const c = cr;
+  ok(`grabbed, carried at the mouth (${c.carried} m off it, ${c.moved} m from the tree)`, c.grab && c.carried < 0.3 && c.moved > 3, c);
+  ok(`let go standing: dropped at its nose (${c.drop} m)`, c.dropFree && c.drop < 1.8, c);
+  ok(`let go running: lobbed ${c.toss} m, lands`, c.regrab && c.flew && c.toss > 3 && c.lands, c);
+  ok(`held out: a hungry sheep comes and takes it (${c.came}s, fled ${c.fled}×) and eats it`, c.came < 20 && c.taken && c.fled === 0 && c.heldEaten, c);
+  ok('walking about with one: nobody comes for it', !c.walkWent, c);
+  ok('tossed into a pen: the penned eat it', c.penEat, c);
+  ok('one being munched: a dog snatches it', c.munching && c.snatched, c);
+  ok(`the flock about, a dog by the tree: all eaten (${c.flockAte}/${c.flockDown})`, c.flockAte === c.flockDown && c.flockDown === 3, c);
 }
 
 if (h.errors.length) { console.log(h.errors.slice(0, 5)); fails++; }

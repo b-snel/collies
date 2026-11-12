@@ -731,6 +731,7 @@ const T = {
     gate: { speed: 0.75, pull: 0, grip: 0.015 },
     rope: { speed: 0.92, pull: 0, grip: 0 }, tug: { speed: 0.42, pull: 1, grip: 0.03 },   // ROPES: dragging one (free); heaving in a tug of war (trains grip)
     bone: { speed: 1, pull: 0, grip: 0 },   // BONES: light, free to carry
+    apple: { speed: 1, pull: 0, grip: 0 },   // APPLES: one carried to a sheep
     station: { speed: 0, pull: 0, grip: 0 },   // SAILING: at the tiller, a sheet, the halyard, the anchor: it stands to it
     ring: { speed: 0.95, pull: 0, grip: 0 }, ringRope: { speed: 0, pull: 0, grip: 0 },   // SAILING: a life ring in its mouth (free); hauling one in by its line (it stands to it)
   },
@@ -833,9 +834,12 @@ const T = {
   // Bonked in: the flock follows (rush× pull for follow s). Gives up after max s
   balk: { on: !SIM, chance: 0.5, r: 9, at: 2.4, hold: 0.15, block: 1.4, blockR: 5, max: 90, follow: 25, rush: 2.5 },
   // APPLE TREES (valley, Promised Land; one per `every` m of trail): a pounce into the trunk (hitR m) or a flying sheep shakes `drop`
-  // of its n apples down; each grows back in regrowH h. A sheep hungrier than `hunger` within `see` m goes for one before grass:
-  // food: hunger off, eat s to munch
-  apple: { every: 50, n: 6, drop: 3, regrowH: 10, hunger: 0.12, see: 14, food: 0.25, eatT: 1.6, hitR: 1.5, trunkR: 0.6, spread: [1.6, 3.6] },
+  // of its n apples down; each grows back in regrowH h. A sheep hungrier than `hunger` within `see` m goes for one before grass
+  // (trotting, spd × brisk; tagging along with the flock it looks every `look` s): food: hunger off, eat s to munch. Grabbed (✊):
+  // carried; let go: dropped at the nose, or running, lobbed (toss: run × mul + add m/s, up m/s; bounce, roll m/s² to a stop).
+  // A dog slower than `take` m/s holding one: a hungry sheep comes and takes it from its mouth
+  apple: { every: 50, n: 6, drop: 3, regrowH: 10, hunger: 0.05, see: 24, food: 0.25, eatT: 1.6, hitR: 1.5, trunkR: 0.6, spread: [1.6, 3.6],
+    spd: 1.6, look: 0.5, take: 1.2, toss: { mul: 1, add: 3, up: 4 }, bounce: 0.3, roll: 5, r: 0.2 },
   // Hank (the old shepherd) and his voice
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
@@ -3051,7 +3055,7 @@ const APPLE_TREES = [], APPLES = [];
       OBSTACLES.push({ x: tr.x, z: tr.z, r: A.trunkR }); stampObstacle(tr.x, tr.z, A.trunkR);
       for (let n = 0; n < A.n; n++) {   // hanging round the canopy, the near (camera) side first
         const a = tr.rot + n / A.n * TAU + arr(-0.3, 0.3), r = arr(1.5, 1.75), hy = arr(2.0, 2.8);
-        APPLES.push({ i: APPLES.length, tree: tr, hx: tr.x + Math.cos(a) * r, hy: tr.y + hy, hz: tr.z + Math.sin(a) * r, st: 0, x: tr.x, z: tr.z, fallT: -9, growAt: 0, by: null });
+        APPLES.push({ i: APPLES.length, tree: tr, hx: tr.x + Math.cos(a) * r, hy: tr.y + hy, hz: tr.z + Math.sin(a) * r, st: 0, x: tr.x, z: tr.z, fallT: -9, growAt: 0, by: null, isApple: true, dog: null, h: 0, vx: 0, vz: 0, vy: 0, tum: 0 });   // (by: the sheep after it; dog: the dog carrying it)
       }
       APPLE_TREES.push(tr);
       break;
@@ -4720,6 +4724,7 @@ function updateSheep(dt, dtH) {
       const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4;
       const outside = s.pen && !insidePen(s.pen, d.x, d.z, 0);   // penned sheep pay a dog outside their pen no mind, unless it barks
       if (dd < 0.95 && d.hopT <= 0 && !outside) { const push = 0.95 - dd; s.x += dx / dd * push; s.z += dz / dd * push; }
+      if (s.state === 'apple' && s.apple && appleFriend(s.apple, d)) continue;   // APPLES: it's holding one out to this sheep (or just gave it it)
       if (d.mode === 'lie') {   // a dog lying down settles the sheep round it (they just keep clear of it)
         if (dd < T.lieCalmR) { steady = true; calm = true; if (dd < 4 && !outside) { const k = (4 - dd) / 4 * 0.5; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } } }
         continue;
@@ -4733,8 +4738,8 @@ function updateSheep(dt, dtH) {
       if (dd >= R) continue;
       // a dog outside the pen (tipping greens in, passing by) leaves penned sheep to their troughs and water: only a bark moves them
       if (outside && !barking) continue;
-      // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding
-      if (s.pen && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
+      // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding (APPLES: one going for an apple too)
+      if ((s.pen || s.state === 'apple') && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.penStillSpd) {
         if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
         continue;
       }
@@ -4752,8 +4757,8 @@ function updateSheep(dt, dtH) {
       if (pounce) stressIn += T.stressPounce;
     }
     // a hungry sheep with its head down in good grass needs more fear to be moved
-    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick' || s.state === 'drink') && press > 0 && cRaw === 0 && !steady) {
-      const resolve = s.state === 'trough' || s.state === 'lick' || s.state === 'drink' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
+    if ((s.state === 'graze' && s.eating || s.state === 'trough' || s.state === 'lick' || s.state === 'drink' || s.state === 'apple') && press > 0 && cRaw === 0 && !steady) {
+      const resolve = s.state === 'trough' || s.state === 'lick' || s.state === 'drink' || s.state === 'apple' ? T.troughResolve : clamp((s.hunger - T.resolveHunger) * T.resolveGain, 0, T.resolveMax) * clamp(grassAt(s.x, s.z) / 0.5, 0.3, 1);
       if (press <= resolve) { dfX = dfZ = 0; press = 0; }
     }
     s.press = press; if (press > 0.1 && !s.pen) MIND.workedT = G.time;   // a dog's working the flock (it doesn't wander off to graze meanwhile)
@@ -4828,7 +4833,8 @@ function updateSheep(dt, dtH) {
       const bellPull = bell && bellSp > 1.6 && (bell.state === 'move' || bell.state === 'flee' || bell.state === 'pen' || bell.state === 'stray') && s.hunger < 0.5 && s.state !== 'sleep' && s.state !== 'court';
       const tucking = s.state === 'graze' && s.eating && s.hunger > T.grassDash.tuck && G.time - MIND.workedT > T.grazeWorkedT;   // hungry, head down in good grass, no dog about: it lets a calm drift go by
       if (s.alert <= 0 && s.state !== 'warm' && !s.pen && s.cold > T.pass.want && play && (s.warmT = (s.warmT || 0) - dt) <= 0) { s.warmT = 1; warmGo(s); }   // MOUNTAIN PASS: frozen: off to the fire, never mind the others
-      const contagion = (nMov >= 2 || bellPull) && s.state !== 'sleep' && s.state !== 'court' && s.state !== 'warm' && !tucking;
+      let contagion = (nMov >= 2 || bellPull) && s.state !== 'sleep' && s.state !== 'court' && s.state !== 'warm' && s.state !== 'apple' && !tucking;
+      if (contagion && s.alert <= 0 && play && !night && s.stress < 0.5 && (s.appleLook = (s.appleLook || 0) - dt) <= 0) { s.appleLook = T.apple.look; if (appleFor(s)) contagion = false; }   // APPLES: one in sight beats tagging along
       if (s.alert > 0 || contagion) {
         // keep moving with the flock for a while after being pushed, and join neighbours that are on the move
         s.state = 'move'; s.eating = false;
@@ -4952,10 +4958,13 @@ function updateSheep(dt, dtH) {
         }
         case 'apple': {   // APPLES: over to it, head down, munch
           const a = s.apple;
-          if (!a || a.st !== 1 || a.by !== s) { s.apple = null; s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.3); break; }
+          if (!a || a.st !== 1 || a.by !== s || !appleUp(a)) { if (a && a.by === s) a.by = null; s.apple = null; s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.3); break; }
           const n = sheepNav(s, a.x, a.z), d = n.d;
-          if (d > 0.45 + 0.4 * s.grow) { dX = n.x; dZ = n.z; spd = T.sheepWalk * T.calmBrisk * 1.25; acc = 5; s.appleT = 0; }
-          else { s.yaw = lerpA(s.yaw, Math.atan2(a.x - s.x, a.z - s.z), Math.min(1, dt * 6)); s.thinkT = Math.max(s.thinkT, 0.3); if ((s.appleT += dt) > T.apple.eatT) eatApple(s, a); }
+          if (d > 0.45 + 0.4 * s.grow) { dX = n.x; dZ = n.z; spd = T.sheepWalk * T.calmBrisk * T.apple.spd * (d < 2 ? 0.6 : 1); acc = 5; s.appleT = 0; }
+          else {
+            if (a.dog) appleTaken(a, s);   // held out to it: it takes it
+            s.yaw = lerpA(s.yaw, Math.atan2(a.x - s.x, a.z - s.z), Math.min(1, dt * 6)); s.thinkT = Math.max(s.thinkT, 0.3); if ((s.appleT += dt) > T.apple.eatT) eatApple(s, a);
+          }
           break;
         }
         case 'unstick': {   // out of a tight spot: along an A* path to open ground, then think again
@@ -6233,6 +6242,7 @@ function tryGrab(d) {
   }
   const rg = ropeGrip(d, mx, mz, bd); if (rg) { best = rg.R; kind = 'rope'; grip = rg.i; bd = rg.dd; }   // ROPES: anywhere along it
   const bg = boneGrip(d, mx, mz, bd); if (bg) { best = bg.b; kind = 'bone'; bd = bg.dd; }   // BONES
+  const ag = appleGrip(d, mx, mz, bd); if (ag) { best = ag.a; kind = 'apple'; bd = ag.dd; }   // APPLES
   const sg = stationGrip(d, mx, mz, bd); if (sg) { best = sg.st; kind = 'station'; bd = sg.dd; }   // SAILING: the tiller, a sheet, the halyard, the anchor
   const lg = ringGrip(d, mx, mz, bd); if (lg) { best = lg.r; kind = lg.kind; bd = lg.dd; }   // SAILING: a life ring on its hook, or the line of one that's out
   if (!best) return false;
@@ -6242,6 +6252,7 @@ function tryGrab(d) {
   if (kind === 'gate') { d.holdR = clamp(grip, 0.9, best.gateLen); d.holdOff = wrapA(best.phi - gatePsi(best, d.x, d.z)); SFX.creak(pan, 0.2, 1.2); Sound.growl(pan, 0.1); return true; }
   if (kind === 'rope') { ropeBite(best, d, grip); return true; }
   if (kind === 'bone') { bonePick(best, d); return true; }
+  if (kind === 'apple') { applePick(best, d); return true; }   // APPLES
   if (kind === 'station') { stationBite(best, d); return true; }
   if (kind === 'ring') { ringPick(best, d); return true; }
   if (kind === 'ringRope') { ringRopeBite(best, d); return true; }
@@ -6275,6 +6286,7 @@ function releaseHold(d, fling) {
   if (kind === 'ring') { ringLetGo(H, d, fling); return; }   // SAILING: a life ring: let go, it's thrown
   if (kind === 'ringRope') { ringRopeLetGo(H, d); return; }
   if (kind === 'bone') { boneLetGo(H, d, fling); return; }   // BONES: let go, it's tossed
+  if (kind === 'apple') { appleLetGo(H, d, fling); return; }   // APPLES: dropped (on the run: lobbed)
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), sp = Math.hypot(d.vx, d.vz), F = T.fling, pan = panOf(d.x, d.z), kg = Math.sqrt(dogK(d, 'grip'));   // BREEDS: a good grip throws further
   const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
   if (throwIt) train(d, 'grip', T.train.fling);
@@ -6317,7 +6329,7 @@ function shakeHold(d) {
   if (kind === 'ringRope') { ringHeave(H, d); return; }   // SAILING: a heave on a life ring's line
   if (kind === 'ring') return;
   Sound.growl(pan, 0.12);
-  if (kind === 'bone') return;   // BONES: a good worrying
+  if (kind === 'bone' || kind === 'apple') return;   // BONES (APPLES): a good worrying
   if (kind === 'gate') { SFX.creak(pan, 0.25, 1.4); return; }   // a rattle
   if (kind === 'coyote') {
     d.shakes++; train(d, 'grip', T.train.fling);
@@ -6700,6 +6712,7 @@ function updateWorldPhysics(dt) {
   updateWater(dt);    // WATER: buckets picked up, filled, tipped into the pens' water troughs
   updateRopes(dt);    // ROPES: dragged, shaken, tugs of war
   updateBones(dt);    // BONES: carried, thrown, bonking things
+  moveApples(dt);     // APPLES: carried, dropped, lobbed
   updateDigs(dt);     // DIG SPOTS: dogs digging up treasure for the barn
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
@@ -7686,13 +7699,17 @@ function treeFx(i) {   // the tree shudders and drops leaves (ONLINE: fxDef)
   burst(tr.x, tr.y + 2.8, tr.z, 16, '#4caf45', { speed: 2.5, up: 1.5, size: 0.16, life: 1.1, grav: -4 });
   SFX.bonk(panOf(tr.x, tr.z), 0.25); SFX.rustle(panOf(tr.x, tr.z), 0.3); shakeCam(0.1);
 }
-function appleFor(s) {   // a hungry sheep near an apple on the ground goes for it (beats grass); one sheep an apple, nearer wins
-  if (s.hunger < T.apple.hunger || s.pen || s.lamb && s.mother && !s.mother.dead && dist2(s, s.mother) > 36) return false;
+// held out: in the mouth of a dog standing about (not flying, lunging, hopping)
+const appleHeldOut = a => { const d = a.dog; return !!d && d.holding === a && !d.air && !(d.pounceT > 0) && !(d.hopT > 0) && Math.hypot(d.vx, d.vz) < T.apple.take; };
+const appleUp = a => a.st === 1 && (a.dog ? appleHeldOut(a) : a.h < 0.5);   // one a sheep can go for: lying about, or held out
+const appleFriend = (a, d) => d.barkAnim <= 0 && (a.dog === d ? appleHeldOut(a) : a.gift === d && !(d.pounceT > 0) && Math.hypot(d.vx, d.vz) < T.apple.take);   // the dog holding it out (or that gave it) frightens nobody
+function appleFor(s) {   // a hungry sheep near an apple goes for it (beats grass); one sheep an apple, nearer wins
+  if (s.hunger < T.apple.hunger || s.lamb && s.mother && !s.mother.dead && dist2(s, s.mother) > 36) return false;
   let best = null, bd = T.apple.see;
   for (const a of APPLES) {
-    if (a.st !== 1) continue; const d = Math.hypot(a.x - s.x, a.z - s.z); if (d > bd) continue;
+    if (!appleUp(a)) continue; const d = Math.hypot(a.x - s.x, a.z - s.z); if (d > bd) continue;
     const o = a.by; if (o && o !== s && !o.dead && o.state === 'apple' && o.apple === a && Math.hypot(a.x - o.x, a.z - o.z) <= d) continue;
-    if (fenceBetween(s.x, s.z, a.x, a.z)) continue;
+    if (s.pen ? !insidePen(s.pen, a.x, a.z, 0) : fenceBetween(s.x, s.z, a.x, a.z)) continue;   // (penned: only one in its pen)
     bd = d; best = a;
   }
   if (!best) return false;
@@ -7702,7 +7719,8 @@ function appleFor(s) {   // a hungry sheep near an apple on the ground goes for 
   return true;
 }
 function eatApple(s, a) {
-  a.st = 2; a.by = null; a.growAt = absHour() + T.apple.regrowH; s.apple = null;
+  if (a.dog) appleTaken(a, s);
+  a.st = 2; a.by = null; a.gift = null; a.growAt = absHour() + T.apple.regrowH; s.apple = null;
   s.hunger = Math.max(0, s.hunger - T.apple.food); s.state = 'idle'; s.thinkT = rnd(0.3, 0.9);
   burst(a.x, groundY(a.x, a.z) + 0.3, a.z, 6, '#e8473f', { speed: 1.2, up: 1.5, size: 0.1, life: 0.5 }); floatText('🍎', s.x, s.y + 1.5 * s.scale, s.z, '#ff8f7a', 0.9);
   G.stats.apples = (G.stats.apples || 0) + 1;
@@ -7711,11 +7729,71 @@ function updateApples() {   // host: hanging ones grow back, ones lying about ro
   const now = absHour();
   for (const a of APPLES) {
     if (a.st === 2 && now >= a.growAt) a.st = 0;
-    else if (a.st === 1 && now >= (a.rotAt || 0)) { a.st = 2; a.growAt = now + T.apple.regrowH; if (a.by && a.by.apple === a) a.by.apple = null; a.by = null; }
+    else if (a.st === 1 && !a.dog && now >= (a.rotAt || 0)) { a.st = 2; a.growAt = now + T.apple.regrowH; if (a.by && a.by.apple === a) a.by.apple = null; a.by = null; }
   }
   if (G.mode === 'play' && !G.hints.apple) for (const tr of APPLE_TREES) if (G.dogs.some(d => Math.hypot(d.x - tr.x, d.z - tr.z) < 8) && APPLES.some(a => a.tree === tr && a.st === 0)) { hint('apple'); break; }
 }
-function resetApples() { for (const a of APPLES) { a.st = 0; a.by = null; a.fallT = -9; } for (const tr of APPLE_TREES) tr.shakeT = -9; }
+function resetApples() { for (const a of APPLES) { a.st = 0; a.by = a.dog = a.gift = null; a.fallT = -9; a.h = a.vx = a.vz = a.vy = 0; } for (const tr of APPLE_TREES) tr.shakeT = -9; }
+// ---- carried (✊): picked up, held out to a sheep, dropped or lobbed
+function appleGrip(d, mx, mz, best) {   // tryGrab: the nearest apple on the ground in reach (one being munched: snatched); { a, dd } or null
+  let out = null;
+  for (const a of APPLES) {
+    if (a.st !== 1 || a.dog || a.h > 1.2 || Math.abs(a.x - mx) > 3 || Math.abs(a.z - mz) > 3) continue;
+    const dd = Math.hypot(a.x - mx, a.z - mz) - 0.15;
+    if (dd < best && !fenceBetween(d.x, d.z, a.x, a.z)) { best = dd; out = { a, dd }; }
+  }
+  return out;
+}
+function applePick(a, d) {
+  const o = a.by; if (o && o.apple === a) { o.apple = null; if (o.state === 'apple') { o.state = 'idle'; o.thinkT = rnd(0.4, 1); } }   // from under its nose
+  a.by = null; a.gift = null; a.dog = d; a.h = 0; a.vx = a.vz = a.vy = 0; a.fallT = -9; a.rotAt = absHour() + 48;
+  appleFx('pick', a.x, a.z);
+}
+function appleLetGo(a, d, toss) {   // dropped at its nose; on the run, lobbed ahead
+  const K = T.apple.toss, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  a.dog = a.gift = null; a.x = d.x + fx * 0.95; a.z = d.z + fz * 0.95; a.h = T.rope.mouthY - 0.2; a.fallT = -9;
+  if (!(toss && Math.hypot(d.vx, d.vz) > T.fling.minSpeed && G.mode === 'play')) { a.vx = d.vx * 0.5; a.vz = d.vz * 0.5; a.vy = 0.5; return; }
+  a.vx = d.vx * K.mul + fx * K.add; a.vz = d.vz * K.mul + fz * K.add; a.vy = K.up;
+  appleFx('toss', a.x, a.z);
+}
+function appleTaken(a, s) {   // a sheep takes the one held out to it
+  const d = a.dog; a.dog = null; a.gift = d; a.h = 0; a.vx = a.vz = a.vy = 0;
+  if (d && d.holding === a) { d.holding = null; d.holdKind = null; d.grabLock = true; rumble(d.player, 0.25, 0.3, 90); }
+  appleFx('take', s.x, s.z, s.y + 1.5 * s.scale);
+  G.stats.appleFed = (G.stats.appleFed || 0) + 1;
+}
+function moveApples(dt) {   // host, each step: carried ones ride at the mouth; dropped ones fall, bounce and roll to a stop
+  const K = T.apple;
+  for (const a of APPLES) {
+    if (a.st !== 1) continue;
+    const d = a.dog;
+    if (d) {
+      if (d.holding !== a || !G.dogs.includes(d)) { a.dog = null; a.h = T.rope.mouthY - 0.2; a.vx = d.vx * 0.5; a.vz = d.vz * 0.5; a.vy = 0; continue; }   // let go some other way
+      a.x = d.x + Math.sin(d.yaw) * 0.95; a.z = d.z + Math.cos(d.yaw) * 0.95; a.h = 0;
+      continue;
+    }
+    const sp = Math.hypot(a.vx, a.vz);
+    if (!(a.h > 0 || a.vy > 0 || sp > 0.02)) continue;   // at rest
+    if (a.h > 0 || a.vy > 0) { a.vy -= T.airGrav * dt; a.h += a.vy * dt; a.tum += dt * 9; }
+    a.x += a.vx * dt; a.z += a.vz * dt;
+    if (a.h <= 0) {   // a bounce, then rolling to a stop
+      a.h = 0;
+      if (a.vy < -2) { a.vy = -a.vy * K.bounce; a.vx *= 0.7; a.vz *= 0.7; }
+      else { a.vy = 0; a.tum = 0; const q = sp > K.roll * dt ? (sp - K.roll * dt) / sp : 0; a.vx *= q; a.vz *= q; }
+    }
+    if (a.h < 1.5) {   // rocks and walls send it back; fences stop a low one
+      const sd = sdfAt(a.x, a.z);
+      if (sd < K.r) { const g = sdfGrad(a.x, a.z), vn = a.vx * g.x + a.vz * g.z; a.x += g.x * (K.r - sd); a.z += g.z * (K.r - sd); if (vn < 0) { a.vx -= 1.4 * vn * g.x; a.vz -= 1.4 * vn * g.z; } }
+      if (a.h < T.fenceClear) { _bTmp.x = a.x; _bTmp.z = a.z; _bTmp.vx = a.vx; _bTmp.vz = a.vz; if (collideFences(_bTmp, K.r * 0.5)) { const vn = a.vx * HIT.nx + a.vz * HIT.nz; a.x = _bTmp.x; a.z = _bTmp.z; if (vn < 0) { a.vx -= 1.4 * vn * HIT.nx; a.vz -= 1.4 * vn * HIT.nz; } } }
+    }
+  }
+}
+function appleFx(kind, x, z, y) {   // (ONLINE: fxDef)
+  const pan = panOf(x, z);
+  if (kind === 'pick') SFX.clack(pan, 0.12);
+  else if (kind === 'toss') SFX.whoosh(pan, 0.14, 0.22);
+  else if (kind === 'take') { SFX.snip(pan, 0.18); floatText('♥', x, y ?? groundY(x, z) + 1.5, z, '#ff8fb8', 1.1); }
+}
 // ---- drawing (every screen): apples hanging, falling, lying; trees shuddering; splashes in the streams, bubbles in the bogs
 const APPLE_GEO = merge(P(SPH(8), '#d8352b', { s: [0.24, 0.22, 0.24], p: [0, 0.21, 0] }), P(SPH(6), '#f06a52', { s: [0.08, 0.06, 0.07], p: [0.1, 0.33, 0.1] }),
   P(CYL(0.016, 0.016, 0.12, 4), '#5a3a1a', { p: [0, 0.47, 0] }), P(SPH(5), '#4fa846', { s: [0.1, 0.025, 0.055], r: [0, 0, 0.4], p: [0.07, 0.48, 0] }));
@@ -7725,7 +7803,7 @@ const APPLE_MESH = (() => {
   m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); o.instanceMatrix = m.instanceMatrix; m.castShadow = true; m.frustumCulled = o.frustumCulled = false; scene.add(m, o);
   return m;
 })();
-let bubbleT = 0;
+let bubbleT = 0; const _av = new THREE.Vector3();
 function syncBonk(dt) {
   for (const tr of APPLE_TREES) {   // a shudder after a shake
     const k = (G.time - (tr.wobT ?? -9)); tr.g.rotation.z = k < 1.2 ? Math.sin(k * 26) * 0.07 * (1 - k / 1.2) : 0; tr.g.rotation.x = k < 1.2 ? Math.cos(k * 22) * 0.04 * (1 - k / 1.2) : 0;
@@ -7734,12 +7812,15 @@ function syncBonk(dt) {
     for (const a of APPLES) {
       let x = a.hx, y = a.hy, z = a.hz, sc = 1;
       if (a.st === 2) sc = 0;
-      else if (a.st === 1) {
-        const k = clamp((G.time - a.fallT) / 0.55, 0, 1), gy = groundY(a.x, a.z);
+      else if (a.st === 1 && a.dog && a.dog.models) {   // in a dog's jaws
+        a.dog.models.head.updateWorldMatrix(true, false); a.dog.models.head.localToWorld(_v.set(0, -0.12, 0.36)); x = _v.x; y = _v.y - 0.17; z = _v.z; sc = 0.8;
+      } else if (a.st === 1) {
+        const k = clamp((G.time - a.fallT) / 0.55, 0, 1), gy = groundY(a.x, a.z) + (a.h || 0);
         x = lerp(a.hx, a.x, k); z = lerp(a.hz, a.z, k); y = k < 1 ? lerp(a.hy, gy, k * k) + Math.sin(k * Math.PI) * 0.5 : gy;
         if (a.by && a.by.state === 'apple' && a.by.appleT > 0) sc = 1 - 0.5 * clamp(a.by.appleT / T.apple.eatT, 0, 1);   // being munched
       }
-      _m4.compose(_v.set(x, y - (a.st === 0 ? 0.24 : 0), z), _q.setFromEuler(_e.set(0, a.i * 1.7, a.st === 1 ? 0.3 : 0)), _s.setScalar(Math.max(1e-4, sc)));
+      _q.setFromEuler(_e.set(a.st === 1 ? a.tum || 0 : 0, a.i * 1.7, a.st === 1 && !a.dog ? 0.3 : 0)); _av.set(0, 0.21 * sc, 0).applyQuaternion(_q);   // (turned about its middle)
+      _m4.compose(_v.set(x - _av.x, y - (a.st === 0 ? 0.24 : 0) + 0.21 * sc - _av.y, z - _av.z), _q, _s.setScalar(Math.max(1e-4, sc)));
       APPLE_MESH.setMatrixAt(a.i, _m4);
     }
     APPLE_MESH.instanceMatrix.needsUpdate = true;
@@ -7781,6 +7862,13 @@ function drawBonkOverlay() {
   for (const tr of APPLE_TREES) {   // the first time a dog's by a laden tree
     const d = G.dogs.find(d => Math.hypot(d.x - tr.x, d.z - tr.z) < 7); if (!d || !APPLES.some(a => a.tree === tr && a.st === 0)) continue;
     nudge('apple', tr.x, tr.y + 4.4, tr.z, `🍎 Pounce: ${keyLabel(d.player, 'pounce')}`, '#e8473f');
+  }
+  for (const a of APPLES) {   // one on the ground: grab it; in the jaws: stand still and a sheep comes for it
+    if (a.st !== 1) continue;
+    if (a.dog) { const d = a.dog; if (d.player && d.player.kind !== 'net') nudge('apple-hold', d.x, d.y + 2.3, d.z, '🍎 stand still', '#e8473f'); continue; }
+    if (a.h > 0.1 || (G.hints['n-apple-grab'] || 0) >= NUDGE_DUR) continue;
+    const d = G.dogs.find(d => !d.holding && Math.abs(d.x - a.x) < 5 && Math.abs(d.z - a.z) < 5); if (!d) continue;
+    if (nudge('apple-grab', a.x, groundY(a.x, a.z) + 1.1, a.z, `${keyLabel(d.player, 'grab')} grab`, '#e8473f')) break;
   }
 }
 
@@ -11479,7 +11567,7 @@ function nadsSkin(s, N, out) {
 // hang it from the mouth and turn it by d.cw.
 // =====================================================================
 const _cwv = new THREE.Vector3(), _ce = new THREE.Euler();
-const carryKind = d => { if (bucketOf(d)) return 'bucket'; const k = d.holding && (d.holdKind || netKindOf(d.holding)); return k && k !== 'gate' && k !== 'rope' && k !== 'bone' && k !== 'ring' && k !== 'ringRope' ? k : null; };   // (guests: from what it holds; ROPES: their own physics)
+const carryKind = d => { if (bucketOf(d)) return 'bucket'; const k = d.holding && (d.holdKind || netKindOf(d.holding)); return k && k !== 'gate' && k !== 'rope' && k !== 'bone' && k !== 'ring' && k !== 'ringRope' && k !== 'apple' ? k : null; };   // (guests: from what it holds; ROPES: their own physics)
 function carrySwing(d, dt) {
   const C = T.carrySwing, kind = d.models ? carryKind(d) : null;
   const w = d.cw || (d.cw = { kind: null, p: 0, r: 0, vp: 0, vr: 0, jolt: 0, hit: 0, clonkT: 0 });
@@ -11976,7 +12064,7 @@ const HINTS = {
   cast: '🙃 A sheep is <b>cast</b>: on its back and can\'t get up! <b>Pounce</b> into it to flip it over, quick.',
   mud: '🟤 Stuck in the bog! <b>Pounce</b> into it to pop it out.',
   balk: '😤 The lead ewe won\'t go in, and the flock won\'t go without her. <b>Pounce</b> her through the gate!',
-  apple: '🍎 <b>Pounce</b> into an apple tree to shake apples down. Hungry sheep go for them first.',
+  apple: '🍎 <b>Pounce</b> into an apple tree to shake apples down. Hungry sheep go for them first. <b>Grab</b> one and stand still by a sheep: it comes for it.',
   snake: '🐍 <b>Rattlesnake!</b> Steer the flock wide of the rocks, or <b>bark</b> / <b>pounce</b> it back. A bitten sheep needs 💉: buy it at a trader, bring it to 🧓 Hank.',
   wound: 'Hurt! 🩸 needs 🩹, 🦠 needs 💊. Buy them at a trader and bring them to 🧓 Hank.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
@@ -12035,7 +12123,7 @@ const TOUCH_HINTS = {
   cast: '🙃 Cast! 💥 to flip it',
   mud: '🟤 Bogged! 💥 it out',
   balk: '😤 💥 her in!',
-  apple: '🍎 💥 the tree',
+  apple: '🍎 💥 the tree · ✊ one to a 🐑',
   snake: '🐍 Steer wide, 📣 / 💥 it. Bitten: 💉 ➜ 🧓',
   wound: '🩸 → 🩹 · 🦠 → 💊 · ➜ 🧓',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
@@ -17574,9 +17662,9 @@ const NET_TYPES = {
     },
   },
   stall: { tag: 'V', all: () => STALLS, id: st => st.i, static: true, fields: { sel: 'i' } },   // VENDOR: the pen each stall's wares go to
-  apple: {   // APPLES: on the tree, on the ground (where; falling from when it changed), eaten
+  apple: {   // APPLES: on the tree, on the ground (where; falling from when it changed), in a dog's mouth, flying, eaten
     tag: 'a', all: () => APPLES, id: a => a.i, static: true,
-    fields: { st: { c: 'i', get: a => a.st, set: (a, v) => { if (v === 1 && a.st !== 1) a.fallT = G.time; a.st = v; } }, x: .05, z: .05 },
+    fields: { st: { c: 'i', get: a => a.st, set: (a, v) => { if (v === 1 && a.st !== 1) a.fallT = G.time; a.st = v; } }, x: .05, z: .05, h: .02, tum: 'a', dog: '@dog' },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
   stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i', drowned: 'i', shark: 'i', kraken: 'i', siren: 'i', left: 'i' } },
@@ -17981,7 +18069,7 @@ function netAnimCoyote(c, dt) {
 // what it draws onto that. Bark, pounce, grab and gates it pushes go the same way (netPredPress, netPredPost).
 // Airborne, stunned or hopping: the host's state, smoothed.
 const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
-function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : G.dogs.includes(h) ? 'dog' : h.isRope ? 'rope' : h.isBone ? 'bone' : ''; }
+function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : G.dogs.includes(h) ? 'dog' : h.isRope ? 'rope' : h.isBone ? 'bone' : h.isApple ? 'apple' : ''; }
 function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide; }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding)
 function netPredPick(d) {   // what tryGrab would bite
   if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
@@ -18000,6 +18088,7 @@ function netPredPick(d) {   // what tryGrab would bite
   }
   const rg = ropeGrip(d, mx, mz, bd); if (rg) { o = rg.R; grip = rg.i; bd = rg.dd; }   // ROPES
   const bg = boneGrip(d, mx, mz, bd); if (bg) { o = bg.b; bd = bg.dd; }   // BONES
+  const ag = appleGrip(d, mx, mz, bd); if (ag) { o = ag.a; bd = ag.dd; }   // APPLES
   return o ? { o, grip } : null;
 }
 // what this dog holds at time t: our own bite or let-go the host hasn't run yet, else what the host says
@@ -18791,6 +18880,7 @@ waterFx = fxDef('waterFx', waterFx);
 ropeFx = fxDef('ropeFx', ropeFx);
 boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won
 treeFx = fxDef('treeFx', treeFx);                                    // APPLES: a tree shaken                                 // WATER: picking up, filling, tipping a bucket
+appleFx = fxDef('appleFx', appleFx);   // APPLES: picked up, lobbed, taken from a dog's mouth
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
   if (!d || typeof d.value !== 'function' || k === 'init' || k === 'ambience' || k === 'raw') continue;
@@ -19106,7 +19196,7 @@ Object.assign(window.GAME, { FINAL, POST, MARKET, STALLS, finalPen, postPen, VEN
   KIT, kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav });   // VENDOR
 Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
-Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, syncBonk, punt });   // BONK SPOTS
+Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt });   // BONK SPOTS
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
