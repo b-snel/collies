@@ -20,13 +20,13 @@ await h.page.evaluate(() => {
   };
 });
 
-// 1. the snakes: past the Promised Land, in the desert, each behind its own rock (the same every load)
+// 1. the snakes: past Sweetgrass Meadow, in the desert, each behind its own rock (the same every load)
 const r1 = await h.page.evaluate(() => {
   const { SNAKES, sAt, trailInfo, biomeW, CAMPS, FINAL, sdfAt } = GAME;
   return { n: SNAKES.length, s: SNAKES.map(n => Math.round(sAt(n.x, n.z))), lat: SNAKES.map(n => +trailInfo(n.x, n.z).lat.toFixed(1)), desert: Math.min(...SNAKES.map(n => biomeW(sAt(n.x, n.z))[0])),
     promised: CAMPS[3].s, final: FINAL.s, rock: Math.max(...SNAKES.map(n => Math.hypot(n.x - n.rock.x, n.z - n.rock.z) - n.rock.cr)), sdf: Math.min(...SNAKES.map(n => sdfAt(n.x, n.z))), x0: SNAKES[0].x };
 });
-ok(`${r1.n} rattlesnakes, in the desert past the Promised Land (s ${r1.s.join(', ')})`, r1.n >= 4 && r1.s.every(s => s > r1.promised + 60 && s < r1.final) && r1.desert > 0.7, r1);
+ok(`${r1.n} rattlesnakes, in the desert past Sweetgrass Meadow (s ${r1.s.join(', ')})`, r1.n >= 4 && r1.s.every(s => s > r1.promised + 60 && s < r1.final) && r1.desert > 0.7, r1);
 ok('each tucked in behind its rock, off the trail', r1.rock < 0.5 && r1.sdf > 0 && r1.lat.every(l => Math.abs(l) > 3), r1);
 await h.page.reload(); await h.page.waitForFunction(() => window.GAME);
 const x0b = await h.page.evaluate(() => GAME.SNAKES[0].x);

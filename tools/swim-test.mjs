@@ -9,7 +9,7 @@
 //   alone   nobody comes (Hank far off, giveUp short): it comes round on its own
 //   sheep   a sheep driven into the sea swims back ashore; one by the river is held off it
 //   coyote  a coyote into the sea: swims out soggy, done for the night
-//   lake    a dog walks from the Promised Land's grass into its lake
+//   lake    a dog walks from Sweetgrass Meadow's grass into its lake
 //   sand    the beach grows nothing; a calm sheep on it walks back onto the grass
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -202,7 +202,7 @@ if (want('lake')) {
     const t = H.run(20, () => { H.p().bot = H.to(b.x - d.x, b.z - d.z); return d.air && d.air.swim; });
     return { swim: !!(d.air && d.air.swim), t: H.r(t) };
   });
-  ok('a dog walks from the Promised Land into its lake', r.swim, r);
+  ok('a dog walks from Sweetgrass Meadow into its lake', r.swim, r);
 }
 
 if (want('sand')) {

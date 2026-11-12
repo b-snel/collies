@@ -1,6 +1,6 @@
 // Headless checks for the vendors: a stall near the end of every leg and the Trading Post's (a dog on a mat barks to buy
 // with wool): 📍 picks a pen found on the way, 🌾 💧 🧂 add a stocked trough / water trough / lick there up to what the pen
-// holds (by its size), then batches; the desert past the Promised Land; no Cabo (the end's up the MOUNTAIN PASS). `node tools/vendor-test.mjs`
+// holds (by its size), then batches; the desert past Sweetgrass Meadow; no Cabo (the end's up the MOUNTAIN PASS). `node tools/vendor-test.mjs`
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -14,11 +14,11 @@ const r1 = await h.page.evaluate(() => {
     camps: CAMPS.map(c => c.name), last: CAMPS[CAMPS.length - 1] === FINAL, finals: CAMPS.filter(c => c.final).length, promisedFinal: !!CAMPS[3].final,
     penFinal: finalPen && finalPen.final && finalPen.camp === FINAL, postFinal: !!postPen.final, toEnd: Math.round(PATH_LEN - POST.s), wetNear: wet,
     mats: GAME.ALL_WARES.map(w => ({ id: w.id, st: w.stall.i, sdf: +sdfAt(w.x, w.z).toFixed(1), inPen: pens.some(p => Math.hypot(w.x - p.x, w.z - p.z) < p.R + 1) })),
-    legs: CAMPS.slice(1).map((c, i) => GAME.STALLS.filter(st => !st.market && st.s > CAMPS[i].s && st.s < c.s).length),
+    legs: CAMPS.slice(1).map((c, i) => GAME.STALLS.filter(st => st.s > CAMPS[i].s && st.s < c.s).length),
     river: Math.round(Math.min(...GAME.STALLS.map(st => Math.abs(sAt(st.x, st.z) - GAME.RIVER.s)))),
     gap: Math.round(Math.min(...GAME.STALLS.map(st => Math.min(...DENS.map(d => Math.hypot(d.x - st.x, d.z - st.z)), ...LAIRS.map(l => Math.hypot(l.x - st.x, l.z - st.z)), ...GAME.DIGS.map(d => Math.hypot(d.x - st.x, d.z - st.z)))))),
     wares: GAME.STALLS.map(st => st.wares.map(w => w.id).join(' ')),
-    stallFromPen: Math.round(Math.hypot(MARKET.x - POST.x, MARKET.z - POST.z)),
+    stallFromPen: Math.round(Math.hypot(MARKET.x - POST.x, MARKET.z - POST.z)), marketShort: MARKET.s < POST.s && GAME.STALLS.filter(st => st.market).length === 1,
     denNear: Math.round(Math.min(...DENS.map(d => Math.hypot(d.x - POST.x, d.z - POST.z)))), lairNear: Math.round(Math.min(...LAIRS.map(l => Math.hypot(l.x - POST.x, l.z - POST.z)))),
     cougarRange: T.cougar.range + 30, denRange: T.denRange,
   };
@@ -27,8 +27,8 @@ ok('the yeti\'s cave is the last camp and the only final one; the Trading Post i
 ok('the trail climbs on past the Trading Post (the MOUNTAIN PASS)', r1.toEnd > 300, r1);
 ok('no water near the Trading Post', r1.wetNear === 0, r1);
 ok('every mat on open ground, none in a pen', r1.mats.every(m => m.sdf > 1 && !m.inPen), r1.mats);
-ok('one trader on every leg up to the Trading Post, its own past its pen, none up the pass; none by the river, a den, a cougar tree or a dig spot', r1.legs.slice(0, -1).every(n => n === 1) && r1.legs.at(-1) === 0 && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1) === 'pen clippers water food salt venom bandage pills shovel' && r1.wares.slice(0, -1).every(w => w === 'pen water food salt venom bandage pills shovel'), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
-ok('the stall stands by the pen', r1.stallFromPen > 15 && r1.stallFromPen < 45, r1);
+ok('one trader on every leg up to the Trading Post (its own the market), none up the pass; none by the river, a den, a cougar tree or a dig spot', r1.legs.slice(0, -1).every(n => n === 1) && r1.legs.at(-1) === 0 && r1.river > 40 && r1.gap > 12 && r1.wares.at(-1) === 'pen clippers water food salt venom bandage pills shovel' && r1.wares.slice(0, -1).every(w => w === 'pen water food salt venom bandage pills shovel'), { legs: r1.legs, river: r1.river, gap: r1.gap, wares: r1.wares });
+ok('the Trading Post\'s stall: where every leg\'s is, short of its pen; only one', r1.marketShort && r1.stallFromPen > 15 && r1.stallFromPen < 75, r1);
 ok('a den and a cougar tree near enough to hunt there', r1.denNear < r1.denRange && r1.lairNear < r1.cougarRange, r1);
 
 // set up: a dog, the flock in the Trading Post's pen (every camp found: in ?sim the HUD doesn't mark them)
