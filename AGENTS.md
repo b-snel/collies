@@ -437,7 +437,7 @@ host / offline only, so with friends online the journey still ends at the cave.
   (stocked troughs draw the hungry). Dogs stop at the quay's edge (a leap goes in; up the ladder); a sheep in the harbour
   scrambles out. Every sheep and dog aboard: Hank shuts and lashes it (`seaGangway`). Bow station, stick up: `seaCastOff` (not
   with sheep ashore: 🐑 n ✖): the quay's left behind, Hank shoves off and minds the helm down the fairway (`SEA.pilot`) till a
-  dog takes the tiller. No morning rush off the deck, nobody leaves it to graze.
+  dog takes the tiller. No morning rush off the deck, nobody leaves it to graze; once aboard a sheep doesn't walk back off (`pen.way`).
 
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway
   gate lashed shut: `pen.lock`) out in the sea zone (`x > SEA_X0`: `terrainH` / `sdfIn` / `trailInfo` / grass answer
