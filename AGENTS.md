@@ -112,8 +112,8 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|blizzard\|ice\|crev\|goat\|yeti\|rock\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; burning sheep; the cave: out above the harbour, one left behind |
-| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, reset |
+| `pass-test.mjs [layout\|cold\|fire\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; burning sheep; the cave: out above the harbour, one left behind |
+| `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
@@ -308,8 +308,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   - **Cold** (`T.cold`, `sheepCold`, `dogCold`): builds in the snow × (1 − `wool`·`s.wool`) × snow on it,
     night, blizzard, lamb; huddled less; `heatAt` warms; below thaws. At 1 for `dieHours`: dead ('cold').
     Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
-  - **Fires** (`PASS.fires`, camps without pens): Hank lights the one by the flock (`passFireGoal`,
-    `hankFire`, `light` s), `burn` h of fuel; by night he sits by it. Cold ones take the `spots`
+  - **Fires** (`PASS.fires`, camps without pens): Hank lights the flock's (`passFireGoal`: the next one up within
+    `reach`, or one it's under `left` m past; never back down; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it.
+    Out or under `low` h: his first job (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
     round it, the coldest first (`warmGo`, state 'warm'); nobody's jostled into it (`fireShove`).
   - **Snow** (`s.snow`, `T.snow`): a blizzard piles it on; running sheds it; heat melts it.
     **Blizzards** (`PASS.blizz`, `T.blizz`): now and then while the flock's up there; whiteout.
@@ -425,8 +426,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
   (`HANK.care`, `s.state 'treat'`), before shearing. Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
-- **Burial** (`YARDS`, `T.remains`): with a shovel, by day, nothing prowling,
-  Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,
+- **Burial** (`YARDS`, `T.remains`): his last job (`buryCan`): with a shovel, by day, nothing prowling, no
+  patient, shearing or tug to do, not while the flock's up the pass, Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,
   a neat stone rises, `lastWords` (by bravery, trait, bell, lamb, age; seeded).
   No cemetery till the first body: he sets it down by the spot and builds one,
   mallet in hand, picket by picket round the fence (`Y.built` 0…1, `yardStep`,

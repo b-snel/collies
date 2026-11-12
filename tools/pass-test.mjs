@@ -1,8 +1,10 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|blizzard|ice|crev|goat|yeti|rock|burn|finish]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|hank|blizzard|ice|crev|goat|yeti|rock|burn|finish]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
 //   fire      Hank lights the fire camp the flock's at; the coldest take the places round it and warm up
+//   hank      the fire before anything: lit before a patient's seen to; no burials up here; the next fire up, not one left behind;
+//             asleep by one burning low: up to stoke it
 //   blizzard  a blizzard piles snow on them; running shakes it off; a fire melts it
 //   ice       onto the ice: a sheep, a dog, Hank slide downhill and stop; a calm sheep goes round
 //   crev      a sheep in a crack: grabbed out; a dog alone: mashing pounce climbs out; with a friend: mashing won't, the friend grabs it out
@@ -95,6 +97,37 @@ if (!only || only === 'fire') {
   });
   ok(`Hank lights the camp's fire (${r.t} s, ${r.by} m off it)`, r.lit && r.by < 3.5, r);
   ok(`the cold ones go in close and warm up (${r.warm}/3, worst now ${r.colder}); nobody's jostled into the flames`, r.warm >= 2 && r.colder < 0.6 && r.heat > 0.8 && !r.burnt, r);
+}
+
+if (!only || only === 'hank') {
+  const r = await ev(() => {
+    const { G, T, PASS, HANK, living, killSheep, pathPoint, passFireGoal } = GAME;
+    const f = PASS.fires[0]; setup(f.s, { hour: 11, hankS: f.s - 8 });
+    HANK.shovel = true; HANK.meds = { venom: 0, bandage: 2, pills: 0 };
+    const L = living(), sick = L.find(s => !s.lamb); sick.bleedRate = 1 / 20; sick.bleed = 0.1;
+    const dead = L.find(s => s !== sick && !s.lamb); killSheep(dead, 'cold'); const g = G.graves.at(-1);
+    let litT = -1, curedT = -1, buried = false, firstJob = null;
+    for (let t = 0; t < 40 && curedT < 0; t += 0.025) {
+      GAME.step(0.025);
+      if (litT < 0 && f.fuel > 0) litT = t;
+      if (curedT < 0 && !(sick.bleedRate > 0)) curedT = t;
+      if (!firstJob && (HANK.care || f.fuel > 0)) firstJob = f.fuel > 0 ? 'fire' : HANK.care.kind;
+      if (HANK.care && HANK.care.kind === 'bury') buried = true;
+    }
+    run(20, () => { if (HANK.care && HANK.care.kind === 'bury') buried = true; });
+    // past it, the next one 70+ m up: nothing (not back to the one behind); nearer: the next one
+    const at = s => { const p = pathPoint(s, 0); for (const o of living()) { o.x = p.x + Math.random() * 3; o.z = p.z + Math.random() * 3; } G.time += 0.001; return passFireGoal(); };
+    f.fuel = 1; const behind = at(f.s + 40), ahead = at(f.s + 60);
+    // a night by it: asleep; it burns low: he's up and stokes it
+    setup(f.s, { hour: 21, hankS: f.s - 4 }); f.fuel = 6;
+    const slept = run(40, () => HANK.asleep) >= 0; f.fuel = 1.2;
+    const woke = run(10, () => !HANK.asleep) >= 0, stoked = run(10, () => f.fuel > 5) >= 0;
+    return { litT: +litT.toFixed(1), curedT: +curedT.toFixed(1), firstJob, buried, grave: !g.stone && !g.by, behind: behind && behind.fire.i, ahead: ahead && ahead.fire.i, aheadLight: ahead && ahead.light, slept, woke, stoked };
+  });
+  ok(`the fire first (lit ${r.litT} s), then the patient (${r.curedT} s)`, r.firstJob === 'fire' && r.litT >= 0 && r.curedT > r.litT, r);
+  ok('no burials while the flock is up the pass', !r.buried && r.grave, r);
+  ok('not back to a fire the flock has left; on to the next one up', r.behind === null && r.ahead === 1 && r.aheadLight, r);
+  ok('asleep by the fire; it burns low: up to stoke it', r.slept && r.woke && r.stoked, r);
 }
 
 if (!only || only === 'blizzard') {
