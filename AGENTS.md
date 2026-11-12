@@ -119,7 +119,7 @@ Run the ones touching your change; report the numbers.
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
-| `input-test.mjs` | Ⓐ on slow frames: quick taps between frames, held = one bark, early press waits out the cooldown (`padPoll`, `T.barkBuf`) |
+| `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`) |
 | `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchoring (holds: saved, mended; drags), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the first minute (weigh, take the tiller, away), Cold Harbour (out of the cave up the path, rock off it, the quay's edge, herded down and aboard, lashed, cast off, away), the land untouched |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
@@ -509,7 +509,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 
 ### Gotchas
 
-- Read buttons once per frame, not per substep.
+- Read buttons once per frame, not per substep. Pad presses: `padEdge` (sampled at the frame's start, `padFrame`); never re-read the pad at the frame's end to mark presses seen.
 - Gamepad presses don't unlock audio.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.

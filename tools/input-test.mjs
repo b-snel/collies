@@ -43,6 +43,29 @@ const early = await page.evaluate(async () => {
   return GAME.G.barks - n0;
 });
 check(early === 1, 'early press waits', early);
+
+// a press that lands mid-frame (after the frame's read, before its end) counts next frame: short or held
+const midFrame = (b, ms) => page.evaluate(([b, ms]) => new Promise(res => {
+  const R = GAME.renderer, orig = R.render;
+  R.render = function (...a) { R.render = orig; const k = FAKE.buttons[b]; k.pressed = true; k.value = 1; setTimeout(() => { k.pressed = false; k.value = 0; res(); }, ms); return orig.apply(this, a); };
+}), [b, ms]);
+for (const ms of [60, 400]) {
+  await ready(); b0 = await barks();
+  await midFrame(0, ms); await nextFrame(); await nextFrame();
+  check(await barks() - b0 === 1, `Ⓐ mid-frame (${ms} ms)`, await barks() - b0);
+  await page.waitForFunction(() => GAME.G.dogs[0].pounceCD <= 0 && !(GAME.G.dogs[0].pounceT > 0) && !(GAME.G.dogs[0].hopT > 0), null, { timeout: 60000 });
+  const p0 = await page.evaluate(() => GAME.MV.pounces || 0);
+  await midFrame(1, ms); await nextFrame(); await nextFrame();
+  check(await page.evaluate(() => GAME.MV.pounces || 0) - p0 === 1, `Ⓑ mid-frame (${ms} ms)`, await page.evaluate(() => GAME.MV.pounces || 0) - p0);
+}
+// Ⓑ pressed just before the pounce cooldown's up still pounces
+await page.waitForFunction(() => GAME.G.dogs[0].pounceCD <= 0 && !(GAME.G.dogs[0].pounceT > 0), null, { timeout: 60000 });
+const earlyP = await page.evaluate(async () => {
+  const d = GAME.G.dogs[0], n0 = GAME.MV.pounces || 0; d.pounceCD = 0.12; d.pounceBuf = GAME.T.pounceBuf;
+  const t = GAME.G.time; while (GAME.G.time - t < 0.5) await new Promise(r => setTimeout(r, 30));
+  return (GAME.MV.pounces || 0) - n0;
+});
+check(earlyP === 1, 'early Ⓑ waits', earlyP);
 check(!errors.length, 'no page errors', errors);
 await browser.close(); srv.close();
 console.log(fails ? fails + ' check(s) FAILED' : 'all ok');
