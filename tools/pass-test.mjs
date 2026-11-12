@@ -1,4 +1,4 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|hank|blizzard|ice|crev|goat|yeti|rock|burn|finish]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|hank|blizzard|ice|crev|goat|yeti|rock|side|burn|finish]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
@@ -11,6 +11,8 @@
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
 //   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws
+//   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
+//             rest left below) drives them off the floor, up it and onto the ledge
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
 //   finish    the yeti beaten, the flock shut in his cave: through the mountain, out of its lower mouth above Cold Harbour (SAILING); one left outside is left behind
 import { open } from './harness.mjs';
@@ -291,6 +293,34 @@ if (!only || only === 'rock') {
   });
   ok(`three sheep into the rock wall: cracks ${r.cracks.join(' → ')}, it falls on him (${r.yeti})`, r.cracks.join() === '1,2,3' && r.state === 'down' && r.yeti === 'crushed' && r.how === 'rock', r);
   ok('his cave thaws', r.beaten && r.thawed, r);
+}
+
+if (!only || only === 'side') {
+  const r = await ev(() => {
+    const { G, SIDE, living, findPath, sdfAt, sideD, step, CAM_R, CAM_F, pathPoint, trailInfo } = GAME;
+    // across it every 2 m: free width (cells walkable, on it)
+    let narrow = 1e9; for (let i = 6; i < SIDE.pts.length - 6; i += 4) { const a = SIDE.pts[i - 2], b = SIDE.pts[i + 2], l = Math.hypot(b.x - a.x, b.z - a.z), wx = (b.z - a.z) / l, wz = -(b.x - a.x) / l, p = SIDE.pts[i]; let f = 0; for (let o = -8; o <= 8; o += 0.25) if (sdfAt(p.x + wx * o, p.z + wz * o) > 0 && sideD(p.x + wx * o, p.z + wz * o) < SIDE.hw) f += 0.25; narrow = Math.min(narrow, f); }
+    const H = SIDE.home, L = SIDE.ledge, hp = findPath(H.x, H.z, L.x, L.z, 400000); let way = 0, px = H.x, pz = H.z; for (const q of hp) { way += Math.hypot(q.x - px, q.z - pz); px = q.x; pz = q.z; }
+    setup(SIDE.s0 - 40, { lat: 4, hour: 9, dogS: SIDE.s0 - 26 });
+    const go = living().filter(s => !s.lamb).slice(0, 5), st = pathPoint(SIDE.s0 - 26, trailInfo(SIDE.pts[0].x, SIDE.pts[0].z).lat), fp = findPath(st.x, st.z, L.x, L.z, 200000), route = [st];
+    for (const q of fp) { const a = route[route.length - 1], n = Math.max(1, Math.ceil(Math.hypot(q.x - a.x, q.z - a.z) / 0.5)); for (let k = 1; k <= n; k++) route.push({ x: a.x + (q.x - a.x) * k / n, z: a.z + (q.z - a.z) * k / n }); }
+    const near = (x, z) => { let b = 0, bd = 1e9; route.forEach((q, i) => { const d = Math.hypot(q.x - x, q.z - z); if (d < bd) { bd = d; b = i; } }); return b; }, at = i => route[Math.max(0, Math.min(route.length - 1, i))];
+    go.forEach((s, i) => { const q = route[16 + (i % 3) * 3]; s.x = q.x + (i % 2 ? 1.5 : -1.5); s.z = q.z + (i > 2 ? 1.5 : -1.5); });
+    const d = G.dogs[0], P = G.players[0]; d.x = route[2].x; d.z = route[2].z;
+    let t = 0, on = 0;
+    for (; t < 90 && on < 3; t += 0.025) {   // (like flock-sim's driver: behind the flock's middle, walking at the road ~8 m on; in front or beside: round it)
+      const n = go.length, kx = go.reduce((a, s) => a + s.x, 0) / n, kz = go.reduce((a, s) => a + s.z, 0) / n, sp = Math.max(...go.map(s => Math.hypot(s.x - kx, s.z - kz))), g = at(near(kx, kz) + 16);
+      let gx = g.x - kx, gz = g.z - kz; const gl = Math.hypot(gx, gz) || 1; gx /= gl; gz /= gl;
+      const rx = d.x - kx, rz = d.z - kz, along = rx * gx + rz * gz, lat = rx * -gz + rz * gx, W = sideD(kx, kz) < SIDE.hw + 1 ? 2.4 : Math.max(8, sp + 5);
+      const tg = along > -Math.max(2.5, sp * 0.8) ? { x: kx - gx * (Math.min(sp, 8) + 3) - gz * (lat >= 0 ? 1 : -1) * W, z: kz - gz * (Math.min(sp, 8) + 3) + gx * (lat >= 0 ? 1 : -1) * W } : { x: kx - gx * (sp + 3), z: kz - gz * (sp + 3) };
+      const dx = tg.x - d.x, dz = tg.z - d.z, l = Math.hypot(dx, dz), m = Math.min(1, l / 2.5);
+      P.bot = l < 0.4 ? {} : { mx: (dx * CAM_R.x + dz * CAM_R.z) / l * m, my: -(dx * CAM_F.x + dz * CAM_F.z) / l * m };
+      step(0.025); on = go.filter(s => !s.dead && Math.hypot(s.x - L.x, s.z - L.z) < L.r + 0.5).length;
+    }
+    return { narrow, way: +way.toFixed(0), crow: +Math.hypot(H.x - L.x, H.z - L.z).toFixed(0), on, t: +t.toFixed(1) };
+  });
+  ok(`the side trail: ≥${r.narrow} m across all the way; the ledge only up it (${r.way} m round from his spot, ${r.crow} m as the crow flies)`, r.narrow >= 5 && r.way > r.crow * 3, r);
+  ok(`a dog drives 5 sheep up it: ${r.on} on the ledge in ${r.t} s`, r.on >= 3 && r.t < 60, r);
 }
 
 if (!only || only === 'burn') {
