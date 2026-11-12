@@ -1,6 +1,6 @@
 // Headless test: `node tools/pass-test.mjs [layout|cold|fire|blizzard|ice|crev|goat|yeti|rock|burn|finish]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
-//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the spire; nothing else up there
+//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
 //   fire      Hank lights the fire camp the flock's at; the coldest take the places round it and warm up
 //   blizzard  a blizzard piles snow on them; running shakes it off; a fire melts it
@@ -8,7 +8,7 @@
 //   crev      a sheep in a crack: grabbed out; a dog alone: mashing pounce climbs out; with a friend: mashing won't, the friend grabs it out
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
-//   rock      three sheep flung into the spire up the side trail: it falls on him (an arm sticks out), his cave thaws
+//   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
 //   finish    the yeti beaten, the flock shut in his cave: the journey's won
 import { open } from './harness.mjs';
@@ -60,7 +60,7 @@ if (!only || only === 'layout') {
   ok(`${r.fires.length} fire camps, level and clear`, r.fires.length === 3 && r.fires.every(f => f.lvl < 0.6 && f.sdf > 2), r.fires);
   ok(`${r.ices} ice patches, ${r.crevs} cracks, ${r.goats} goats`, r.ices >= 8 && r.crevs >= 5 && r.goats >= 9, r);
   ok('a way from the Trading Post up to the cave; the hidden side trail up to its ledge', r.path && r.side && r.ledge > 1, r);
-  ok('the spire stands, the yeti sleeps', r.rock === 'stand' && r.yeti === 'sleep', r);
+  ok('the rock wall stands, the yeti sleeps', r.rock === 'stand' && r.yeti === 'sleep', r);
   ok('nothing else up there (dens, nests, plants, salt, brambles, digs, snakes, apples, groves)', Object.values(r.inPass).every(v => v === 0), r.inPass);
 }
 
@@ -252,7 +252,7 @@ if (!only || only === 'rock') {
     run(3);
     return { cracks, state: R.state, yeti: YETI.state, how: YETI.how, beaten: YETI.beaten, thawed: !finalPen.frozen };
   });
-  ok(`three sheep into the spire: cracks ${r.cracks.join(' → ')}, it falls on him (${r.yeti})`, r.cracks.join() === '1,2,3' && r.state === 'down' && r.yeti === 'crushed' && r.how === 'rock', r);
+  ok(`three sheep into the rock wall: cracks ${r.cracks.join(' → ')}, it falls on him (${r.yeti})`, r.cracks.join() === '1,2,3' && r.state === 'down' && r.yeti === 'crushed' && r.how === 'rock', r);
   ok('his cave thaws', r.beaten && r.thawed, r);
 }
 
