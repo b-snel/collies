@@ -93,12 +93,12 @@ Run the ones touching your change; report the numbers.
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
 | `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
-| `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; random trees in the grove, hunters by dogs and day |
+| `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; loners: a territory each, more each leg, off the pens, random trees, one out at a time |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits\|boss]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset; the Great Falcon: eats undefended (barks or not), eyrie shake, beaten by pounces, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
-| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar, again and again till it's home |
+| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar (knocked over, limps), again and again till it's home |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
@@ -219,14 +219,15 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Den defence.** A dog or sheep startling a sleeping den (`defendDen`,
   `T.denDefend`): the pack nips dogs and snaps sheep away, only within `r` of
   the mouth (leash), then goes back to sleep.
-- **Cougars** (`COUGARS`, `GROVES`, `LAIRS`, `T.cougar`): `n` of them; a grove of `trees`
-  trees by each hill camp. Night only: they take random trees in the grove nearest the
-  flock (`perchGrove`, `k.lair`, synced); `hunt[dogs−1]` of them hunt every night, +1 from
-  day `moreFrom` (`cougarHunters`); held up only by a dog barking under its tree (`treedR`). Lambs first,
-  never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
-  running away: bonked, yowls (`Sound.yowl`), tumbles toward its tree dazed (`daze`), runs
-  `bonkRun`× faster, still slower than a sprinting dog: bonk it again, all the way home. `s.grabbed`
-  may be a cougar (`k.isCougar`).
+- **Cougars** (`COUGARS`, `GROVES`, `LAIRS`, `T.cougar`): loners. `legs[i]` round the camp at the end
+  of leg i (`COUGAR_CAMPS`), each its own territory (`k.grove`: `trees` trees, `apart` m from any other's,
+  `penGap`+ m off pens; the land `room` m wider there). Night only: each near the flock (`cougarsNear`)
+  takes a random tree of its own (`perchGrove`, `k.lair`, synced) and hunts, one after another (`delay`,
+  `gap`); none comes down while another's out (`cougarAbroad`). Held up only by a dog barking under its
+  tree (`treedR`). Lambs first, never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
+  running away: bonked, yowls (`Sound.yowl`), knocked head over heels, dazed (`daze`, `k.dazeT`, synced;
+  stars), limps home at `bonkRun`×: bonk it again, all the way home (dazed at its trunk: up it goes).
+  The night doesn't fast-forward while one's out. `s.grabbed` may be a cougar (`k.isCougar`).
 - **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
   'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest

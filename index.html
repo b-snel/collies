@@ -618,15 +618,17 @@ const T = {
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
   // within r of the mouth, never past leash; nobody inside r for calm s (or hold s in all) → back to sleep, cd s before it'll defend again
   denDefend: { r: 16, leash: 24, sheepWake: 3, calm: 2.5, hold: 30, cd: 25, snapR: 1.7, snapCd: [1.2, 2], lunge: 11 },   // lunge: speed on its last few metres (catches a sheep)
-  // cougars: a grove of `trees` big old trees off the trail by each hill camp (and a couple between). By day they're gone;
-  // at nightfall the `n` cougars take random trees in the grove nearest the flock and hunt[dogs-1] of them (one more from day
-  // moreFrom) hunt (chance), each coming down after its own delay in-game hours (held up treedT s by a dog
-  // barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway). It stalks in slow
+  // cougars (solitary): legs[i] of them round the camp at the end of leg i (Mountain Valley, Oceanside, the Promised Land, the
+  // Trading Post), each with its own territory: a grove of `trees` big old trees, `apart` m from any other's, penGap+ m from a pen's
+  // fence (the land's room+ m wider round those camps). At nightfall each one within `range` of the flock takes a random tree in its
+  // own grove and hunts, alone: the first after delay h, the next gap h later; none comes down while another's out. Held up treedT s by
+  // a dog barking within treedR of the trunk; flock out of range: it goes after the nearest sheep anyway. It stalks in slow
   // and low, shies from dogs (shyR from it, guardR from its target), leaps from leapR, and drags its catch, crying, back
   // to its tree. Once it has climbed up (climbT s) the sheep dies. A dog's pounce (hitR) or body (1.3 m) makes it drop the
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
-  cougar: { n: 3, trees: 4, hunt: [1, 2, 2, 3], moreFrom: 4, range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 3.5], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
-    bonkRun: 1.1, bonkKick: 9, daze: 0.4,   // bonked while it runs: yowls, skids dazed `daze` s, runs bonkRun× faster (a sprinting dog still catches it: bonk it again)
+  cougar: { legs: [1, 2, 3, 4], trees: 3, apart: 60, spread: 18, penGap: 30, room: { w: 16, e: 10, near: 45, far: 115 },
+    range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 1.5], gap: [1.5, 2.2], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
+    bonkRun: 0.72, bonkKick: 9, daze: 1.1, homeT: 25,   // bonked while it runs: yowls, knocked over, tumbles dazed `daze` s, limps home at bonkRun× (a dog catches it: bonk it again). homeT: s to get home
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
@@ -1464,6 +1466,7 @@ const CAMPS = [
 ];
 for (const c of CAMPS) { const p = pathPoint(c.s, c.lat); c.x = p.x; c.z = p.z; c.gateA = c.back ? Math.atan2(-p.tz, -p.tx) : Math.atan2(p.nz, p.nx); c.nx = p.nx; c.nz = p.nz; c.tx = p.tx; c.tz = p.tz; }
 const FINAL = CAMPS.find(c => c.final), POST = CAMPS.find(c => c.post);   // the yeti's cave (the end); the Trading Post
+const COUGAR_CAMPS = [CAMPS[1], CAMPS[2], CAMPS[3], POST];   // COUGARS: the camp at the end of each leg with cougars (T.cougar.legs)
 // the vendors' stalls (VENDOR): one near the end of each leg up to the Trading Post, and the Trading Post's past its pen (MARKET). Flat
 // ground, nothing placed on them. Each faces the camera (f = -CAM_F), mats in a row along r = CAM_R
 const STALLS = [...CAMPS.slice(1).filter(c => c.s <= POST.s).map(c => c.s - T.vendor.before), POST.s + 28].map((s, i, a) => {
@@ -1581,6 +1584,10 @@ for (let i = 0; i <= PN; i++) {
     hwEArr[i] = lerp(hwEArr[i], lerp(P.hwE, P.aE, ak) + (vnoise(s * 0.08, 8.8) - 0.5) * 2, pk);
   }
   hwWArr[i] += boost; hwEArr[i] += boost * 0.5;
+  const R = T.cougar.room; let room = 0;   // COUGARS: more room round their camps (not in Falcon Canyon or up the pass)
+  for (const c of COUGAR_CAMPS) room = Math.max(room, 1 - smooth(R.near, R.far, Math.abs(s - c.s)));
+  room *= (1 - canyonK(s)) * (1 - smooth(T.pass.s0 - 40, T.pass.s0, s));
+  hwWArr[i] += R.w * room; hwEArr[i] += R.e * room;
 }
 const CAP_PAD = 14, CAP_END = 4.5;   // (the far end: the yeti's cave right behind its pen)
 
@@ -2752,19 +2759,21 @@ const DENS = [];
     d.id = DENS.length; DENS.push(d);
   }
 }
-// ---------------- cougar trees: big old trees with a long low limb, a grove off the trail by each hill camp ----------------
+// ---------------- cougar trees: big old trees with a long low limb; a cougar's territory is a grove of them ----------------
 // Own rng, so every screen online grows the same ones. L.px/py/pz is the perch on the limb, L.bx/bz the foot of the trunk
-// on the limb side (where it climbs), L.yaw the way the limb points (toward the trail). GROVES[i].trees: T.cougar.trees of them
-// (the first as it always was); at nightfall the cougars take random ones in the grove nearest the flock (COUGARS).
+// on the limb side (where it climbs), L.yaw the way the limb points (toward the trail). Cougars live alone: GROVES[i] is one
+// cougar's (COUGARS[i]), T.cougar.trees trees round the camp at the end of leg GROVES[i].leg (COUGAR_CAMPS), well off the pen and
+// T.cougar.apart from any other's; at nightfall it takes a random one of its own (COUGARS).
 const LAIRS = [], GROVES = [];
 {
   const kr = mulberry32(80812), krr = (a, b) => a + kr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
   const barn = pathPoint(CAMPS[3].s + 30, -26);
-  const fits = (p, ss, lat, farOff) => clear(p.x, p.z, 3) && !CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 15) && offMarket(p.x, p.z, 8) && Math.hypot(p.x - barn.x, p.z - barn.z) > 14
+  const C = T.cougar;
+  const fits = (p, ss, near) => clear(p.x, p.z, 3) && !CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + C.penGap) && offMarket(p.x, p.z, 8) && Math.hypot(p.x - barn.x, p.z - barn.z) > 14
     && !(Math.abs(riverAcross(p.x, p.z)) < RIVER.hw + 8 && Math.abs(riverAlong(p.x, p.z)) < 50)
-    && !DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) && !LAIRS.some(l => Math.hypot(p.x - l.x, p.z - l.z) < farOff)
-    && !(ss > T.canyon.s0 - 20 && ss < T.canyon.s1 + 20);   // (nothing in Falcon Canyon)
+    && !DENS.some(d => Math.hypot(p.x - d.x, p.z - d.z) < 25) && near(p)
+    && !(ss > T.canyon.s0 - 20 && ss < T.canyon.s1 + 20) && ss < T.pass.s0 - 15;   // (nothing in Falcon Canyon or up the pass)
   const grow = (L, krr) => {
     const tp = pathPoint(L.s), dx = tp.x - L.x, dz = tp.z - L.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
     L.y = terrainH(L.x, L.z); L.yaw = Math.atan2(ux, uz);
@@ -2788,29 +2797,33 @@ const LAIRS = [], GROVES = [];
     OBSTACLES.push({ x: L.x, z: L.z, r: 0.85 }); stampObstacle(L.x, L.z, 0.85);
     L.id = LAIRS.length; LAIRS.push(L);
   };
-  for (const sp of [{ s: CAMPS[1].s, camp: CAMPS[1] }, { s: 360 }, { s: CAMPS[2].s, camp: CAMPS[2] }, { s: 610 }, { s: CAMPS[3].s, camp: CAMPS[3] }, { s: POST.s, camp: POST }]) {
-    let best = null, bs = -1e9;
-    for (let t = 0; t < 160; t++) {
-      const ss = sp.s + krr(-34, 34), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
-      if (hw < 15) continue;
-      const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
-      if (!fits(p, ss, lat, 45)) continue;
-      const sc = (sp.camp ? -Math.abs(Math.hypot(p.x - sp.camp.x, p.z - sp.camp.z) - 30) : -Math.abs(ss - sp.s) * 0.2) + Math.abs(lat) * 0.2 + kr();
-      if (sc > bs) { bs = sc; best = { x: p.x, z: p.z, s: ss, lat }; }
+  // first trees: each territory's, round its leg's camp, penGap+ m off the pen's fence (a little more preferred), apart+ m from the others'
+  COUGAR_CAMPS.forEach((camp, leg) => {
+    for (let n = 0; n < (C.legs[leg] || 0); n++) {
+      let best = null, bs = -1e9;
+      for (let t = 0; t < 400; t++) {
+        const ss = camp.s + krr(-95, 55), idx = pathIdx(ss), side = kr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+        if (hw < 15) continue;
+        const lat = side * krr(11, hw - 4), p = pathPoint(ss, lat);
+        if (!fits(p, ss, q => !GROVES.some(g => Math.hypot(q.x - g.trees[0].x, q.z - g.trees[0].z) < C.apart))) continue;
+        const sc = -Math.abs(Math.hypot(p.x - camp.x, p.z - camp.z) - camp.R - C.penGap - 8) + Math.abs(lat) * 0.1 + kr() * 4;
+        if (sc > bs) { bs = sc; best = { x: p.x, z: p.z, s: ss, lat }; }
+      }
+      if (!best) continue;
+      best.grove = GROVES.length; GROVES.push({ i: GROVES.length, s: best.s, leg, camp, trees: [best] });
+      grow(best, krr);
     }
-    if (!best) continue;
-    best.grove = GROVES.length; GROVES.push({ i: GROVES.length, s: best.s, trees: [best] });
-    grow(best, krr);
-  }
-  // the rest of each grove: round the first tree, 14+ m apart (own rng: the first trees stay where they were)
+  });
+  // the rest of each territory: within spread m of its first tree, 9+ m apart, nearer its own than any other's (own rng)
   const gr = mulberry32(80813), grr = (a, b) => a + gr() * (b - a);
   for (const gv of GROVES) {
     const L0 = gv.trees[0];
-    for (let t = 0; t < 400 && gv.trees.length < T.cougar.trees; t++) {
-      const ss = gv.s + grr(-42, 42), idx = pathIdx(ss), side = gr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
+    for (let t = 0; t < 400 && gv.trees.length < C.trees; t++) {
+      const ss = gv.s + grr(-C.spread, C.spread), idx = pathIdx(ss), side = gr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
       if (hw < 13) continue;
       const lat = side * grr(9, hw - 4), p = pathPoint(ss, lat);
-      if (Math.hypot(p.x - L0.x, p.z - L0.z) > 48 || !fits(p, ss, lat, 14)) continue;
+      if (Math.hypot(p.x - L0.x, p.z - L0.z) > C.spread) continue;
+      if (!fits(p, ss, q => !LAIRS.some(l => Math.hypot(q.x - l.x, q.z - l.z) < (l.grove === gv.i ? 9 : C.apart * 0.6)))) continue;
       const L = { x: p.x, z: p.z, s: ss, lat, grove: gv.i }; gv.trees.push(L);
       grow(L, grr);
     }
@@ -5678,7 +5691,7 @@ function updateStars(dt) {
   }
   for (let i = dizzyList.length - 1; i >= 0; i--) {   // seeing stars after a knock or a big landing
     const D = dizzyList[i], e = D.e;
-    if (G.time > D.until || e.dead || e.gone || (e !== HANK && !(e.isDog ? G.dogs : e.models ? G.coyotes : G.sheep).includes(e))) { dizzyList.splice(i, 1); continue; }
+    if (G.time > D.until || e.dead || e.gone || (e !== HANK && !(e.isCougar ? e.state !== 'away' : (e.isDog ? G.dogs : e.models ? G.coyotes : G.sheep).includes(e)))) { dizzyList.splice(i, 1); continue; }
     const k = Math.min(1, (D.until - G.time) * 2);
     for (let j = 0; j < 3; j++) { const a = G.time * 5 + j * TAU / 3; put(e.x + Math.cos(a) * 0.5, (e.y || 0) + D.h + Math.sin(a * 2) * 0.06, e.z + Math.sin(a) * 0.5, 0.17 * k, G.time * 4 + j, j === 1 ? '#fff3a0' : '#ffd36b'); }
   }
@@ -8988,19 +9001,20 @@ function updateCoyotes(dt) {
 }
 
 // =====================================================================
-// COUGARS — T.cougar.n of them roam the groves of big old trees by the hill
-// camps (GROVES, LAIRS). By day they're gone. At nightfall they're up on the
-// limbs of random trees in the grove nearest the flock, eyes catching the
-// light (k.lair: tonight's tree), and some of them hunt (more with more dogs,
-// and later on): some hours later each comes down,
+// COUGARS — loners, one to a territory: a grove of big old trees round the
+// camp at the end of a leg (GROVES, LAIRS), more of them each leg
+// (T.cougar.legs). By day they're gone. At nightfall each one near the flock
+// is up on the limb of a random tree in its own grove, eyes catching the
+// light (k.lair: tonight's tree), and hunts alone: some hours later it comes
+// down (never while another's out: the next one waits its turn),
 // stalks in slow and low, shies off from dogs, then leaps on a sheep (lambs
 // first, always) and drags it, crying, back to its tree. Once it's up the
 // tree the sheep is gone. Catch it before then: a pounce, or just running
 // into it, makes it drop the sheep and bolt up the tree. Shut pens keep it
 // out. A grabbed sheep's s.grabbed is the cougar (k.isCougar), as with coyotes.
 // =====================================================================
-const COUGARS = Array.from({ length: T.cougar.n }, (_, i) => { const L = GROVES.length ? GROVES[0].trees[i % GROVES[0].trees.length] : LAIRS[0];
-  return { i, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
+const COUGARS = GROVES.map((gv, i) => { const L = gv.trees[0];
+  return { i, grove: gv, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
     state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, dazeT: 0, models: makeCougar() }; });
 function perchCougar(k) { const L = k.lair; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
 const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;   // a shut pen doesn't stop it: it jumps the fence
@@ -9113,13 +9127,13 @@ function cougarLeapDog(k, d) {
 }
 function cougarBonked(k, d) {
   SFX.bonk(panOf(k.x, k.z), 0.35); starBurst(k.x, k.y + 0.9, k.z, 10, undefined, { speed: 5, up: 4 }); shakeCam(0.4); hitStop(0.07); rumble(d.player, 0.9, 0.6, 220);
-  Sound.yowl(panOf(k.x, k.z)); floatText('BONK!', k.x, k.y + 1.9, k.z, '#ffffff', 1.3); dizzy(k, 1, 1.2);
+  Sound.yowl(panOf(k.x, k.z)); floatText('BONK!', k.x, k.y + 1.9, k.z, '#ffffff', 1.3); dizzy(k, T.cougar.daze + 1.5, 1.2);
   const dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz) || 1, kick = T.cougar.bonkKick * dogK(d, 'bonk'); k.vx = dx / dl * kick; k.vz = dz / dl * kick;
   k.bonks = (k.bonks || 0) + 1; train(d, 'bonk', T.train.bonkFoe);
   cougarSpooked(k, 1);
-  if (k.state === 'retreat') {   // it tumbles on toward its tree, seeing stars: a dog can catch it and bonk it again, all the way home
+  if (k.state === 'retreat') {   // knocked over: it tumbles on toward its tree, seeing stars, then limps home: a dog can catch it and bonk it again, all the way
     const L = k.lair, tx = L.bx - k.x, tz = L.bz - k.z, tl = Math.hypot(tx, tz) || 1; k.vx = tx / tl * T.cougar.bonkKick; k.vz = tz / tl * T.cougar.bonkKick;
-    k.dazeT = T.cougar.daze; k.yaw = Math.atan2(k.vx, k.vz);
+    k.dazeT = T.cougar.daze; k.yaw = Math.atan2(k.vx, k.vz); k.y = groundY(k.x, k.z); k.h = 0;
   }
 }
 function startMaul(k, d) {
@@ -9164,32 +9178,34 @@ function maulEndFx(d, k, by) {
   SFX.bonk(panOf(k.x, k.z), 0.4); starBurst(k.x, k.y + 0.9, k.z, 12, undefined, { speed: 5, up: 4 }); shakeCam(0.45); hitStop(0.08);
   if (by) rumble(by.player, 1, 0.8, 250);
 }
-// how many hunt tonight: more with more dogs, one more from day moreFrom
-function cougarHunters() { const C = T.cougar; return Math.min(COUGARS.length, C.hunt[clamp(G.dogs.length, 1, C.hunt.length) - 1] + (G.clock.day >= C.moreFrom ? 1 : 0)); }
 // the grove nearest the flock, and how far its nearest tree is
 function nearGrove() {
   const fc = flockCenter(); let best = null, bd = Infinity;
   for (const gv of GROVES) for (const L of gv.trees) { const d = Math.hypot(L.x - fc.x, L.z - fc.z); if (d < bd) { bd = d; best = gv; } }
   return { grove: best, d: bd };
 }
-// up the trees of grove gv (random ones: nobody knows which one it'll come from), all but one still out with its catch
-function perchGrove(gv) {
-  const busy = COUGARS.filter(k => k.prey), free = gv.trees.filter(L => !busy.some(k => k.lair === L));
-  for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [free[i], free[j]] = [free[j], free[i]]; }
-  const out = [];
-  for (const k of COUGARS) {
-    if (k.prey) continue;
-    k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.bonks = 0; k.wiseShown = false; k.dazeT = 0; k.t = 0;
-    if (!free.length) { k.state = 'away'; continue; }
-    k.lair = free.pop(); perchCougar(k); k.state = 'perch'; out.push(k);
-  }
-  return out;
+// the cougars round the flock tonight: each one with a tree of its own within range (+30) of it
+function cougarsNear() {
+  const fc = flockCenter(), R = T.cougar.range + 30;
+  return COUGARS.filter(k => k.grove.trees.some(L => Math.hypot(L.x - fc.x, L.z - fc.z) < R));
 }
+// gv's cougar up a random tree of its own (nobody knows which one it'll come from); not one still out with its catch. → [it] or []
+function perchGrove(gv) {
+  const k = COUGARS.find(o => o.grove === gv); if (!k || k.prey) return [];
+  k.hunts = false; k.driven = 0; k.target = null; k.barks = 0; k.bonks = 0; k.wiseShown = false; k.dazeT = 0; k.t = 0;
+  k.lair = gv.trees[Math.floor(Math.random() * gv.trees.length)]; perchCougar(k); k.state = 'perch';
+  return [k];
+}
+// a cougar on the ground (or on its way down): the others wait their turn
+const cougarAbroad = k => !['away', 'perch', 'fed'].includes(k.state);
 function cougarsAtNightfall() {
-  const C = T.cougar, { grove, d } = nearGrove(); if (!grove) return;
-  const up = perchGrove(grove);
-  if (d > C.range + 30 || !(Math.random() < C.chance)) return;
-  for (const k of up.slice(0, cougarHunters())) cougarHunt(k, rnd(C.delay[0], C.delay[1]));
+  const C = T.cougar, near = cougarsNear();
+  for (const k of COUGARS) if (!near.includes(k) && !cougarAbroad(k)) { k.hunts = false; k.state = 'away'; }
+  const up = near.filter(k => !cougarAbroad(k)).flatMap(k => perchGrove(k.grove));
+  if (!up.length || !(Math.random() < C.chance)) return;
+  for (let i = up.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [up[i], up[j]] = [up[j], up[i]]; }
+  let h = rnd(C.delay[0], C.delay[1]);
+  for (const k of up) { cougarHunt(k, h); h += rnd(C.gap[0], C.gap[1]); }   // one after another, through the night
 }
 function cougarHunt(k, hours = 0) {   // (also the debug key J, and tests)
   if (k.state === 'away') { perchCougar(k); k.state = 'perch'; k.t = 0; }
@@ -9220,6 +9236,7 @@ function updateCougars(dt) {
       case 'perch': case 'fed': {
         if (!isNight() && !onScreen(L.x, L.y + 3, L.z, 0.1)) { k.state = 'away'; break; }   // gone by day, when nobody's looking
         if (k.state === 'perch' && k.hunts && isNight() && (k.wait -= dt * (G.ff ? T.ffMul : 1)) <= 0 && G.time - (k.treedAt ?? -1e9) > C.treedT) {
+          if (COUGARS.some(o => o !== k && cougarAbroad(o))) { k.wait = rnd(0.3, 0.6) * T.hourSec; break; }   // a loner: another's out, it waits its turn
           k.target = cougarTarget(k) || cougarTarget(k, null, Infinity);
           if (k.target) { k.state = 'down'; k.t = 0; k.huntT = 0; k.holdT = 0; cougarWarn(k); }
           else k.wait = 20;   // nothing out in reach: it watches a while longer
@@ -9343,15 +9360,17 @@ function updateCougars(dt) {
         break;
       }
       case 'retreat': {
-        if (k.dazeT > 0) {   // bonked: skidding, seeing stars
-          k.dazeT -= dt; const q = Math.max(0, 1 - 5 * dt); k.vx *= q; k.vz *= q;
+        if (k.dazeT > 0) {   // bonked: tumbling, then sprawled, seeing stars
+          k.dazeT -= dt; const q = Math.max(0, 1 - 3.5 * dt); k.vx *= q; k.vz *= q;
           k.x += k.vx * dt; k.z += k.vz * dt; collideWorld(k, C.r); collideFences(k, C.r); k.y = groundY(k.x, k.z); k.h = 0;
-          k.t = 0; break;
+          k.t = 0;
+          if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.6 || Math.hypot(L.x - k.x, L.z - k.z) < 1.9) { k.dazeT = 0; k.state = 'up'; }   // tumbled home: up it scrambles
+          break;
         }
         const run = C.run * (k.bonks ? C.bonkRun : 1);
         if (cougarOut(k, 'retreat', run, dt)) break;
         moveCougar(k, L.bx, L.bz, run, dt);
-        if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6 || k.t > 15) { k.state = 'up'; k.t = 0; }
+        if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6 || k.t > C.homeT) { k.state = 'up'; k.t = 0; }
         break;
       }
     }
@@ -11406,7 +11425,7 @@ function syncCougar(k) {
   const t = G.time, sp = Math.hypot(k.vx, k.vz), L = k.lair;
   M.root.position.set(k.x, k.y, k.z);
   const blink = (t + k.i * 1.7) % 4.3 < 0.13; for (const e of M.eyes) e.scale.y = blink ? 0.004 : 0.035;
-  let pitch = 0, bodyY = 0, headX = 0, headY = 0, t0 = -0.3, t1 = 0, t2 = 0.4, tSway = Math.sin(t * 1.4 + k.i) * 0.2;
+  let pitch = 0, roll = 0, bodyY = 0, headX = 0, headY = 0, t0 = -0.3, t1 = 0, t2 = 0.4, tSway = Math.sin(t * 1.4 + k.i) * 0.2;
   M.legs.forEach(g => { g.rotation.set(0, 0, 0); });
   if (st === 'perch' || st === 'fed') {   // stretched along the limb, legs hanging either side, tail hanging down and swaying
     bodyY = -0.55; t0 = -1.35; t1 = 0.15; t2 = 0.35;
@@ -11430,14 +11449,24 @@ function syncCougar(k) {
     } else if (st === 'leap' || st === 'vault' || st === 'leapDog') {
       pitch = -0.25 * clamp(k.h / 1.3, 0, 1);
       M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -1.15 : 1.05; }); t0 = 0.1; t2 = 0.2;
-    } else {   // stalking low and slow, or running
-      const stalk = st === 'stalk'; bodyY = stalk ? -0.2 : Math.abs(Math.sin(k.leg * 2)) * 0.05;
+    } else if (st === 'retreat' && k.dazeT > 0) {   // bonked: head over heels, sprawled on its side, legs going, seeing stars; then up
+      const f = clamp(1 - k.dazeT / T.cougar.daze, 0, 1), sg = k.i % 2 ? 1 : -1;
+      roll = sg * (f < 0.4 ? f / 0.4 * (TAU + Math.PI / 2) : Math.PI / 2 * (1 - smooth(0.8, 1, f)) + (f < 0.8 ? Math.sin(t * 9) * 0.08 : 0));
+      M.legs.forEach((g, i) => { g.rotation.x = Math.sin(t * 17 + i * 1.7) * 0.9; g.rotation.z = (i % 2 ? -1 : 1) * 0.35; });
+      headX = 0.25; headY = Math.sin(t * 5) * 0.5; t0 = -0.2; t1 = 0.5; t2 = 0.6; tSway = Math.sin(t * 7) * 0.6;
+    } else {   // stalking low and slow, or running (bonked: limping home, head and tail low, wobbling)
+      const stalk = st === 'stalk', limp = st === 'retreat' && k.bonks > 0; bodyY = stalk ? -0.2 : limp ? -0.08 + Math.abs(Math.sin(k.leg * 2)) * 0.1 : Math.abs(Math.sin(k.leg * 2)) * 0.05;
       const amp = Math.min(stalk ? 0.55 : 1.0, sp * (stalk ? 0.28 : 0.14));
-      M.legs.forEach((g, i) => { g.rotation.x = Math.sin(k.leg * (stalk ? 1.6 : 2.2) + (i === 0 || i === 3 ? 0 : Math.PI)) * amp; });
-      headX = stalk ? 0.28 : st === 'drag' ? 0.4 : 0.1; t0 = stalk ? -0.35 : -0.1; t2 = stalk ? 0.7 + Math.sin(t * 7) * 0.25 : 0.3;
+      M.legs.forEach((g, i) => { g.rotation.x = Math.sin(k.leg * (stalk ? 1.6 : 2.2) + (i === 0 || i === 3 ? 0 : Math.PI)) * amp * (limp && i === 1 ? 0.3 : 1); });
+      headX = stalk ? 0.28 : st === 'drag' ? 0.4 : limp ? 0.38 : 0.1; t0 = stalk ? -0.35 : limp ? -0.9 : -0.1; t2 = stalk ? 0.7 + Math.sin(t * 7) * 0.25 : 0.3;
+      if (limp) { roll = Math.sin(k.leg * 2.2) * 0.1; headY = Math.sin(t * 3) * 0.25; }
     }
   }
-  M.root.rotation.set(pitch, k.yaw + (st === 'down' && k.y < L.py - 0.3 ? Math.PI : 0), 0);   // head first down the trunk
+  M.root.rotation.set(pitch, k.yaw + (st === 'down' && k.y < L.py - 0.3 ? Math.PI : 0), roll);   // head first down the trunk
+  if (roll) {   // rolled about its middle, not its feet: its side (or back) on the ground
+    const B = 0.92, sr = Math.sin(roll), cr = Math.cos(roll);
+    M.root.position.set(k.x + Math.cos(k.yaw) * B * sr, k.y + 0.38 + 0.54 * Math.max(0, cr) - B * cr, k.z - Math.sin(k.yaw) * B * sr);
+  }
   M.body.position.y = bodyY; M.head.rotation.set(headX, headY, 0);
   M.tail[0].rotation.set(t0, 0, 0); M.tail[1].rotation.set(t1, tSway, 0); M.tail[2].rotation.set(t2, tSway * 1.4, 0);
 }
@@ -16853,8 +16882,8 @@ const NET_TYPES = {
   },
   cougar: {   // COUGARS: built the same on every screen; lair: tonight's tree
     tag: 'Q', all: () => COUGARS, id: k => k.i, static: true,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's', lair: { c: 'i', get: k => k.lair.id, set: (k, v) => { if (LAIRS[v]) k.lair = LAIRS[v]; } } },
-    animate: (k, dt) => { k.y = groundY(k.x, k.z) + k.h; k.leg += Math.hypot(k.vx, k.vz) * dt * 2.4; },
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, h: .02, yaw: 'a', state: 's', dazeT: .05, bonks: 'i', lair: { c: 'i', get: k => k.lair.id, set: (k, v) => { if (LAIRS[v]) k.lair = LAIRS[v]; } } },
+    animate: (k, dt) => { k.y = groundY(k.x, k.z) + k.h; k.leg += Math.hypot(k.vx, k.vz) * dt * 2.4; if (k.dazeT > 0) k.dazeT = Math.max(0, k.dazeT - dt); },
   },
   falcon: {   // FALCON (and FALCON CANYON's, built the same on every screen); prey travel as s.grabbed ('A' + F.i) or a dog's air kind 'falcon'
     tag: 'A', all: () => FALCONS, id: F => F.i, static: true,
@@ -18132,7 +18161,8 @@ function step(dt) {
   if (G.mode === 'play') {
     // fast-forward the night when the whole flock is penned behind a closed gate (and done with its supper)
     const live = living();
-    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && (s.pen && s.pen.gateT < 0.05 || passSafe(s)) && s.state !== 'trough' && s.state !== 'wait')   // (MOUNTAIN PASS: or warm by a fire) && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
+    G.ff = isNight() && live.length > 0 && live.every(s => !s.grabbed && (s.pen && s.pen.gateT < 0.05 || passSafe(s)) && s.state !== 'trough' && s.state !== 'wait')   // (MOUNTAIN PASS: or warm by a fire)
+      && !G.coyotes.some(c => c.prey) && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
       && !HANK.care && !live.some(s => s.bleedRate > 0)   // VET: not while one's bleeding (time to fetch bandages) or Hank's seeing to one
       && (!SEA.on || seaAtRest());   // SAILING: only at anchor
     const dtH = stepClock(dt);
@@ -18243,7 +18273,7 @@ function debugKeys() {
   if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = postPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
 }
 // expose for debugging / automated tests
-window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarHunters, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
