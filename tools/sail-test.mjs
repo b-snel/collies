@@ -5,7 +5,7 @@
 // salt, a chest, the spring; away again), the chase camera (astern, level, lagging her turns), anchoring, and the hazards: orcas (bonk:
 // sheep by that rail go over; a bark turns one), reefs, sharks, the storm (gale, a great wave abeam / on the bow), the waterspout, sirens
 // (lured to the rail and over; a bark, a dog in the way), the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep
-// into its eye; beaten), and Cabo (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away.
+// into its eye; beaten), and the Promised Land (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away.
 // node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|start|dock|land]
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -484,7 +484,7 @@ if (want('arrive')) {
     out.t = H.r(t); out.mode = G.mode; out.line = document.getElementById('eLine').textContent; out.n0 = n0; out.title = document.getElementById('eTitle').textContent;
     return out;
   });
-  ok(`into Cabo: the journey ends with the sheep still aboard (${r.line}; one was in the water)`, r.mode === 'end' && r.line.includes(String(r.n0 - 1)), r);
+  ok(`into the Promised Land: the journey ends with the sheep still aboard (${r.line}; one was in the water)`, r.mode === 'end' && r.line.includes(String(r.n0 - 1)), r);
 }
 
 if (want('start')) {

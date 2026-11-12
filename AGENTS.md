@@ -11,17 +11,17 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a breed,
 better with practice), local or online, drive a flock along one trail
-(desert → mountains → ocean → the Promised Land → Falcon Canyon → desert →
-the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → Cabo): graze it, pen it at camps by nightfall,
-fight off coyotes, cougars and falcons till dawn. Rattlesnakes in the last
+(desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
+the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
+fight off coyotes, cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
-The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to Cabo
+The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to the Promised Land
 (wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
-A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
+A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
 
 ### Run
 
@@ -57,13 +57,13 @@ A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
-every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `train(d, trait, amt)` (xp),
+every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `dogDrown(d)`, `reviveDog(d, self)`, `collideWade(e, r)` / `wadeSdfAt`, `train(d, trait, amt)` (xp),
 `dogK(d, trait)` (breed × training multiplier, 1 = as tuned), `barkR(d)`, `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`/`d.heldBy`, `p.gateT` (0 shut…1
 open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
@@ -91,18 +91,18 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), final pen (no finish) |
+| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
-| `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
+| `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset\|beat\|teamheave\|dig\|give\|row]` | ropes: one a leg, drag (links hold, no stamina), grab held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset; the beat (pulses, on it big and cheap, mashing weak: beats mashing and off-beat), team heave, dig in (holds, breath back, never gains, broken on the beat), give slack (stumbles, Hank too), row and right-stick heaves |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; loners: a territory each, more each leg, off the pens, random trees, one out at a time |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|day1\|odds\|gone]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only, not day one; past the canyon gone (snakes, pass, sea) |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits\|boss]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset; the Great Falcon: eats undefended (barks or not), eyrie shake, beaten by pounces, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
-| `maul-test.mjs` | dog health: maulings, mashing free, KO, nips, barks wearing off, bonking a fleeing cougar (knocked over, limps), again and again till it's home |
+| `maul-test.mjs` | dog health: maulings, mashing free, KO (Hank brings it round), nips, barks wearing off, bonking a fleeing cougar (knocked over, limps), again and again till it's home |
 | `breed-sim.mjs [days]` | flock parked for days: lambs, pasture, starvation |
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
@@ -123,8 +123,9 @@ Run the ones touching your change; report the numbers.
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple\|carry]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held out and taken, into a pen, snatched, eaten with a dog by the tree |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
-| `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`) |
+| `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`); RB grabs, RT sprints; right-stick swings shake (one a swing, between frames too, held over: one) |
 | `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|isle\|ring\|cam\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore: flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey |
+| `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
@@ -178,7 +179,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Rams** charge coyotes, then leaning dogs; bark cancels; punted → dazed +
   grudge. Lambs need a ram penned overnight.
 - **Grass** on the 2 m grid as an R8 texture (terrain + tufts). 1 h = 13 s by day, 18 s at night (`hourLen`).
-  0.4 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
+  0.5 hunger/h on good grass; calm walkers snatch bites (`T.moveGraze`). Flock moves on together when eaten out
   (`grazeScan`), never while worked. Regrowth ~5 days, runs in `step()`.
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
   lamb at dawn (`T.lambChance`). A ram over `T.readyLose` eats before he courts.
@@ -239,7 +240,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Only short of Falcon Canyon's far end (`falconLand`, nests too); once the flock's past it, gone for the journey
   (`G.falconGone`): none in the snakes, up the pass, at sea. Off in `?sim` (`T.falcon.on`).
 - **Falcon Canyon** (`CANYON`, `T.canyon`, `canyonK`, own rng): a narrow red gorge (`s0`…`s1`)
-  between the Promised Land and the snakes; the only way on. Bones and feathers at its mouth, a ram's
+  between Sweetgrass Meadow and the snakes; the only way on. Bones and feathers at its mouth, a ram's
   skull on a stake each side, gloom (`GLOOM`, `CANYON.k`), moaning wind. `FALCONS[1…]` sit on rock
   pillars (`F.home`, `CANYON.perches`, ids 100+); more watch from the cliffs (decor). By day, while
   anything's in it (`updateCanyon`), one swoops every `every` s (`maxAir` at once) from the nearest rested
@@ -286,7 +287,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (`trainFx`). One journey: `resetGame` clears it; swap breed and back keeps it. Off in `?sim`
   (`T.train.on`). Guests get `d.breed` + levels (`brd`, `netDogBreed`).
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
-  down); at 0 knocked out a while, never dies. Cougar close (`maulR`, or bumped
+  down); at 0 knocked out (`d.ko`) till Hank brings it round (RESCUE), never dies. Cougar close (`maulR`, or bumped
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
   `maul.max`; mash pounce to throw it off, or a partner pounces it. Coyotes nip
   (`T.nip`) when bold, screening or striking.
@@ -295,7 +296,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   for `T.barkWise`; then bold (`barkWorks`, hint `coyote-wise`): only a bonk moves it,
   and it lunges at dogs to nip. Packs lose less heart per bark (`packK`).
 - **Traders** (`STALLS`, `T.vendor`): a stall `before` m short of each camp
-  past the first, plus the Trading Post's (`MARKET`); a second row of mats
+  past the first (the Trading Post's: `MARKET`, the only one there); a second row of mats
   (`row2`) for the vet's wares. A dog on a mat barks
   (`vendorBark`, host) to buy with `G.wool`. 📍 picks the pen (found ones,
   `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough /
@@ -316,7 +317,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
   - **Fires** (`PASS.fires`, camps without pens): Hank lights the flock's (`passFireGoal`: the next one up within
     `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it.
-    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it. Warm out to `r1`; `spots` in two rings.
+    Out or under `low` h: his first job after a dog down (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
+    (two rings) round it, the coldest first (`warmGo`, state 'warm'); nobody's jostled into it (`fireShove`). Warm out to `r1`.
+    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it.
   - **Base camp** (`T.pass.base`, `f.base`): a fire at the foot of the climb, added after world gen's draws (world gen never sees it). Its
     stick teaches the torch: `hint('torch')`, nudges (`drawTorchOverlay`), Hank's lines.
   - **Torches** (`TORCHES`, `T.torch`, `holdKind 'torch'`): a stick by each fire (`f.torch`). ✊ carries it; its tip in a lit fire: alight
@@ -325,8 +328,6 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   - **Melt** (`MELT`, `T.melt`, `meltTex`, own 2 m grid; `MELTV` the pass's vertices): lit torches and fires melt the snow: `gCap` goes
     from what shows through (`gSnow`) to the meadow under it (`gUnder`), the grass with it; `iceK` × (1 − melt), the ice glaze gone there.
     Snows over `refreeze`/h (× `night`), `blizz`/h × a blizzard. Guests melt their own (`updateMelt` in `syncPass`), the host sends the grass.
-    Out or under `low` h: his first job (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
-    round it, the coldest first (`warmGo`, state 'warm'); nobody's jostled into it (`fireShove`).
   - **Snow** (`s.snow`, `T.snow`): a blizzard piles it on; running sheds it; heat melts it.
     **Blizzards** (`PASS.blizz`, `T.blizz`): now and then while the flock's up there; whiteout.
   - **Ice** (`ICES`, `T.ice`, `startSlide`): onto it moving: slide downhill, spinning, legs going,
@@ -369,7 +370,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     back by day (state `'cast'`, legs kicking, a "!" over it, off screen too).
     Only a pounce rights it (`castFlip`); left `die` h it dies (`'cast'`).
     Shearing stops it.
-  - **Mud** (`MUDS`, `T.mud`): bogs in the Promised Land. Sheep slow, may
+  - **Mud** (`MUDS`, `T.mud`): bogs in Sweetgrass Meadow. Sheep slow, may
     stick (`s.bog`, sinking), calm ones go round; a pounce pops it out over
     the nearest edge, muddy a while (`s.mud`). Dogs wade slow.
   - **Balker** (`T.balk`): of an evening (day 2 on) the bell ewe may plant
@@ -387,7 +388,20 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   streams and the river is lusher (cap up to 1.45).
 - **River, no bridge** (`RIVER`, `inRiver`): dogs walk in and swim (`startSwim`,
   `collideDog` / `SWIM_SDF`; drops what they hold), Hank wades. Sheep can't: a
-  splashed one swims back to its own bank (`a.side`). Only the launcher takes them over.
+  splashed one swims back to its own bank (`a.side`, the sea off its mouth too). Only the launcher takes them over.
+- **Open water** (`seaOK`, `openWater`, `WADE_SDF`, `collideWade`, `wadeSdfAt`): no wall at the water line. The sea, the lake
+  (and the lake's low shore past the trail's edge) stay blocked in `blk` / `SDF` (world gen, grazing, A* unchanged) but are open
+  to dogs and Hank (`SWIM_SDF`) and to sheep, coyotes, cougars (`WADE_SDF`; not the river). Out of their depth: sheep swim back
+  (`sheepWadeIn`), coyotes swim out soggy and leave, cougars swim slow. Calm ones keep off it; bolting ones can be driven in.
+  Dressed, Hank keeps out of the sea (`seaDeep`).
+- **Swimming tires a dog** (`T.rescue.drain`, `idle` floating): ~90 s paddling from full. At 0: under (`dogDrown`, `a.drown`,
+  `d.ko`), limp (`drownStep`).
+- **Rescue** (`HANK.rescue`, `T.rescue`, `updateRescue`, `rescueGoal`, `rescueStep`, `reviveDog`): a dog out cold or drowning is
+  his first job: he wakes, drops jobs and ropes, runs (`run`). In the water: trunks on at its edge (`hankChange`, `HANK.trunks`),
+  swims (`HANK.swim`), tows it to `shoreNear`, CPR there (`HANK.cpr`, a drowned one coughs); trunks off once ashore. A partner
+  can't nose a KO'd dog up. Nobody in `giveUp` s: it comes round itself. At sea: as before (it comes round). Online: `NET_TYPES.hank`
+  `trunks`/`swim`/`cpr`, `rescueFx`.
+- **Sand** (`T.bare`, `offBare`): the beach grows nothing (zeroed after world gen); a calm sheep on it walks to grass; no wandering onto it.
 - **Launcher chute** (`T.launcher.funnel`, `inChute`): long wings; driven sheep bend
   for the mouth, slide round a wing's tip, walk on to the low end. In the chute: no breakouts.
 - **Mouth loads swing** (CARRY SWING, `carrySwing`, `d.cw`, `T.carrySwing`, drawing only): anything in a
@@ -397,22 +411,33 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
-- **Grab: hold Ⓧ** (E / , / ✊, `inp.grab`): held, it bites what comes in reach and keeps hold; let go: dropped
-  (running: a fling). Lost while held (slip, buck, knocked): no bite again till Ⓧ is let go (`d.grabLock`). Ⓑ with
-  something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: let go,
-  pounce. Bots: `grab: true` is held.
+- **Grab: hold RB** (or Ⓧ; E / , / ✊, `inp.grab`; RB leaves the thumb free): held, it bites what comes in reach and keeps hold; let go: dropped
+  (running: a fling). Lost while held (slip, buck, knocked): no bite again till it's let go (`d.grabLock`). Ⓑ or a
+  right-stick swing (`inp.shake`: out from rest or across, counted in `padPoll` like presses, `T.shake`; not a station) with
+  something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: Ⓑ lets go,
+  pounces. A coyote: each shake dazes it longer once let go (`c.shook` → `c.dazeT`, `coyoteDazed`: it sways, seeing stars,
+  then runs); `toss` shakes: shaken loose. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
 - **Ropes** (`ROPES`, `T.rope`, own rng): one coiled off the trail on each leg, none in Falcon Canyon. Bitten
   anywhere (`ropeGrip`, `d.ropeI`), dragged: Verlet nodes (`ropeSim`), links solved outward from the grips, a little
-  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Ⓑ: a wave (`ropeShake`).
+  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Ⓑ: a wave (`ropeShake`). A dog near
+  one, mouth free: the grab key (RB ✊) over it (`drawRopeOverlay`, this screen's dogs).
   Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
 - **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
-  (`d.tugS`: planted + walking back + Ⓑ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
+  (`d.tugS`: planted + walking back + heaves, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
   Up to 4 dogs: across the knot each side's heaves add up and it moves as one (`ropeHold`).
+  - **Heaves** (`tugTap`): Ⓑ, a right-stick swing, or a flick of the stick back (row: `rowB`). Full only wound up
+    (`gap` / `beat.T`, from `min`): mashing is weak and dear. **The beat** (`beat`, `U.t0`, `tugBeatOff`): the knot jumps every `T` s
+    (`ropeFx('beat')`, `R.draw.beatAt`), the heave key over it; a heave within `win` of it: × `k`, × `yank`, cheap.
+  - **Team heave** (`team`): same-side heaves on the beat within `win` s: TEAM HEAVE!, × `k` each.
+  - **Dig in** (LT, `d.dugIn`, `dig`): crouched, can't walk or heave, stamina back; its side's an anchor (`ropeHold`): it gives
+    only as far as the other side out-heaves `dig.s`. Walkers and mashers tire on it; heaves on the beat break it.
+  - **Give slack** (`give`, `tugGiven`): a dog stepping in toward the knot (`d.giving`, under `t` s) as a foe heaves: the foe
+    over-yanks, stumbles (`tugStumT`: × `k`, OOF!), wary `cd` s; the stepper's next heave counts on the beat (`feintT`).
 - **Hank's tug** (`hankRope`, `hankTug`, `HANK.rope`, `T.rope.tug.hank`): a dog brings a rope within `r` of him, he's free
   (`hankRopeFree`: awake, no job, nothing prowling): he walks to the far end, takes it, tugs every dog on it; walks back,
-  heaves every `every` s, tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
+  heaves on every `beats`th beat (step in just before it: he stumbles), tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
   let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
@@ -446,7 +471,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   fast-forward while one bleeds.
 - **Vet** (`VET`, `T.vet`): traders' second row 💉 🩹 💊 🪏 goes straight
   to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
-  (`HANK.care`, `s.state 'treat'`), before shearing (even the one he is shearing). His jobs: fire, patients, a tug, shearing, burials last. Over sick sheep: icon +
+  (`HANK.care`, `s.state 'treat'`), before shearing (even the one he is shearing). His jobs: a dog down (RESCUE, above all), fire, patients, a tug, shearing, burials, then sleep (`hankWorkDue`: work keeps him up, or gets him up). Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
 - **Burial** (`YARDS`, `T.remains`): his last job (`buryCan`): with a shovel, by day, nothing prowling, no
   patient, shearing or tug to do, not while the flock's up the pass, Hank carries a body (within `reach`) to the nearest camp's cemetery, digs,
@@ -508,10 +533,10 @@ Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with frie
   hooks glow and 🛟 ✊ while one's in the water, the flight dotted, a ring where it'll land, 🛟 ✔, HEAVE!, a bar, SAVED! (`drawRingOverlay`, `ringFx`).
 - **Anchor** (`T.sea.anchor`): holds in under `depth` m, she swings head to wind; deeper, it only drags. The night
   fast-forwards at rest (`seaAtRest`: alongside, or holding).
-- **Route** (`ROUTE`, `DOCKS`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → Cabo. Each island
+- **Route** (`ROUTE`, `DOCKS`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → the Promised Land. Each island
   to port of the way in, a jetty on that side.
 - **Alongside an island** (`seaMoorStep`, `seaMoor`, `SEA.berth`, `SEA.warp`): in by its jetty and slow (Hank spills her wind), or her
-  anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. Cabo: `finishGame`.
+  anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
 - **Islands** (`ISLES`, `ISLE`, `T.sea.isle`): ground in deck coords while she's alongside (`sdf`, `h`): beach, meadow, a crag (rock),
   a spring (`fresh`: the bucket fills). Drawn from the same shape. On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
   a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard.

@@ -45,7 +45,7 @@ if (w) {
   ok(`${w.streams} streams`, w.streams >= 2, w);
   ok(`walkable and wet (${w.walk}/${w.n}, ${w.wet}/${w.n})`, w.walk >= w.n * 0.97 && w.wet === w.n, w);
   ok(`lush banks (${w.bank} vs ${w.far} away), none in the water`, w.bank > w.far + 0.15 && w.inCap < 0.05, w);
-  ok(`${w.muds} bogs, all in the Promised Land, none in a camp`, w.muds >= 5 && w.mudPL === w.muds && w.mudCamp === 0 && w.mudStream === 0, w);
+  ok(`${w.muds} bogs, all in Sweetgrass Meadow, none in a camp`, w.muds >= 5 && w.mudPL === w.muds && w.mudCamp === 0 && w.mudStream === 0, w);
   ok(`${w.trees} apple trees (${w.apples} apples), dry`, w.trees >= 5 && w.apples === w.trees * 6 && w.treeWet === 0, w);
   ok('no stream through a camp', w.streamCamp === 0, w);
 }

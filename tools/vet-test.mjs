@@ -20,13 +20,13 @@ await h.page.evaluate(() => {
   };
 });
 
-// 1. the snakes: past the Promised Land, in the desert, each behind its own rock (the same every load)
+// 1. the snakes: past Sweetgrass Meadow, in the desert, each behind its own rock (the same every load)
 const r1 = await h.page.evaluate(() => {
   const { SNAKES, sAt, trailInfo, biomeW, CAMPS, FINAL, sdfAt } = GAME;
   return { n: SNAKES.length, s: SNAKES.map(n => Math.round(sAt(n.x, n.z))), lat: SNAKES.map(n => +trailInfo(n.x, n.z).lat.toFixed(1)), desert: Math.min(...SNAKES.map(n => biomeW(sAt(n.x, n.z))[0])),
     promised: CAMPS[3].s, final: FINAL.s, rock: Math.max(...SNAKES.map(n => Math.hypot(n.x - n.rock.x, n.z - n.rock.z) - n.rock.cr)), sdf: Math.min(...SNAKES.map(n => sdfAt(n.x, n.z))), x0: SNAKES[0].x };
 });
-ok(`${r1.n} rattlesnakes, in the desert past the Promised Land (s ${r1.s.join(', ')})`, r1.n >= 4 && r1.s.every(s => s > r1.promised + 60 && s < r1.final) && r1.desert > 0.7, r1);
+ok(`${r1.n} rattlesnakes, in the desert past Sweetgrass Meadow (s ${r1.s.join(', ')})`, r1.n >= 4 && r1.s.every(s => s > r1.promised + 60 && s < r1.final) && r1.desert > 0.7, r1);
 ok('each tucked in behind its rock, off the trail', r1.rock < 0.5 && r1.sdf > 0 && r1.lat.every(l => Math.abs(l) > 3), r1);
 await h.page.reload(); await h.page.waitForFunction(() => window.GAME);
 const x0b = await h.page.evaluate(() => GAME.SNAKES[0].x);
@@ -306,6 +306,24 @@ const r13heal = await h.page.evaluate(() => {
   return out;
 });
 ok('healing beats shearing: the one being shorn is cut, he treats it first', r13heal.shearing && r13heal.treat && !r13heal.job && r13heal.cured, r13heal);
+
+// 13a3. sleep is his last job: asleep by the fire, a cut sheep and bandages: he gets up and treats it; then back to bed
+const r13nap = await h.page.evaluate(() => {
+  const { G, HANK, pens, setGate, living, woundSheep, COUGARS } = GAME, pen = pens[0], f = pen.fire;
+  const quiet = () => { for (const c of G.coyotes) { c.state = 'leave'; c.x = c.z = 1e4; } for (const k of COUGARS) if (k.state !== 'perch' && k.state !== 'away') k.state = 'away'; };
+  G.clock.hour = 22; H.calm(); quiet(); setGate(pen, false); HANK.care = null; HANK.job = null; HANK.clippers = false; HANK.meds = { venom: 0, bandage: 0, pills: 0 };
+  living().forEach((o, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.4; H.place(o, pen.x + Math.cos(a) * rr, pen.z + Math.sin(a) * rr); });
+  H.place(HANK, f.x + 1.9, f.z); HANK.asleep = true; HANK.upT = -99; HANK.goal = null;
+  H.run(2, () => { G.clock.hour = 22; quiet(); }); const stays = HANK.asleep;
+  const s = living().find(o => !o.lamb); s.heldT = 6; s.grabBy = 'coyote'; woundSheep(s); HANK.meds.bandage = 2;
+  const up = H.run(3, () => { G.clock.hour = 22; quiet(); return !HANK.asleep; });
+  const cured = H.run(40, () => { G.clock.hour = 22; quiet(); return !s.ail; });
+  const slept = H.run(60, () => { G.clock.hour = 22; quiet(); return HANK.asleep; });
+  const out = { stays, up: +up.toFixed(2), cured: !s.ail, curedIn: +cured.toFixed(1), slept: HANK.asleep, sleptIn: +slept.toFixed(1) };
+  HANK.meds = { venom: 0, bandage: 0, pills: 0 }; G.clock.hour = 10; HANK.asleep = false; H.run(1);
+  return out;
+});
+ok(`asleep with nothing to do he sleeps on; a cut sheep: up in ${r13nap.up}s, treats it, back to bed`, r13nap.stays && r13nap.up < 1.5 && r13nap.cured && r13nap.slept, r13nap);
 
 // 13b. a full cemetery: Hank adds a row at the back (the fence goes round it) and buries the next one there
 const r13b = await h.page.evaluate(() => {
