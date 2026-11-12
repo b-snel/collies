@@ -514,8 +514,9 @@ const T = {
   // flock
   startAdults: 12, startLambs: 2, maxSheep: 160,
   hungerPerHour: 0.034, sleepHungerMul: 0.4, starveHours: 9,   // hours at max hunger before death (randomised ±35% per sheep)
-  eatPerHour: 6.2,       // grass units a sheep crops per in-game hour on good grass (1 unit = one full 2x2 m cell)
-  foodValue: 0.065,      // hunger removed per grass unit: good grass takes 0.4 hunger an hour, so a hungry sheep is fed in ~2 h
+  eatPerHour: 8.0,       // grass units a sheep crops per in-game hour on good grass (1 unit = one full 2x2 m cell)
+  foodValue: 0.065,      // hunger removed per grass unit: good grass takes 0.5 hunger an hour, so a hungry sheep is fed in ~1.5 h
+  bare: { cap: 0.12, good: 0.3, r: 12, cd: 4 },   // SAND: a calm sheep out on ground growing under `cap` (the beach) walks to grass (`good`+) within r m (a look every cd s)
   moveGraze: { k: 0.5, sp: 3.2, stress: 0.55 },   // snatching bites on the move: share of the grazing rate, gone by this speed (m/s) or stress
   grazeFull: 0.35,       // grass at least this thick is cropped at the full rate; thinner, proportionally slower
   grazeHunger: 0.1,      // sheep below this hunger stop grazing and idle
@@ -618,8 +619,13 @@ const T = {
   // always works on cats and birds (wise or not: drops a cougar's or falcon's catch, throws a cougar off a dog); a coyote: amt*n courage,
   // no packK, but it's still its one bark (T.coyoteBark.wise). Then `cd` s hoarse.
   teamBark: { win: 0.45, near: 26, grow: 0.4, amt: 0.5, cd: 3 },
-  // dog health (d.hp 0..1): back after `wait` s unhurt at regen/s (x lieRegen lying down); under limp it limps; at 0 it's out for koT s, up again at revive
+  // dog health (d.hp 0..1): back after `wait` s unhurt at regen/s (x lieRegen lying down); under limp it limps; at 0 it's out cold (koT: the stars)
+  // till Hank brings it round (RESCUE), up again at revive
   dogHp: { regen: 0.012, lieRegen: 3, wait: 5, limp: 0.3, koT: 6, revive: 0.25 },
+  // RESCUE: swimming (river, sea, lake) tires a dog: drain/s paddling (idle× floating, stick let go), / its stamina ★. At 0 it goes under: drowning.
+  // Out cold or drowning it waits for Hank: he runs over at run m/s (in the water: his swim trunks on at its edge, `change` s; swims at swim m/s,
+  // tows it back), brings it round (cpr s): up with `stamina`. reach: m he works from. Nobody's been in giveUp s: it comes to on its own
+  rescue: { drain: 0.011, idle: 0.35, run: 6.2, swim: 2.6, change: 1.1, cpr: 2.6, stamina: 0.5, reach: 1.3, giveUp: 150 },
   nip: { r: 1.7, dmg: 0.09, cd: [1.6, 2.6], knock: 5, stun: 0.3 },   // a coyote's nip (bold ones, screens and strikers)
   // coyotes
   coyoteRun: 8.8, coyoteTrot: 4.6, coyoteDrag: 3.4, coyoteFlee: 10, coyoteR: 0.45,
@@ -1595,7 +1601,7 @@ const onDeck = (x, z, m = 0) => deckSdf(x, z) > m;
 // what's sea: past the shore end of the pier (a line 1 m out from it), and everywhere once she's away. (SEA_LIVE: world gen's done. Till
 // then nothing is, so its draws see the land as it always was)
 let SEA_AWAY = false, SEA_LIVE = false;
-let SDF = null, SWIM_SDF = null;   // (the land's distance fields: buildSDF)
+let SDF = null, SWIM_SDF = null, WADE_SDF = null;   // (the land's distance fields: buildSDF; OPEN WATER: WADE_SDF)
 const SEAM_V = QUAY.shore + 1;
 const inSea = (x, z) => SEA_AWAY || SEA_LIVE && boatV(x, z) > SEAM_V;
 function quaySdf(x, z) {   // m inside the edge of the jetty: the quay, the gangplank, the pier (on in past the shore, so that's no edge)
@@ -1946,7 +1952,10 @@ function terrainH(x, z) {
 function groundY(x, z) { const ly = launcherY(x, z); return ly === null ? terrainH(x, z) : ly; }   // launcherY: the sheep launcher's plank (dog-moves section)
 
 // ---------------- walkability + signed distance field (1 m) ----------------
-const blk = new Uint8Array(GN), swimOK = new Uint8Array(GN);   // swimOK: blocked only by the river's water (dogs and Hank swim it)
+const blk = new Uint8Array(GN), swimOK = new Uint8Array(GN);   // swimOK: blocked only by water (dogs and Hank swim it)
+// OPEN WATER: the sea, the lake (and the lake's shore past the trail's edge): blocked for walking (blk: sheep don't graze or path there),
+// but not a wall for anything (WADE_SDF: sheep, coyotes, cougars wade in; deep, they swim). The river isn't: sheep never go in that
+const seaOK = new Uint8Array(GN);
 // MOUNTAIN PASS: by the hidden side trail world gen sees it as it first was (sideWas, its ground then: hWas); the cells it's opened up since
 // wait in sideOpen (k, blk) till world gen's draws are done (just before the pass's own scenery)
 const sideOpen = [], vWas = new Map();
@@ -1955,6 +1964,16 @@ const hWas = (x, z) => {   // the ground as it was (terrainH, its vertices from 
   const at = (a, b) => { const k = b * VX + a; if (!vWas.has(k)) { const d = sideDist, { hw, off, flat } = SIDE; sideDist = sideWas; Object.assign(SIDE, { hw: 1.7, off: 6.2, flat: null }); vWas.set(k, heightAt(GMINX + a * VS, GMINZ + b * VS)); sideDist = d; Object.assign(SIDE, { hw, off, flat }); } return vWas.get(k); };
   return lerp(lerp(at(i, j), at(i + 1, j), u), lerp(at(i, j + 1), at(i + 1, j + 1), u), v);
 };
+// OPEN WATER: water anywhere (in or past the trail's edge); past the east edge by the sea or the lake, the low dry shore down to it too
+function openWater(ci, x, z) {
+  if (ci.oW > 0) return false;   // (not up the river's gorge, west)
+  if (terrainH(x, z) < WATER_Y + 0.45) return true;
+  if (!(ci.oE > 0 && ci.oE >= ci.oW && ci.oC < 0)) return false;
+  const w = biomeW(ci.s), y = terrainH(x, z), nx = -tZ[ci.idx], nz = tX[ci.idx];
+  if (w[2] + w[3] < 0.5 || y > 0.6 || Math.abs(terrainH(x + nx, z + nz) - y) > 0.8) return false;
+  for (let r = 2; r <= 8; r += 2) if (terrainH(x + nx * r, z + nz * r) < WATER_Y + 0.45) return true;
+  return false;
+}
 const cellBlk = (ci, x, z, side, h) => {   // 0 walkable, 1 blocked, 2 blocked but dogs and Hank swim it
   if (Math.max(ci.oW, ci.oE, ci.oC) > 0 && !side) return 1;   // (MOUNTAIN PASS: the hidden side trail runs outside the floor)
   const y = h(x, z);
@@ -1967,12 +1986,13 @@ for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
   let b = cellBlk(ci, x, z, sideDist[k] < SIDE.hw, terrainH);
   if (sideDist[k] < 1e3 || sideWas[k] < 1e3) { const was = cellBlk(ci, x, z, sideWas[k] < 1.7, hWas); if (was !== b) sideOpen.push(k, b); b = was; }
   if (b) { blk[k] = 1; if (b === 2) swimOK[k] = 1; }
+  if (b === 1 && !(sideDist[k] < 1e3) && openWater(ci, x, z)) { swimOK[k] = 1; if (!inRiver(x, z)) seaOK[k] = 1; }   // OPEN WATER (past the trail's edge too)
 }
 const OBSTACLES = [];   // filled by scenery; stamped before the SDF is built
 function stampObstacle(x, z, r) {
   const i0 = Math.floor(x - r - GMINX), i1 = Math.ceil(x + r - GMINX), j0 = Math.floor(z - r - GMINZ), j1 = Math.ceil(z + r - GMINZ);
   for (let j = Math.max(0, j0); j <= Math.min(GZ - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(GX - 1, i1); i++) {
-    const dx = GMINX + i - x, dz = GMINZ + j - z; if (dx * dx + dz * dz <= r * r) { blk[j * GX + i] = 1; swimOK[j * GX + i] = 0; }
+    const dx = GMINX + i - x, dz = GMINZ + j - z; if (dx * dx + dz * dz <= r * r) { blk[j * GX + i] = 1; swimOK[j * GX + i] = 0; seaOK[j * GX + i] = 0; }
   }
 }
 function isBlocked(x, z) { return inSea(x, z) ? seaGround(x, z) <= 0 : blk[cellIdxAt(x, z)] === 1; }
@@ -2003,31 +2023,35 @@ function buildSDF() {
   SDF = sdfOf(blk);
   const sb = new Uint8Array(GN); for (let k = 0; k < GN; k++) sb[k] = blk[k] && !swimOK[k] ? 1 : 0;
   SWIM_SDF = sdfOf(sb);
+  for (let k = 0; k < GN; k++) sb[k] = blk[k] && !seaOK[k] ? 1 : 0;
+  WADE_SDF = sdfOf(sb);   // OPEN WATER
 }
 function sdfIn(F, x, z) {
-  if (inSea(x, z)) return F === SDF ? seaGround(x, z) : seaDogSdf(x, z);   // SAILING: sheep keep to the deck; nothing walls a swimmer in
+  if (inSea(x, z)) return F === SWIM_SDF ? seaDogSdf(x, z) : seaGround(x, z);   // SAILING: sheep keep to the deck; nothing walls a swimmer in
   const fx = x - GMINX, fz = z - GMINZ;
   const i = clamp(Math.floor(fx), 0, GX - 2), j = clamp(Math.floor(fz), 0, GZ - 2);
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * GX + i;
   return lerp(lerp(F[k], F[k + 1], u), lerp(F[k + GX], F[k + GX + 1], u), v);
 }
 const sdfAt = (x, z) => sdfIn(SDF, x, z);
-const swimSdfAt = (x, z) => sdfIn(SWIM_SDF, x, z);   // walls for swimmers: the river's water isn't one
+const swimSdfAt = (x, z) => sdfIn(SWIM_SDF, x, z);   // walls for swimmers: water isn't one
+const wadeSdfAt = (x, z) => sdfIn(WADE_SDF, x, z);   // OPEN WATER: walls for sheep, coyotes, cougars: the sea and the lake aren't one (the river is)
 const GRAD = { x: 0, z: 0 };
 function sdfGrad(x, z) {
   const e = 0.6, gx = sdfAt(x + e, z) - sdfAt(x - e, z), gz = sdfAt(x, z + e) - sdfAt(x, z - e), l = Math.hypot(gx, gz) || 1;
   GRAD.x = gx / l; GRAD.z = gz / l; return GRAD;
 }
-function swimGrad(x, z) {
-  const e = 0.6, gx = swimSdfAt(x + e, z) - swimSdfAt(x - e, z), gz = swimSdfAt(x, z + e) - swimSdfAt(x, z - e), l = Math.hypot(gx, gz) || 1;
+function fieldGrad(F, x, z) {
+  const e = 0.6, gx = sdfIn(F, x + e, z) - sdfIn(F, x - e, z), gz = sdfIn(F, x, z + e) - sdfIn(F, x, z - e), l = Math.hypot(gx, gz) || 1;
   GRAD.x = gx / l; GRAD.z = gz / l; return GRAD;
 }
-const collideDog = (e, r = T.dogR) => collideWorld(e, r, SWIM_SDF);
-// dogs and Hank: walls, but they wade into the river
+const swimGrad = (x, z) => fieldGrad(SWIM_SDF, x, z);
+const collideDog = (e, r = T.dogR) => collideWorld(e, r, SWIM_SDF);   // dogs and Hank: walls, but they wade and swim into the water
+const collideWade = (e, r) => collideWorld(e, r, WADE_SDF);           // OPEN WATER: sheep, coyotes, cougars: into the sea and the lake, not the river
 function collideWorld(e, r, F = SDF) {
   for (let it = 0; it < 2; it++) {
     const d = sdfIn(F, e.x, e.z); if (d >= r) return;
-    const g = F === SDF ? sdfGrad(e.x, e.z) : swimGrad(e.x, e.z), push = r - d;
+    const g = F === SDF ? sdfGrad(e.x, e.z) : fieldGrad(F, e.x, e.z), push = r - d;
     e.x += g.x * push; e.z += g.z * push;
     const vn = e.vx * g.x + e.vz * g.z; if (vn < 0) { e.vx -= vn * g.x; e.vz -= vn * g.z; }
   }
@@ -3079,6 +3103,13 @@ const APPLE_TREES = [], APPLES = [];
       break;
     }
   }
+}
+// SAND: world gen's draws are done: the beach (drawn as sand: by the sea from 8 m out, low) grows nothing
+for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) {
+  const v = b * VX + a, x = GMINX + a * VS, z = GMINZ + b * VS, ci = trailInfo(x, z), w = biomeW(ci.s)[2];
+  if (w < 0.001 || ci.lat < 6.5) continue;
+  const k = 1 - w * smooth(6.5, 8.5, ci.lat) * (1 - smooth(0.7, 1.1, vH[v]));
+  if (k < 1) { gCap[v] *= k; gAmt[v] *= k; gInit[v] *= k; }
 }
 // MOUNTAIN PASS: world gen's draws are done: the hidden side trail as it is now (sideOpen), its paving bare (no grass)
 {
@@ -4434,6 +4465,24 @@ function grassDash(s) {
   s.tx = bx; s.tz = bz; s.state = 'seek'; s.dash = true; s.gzLook = 0;
   return true;
 }
+// SAND: out on ground where nothing grows (the beach), with grass near: over to it (calm ones; the nearest good patch, no further than r)
+function offBare(s) {
+  const B = T.bare;
+  if (s.pen || s.stress > 0.5 || (s.bareCd || 0) > G.time || grassCapAt(s.x, s.z) >= B.cap) return false;
+  s.bareCd = G.time + B.cd * rnd(0.7, 1.3);
+  let best = null, bd = 1e9; const base = Math.random() * TAU;
+  for (let k = 0; k < 12; k++) {
+    const a = base + k * TAU / 12, ca = Math.cos(a), sa = Math.sin(a);
+    for (let r = 2; r <= B.r; r += 2) {
+      const x = s.x + ca * r, z = s.z + sa * r;
+      if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;
+      if (grassCapAt(x, z) >= B.good && grassAt(x, z) > T.grazeMin) { if (r < bd) { bd = r; best = { x: x + ca * 1.5, z: z + sa * 1.5 }; } break; }
+    }
+  }
+  if (!best) return false;
+  s.tx = best.x; s.tz = best.z; s.state = 'seek'; s.gzLook = 0;
+  return true;
+}
 function claimLick(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.lickSpots, p.lickBy, 'lslot', 'lick'); }
 function claimWater(s) { const p = s.pen; troughSpots(p); return claimSpot(s, p.waterSpots, p.waterBy, 'wslot', 'drink', T.water.hold); }   // WATER (one trough, a crowd: a fresh drinker gets a moment)
 // wait its turn where it is, but not in front of a trough (it'd block the way): step back toward the middle.
@@ -4478,7 +4527,7 @@ function decideCalm(s, nb, night) {
   // to graze; at dusk fed sheep stop grazing and bunch up (or go in) while hungry ones linger.
   const dusk = duskK(), need = T.grazeHunger + s.stress * 0.5 + dusk * 0.2 * (1 - s.hunger);
   const hk = clamp((s.hunger - T.grassDash.hunger) / (1 - T.grassDash.hunger), 0, 1);   // really hungry: food first, the flock can wait
-  const uGraze = s.hunger > need ? (0.35 + 0.65 * s.hunger + T.grassDash.want * hk) * clamp(1.2 - s.stress * (1.5 - s.hunger), 0, 1) : 0;
+  const uGraze = s.hunger > need ? (0.42 + 0.75 * s.hunger + T.grassDash.want * hk) * clamp(1.2 - s.stress * (1.5 - s.hunger), 0, 1) : 0;
   // sheep gravity: a knot drawn to a bigger group (or a sheep on its own) wants to go over to it; a worked-up one sooner
   const kn = s.knot, lone = !kn || kn.m === 1, stray = strayGoal(s);
   const uFlock = 0.3 + s.stress * 0.3 + (stray ? 0.15 + (kn ? kn.gw : 0) * 0.4 + (lone || s.pen ? 0.25 : 0) : 0) + (steady ? 0.3 : 0) + (s.anx || 0) * T.lonely.flock;   // on its own, it wants its flock more than an empty pen
@@ -4506,10 +4555,11 @@ function decideCalm(s, nb, night) {
     if (kn && kn.m > 1 ? findGrass(s, kn.cx, kn.cz) : findGrass(s, nC ? cX / nC : undefined, nC ? cZ / nC : undefined)) { s.state = 'seek'; return; }   // fresh grass near its own knot
     s.state = 'graze'; return;
   }
-  // nothing to do: mill about (a nervous sheep paces; one settled by a lying dog just stands)
+  if (offBare(s)) return;   // SAND: nothing to eat out here: back onto the grass
+  // nothing to do: mill about (a nervous sheep paces; one settled by a lying dog just stands), not out onto bare sand
   if (!steady && Math.random() < 0.3 + s.stress * 0.4) {
     const a = Math.random() * TAU, r = rnd(1.5, 4); const x = s.x + Math.cos(a) * r, z = s.z + Math.sin(a) * r;
-    if (sdfAt(x, z) > 1.2 && (!s.pen || insidePen(s.pen, x, z, 1))) { s.state = 'wander'; s.tx = x; s.tz = z; return; }
+    if (sdfAt(x, z) > 1.2 && (!s.pen || insidePen(s.pen, x, z, 1)) && (s.pen || grassCapAt(x, z) >= T.bare.cap || grassCapAt(s.x, s.z) < T.bare.cap)) { s.state = 'wander'; s.tx = x; s.tz = z; return; }
   }
   s.state = 'idle';
 }
@@ -5017,9 +5067,9 @@ function updateSheep(dt, dtH) {
           const k = FN.pull * clamp(1 + p / FN.r, 0.3, 1) * Math.min(1, toM * 2); dX += mx / ml * k * dl; dZ += mz / ml * k * dl;
         }
       }
-      // ---- avoid walls and fences
+      // ---- avoid walls and fences (OPEN WATER: the sea's edge too, but one bolting from a dog can be driven in)
       const sd = sdfAt(s.x, s.z);
-      if (sd < 2.2) { const g = sdfGrad(s.x, s.z), k = (2.2 - sd) * 0.9; dX += g.x * k; dZ += g.z * k; }
+      if (sd < 2.2) { const g = sdfGrad(s.x, s.z), wet = wadeSdfAt(s.x, s.z) > sd + 0.5, k = wet && s.state === 'flee' ? Math.min(2.2 - sd, 1.6) * 0.3 : (2.2 - sd) * 0.9; dX += g.x * k; dZ += g.z * k; }
       for (const p of pens) {
         if (p.deck) continue;   // SAILING: the bulwark is in the SDF
         const px = s.x - p.x, pz = s.z - p.z, r = Math.hypot(px, pz);
@@ -5078,7 +5128,8 @@ function updateSheep(dt, dtH) {
     const k = Math.min(1, acc * dt); s.vx += (tvx - s.vx) * k; s.vz += (tvz - s.vz) * k;
     s.x += s.vx * dt; s.z += s.vz * dt;
     if (SEA.on && s.pen && s.pen.deck) seaSheepDeck(s, dt);   // SAILING: the deck heels and jolts under it
-    collideWorld(s, s.r); const hitFence = collideFences(s, s.r); collideGraves(s, s.r);
+    collideWade(s, s.r); const hitFence = collideFences(s, s.r); collideGraves(s, s.r);   // (OPEN WATER: into the sea and the lake, not the river)
+    if (!s.pen && !inSea(s.x, s.z) && overWater(s.x, s.z)) { sheepWadeIn(s); continue; }   // ...out of its depth: swimming
     if (s.snag) snaggedStep(s, dt);   // BRAMBLES: held fast, struggling
     else if (T.bramble.on && play && !s.pen) {
       const b = brambleAt(s.x, s.z, s.r * 0.3), sp0 = Math.hypot(s.vx, s.vz), B = T.bramble;
@@ -5358,6 +5409,7 @@ function updateDog(d, inp, dt) {
     d.stunT -= dt; const k = Math.exp(-dt * 4); d.vx *= k; d.vz *= k;
     d.x += d.vx * dt; d.z += d.vz * dt; collideDog(d); collideFences(d, T.dogR); d.y = groundY(d.x, d.z); d.mode = 'walk';
     d.stamina = Math.min(1, d.stamina + T.staminaRegen * dogK(d, 'wind') * dt);
+    if (d.ko) { if (overWater(d.x, d.z) && !inSea(d.x, d.z)) { startSwim(d); dogDrown(d); } return; }   // RESCUE: out cold: only Hank brings it round
     // a partner nosing you gets you back on your feet
     for (const o of G.dogs) if (o !== d && !o.air && o.stunT <= 0 && d.stunT > 0.15 && Math.hypot(o.x - d.x, o.z - d.z) < 1.6) {
       d.stunT = 0; burst(d.x, d.y + 1.2, d.z, 8, '#ff8fb8', { speed: 1.2, up: 2.4, size: 0.14, grav: 1 });
@@ -5420,7 +5472,7 @@ function updateDog(d, inp, dt) {
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideDog(d);
   if (overWater(d.x, d.z)) {
-    if (inRiver(d.x, d.z)) { startSwim(d); return; }   // walked into the river: paddling now (drops what it holds)
+    if (!inSea(d.x, d.z)) { startSwim(d); return; }   // walked into the river, the sea, the lake: paddling now (drops what it holds)
     if (inSea(d.x, d.z)) {   // SAILING: over the rail, nothing under it: into the sea (the quay's edge: it stops, unless it leapt)
       if (QUAY.on && d.hopT <= 0 && d.pounceT <= 0 && Math.max(deckSdf(d.x, d.z), quaySdf(d.x, d.z)) > -0.6) { collideWorld(d, 0.12); if (overWater(d.x, d.z)) { d.x = ox; d.z = oz; } }   // (an island's beach: it wades in)
       else { seaDogOff(d); return; }
@@ -5517,7 +5569,7 @@ function knockDog(d, vx, vz, t, label = 'OOF!') {
 // ---------------- health: nips, maulings, getting knocked out, healing ----------------
 function dogHealth(d, dt) {
   const H = T.dogHp;
-  if (d.ko && d.stunT <= 0) { d.ko = false; d.hp = Math.max(d.hp, H.revive); d.hurtAt = G.time; train(d, 'grit', T.train.gritKO); }   // back on its feet (or nosed up by a partner)
+  if (d.ko) dogOutStep(d, dt);   // RESCUE: out cold (or drowning) till Hank comes
   if (!d.maul && !d.ko && G.time - d.hurtAt > H.wait) d.hp = Math.min(1, d.hp + H.regen * dogK(d, 'grit') * (d.mode === 'lie' ? H.lieRegen : 1) * dt);
 }
 // SHARED HOOK: something hurt the dog (amt in hp, 1 = all of it). At 0 it's knocked out a while (never dies).
@@ -5529,8 +5581,67 @@ function hurtDog(d, amt) {
   if (d.hp > 0) return;
   if (d.maul) endMaul(d.maul, 'done');
   if (d.holding) releaseHold(d, false);
-  d.ko = true; d.stunT = Math.max(d.stunT, T.dogHp.koT / g); d.pounceT = d.hopT = 0;
+  d.ko = true; d.koAt = G.time; d.stunT = Math.max(d.stunT, T.dogHp.koT / g); d.pounceT = d.hopT = 0;
   koFx(d);
+  if (d.air && d.air.swim) dogDrown(d);   // (in the water: under it goes)
+}
+// ---------------- RESCUE: out cold or drowning, a dog waits for Hank (HANK: rescueGoal / rescueStep) ----------------
+// SHARED HOOK: spent in the water: under it goes, limp, nose just out (d.ko too: everything leaves it be)
+function dogDrown(d) {
+  const a = d.air; if (!a || !a.swim) return;
+  if (d.holding) releaseHold(d, false);
+  a.drown = true; a.tow = null; d.stamina = 0; d.exhausted = true; d.vx *= 0.3; d.vz *= 0.3;
+  if (!d.ko) { d.ko = true; d.koAt = G.time; }
+  rescueFx('drown', d);
+}
+// towed ashore (or knocked out on dry land): lies there out cold
+function dogOut(d) {
+  d.ko = true; if (!d.koAt) d.koAt = G.time; d.stunT = Math.max(d.stunT, 0.2); d.vx *= 0.3; d.vz *= 0.3;
+  rescueFx('out', d);
+}
+function dogOutStep(d, dt) {
+  const R = T.rescue;
+  if (SEA.on && !(d.air && d.air.drown)) { if (d.stunT <= 0) reviveDog(d, true); return; }   // (SAILING: no Hank to spare; it comes round)
+  if (!(d.air && d.air.swim)) d.stunT = Math.max(d.stunT, 0.1);   // flat out: no control
+  if (G.mode === 'play' && G.time - (d.koAt || G.time) > R.giveUp && !(HANK.rescue && HANK.rescue.d === d && HANK.rescue.phase !== 'go')) {   // nobody's been: it comes to on its own
+    if (d.air && d.air.swim) { d.air = null; unstick(d, T.dogR + 0.5); d.y = groundY(d.x, d.z); }
+    reviveDog(d, true); return;
+  }
+  if ((d.zzT = (d.zzT || 0) - dt) <= 0) { d.zzT = 2.6; rescueFx(d.air && d.air.drown ? 'help' : 'zzz', d); }
+}
+// in the water, limp: bobbing low, a few bubbles; Hank's tow moves it (rescueStep)
+function drownStep(d, a, dt) {
+  a.t += 0; d.mode = 'walk'; d.inMag = 0;
+  if (!a.drown) { a.drown = true; a.tow = null; }
+  if (!a.tow) { const k = Math.exp(-dt * 1.5); d.vx *= k; d.vz *= k; d.x += d.vx * dt; d.z += d.vz * dt; collideDog(d); }
+  d.y = Math.max(groundY(d.x, d.z), WATER_Y - 0.82) + Math.sin(G.time * 2.2 + d.player.slot) * 0.06; d.leg += dt * (a.tow ? 3 : 0.6);
+  if (Math.random() < dt * 1.6) burst(d.x + rnd(-0.3, 0.3), WATER_Y + 0.05, d.z + rnd(-0.3, 0.3), 2, '#e8f8ff', { speed: 0.3, up: 1.6, size: 0.1, life: 0.6, grav: -1 });
+}
+// SHARED HOOK: brought round (by Hank; self: on its own, after a long wait). Up on its feet, some breath back
+function reviveDog(d, self = false) {
+  const R = T.rescue;
+  if (d.air && d.air.swim) { d.air.drown = false; d.air.tow = null; }
+  d.ko = false; d.koAt = 0; d.stunT = 0; d.hp = Math.max(d.hp, T.dogHp.revive); d.stamina = Math.max(d.stamina, R.stamina); d.exhausted = false; d.hurtAt = G.time;
+  train(d, 'grit', T.train.gritKO);
+  rescueFx(self ? 'self' : 'up', d);
+}
+function rescueFx(kind, d) {
+  if (!d) return;
+  const x = d.x, z = d.z, y = d.y, pan = panOf(x, z);
+  switch (kind) {
+    case 'drown': floatText('HELP!', x, y + 1.8, z, '#9fe3ff', 1.4); Sound.whimper(pan, d.pitch * 1.15); rumble(d.player, 1, 0.8, 400); splashFx(x, z, 0.7); break;
+    case 'help': floatText('🛟', x, y + 1.5, z, '#ffffff', 1.2); for (let i = 0; i < 4; i++) burst(x + rnd(-0.4, 0.4), WATER_Y + 0.1, z + rnd(-0.4, 0.4), 1, '#e8f8ff', { speed: 0.4, up: 2, size: 0.14, life: 0.8, grav: -1 }); break;
+    case 'zzz': floatText('💤', x, y + 1.3, z, '#cfe3ff', 1); break;
+    case 'out': Sound.whimper(pan, d.pitch * 0.85); burst(x, y + 0.4, z, 10, '#9fe3ff', { speed: 1.4, up: 1.5, size: 0.12, life: 0.6 }); break;
+    case 'cough': floatText('*cough*', x, y + 1.4, z, '#9fe3ff', 1); for (const c of ['#9fe3ff', '#e8f8ff']) burst(x + Math.sin(d.yaw) * 0.6, y + 0.5, z + Math.cos(d.yaw) * 0.6, 6, c, { speed: 2.4, up: 3, size: 0.12, life: 0.6, grav: -10 }); SFX.splash(pan, 0.12); break;
+    case 'grab': floatText('GOT YE!', x, y + 1.8, z, '#ffd36b', 1.2); splashFx(x, z, 0.6); break;
+    case 'change': for (const c of ['#ffffff', '#f2efe6', '#e8e2d4']) burst(x, y + 1.3, z, 10, c, { speed: 1.6, up: 1.2, size: 0.32, life: 0.9, grav: -1 }); SFX.whoosh(pan, 0.2, 0.6); break;
+    case 'trunks': for (const c of ['#ffffff', '#e0352b']) burst(x, y + 1.2, z, 8, c, { speed: 2.2, up: 2, size: 0.18, life: 0.6, grav: 2 }); SFX.boing(pan, 0.12, 1.4); break;
+    case 'up': case 'self':
+      floatText(kind === 'up' ? 'UP YOU GET!' : '…', x, y + 1.9, z, '#ff8fb8', kind === 'up' ? 1.2 : 1);
+      burst(x, y + 1.2, z, 10, '#ff8fb8', { speed: 1.4, up: 2.6, size: 0.14, grav: 1 }); Sound.chime([0, 4, 7, 12], 784, 0.13, 0.06);
+      landDog(d, 0.3); rumble(d.player, 0.5, 0.6, 200); break;
+  }
 }
 function koFx(d) {
   if (!d) return;
@@ -6023,7 +6134,7 @@ function updateAirborneSheep(s, dt) {
 function landSheep(s, impact) {
   const a = s.air; s.air = null;
   s.y = groundY(s.x, s.z); s.hopY = 0; s.hopV = 0;
-  if (sdfAt(s.x, s.z) < s.r) collideWorld(s, s.r);
+  if (wadeSdfAt(s.x, s.z) < s.r) collideWade(s, s.r);   // (OPEN WATER: in the shallows it stands)
   s.vx *= T.landKeep; s.vz *= T.landKeep;
   const sp = Math.hypot(s.vx, s.vz);
   if (a.rescue) {   // BONK SPOTS: glad to be out: calm, not scattered
@@ -6095,18 +6206,24 @@ function splashSheep(s) {
   if (SEA.on && inSea(s.x, s.z)) { seaSheepIn(s); return; }   // SAILING: overboard
   sayOnce('towel', 'towel', "Ye'll be wanting a towel!");
 }
+// OPEN WATER: walked (or was driven) out of its depth in the sea or the lake: swimming, back to the bank
+function sheepWadeIn(s) {
+  const a = launchSheep(s, s.vx * 0.5, s.vz * 0.5, 0, 'swim');
+  a.h = waterLevel(s.x, s.z); a.t = 0; s.hopY = 0;
+  splashFx(s.x, s.z, 0.6); baaAt(s, 0.4, 1.25, true);
+}
 function swimSheep(s, a, dt) {
   if (SEA.on && inSea(s.x, s.z)) { seaSwimSheep(s, a, dt); return; }   // SAILING: in the sea, the boat sailing on
   a.t += dt;
-  if ((sdfAt(s.x, s.z) > s.r + 0.1 && !overWater(s.x, s.z)) || a.t > 25) {   // climbed out
-    if (a.t > 25) unstick(s, s.r);
+  if ((sdfAt(s.x, s.z) > s.r + 0.1 && !overWater(s.x, s.z)) || a.t > 60) {   // climbed out
+    if (a.t > 60) unstick(s, s.r);
     s.air = null; s.y = groundY(s.x, s.z); s.pose = { landT: G.time, sq: 0.15 };
     startleSheep(s, s.vx, s.vz, 0.5);
     burst(s.x, s.y + 0.6, s.z, 10, '#9fe3ff', { speed: 1.5, up: 2, size: 0.12, life: 0.6 }); floatText('Brrr!', s.x, s.y + 1.5, s.z, '#cfefff', 0.9);
     return;
   }
   let g = sdfGrad(s.x, s.z); const k = Math.min(1, dt * 3);
-  if (inRiver(s.x, s.z) && a.side) {   // the river: back to its own bank (only the launcher takes sheep over), off the walls
+  if (a.side && !inSea(s.x, s.z) && riverAlong(s.x, s.z) > -90 && Math.abs(riverAcross(s.x, s.z)) < RIVER.hw + 22) {   // the river (and the sea off its mouth): back to its own bank (only the launcher takes sheep over), off the walls
     const ws = swimSdfAt(s.x, s.z), w = ws < 2 ? swimGrad(s.x, s.z) : null, wk = w ? (2 - ws) * 0.6 : 0;
     let gx = RIVER.tx * a.side + (w ? w.x * wk : 0), gz = RIVER.tz * a.side + (w ? w.z * wk : 0); const gl = Math.hypot(gx, gz) || 1;
     g = { x: gx / gl, z: gz / gl };
@@ -6164,7 +6281,7 @@ function updateAirborneCoyote(c, dt) {
     const impact = -a.vy; launcherLand(c, impact);
     if (a.bounces > 0 && impact > 4) { a.bounces--; a.vy = impact * 0.4; c.vx *= 0.7; c.vz *= 0.7; burst(c.x, c.y + 0.15, c.z, 8, '#e8dcc0', { speed: 2.4, up: 1.2, size: 0.22, life: 0.6, grav: 0 }); SFX.thud(panOf(c.x, c.z), 0.2); }
     else {
-      c.air = null; c.y = groundY(c.x, c.z); if (sdfAt(c.x, c.z) < T.coyoteR) collideWorld(c, T.coyoteR);
+      c.air = null; c.y = groundY(c.x, c.z); if (wadeSdfAt(c.x, c.z) < T.coyoteR) collideWade(c, T.coyoteR);
       c.vx *= 0.4; c.vz *= 0.4; c.tumble = Math.max(c.tumble || 0, 0.6);
       burst(c.x, c.y + 0.15, c.z, 10, '#e8dcc0', { speed: 2.6, up: 1.3, size: 0.24, life: 0.6, grav: 0 }); SFX.thud(panOf(c.x, c.z), 0.25);
     }
@@ -6187,22 +6304,28 @@ function startSwim(d) {
 function updateAirborneDog(d, inp, dt) {
   const a = d.air;
   if (a.swim && SEA.on && inSea(d.x, d.z)) { seaSwimDog(d, inp, dt); return; }   // SAILING: in the sea
-  if (a.swim) {   // doggy paddle: steer (in the river, across it); with no stick, drift to the nearest bank
+  if (a.swim) {   // doggy paddle (the river, the sea, the lake): steer; with no stick, drift to the nearest bank. It tires: at 0 it goes under (RESCUE)
     a.t += dt;
-    const river = inRiver(d.x, d.z);
-    if (!overWater(d.x, d.z) || (!river && a.t > 20)) {   // out: the shallows are walkable for a dog (collideDog)
-      if (a.t > 20 && !river) unstick(d, T.dogR);
+    if (!overWater(d.x, d.z)) {   // out: the shallows are walkable for a dog (collideDog)
       d.air = null; d.y = groundY(d.x, d.z); landDog(d, 0.15);
-      burst(d.x, d.y + 0.7, d.z, 14, '#9fe3ff', { speed: 2.5, up: 2, size: 0.12, life: 0.6 }); floatText('*shake shake*', d.x, d.y + 1.7, d.z, '#cfefff', 0.9);
+      burst(d.x, d.y + 0.7, d.z, 14, '#9fe3ff', { speed: 2.5, up: 2, size: 0.12, life: 0.6 });
+      if (a.drown || d.ko) { dogOut(d); return; }   // RESCUE: towed ashore limp: out cold till Hank brings it round
+      floatText('*shake shake*', d.x, d.y + 1.7, d.z, '#cfefff', 0.9);
       return;
     }
+    if (a.drown || d.ko) { drownStep(d, a, dt); return; }   // RESCUE: limp, low in the water, waiting for Hank
     const mx = inp.mx * CAM_R.x - inp.my * CAM_F.x, mz = inp.mx * CAM_R.z - inp.my * CAM_F.z, im = Math.min(1, Math.hypot(mx, mz));
-    const g = sdfGrad(d.x, d.z), sw = T.dogSwim * dogK(d, 'speed'), drift = sw * 0.5 * (1 - im), k = Math.min(1, dt * 4);
+    const tired = clamp(d.stamina / 0.25, 0.45, 1);   // nearly spent: slower, lower
+    const g = sdfGrad(d.x, d.z), sw = T.dogSwim * dogK(d, 'speed') * tired, drift = sw * 0.5 * (1 - im), k = Math.min(1, dt * 4);
     d.vx += (g.x * drift + mx * sw - d.vx) * k; d.vz += (g.z * drift + mz * sw - d.vz) * k;
-    d.x += d.vx * dt; d.z += d.vz * dt; if (river) collideDog(d);
+    d.x += d.vx * dt; d.z += d.vz * dt; collideDog(d);
     if (Math.hypot(d.vx, d.vz) > 0.3) d.yaw = lerpA(d.yaw, Math.atan2(d.vx, d.vz), Math.min(1, dt * 6));
-    d.y = Math.max(groundY(d.x, d.z), WATER_Y - 0.55) + Math.sin(a.t * 6) * 0.05; d.leg += dt * 9;
-    d.stamina = Math.min(1, d.stamina + T.staminaRegen * dogK(d, 'wind') * 0.5 * dt);
+    d.y = Math.max(groundY(d.x, d.z), WATER_Y - 0.55 - 0.25 * (1 - tired)) + Math.sin(a.t * 6) * 0.05; d.leg += dt * 9 * (0.6 + 0.4 * im);
+    const R = T.rescue, st0 = d.stamina;
+    d.stamina = Math.max(0, d.stamina - R.drain / dogK(d, 'wind') * lerp(R.idle, 1, im) * dt); d.mode = 'walk';
+    train(d, 'wind', (st0 - d.stamina) * T.train.wind);
+    if (d.stamina < 0.2 && st0 >= 0.2) { floatText('💨', d.x, d.y + 1.6, d.z, '#9fe3ff', 1.1); rumble(d.player, 0.4, 0.4, 160); }
+    if (d.stamina <= 0) dogDrown(d);
     return;
   }
   const res = airStep(d, a, T.dogR, dt);
@@ -6398,7 +6521,7 @@ function holdStep(d, e, k, r, dt) {
   }
   e.vx = d.vx; e.vz = d.vz;
   const ox = e.x, oz = e.z;
-  collideWorld(e, r); collideFences(e, r); collideMouths(e, r);
+  collideWorld(e, r, e.isDog ? SWIM_SDF : WADE_SDF); collideFences(e, r); collideMouths(e, r);   // (OPEN WATER: carried into the shallows)
   const cx = e.x - ox, cz = e.z - oz, cl = Math.hypot(cx, cz);
   if (cl > 1e-4) {
     const nx = d.x + cx, nz = d.z + cz;
@@ -8380,7 +8503,7 @@ const tugSideOfEnd = (U, d) => d.ropeI < U.k ? -1 : d.ropeI > U.k ? 1 : (d.tugSi
 // ---------------- HANK'S TUG: a dog brings it to him; he walks to the far end, takes it, and tugs the lot of them ----------------
 function hankRopeFree() {
   const hk = HANK;
-  return G.mode === 'play' && !hk.asleep && (hk.ropeWant || !hk.climb && !hk.cross) && (!hk.care || hk.care.kind === 'bury') && !hk.tending && !hk.digging && !(hk.lift > 0) && !hankThreats(T.hankNap.wakeR).length && !fireDue();   // (shearing and burials give way: shearCan, buryCan; after the rope's far end he climbs a pen's fence)
+  return G.mode === 'play' && !hk.asleep && (hk.ropeWant || !hk.climb && !hk.cross) && (!hk.care || hk.care.kind === 'bury') && !hk.tending && !hk.digging && !(hk.lift > 0) && !hankThreats(T.hankNap.wakeR).length && !fireDue() && !hk.rescue && !hk.trunks;   // (shearing and burials give way: shearCan, buryCan; after the rope's far end he climbs a pen's fence; RESCUE: a dog down)
 }
 // the end furthest along it from every dog's grip (-1: none far enough)
 function hankRopeEnd(R) {
@@ -9327,12 +9450,13 @@ function updateCoyotes(dt) {
     }
     // separation between coyotes + wall avoidance
     for (const o of G.coyotes) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz); if (d < 2.2 && d > 0) { dX += dx / d * 0.6; dZ += dz / d * 0.6; } }
-    const sd = sdfAt(c.x, c.z); if (sd < 1.6) { const g = sdfGrad(c.x, c.z); dX += g.x * (1.6 - sd) * 0.8; dZ += g.z * (1.6 - sd) * 0.8; }
+    const sd = sdfAt(c.x, c.z); if (sd < 1.6) { const g = sdfGrad(c.x, c.z), k = wadeSdfAt(c.x, c.z) > sd + 0.5 && c.state === 'flee' ? Math.min(1.6 - sd, 1.2) * 0.25 : (1.6 - sd) * 0.8; dX += g.x * k; dZ += g.z * k; }   // (OPEN WATER: bolting, it can be driven in)
     const l = Math.hypot(dX, dZ); const tvx = l > 1e-3 ? dX / l * spd : 0, tvz = l > 1e-3 ? dZ / l * spd : 0;
     const k = Math.min(1, 6 * dt); c.vx += (tvx - c.vx) * k; c.vz += (tvz - c.vz) * k;
     if (c.tumble > 0) { c.vx *= 0.9; c.vz *= 0.9; }
     c.x += c.vx * dt; c.z += c.vz * dt;
-    collideWorld(c, T.coyoteR); collideFences(c, T.coyoteR);
+    collideWade(c, T.coyoteR); collideFences(c, T.coyoteR);   // (OPEN WATER: into the sea and the lake)
+    if (!c.inPen && !inSea(c.x, c.z) && overWater(c.x, c.z)) { launchCoyote(c, c.vx * 0.4, c.vz * 0.4, 0); c.air.swim = true; c.air.h = WATER_Y; splashFx(c.x, c.z, 0.6); Sound.yelp(panOf(c.x, c.z)); continue; }   // ...out of its depth: swimming (soggy: done for the night)
     const sp = Math.hypot(c.vx, c.vz); if (sp > 0.3) c.yaw = lerpA(c.yaw, Math.atan2(c.vx, c.vz), Math.min(1, dt * 9));
     c.crouch = lerp(c.crouch, crouchW, Math.min(1, dt * 5));
     c.y = groundY(c.x, c.z); c.leg += sp * dt * 2.6;
@@ -9392,11 +9516,12 @@ function moveCougar(k, gx, gz, spd, dt) {
   const d = Math.hypot(gx - k.x, gz - k.z); let tvx = 0, tvz = 0;
   if (d > 0.3) { const n = navSteer(k, gx, gz), v = d < 1.5 ? spd * d / 1.5 : spd; tvx = n.x * v; tvz = n.z * v; }
   const sd = sdfAt(k.x, k.z); if (sd < 1.4) { const g = sdfGrad(k.x, k.z); tvx += g.x * (1.4 - sd) * 2; tvz += g.z * (1.4 - sd) * 2; }
+  const deep = !inSea(k.x, k.z) && overWater(k.x, k.z); if (deep) { tvx *= 0.45; tvz *= 0.45; }   // OPEN WATER: swimming, slow
   const q = Math.min(1, 7 * dt); k.vx += (tvx - k.vx) * q; k.vz += (tvz - k.vz) * q;
   k.x += k.vx * dt; k.z += k.vz * dt;
-  collideWorld(k, T.cougar.r); collideFences(k, T.cougar.r);
+  collideWade(k, T.cougar.r); collideFences(k, T.cougar.r);
   const sp = Math.hypot(k.vx, k.vz); if (sp > 0.25) k.yaw = lerpA(k.yaw, Math.atan2(k.vx, k.vz), Math.min(1, dt * 8));
-  k.y = groundY(k.x, k.z); k.h = 0; k.leg += sp * dt * 2.4;
+  k.y = deep ? WATER_Y - 0.55 : groundY(k.x, k.z); k.h = k.y - groundY(k.x, k.z); k.leg += sp * dt * 2.4;
 }
 function holdCougarPrey(k) {
   const s = k.prey; if (!s) return;
@@ -10154,7 +10279,7 @@ const fireDue = () => !!passFireGoal()?.light;   // MOUNTAIN PASS: a fire to lig
 function hankFire(dt) {
   const hk = HANK, g = hk.goal, f = g && g.fire;
   hk.lighting = false;
-  if (!f || hk.asleep || G.mode !== 'play') { hk.lightAt = 0; return; }
+  if (!f || hk.asleep || G.mode !== 'play' || hk.trunks) { hk.lightAt = 0; return; }
   if (Math.hypot(g.x - hk.x, g.z - hk.z) > g.stop + 0.8 || f.fuel > T.pass.burn * 0.8) { hk.lightAt = 0; return; }
   hk.lighting = true; hk.lightAt = (hk.lightAt || 0) + dt;
   if (Math.random() < dt * 3) burst(f.x, f.y + 0.3, f.z, 2, '#ffd36b', { speed: 0.6, up: 1.2, size: 0.08, life: 0.5, grav: 2 });
@@ -10748,14 +10873,14 @@ function rubbleD(x, z) { return ROCK.state === 'down' ? rubbleAt(x, z) : 1e9; }
 // ...and it's in the way from then on: stamped into what's walkable and the distance fields round it (kept, to put back on a new journey)
 function rubbleStamp(on) {
   const R = ROCK; if (!!R.stamp === on) return;
-  if (!on) { const S = R.stamp, w = S.i1 - S.i0 + 1; for (let j = S.j0; j <= S.j1; j++) for (let i = S.i0; i <= S.i1; i++) { const k = j * GX + i, q = (j - S.j0) * w + i - S.i0; blk[k] = S.blk[q]; SDF[k] = S.sdf[q]; SWIM_SDF[k] = S.swim[q]; } R.stamp = null; return; }
+  if (!on) { const S = R.stamp, w = S.i1 - S.i0 + 1; for (let j = S.j0; j <= S.j1; j++) for (let i = S.i0; i <= S.i1; i++) { const k = j * GX + i, q = (j - S.j0) * w + i - S.i0; blk[k] = S.blk[q]; SDF[k] = S.sdf[q]; SWIM_SDF[k] = S.swim[q]; WADE_SDF[k] = S.wade[q]; } R.stamp = null; return; }
   const bx = R.x + Math.sin(R.dir) * R.len, bz = R.z + Math.cos(R.dir) * R.len, pad = 18;
   const i0 = Math.max(0, Math.floor(Math.min(R.x, bx) - pad - GMINX)), i1 = Math.min(GX - 1, Math.ceil(Math.max(R.x, bx) + pad - GMINX)), j0 = Math.max(0, Math.floor(Math.min(R.z, bz) - pad - GMINZ)), j1 = Math.min(GZ - 1, Math.ceil(Math.max(R.z, bz) + pad - GMINZ));
-  const w = i1 - i0 + 1, n = w * (j1 - j0 + 1), S = R.stamp = { i0, i1, j0, j1, blk: new Uint8Array(n), sdf: new Float32Array(n), swim: new Float32Array(n) };
+  const w = i1 - i0 + 1, n = w * (j1 - j0 + 1), S = R.stamp = { i0, i1, j0, j1, blk: new Uint8Array(n), sdf: new Float32Array(n), swim: new Float32Array(n), wade: new Float32Array(n) };
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
     const k = j * GX + i, q = (j - j0) * w + i - i0, d = rubbleAt(GMINX + i, GMINZ + j);
-    S.blk[q] = blk[k]; S.sdf[q] = SDF[k]; S.swim[q] = SWIM_SDF[k];
-    if (d < 0) blk[k] = 1; if (d < SDF[k]) SDF[k] = d; if (d < SWIM_SDF[k]) SWIM_SDF[k] = d;
+    S.blk[q] = blk[k]; S.sdf[q] = SDF[k]; S.swim[q] = SWIM_SDF[k]; S.wade[q] = WADE_SDF[k];
+    if (d < 0) blk[k] = 1; if (d < SDF[k]) SDF[k] = d; if (d < SWIM_SDF[k]) SWIM_SDF[k] = d; if (d < WADE_SDF[k]) WADE_SDF[k] = d;
   }
 }
 // where every stone of it is: standing (leaning a little more each crack, a shudder when it's hit, a few knocked out), toppling over
@@ -11406,7 +11531,16 @@ function leashScreen(dogs) {
     const ox = d.x - cx, oz = d.z - cz;
     let sx = ox * CAM_R.x + oz * CAM_R.z, sy = (ox * CAM_F.x + oz * CAM_F.z) * SIN_EL;
     const csx = clamp(sx, -limX, limX), csy = clamp(sy, -limY, limY);
-    if (csx !== sx || csy !== sy) { const fx = csy / SIN_EL; d.x = cx + CAM_R.x * csx + CAM_F.x * fx; d.z = cz + CAM_R.z * csx + CAM_F.z * fx; collideDog(d); }
+    if (csx !== sx || csy !== sy) {
+      const fx = csy / SIN_EL; let x = cx + CAM_R.x * csx + CAM_F.x * fx, z = cz + CAM_R.z * csx + CAM_F.z * fx;
+      if (swimSdfAt(x, z) < T.dogR) {   // (in rock: the open ground or water nearest there that's on the screen, or nearest to being on it)
+        const off = (px, pz) => { const qx = px - cx, qz = pz - cz; return Math.max(0, Math.abs(qx * CAM_R.x + qz * CAM_R.z) - limX) + Math.max(0, Math.abs((qx * CAM_F.x + qz * CAM_F.z) * SIN_EL) - limY); };
+        let best = null, bs = 1e9;
+        for (let r = 1.5; r < 90 && !(best && bs < r * 0.01 + 1e-6); r += 1.5) for (let k = 0; k < 24; k++) { const a = k * TAU / 24, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (swimSdfAt(px, pz) <= T.dogR) continue; const sc = off(px, pz) + r * 0.01; if (sc < bs) { bs = sc; best = [px, pz]; } }
+        if (best) [x, z] = best;
+      }
+      d.x = x; d.z = z; collideDog(d);
+    }
   }
 }
 
@@ -11746,6 +11880,10 @@ function syncDog(d, dt = 1 / 60) {
     M.legs.forEach((g, i) => { g.rotation.x = Math.sin(t * 34 + i * 1.7) * 1.1; });
     M.head.rotation.x = -0.4 + Math.sin(t * 17) * 0.3; M.head.rotation.y = Math.sin(t * 23) * 0.7;
     M.tail.rotation.x = -0.9; M.tail.rotation.y = Math.sin(t * 30) * 0.5;
+  } else if (d.ko && swim) {   // RESCUE: drowning: half over on its side, a feeble paddle, chin up for air
+    M.root.position.y += 0.1; M.root.rotation.z = 0.85 + Math.sin(t * 2.3) * 0.12; M.body.rotation.x = -0.35;
+    M.legs.forEach((g, i) => { g.rotation.x = Math.sin(t * 3 + i * 1.6) * 0.35 + (i < 2 ? -0.4 : 0.4); });
+    M.head.rotation.x = -0.55; M.head.rotation.y = Math.sin(t * 1.7) * 0.3; M.tail.rotation.x = -1.0;
   } else if (d.ko) {   // out cold on its side, legs stuck out
     M.root.position.y += 0.15; M.root.rotation.z = 1.35; M.body.rotation.x = 0;
     M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -0.5 : 0.5; });
@@ -12840,21 +12978,32 @@ function makeHank() {
   const lathe = (pts, seg = 18) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(Math.max(1e-3, x), y)), seg);
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body); body.scale.setScalar(0.74);   // ~2.4 m to the top of his hat
   const TW = '#6e7d3a', TWD = '#4c5a28', TROU = '#5a4a3a', BOOT = '#3a2a1e', SKIN = '#f0a47e', WH = '#f6f3ea', WOOD = '#9a6636', FELT = '#6e5236', RED = '#d23a2e', METAL = '#3a332c';
-  // sturdy legs in old trousers and big round boots
+  // sturdy legs in old trousers and big round boots (RESCUE: or bare, in red-and-white striped swim trunks, bare feet)
+  const dressed = [], bare = [], TRUNK = '#e0352b', STRIPE = '#fff6ea';
+  const swap = (g, a, b) => { const d = new THREE.Group(), w = new THREE.Group(); w.visible = false; g.add(d, w); part(d, a); part(w, b); dressed.push(d); bare.push(w); };
   const legs = [-1, 1].map(sd => {
     const g = new THREE.Group(); g.position.set(0.18 * sd, 1.25, 0); body.add(g);
-    part(g, merge(P(CYL(0.15, 0.13, 0.95, 9), TROU, { p: [0, -0.47, 0] }), P(SPH(10), BOOT, { s: [0.16, 0.13, 0.25], p: [0, -1.1, 0.07] }), P(SPH(10), BOOT, { s: [0.17, 0.045, 0.26], p: [0, -1.19, 0.07] })));
+    swap(g, merge(P(CYL(0.15, 0.13, 0.95, 9), TROU, { p: [0, -0.47, 0] }), P(SPH(10), BOOT, { s: [0.16, 0.13, 0.25], p: [0, -1.1, 0.07] }), P(SPH(10), BOOT, { s: [0.17, 0.045, 0.26], p: [0, -1.19, 0.07] })),
+      merge(P(CYL(0.1, 0.085, 0.95, 9), SKIN, { p: [0, -0.5, 0] }), P(CYL(0.17, 0.16, 0.42, 10), TRUNK, { p: [0, -0.12, 0] }),
+        ...[-0.03, -0.19].map(y => P(CYL(0.172, 0.168, 0.06, 10), STRIPE, { p: [0, y, 0] })), P(SPH(10), SKIN, { s: [0.11, 0.08, 0.2], p: [0, -1.08, 0.06] })));
     return g;
   });
   // a barrel-shaped tweed jacket with a belt and buttons, and a red wool scarf with one end hanging down the front
   const torso = new THREE.Group(); torso.position.y = 1.25; torso.rotation.x = 0.14; body.add(torso);
-  part(torso, merge(
-    P(lathe([[0, -0.4], [0.46, -0.42], [0.52, -0.28], [0.54, -0.02], [0.52, 0.25], [0.47, 0.5], [0.42, 0.72], [0.36, 0.9], [0.22, 1.04], [0, 1.09]]).scale(1, 1, 0.8), TW, { p: [0, 0, 0.06] }),
+  const barrel = [[0, -0.4], [0.46, -0.42], [0.52, -0.28], [0.54, -0.02], [0.52, 0.25], [0.47, 0.5], [0.42, 0.72], [0.36, 0.9], [0.22, 1.04], [0, 1.09]];
+  const scarf = () => [P(new THREE.TorusGeometry(0.2, 0.085, 8, 18).rotateX(Math.PI / 2), RED, { p: [0, 1.03, 0] }), P(SPH(8), RED, { s: [0.085, 0.2, 0.05], r: [-0.18, 0, 0.12], p: [0.12, 0.84, 0.35] })];
+  swap(torso, merge(
+    P(lathe(barrel).scale(1, 1, 0.8), TW, { p: [0, 0, 0.06] }),
     P(new THREE.TorusGeometry(0.54, 0.045, 6, 24).rotateX(Math.PI / 2).scale(1, 1, 0.8), '#3a2a1e', { p: [0, 0.1, 0.06] }),
     P(SPH(8), '#e8c050', { s: [0.07, 0.06, 0.03], p: [0, 0.1, 0.5] }),
     ...[0.36, 0.58, 0.8].map(y => P(SPH(6), '#3a2a1e', { s: [0.035, 0.035, 0.025], p: [0, y, 0.475 - (y - 0.36) * 0.2] })),
-    P(new THREE.TorusGeometry(0.2, 0.085, 8, 18).rotateX(Math.PI / 2), RED, { p: [0, 1.03, 0] }),
-    P(SPH(8), RED, { s: [0.085, 0.2, 0.05], r: [-0.18, 0, 0.12], p: [0.12, 0.84, 0.35] })));
+    ...scarf()),
+    merge(P(lathe(barrel).scale(0.97, 1, 0.8), SKIN, { p: [0, 0, 0.06] }),   // RESCUE: his round bare belly (still the scarf), striped trunks up over it
+      P(lathe([[0, -0.44], [0.48, -0.46], [0.53, -0.3], [0.545, -0.12], [0, -0.12]]).scale(1, 1, 0.8), TRUNK, { p: [0, 0, 0.06] }),
+      P(new THREE.TorusGeometry(0.535, 0.035, 6, 24).rotateX(Math.PI / 2).scale(1, 1, 0.8), STRIPE, { p: [0, -0.22, 0.06] }),
+      P(SPH(6), '#c0705a', { s: [0.03, 0.03, 0.02], p: [0, 0.05, 0.495] }),
+      ...[[-0.12, 0.62], [0.12, 0.62], [0, 0.5], [-0.07, 0.4], [0.07, 0.4]].map(([x, y]) => P(SPH(6), WH, { s: [0.07, 0.06, 0.04], p: [x, y, 0.45 - (y - 0.4) * 0.15] })),
+      ...scarf()));
   // a big round face, a bulbous nose, a white beard, bushy brows and a droopy felt hat with a feather
   const head = new THREE.Group(); head.position.set(0, 1.32, 0.06); torso.add(head);
   const onHat = g => g.rotateZ(0.08).rotateX(-0.26).translate(0, 0.25, -0.04);
@@ -12881,18 +13030,19 @@ function makeHank() {
   const sleeve = sd => [P(SPH(9), TW, { s: [0.125, 0.125, 0.125] }), P(CYL(0.125, 0.105, 0.62, 9), TW, { p: [0, -0.31, 0] }),
     P(SPH(9), TWD, { s: [0.12, 0.06, 0.12], p: [0, -0.64, 0] }), P(SPH(9), SKIN, { s: [0.1, 0.1, 0.1], p: [0, -0.77, 0] })].map(g => g.rotateZ(0.2 * sd));
   const inHand = (g, sd, x, y, z, rz) => g.rotateZ(rz).translate(x, y, z).rotateZ(0.2 * sd);
+  const bareArm = sd => [P(SPH(9), SKIN, { s: [0.11, 0.11, 0.11] }), P(CYL(0.1, 0.085, 0.64, 9), SKIN, { p: [0, -0.32, 0] }), P(SPH(9), SKIN, { s: [0.1, 0.1, 0.1], p: [0, -0.7, 0] })].map(g => g.rotateZ(0.2 * sd));   // RESCUE: no crook, no lantern
   const armR = new THREE.Group(); armR.position.set(0.42, 0.86, 0); torso.add(armR);
-  part(armR, merge(...sleeve(1),
+  swap(armR, merge(...sleeve(1),
     P(inHand(CYL(0.035, 0.042, 2.6, 8).translate(0, 0.25, 0), 1, 0, -0.78, 0.1, -0.2), WOOD),
     P(inHand(new THREE.TorusGeometry(0.16, 0.037, 8, 20, Math.PI * 1.25).rotateZ(-Math.PI / 4).translate(0.16, 1.55, 0), 1, 0, -0.78, 0.1, -0.2), WOOD),
-    P(inHand(SPH(8).scale(0.045, 0.045, 0.045).translate(0.273, 1.437, 0), 1, 0, -0.78, 0.1, -0.2), WOOD)));
+    P(inHand(SPH(8).scale(0.045, 0.045, 0.045).translate(0.273, 1.437, 0), 1, 0, -0.78, 0.1, -0.2), WOOD)), merge(...bareArm(1)));
   const armL = new THREE.Group(); armL.position.set(-0.42, 0.86, 0); torso.add(armL);
-  part(armL, merge(...sleeve(-1),
+  swap(armL, merge(...sleeve(-1),
     P(inHand(new THREE.TorusGeometry(0.05, 0.012, 6, 12).translate(0, -0.02, 0), -1, 0, -0.84, 0, 0.2), METAL),
     P(inHand(CONE(0.1, 0.08, 12).translate(0, -0.1, 0), -1, 0, -0.84, 0, 0.2), METAL),
-    P(inHand(CYL(0.09, 0.085, 0.04, 12).translate(0, -0.31, 0), -1, 0, -0.84, 0, 0.2), METAL)));
+    P(inHand(CYL(0.09, 0.085, 0.04, 12).translate(0, -0.31, 0), -1, 0, -0.84, 0, 0.2), METAL)), merge(...bareArm(-1)));
   const glassMat = new THREE.MeshBasicMaterial({ color: '#5a4a2a' });
-  const glass = new THREE.Mesh(inHand(CYL(0.075, 0.075, 0.16, 12).translate(0, -0.21, 0), -1, 0, -0.84, 0, 0.2), glassMat); armL.add(glass);
+  const glass = new THREE.Mesh(inHand(CYL(0.075, 0.075, 0.16, 12).translate(0, -0.21, 0), -1, 0, -0.84, 0, 0.2), glassMat); dressed[dressed.length - 1].add(glass);
   root.rotation.order = 'YXZ';   // yaw, then tipped back onto the mat
   scene.add(root); seaKeep(root);
   // his bedroll and pillow: rolled out from his feet toward where his head goes
@@ -12902,7 +13052,7 @@ function makeHank() {
     ...[-0.25, 0.25].map(x => P(BOX(0.09, 0.065, 2.3), '#d8473f', { p: [x, 0.035, -1.05] }))), { shadow: false });
   const pillow = new THREE.Group(); pillow.position.set(0, 0.1, -1.95); mat.add(pillow);
   part(pillow, P(SPH(10), '#f4ead2', { s: [0.42, 0.11, 0.24] }), { shadow: false });
-  return { root, body, legs, torso, head, armL, armR, glass, glassMat, mat, roll, pillow };
+  return { root, body, legs, torso, head, armL, armR, glass, glassMat, mat, roll, pillow, dressed, bare };
 }
 HANK.model = makeHank();
 // his lantern's light: added once, now, so the scene's light count never changes mid-game (no shader recompiles)
@@ -12910,10 +13060,12 @@ const hankLight = new THREE.PointLight('#ffc27a', 0, 14, 1.4); scene.add(hankLig
 const _hv = new THREE.Vector3();
 
 // ---------------- where he wants to be ----------------
-const hankY = (x, z) => Math.max(groundY(x, z), WATER_Y - 1.05);   // wading: chest deep in the river
+const hankY = (x, z, swim = HANK.swim) => swim ? waterLevel(x, z) - 1.3 : Math.max(groundY(x, z), WATER_Y - 1.05);   // wading: chest deep in the river (RESCUE: swimming, in his trunks: head and shoulders out)
+const hankDeep = (x, z) => !inSea(x, z) && terrainH(x, z) < WATER_Y - 0.9;   // RESCUE: out of his depth (in his trunks he swims)
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
+  const rsg = rescueGoal(); if (rsg) return rsg;   // RESCUE: a dog out cold or drowning: before anything
   if (SEA.on) return seaHankGoal();   // SAILING: down the harbour road to the boat
   const pfg = passFireGoal(); if (pfg && pfg.light) return pfg;   // MOUNTAIN PASS: a fire to light, first of all
   const cg = careGoal(); if (cg) return cg;       // VET: a patient, or (nothing else to do: buryCan) a body to bury
@@ -12941,6 +13093,7 @@ function hankGoal() {
 function resetHank() {
   const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0, rope: null, ropeI: -1, ropeWant: null, ropeAgain: 0, air: null, slide: null, lighting: false, lightAt: 0 });   // (ROPES; MOUNTAIN PASS)   // shearing: the clippers are buried again
   Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
+  Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
     lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
@@ -12953,7 +13106,9 @@ function updateHank(dt) {
   const hk = HANK;
   // lines said "in a moment" (game time, so they wait while the game does)
   for (let i = hk.pending.length - 1; i >= 0; i--) { const q = hk.pending[i]; if (G.time >= q.at) { hk.pending.splice(i, 1); if (!q.opts.when || q.opts.when()) hank(q.id, q.text, q.opts); } }
-  if (SEA.on && (SEA_AWAY || inSea(hk.x, hk.z))) { seaHank(dt); return; }   // SAILING: he's crew (till he's down the harbour road: on foot, as ever)
+  if (SEA.on && (SEA_AWAY || inSea(hk.x, hk.z))) { if (hk.rescue || hk.trunks) { rescueStop(); hk.trunks = hk.swim = false; } seaHank(dt); return; }   // SAILING: he's crew (till he's down the harbour road: on foot, as ever)
+  updateRescue(dt);   // RESCUE: a dog down: drop everything
+  if (hk.changeT > 0) { hankChange(dt); return; }   // RESCUE: into (or out of) his swim trunks
   if (!hk.goal || G.time - hk.goalT > 0.25 || G.time < hk.goalT) { hk.goal = hankGoal(); hk.goalT = G.time; }   // a few times a second is plenty
   if (hankPassStep(dt)) { hk.bumpCD = Math.max(0, hk.bumpCD - dt); hk.lighting = false; return; }   // MOUNTAIN PASS: knocked flying, rolling, sliding on the ice
   if (hk.rope) { hk.y = hankY(hk.x, hk.z); hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt); return; }   // ROPES: in a tug (hankTug moves him)
@@ -12961,18 +13116,24 @@ function updateHank(dt) {
   const g = hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
   if (G.mode !== 'play') hk.asleep = false;
   if (hk.easeAt && Math.hypot(g.x - hk.easeAt.x, g.z - hk.easeAt.z) > 1.5) hk.easeAt = null;   // blocked short of his spot: he's there, till it moves on
-  const spd = (hk.asleep || d < g.stop || hk.easeAt ? 0 : g.carry ? Math.min(T.remains.walk, (d - g.stop) * 1.1 + 0.4) : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4)) * (overWater(hk.x, hk.z) ? 0.45 : 1);   // wading the river: slow (VET: a body on his shoulders: steady)
+  hk.swim = hk.trunks && hankDeep(hk.x, hk.z);   // RESCUE: in his trunks, out of his depth: swimming
+  const spd = hk.asleep || d < g.stop || hk.easeAt ? 0 : hk.swim ? Math.min(T.rescue.swim, (d - g.stop) * 1.5 + 0.5)
+    : g.rescue ? Math.min(T.rescue.run, (d - g.stop) * 2 + 0.6) * (overWater(hk.x, hk.z) ? 0.5 : 1)   // RESCUE: running
+    : (g.carry ? Math.min(T.remains.walk, (d - g.stop) * 1.1 + 0.4) : d > 20 ? T.hankJog : Math.min(T.hankWalk, (d - g.stop) * 1.1 + 0.4)) * (overWater(hk.x, hk.z) ? 0.45 : 1);   // wading the river: slow (VET: a body on his shoulders: steady)
   // keep clear of the flock and of walls: steer round, don't push through
   let ax = 0, az = 0;
   if (!g.noShy && !hk.asleep) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
   const sd = swimSdfAt(hk.x, hk.z); if (sd < 2) { const gr = swimGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
+  if (!hk.trunks && !g.rescue && seaDeep(hk.x + dx / d * 1.5, hk.z + dz / d * 1.5)) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * 1.2; az += gr.z * 1.2; }   // OPEN WATER: dressed, he keeps out of the sea
   let tvx = dx / d * spd + ax * 1.5, tvz = dz / d * spd + az * 1.5;
   if (hk.sideT > 0) { hk.sideT -= dt; tvx -= dz / d * hk.side * spd; tvz += dx / d * hk.side * spd; }   // stuck far off: a sidestep round it
   const tl = Math.hypot(tvx, tvz), cap = Math.max(spd, 1.5); if (tl > cap) { tvx *= cap / tl; tvz *= cap / tl; }
   const k = 1 - Math.exp(-dt * 4); hk.vx += (tvx - hk.vx) * k; hk.vz += (tvz - hk.vz) * k;
   if (hk.stumble > 0) { hk.vx *= 0.9; hk.vz *= 0.9; }
+  const hx0 = hk.x, hz0 = hk.z;
   hk.x += hk.vx * dt; hk.z += hk.vz * dt;
   collideDog(hk, T.hankR);
+  if (!hk.trunks && !g.rescue && seaDeep(hk.x, hk.z) && !seaDeep(hx0, hz0)) { hk.x = hx0; hk.z = hz0; hk.vx *= 0.3; hk.vz *= 0.3; }   // (OPEN WATER: not in his tweeds)
   if (hk.hopT > 0) hk.hopT -= dt; else collideFences(hk, T.hankR);   // stuck on a fence for a while: he steps over it
   if (!hk.goal || !hk.goal.yard) collideGraves(hk, T.hankR);   // (VET: not among the rows he's digging in)
   // solid but gentle: a sheep right against him is just eased aside (no fright), and dogs bump off him
@@ -12982,6 +13143,7 @@ function updateHank(dt) {
     const e = Math.sqrt(e2), push = m - e; s.x += ex / e * push * 0.7; s.z += ez / e * push * 0.7; hk.x -= ex / e * push * 0.3; hk.z -= ez / e * push * 0.3;
   }
   for (const dg of G.dogs) {
+    if (dg.air && dg.air.tow === hk) continue;   // (RESCUE: the one he's towing)
     const ex = dg.x - hk.x, ez = dg.z - hk.z, e = Math.hypot(ex, ez), m = T.hankR + T.dogR;
     if (dg.pounceT > 0 && e < 1.5 && hk.bumpCD <= 0 && G.mode === 'play') {   // pounced on: he staggers and grumbles
       hk.stumble = 0.6; hk.bumpCD = 1.5; dg.pounceT = 0; if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }   // (woken up, too) dg.vx *= -0.3; dg.vz *= -0.3;
@@ -12991,6 +13153,7 @@ function updateHank(dt) {
     if (e < m && e > 1e-4 && !(dg.hopT > 0)) { dg.x = hk.x + ex / e * m; dg.z = hk.z + ez / e * m; }
   }
   hk.y = hankY(hk.x, hk.z);
+  if (hk.swim && Math.random() < dt * 2.5) spawnRing(hk.x, waterLevel(hk.x, hk.z), hk.z, 2, '#e8f8ff', 0.6);   // RESCUE: swimming
   hankPassMove();   // MOUNTAIN PASS: onto the ice
   // fallen far behind (or stuck) and out of sight: he catches up off-screen, never popping into view
   hk.farT = d > 40 ? hk.farT + dt : 0;
@@ -13017,6 +13180,7 @@ function updateHank(dt) {
   else if (sp > 0.3) hk.yaw = lerpA(hk.yaw, Math.atan2(hk.vx, hk.vz), 1 - Math.exp(-dt * 5));
   else { const f = (hk.talkT > 0 || !g.face) && G.dogs.length ? nearestDog(hk.x, hk.z).dog : g.face; hk.yaw = lerpA(hk.yaw, f ? Math.atan2(f.x - hk.x, f.z - hk.z) : Math.PI / 4, 1 - Math.exp(-dt * 2)); }
   hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt);
+  if (hk.rescue) { rescueStep(hk.rescue, dt); if (G.mode === 'play') hankWatch(dt); return; }   // RESCUE: nothing else till the dog's up
   updateCare(dt);    // VET: a dog's bag handed over, patients, burials
   updateShear(dt);   // shearing: clippers handed over, picking a sheep, clipping it
   hankFire(dt);      // MOUNTAIN PASS: lighting a fire camp's fire
@@ -13117,7 +13281,8 @@ function syncHank(dt) {
   const mk = clamp(hk.lieK * 2.5, 0, 1), lie = clamp((hk.lieK - 0.35) / 0.65, 0, 1), tip = lie * lie * (3 - 2 * lie);
   M.mat.visible = mk > 0.01;
   if (M.mat.visible) { M.mat.position.set(hk.x, groundY(hk.x, hk.z), hk.z); M.mat.rotation.y = hk.yaw; M.roll.scale.z = mk; M.pillow.scale.setScalar(clamp(mk * 5 - 4, 0.01, 1)); }
-  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing || hk.tending || hk.digging || hk.lighting ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing (VET: tending, digging): bent over; a leg over a fence
+  const shk = hk.shK = clamp((hk.shK || 0) + (hk.shearing || hk.tending || hk.digging || hk.lighting || hk.cpr ? dt : -dt) * 4, 0, 1), lf = clamp((hk.lift || 0) / 0.8, 0, 1);   // shearing (VET: tending, digging; RESCUE: bringing a dog round): bent over; a leg over a fence
+  if (M.bare[0].visible !== !!hk.trunks) { for (const g of M.dressed) g.visible = !hk.trunks; for (const g of M.bare) g.visible = !!hk.trunks; }   // RESCUE: in his swim trunks
   M.root.position.set(hk.x, hk.y + 0.3 * tip + (hk.lift || 0), hk.z); M.root.rotation.y = hk.yaw; M.root.rotation.x = -Math.PI / 2 * tip;
   hk.phase += dt * sp * 2.4;
   const k = Math.min(1, sp / 1.6), sw = Math.sin(hk.phase);
@@ -13144,6 +13309,16 @@ function syncHank(dt) {
   if (hk.air) { M.root.rotation.x = -(hk.air.spin || 0); M.root.position.y += 1; M.armL.rotation.x = -2.6; M.armR.rotation.x = -2.6; M.legs[0].rotation.x = -0.8; M.legs[1].rotation.x = 0.6; }   // MOUNTAIN PASS: head over heels
   else if (hk.slide && hk.slide.kind === 'roll') { M.root.rotation.z = G.time * 9; M.root.position.y += 0.75; M.legs[0].rotation.x = -0.6; M.legs[1].rotation.x = 0.6; }   // ...rolling down the mountain
   else if (hk.slide) { const w = G.time * 15; M.armL.rotation.x = w; M.armR.rotation.x = w + Math.PI; M.armR.rotation.z = -0.6; M.torso.rotation.x = Math.sin(G.time * 9) * 0.35; M.legs[0].rotation.x = Math.sin(G.time * 20) * 0.9; M.legs[1].rotation.x = -Math.sin(G.time * 20) * 0.9; }   // ...windmilling on the ice
+  else if (hk.swim) {   // RESCUE: a big breaststroke, head and shoulders out, legs kicking
+    const w = G.time * 4.2, sw2 = Math.sin(w), out = Math.max(0, sw2);
+    M.torso.rotation.x = 0.55; M.head.rotation.x = -0.45;
+    M.armL.rotation.x = M.armR.rotation.x = -1.5 + sw2 * 0.45; M.armL.rotation.z = -0.2 - out * 0.7; M.armR.rotation.z = 0.2 + out * 0.7;
+    M.legs[0].rotation.x = Math.sin(w + 1.2) * 0.55; M.legs[1].rotation.x = -Math.sin(w + 1.2) * 0.55;
+  } else if (hk.cpr) {   // RESCUE: on his knees by the dog, both hands on its chest, pressing
+    const pump = Math.abs(Math.sin(G.time * 7.5));
+    M.root.position.y -= 0.42; M.legs[0].rotation.x = M.legs[1].rotation.x = 1.0;
+    M.armL.rotation.x = M.armR.rotation.x = -1.05 + pump * 0.3; M.armL.rotation.z = -0.15; M.armR.rotation.z = 0.15; M.torso.rotation.x = 0.6 + pump * 0.12;
+  }
   // the lantern glows from dusk
   const n = LIGHT.night; M.glassMat.color.setRGB(lerp(0.32, 1, n), lerp(0.27, 0.8, n), lerp(0.16, 0.4, n));
   // the light hangs a little out in front (right at the glass it would bleach his coat): a warm pool on the ground round him
@@ -13263,7 +13438,7 @@ function hankThreats(r) {
 function hankWorkDue(dt) {
   const hk = HANK; if ((hk.workT = (hk.workT || 0) - dt) > 0) return hk.workDue; hk.workT = 0.5;
   const a = hk.asleep; hk.asleep = false;
-  hk.workDue = !!careNext(true) || !!(hk.clippers && shearPick())
+  hk.workDue = rescueDue() || !!careNext(true) || !!(hk.clippers && shearPick())
     || ROPES.some(R => !R.tug && G.time >= (hk.ropeAgain || 0) && G.dogs.some(d => d.holding === R && Math.hypot(d.x - hk.x, d.z - hk.z) < T.rope.tug.hank.r));
   hk.asleep = a; return hk.workDue;
 }
@@ -13278,7 +13453,7 @@ function hankNap(dt) {
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && !hk.job && !hk.care && !fireDue() && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first)
+  const atFire = isNight() && g && g.face && !hk.job && !hk.care && !hk.rescue && !hk.trunks && !fireDue() && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay && !hankWorkDue(dt) ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -13374,7 +13549,7 @@ function giveHankClippers(d = null) {
   return true;
 }
 const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
-const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && !HANK.ropeWant && !HANK.rope && G.time - HANK.upT > T.shear.calm && !fireDue();   // (VET: patients first, ROPES: a tug too; a burial gives way: buryCan)
+const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && !HANK.ropeWant && !HANK.rope && !HANK.rescue && !HANK.trunks && G.time - HANK.upT > T.shear.calm && !fireDue();   // (VET: patients first, ROPES: a tug too; a burial gives way: buryCan; RESCUE first)
 const shearWant = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm && !!(HANK.job || shearPick());   // shearing to do (beats a burial)
 const shearable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !!s.pen && s.pen.gateT < 0.05 && G.sheep.includes(s);
 function shearPick() {   // the woolliest penned sheep (near ones first), not one panicking, squaring up or feeding
@@ -13454,7 +13629,7 @@ function hankCross(g) {
   if (inP === gP) { hk.cross = null; return null; }
   const p = inP || gP, out = !!inP;
   let c = hk.cross;
-  if (!c || c.p !== p || c.out !== out) c = hk.cross = { p, out, ...crossAt(p, out ? Math.atan2(g.z - p.z, g.x - p.x) : Math.atan2(hk.z - p.z, hk.x - p.x)) };
+  if (!c || c.p !== p || c.away !== out) c = hk.cross = { p, away: out, ...crossAt(p, out ? Math.atan2(g.z - p.z, g.x - p.x) : Math.atan2(hk.z - p.z, hk.x - p.x)) };   // (kept till he's over: picked afresh each step, a goal straight out past the gate flips it side to side)
   const from = out ? c.in : c.out, to = out ? c.out : c.in;
   if (Math.hypot(hk.x - from.x, hk.z - from.z) < 0.6) { hk.climb = { ax: hk.x, az: hk.z, bx: to.x, bz: to.z, t: 0 }; hk.cross = null; }
   return { x: from.x, z: from.z, stop: 0.1, noShy: true };
@@ -13604,7 +13779,7 @@ function giveHank(b, d = null) {
 }
 // ---------------- Hank's rounds ----------------
 const treatable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && G.sheep.includes(s) && !overWater(s.x, s.z);
-const careCan = () => G.mode === 'play' && !HANK.asleep && !fireDue();
+const careCan = () => G.mode === 'play' && !HANK.asleep && !fireDue() && !HANK.rescue && !HANK.trunks;   // (RESCUE first; dressed again first)
 // a burial: the last thing he does. Not up the pass (the cemetery's far below: the fires come first), nor with shearing or a tug to do
 const buryCan = () => careCan() && HANK.shovel && G.clock.hour >= T.remains.from && G.clock.hour < T.remains.to && !flockInPass() && !HANK.ropeWant && !HANK.rope && !shearWant() && !hankThreats(T.hankNap.wakeR).length;
 function careNext(treatOnly = false) {
@@ -13750,6 +13925,100 @@ function hankDetour(g) {
     return { x: p.x + nx * (m + 1.5), z: p.z + nz * (m + 1.5), stop: 0.1, noShy: true, carry: g.carry };
   }
   return null;
+}
+// ---------------- RESCUE: a dog out cold (or drowning) waits for him. He drops everything (wakes, lets go of a rope, puts a body down) and
+// runs to it; in the water his swim trunks go on at its edge (hankChange), he swims out, tows it back to the shore (shoreNear) and brings it
+// round there (cpr: it coughs the water up). Once he's ashore again the trunks come off ----------------
+const seaDeep = (x, z) => { if (inSea(x, z)) return false; const i = cellIdxAt(x, z); return seaOK[i] === 1 && terrainH(x, z) < WATER_Y - 0.6; };   // OPEN WATER: the sea or the lake, over his knees
+const rescueDue = () => G.mode === 'play' && !SEA.on && G.dogs.some(d => d.ko);
+function rescueNext() {
+  const hk = HANK; let best = null, bd = 1e9;
+  for (const d of G.dogs) { if (!d.ko) continue; const e = Math.hypot(d.x - hk.x, d.z - hk.z) - (d.air && d.air.drown ? 40 : 0); if (e < bd) { bd = e; best = d; } }   // the drowning first
+  return best ? { d: best, phase: 'go', t: 0, shore: null, wet: false } : null;
+}
+function rescueStop() {
+  const hk = HANK, j = hk.rescue;
+  if (j && j.d.air && j.d.air.tow === hk) j.d.air.tow = null;
+  hk.rescue = null; hk.cpr = false; hk.goal = null;
+}
+// the dry shore nearest (x, z) in the water: up the slope to land, a step or two past the water's edge
+function shoreNear(x, z) {
+  let px = x, pz = z;
+  for (let i = 0; i < 160; i++) {
+    if (!overWater(px, pz) && terrainH(px, pz) > WATER_Y + 0.5 && sdfAt(px, pz) > 0.8) { const g = sdfGrad(px, pz); return { x: px + g.x * 1.2, z: pz + g.z * 1.2 }; }
+    const g = sdfGrad(px, pz); px += g.x; pz += g.z;
+  }
+  return { x: px, z: pz };
+}
+// into (on) or out of his swim trunks: he stands still a moment, a puff, and they're on (RESCUE: updateHank)
+function hankChange(dt) {
+  const hk = HANK; hk.vx = hk.vz = 0; hk.swim = false; hk.y = hankY(hk.x, hk.z); hk.cpr = false;
+  if ((hk.changeT -= dt) > 0) return;
+  hk.changeT = 0; hk.trunks = !!hk.changeTo; hk.goal = null; rescueFx('trunks', hk);
+}
+function startChange(on) {
+  const hk = HANK; if (hk.changeT > 0 || hk.trunks === on) return;
+  hk.changeT = T.rescue.change * (on ? 1 : 0.8); hk.changeTo = on; rescueFx('change', hk);
+  if (on) hank(null, pick(["Hold on! I'm coming!", "Hang on, I'm coming in!", "Stay up! Here I come!"]), { force: true });
+}
+// hankGoal: the dog (alongside it), then the shore with it in tow; seeing to it: where he is
+function rescueGoal() {
+  const hk = HANK, j = hk.rescue; if (!j || G.mode !== 'play') return null;
+  const d = j.d;
+  if (j.phase === 'tow' && j.shore) return { x: j.shore.x, z: j.shore.z, stop: 0.3, noShy: true, rescue: true };
+  if (j.phase === 'cpr') return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: penAt(hk.x, hk.z) || null, face: d, rescue: true };
+  const ux = hk.x - d.x, uz = hk.z - d.z, l = Math.hypot(ux, uz) || 1, r = d.air && d.air.swim ? 0.7 : T.hankR + T.dogR + 0.25;
+  return { x: d.x + ux / l * r, z: d.z + uz / l * r, stop: 0.15, noShy: true, pen: d.air ? null : penAt(d.x, d.z) || null, face: d, rescue: true };
+}
+// in updateHank (host), before anything: a dog down? drop it all and go
+function updateRescue(dt) {
+  const hk = HANK; let j = hk.rescue;
+  if (G.mode !== 'play') { if (j) rescueStop(); return; }
+  if (j && (!G.dogs.includes(j.d) || !j.d.ko)) { rescueStop(); j = null; }
+  if (j || hk.air || hk.slide) return;
+  if (!rescueDue()) { if (hk.trunks && !hk.changeT && !overWater(hk.x, hk.z) && !hk.climb) startChange(false); return; }   // all up: dressed again (on dry land)
+  if (!(j = rescueNext())) return;
+  hk.rescue = j; hk.goal = null;
+  if (hk.asleep) { hk.asleep = false; hk.restT = 0; hk.upT = G.time; }
+  careStop(); if (hk.job) shearStop(); hk.lighting = false; hk.lightAt = 0; hk.easeAt = null;
+  const wet = j.d.air && j.d.air.swim;
+  hank(null, pick(wet ? [`${j.d.player.name || 'Dog'} overboard! Hold on!`, "Dog in the water! I'm coming!", 'Hang on, lass!'] : ["Dog down! I'm coming!", 'Easy now, I\'m coming!', 'Hold still, I\'m on my way!']), { force: true });
+}
+function rescueStep(j, dt) {
+  const hk = HANK, d = j.d, R = T.rescue, a = d.air, wet = !!(a && a.swim);
+  if (!d.ko || hk.changeT > 0) return;
+  const dd = Math.hypot(d.x - hk.x, d.z - hk.z);
+  if (j.phase === 'go') {
+    if (wet) {
+      j.wet = true;
+      const ux = (d.x - hk.x) / (dd || 1), uz = (d.z - hk.z) / (dd || 1);
+      if (!hk.trunks && (overWater(hk.x, hk.z) || overWater(hk.x + ux * 1.6, hk.z + uz * 1.6))) { startChange(true); return; }   // at the water's edge: trunks on
+      if (hk.trunks && dd < R.reach + 0.5) { j.phase = 'tow'; j.t = 0; a.tow = hk; j.shore = shoreNear(d.x, d.z); hk.goal = null; rescueFx('grab', d); }
+      return;
+    }
+    if (d.heldBy || hk.climb || dd > R.reach + 0.4 || (penAt(hk.x, hk.z) || null) !== (penAt(d.x, d.z) || null)) return;
+    j.phase = 'cpr'; j.t = 0; hk.cpr = true; hk.goal = null;
+    return;
+  }
+  if (j.phase === 'tow') {
+    if (!wet) { j.phase = 'go'; hk.goal = null; return; }   // ashore: lay it down and see to it
+    a.tow = hk; a.drown = true;
+    const up = Math.hypot(j.shore.x - hk.x, j.shore.z - hk.z) < 0.9, f = up ? 0.9 : -1.05;   // (at the shore: hauled up past him onto dry land)
+    const bx = hk.x + Math.sin(hk.yaw) * f, bz = hk.z + Math.cos(hk.yaw) * f, k = 1 - Math.exp(-dt * (up ? 3 : 8));
+    d.x += (bx - d.x) * k; d.z += (bz - d.z) * k; d.vx = hk.vx; d.vz = hk.vz; d.yaw = lerpA(d.yaw, hk.yaw, Math.min(1, dt * 5));
+    if ((j.t += dt) > 45) { j.t = 0; j.shore = shoreNear(hk.x, hk.z); hk.goal = null; }   // (getting nowhere: the nearest shore from here)
+    return;
+  }
+  // bringing it round: kneeling by it, pressing on its chest; a drowned one coughs the water up
+  if (d.heldBy || d.air || dd > R.reach + 1.2) { j.phase = 'go'; hk.cpr = false; return; }
+  hk.vx = hk.vz = 0; hk.yaw = lerpA(hk.yaw, Math.atan2(d.x - hk.x, d.z - hk.z), Math.min(1, dt * 8)); hk.cpr = true;
+  const was = j.t; j.t += dt;
+  if (Math.floor(j.t / 0.42) !== Math.floor(was / 0.42)) burst(d.x, d.y + 0.5, d.z, 2, '#ff8fb8', { speed: 0.6, up: 1.4, size: 0.1, life: 0.5, grav: -1 });
+  if (j.wet && was < R.cpr * 0.65 && j.t >= R.cpr * 0.65) rescueFx('cough', d);
+  if (j.t < R.cpr) return;
+  reviveDog(d); G.stats.rescued = (G.stats.rescued || 0) + 1;
+  hank(null, pick(j.wet ? ["There. Breathe. Good dog.", "Ye gave me a fright! Up ye get.", "No more swimmin' out that far, eh?"] : ["Up ye get. Good dog.", "There now. Shake it off.", "Easy. Ye're all right."]), { force: true });
+  rescueStop();
 }
 // his few words at the graveside: by what kind of sheep it was (seeded: every screen hears the same)
 function lastWords(g) {
@@ -17794,6 +18063,7 @@ const NET_TYPES = {
       clippers: 'b', shearing: 'b', lift: .02,   // shearing: has his clippers, clipping a sheep, over a fence
       meds: 'j', shovel: 'b', tending: 'b', digging: 'b', building: 'b',
       rope: { c: 'i', get: hk => hk.rope ? hk.rope.i : -1, set: (hk, v) => { hk.rope = v >= 0 ? ROPES[v] || null : null; } }, ropeI: 'i',   // ROPES: the rope he's tugging, his grip   // VET: his stock, his shovel, at a patient, digging a grave (REMAINS: building a cemetery)
+      trunks: 'b', swim: 'b', cpr: 'b',   // RESCUE: in his swim trunks, swimming, bringing a dog round
       lighting: 'b', slide: { c: 's', get: hk => hk.slide ? hk.slide.kind : '', set: (hk, v) => { hk.slide = v ? (hk.slide && hk.slide.kind === v ? hk.slide : { kind: v, t: 0, spin: 1 }) : null; } },   // MOUNTAIN PASS: lighting a fire; sliding, rolling;
       airOn: { c: 'b', get: hk => !!hk.air, set: (hk, v) => { hk.air = v ? hk.air || { h: 0, vy: 0, t: 0, spin: 0 } : null; } }, ah: { c: .02, get: hk => hk.air ? hk.y - hankY(hk.x, hk.z) : 0 }, aspin: { c: 'a', get: hk => hk.air ? hk.air.spin : 0 } },   // ...knocked flying
     animate: hk => { hk.y = hankY(hk.x, hk.z) + (hk.air ? hk.ah || 0 : 0); if (hk.air) hk.air.spin = hk.aspin || 0; },
@@ -18971,7 +19241,8 @@ maulStartFx = fxDef('maulStartFx', maulStartFx);
 maulHitFx = fxDef('maulHitFx', maulHitFx);
 maulEndFx = fxDef('maulEndFx', maulEndFx);
 mashFx = fxDef('mashFx', mashFx);
-koFx = fxDef('koFx', koFx);                                 // stamps the landing squash with this screen's clock
+koFx = fxDef('koFx', koFx);
+rescueFx = fxDef('rescueFx', rescueFx);                     // RESCUE: drowning, out cold, coughing, up again                                 // stamps the landing squash with this screen's clock
 dizzy = fxDef('dizzy', dizzy);
 shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
@@ -19296,7 +19567,7 @@ if (DEBUG) {
 window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
-  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
+  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, wadeSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
   // forage
   PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
 Object.assign(window.GAME, { FINAL, POST, MARKET, STALLS, finalPen, postPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, stockTroughs, resetVendor, syncVendor,

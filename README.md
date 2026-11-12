@@ -53,10 +53,12 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
 - **Bones**: some dig spots turn up a bone, and it stays on the map for good. Carry it in your mouth and tap grab to throw it (further on the run). Whatever it hits gets a real knock for its size: a lamb or a coyote goes tumbling, a ewe flinches, a cougar or Hank barely budges.
 - **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to slam it open or shut. Dogs hop fences when they push into them; sheep and coyotes can't.
 - **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
+- **Swimming**: dogs can swim anywhere: the river, the sea, the lake. Swimming slowly tires a dog out, and one that runs out of stamina in the water goes under. Sheep and coyotes can be driven into the sea or the lake too (never the river); they swim back to shore, and a soaked coyote gives up for the night.
+- **Knocked out**: a dog that loses all its health, or goes under in the water, stays down until Hank comes to bring it round. He drops whatever he's doing, even wakes up for it. For a dog in the water he changes into his swim trunks at the water's edge, swims out, tows it back and gives it CPR on the shore.
 
 ## Grazing, camps and nightfall
 
-The grass is real: sheep eat it down as they graze, and it grows back slowly. A hungry flock wanders off looking for food, and a pasture grazed bare sends them roaming. Stay too long and you run out of grass; push on too soon and you're on the trail at dusk.
+The grass is real: sheep eat it down as they graze, and it grows back slowly. Nothing grows on the beach, and sheep walk back off the sand onto the grass. A hungry flock wanders off looking for food, and a pasture grazed bare sends them roaming. Stay too long and you run out of grass; push on too soon and you're on the trail at dusk.
 
 Each camp has a round pen with a gate and funnel wings. Pen the flock and shut the gate before nightfall (20:30). When the whole flock is safe behind a shut gate at night, time runs fast till morning. Penned, well-fed ewes with a ram have lambs at dawn. Lambs follow their mothers and grow up in a couple of days, some of them into rams.
 

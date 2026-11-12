@@ -228,15 +228,16 @@ const r8 = await h.page.evaluate(() => {
   const run = (n, at) => { for (let i = 0; i < n; i++) { HANK.x = at[0]; HANK.z = at[1]; HANK.vx = HANK.vz = 0; step(0.05); } };
   const said = (pred) => HANK.log.filter(e => e.said && pred(e)).length;
   const far = [hx + 200, hz + 200];
+  const land = (r, dz = 0) => { for (let k = 0; k < 48; k++) { const a = k * 0.131 * (k % 2 ? 1 : -1), x = hx + Math.cos(a) * r, z = hz + dz + Math.sin(a) * r; if (GAME.sdfAt(x, z) > 3) return [x, z]; } return [hx + r, hz + dz]; };   // (on land: east of here's water now, open to coyotes)
   G.clock.hour = 21; G.clock.day = 2; HANK.log.length = 0; HANK.lastSay = -99;
   for (const s of living()) { s.x = hx + 4 + Math.random() * 4; s.z = hz + Math.random() * 4; s.pen = null; }
   // a pack out of his sight, then in it
-  const p = spawnPack(2, { howl: false }); for (const c of p.members) { c.x = hx + 70; c.z = hz + 10; }
+  const p = spawnPack(2, { howl: false }), [px70, pz70] = land(70, 10); for (const c of p.members) { c.x = px70; c.z = pz70; }
   run(10, [hx, hz]); const packUnseen = said(e => e.id === 'here_they_come' || e.id === 'more_of_them');
   for (const c of p.members) { c.x = hx + 9; c.z = hz + 2; c.gx = c.x; c.gz = c.z; } run(10, [hx, hz]);
   const packSeen = said(e => e.id === 'here_they_come');
   // a coyote grabs a sheep far from him: nothing; once he can see it: "Get 'im!"
-  const c = p.members[0], s = living().find(o => !o.ram); c.x = hx + 80; c.z = hz; s.x = c.x + 1; s.z = c.z; grabPrey(c, s);
+  const c = p.members[0], s = living().find(o => !o.ram), [px80, pz80] = land(80); c.x = px80; c.z = pz80; s.x = c.x + 1; s.z = c.z; grabPrey(c, s);
   run(10, [hx, hz]); const grabUnseen = said(e => e.id === 'get_im');
   run(10, [c.x - 8, c.z]); const grabSeen = said(e => e.id === 'get_im');
   GAME.dropPrey(c, false);
