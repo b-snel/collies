@@ -754,7 +754,8 @@ const T = {
   // Food is in hunger units: 1 unit takes 1.0 off one sheep's hunger. Grazing flat out takes ~0.14 an hour,
   // so a dog's full load (carryCap) is a few hours' grazing each for most of a 14-sheep flock.
   forage: { daisy: 0.25, alfalfa: 0.55, carryCap: 4, troughCap: 6, troughs: 3, pickR: 1.35, regrowDays: [1, 2],
-    tipR: 1.9 },   // tipR: a dog this close to a trough (either side of the fence) tips its greens in. Feeding: troughWant/troughRate
+    tipR: 1.9,   // tipR: a dog this close to a trough (either side of the fence) tips its greens in. Feeding: troughWant/troughRate
+    ring: { in: 0.7, gate: 3.5, hinge: 3.5 } },   // the pen kit (kitRing): m in off the fence; clear past the latch post, short of the hinge
   // salt: rocks of it along the trail. Run over one to pick up a lump, take it to a pen's salt lick. s.salt (0..1) runs
   // down every day; salty sheep are peppy (boost at 1, normal at mid), a sheep out of salt slows (slow at 0) and, left
   // without for deathHours, dies of it. Penned sheep under want go and lick till they're at full.
@@ -2625,11 +2626,13 @@ const DECK = (() => {
   return pen;
 })();
 pens.push(DECK);
-// where the deck's troughs, licks and water troughs go (kind, i-th): along the rail, lying fore and aft. → { x, z, tx, tz, a } (a: as a ring's angle)
+// where the deck's troughs, licks and water troughs go (kind, i-th): along the rail, as it curves, a sheep's width and more apart
+// (no pockets: as kitRing). → { x, z, tx, tz, a } (a: as a ring's angle)
 function deckKit(kind, i) {
-  const B = BOAT, K = { food: [-1, -9.6, 3.4, 0.55], water: [1, -9.6, 4, 0.55], salt: [1, 1.6, 1.7, 0.5], bucket: [1, 0.1, 0, 1.2] }[kind];
-  const u = K[1] + i * K[2] + (kind === 'food' && i > 1 ? 6.6 : 0), q = boatXZ(u, K[0] * (boatHB(u) - K[3]));   // (food: two aft of the gangway, the rest forward of it)
-  return { x: q.x, z: q.z, tx: B.fx, tz: B.fz, a: Math.atan2(K[0] * B.rz, K[0] * B.rx) };
+  const B = BOAT, K = { food: [-1, -10.15, 4.3, 0.55], water: [1, -10.35, 5.1, 0.55], salt: [1, 1.6, 2.2, 0.5], bucket: [1, 0.1, 0, 1.2] }[kind];
+  const u = K[1] + i * K[2] + (kind === 'food' && i > 1 ? 5.4 : 0), sl = K[0] * (boatHB(u + 0.5) - boatHB(u - 0.5)), l = Math.hypot(1, sl);   // (food: two aft of the gangway, the rest forward of it); sl: the rail's slope
+  const q = boatXZ(u, K[0] * (boatHB(u) - K[3] * l));
+  return { x: q.x, z: q.z, tx: (B.fx + B.rx * sl) / l, tz: (B.fz + B.rz * sl) / l, a: Math.atan2(K[0] * B.rz, K[0] * B.rx) };
 }
 const finalPen = pens.find(p => p.final), postPen = pens.find(p => p.camp.post);   // the yeti's cave (MOUNTAIN PASS: the end); the Trading Post
 // Gates swing on a hinge: pen.phi is the leaf's angle from shut (+ = swung out, - = swung into the pen).
@@ -6689,7 +6692,6 @@ function regrowSalt() { const now = absHour(); for (const r of SALT_ROCKS) if (r
 // ---------------- the pen troughs (inside, along the fence past the gate's latch post) and the salt lick (the hinge side) ----------------
 // Each pen has a few troughs, so most of the flock can feed at once. A dog tips its greens into one just by
 // going up to it, from inside the pen or over the fence beside it; the same for a lump of salt at the lick.
-const troughA = (p, i = 0) => p.gateA + p.gapHalf + 0.62 + i * (3.6 / p.R), lickA = p => p.gateA - p.gapHalf - 0.95;
 const onRing = (p, a, r) => ({ x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r });
 const TROUGH_GEO = (() => {
   const L = 2.6, Wd = 0.76;
@@ -6714,12 +6716,29 @@ function boxOff(p, b) { p.solids = (p.solids || []).filter(o => o !== b.solid); 
 // VENDOR: a pen holds up to round(T.vendor.max × R/9) of each (troughs, water troughs, licks); every slot is built now, the bought
 // ones hidden till kitSet shows them. p.troughSlots / p.lickSlots (p.lick.at: the licks in use, p.lick the first; WATER: p.waterSlots)
 const kitMaxN = (p, k) => p.kit ? p.kit[k][1] : Math.max(1, Math.round(T.vendor.max[k] * p.R / 9));
+const kitBaseN = p => p.kit ? p.kit.food[0] : Math.max(1, Math.round(T.forage.troughs * p.R / 9));   // troughs a pen comes with
+// Every slot round the fence (T.forage.ring): troughs from past the latch post, water troughs, licks (the first by the hinge),
+// even gaps between them all, wide enough to walk through (no pockets to get stuck in), flush to the fence (nothing fits
+// behind). p.kitA[kind][i]: its angle. (The deck: deckKit.)
+const KIT_LEN = { food: 2.7, water: 3.5, salt: 0.6 };   // m along the fence, box and all (TROUGH_GEO, WATER_GEO, the lick)
+function kitRing(p) {
+  if (p.kitA) return p.kitA;
+  const K = T.forage.ring, r = p.R - K.in, N = { food: Math.max(kitBaseN(p), kitMaxN(p, 'food')), water: kitMaxN(p, 'water'), salt: kitMaxN(p, 'salt') };
+  const its = Object.entries(N).flatMap(([k, n]) => Array.from({ length: n }, (_, i) => [k, k === 'salt' ? n - 1 - i : i]));
+  const gap = ((TAU - 2 * p.gapHalf) * r - K.gate - K.hinge - its.reduce((t, [k]) => t + KIT_LEN[k], 0)) / (its.length - 1);
+  p.kitA = { food: [], water: [], salt: [] }; p.kitGap = gap;
+  let at = p.gateA + p.gapHalf + K.gate / r;
+  for (const [k, i] of its) { p.kitA[k][i] = at + KIT_LEN[k] / 2 / r; at += (KIT_LEN[k] + gap) / r; }
+  const W = p.kitA.water, w0 = W.findIndex(a => { const o = onRing(p, a, p.R + 0.6); return sdfAt(o.x, o.z) > 1.2; });   // the one it comes with: open ground outside (a bucket's tipped over the fence)
+  if (w0 > 0) W.unshift(...W.splice(w0, 1));
+  return p.kitA;
+}
 for (const p of pens) {
   p.troughs = []; p.troughSlots = [];
-  const n = p.kit ? p.kit.food[0] : Math.max(1, Math.round(T.forage.troughs * p.R / 9)), { L, Wd } = TROUGH_GEO;
+  const n = kitBaseN(p), { L, Wd } = TROUGH_GEO;
   for (let i = 0; i < Math.max(n, kitMaxN(p, 'food')); i++) {
     const dk = p.deck && deckKit('food', i);   // SAILING: along the rail
-    const a = troughA(p, i), c = dk || onRing(p, a, p.R - 0.9), tx = dk ? dk.tx : -Math.sin(a), tz = dk ? dk.tz : Math.cos(a), yaw = Math.atan2(-tz, tx);
+    const a = !dk && kitRing(p).food[i], c = dk || onRing(p, a, p.R - T.forage.ring.in), tx = dk ? dk.tx : -Math.sin(a), tz = dk ? dk.tz : Math.cos(a), yaw = Math.atan2(-tz, tx);
     const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; g.visible = i < n; scene.add(g);   // local x runs along the fence
     part(g, TROUGH_GEO.box);
     const fill = new THREE.Mesh(TROUGH_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
@@ -6731,13 +6750,13 @@ for (const p of pens) {
   // the salt lick: a block of salt on a stout post (more along the fence, bought)
   p.lickSlots = [];
   for (let i = 0; i < kitMaxN(p, 'salt'); i++) {
-    const dk = p.deck && deckKit('salt', i), a = dk ? dk.a : lickA(p) - i * 1.5 / (p.R - 0.8), c = dk || onRing(p, a, p.R - 0.8), g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = -a; g.visible = !i; scene.add(g);
+    const dk = p.deck && deckKit('salt', i), a = dk ? dk.a : kitRing(p).salt[i], c = dk || onRing(p, a, p.R - T.forage.ring.in), g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = -a; g.visible = !i; scene.add(g);
     part(g, merge(P(CYL(0.16, 0.2, 0.62, 7), '#7a5230', { p: [0, 0.31, 0] }), P(BOX(0.5, 0.06, 0.5), '#6b4226', { p: [0, 0.64, 0] })));
     const block = new THREE.Group(); block.position.y = 0.67; g.add(block);
     part(block, merge(P(BOX(0.4, 0.3, 0.4), '#f3eee6', { p: [0, 0.15, 0] }), P(BOX(0.18, 0.08, 0.2), '#f6c9d4', { p: [0.06, 0.32, -0.05] })), { shadow: false });
     block.scale.y = 0.001; block.visible = false;
     const u = i ? { x: c.x, z: c.z, block, g } : (p.lick = { salt: 0, cap: T.salt.lickCap, x: c.x, z: c.z, shown: 0, block, g });   // p.lick: the pen's salt (all its licks), and the first
-    u.box = boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), 0.3, 0.3, p, !i);
+    u.box = boxFence(c.x, c.z, -Math.sin(a), Math.cos(a), KIT_LEN.salt / 2, 0.3, p, !i);
     p.lickSlots.push(u);
   }
   p.lick.at = [p.lick];
@@ -6937,7 +6956,6 @@ function drawForageOverlay() {
 // (drinkWater) when thirsty: see the sheep mind. Anyone can add water
 // (fillWater). Thirst, drinking and dying of it: sheepThirst.
 // =====================================================================
-const waterA = p => p.gateA + Math.PI;   // straight across from the gate
 const WATER_GEO = (() => {
   const L = 3.4, Wd = 0.76, M = '#a3b3be', D = '#7d8d98', RIM = '#cdd6dc';   // a galvanised stock tank on wooden feet
   return { L, Wd, box: merge(
@@ -6966,11 +6984,11 @@ function setPailWater(m, k) {   // the water's surface at fill k (0…1), as wid
 }
 const BUCKETS = [];
 for (const p of pens) {
-  const a = waterA(p), { L, Wd } = WATER_GEO;
+  const a = p.deck ? p.gateA + Math.PI : kitRing(p).water[0], { L, Wd } = WATER_GEO;
   p.waterSlots = [];   // VENDOR: bought ones go on round the back, toward the hinge (p.water.at: the ones in use; p.water: the pen's water, and the first)
   for (let i = 0; i < kitMaxN(p, 'water'); i++) {
     const dk = p.deck && deckKit('water', i);   // SAILING: along the rail
-    const ua = a + i * (L + 1) / (p.R - 0.9), c = dk || onRing(p, ua, p.R - 0.9), tx = dk ? dk.tx : -Math.sin(ua), tz = dk ? dk.tz : Math.cos(ua), yaw = Math.atan2(-tz, tx);
+    const ua = !dk && kitRing(p).water[i], c = dk || onRing(p, ua, p.R - T.forage.ring.in), tx = dk ? dk.tx : -Math.sin(ua), tz = dk ? dk.tz : Math.cos(ua), yaw = Math.atan2(-tz, tx);
     const g = new THREE.Group(); g.position.set(c.x, terrainH(c.x, c.z), c.z); g.rotation.y = yaw; g.visible = !i; scene.add(g);
     part(g, WATER_GEO.box);
     const fill = new THREE.Mesh(WATER_GEO.fill, MAT.vc); fill.position.y = 0.33; fill.scale.y = 0.001; fill.visible = false; g.add(fill);
@@ -13010,10 +13028,11 @@ function shearHold(s, dt, dtH) {
 // a goal in a pen he isn't in (or out of the one he's in): over the fence, clear of the gate's swing and the troughs
 function crossAt(p, a0) {
   const ring = (a, r) => ({ x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r });
-  for (let k = 0; k < 53; k++) {
-    const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.12, i = ring(a, p.R - 1.2), o = ring(a, p.R + 1.1);
+  const st = 0.3 / p.R;   // (finer than the gaps between the kit: kitRing)
+  for (let k = 0; k <= 2 * Math.ceil(Math.PI / st); k++) {
+    const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * st, i = ring(a, p.R - 1.2), o = ring(a, p.R + 1.1);
     if (Math.abs(wrapA(a - p.gateA)) < p.gapHalf + (p.gateLen + 1) / p.R || sdfAt(o.x, o.z) < 1.2) continue;
-    if ((p.solids || []).some(b => Math.hypot(i.x - b.x, i.z - b.z) < b.hl + 1.2)) continue;
+    if ((p.solids || []).some(b => Math.hypot(i.x - b.x, i.z - b.z) < b.hl + 1.2 && Math.abs((i.x - b.x) * b.tx + (i.z - b.z) * b.tz) < b.hl + 0.5)) continue;   // not over a trough or a lick
     return { in: i, out: o };
   }
   return { in: ring(a0, p.R - 1.2), out: ring(a0, p.R + 1.1) };
