@@ -425,11 +425,15 @@ try {
   await sleep(1000);
   const tugH = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
   const tugG = await B.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
-  for (let k = 0; k < 3; k++) { await B.page.keyboard.press('KeyE'); await sleep(100); }
-  const heave = await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').tugK || 0);
+  let heave = 0; const heaves = [];   // the strongest heave the host saw (one fades in 0.4 s; a press takes ~100 ms to get there); each: its heave, tug on, still held, knot
+  for (let k = 0; k < 5; k++) {
+    if (k < 3) await B.page.keyboard.press('KeyE'); await sleep(100);
+    const e = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return [+(b.tugK || 0).toFixed(2), !!R.tug, b.holding === R, R.tug ? +R.tug.off.toFixed(2) : null]; }, ropeAt.i);
+    heaves.push(e); heave = Math.max(heave, e[0]);
+  }
   await B.page.keyboard.up('KeyR');
   check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest grabs it: a tug of war on both, E heaves',
-    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave) });
+    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave), heaves });
   await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; const g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
   // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
