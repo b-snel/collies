@@ -9980,7 +9980,7 @@ function updatePass(dt, dtH) {
     if (p.gateT < 0.05 && inn.length) {
       PASS.shutT += dt;
       if (inn.length === live.length || PASS.shutT > T.pass.finish) {
-        if (seaFromCave(inn)) PASS.shutT = 0;   // SAILING: the cave's the way through, down to the harbour (not shut in: left behind)
+        if (seaFromCave(inn, p)) PASS.shutT = 0;   // SAILING: the cave's the way through, down to the harbour (not shut in: left behind)
         else { hank(null, "Ye did it! Over the pass, every one we could bring!", { force: true }); finishGame(inn.length); }   // (online with friends: it ends here)
       }
       else if (Math.floor(PASS.shutT) !== Math.floor(PASS.shutT - dt)) floatText(`🐑 ${inn.length}/${live.length} · ${Math.ceil(T.pass.finish - PASS.shutT)}`, p.x, p.y + 3, p.z, '#ffffff', 1.3);
@@ -15985,12 +15985,12 @@ function seaStart(o = {}) {
       if (dock ? spots.every(o => (o.x - p.x) ** 2 + (o.z - p.z) ** 2 > 1.3) : Math.hypot(u - K.sail.mastU, v) > 1.4 && spots.every(o => (o.x - p.x) ** 2 + (o.z - p.z) ** 2 > 1.3)) { q = p; break; } q = p;
     }
     spots.push(q);
-    Object.assign(s, { x: q.x, z: q.z, vx: 0, vz: 0, y: B.y, air: null, pen: dock ? null : DECK, wasPen: dock ? null : DECK, state: 'idle', thinkT: rnd(0.5, 2.5), fear: 0, panic: 0, alert: 0, stress: (s.stress || 0) * 0.3, tx: q.x, tz: q.z, eating: false, hopY: 0, hopV: 0, lure: 0, breakT: 0, rs: 'idle' });
+    Object.assign(s, { x: q.x, z: q.z, vx: 0, vz: 0, y: B.y, air: null, pen: dock ? null : DECK, wasPen: dock ? null : DECK, state: 'idle', thinkT: rnd(0.5, 2.5), fear: 0, panic: 0, alert: 0, stress: (s.stress || 0) * 0.3, tx: q.x, tz: q.z, eating: false, hopY: 0, hopV: 0, lure: 0, breakT: 0, rs: 'idle', slide: null, crev: null, burn: 0 });
   }
   G.dogs.forEach((d, i) => {
     if (d.holding) releaseHold(d, false); dropBucket(d);
     const p = dock ? boatXZ(Q.gu + (i - (G.dogs.length - 1) / 2) * 1.8, Q.v0 + 1.2) : boatXZ(-10.4 + Math.floor(i / 2) * 1.6, (i % 2 ? 1 : -1) * 1.7);   // (alongside: the dogs behind the flock, at the pier's head)
-    Object.assign(d, { x: p.x, z: p.z, vx: 0, vz: 0, y: B.y, yaw: dock ? Math.atan2(B.rx, B.rz) : Math.atan2(B.fx, B.fz), air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null });
+    Object.assign(d, { x: p.x, z: p.z, vx: 0, vz: 0, y: B.y, yaw: dock ? Math.atan2(B.rx, B.rz) : Math.atan2(B.fx, B.fz), air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null, slide: null, crev: null });
   });
   const hp = boatXZ(-8.7, 1.45); Object.assign(HANK, { x: hp.x, z: hp.z, vx: 0, vz: 0, y: B.y, asleep: false, climb: null, rope: null, goal: null });
   for (const tr of DECK.troughs) { tr.food = 0; tr.shown = 0; } DECK.water.w = 0; DECK.lick.salt = 0; seaStock();
@@ -16026,9 +16026,10 @@ const seaAtRest = () => (SEA.docked || SEA.anchor === 'down' && SEA.holding && S
 function seaDawn() { if (SEA.on) seaStock(); }
 // SHARED HOOK (MOUNTAIN PASS: the cave shut on the flock): the cave's the way through the mountain, down to Cold Harbour and the boat.
 // Sheep not shut in stay on the mountain ('left'). → false: not this time (online with friends: their screens can't draw the sea yet), the cave ends it
-function seaFromCave(inn) {
+function seaFromCave(inn, p) {
   if (SEA.on || G.mode !== 'play' || (NET.role === 'host' && NET.seats.length) || NET.role === 'guest') return false;
-  for (const s of living()) if (!inn.includes(s)) killSheep(s, 'left');
+  const here = s => inn.includes(s) || insidePen(p, s.x, s.z, 0) || !!s.heldBy && insidePen(p, s.heldBy.x, s.heldBy.z, 0);   // (in a dog's mouth or in the air in there: it comes too)
+  for (const s of living()) if (!here(s)) killSheep(s, 'left');
   if (!seaStart({ dock: true })) return false;
   hank(null, "Down through the mountain... and there she lies. Get them aboard!", { force: true });
   return true;
