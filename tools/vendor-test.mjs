@@ -121,15 +121,19 @@ ok('📍 only pens found so far: the first camp to begin with, a bark keeps it t
 ok('📍 the furthest found by default; a bark goes to the next found, round again; the pick sticks', r5b.auto === 1 && r5b.cycle.join() === '0,1,0' && r5b.kept === 0, r5b);
 ok('a leg trader\'s 🌾 goes to the picked pen, not the Trading Post', r5b.buy === 'add' && r5b.to[0] === 1 && r5b.to[1] === 0 && r5b.to[2] === 0 && r5b.lost === 0, r5b);
 
-// 5c. what fits: every pen's slots inside it, along the fence, clear of the gateway and of each other
+// 5c. what fits: every pen's slots inside it, along the fence, clear of the gateway and of each other: a sheep walks between
+// any two, nothing fits behind one
 const r5c = await h.page.evaluate(() => {
-  const { pens, kitMax } = GAME, bad = [];
+  const { pens, kitMax, T } = GAME, bad = []; let minGap = 1e9;
   const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const segD = (x, z, s) => { const dx = s.bx - s.ax, dz = s.bz - s.az, t = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - s.ax - dx * t, z - s.az - dz * t); };
   for (const p of pens) {
     const all = [...p.troughSlots.map(u => ['food', u]), ...p.waterSlots.map(u => ['water', u]), ...p.lickSlots.map(u => ['salt', u])];
     const ends = u => { const s = u.box.solid; return [-1, -0.5, 0, 0.5, 1].map(t => [s.x + s.tx * s.hl * t, s.z + s.tz * s.hl * t, s.hw]); };
     for (const [k, u] of all) {
       for (const [x, z] of ends(u)) { if (Math.hypot(x - p.x, z - p.z) > p.R - 0.25) bad.push([p.camp.name, k, 'out']); if (Math.abs(wrap(Math.atan2(z - p.z, x - p.x) - p.gateA)) < p.gapHalf + 0.3) bad.push([p.camp.name, k, 'gate']); }
+      if (k === 'salt') continue;   // (a lick's narrower than a dog: nothing's pocketed behind it)
+      const s = u.box.solid; for (const t of [-1, 0, 1]) { const x = s.x + s.tx * s.hl * t - s.nx * s.hw, z = s.z + s.tz * s.hl * t - s.nz * s.hw, f = Math.min(...p.segs.map(sg => segD(x, z, sg))); if (f > T.dogR - 0.05) bad.push([p.camp.name, k, 'behind', +f.toFixed(2)]); }
     }
     const gapOf = (A, B) => {   // the widest gap along any of the two boxes' axes (< 0: they overlap)
       let g = -1e9; const dx = B.x - A.x, dz = B.z - A.z;
@@ -140,12 +144,39 @@ const r5c = await h.page.evaluate(() => {
       return g;
     };
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
-      const g = gapOf(all[i][1].box.solid, all[j][1].box.solid); if (g < 0.3) bad.push([p.camp.name, all[i][0], all[j][0], +g.toFixed(2)]);
+      const g = gapOf(all[i][1].box.solid, all[j][1].box.solid), need = 2 * T.sheepR + 0.1; minGap = Math.min(minGap, g);
+      if (g < need) bad.push([p.camp.name, all[i][0], all[j][0], +g.toFixed(2)]);
     }
   }
-  return { bad: bad.slice(0, 8), max: pens.map(p => ['food', 'water', 'salt'].map(k => kitMax(p, k)).join('/')) };
+  return { bad: bad.slice(0, 8), minGap: +minGap.toFixed(2), max: pens.map(p => ['food', 'water', 'salt'].map(k => kitMax(p, k)).join('/')) };
 });
-ok('every pen\'s troughs, water troughs and licks fit: inside, clear of the gateway and each other', !r5c.bad.length, r5c);
+ok('every pen\'s troughs, water troughs and licks fit: inside, clear of the gateway, a sheep\'s width apart, flush to the fence', !r5c.bad.length, r5c);
+
+// 5c2. a dog dropped behind or between any of them (every slot shown) walks out into the pen
+const r5c2 = await h.page.evaluate(() => {
+  const { G, pens, kitSet, step, groundY, CAM_R, CAM_F } = GAME; H.reset();
+  const d = G.dogs[0], pl = G.players[0], out = { tries: 0, stuck: [] };
+  for (const s of G.sheep) { s.x += 3000; s.z += 3000; } GAME.HANK.x += 3000;
+  const inp = (dx, dz) => { const l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l }; };
+  for (const p of pens) {
+    if (p.deck || p.final) continue;
+    for (const k of ['food', 'water', 'salt']) kitSet(p, k, 99);
+    const all = [...p.troughSlots, ...p.waterSlots, ...p.lickSlots].map(u => ({ s: u.box.solid, a: Math.atan2(u.z - p.z, u.x - p.x) })).sort((A, B) => A.a - B.a), at = [];
+    all.forEach((A, i) => {
+      const S = A.s, B = all[(i + 1) % all.length]; at.push(['behind', S.x - S.nx * (S.hw + 0.2), S.z - S.nz * (S.hw + 0.2)]);
+      const da = ((B.a - A.a) % 6.2832 + 6.2832) % 6.2832; if (da > 1.2) return;
+      for (const r of [p.R - 0.45, Math.hypot(S.x - p.x, S.z - p.z)]) at.push(['between', p.x + Math.cos(A.a + da / 2) * r, p.z + Math.sin(A.a + da / 2) * r]);
+    });
+    for (const [kind, x, z] of at) {
+      out.tries++; d.x = x; d.z = z; d.vx = d.vz = 0; d.y = groundY(x, z); d.stunT = 0; d.hopT = 0;
+      let t = 0; for (; t < 3; t += 0.025) { pl.bot = inp(p.x - d.x, p.z - d.z); step(0.025); if (Math.hypot(d.x - p.x, d.z - p.z) < p.R - 2.5) break; }
+      if (t >= 3) out.stuck.push([p.camp.name, kind, +Math.hypot(x - p.x, z - p.z).toFixed(2)]);
+    }
+    for (const k of ['food', 'water', 'salt']) kitSet(p, k, 0);
+  }
+  pl.bot = {}; out.stuck = out.stuck.slice(0, 6); return out;
+});
+ok('a dog behind or between the troughs, water troughs and licks walks out', r5c2.tries > 100 && !r5c2.stuck.length, r5c2);
 
 // 5d. the sheep use the new ones: a pen with only bought ones stocked. Hungry: they eat there; thirsty and short of salt: they drink and lick there
 const r5d = await h.page.evaluate(() => {
@@ -175,8 +206,8 @@ const r5e = await h.page.evaluate(() => {
   const p = pens[2]; kitSet(p, 'water', 99); kitSet(p, 'salt', 99); p.water.w = 0; p.lick.salt = 0;
   out.navChanged = Array.from(navFence).reduce((a, v, i) => a + v * (i % 97 + 1), 0) !== nav0;
   const d = G.dogs[0], u = p.water.at.at(-1), b = BUCKETS[0]; b.by = d; b.w = T.water.bucket; d.x = u.x + (p.x - u.x) / Math.hypot(p.x - u.x, p.z - u.z) * 1.3; d.z = u.z + (p.z - u.z) / Math.hypot(p.x - u.x, p.z - u.z) * 1.3;
-  H.run(0.1);   // (in its mouth: tipped in going up to it)
-  out.tipped = +p.water.w.toFixed(2); b.by = null;
+  G.players[0].bot = { grab: true }; H.run(0.1);   // (in its mouth, Ⓧ held: tipped in going up to it)
+  out.tipped = +p.water.w.toFixed(2); b.by = null; G.players[0].bot = {};
   const L = p.lick.at.at(-1); d.salt = 1; d.x = L.x + (p.x - L.x) / Math.hypot(p.x - L.x, p.z - L.z) * 1.2; d.z = L.z + (p.z - L.z) / Math.hypot(p.x - L.x, p.z - L.z) * 1.2; H.run(0.1);
   out.salted = p.lick.salt; out.saltLeft = d.salt;
   const st = STALLS[1]; d.x = st.x + st.fx * 6; d.z = st.z + st.fz * 6; H.run(3);

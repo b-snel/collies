@@ -41,7 +41,7 @@ ok('first camp full, the rest empty', r1[0].w === r1[0].cap && r1.slice(1).every
 // 2. running over it does nothing; holding grab picks it up (one per dog), fill at the river bank, tip in over the fence
 const r2 = await h.page.evaluate(() => {
   const { G, T, pens, BUCKETS, WATER, bucketOf } = GAME; H.reset(11); const d = H.d(), pen = pens[1], b = BUCKETS[1], out = {};
-  H.place(d, b.x + 6, b.z); H.walkTo(b.x, b.z, 10, 0.3); H.run(0.1); out.notWithoutGrab = !bucketOf(d);
+  const bo = Math.hypot(b.x - pen.x, b.z - pen.z); H.place(d, b.x + (b.x - pen.x) / bo * 6, b.z + (b.z - pen.z) / bo * 6); H.walkTo(b.x, b.z, 10, 0.3); H.run(0.1); out.notWithoutGrab = !bucketOf(d);   // (from out in the field)
   H.g = true; H.idle(); H.run(0.2);
   out.picked = bucketOf(d) === b;
   const b2 = BUCKETS[2], x2 = b2.x, z2 = b2.z; H.place(b2, d.x + 0.5, d.z); H.run(0.2); out.secondLeft = !b2.by && bucketOf(d) === b; H.place(b2, x2, z2);

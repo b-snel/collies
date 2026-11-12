@@ -111,7 +111,7 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
-| `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit, sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
+| `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
 | `pass-test.mjs [layout\|cold\|fire\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the cave: out above the harbour, one left behind |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
@@ -294,7 +294,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (`vendorBark`, host) to buy with `G.wool`. 📍 picks the pen (found ones,
   `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough /
   water trough / lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9
-  (slots prebuilt along the fence), then batches. Water and salt: one pool per
+  (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width apart, flush to it, no pockets), then batches. Water and salt: one pool per
   pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
   A dog stepping on a mat: the ware hops, its name plate pops up (`WARE_KINDS`
   `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
