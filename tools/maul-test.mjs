@@ -2,7 +2,7 @@
 //   maul     a dog walks up to a stalking cougar: it leaps on it and takes about half its health, then leaves
 //   mash     the same, mashing pounce: free fast, little lost
 //   partner  a second dog pounces the cougar off
-//   ko       a dog on low health is mauled: knocked out, then up again; heals over time
+//   ko       a dog on low health is mauled: knocked out till Hank comes and brings it round (a partner nosing it doesn't); heals over time
 //   nip      a coyote wise to barking nips a dog standing by it
 //   bonk     a fleeing cougar gets pounced: bonked, knocked over, then limps home slower (a dog catches it)
 //   chase    a dog chases a bonked cougar home: bonked again and again till it's up its tree
@@ -88,8 +88,9 @@ const run = scen => h.page.evaluate(async scen => {
   }
   Object.assign(out, { mauled, maulSecs: freeAt !== null ? +(freeAt - maxT).toFixed(2) : null, lost: +(hp0 - minHp).toFixed(3), hp: +d.hp.toFixed(3), ko, cougar: k.state });
   if (scen === 'ko') {
-    p.bot = {}; let tt = 0; while (tt < 10 && d.ko) { step(0.025); tt += 0.025; }
-    out.upAfter = +tt.toFixed(1); out.hpUp = +d.hp.toFixed(3);
+    const r0 = G.stats.rescued || 0; let hd = 99;
+    p.bot = {}; let tt = 0; while (tt < 90 && d.ko) { hd = Math.hypot(GAME.HANK.x - d.x, GAME.HANK.z - d.z); step(0.025); tt += 0.025; }
+    out.upAfter = +tt.toFixed(1); out.hpUp = +d.hp.toFixed(3); out.byHank = (G.stats.rescued || 0) === r0 + 1; out.hankD = +hd.toFixed(2);
     GAME.resetCougars(); G.clock.hour = 12;   // (no more cats or coyotes: just healing)
     p.bot = { lie: true }; for (let i = 0; i < 1200; i++) step(0.025);
     out.hp30s = +d.hp.toFixed(3);
@@ -103,7 +104,7 @@ for (const sc of ['maul', 'mash', 'ko', 'nip', 'barks', 'bonk', 'chase', 'partne
   if (sc === 'maul') ok = r.mauled && r.lost > 0.45 && r.lost < 0.55 && !r.ko && r.cougar !== 'maul';
   if (sc === 'mash') ok = r.mauled && r.lost < 0.3 && r.maulSecs < 2.5;
   if (sc === 'partner') ok = r.mauled && r.lost < 0.5 && r.cougar !== 'maul';
-  if (sc === 'ko') ok = r.mauled && r.ko && r.upAfter > 3 && r.hpUp >= 0.25 && r.hp30s > r.hpUp + 0.2;
+  if (sc === 'ko') ok = r.mauled && r.ko && r.upAfter > 3 && r.byHank && r.hankD < 2.5 && r.hpUp >= 0.25 && r.hp30s > r.hpUp + 0.2;
   if (sc === 'nip') ok = r.lost > 0.05 && r.lost < 0.1;
   if (sc === 'bonk') ok = r.bonks === 2 && r.v1 < r.v0 * 0.85 && r.v1 < r.walk * 0.9;
   if (sc === 'chase') ok = r.bonks >= 3 && r.home === 'up';
