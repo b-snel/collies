@@ -117,7 +117,7 @@ Run the ones touching your change; report the numbers.
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
-| `bonk-test.mjs [world\|cast\|mud\|balk\|apple]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees |
+| `bonk-test.mjs [world\|cast\|mud\|balk\|apple\|carry]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held out and taken, into a pen, snatched, eaten with a dog by the tree |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `nads-test.mjs` | ram nads: size by bravery, rest, swing/lag/damping, legs, flips, dt spikes, tucking, barn |
 | `input-test.mjs` | pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`, `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`) |
@@ -365,7 +365,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     (`p.leadT`).
   - **Apples** (`APPLE_TREES`, `APPLES`, `T.apple`): a pounce into the trunk
     (or a flying sheep) shakes some down; hungry sheep go for one before grass
-    (state `'apple'`). They grow back.
+    (state `'apple'`, `appleFor`), even tagging along with the flock (`T.apple.look`); a still dog only
+    gets room. Grab one (`holdKind 'apple'`, `a.dog`): let go, dropped at the nose, running, lobbed
+    (`moveApples`). Held out by a still dog (`appleHeldOut`, `T.apple.take`): a hungry sheep comes and
+    takes it (`appleTaken`; that dog doesn't scare it: `appleFriend`). Penned: only ones in its pen. They grow back.
 - **Streams** (`STREAMS`, `T.stream`): narrow, shallow, from the hills to the
   lake; walkable (slow), wet (`wetAt`: buckets fill, sheep sip). Grass by
   streams and the river is lusher (cap up to 1.45).
