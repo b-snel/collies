@@ -14,7 +14,7 @@
 //   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
 //             rest left below) drives them off the floor, up it and onto the ledge
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
-//   finish    the yeti beaten, the flock shut in his cave: through the mountain, out of its lower mouth above Cold Harbour (SAILING); one left outside is left behind
+//   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
@@ -262,18 +262,28 @@ if (!only || only === 'yeti' || only === 'finish') {
 
 if (!only || only === 'finish') {
   const r = await ev(() => {
-    const { G, T, SEA, QUAY, DECK, living, finalPen, onQuay, onDeck } = GAME;
-    const p = finalPen, L = living(), last = L[L.length - 1];
+    const { G, T, SEA, HARB, DECK, BOAT, living, finalPen, sdfAt, inSea, harbRoad, harbIce, resetPass, CAM_R, CAM_F } = GAME, out = {};
+    // (after 'yeti': he's beaten) the ice has gone from the gap in the east rim too. His cave's just a pen now: shut on the flock, nothing ends
+    const p = finalPen, L = living(), g = HARB.gap, P = HARB.pts, d = G.dogs[0];
+    out.open = !HARB.ice && sdfAt(g.x, g.z) > 1.5 && !p.frozen;
     L.forEach((s, i) => { s.x = p.x + Math.cos(i) * 3; s.z = p.z + Math.sin(i) * 3; s.vx = s.vz = 0; s.air = null; s.slide = null; s.crev = null; s.burn = 0; s.state = 'idle'; });
-    last.x = p.exitX + Math.cos(p.camp.gateA) * 6; last.z = p.exitZ + Math.sin(p.camp.gateA) * 6;   // one's still outside
-    GAME.step(0.025); const inn = L.filter(s => s.pen === p).length;
-    p.phi = 0; GAME.updateGateGeometry(p); run(1); const soon = { mode: G.mode, sea: SEA.on };
-    run(T.pass.finish + 0.5);
-    return { inn, n: L.length, soon, mode: G.mode, sea: SEA.on, docked: SEA.docked, quay: QUAY.on, gate: DECK.gateT, live: living().length, left: G.lost.filter(m => m.why === 'left').length, lastDead: last.dead,
-      onQuay: living().filter(s => onQuay(s.x, s.z, 0.2) || onDeck(s.x, s.z)).length, dogs: G.dogs.every(d => onQuay(d.x, d.z)), up: +(Math.min(...living().map(s => GAME.groundY(s.x, s.z))) - GAME.BOAT.y).toFixed(1) };
+    GAME.step(0.025); out.inn = L.filter(s => s.pen === p).length; p.phi = 0; GAME.updateGateGeometry(p); run(T.pass.finish + 1.5);
+    out.penned = { mode: G.mode, sea: SEA.on, live: living().length };
+    // the dog goes out through the gap and onto the road: the harbour wakes (she's alongside, her gangway open) and nobody's been moved
+    d.x = P[0].x; d.z = P[0].z; d.vx = d.vz = 0; d.air = null; const at0 = L.map(s => [s.x, s.z]), y0 = GAME.groundY(d.x, d.z);
+    const tw = run(8, () => { const dx = P[1].x + (P[2].x - P[1].x) * 0.2 - d.x, dz = P[1].z + (P[2].z - P[1].z) * 0.2 - d.z, l = Math.hypot(dx, dz) || 1; d.player.bot = { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l }; return SEA.on; });
+    d.player.bot = {};
+    out.woke = SEA.on && SEA.docked && !DECK.lock && DECK.gateT > 0.9; out.tw = +(+tw).toFixed(1); out.mode = G.mode;
+    out.moved = +Math.max(...L.map((s, i) => Math.hypot(s.x - at0[i][0], s.z - at0[i][1]))).toFixed(2); out.dogOn = harbRoad(d.x, d.z).d < 0 && !inSea(d.x, d.z); out.dy = +(GAME.groundY(d.x, d.z) - y0).toFixed(1);
+    out.road = +(P[5].d - P[1].d).toFixed(0); out.drop = +(P[1].y - P[5].y).toFixed(1); out.endY = +(P[5].y - BOAT.y).toFixed(2);
+    out.walk = P.slice(0, 6).every(q => sdfAt(q.x, q.z) > 2);   // the road's walkable all the way to the pier's root
+    // a new journey: the ice is back in the gap
+    resetPass(); out.iced = HARB.ice && sdfAt(g.x, g.z) < 0;
+    return out;
   });
-  ok(`the cave shut on ${r.inn}/${r.n}: it waits for the last, then it's through the mountain: Cold Harbour below, the boat alongside`, r.inn === r.n - 1 && r.soon.mode === 'play' && !r.soon.sea && r.mode === 'play' && r.sea && r.docked && r.quay && r.gate > 0.9, r);
-  ok(`${r.onQuay} sheep and the dogs out of its lower mouth, ${r.up} m up the path; the one not shut in is left on the mountain`, r.live === r.inn && r.onQuay === r.inn && r.dogs && r.up > 15 && r.left === 1 && r.lastDead, r);
+  ok(`the yeti beaten: the ice is out of the gap in the east rim; his cave's a pen (${r.inn} shut in: nothing ends, nobody's moved)`, r.open && r.inn >= 12 && r.penned.mode === 'play' && !r.penned.sea && r.penned.live === r.inn, r);
+  ok(`out through the gap onto the road (${r.road} m, ${r.drop} m down to the pier, walkable all the way): Cold Harbour wakes in ${r.tw} s, her gangway open, and nobody's been moved (${r.moved} m)`, r.woke && r.mode === 'play' && r.moved < 6 && r.dogOn && Math.abs(r.dy) < 2.5 && r.road > 150 && r.drop > 40 && Math.abs(r.endY) < 0.01 && r.walk, r);
+  ok('a new journey: iced shut again', r.iced, r);
 }
 
 if (!only || only === 'rock') {

@@ -1,10 +1,11 @@
-// Headless test: `node tools/falcon-test.mjs [eat|bark|nest|dog|dogbark|night|odds|gone]`. FALCON.
+// Headless test: `node tools/falcon-test.mjs [eat|bark|nest|dog|dogbark|night|day1|odds|gone]`. FALCON.
 //   eat    a sheep is taken, carried to the nearest nest and eaten there: stone at the foot of the spire
 //   bark   a dog barks under it while it carries a sheep: dropped, lands alive
 //   nest   a dog barks at the spire while it sits on the nest: the sheep hops down alive
 //   dog    it takes a dog: carried a way, dropped, lands on its feet
 //   dogbark  the dog it's after barks: it flies off, no grab
 //   night  never comes at night
+//   day1   never on day one
 //   odds   a day in the open with it on: how often it comes, never at night
 //   gone   past FALCON CANYON (the snakes, the pass, the sea): never comes, not even back short of it; one circling there
 //          gives up; a new journey: back
@@ -15,7 +16,7 @@ const run = (scen) => h.page.evaluate(async (scen) => {
   const { G, T, step, startGame, resetGame, NESTS, FALCON: F, falconCome, falconPick, living, groundY, pathPoint, seaStart, SEA, flockCenter, sAt } = GAME;
   if (G.mode !== 'play') startGame({ kind: 'bot', index: 0 }); else resetGame();
   const p = G.players[0]; p.bot = {}; const d = G.dogs[0];
-  T.falcon.on = scen === 'night' || scen === 'odds';
+  T.falcon.on = scen === 'night' || scen === 'odds' || scen === 'day1';
   const N = NESTS[1], live = living();
   live.forEach(s => { s.x = N.x + 30 + (Math.random() - 0.5) * 10; s.z = N.z + (Math.random() - 0.5) * 10; s.vx = s.vz = 0; s.pen = null; s.hunger = 0.3; });
   d.x = N.x + 70; d.z = N.z; G.clock.hour = 12; G.clock.day = 2;
@@ -30,13 +31,14 @@ const run = (scen) => h.page.evaluate(async (scen) => {
     falconCome(living().find(o => !o.ram)); for (let i = 0; i < 20; i++) step(0.025);   // circling over them short of the canyon …
     at(1300); let left = false; for (let i = 0; i < 200 && !left; i++) { step(0.025); left = F.state === 'leave'; }   // … then they're up the pass
     R.circling = left; for (let i = 0; i < 400; i++) step(0.025); R.after = F.state;
-    resetGame(); at(400); R.fresh = day(8);   // a new journey: it's back
+    resetGame(); G.clock.day = 2; at(400); R.fresh = day(8);   // a new journey: it's back
     seaStart({ under: true, leg: 1 }); G.clock.hour = 9; R.sea = day(8); R.seaOn = SEA.on;
     return R;
   }
-  if (scen === 'night' || scen === 'odds') {
+  if (scen === 'night' || scen === 'odds' || scen === 'day1') {
+    if (scen === 'day1') { G.clock.day = 1; G.clock.hour = 7; }
     G.falconIn = 0; let came = 0, nightCame = 0, was = 'away';
-    const hours = scen === 'odds' ? 24 : 6; if (scen === 'night') G.clock.hour = 21;
+    const hours = scen === 'odds' ? 24 : scen === 'day1' ? 11 : 6; if (scen === 'night') G.clock.hour = 21;
     for (let i = 0; i < hours * T.hourSec / 0.025; i++) { step(0.025); if (F.state === 'circle' && was !== 'circle') { came++; if (G.clock.hour > T.falcon.to || G.clock.hour < T.falcon.from) nightCame++; } was = F.state; }
     return { ...R, came, nightCame };
   }
@@ -62,7 +64,7 @@ const run = (scen) => h.page.evaluate(async (scen) => {
   return { ...R, grabbed, maxH: +maxH.toFixed(1), atNest, dropAt, landed, dead: !!target.dead, saved: G.stats.saved - saved0, lost: (G.stats.falcon || 0) - lost0,
     graveFromNest: g ? +Math.hypot(g.x - N.x, g.z - N.z).toFixed(1) : null, why: (G.lost.at(-1) || {}).why, states, t: +t.toFixed(1) };
 }, scen);
-const scens = only ? [only] : ['eat', 'bark', 'nest', 'dog', 'dogbark', 'night', 'odds', 'gone'];
+const scens = only ? [only] : ['eat', 'bark', 'nest', 'dog', 'dogbark', 'night', 'day1', 'odds', 'gone'];
 let fail = 0;
 for (const sc of scens) {
   const r = await run(sc);
@@ -73,6 +75,7 @@ for (const sc of scens) {
   if (sc === 'dog') ok &&= r.grabbed && r.landed && r.landed.moved > 12 && r.lost === 0;
   if (sc === 'dogbark') ok &&= !r.grabbed && r.states.leave > 0;
   if (sc === 'night') ok &&= r.came === 0;
+  if (sc === 'day1') ok &&= r.came === 0;
   if (sc === 'odds') ok &&= r.came >= 1 && r.came <= 5 && r.nightCame === 0;
   if (sc === 'gone') ok &&= r.nestPast === 0 && !r.pick && r.snakes === 0 && r.pass === 0 && r.back === 0 && r.fresh >= 1 && r.circling && r.after === 'away' && r.seaOn && r.sea === 0;
   if (!ok) fail++;
