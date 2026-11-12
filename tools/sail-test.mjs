@@ -4,7 +4,8 @@
 // by an island: saved, mended; drags in deep water), and the hazards: orcas (bonk: sheep by that rail go over; a bark turns one), reefs,
 // sharks, the storm (gale, a great wave abeam / on the bow), the waterspout, sirens (lured to the rail and over; a bark, a dog in the way),
 // the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep into its eye; beaten), and Cabo (finishes).
-// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|orca|reef|shark|storm|spout|siren|kraken|arrive|start|land]
+// The quay at Cold Harbour, where the pass comes down: the flock herded up the gangway, lines in at the bow, away.
+// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|orca|reef|shark|storm|spout|siren|kraken|arrive|start|dock|land]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [], fails = 0;
@@ -401,6 +402,43 @@ if (want('start')) {
   ok(`she starts at anchor, everyone aboard (${r.aboard} sheep), the troughs stocked (🌾 ${r.food}, 💧 ${r.water}), the sheet let fly`, r.anchored && r.aboard >= 12 && r.dogs && r.food > 10 && r.water > 5 && r.lying < 0.8 && r.sheet0 > 0.9, r);
   ok('one dog weighs the anchor at the bow, runs aft and takes the tiller', r.onAnchor && r.weighed && r.onTiller, r);
   ok(`Hank sheets in and she's away: ${r.made} m made good toward the island in 70 s (${r.u} m/s), nobody lost`, r.made > 200 && r.u > 3 && r.aboard2 === r.aboard, r);
+}
+
+if (want('dock')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, SEA, DOCK, QUAY, DECK, ROUTE, STATIONS, seaStart, seaCastOff, seaAshore, stationOf, boatU, boatV, boatXZ, onDeck, onQuay, launchSheep, living } = GAME, out = {}, d = G.dogs[0], p = d.player, [til, , , anc] = STATIONS;
+    // the pass's cave comes out here: the boat alongside the quay at Cold Harbour, the flock and the dog on the quay, the gangway open
+    seaStart({ dock: true }); T.sea.wind.gustRate = 0; T.sea.orca.from = 2;
+    const n = living().length; out.n = n;
+    out.start = SEA.docked && QUAY.on && !DECK.lock && DECK.gateT > 0.9 && G.sheep.filter(s => !s.dead && onQuay(s.x, s.z, 0.3)).length === n && onQuay(d.x, d.z) && H.aboard() === 0;
+    H.run(6); out.still = H.r(Math.hypot(SEA.e - DOCK.e, SEA.n - DOCK.n) + Math.abs(SEA.heel) + Math.abs(SEA.pitch) + Math.hypot(SEA.u, SEA.v), 3); out.sheet = H.r(SEA.sheet);
+    out.refused = seaCastOff() === false && SEA.docked; out.ashore0 = seaAshore();
+    // the dog can't walk off the quay's edge; a sheep bonked into the harbour paddles back and scrambles out
+    const q0 = boatXZ(5, QUAY.v0 + 1); d.x = q0.x; d.z = q0.z; p.bot = H.stick(0, -1); H.run(2); out.edge = !d.air && onQuay(d.x, d.z) && boatV(d.x, d.z) < QUAY.v0 + 0.6; p.bot = {};
+    const wet = G.sheep.filter(s => !s.dead && !onDeck(s.x, s.z))[0], qe = boatXZ(QUAY.u1 - 3, QUAY.v0 + 1.5); wet.x = qe.x; wet.z = qe.z; wet.vx = wet.vz = 0; launchSheep(wet, -GAME.BOAT.rx * 6, -GAME.BOAT.rz * 6, 12, 'punt', null);   // (high: a low one bounces back off the edge)
+    H.run(2.5); out.swam = !!(wet.air && wet.air.kind === 'swim'); H.run(14); out.out = !wet.dead && !wet.air && (onQuay(wet.x, wet.z) || onDeck(wet.x, wet.z));
+    // herded up the gangway: the dog works whichever's furthest from it
+    const far = s => Math.hypot(s.x - DECK.gx, s.z - DECK.gz);
+    out.t = H.r(H.run(150, () => { const L = G.sheep.filter(s => !s.dead && !onDeck(s.x, s.z, 0.25)); if (!L.length) return true; const s = L.sort((a, b) => far(b) - far(a))[0], l = far(s) || 1, tx = s.x + (s.x - DECK.gx) / l * 3.2, tz = s.z + (s.z - DECK.gz) / l * 3.2; p.bot = Math.hypot(tx - d.x, tz - d.z) > 0.6 ? H.inp(tx - d.x, tz - d.z) : {}; }), 0);
+    p.bot = {}; out.aboard = H.aboard(); out.ashore = seaAshore(); out.open = !DECK.lock && DECK.gateT > 0.9;
+    // the dog follows them aboard: Hank swings the gangway shut and lashes it
+    const way = [boatXZ(QUAY.gu, -7.5), boatXZ(QUAY.gu, -2)]; for (const w of way) H.run(8, () => { p.bot = H.inp(w.x - d.x, w.z - d.z); return Math.hypot(w.x - d.x, w.z - d.z) < 0.6; });
+    p.bot = {}; H.run(4); out.lashed = DECK.lock && DECK.gateT < 0.05 && SEA.docked && H.aboard() === n;
+    // to the bow: lines in (stick up), and she's off; the gangway's shut and lashed, the quay's left behind
+    H.place(d, anc.su, anc.sv); d.yaw = anc.yaw; H.run(0.2); H.tap(p); out.onBow = stationOf(d) === anc; p.bot = H.stick(1, 0); H.run(3.2); p.bot = {};
+    out.cast = !SEA.docked && !QUAY.on && DECK.lock && DECK.gateT < 0.05 && SEA.pilot != null; H.tap(p); H.run(0.3);
+    H.run(45); out.away = H.r(Math.hypot(SEA.e - DOCK.e, SEA.n - DOCK.n), 0); out.u = H.r(SEA.u); out.crs = H.deg(H.wrap(SEA.hdg - ROUTE[1].crs)); out.hull = SEA.hull; out.aboard2 = H.aboard(); out.lost = G.sheep.filter(s => s.dead).length;
+    out.isle = H.r(Math.hypot(SEA.e - ROUTE[0].ie, SEA.n - ROUTE[0].in) - ROUTE[0].r, 0);
+    H.place(d, til.su, til.sv); d.yaw = til.yaw; H.run(0.2); H.tap(p); out.helm = stationOf(d) === til && SEA.pilot === null;
+    return out;
+  });
+  ok(`alongside at Cold Harbour: ${r.n} sheep and the dog on the quay, the gangway open; she lies still (${r.still}), sheet let fly`, r.start && r.still < 0.01 && r.sheet > 0.9, r);
+  ok(`no casting off with ${r.ashore0} sheep ashore`, r.refused && r.ashore0 > 0, r);
+  ok('the dog stops at the quay\'s edge; a sheep bonked into the harbour paddles back and scrambles out', r.edge && r.swam && r.out, r);
+  ok(`herded up the gangway: all ${r.aboard} aboard in ${r.t} s; the dog after them, and Hank lashes it shut`, r.aboard === r.n && r.ashore === 0 && r.t < 150 && r.open && r.lashed, r);
+  ok('lines in at the bow: cast off, the gangway shut and lashed, Hank on the helm', r.onBow && r.cast, r);
+  ok(`45 s on she's ${r.away} m off (${r.u} m/s, ${r.crs}° off the fairway), clear of the land (${r.isle} m), hull whole, nobody lost; a dog takes the tiller from Hank`, r.away > 100 && r.u > 3 && Math.abs(r.crs) < 20 && r.isle > 20 && r.hull === 5 && r.aboard2 === r.n && r.lost === 0 && r.helm, r);
 }
 
 if (want('land')) {

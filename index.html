@@ -1502,6 +1502,16 @@ function deckSdf(x, z) {   // m inside the deck's edge (negative: over the side)
   return Math.min((boatHB(uc) - v) / Math.sqrt(1 + sl * sl), u - B.stern, B.bow - u);
 }
 const onDeck = (x, z, m = 0) => x > SEA_X0 && deckSdf(x, z) > m;
+// the quay she lies alongside at Cold Harbour (QUAY.on: SAILING, seaStart({ dock }) … seaCastOff): ground to port, level with the deck,
+// lapping it at the gangway (gu ± gw, in to gv) so there's a way aboard. The gangway's at its aft end: the open leaf lies along that edge,
+// out of the way (no pocket behind it, and no dog can nudge it shut)
+const QUAY = { on: false, u0: -3.75, u1: 13.25, v0: -18, v1: -5.03, gu: -1, gw: 2.6, gv: -4.1 };
+function quaySdf(x, z) {
+  const Q = QUAY, u = boatU(x, z), v = boatV(x, z);
+  return Math.max(Math.min(u - Q.u0, Q.u1 - u, v - Q.v0, Q.v1 - v), Math.min(u - (Q.gu - Q.gw), Q.gu + Q.gw - u, v - Q.v0, Q.gv - v));
+}
+const onQuay = (x, z, m = 0) => QUAY.on && x > SEA_X0 && quaySdf(x, z) > m;
+const seaGround = (x, z) => QUAY.on ? Math.max(deckSdf(x, z), quaySdf(x, z)) : deckSdf(x, z);   // what there is to stand on out there
 
 // MOUNTAIN PASS: the floor's height along the trail (0 below the pass): it climbs T.pass.rise m from s0 to top, flat round each fire
 // camp; slopeArr: m up per m along (downhill is back down the trail)
@@ -1770,7 +1780,7 @@ for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) vH[b * VX + a] = heigh
 
 // bilinear terrain height
 function terrainH(x, z) {
-  if (x > SEA_X0) return deckSdf(x, z) > 0 ? BOAT.y : -9;   // SAILING: the deck, or deep water
+  if (x > SEA_X0) return seaGround(x, z) > 0 ? BOAT.y : -9;   // SAILING: the deck (and the quay she's moored to), or deep water
   const fx = (x - GMINX) / VS, fz = (z - GMINZ) / VS;
   const i = clamp(Math.floor(fx), 0, VX - 2), j = clamp(Math.floor(fz), 0, VZ - 2);
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * VX + i;
@@ -1796,7 +1806,7 @@ function stampObstacle(x, z, r) {
     const dx = GMINX + i - x, dz = GMINZ + j - z; if (dx * dx + dz * dz <= r * r) { blk[j * GX + i] = 1; swimOK[j * GX + i] = 0; }
   }
 }
-function isBlocked(x, z) { return x > SEA_X0 ? deckSdf(x, z) <= 0 : blk[cellIdxAt(x, z)] === 1; }
+function isBlocked(x, z) { return x > SEA_X0 ? seaGround(x, z) <= 0 : blk[cellIdxAt(x, z)] === 1; }
 let SDF = null, SWIM_SDF = null;
 function chamfer(feature) {
   const d = new Float32Array(GN), D2 = Math.SQRT2, INF = 1e6;
@@ -1827,7 +1837,7 @@ function buildSDF() {
   SWIM_SDF = sdfOf(sb);
 }
 function sdfIn(F, x, z) {
-  if (x > SEA_X0) return F === SDF ? deckSdf(x, z) : 30;   // SAILING: sheep keep to the deck; nothing walls a swimmer in
+  if (x > SEA_X0) return F === SDF ? seaGround(x, z) : 30;   // SAILING: sheep keep to the deck; nothing walls a swimmer in
   const fx = x - GMINX, fz = z - GMINZ;
   const i = clamp(Math.floor(fx), 0, GX - 2), j = clamp(Math.floor(fz), 0, GZ - 2);
   const u = clamp(fx - i, 0, 1), v = clamp(fz - j, 0, 1), k = j * GX + i;
@@ -3245,15 +3255,15 @@ const G = {
   clock: { hour: T.startHour, day: 1 },
   ff: false,
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
-  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0 },
+  stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0, left: 0 },
   nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
   wool: 0,   // SHARED HOOK: the journey's wool stock 🧶 (whole skeins; shearing adds, the vendor spends)
   train: {},   // TRAINING: each dog's xp and levels this journey, by slot and breed (trainRec)
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
-const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect', 'cast', 'cold', 'drowned', 'shark', 'kraken', 'siren'];
-const SEA_LOSS = ['drowned', 'shark', 'kraken', 'siren'];   // SAILING: lost at sea (no body to bury)
+const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect', 'cast', 'cold', 'drowned', 'shark', 'kraken', 'siren', 'left'];
+const SEA_LOSS = ['drowned', 'shark', 'kraken', 'siren', 'left'];   // SAILING: lost at sea, or left on the mountain when the flock went down to the boat (no body to bury)
 const lostCount = () => LOSS_KINDS.reduce((a, k) => a + (G.stats[k] || 0), 0);   // every sheep lost this journey
 
 // =====================================================================
@@ -3439,8 +3449,8 @@ function penTarget(p, s, out) {
   return out;
 }
 // MORNING RUSH: the gate's opened in the morning and the whole pen pours out to graze (troughs, lick and sleep can wait)
-const morningOut = p => !!p && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
-const penRush = p => !!p && p.gateT > 0.6 && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
+const morningOut = p => !!p && !p.deck && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
+const penRush = p => !!p && !p.deck && p.gateT > 0.6 && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
 function startRush(p) {
   p.rushUntil = G.time + T.morningRush.dur;
   for (const s of G.sheep) if (s.pen === p && !s.dead && !s.grabbed && !s.heldBy) s.thinkT = Math.min(s.thinkT, rnd(0, 0.8));   // they go in a wave, not on one tick
@@ -3828,7 +3838,7 @@ function decideCalm(s, nb, night) {
   const grazing = s.goal === 'graze', rejoinD = (grazing ? 7 + 4 * Math.max(0, s.hunger - 0.4) : 5.5) - 2 * s.stress - (steady ? 2 : 0);
   if (nearestO && (nearest > rejoinD || (!grazing && s.near < 2 && nC >= 3 && Math.hypot(cX / nC - s.x, cZ / nC - s.z) > 6))) { s.state = 'rejoin'; s.tx = kn && kn.m > 1 ? kn.cx : nC ? cX / nC : nearestO.x; s.tz = kn && kn.m > 1 ? kn.cz : nC ? cZ / nC : nearestO.z; return; }
   // nothing to eat in here and the gate's open: once it's been in a while (and it's not evening), out by the gate to graze
-  if (grazing && s.pen && s.pen.gateT > 0.6 && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
+  if (grazing && s.pen && !s.pen.deck && s.pen.gateT > 0.6 && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
   if (s.goal === 'graze') {
     s.dash = dashing; if (grassDash(s)) return; s.dash = false;   // hungry on the stubble: off to green grass now
     if (grassShove(s)) return;
@@ -4737,7 +4747,10 @@ function updateDog(d, inp, dt) {
   collideDog(d);
   if (overWater(d.x, d.z)) {
     if (inRiver(d.x, d.z)) { startSwim(d); return; }   // walked into the river: paddling now (drops what it holds)
-    if (d.x > SEA_X0) { seaDogOff(d); return; }        // SAILING: over the rail, nothing under it: into the sea
+    if (d.x > SEA_X0) {   // SAILING: over the rail, nothing under it: into the sea (the quay's edge: it stops, unless it leapt)
+      if (QUAY.on && d.hopT <= 0 && d.pounceT <= 0 && seaGround(d.x, d.z) > -0.6) { collideWorld(d, 0.12); if (overWater(d.x, d.z)) { d.x = ox; d.z = oz; } }
+      else { seaDogOff(d); return; }
+    }
   }
   if (d.pounceT > 0) pounceGateSlam(d, ox, oz);
   if (d.hopT > 0 && d.jumped && byTrough(d)) collideFences(d, T.dogR);   // a jump clears fences, not the one by the troughs
@@ -9959,14 +9972,17 @@ function updatePass(dt, dtH) {
     updateBlizz(dt, dtH);
   }
   updateGoats(dt); updateYeti(dt); updateSnowballs(dt); updateRock(dt);
-  // the yeti's pen: iced shut while he's there; then shut the flock in and it's over
+  // the yeti's pen: iced shut while he's there; then shut the flock in: on through the mountain to the sea (SAILING)
   const p = finalPen;
   if (p.frozen) { p.phi = 0; p.latched = true; updateGateGeometry(p); }
   else if (G.mode === 'play') {
     const live = living(), inn = live.filter(s => s.pen === p && !s.grabbed && !s.air && !s.heldBy);
     if (p.gateT < 0.05 && inn.length) {
       PASS.shutT += dt;
-      if (inn.length === live.length || PASS.shutT > T.pass.finish) { hank(null, "Ye did it! Over the pass, every one we could bring!", { force: true }); finishGame(inn.length); }
+      if (inn.length === live.length || PASS.shutT > T.pass.finish) {
+        if (seaFromCave(inn)) PASS.shutT = 0;   // SAILING: the cave's the way through, down to the harbour (not shut in: left behind)
+        else { hank(null, "Ye did it! Over the pass, every one we could bring!", { force: true }); finishGame(inn.length); }   // (online with friends: it ends here)
+      }
       else if (Math.floor(PASS.shutT) !== Math.floor(PASS.shutT - dt)) floatText(`🐑 ${inn.length}/${live.length} · ${Math.ceil(T.pass.finish - PASS.shutT)}`, p.x, p.y + 3, p.z, '#ffffff', 1.3);
     } else PASS.shutT = 0;
   }
@@ -11359,7 +11375,7 @@ function updateHUD(dt) {
   const out = live.filter(s => !s.pen); const g = out.length ? out.reduce((a, s) => a + grassAt(s.x, s.z), 0) / out.length : -1;
   const gl = g < 0 ? ['In pens', '#fff8e8'] : g > 0.6 ? ['Lush', '#7ed957'] : g > 0.35 ? ['Good', '#b8e36b'] : g > 0.15 ? ['Thin', '#ffd36b'] : ['Overgrazed', '#ff7a6b'];
   const ge = $('hGrass'); ge.textContent = SEA.on ? '⛵' : gl[0]; ge.style.color = SEA.on ? '' : gl[1];
-  if (g >= 0 && g < 0.2 && G.mode === 'play') hint('grass');
+  if (g >= 0 && g < 0.2 && G.mode === 'play' && !SEA.on) hint('grass');
   const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length, parched = WATER.parched;
   const sick = AIL.map(A => [A.icon, live.filter(s => ailOf(s) & A.bit).length]).filter(([, n]) => n).map(([ic, n]) => `${ic}${n}`).join(' ');   // VET
   const frozen = live.filter(s => s.cold > 0.75).length;   // MOUNTAIN PASS
@@ -12904,13 +12920,13 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cold' ? `${s.name} froze` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : why === 'snake' ? `🐍 ${s.name} died of a snakebite` : why === 'bled' ? `🩸 ${s.name} bled to death` : why === 'infect' ? `🦠 ${s.name}'s wounds went bad` : why === 'cast' ? `🙃 ${s.name} died cast on ${s.ram ? 'his' : 'her'} back` : why === 'drowned' ? `🌊 ${s.name} was lost overboard` : why === 'shark' ? `🦈 A shark took ${s.name}` : why === 'kraken' ? `🐙 The kraken took ${s.name}` : why === 'siren' ? `🧜 ${s.name} swam off after the singing` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cold' ? `${s.name} froze` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : why === 'snake' ? `🐍 ${s.name} died of a snakebite` : why === 'bled' ? `🩸 ${s.name} bled to death` : why === 'infect' ? `🦠 ${s.name}'s wounds went bad` : why === 'cast' ? `🙃 ${s.name} died cast on ${s.ram ? 'his' : 'her'} back` : why === 'drowned' ? `🌊 ${s.name} was lost overboard` : why === 'shark' ? `🦈 A shark took ${s.name}` : why === 'kraken' ? `🐙 The kraken took ${s.name}` : why === 'siren' ? `🧜 ${s.name} swam off after the singing` : why === 'left' ? `🏔️ ${s.name} was left on the mountain` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
   return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : why === 'cold' ? `${base}… ❄️ → 🔥` : why === 'snake' ? `${base}… 💉 ➜ 🧓` : why === 'bled' ? `${base}… 🩹 ➜ 🧓` : why === 'infect' ? `${base}… 💊 ➜ 🧓` : why === 'cast' ? `${base}… 💥 a cast sheep back onto its feet!` : why === 'drowned' ? `${base}… ✊ ➜ 🐑 🌊` : why === 'siren' ? `${base}… 📣` : `${base}…`;
 }
 // how a sheep we lost went, for the "Fondly remembered" lists: why is one of LOSS_KINDS
 const cleanWhy = w => LOSS_KINDS.includes(w) ? w : 'eaten';
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cold' ? 'froze on the pass' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : why === 'snake' ? 'died of a snakebite' : why === 'bled' ? 'bled to death' : why === 'infect' ? 'died of a festering wound' : why === 'cast' ? 'died cast on its back' : why === 'drowned' ? `${was}lost overboard` : why === 'shark' ? `${was}taken by a shark` : why === 'kraken' ? `${was}taken by the kraken` : why === 'siren' ? `${was}sung away by the sirens` : `${was}taken by coyotes`;
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cold' ? 'froze on the pass' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : why === 'snake' ? 'died of a snakebite' : why === 'bled' ? 'bled to death' : why === 'infect' ? 'died of a festering wound' : why === 'cast' ? 'died cast on its back' : why === 'drowned' ? `${was}lost overboard` : why === 'shark' ? `${was}taken by a shark` : why === 'kraken' ? `${was}taken by the kraken` : why === 'siren' ? `${was}sung away by the sirens` : why === 'left' ? `${was}left on the mountain` : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -13676,6 +13692,7 @@ function eulogy(m) {
     : m.why === 'bled' ? pick([`Fought to the last drop.`, `The wounds were too deep.`])
     : m.why === 'infect' ? pick([`A wee cut, and the fever came.`, `Fought the fever to the end.`])
     : m.why === 'drowned' ? pick([`The sea took ${her === 'his' ? 'him' : 'her'}. We came about too late.`, `Over the rail, and gone astern.`, `Lost to the grey water.`])
+    : m.why === 'left' ? pick([`We shut the cave and went down without ${her === 'his' ? 'him' : 'her'}.`, `Still up on the pass, for all we know.`])
     : m.why === 'shark' ? pick([`A fin, and then nothing.`, `The sharks were quicker than we were.`])
     : m.why === 'kraken' ? pick([`Dragged down by the beast below.`, `The kraken's arm had ${her === 'his' ? 'him' : 'her'} before we could bonk it.`])
     : m.why === 'siren' ? pick([`Followed the singing over the side.`, `Heard a sweeter bleat out on the rocks.`])
@@ -13683,7 +13700,7 @@ function eulogy(m) {
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜', left: '🏔️' };
 // 🕯️ Obituaries: icon, name, bravery (and the day, on the end screen), eulogy
 function obitHTML(dead, day = false) {
   if (!dead.length) return '';
@@ -14147,6 +14164,7 @@ const SEA = {
   e: 0, n: 0, hdg: 0, u: 0, v: 0, r: 0,                       // on the sea
   heel: 0, heelV: 0, pitch: 0, pitchV: 0, heave: 0, heaveV: 0, kick: 0,   // how she sits (kick: a shove to the roll, rad/s² fading)
   hoist: 1, sheet: 1, boom: 0, boomV: 0, helm: 0, rud: 0, course: null, lash: false,   // sail up 0…1, sheet 0 hard in … 1 right out, boom + to starboard, helm -1…1, rudder rad
+  docked: false, pilot: null,   // alongside the quay at Cold Harbour (seaStart({ dock }) … seaCastOff); pilot: the course Hank holds her on till a dog takes the tiller
   anchor: 'up', anchorT: 0, ae: 0, an: 0, weigh: 0, holding: false,   // 'up' | 'down' (ae/an: where it lies; holding: it's bitten the bottom)
   aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
   state: 0.2, run: 0, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0,   // sea state, where the sea runs to, lee of an island, how wild the ride, water over a rail (±), ballast moment
@@ -14454,7 +14472,11 @@ function seaSwimSheep(s, a, dt) {
   a.t += dt;
   const tow = a.tow && a.tow.air && a.tow.air.swim && a.tow.tow === s ? a.tow : (a.tow = null);
   const h = seaHullNear(s.x, s.z), slow = Math.hypot(S.u, S.v) < K.clingSpd;
-  if (tow) {   // by the scruff, behind a swimming dog
+  if (S.docked && !tow && boatV(s.x, s.z) < -4) {   // in the harbour, the quay's side: it paddles to the quay and scrambles out
+    const Q = QUAY, q = boatXZ(clamp(boatU(s.x, s.z), Q.u0 + 1.3, Q.u1 - 1.3), clamp(boatV(s.x, s.z), Q.v0 + 1.3, Q.v1 - 1.5)), dx = q.x - s.x, dz = q.z - s.z, dl = Math.hypot(dx, dz) || 1, sp = T.swimSpeed * K.swim;
+    if (quaySdf(s.x, s.z) > -0.9) { const b = launchSheep(s, dx / 0.6, dz / 0.6, 7, 'drop', null); b.h = s.y; b.ghost = 1; b.bounces = 0; b.rescue = true; b.noLand = 0.3; seaFx('climb', 0, s.x, s.z); return; }
+    s.vx += (dx / dl * sp - s.vx) * Math.min(1, dt * 3); s.vz += (dz / dl * sp - s.vz) * Math.min(1, dt * 3); s.x += s.vx * dt; s.z += s.vz * dt; s.yaw = lerpA(s.yaw, Math.atan2(dx, dz), Math.min(1, dt * 4)); a.cling = false;
+  } else if (tow) {   // by the scruff, behind a swimming dog
     const bx = tow.x - Math.sin(tow.yaw) * 0.9, bz = tow.z - Math.cos(tow.yaw) * 0.9; s.x = lerp(s.x, bx, Math.min(1, dt * 10)); s.z = lerp(s.z, bz, Math.min(1, dt * 10)); s.vx = tow.vx; s.vz = tow.vz; s.yaw = lerpA(s.yaw, tow.yaw, Math.min(1, dt * 6)); a.cling = false;
   } else if (a.cling && slow && h.d < 1.6) {   // hanging on alongside
     s.x = lerp(s.x, h.x + h.nx * 0.75, Math.min(1, dt * 5)); s.z = lerp(s.z, h.z + h.nz * 0.75, Math.min(1, dt * 5)); s.vx = s.vz = 0; s.yaw = lerpA(s.yaw, Math.atan2(-h.nx, -h.nz), Math.min(1, dt * 5));
@@ -14469,10 +14491,10 @@ function seaSwimSheep(s, a, dt) {
   }
   s.y = seaSurf(s.x, s.z) - 0.45 + Math.sin(a.t * 5 + s.id) * 0.05; s.hopY = 0; s.leg += dt * 14; s.pose = s.pose || {};
   // it can't keep this up for ever: quicker in a wild sea, hardly at all once it has hold of the boat or a dog has hold of it
-  a.lung -= dt / K.float * (a.cling || tow ? K.clingK : 1) * (1 + K.stormK * S.state);
+  if (!S.docked) a.lung -= dt / K.float * (a.cling || tow ? K.clingK : 1) * (1 + K.stormK * S.state);
   a.cry -= dt; if (a.cry <= 0) { a.cry = rnd(1.6, 3.2); baaAt(s, 0.45, 1.3, true); }
   if (Math.random() < dt * 1.5) spawnRing(s.x, s.y + 0.45, s.z, 1.3, '#e8f8ff', 0.7);
-  if (h.d > K.lost || a.lung <= 0) { s.air = null; killSheep(s, a.lung <= 0 ? 'drowned' : 'lostsea'); }
+  if (h.d > K.lost || a.lung <= 0) { s.air = null; killSheep(s, 'drowned'); }
 }
 // a dog on deck bites a sheep in the water alongside: up and over the rail it comes
 function seaHaul(d, s) {
@@ -14510,6 +14532,12 @@ function seaSwimDog(d, inp, dt) {
   d.y = seaSurf(d.x, d.z) - 0.55 + Math.sin(a.t * 6) * 0.05; d.leg += dt * 9;
   d.stamina = Math.min(1, d.stamina + T.staminaRegen * dogK(d, 'wind') * 0.5 * dt);
   if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
+  if (S.docked && quaySdf(d.x, d.z) > -K.climbR) {   // by the quay: up the ladder
+    const Q = QUAY, q = boatXZ(clamp(boatU(d.x, d.z), Q.u0 + 1.3, Q.u1 - 1.3), clamp(boatV(d.x, d.z), Q.v0 + 1.3, Q.v1 - 1.5)), dx = q.x - d.x, dz = q.z - d.z, dl = Math.hypot(dx, dz) || 1;
+    a.climb = im < 0.1 || (mx * dx + mz * dz) / (im * dl) > 0.3 ? (a.climb || 0) + dt : 0;
+    if (a.climb > K.climbT) { d.air = null; d.tow = null; const b = launchDog(d, dx / 0.6, dz / 0.6, 7, 'board'); b.h = d.y; b.ghost = 1; b.bounces = 0; b.noLand = 0.25; seaFx('climb', 0, d.x, d.z); }
+    return;
+  }
   const h = seaHullNear(d.x, d.z);
   if (h.d < 0.55) { d.x = h.x + h.nx * 0.55; d.z = h.z + h.nz * 0.55; }
   const into = im > 0.3 ? -(mx * h.nx + mz * h.nz) / im : 0;
@@ -14543,7 +14571,7 @@ function stationGrip(d, mx, mz, bd) {   // (tryGrab) the nearest free one within
   let best = null; for (const st of STATIONS) { if (st.by) continue; const dd = Math.hypot(st.x - mx, st.z - mz) - T.sea.station.reach; if (dd < bd) { bd = dd; best = st; } }
   return best ? { st: best, dd: bd } : null;
 }
-function stationBite(st, d) { st.by = d; d.vx = d.vz = 0; if (st.id === 'tiller') { SEA.lash = false; SEA.course = SEA.hdg; } seaFx('station', 0, st.x, st.z, st.id); }
+function stationBite(st, d) { st.by = d; d.vx = d.vz = 0; if (st.id === 'tiller') { SEA.lash = false; SEA.pilot = null; SEA.course = SEA.hdg; } seaFx('station', 0, st.x, st.z, st.id); }
 function stationLetGo(st, d) { if (st.by === d) st.by = null; if (st.id === 'tiller' && !SEA.lash) SEA.course = null; }
 function stationShake(st, d) {   // quick taps on it
   if (st.id === 'tiller') { SEA.lash = !SEA.lash; seaFx(SEA.lash ? 'lash' : 'unlash', 0, st.x, st.z); if (SEA.lash) { releaseHoldQuiet(d); } }
@@ -14566,17 +14594,22 @@ function seaStations(dt) {
       if (Math.abs(fwd) > K.dead) { S.hoist = clamp(S.hoist + fwd * K.hoist * dt, 0, 1); S.reefAim = null; }
       else { const R = T.sea.sail.reefs; S.reefAim = R.reduce((a, b) => Math.abs(b - S.hoist) < Math.abs(a - S.hoist) ? b : a); }
     } else if (st.id === 'anchor') {
-      if (fwd < -0.4 && S.anchor === 'up') seaAnchorDrop();
+      if (S.docked) {   // alongside: stick up hauls her lines in
+        if (fwd > 0.4) { S.weigh += dt / T.sea.anchor.weighT; if (Math.random() < dt * 9) seaFx('chain', 0, st.x, st.z); if (S.weigh >= 1) { S.weigh = 0; seaCastOff(); } }
+        else S.weigh = Math.max(0, S.weigh - dt * 0.5);
+      }
+      else if (fwd < -0.4 && S.anchor === 'up') seaAnchorDrop();
       else if (fwd > 0.4 && S.anchor === 'down') { S.weigh += dt / T.sea.anchor.weighT; if (Math.random() < dt * 9) seaFx('chain', 0, st.x, st.z); if (S.weigh >= 1) seaAnchorUp(); }
       else S.weigh = Math.max(0, S.weigh - dt * 0.5);
     }
   }
   const til = STATIONS[0];
-  if (!til.by && !S.lash) S.helm += (0 - S.helm) * Math.min(1, dt * 2.5);   // nobody on it: it swings amidships (and she rounds up)
+  if (!til.by && S.pilot != null) S.helm = clamp(wrapA(S.pilot - S.hdg) * K.holdP - S.r * K.holdD, -1, 1);   // Hank minds the helm out of the harbour
+  else if (!til.by && !S.lash) S.helm += (0 - S.helm) * Math.min(1, dt * 2.5);   // nobody on it: it swings amidships (and she rounds up)
   if (S.reefAim != null) S.hoist += clamp(S.reefAim - S.hoist, -dt * 0.3, dt * 0.3);   // let go between reefs: it settles to the nearest
   // Hank on the sheet while no dog has it: he trims to the wind (a beat late, never quite spot on), eases her when she's pressed, lets it fly when he must
   if (!STATIONS[1].by) {
-    const fly = S.anchor === 'down' || S.dogOver || S.hold;
+    const fly = S.anchor === 'down' || S.docked || S.dogOver || S.hold;
     if (S.assist || fly) {
       let aim = fly ? 1 : sheetFor(S.best + K.hankSlack);
       if (!fly && Math.abs(S.heel) > K.hankEase) aim = Math.min(1, aim + (Math.abs(S.heel) - K.hankEase) * K.hankSpill);
@@ -14592,6 +14625,36 @@ function seaAnchorDrop() {
 function seaAnchorUp() {
   const S = SEA; S.anchor = 'up'; S.weigh = 0; S.holding = false; seaFx('aweigh', 0, STATIONS[3].x, STATIONS[3].z);
   if (Math.abs(S.awa) < 0.7 && Math.abs(S.u) < 1) { const w = seaNext(), sd = w ? Math.sign(wrapA(seaBear(w.e, w.n) - S.hdg)) || 1 : 1; S.r += sd * 0.22; S.u += 0.6; }   // Hank backs the jib: her head pays off toward the way on
+}
+// ---------------- alongside the quay (Cold Harbour: where the pass comes down). She lies still; the gangway's open; the flock's herded aboard ----------------
+function seaGangway(dt) {   // every sheep and dog aboard: Hank swings the gangway shut and lashes it
+  const S = SEA, p = DECK; if (p.lock) return;
+  const all = !seaAshore() && G.dogs.every(d => !d.air && d.holding !== p && onDeck(d.x, d.z, 0.3));
+  S.aboardT = all ? (S.aboardT || 0) + dt : 0;
+  if (S.aboardT > 1.2) { if (!p.latched || p.gateT > 0.02) p.auto = 0; else { p.lock = true; seaFx('gangway', 0, p.gx, p.gz); } }
+  else if (!all && p.auto === 0) { p.auto = T.gate.maxOut * 0.95; p.latched = false; }   // (one's gone back out: open again)
+}
+function seaMoored() {   // (seaStep, after the boat's own step: held where she lies)
+  const S = SEA; S.e = DOCK.e; S.n = DOCK.n; S.hdg = DOCK.hdg; S.u = S.v = S.r = 0;
+  S.heel = S.heelV = S.pitch = S.pitchV = S.heave = S.heaveV = S.kick = 0; S.rough = 0; S.awash = 0; S.jolt.u = S.jolt.v = 0; S.irons = 0; S.helm = 0; S.state = Math.min(S.state, 0.07);
+}
+const seaAshore = () => G.sheep.filter(s => !s.dead && !onDeck(s.x, s.z, 0.25)).length;   // sheep not aboard yet
+// SHARED HOOK: her lines hauled in (the bow station, stick up). Not while a sheep's still ashore. → did she go
+function seaCastOff(force = false) {
+  const S = SEA, st = STATIONS[3]; if (!S.docked) return false;
+  const n = force ? 0 : seaAshore();
+  if (n) { seaFx('ashore', n, st.x, st.z); return false; }
+  S.docked = false; QUAY.on = false; resetGate(DECK); DECK.lock = true;
+  G.dogs.forEach((d, i) => {   // a dog still on the quay: aboard with a bound
+    if (d.air || onDeck(d.x, d.z)) return;
+    if (d.holding) releaseHold(d, false); dropBucket(d);
+    const p = boatXZ(-4.5 - i * 1.3, -1.6); d.x = p.x; d.z = p.z; d.vx = d.vz = 0; d.y = BOAT.y; vaultFx(d);
+  });
+  for (const s of G.sheep) if (!s.dead && !s.air && !onDeck(s.x, s.z, 0.25) && onDeck(s.x, s.z, -0.6)) { const u = boatU(s.x, s.z), q = boatXZ(u, -(boatHB(u) - 0.9)); s.x = q.x; s.z = q.z; }   // (one in the gangway: in)
+  S.v = 1.1; S.u = 0.5; S.pilot = ROUTE[1].crs;   // Hank shoves her off and minds the helm: out along the fairway
+  seaFx('castoff', 0, st.x, st.z); seaFx('leg', 0, 0, 0, S.leg);
+  setTimeout(() => hint('sea-away'), 1200);
+  return true;
 }
 
 // ---------------- the way across: legs from island to island (sea m), each with its own wind and its own trouble ----------------
@@ -14612,6 +14675,8 @@ ROUTE.forEach((w, i) => {
   w.r = w.final ? I.r * 1.5 : I.r * (0.85 + 0.3 * ((i * 37) % 10) / 10); w.ie = w.e + Math.sin(ia) * (w.r + I.off); w.in = w.n + Math.cos(ia) * (w.r + I.off);
 });
 const seaNext = () => ROUTE[SEA.leg] || null;
+// the quay at Cold Harbour: where she lies alongside (sea m), the island abeam to port, the wind off the land
+const DOCK = (() => { const w = ROUTE[0], b = Math.atan2(w.ie - w.e, w.in - w.n), D = w.r + 27; return { e: w.ie - Math.sin(b) * D, n: w.in - Math.cos(b) * D, hdg: wrapA(b + Math.PI / 2), off: D }; })();
 // REEFS: rocks awash either side of the fairway on the Gull Rock leg (own rng); BUOYS mark the gaps. Sharks' and sirens' rocks are placed the same way
 const REEFS = [], BUOYS = [], SIREN_ROCKS = [];
 {
@@ -14693,6 +14758,7 @@ function seaHank(dt) {
   if (G.mode !== 'play') return;
   // what he calls out (each has its own gap; never while it wouldn't help)
   const say = (key, text, gap = 25) => { if ((S.said[key] || -99) + gap > G.time) return false; S.said[key] = G.time; hank(null, text, { force: true }); return true; };
+  if (S.docked) { const n = seaAshore(); if (n) say('board', pick(['Up the gangway wi\' them!', 'Get them aboard!']), 45); else if (DECK.lock) say('cast', "All aboard! Cast off at the bow.", 30); return; }
   const ab = Math.abs(S.awa), up = S.hoist > 0.08, sail = up && S.anchor !== 'down' && !S.hold;
   S.heelT = sail && Math.abs(S.heel) > 0.5 ? (S.heelT || 0) + dt : 0;
   if (S.heelT > 1.5) say('ease', STATIONS[1].by ? 'Ease the sheet!' : "She's over-pressed. Sheep to the high side!", 18);
@@ -15153,7 +15219,7 @@ function seaPose() {
 function seaCamTarget(dogs) {
   const S = SEA, K = T.sea, sp = Math.hypot(S.u, S.v); let far = 0, cx = 0, cz = 0, n = 0;
   for (const d of dogs) { cx += d.x; cz += d.z; n++; if (d.air && d.air.swim) far = Math.max(far, -deckSdf(d.x, d.z)); }
-  const p = boatXZ(K.ahead[0] + Math.min(9, Math.max(0, S.u) * K.ahead[1]), 0), k = n ? 0.3 : 0;
+  const p = S.docked ? boatXZ(3, -6.5) : boatXZ(K.ahead[0] + Math.min(9, Math.max(0, S.u) * K.ahead[1]), 0), k = n ? 0.3 : 0;   // (alongside: the quay's in the picture)
   return { x: lerp(p.x, n ? cx / n : p.x, k), z: lerp(p.z, n ? cz / n : p.z, k), view: Math.max(lerp(K.view[0], K.view[1], clamp(sp / 8, 0, 1)), Math.min(K.view[2], K.view[0] + far * 1.5)) };
 }
 function seaCamTilt(dt) {
@@ -15496,6 +15562,40 @@ const SEAOBJ = { buoys: [], lights: [] };
     const b = new THREE.Group(); seaG.add(b); part(b, merge(P(SPH(10), '#ffd36b', { s: [0.8, 0.6, 0.8], p: [0, 0.2, 0] }), P(CYL(0.05, 0.05, 2.4, 5), '#3a3a44', { p: [0, 1.4, 0] }), P(BOX(0.9, 0.55, 0.04), w.final ? '#ff8fb8' : '#f4f1e8', { p: [0.5, 2.3, 0] })));
     SEAOBJ.buoys.push({ g: b, e: w.e + 9, n: w.n + 5, k: 1 });
   }
+  // Cold Harbour's quay (QUAY: ground while she's alongside), the pier up to the cave the pass comes out of, the mountain's snowy foot.
+  // Built in deck coords (x: to starboard, z: aft, y: up from the deck) at the pose she's moored in (DOCK)
+  {
+    const Q = QUAY, dg = new THREE.Group(), q = new THREE.Group(); dg.position.set(seaX(DOCK.e, DOCK.n), BOAT.fb, seaZ(DOCK.e, DOCK.n)); dg.quaternion.setFromAxisAngle(AX_Y, -DOCK.hdg); seaG.add(dg);
+    _sem.makeBasis(AX_R, AX_Y, _sev.set(-BOAT.fx, 0, -BOAT.fz)); q.quaternion.setFromRotationMatrix(_sem); dg.add(q);
+    const at = (u, v, y = 0) => [v, y, -u], ps = [], stone = '#a39d92', dark = '#77726a', wood = '#b07a46', post = '#7a5230';
+    const L = Q.u1 - Q.u0 + 0.6, Wd = Q.v1 - Q.v0 + 0.05, um = (Q.u0 + Q.u1) / 2, vm = (Q.v0 + Q.v1) / 2 - 0.19, shore = -(DOCK.off - ROUTE[0].r * 0.9);
+    ps.push(P(BOX(Wd, 0.36, L), stone, { p: at(um, vm, -0.18) }), P(BOX(Wd - 0.5, 2.6, L - 0.5), dark, { p: at(um, vm, -1.6) }));   // the quay: a slab on its wall
+    for (let u = Q.u0 + 1.2; u < Q.u1; u += 2.6) ps.push(P(BOX(Wd + 0.04, 0.02, 0.07), dark, { p: at(u, vm, 0.005) }));   // (its paving joints)
+    ps.push(P(BOX(1.3, 0.09, 4.3), wood, { p: at(Q.gu, Q.v1 + 0.45, 0.03) }));   // the gangplank
+    for (const u of [Q.gu + 4.6, Q.u1 - 1.4]) ps.push(P(CYL(0.2, 0.26, 0.55, 8), '#3a3a44', { p: at(u, Q.v1 - 0.7, 0.27) }), P(CYL(0.3, 0.3, 0.1, 8), '#3a3a44', { p: at(u, Q.v1 - 0.7, 0.58) }));   // bollards
+    // a rope rail round its three open sides (dogs stop at the edge), a gap where the pier comes in
+    const rail = (u0, v0, u1, v1) => { const n = Math.max(1, Math.round(Math.hypot(u1 - u0, v1 - v0) / 2.4)); for (let k = 0; k <= n; k++) ps.push(P(CYL(0.07, 0.09, 0.95, 5), post, { p: at(lerp(u0, u1, k / n), lerp(v0, v1, k / n), 0.47) }));
+      const horiz = Math.abs(u1 - u0) > Math.abs(v1 - v0), len = Math.hypot(u1 - u0, v1 - v0); for (const y of [0.42, 0.8]) ps.push(P(horiz ? BOX(0.05, 0.05, len) : BOX(len, 0.05, 0.05), '#c9b68a', { p: at((u0 + u1) / 2, (v0 + v1) / 2, y) })); };
+    rail(Q.u0, Q.v1 - 0.4, Q.u0, Q.v0); rail(Q.u1, Q.v1 - 0.4, Q.u1, Q.v0); rail(Q.gu + 2.3, Q.v0, Q.u1, Q.v0);
+    // the pier: planks on piles from the quay to the shore, a hurdle across its head (nobody goes back up)
+    const pl = Q.v0 - shore; ps.push(P(BOX(pl + 0.6, 0.2, 4.2), wood, { p: at(Q.gu, Q.v0 - pl / 2, -0.1) }));
+    for (let v = Q.v0 - 1.5; v > shore; v -= 3) for (const sd of [-1, 1]) ps.push(P(CYL(0.17, 0.17, 3.4, 5), post, { p: at(Q.gu + sd * 2.2, v, -1.3) }));
+    for (let k = 0; k <= 4; k++) ps.push(P(BOX(0.08, 0.9, 0.1), post, { p: at(Q.gu - 2 + k, Q.v0 - 0.15, 0.45) })); for (const y of [0.3, 0.72]) ps.push(P(BOX(0.06, 0.08, 4.2), post, { p: at(Q.gu, Q.v0 - 0.15, y) }));
+    for (const [u, v, s] of [[Q.u1 - 3.2, Q.v0 - 1.1, 0.8], [Q.u1 - 2, Q.v0 - 1.3, 0.62], [Q.gu + 4.4, Q.v0 - 1.1, 0.74]]) ps.push(P(BOX(s * 1.3, s * 1.3, s * 1.3), '#9a6a3a', { r: [0, u, 0], p: at(u, v, s * 0.65 - 1.2) }));   // (crates on a lighter under the quay's back: out of the way)
+    // the mountain's foot: snow, crags (the tall ones up the screen and inland, so they hide nothing), and the cave's black mouth by the
+    // head of the pier, facing the camera
+    const crag = (u, v, s, h) => { ps.push(P(ICO(1, 0), '#77727a', { s: [s * rr(0.9, 1.2), h, s * rr(0.9, 1.2)], r: [R() * 0.3, R() * 3, R() * 0.3], p: at(u, v, h * 0.45 - 1.6) }), P(ICO(1, 0), '#f7fbfd', { s: [s * 0.74, h * 0.4, s * 0.74], r: [0, R() * 3, 0], p: at(u, v, h * 0.98 - 1.6) })); };
+    ps.push(P(SPH(12), '#eef4f8', { s: [21, 2.1, 27], p: at(Q.gu + 3, shore - 15, -1.5) }));   // the snow lying on the shore
+    for (const [du, dv, s, h] of [[9, -4.5, 5, 9], [15, -9, 7, 13], [6.5, -11, 7, 14], [18, -2, 4.5, 6.5], [2, -20, 10, 19], [-8, -22, 9, 15], [13, -20, 9, 17], [-6, -4, 2.4, 2.3], [-10.5, -7, 3, 3], [-14, -2.5, 2.2, 2]]) crag(Q.gu + du, shore + dv, s, h);
+    ps.push(P(BOX(6, 0.3, 7), stone, { p: at(Q.gu + 2.6, shore - 2.4, -0.26) }));   // a landing at the pier's head
+    ps.push(P(SPH(12), '#14131d', { s: [2.3, 3.1, 1.1], p: at(Q.gu + 5.6, shore - 3, 0.8) }), P(ICO(1, 0), '#66626a', { s: [1.5, 3.7, 1.9], p: at(Q.gu + 6.3, shore - 0.2, 0.9) }), P(ICO(1, 0), '#66626a', { s: [1.5, 4, 1.9], p: at(Q.gu + 6.3, shore - 5.8, 1) }),
+      P(ICO(1, 0), '#66626a', { s: [4.6, 1.5, 2], p: at(Q.gu + 6.6, shore - 3, 4.6) }), P(ICO(1, 0), '#f7fbfd', { s: [4.4, 0.8, 2.2], p: at(Q.gu + 6.9, shore - 3, 5.9) }));
+    for (const [du, dv, s] of [[-4.5, -1.5, 1.2], [-9, -1, 1.4], [-13, -6, 1.1], [11, -0.5, 1.2]]) ps.push(...pine(0, 0, s).map(g2 => g2.translate(...at(Q.gu + du, shore + dv, -0.9))));
+    part(q, merge(...ps));
+    // her mooring lines (only while she's alongside)
+    SEAOBJ.lines = [[Q.gu + 4.6, 6.8], [Q.u1 - 1.4, 12.6]].map(([bu, hu]) => { const m = new THREE.Mesh(CYL(0.035, 0.035, 1, 5), new THREE.MeshLambertMaterial({ color: '#d9c79a' })); q.add(m);
+      const a = new THREE.Vector3(...at(bu, Q.v1 - 0.7, 0.5)), b = new THREE.Vector3(...at(hu, -boatHB(hu) + 0.1, BOAT.rail)), d = b.clone().sub(a); m.position.copy(a).addScaledVector(d, 0.5); m.scale.set(1, d.length(), 1); m.quaternion.setFromUnitVectors(AX_Y, d.normalize()); return m; });
+  }
   for (const rf of REEFS) {
     const g = new THREE.Group(); g.position.set(seaX(rf.e, rf.n), 0, seaZ(rf.e, rf.n)); seaG.add(g); const ps = [];
     for (let k = 0; k < 7; k++) { const a = R() * TAU, d = rf.r * rr(0, 0.7); ps.push(rock(Math.cos(a) * d, rr(-0.5, 0.25), Math.sin(a) * d, rr(1.2, rf.siren ? 3.4 : 2.7), rf.siren ? '#6d6480' : '#5d5a58')); }
@@ -15509,6 +15609,7 @@ const SEAOBJ = { buoys: [], lights: [] };
 }
 function syncSeaObjects(dt) {
   const S = SEA, t = S.t;
+  for (const m of SEAOBJ.lines) m.visible = S.docked;
   for (const b of SEAOBJ.buoys) {
     const d = Math.hypot(b.e - S.e, b.n - S.n); b.g.visible = d < 240; if (!b.g.visible) continue;
     const h = seaEta(b.e, b.n); b.g.position.set(seaX(b.e, b.n), h - 0.1, seaZ(b.e, b.n)); b.g.rotation.set(-seaZ(ETA.ge, ETA.gn) * 0.8, 0, seaX(ETA.ge, ETA.gn) * 0.8);
@@ -15518,15 +15619,17 @@ function syncSeaObjects(dt) {
 }
 
 // ---------------- every frame ----------------
-const SEA_DOM = { fog: null, flash: null };
+const SEA_DOM = { fog: null, flash: null, cut: 0 };
 function syncSea(dt) {
   const S = SEA; seaG.visible = S.on;
   if (!SEA_DOM.fog) {
     const mk = (id, css) => { const e = document.createElement('div'); e.id = id; e.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0;' + css; document.body.insertBefore(e, document.getElementById('hud')); return e; };
     SEA_DOM.fog = mk('seaFog', 'background:radial-gradient(ellipse at 50% 55%, rgba(214,222,228,0) 16%, rgba(214,222,228,.82) 46%, rgba(206,214,222,.97) 72%);');
+    SEA_DOM.black = mk('seaCut', 'background:#0d0c14;');
     SEA_DOM.murk = mk('seaMurk', 'background:radial-gradient(ellipse at center, rgba(20,28,40,.05) 30%, rgba(14,22,34,.55) 75%, rgba(8,12,22,.85) 100%);');
   }
   SEA_DOM.fog.style.opacity = (S.on ? S.fog : 0).toFixed(3); SEA_DOM.murk.style.opacity = (S.on ? Math.max(S.storm * 0.8, S.ink * 0.7) : 0).toFixed(3);
+  if (SEA_DOM.cut > 0 || SEA_DOM.black.style.opacity !== '0') { SEA_DOM.cut = Math.max(0, SEA_DOM.cut - dt / 1.6); SEA_DOM.black.style.opacity = S.on ? smooth(0, 0.7, SEA_DOM.cut).toFixed(3) : '0'; }   // out of the cave: up from black
   if (!S.on) return;
   if (S.flash > -1) S.flash -= dt * 3.2;
   seaPose(); syncSeaWater(dt); syncBoat(dt); syncSeaObjects(dt); syncHazards(dt);
@@ -15607,6 +15710,8 @@ function syncHazards(dt) {
 // ---------------- HUD at sea: the next island on the compass, the route on the journey strip, the sailing dial, prompts at the stations ----------------
 Object.assign(HINTS, {
   'sea-start': 'Go forward to the bow and <b>grab</b> ⚓: stick up weighs it. Then <b>grab</b> the tiller 🧭 and steer. Hank trims the sail.',
+  'sea-dock': 'Herd the flock up the gangway and come aboard: Hank shuts it behind you. Then go to the bow, <b>grab</b> ⚓ and push the stick up to cast off.',
+  'sea-away': 'Hank has the helm for now. <b>Grab</b> the tiller 🧭 to steer; he trims the sail.',
   'sea-irons': 'She won\'t sail into the wind (the red wedge). Put the helm over and bear away till the sail fills.',
   'sea-heel': 'Over-pressed! Herd the flock to the <b>high side</b>, or reef: <b>grab</b> 🪢 at the mast, stick down.',
   'sea-over': 'Sheep overboard! Turn into the wind to stop her, then <b>grab</b> it from the rail. Or jump in and tow it back.',
@@ -15616,7 +15721,7 @@ Object.assign(HINTS, {
   'sea-lash': 'Two quick taps of <b>grab</b> on the tiller lash it: she holds her helm while you see to the flock.',
 });
 Object.assign(TOUCH_HINTS, {
-  'sea-start': '✊ at the bow ⚓, stick up. Then ✊ the tiller 🧭.', 'sea-irons': 'Not into the wind (red). Bear away.', 'sea-heel': 'Flock to the <b>high side</b>, or reef 🪢.',
+  'sea-start': '✊ at the bow ⚓, stick up. Then ✊ the tiller 🧭.', 'sea-dock': '🐑 ➜ ⛵, and you. Then ✊ ⚓ at the bow, stick up.', 'sea-away': '✊ the tiller 🧭 to steer.', 'sea-irons': 'Not into the wind (red). Bear away.', 'sea-heel': 'Flock to the <b>high side</b>, or reef 🪢.',
   'sea-over': 'Stop her, then ✊ it from the rail.', 'sea-anchor': 'Drop ⚓ by the island.', 'sea-night': 'Lie at ⚓ till dawn, or sail on.', 'sea-gybe': 'Boom coming over: 💤 to duck.', 'sea-lash': '✊✊ on the tiller lashes it.',
 });
 function seaHUD() {   // SHARED HOOK (updateHUD): the compass points at the next island (the bow's up the screen)
@@ -15694,6 +15799,12 @@ function drawSeaOverlay(dt) {
   // the way on: an arrow at the edge toward the next island (till it's in sight)
   const w = seaNext();
   if (w) { const p = seaToSim(w.e, w.n), [px, py, pz] = proj(p.x, WATER_Y + 1, p.z); if (!vis(px, py, pz) || px < 60 || px > W - 60 || py < 60 || py > H - 60) seaEdgeArrow(px, py, '#ffd36b', w.icon); }
+  // alongside: how many are still ashore (at the gangway); all aboard: the bow's the place
+  if (S.docked) {
+    const n = seaAshore(), bob = Math.sin(performance.now() / 260) * 4, st = STATIONS[3];
+    const [gx, gy, gz] = n ? proj(DECK.gx, BOAT.y + 2.6, DECK.gz) : proj(st.x, BOAT.y + 2.6, st.z);
+    if (vis(gx, gy, gz) && (n || DECK.lock)) forageChip(gx, gy + bob, n ? `🐑 ${n} ➜ ⛵` : st.by ? `⚓ ⬆ ${Math.round(S.weigh * 100)}%` : '⚓ ⬆', n ? 'rgba(40,90,120,.9)' : 'rgba(60,120,60,.92)');
+  }
   // the stations: what's here (and the button) for a dog standing by a free one; what the stick does for the dog that has it
   ctx.font = '600 13px Fredoka, sans-serif';
   for (const st of STATIONS) {
@@ -15701,7 +15812,7 @@ function drawSeaOverlay(dt) {
     const d = st.by;
     if (d) {
       const [dx, dy] = proj(d.x, d.y + 1.9, d.z);
-      const txt = st.id === 'tiller' ? `⬅ 🧭 ➡${S.lash ? ' 🔒' : ''}` : st.id === 'sheet' ? '⬇ ⛵ ⬆' : st.id === 'halyard' ? `⬇ 🪢 ⬆` : S.anchor === 'up' ? '⬇ ⚓' : `⚓ ⬆ ${Math.round(S.weigh * 100)}%`;
+      const txt = st.id === 'tiller' ? `⬅ 🧭 ➡${S.lash ? ' 🔒' : ''}` : st.id === 'sheet' ? '⬇ ⛵ ⬆' : st.id === 'halyard' ? `⬇ 🪢 ⬆` : S.docked ? '⚓ ⬆' : S.anchor === 'up' ? '⬇ ⚓' : `⚓ ⬆ ${Math.round(S.weigh * 100)}%`;
       forageChip(dx, dy - 4, txt, 'rgba(27,26,40,.78)');
     } else {
       const near = netCamDogs().find(o => !o.holding && !o.air && Math.hypot(o.x - st.x, o.z - st.z) < 3.4);
@@ -15828,6 +15939,10 @@ function seaFx(kind, k = 0, x = 0, z = 0, a = null) {
     case 'thunder': SEAS.thunder(k * 2 - 1, 0.4 + 0.3 * Math.random()); break;
     case 'rogue': toast('🌊 ❗', 'warn'); Sound.omen(0.2); break;
     case 'bell': SEAS.bell(pan, 0.1); break;
+    case 'ashore': floatText(`🐑 ${k} ✖`, x, y + 2.2, z, '#ff8a6b', 1.4); SFX.clack(pan, 0.25); break;
+    case 'castoff': floatText('CAST OFF!', x, y + 2.4, z, '#ffd36b', 1.5); Sound.chime([0, 5, 12], 660, 0.14, 0.07); SFX.creak(pan, 0.25, 0.8); break;
+    case 'gangway': floatText('🔒', x, y + 2, z, '#ffd36b', 1.3); SFX.clack(pan, 0.3); Sound.chime([0, 7], 587, 0.14); break;
+    case 'harbour': banner(ROUTE[0].name, '🐑 ➜ ⛵'); Sound.chime([0, 4, 7, 12], 523, 0.16, 0.1); SEA_DOM.cut = 1; break;
     default: seaHazFx(kind, k, x, z, a);
   }
 }
@@ -15838,22 +15953,24 @@ function seaReset() {
   const S = SEA, K = T.sea;
   Object.assign(S, { on: false, t: 0, e: 0, n: 0, hdg: 0, u: 0, v: 0, r: 0, heel: 0, heelV: 0, pitch: 0, pitchV: 0, heave: 0, heaveV: 0, kick: 0, hoist: 1, sheet: 1, boom: 0, boomV: 0, helm: 0, rud: 0, course: null, lash: false,
     anchor: 'up', anchorT: 0, anchorN: 0, weigh: 0, holding: false, state: 0.2, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0, over: 0, hull: K.hull.hp, leg: 1, legK: 0, saved: -1, wake: [], wakeT: 0, storm: 0, rain: 0, fog: 0, calm: 0, ink: 0,
-    hold: null, rogue: null, said: {}, near: false, legPast: false, arrived: false, dogOver: false, checkpoint: null, irons: 0, fear: 0, flash: 0, reefAim: null, lockWx: false, stores: Object.assign({}, K.stores), heelT: 0, slamT: 0, gybeT: -9, overT: -9, luff: 0, stall: 0 });
-  S.jolt.u = S.jolt.v = 0;
+    hold: null, rogue: null, said: {}, docked: false, pilot: null, aboardT: 0, near: false, legPast: false, arrived: false, dogOver: false, checkpoint: null, irons: 0, fear: 0, flash: 0, reefAim: null, lockWx: false, stores: Object.assign({}, K.stores), heelT: 0, slamT: 0, gybeT: -9, overT: -9, luff: 0, stall: 0 });
+  S.jolt.u = S.jolt.v = 0; QUAY.on = false; DECK.lock = true; resetGate(DECK);
   for (const st of STATIONS) st.by = null;
   WIND.gusts.length = 0; for (const w of SWAVES) w.ang = null;
   for (const d of G.dogs) { if (d.holdKind === 'station') { d.holding = null; d.holdKind = null; } d.tow = null; }
   resetHazards();
 }
-// put to sea (dev: ?sea, GAME.seaStart(); the trail's last camp will lead here). o.leg: from which island; o.under: already sailing
+// put to sea (the pass's cave: seaFromCave; dev: ?sea, GAME.seaStart()). o.leg: from which island; o.under: already sailing;
+// o.dock: alongside the quay at Cold Harbour, the flock and the dogs on it, the gangway open
 function seaStart(o = {}) {
   if (G.mode !== 'play') return false;
   const S = SEA, K = T.sea, B = BOAT; seaReset();
-  const from = clamp(o.leg | 0, 0, ROUTE.length - 2), w = ROUTE[from], nx = ROUTE[from + 1];
+  const dock = !!o.dock, from = dock ? 0 : clamp(o.leg | 0, 0, ROUTE.length - 2), w = ROUTE[from], nx = ROUTE[from + 1], Q = QUAY;
   S.on = true; S.leg = from + 1; S.saved = from; S.e = w.e; S.n = w.n;
   WIND.base = WIND.dir = nx.wd; WIND.baseSpd = WIND.spd = nx.ws; WIND.here.spd = WIND.spd; WIND.here.dir = WIND.dir; S.run = WIND.dir + Math.PI;
   S.state = clamp((WIND.spd - K.wave.from) / K.wave.span, K.wave.min, K.wave.max) * 0.5;
-  if (o.under) { S.hdg = nx.crs; S.u = 4; S.sheet = sheetFor(sailBest(Math.abs(wrapA(WIND.dir - S.hdg)))); S.boom = 0; }
+  if (dock) { S.docked = true; Q.on = true; DECK.lock = false; setGate(DECK, true); DECK.wasOpen = true; seaMoored(); }
+  else if (o.under) { S.hdg = nx.crs; S.u = 4; S.sheet = sheetFor(sailBest(Math.abs(wrapA(WIND.dir - S.hdg)))); S.boom = 0; }
   else { S.hdg = WIND.dir; S.anchor = 'down'; S.holding = true; S.ae = S.e + Math.sin(S.hdg) * (12 + K.anchor.rode * 0.8); S.an = S.n + Math.cos(S.hdg) * (12 + K.anchor.rode * 0.8); }
   // everyone aboard: the flock amidships, the dogs aft, Hank by the sheet
   const spots = [];
@@ -15863,19 +15980,23 @@ function seaStart(o = {}) {
     if (s.heldBy) { const d = s.heldBy; if (d.holding === s) { d.holding = null; d.holdKind = null; } s.heldBy = null; }
     if (s.snag) unsnag(s); if (s.bog) unbog(s); if (s.balk) endBalk(s, false);
     let q = null;
-    for (let t = 0; t < 60; t++) { const u = rnd(-9, 9.5), v = rnd(-1, 1) * (boatHB(u) - 1.9), p = boatXZ(u, v); if (Math.hypot(u - K.sail.mastU, v) > 1.4 && spots.every(o => (o.x - p.x) ** 2 + (o.z - p.z) ** 2 > 1.3)) { q = p; break; } q = p; }
+    for (let t = 0; t < 60; t++) {
+      const u = dock ? rnd(Q.u0 + 2.6, Q.u1 - 2) : rnd(-9, 9.5), v = dock ? rnd(Q.v0 + 2.2, Q.v1 - 2.6) : rnd(-1, 1) * (boatHB(u) - 1.9), p = boatXZ(u, v);
+      if (dock ? spots.every(o => (o.x - p.x) ** 2 + (o.z - p.z) ** 2 > 1.3) : Math.hypot(u - K.sail.mastU, v) > 1.4 && spots.every(o => (o.x - p.x) ** 2 + (o.z - p.z) ** 2 > 1.3)) { q = p; break; } q = p;
+    }
     spots.push(q);
-    Object.assign(s, { x: q.x, z: q.z, vx: 0, vz: 0, y: B.y, air: null, pen: DECK, wasPen: DECK, state: 'idle', thinkT: rnd(0.5, 2.5), fear: 0, panic: 0, alert: 0, stress: (s.stress || 0) * 0.3, tx: q.x, tz: q.z, eating: false, hopY: 0, hopV: 0, lure: 0, breakT: 0, rs: 'idle' });
+    Object.assign(s, { x: q.x, z: q.z, vx: 0, vz: 0, y: B.y, air: null, pen: dock ? null : DECK, wasPen: dock ? null : DECK, state: 'idle', thinkT: rnd(0.5, 2.5), fear: 0, panic: 0, alert: 0, stress: (s.stress || 0) * 0.3, tx: q.x, tz: q.z, eating: false, hopY: 0, hopV: 0, lure: 0, breakT: 0, rs: 'idle' });
   }
   G.dogs.forEach((d, i) => {
     if (d.holding) releaseHold(d, false); dropBucket(d);
-    const p = boatXZ(-10.4 + Math.floor(i / 2) * 1.6, (i % 2 ? 1 : -1) * 1.7);
-    Object.assign(d, { x: p.x, z: p.z, vx: 0, vz: 0, y: B.y, yaw: Math.atan2(B.fx, B.fz), air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null });
+    const p = dock ? boatXZ(Q.gu + (i - (G.dogs.length - 1) / 2) * 1.8, Q.v0 + 1.2) : boatXZ(-10.4 + Math.floor(i / 2) * 1.6, (i % 2 ? 1 : -1) * 1.7);   // (alongside: the dogs behind the flock, at the pier's head)
+    Object.assign(d, { x: p.x, z: p.z, vx: 0, vz: 0, y: B.y, yaw: dock ? Math.atan2(B.rx, B.rz) : Math.atan2(B.fx, B.fz), air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null });
   });
   const hp = boatXZ(-8.7, 1.45); Object.assign(HANK, { x: hp.x, z: hp.z, vx: 0, vz: 0, y: B.y, asleep: false, climb: null, rope: null, goal: null });
   for (const tr of DECK.troughs) { tr.food = 0; tr.shown = 0; } DECK.water.w = 0; DECK.lick.salt = 0; seaStock();
   G.visited.add(DECK.camp.name); G.ff = false; seaAboard();
-  banner(w.name, `⛵ ➜ ${nx.icon} ${nx.name}`); setTimeout(() => hint('sea-start'), 1500);
+  if (dock) { seaFx('harbour'); setTimeout(() => hint('sea-dock'), 1500); }
+  else { banner(w.name, `⛵ ➜ ${nx.icon} ${nx.name}`); setTimeout(() => hint('sea-start'), 1500); }
   updateCamera(0, true);
   return true;
 }
@@ -15884,7 +16005,7 @@ function seaStep(dt, dtH) {
   const S = SEA; S.t += dt;
   seaWeather(dt); windStep(dt); seaWavesStep(dt);
   seaAboard(); seaStations(dt);
-  seaBoatStep(dt);
+  seaBoatStep(dt); if (S.docked) { seaMoored(); seaGangway(dt); }
   S.dogOver = false;
   for (const d of G.dogs) {   // dogs' feet on the deck too (lying down, they hold on)
     if (d.air) { if (d.air.swim) S.dogOver = true; continue; }
@@ -15900,9 +16021,18 @@ function seaStep(dt, dtH) {
   }
 }
 // may the night be slept through? (at anchor, holding, nothing about)
-const seaAtRest = () => SEA.anchor === 'down' && SEA.holding && SEA.anchorT <= 0 && !seaHazardOn() && !SEA.over;
+const seaAtRest = () => (SEA.docked || SEA.anchor === 'down' && SEA.holding && SEA.anchorT <= 0) && !seaHazardOn() && !SEA.over;
 // at dawn (stepClock): Hank fills the troughs from the hold
 function seaDawn() { if (SEA.on) seaStock(); }
+// SHARED HOOK (MOUNTAIN PASS: the cave shut on the flock): the cave's the way through the mountain, down to Cold Harbour and the boat.
+// Sheep not shut in stay on the mountain ('left'). → false: not this time (online with friends: their screens can't draw the sea yet), the cave ends it
+function seaFromCave(inn) {
+  if (SEA.on || G.mode !== 'play' || (NET.role === 'host' && NET.seats.length) || NET.role === 'guest') return false;
+  for (const s of living()) if (!inn.includes(s)) killSheep(s, 'left');
+  if (!seaStart({ dock: true })) return false;
+  hank(null, "Down through the mountain... and there she lies. Get them aboard!", { force: true });
+  return true;
+}
 
 // =====================================================================
 // GAME FLOW
@@ -15954,7 +16084,7 @@ function startGame(dev) {
   mapReset();   // MAP: all parchment
   setTimeout(() => hint('start'), 2500);
   hankGameStart();   // HANK: "Over here now!" (and his clips start loading)
-  const sea = /[?&]sea(?:=(\d))?\b/.exec(location.search); if (sea) seaStart({ leg: +(sea[1] || 0) });   // SAILING (dev): ?sea starts at sea, ?sea=2 from the third island
+  const sea = /[?&]sea(?:=(\d|dock))?\b/.exec(location.search); if (sea) seaStart(sea[1] === 'dock' ? { dock: true } : { leg: +(sea[1] || 0) });   // SAILING (dev): ?sea starts at sea, ?sea=2 from the third island, ?sea=dock alongside the quay (as out of the cave)
 }
 function finishGame(n) {
   if (G.mode !== 'play') return;
@@ -15991,7 +16121,7 @@ function resetGame() {
   resetApples();   // APPLES: every tree laden again
   for (const p of pens) { p.balker = null; p.balkDay = 0; p.leadT = 0; }   // BALKER
   G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0 };
+  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0, left: 0 };
   G.wool = 0;   // HANK: shearing: no wool yet, the clippers buried again
   G.train = {}; for (const d of G.dogs) { d.tr = trainRec(d.player.slot, d.breed); d.lv = d.tr.lv; dogStats(d); }   // TRAINING: a new journey, a fresh start
   resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
@@ -16211,7 +16341,7 @@ const NET_TYPES = {
     fields: { st: { c: 'i', get: a => a.st, set: (a, v) => { if (v === 1 && a.st !== 1) a.fallT = G.time; a.st = v; } }, x: .05, z: .05 },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i', drowned: 'i', shark: 'i', kraken: 'i', siren: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i', drowned: 'i', shark: 'i', kraken: 'i', siren: 'i', left: 'i' } },
   boss: { tag: 'E', one: () => CANYON.boss, fields: { hp: 'i', max: 'i', on: 'b', beaten: 'b' } },   // FALCON CANYON: THE GREAT FALCON's fight (the HUD's hearts)
   // MOUNTAIN PASS: goats (built the same on every screen), the yeti, his snowballs, the fire camps, the blizzard, the cracked spire
   goat: { tag: 'T', all: () => GOATS, id: g => g.i, static: true, fields: { x: 'p', z: 'p', y: .02, yaw: 'a', state: 's' } },
@@ -17571,6 +17701,7 @@ Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope,
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 Object.assign(window.GAME, { SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail,
   HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground, seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea,
+  seaCastOff, seaAshore, seaFromCave, QUAY, DOCK, quaySdf, onQuay, seaGround,
   seaAboard, simToSea, seaToSim, sailBest, sailDrive, sheetFor, boomLim, windAt, onDeck, deckSdf, boatXZ, boatU, boatV, boatHB, stationOf, waterLevel, killSheep, step, startGame, resetGame, finishGame, makeSheep, spawnDog });   // SAILING
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
