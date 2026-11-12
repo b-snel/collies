@@ -95,7 +95,7 @@ Run the ones touching your change; report the numbers.
 | `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; loners: a territory each, more each leg, off the pens, random trees, one out at a time |
-| `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds\|gone]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only; past the canyon gone (snakes, pass, sea) |
+| `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|day1\|odds\|gone]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only, not day one; past the canyon gone (snakes, pass, sea) |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits\|boss]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset; the Great Falcon: eats undefended (barks or not), eyrie shake, beaten by pounces, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
@@ -229,7 +229,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   running away: bonked, yowls (`Sound.yowl`), knocked head over heels, dazed (`daze`, `k.dazeT`, synced;
   stars), limps home at `bonkRun`×: bonk it again, all the way home (dazed at its trunk: up it goes).
   The night doesn't fast-forward while one's out. `s.grabbed` may be a cougar (`k.isCougar`).
-- **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, every few hours circles
+- **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, from day 2 (`fromDay`), every few hours circles
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
   'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
   nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it; its mark barking sends it off.
