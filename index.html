@@ -697,7 +697,8 @@ const T = {
   map: { r: 34, edge: 14, span: 150, every: 0.2, hz: 15, fogEvery: 8 },
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
   jump: { dur: 0.5, h: 1.4, cd: 0.2, vault: { dur: 0.62, h: 1.9, v: 16, stamina: 0.08 } },   // Ⓨ: a hop on the spot (over rams, pouncing dogs); sprinting: a long vault
-  pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
+  pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceBuf: 0.2,   // pounceBuf: Ⓑ pressed up to this many s before it can (cooldown, a hop) still goes off
+  pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
   airGrav: 28,                 // everything that flies falls at this (m/s²)
   punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2 },   // (a pounced dog flies the same)
   bounceUp: 0.46, bounceSide: 0.8, landKeep: 0.55,
@@ -1320,15 +1321,15 @@ if (/[?&]touch\b/.test(location.search) || (matchMedia('(pointer:coarse)').match
 const anyKey = list => list.some(c => keys.has(c));
 const anyEdge = list => list.some(c => keyEdge.has(c));
 
-const padPrev = {};      // gamepad index -> previous button states
 function padState(i) {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   return pads && pads[i];
 }
 function padPressed(gp, b) { const btn = gp.buttons[b]; return !!btn && (btn.pressed || btn.value > 0.4); }
-function padEdge(i, gp, b) { return (padPressed(gp, b) && !(padPrev[i] && padPrev[i][b])) || !!(padTap[i] && padTap[i].has(b)); }
-// a fast poll between frames keeps quick taps a slow frame would miss, till the frame reads them
-const padSeen = {}, padTap = {};   // gamepad index -> last polled buttons / buttons pressed since the last frame
+// Presses: polled every 4 ms between frames and at each frame's start (padFrame). A frame's readers all see the
+// presses up to its start (padHit); one that comes in mid-frame is the next frame's (never marked seen unread).
+function padEdge(i, gp, b) { return !!(padHit[i] && padHit[i].has(b)); }
+const padSeen = {}, padTap = {}, padHit = {};   // gamepad index -> last polled buttons / pressed since the last frame's start / this frame's presses
 function padPoll() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
@@ -1336,6 +1337,11 @@ function padPoll() {
     const was = padSeen[i] || [], now = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
     for (let b = 0; b < now.length; b++) if (now[b] && !was[b]) (padTap[i] ||= new Set()).add(b);
   }
+}
+function padFrame() {
+  padPoll();
+  for (const i in padHit) delete padHit[i];
+  for (const i in padTap) { padHit[i] = padTap[i]; delete padTap[i]; }
 }
 let padPollId = 0;
 if (!SIM) addEventListener('gamepadconnected', () => { if (!padPollId) padPollId = setInterval(() => { if (!document.hidden) padPoll(); }, 4); });
@@ -1399,12 +1405,11 @@ function pollJoins(players) {
 }
 function endInputFrame() {
   keyEdge.clear(); TOUCH.edge = {}; TOUCH.tap = false;
+  for (const i in padHit) delete padHit[i];   // (read: gone. Presses since the frame's start wait in padTap)
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
-    padPrev[i] = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);   // (padSeen too: a press read now isn't latched again)
-    if (padTap[i]) padTap[i].clear();
-    if (padPrev[i].some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5)) INPUT_DEV = 'pad';
+    if (gp.buttons.some(b => b.pressed || b.value > 0.4) || gp.axes.some(a => Math.abs(a) > 0.5)) INPUT_DEV = 'pad';
   }
 }
 function anyConfirm() { // any device pressing A/Start/Enter/Space
@@ -5064,6 +5069,7 @@ function spawnDog(player) {
 function updateDog(d, inp, dt) {
   d.pounceCD = Math.max(0, d.pounceCD - dt); d.shakeT = Math.max(0, d.shakeT - dt); d.jumpCd = Math.max(0, d.jumpCd - dt);
   d.barkBuf = inp.bark ? T.barkBuf : Math.max(0, (d.barkBuf || 0) - dt);   // pressed a touch early (or online, a hair before the host's cooldown): kept
+  d.pounceBuf = inp.pounce ? T.pounceBuf : Math.max(0, (d.pounceBuf || 0) - dt);   // ...a pounce too
   d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt); d.barkAgo += dt; d.teamAgo += dt;
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
   if (!inp.grab && !d.holding) d.grabLock = false;   // Ⓧ let go (read here: while knocked over or flying it counts too)
@@ -5097,11 +5103,12 @@ function updateDog(d, inp, dt) {
   else if (!d.holding && !d.grabLock && !bucketOf(d) && !inp.lie && d.hopT <= 0 && d.pounceT <= 0) tryGrab(d);
   d.grabHeld = !!inp.grab && !d.grabLock;   // (WATER: mouth free, it picks up a bucket)
   // pounce, or shake whatever's in its mouth (a gate it lets go of first; ROPES: in a tug of war, a heave)
-  if (inp.pounce) {
+  if (d.pounceBuf > 0) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
-    if (d.holdKind === 'rope' && d.holding.tug) tugTap(d.holding, d);
-    else if (d.holding || bucketOf(d)) shakeHold(d);
-    else if (!inp.lie) startPounce(d, wx, wz, mag);
+    if (d.holdKind === 'rope' && d.holding.tug) { tugTap(d.holding, d); d.pounceBuf = 0; }
+    else if (d.holding || bucketOf(d)) { shakeHold(d); d.pounceBuf = 0; }
+    else if (inp.lie) d.pounceBuf = 0;
+    else if (startPounce(d, wx, wz, mag)) d.pounceBuf = 0;
   }
   if (inp.jump) startJump(d);
   let mode = 'walk';
@@ -5166,7 +5173,7 @@ function heldDogInput(d, inp, dt) {
   const h = d.heldBy;
   if (!h || h.holding !== d || !G.dogs.includes(h)) { d.heldBy = null; return false; }
   const H = T.dogHeld;
-  d.pounceT = d.hopT = 0; d.mode = 'walk'; d.inMag = 0;
+  d.pounceT = d.hopT = 0; d.mode = 'walk'; d.inMag = 0; d.pounceBuf = 0;   // (Ⓑ: a wriggle)
   if (d.stunT > 0) d.stunT -= dt;
   d.stamina = Math.min(1, d.stamina + T.staminaRegen * dogK(d, 'wind') * dt);
   d.heldWrig = Math.max(0, (d.heldWrig || 0) - H.decay * dt);
@@ -5255,7 +5262,7 @@ function koFx(d) {
 function updateMauledDog(d, inp, dt) {
   const M = T.cougar.maul;
   if (d.holding) releaseHold(d, false);
-  d.pounceT = d.hopT = 0; d.vx = d.vz = 0; d.mode = 'walk'; d.mauled = true;
+  d.pounceT = d.hopT = 0; d.vx = d.vz = 0; d.mode = 'walk'; d.mauled = true; d.pounceBuf = 0;   // (Ⓑ: mashing free)
   d.maulEsc = Math.max(0, d.maulEsc - M.decay * dt);
   d.leg += dt * 30; d.y = groundY(d.x, d.z);
   if (inp.pounce) {
@@ -5588,13 +5595,14 @@ function updateStars(dt) {
 
 // ---------------- the pounce ----------------
 function startPounce(d, wx, wz, mag) {
-  if (d.pounceCD > 0 || d.hopT > 0 || d.stunT > 0 || d.air) return;
+  if (d.pounceCD > 0 || d.hopT > 0 || d.stunT > 0 || d.air) return false;
   if (mag > 0.1) { d.pdx = wx / mag; d.pdz = wz / mag; } else { d.pdx = Math.sin(d.yaw); d.pdz = Math.cos(d.yaw); }
-  d.pounceT = T.pounceTime; d.pounceCD = T.pounceCd; d.yaw = Math.atan2(d.pdx, d.pdz);
+  d.pounceT = T.pounceTime; d.pounceCD = T.pounceCd; d.yaw = Math.atan2(d.pdx, d.pdz); MV.pounces = (MV.pounces || 0) + 1;
   SFX.whoosh(panOf(d.x, d.z)); rumble(d.player, 0.15, 0.35, 70);
   burst(d.x, d.y + 0.2, d.z, 8, '#e8dcc0', { speed: 2, up: 1.2, size: 0.22, life: 0.5, grav: 0 });
   for (const c of G.coyotes) if (!c.air && !c.heldBy && Math.hypot(c.x - d.x, c.z - d.z) < T.pounceScareR) scareCoyote(c, 0.15, d);   // they flinch from a lunge
   hint('pounce-used');
+  return true;
 }
 // what a lunge runs into: a coyote, the launcher's high end, or a sheep (which gets punted)
 function pounceHits(d) {
@@ -9800,7 +9808,7 @@ function crevSheepStep(s, dt, dtH) {
 }
 // a dog down a crack: no control. On its own: mash Ⓑ to climb out. With friends: one of them has to grab it out (Ⓧ)
 function crevDogStep(d, inp, dt) {
-  const C = T.crev; d.vx = d.vz = 0; d.pounceT = d.hopT = 0; d.mode = 'walk'; d.y = groundY(d.x, d.z); d.inMag = 0;
+  const C = T.crev; d.vx = d.vz = 0; d.pounceT = d.hopT = 0; d.mode = 'walk'; d.y = groundY(d.x, d.z); d.inMag = 0; d.pounceBuf = 0;   // (Ⓑ: climbing out)
   d.crevEsc = Math.max(0, (d.crevEsc || 0) - C.decay * dt); d.leg += dt * 22;
   d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt);
   dogCold(d, dt * 1.5);
@@ -17211,11 +17219,17 @@ function netPredDir(d, h) {   // startPounce's heading
 // a press here: the host will do the same once it hears; until then this screen plays it
 function netPredPress(L, d, r, now) {
   if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0 || d.mauled) return;
-  if (r.bark && now - (L.barkAt || -1e9) >= T.barkCd * 1000) { L.barkAt = now; barkFx(d); d._pBark = now; }
+  const bReady = (L.barkAt || -1e9) + T.barkCd * 1000;   // (pressed a touch early: the host barks then, barkBuf)
+  if (r.bark && now >= bReady - T.barkBuf * 1000) {
+    L.barkAt = Math.max(now, bReady);
+    if (now >= bReady) { barkFx(d); d._pBark = now; }
+    else setTimeout(() => { if (G.dogs.includes(d) && G.mode === 'play') { barkFx(d); d._pBark = NET.now; } }, bReady - now);
+  }
   if (d.heldBy) return;   // (in another dog's jaws: pounce wriggles, the host's)
   const he = netPredHeldAt(d, L, now), o = he ? he.o : d._hold || d.holding, b = bucketOf(d);
-  if (r.pounce && !r.lie && !o && !b && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {   // (holding something: a shake, the host's to show)
-    L.pounceAt = now; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t: now, dx, dz });
+  const ready = (L.pounceAt || -1e9) + T.pounceCd * 1000;   // (pressed a touch early: the host keeps it till then, pounceBuf)
+  if (r.pounce && !r.lie && !o && !b && !(d.hopT > 0) && now >= ready - T.pounceBuf * 1000) {   // (holding something: a shake, the host's to show)
+    const t = Math.max(now, ready); L.pounceAt = t; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t, dx, dz });
     while (L.pounces.length > 1 && L.pounces[0].t < now - 1500) L.pounces.shift();
   }
   // grab: bite while Ⓧ's held (once per press after letting go), drop on release
@@ -17265,7 +17279,7 @@ function netPredFrame(d, L, dt) {   // false: smooth it as usual
   } else {
     d.x = P.x; d.z = P.z; d.vx = P.vx; d.vz = P.vz; d.pounceT = P.pt; d.pdx = P.pdx; d.pdz = P.pdz;
     const q = L.pounces[L.pounces.length - 1];
-    if (q && q.t > P.pj) { P.pj = q.t; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }   // pressed this frame
+    if (q && q.t > P.pj && q.t <= now) { P.pj = q.t; if (!(d.pounceT > 0)) { d.pounceT = T.pounceTime; d.pdx = q.dx; d.pdz = q.dz; } }   // pressed this frame (or its early press comes due)
     netPredSetHold(d, L, now); netPredMove(d, L.hist[L.hist.length - 1].h, dt);
     P.x = d.x; P.z = d.z; P.vx = d.vx; P.vz = d.vz; P.pt = d.pounceT; P.pdx = d.pdx; P.pdz = d.pdz;
   }
@@ -18028,6 +18042,7 @@ function step(dt) {
 }
 function frame(now) {
   requestAnimationFrame(frame);
+  padFrame();   // this frame's gamepad presses
   let dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // rAF time can predate `last` on the first frame
   if (barnFrame(dt) || dawnFrame()) { netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
   titleBreedInput();   // BREEDS: ←/→ on the title pick P1's breed (before anything reads them as a join)
