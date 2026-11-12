@@ -81,7 +81,7 @@ const r5 = await h.page.evaluate(() => {
 ok('opening the gate stops him mid-shear', r5.wasOn && r5.stopped, r5);
 ok('with the gate open, nobody is shorn', !r5.any && r5.gained === 0, r5);
 
-// 6. asleep at the campfire he doesn't shear; awake, he does; done, he beds down
+// 6. asleep at the campfire with a flock to shear: he gets up and shears; done, he beds down (sleep's his last job)
 const r6 = await h.page.evaluate(() => {
   const { G, HANK, step, pens, setGate, living, COUGARS } = GAME, pen = pens[0], out = {};
   const quiet = () => { for (const c of G.coyotes) { c.state = 'leave'; c.x = c.z = 1e4; } for (const k of COUGARS) if (k.state !== 'perch' && k.state !== 'away') k.state = 'away'; };
@@ -89,19 +89,17 @@ const r6 = await h.page.evaluate(() => {
   living().forEach((s, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.4; s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; s.wool = 1; s.stress = 0; });
   const d = G.dogs[0]; d.x = pen.exitX + 30; d.z = pen.exitZ + 30;
   const f = pen.fire; HANK.x = f.x + 1.9; HANK.z = f.z; HANK.vx = HANK.vz = 0; HANK.asleep = true; HANK.upT = -99; HANK.goal = null;
-  const w0 = G.wool; let any = false;
-  for (let i = 0; i < 200; i++) { G.clock.hour = 22; quiet(); step(0.025); if (HANK.job || HANK.shearing) any = true; }
-  out.asleep = HANK.asleep; out.any = any; out.gained = G.wool - w0;
-  HANK.asleep = false; HANK.upT = -99;
-  let t = 0; while (!(HANK.job && HANK.job.on) && t < 30) { G.clock.hour = 22; quiet(); step(0.025); t += 0.025; }
+  let t = 0;
+  while (HANK.asleep && t < 3) { G.clock.hour = 22; quiet(); step(0.025); t += 0.025; }
+  out.woke = !HANK.asleep; out.wokeIn = +t.toFixed(2); t = 0; while (!(HANK.job && HANK.job.on) && t < 30) { G.clock.hour = 22; quiet(); step(0.025); t += 0.025; }
   out.awakeShears = !!(HANK.job && HANK.job.on); out.after = +t.toFixed(1);
   for (const s of living()) s.wool = 0.2;   // all done: off to bed
   let slept = false; t = 0; while (!slept && t < 40) { G.clock.hour = 22; quiet(); step(0.025); t += 0.025; slept = HANK.asleep; }
   out.slept = slept; out.sleptIn = +t.toFixed(1); out.outOfPen = !GAME.penAt(HANK.x, HANK.z);
   return out;
 });
-ok('asleep at the campfire, he doesn\'t shear', r6.asleep && !r6.any && r6.gained === 0, r6);
-ok(`awake, he goes and shears (${r6.after}s)`, r6.awakeShears, r6);
+ok(`asleep at the campfire with shearing to do: up in ${r6.wokeIn}s`, r6.woke && r6.wokeIn < 1.5, r6);
+ok(`he goes and shears (${r6.after}s)`, r6.awakeShears, r6);
 ok(`nothing left to shear: back over the fence and asleep by the fire (${r6.sleptIn}s)`, r6.slept && r6.outOfPen, r6);
 
 // 7. the fleece grows back over T.shear.regrowDays, up to full

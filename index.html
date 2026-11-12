@@ -13259,18 +13259,27 @@ function hankThreats(r) {
   for (const k of COUGARS) if (HANK_COUGAR_UP.has(k.state) && near(k.x, k.z) && hankSees(k.x, k.z, k.y)) out.push(k);
   return out;
 }
+// sleep is his last job: anything else to do (a patient, shearing, a dog bringing a rope) keeps him up, or gets him up (checked twice a second)
+function hankWorkDue(dt) {
+  const hk = HANK; if ((hk.workT = (hk.workT || 0) - dt) > 0) return hk.workDue; hk.workT = 0.5;
+  const a = hk.asleep; hk.asleep = false;
+  hk.workDue = !!careNext(true) || !!(hk.clippers && shearPick())
+    || ROPES.some(R => !R.tug && G.time >= (hk.ropeAgain || 0) && G.dogs.some(d => d.holding === R && Math.hypot(d.x - hk.x, d.z - hk.z) < T.rope.tug.hank.r));
+  hk.asleep = a; return hk.workDue;
+}
 function hankNap(dt) {
   const hk = HANK, N = T.hankNap, g = hk.goal, near = hankThreats(N.wakeR);
   if (near.length) hk.upT = G.time;
   if (hk.asleep) {
-    if (!near.length && isNight() && !fireDue()) return;
+    if (!near.length && isNight() && !fireDue() && !hankWorkDue(dt)) return;
+    if (!near.length && isNight() && !fireDue()) { hk.asleep = false; hk.restT = 0; hk.watchT = 0; return; }   // up for work (VET, shearing, ROPES)
     hk.asleep = false; hk.restT = 0; hk.watchT = 0;
     if (!near.length && isNight()) { hk.upT = G.time; return; }   // MOUNTAIN PASS: up to stoke the fire before it's out
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
   const atFire = isNight() && g && g.face && !hk.job && !hk.care && !fireDue() && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first)
-  hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
+  hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay && !hankWorkDue(dt) ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
 // What Hank can see: within T.hankSight (less at night), with no hill in between (eye height 1.9 m). He only calls
