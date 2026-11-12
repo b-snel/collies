@@ -243,6 +243,16 @@ try {
   check('coyotes that leave are removed on the guest, models too', await B.page.evaluate(() => window.__coyRoots.every(r => !r.parent)));
   const sleepers = await Promise.all([A, B].map(X => X.page.evaluate(() => GAME.G.coyotes.filter(c => c.state === 'sleep').length)));
   check('coyotes asleep in their dens show asleep on the guest too', sleepers[0] === sleepers[1], { host: sleepers[0], guest: sleepers[1] });
+  // BURROWS: one dug under a pen's fence shows on the guest where it is, filling follows, filled it's gone
+  const burH = await A.page.evaluate(() => { const b = GAME.makeBurrow(GAME.pens[1], GAME.pens[1].gateA + 2.5, 1); return { id: b.id, x: b.x, z: b.z }; });
+  await until(B, id => GAME.BURROWS.some(b => b.id === id && b.open && b.root.parent), burH.id, 5000).catch(() => {});
+  const burG = await B.page.evaluate(id => { const b = GAME.BURROWS.find(b => b.id === id); return b ? { x: b.x, z: b.z, open: b.open } : null; }, burH.id);
+  await A.page.evaluate(id => { GAME.BURROWS.find(b => b.id === id).prog = 0.4; }, burH.id);
+  const burF = await until(B, id => GAME.BURROWS.some(b => b.id === id && Math.abs(b.prog - 0.4) < 0.03), burH.id, 5000).then(() => true, () => false);
+  await B.page.evaluate(id => { window.__burRoot = GAME.BURROWS.find(b => b.id === id)?.root; }, burH.id);
+  await A.page.evaluate(id => GAME.killBurrow(GAME.BURROWS.find(b => b.id === id)), burH.id);
+  const burK = await until(B, id => !GAME.BURROWS.some(b => b.id === id), burH.id, 5000).then(() => true, () => false);
+  check('a burrow under a fence shows on the guest, filling follows, filled it\'s gone', !!burG && burG.open && Math.hypot(burG.x - burH.x, burG.z - burH.z) < 0.05 && burF && burK && await B.page.evaluate(() => !window.__burRoot?.parent), { guest: burG, filling: burF, gone: burK });
 
   // ---------------------------------------------------------------- a cougar halfway up its tree with a sheep in its jaws
   // (held there: 'down' with a far-negative timer keeps it posed on the trunk; the sheep's grabbed is the cougar)
