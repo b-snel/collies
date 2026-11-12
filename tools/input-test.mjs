@@ -1,4 +1,5 @@
 // Gamepad Ⓐ on slow frames: quick taps between frames still bark, a held press barks once, an early press waits out the cooldown.
+// RB grabs (Ⓧ too), RT sprints, RB doesn't; right-stick swings shake what's held: one a swing, a quick one between frames too, held over: one.
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';
@@ -66,6 +67,35 @@ const earlyP = await page.evaluate(async () => {
   return (GAME.MV.pounces || 0) - n0;
 });
 check(earlyP === 1, 'early Ⓑ waits', earlyP);
+
+// RB: grab (held), not sprint; RT: sprint
+const btn = (b, v) => page.evaluate(([b, v]) => { const k = FAKE.buttons[b]; k.pressed = v; k.value = v ? 1 : 0; }, [b, v]);
+const stick = (x, y = 0) => page.evaluate(([x, y]) => { FAKE.axes[0] = x; FAKE.axes[1] = y; }, [x, y]);
+const rstick = (x, y = 0) => page.evaluate(([x, y]) => { FAKE.axes[2] = x; FAKE.axes[3] = y; }, [x, y]);
+const frames = async n => { for (let i = 0; i < n; i++) await nextFrame(); };
+await stick(1); await btn(5, true); await frames(4);
+const rb = await page.evaluate(() => { const d = GAME.G.dogs[0], r = GAME.readInput(GAME.G.players[0]); return { grab: r.grab, sprint: r.sprint, held: d.grabHeld, mode: d.mode }; });
+await btn(5, false); await btn(7, true); await frames(4);
+const rt = await page.evaluate(() => GAME.G.dogs[0].mode);
+await btn(7, false); await stick(0); await frames(3);
+check(rb.grab && rb.held && !rb.sprint && rb.mode !== 'sprint' && rt === 'sprint', 'RB grabs, RT sprints', { rb, rt });
+
+// a sheep in its mouth (RB held): right-stick swings shake it
+const bite = () => page.evaluate(() => { const { G } = GAME, d = G.dogs[0], s = G.sheep.find(o => !o.ram && !o.dead); s.x = d.x + Math.sin(d.yaw) * 1.1; s.z = d.z + Math.cos(d.yaw) * 1.1; s.vx = s.vz = 0; window._s = s; });
+await bite(); await btn(5, true); await frames(3);
+const holding = await page.evaluate(() => GAME.G.dogs[0].holding === window._s);
+const shakes = () => page.evaluate(() => GAME.MV.shakes || 0);
+const cool = () => page.waitForFunction(() => (GAME.G.dogs[0].shakeCD || 0) <= GAME.G.time, null, { timeout: 60000 });
+let s0 = await shakes(); await rstick(1); await frames(2); await rstick(0); await frames(2); await cool();
+const one = await shakes() - s0;
+s0 = await shakes(); await rstick(-1); await page.waitForTimeout(25); await rstick(0); await frames(2); await cool();   // pushed and back between two frames
+const quick = await shakes() - s0;
+s0 = await shakes(); await rstick(1); await page.waitForTimeout(900); await rstick(0); await frames(2); await cool();
+const held = await shakes() - s0;
+s0 = await shakes(); for (const x of [1, -1, 1, -1]) { await rstick(x); await frames(1); await cool(); } await rstick(0); await frames(2);
+const waggle = await shakes() - s0;
+await btn(5, false); await frames(2);
+check(holding && one === 1 && quick === 1 && held === 1 && waggle === 4, 'right stick: a swing a shake; between frames too; held over: one; waggled: one each', { holding, one, quick, held, waggle });
 check(!errors.length, 'no page errors', errors);
 await browser.close(); srv.close();
 console.log(fails ? fails + ' check(s) FAILED' : 'all ok');

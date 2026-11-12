@@ -2,8 +2,11 @@
 // on the ground, no stamina), let go drops it, Ⓑ shakes it (a wave); on a sheep (bites as it gets there, no re-bite after a
 // slip till let go, Ⓑ shakes, let go drops); TUG OF WAR: two dogs on it, Ⓑ heaves, the knot over a line wins, equal heaves
 // hold, out of stamina loses; reset. TEAMS: 3 and 4 dogs on it, each side heaving as one; HANK: brought it, he takes the far
-// end and tugs (one planted dog loses, two win).
-// node tools/rope-test.mjs [layout|drag|hold|sheep|tug|even|tired|team|hank|reset]
+// end and tugs (one planted dog loses, two win). BEAT: the knot pulses; a heave on it is big and cheap, mashing weak and
+// tiring: on the beat beats mashing and off the beat. TEAM HEAVE: a side heaving on the beat together. DIG (LT): holds,
+// gets its breath back, never gains; broken by heaves on the beat. GIVE: stepping in as the other heaves: it stumbles (Hank
+// too), the next heave's on the beat. ROW: a flick of the stick back is a heave; a right-stick swing too.
+// node tools/rope-test.mjs [layout|drag|hold|sheep|tug|even|tired|team|hank|reset|beat|teamheave|dig|give|row]
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [];
@@ -27,6 +30,9 @@ const setup = async () => { errors.push(...h.errors); await h.close(); h = await
   H.under = R => { let m = 9; for (let k = 0; k < R.n; k++) m = Math.min(m, R.y[k] - groundY(R.x[k], R.z[k])); return +m.toFixed(3); };
   H.line = (R, x0, z0, dx, dz) => { for (let k = 0; k < R.n; k++) { const x = x0 + dx * k * T.rope.seg, z = z0 + dz * k * T.rope.seg; R.x[k] = R.px[k] = x; R.z[k] = R.pz[k] = z; R.y[k] = R.py[k] = groundY(x, z) + T.rope.r; R.gy[k] = groundY(x, z); } GAME.ropeSim(R, 0.025); };
   H.r = v => +(+v).toFixed(2);
+  // BEAT: true on the first step of each beat of R's tug (once per dog); H.ph: how far into this beat (0…1)
+  H.onBeat = (d, R) => { const U = R.tug, bi = U ? Math.floor((G.time - U.t0) / T.rope.tug.beat.T + 1e-6) : -1, on = !!U && bi >= 0 && bi !== d._bi; d._bi = bi; return on; };
+  H.ph = R => R.tug ? ((G.time - R.tug.t0) / T.rope.tug.beat.T + 1e-6) % 1 : 0;
   return true;
 }); };
 
@@ -228,7 +234,145 @@ if (want('hank')) {
     return { secs: H.r(end), over: !R.tug, won: a.holding === R };
   });
   console.log(`     one dog heaving alone: ${r3.won ? 'beats' : 'loses to'} Hank in ${r3.secs} s`);
+  // shearing gives way: shearing in a shut pen, a dog brings him a rope: he leaves it for the tug
+  await setup();
+  const r4 = await h.page.evaluate(() => {
+    const { G, HANK, pens, setGate, ROPES, giveHankClippers } = GAME, R = ROPES[1], p = pens[1], a = G.dogs[0];
+    G.clock.hour = 10; setGate(p, false);
+    G.sheep.forEach((o, i) => { const t = i * 2.4, rr = 1.5 + (i % 4) * 1.5; H.place(o, p.x + Math.cos(t) * rr, p.z + Math.sin(t) * rr); o.wool = 1; o.hunger = 0.1; o.thirst = 0; o.stress = 0; });
+    H.place(HANK, p.x, p.z); HANK.goal = null; HANK.asleep = false; HANK.upT = -99; HANK.ropeAgain = 0; giveHankClippers();
+    const t0 = H.run(20, () => HANK.shearing); const sheared = HANK.shearing;
+    let ux = p.x - HANK.x, uz = p.z - HANK.z; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l;   // the rope laid from beside him across the pen
+    H.line(R, HANK.x + uz * 1.5 - ux * 2, HANK.z - ux * 1.5 - uz * 2, ux, uz); H.place(a, R.x[2] - ux * 1.05, R.z[2] - uz * 1.05, Math.atan2(ux, uz)); a.player.bot = {}; H.grab(a.player);
+    const t = H.run(20, () => HANK.rope === R);
+    return { sheared, t0: H.r(t0), held: a.holding === R, hank: HANK.rope === R, secs: H.r(t), job: !!HANK.job, shearing: HANK.shearing };
+  });
+  ok(`mid-shear, brought a rope: he leaves the clippers for the tug (${r4.secs} s)`, r4.sheared && r4.held && r4.hank && !r4.job && !r4.shearing, r4);
   ok(`two dogs heaving beat Hank (${r2.secs} s): dragged ${-r2.dragged} m, stumbles, lets go`, r2.team && r2.over && r2.won && r2.dragged < -1 && r2.stumble && r2.hankFree, r2);
+}
+
+if (want('beat')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, ROPES, tugTap } = GAME, [a, b] = G.dogs, R = ROPES[1], B = T.rope.tug.beat, out = {};
+    let ticks = 0, last = R.tug.bi, pulse = 0; H.run(2.41, () => { if (R.tug.bi !== last) { ticks++; last = R.tug.bi; } }); out.ticks = ticks; out.pulsed = R.draw.beatAt > 0;
+    // one heave on the beat, one wound up off it, one mashed: the boost each gives, the stamina each costs
+    const heave = () => { const st = a.stamina; a.tugK = 0; tugTap(R, a); return { k: H.r(a.tugK), cost: +(st - a.stamina).toFixed(4) }; };
+    H.run(1, () => H.ph(R) < 0.04); out.on = heave();
+    H.run(0.4); out.off = heave(); H.run(0.1); out.mash = heave();
+    return out;
+  });
+  ok(`the knot pulses on the beat (${r.ticks} in 2.4 s)`, r.ticks === 3 && r.pulsed, r);
+  ok(`a heave on the beat: ×${r.on.k} for ${r.on.cost}; off it ×${r.off.k} for ${r.off.cost}; mashed ×${r.mash.k}`, r.on.k > 2 && r.off.k > 0.4 && r.off.k <= 1 && r.mash.k < 0.3 && r.off.cost > r.on.cost * 2, r);
+  const match = async (pb, secs = 12) => { await setup(); await tugSetup(); return h.page.evaluate(([pb, secs]) => {
+    const { G, ROPES } = GAME, [a, b] = G.dogs, R = ROPES[1]; let minB = 1;
+    const end = H.run(secs, t => {
+      if (!R.tug) return true; minB = Math.min(minB, b.stamina);
+      a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) });
+      b.player.bot = H.hold(1, 0, { pounce: pb === 'mash' ? Math.round(t / 0.025) % 5 === 0 : pb === 'late' ? H.onBeat(b, { tug: R.tug && { t0: R.tug.t0 + 0.4 } }) : false });
+    });
+    a.player.bot = b.player.bot = {};
+    return { secs: H.r(end), aWon: !R.tug && a.holding === R && !b.holding, aSt: H.r(a.stamina), minB: H.r(minB) };
+  }, [pb, secs]); };
+  const m = await match('mash'), l = await match('late');
+  ok(`on the beat beats mashing (${m.secs} s): the masher runs out of puff (${m.minB})`, m.aWon && m.minB < 0.1 && m.aSt > 0.4, m);
+  ok(`on the beat beats a beat late (${l.secs} s)`, l.aWon, l);
+}
+
+if (want('teamheave')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, ROPES, joinPlayer } = GAME, R = ROPES[1], out = {};
+    joinPlayer({ kind: 'bot', index: 2 }); joinPlayer({ kind: 'bot', index: 3 });
+    const [a, b, c, e] = G.dogs; for (const d of G.dogs) { d.stamina = 1; d.exhausted = false; d.player.bot = d.holding ? { grab: true } : {}; }
+    H.place(c, R.x[7] - 0.4, R.z[7] + 0.9, Math.PI); H.place(e, R.x[20] + 0.4, R.z[20] + 0.9, Math.PI);
+    H.grab(c.player); H.grab(e.player); out.four = G.dogs.filter(d => d.holding === R).length;
+    // a and c heave on the beat together; b on it, e 0.4 s late: the same heaves, only one side together
+    let teamA = 0, teamB = 0;
+    const late = { tug: null };
+    const end = H.run(14, () => {
+      if (!R.tug) return true; late.tug = { t0: R.tug.t0 + 0.4 };
+      if (R.tug['team-1'] > teamA) teamA = R.tug['team-1']; if (R.tug['team1'] > teamB) teamB = R.tug['team1'];
+      a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) }); c.player.bot = H.hold(-1, 0, { pounce: H.onBeat(c, R) });
+      b.player.bot = H.hold(1, 0, { pounce: H.onBeat(b, R) }); e.player.bot = H.hold(1, 0, { pounce: H.onBeat(e, late) });
+    });
+    for (const d of G.dogs) d.player.bot = {};
+    return { ...out, secs: H.r(end), teamA: teamA > 0, teamB: teamB > 0, aWon: !R.tug && a.holding === R && c.holding === R };
+  });
+  ok(`together on the beat: TEAM HEAVE! (not for the side out of step), and they win (${r.secs} s)`, r.four === 4 && r.teamA && !r.teamB && r.aWon, r);
+}
+
+if (want('dig')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, ROPES } = GAME, [a, b] = G.dogs, R = ROPES[1], out = {};
+    b.stamina = 0.4; const bx = b.x; let most = 0;
+    // b dug in (LT), a walking back: it holds, b gets its breath back, a tires; Ⓑ dug in does nothing
+    b.player.bot = { grab: true, lie: true }; a.player.bot = H.hold(-1, 0);
+    H.run(6, () => { if (!R.tug) return true; most = Math.max(most, R.tug.off); });
+    out.on = !!R.tug; out.knot = H.r(R.tug ? R.tug.off : 9); out.gained = H.r(most); out.mode = b.mode; out.bSt = H.r(b.stamina); out.aSt = H.r(a.stamina); out.bMoved = H.r(Math.abs(b.x - bx));
+    b.player.bot = { grab: true, lie: true, pounce: true }; GAME.step(0.025); out.noHeave = !(b.tugK > 0); b.player.bot = { grab: true, lie: true };
+    // heaves on the beat break it
+    a.stamina = 1; a.exhausted = false;
+    const end = H.run(12, () => { if (!R.tug) return true; a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) }); });
+    a.player.bot = b.player.bot = {};
+    return { ...out, broke: H.r(end), aWon: !R.tug && a.holding === R };
+  });
+  ok(`dug in: it holds (knot ${r.knot} m, never gains: ${r.gained}), gets its breath back (0.4 → ${r.bSt}), the other tires (${r.aSt})`, r.on && Math.abs(r.knot) < 0.5 && r.gained < 0.3 && r.mode === 'creep' && r.bSt > 0.8 && r.aSt < 0.8 && r.bMoved < 0.6, r);
+  ok(`dug in: no heaving; heaves on the beat break it (${r.broke} s)`, r.noHeave && r.aWon, r);
+}
+
+if (want('give')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, ROPES } = GAME, [a, b] = G.dogs, R = ROPES[1], out = {};
+    // a heaves on the beat; b walks back, then steps in just before a beat, and flicks back on it
+    H.run(2, () => { a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) }); b.player.bot = H.hold(1, 0); return H.ph(R) > 0.75 && H.ph(R) < 0.8; });
+    b.player.bot = H.hold(-1, 0); H.run(0.4, () => { a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) }); return a.tugStumT > G.time; });
+    out.stumbled = a.tugStumT > G.time; out.weak = H.r(a.tugS); out.feint = b.feintT > G.time;
+    a.player.bot = H.hold(-1, 0); b.player.bot = H.hold(1, 0); GAME.step(0.025); out.bHeave = H.r(b.tugK);
+    // straight away again: a's wary, no stumble
+    let again = false; H.run(1.6, () => { const p = H.ph(R); b.player.bot = p > 0.75 ? H.hold(-1, 0) : H.hold(1, 0); a.player.bot = H.hold(-1, 0, { pounce: H.onBeat(a, R) }); if (G.time < a.tugStumT && a.tugStumT > out.t1) again = true; });
+    return out;
+  });
+  ok(`stepping in as it heaves: it stumbles (×${r.weak}), the next heave's on the beat (×${r.bHeave})`, r.stumbled && r.weak < 1 && r.feint && r.bHeave > 2, r);
+  // HANK: he heaves on the beat; a dog stepping in just before it: he stumbles
+  await setup();
+  const hk = await h.page.evaluate(() => {
+    const { G, ROPES, HANK, joinPlayer } = GAME, R = ROPES[1];
+    const [a] = G.dogs; a.stamina = 1; a.player.bot = {};
+    H.far(R.hx, R.hz); H.line(R, R.hx - 5, R.hz, 1, 0);
+    H.place(a, R.x[2] - 1.05, R.z[2], Math.PI / 2); H.grab(a.player);
+    H.place(HANK, R.x[2] - 1.2, R.z[2] + 2.2); HANK.goal = null; HANK.ropeAgain = 0;
+    H.run(10, () => !!R.tug); if (!R.tug) return { tug: false };
+    a.player.bot = { grab: true }; H.run(2, () => H.ph(R) > 0.75 && H.ph(R) < 0.8);
+    a.player.bot = H.hold(1, 0); H.run(0.4, () => HANK.tugStumT > G.time);
+    return { tug: true, stumbled: HANK.tugStumT > G.time, pose: HANK.stumble > 0 };
+  });
+  ok('Hank stumbles too, stepped in on just before his heave', hk.tug && hk.stumbled && hk.pose, hk);
+}
+
+if (want('row')) {
+  await setup();
+  await tugSetup();
+  const r = await h.page.evaluate(() => {
+    const { G, ROPES } = GAME, [a, b] = G.dogs, R = ROPES[1], out = {};
+    // (b dug in: it holds) held back: no heave after the first; to rest and a flick back on the beat: a heave on it
+    b.player.bot = { grab: true, lie: true };
+    a.player.bot = H.hold(-1, 0); H.run(1); a.tugK = 0; H.run(0.8); out.held = H.r(a.tugK);
+    a.player.bot = { grab: true }; H.run(1, () => H.ph(R) > 0.9); H.run(0.3, () => H.ph(R) < 0.05);
+    a.player.bot = H.hold(-1, 0); GAME.step(0.025); out.row = H.r(a.tugK);
+    // the right stick: a swing's a heave
+    a.player.bot = { grab: true }; H.run(1, () => H.ph(R) > 0.9); H.run(0.3, () => H.ph(R) < 0.05); a.tugK = 0;
+    a.player.bot = { grab: true, shake: true }; GAME.step(0.025); a.player.bot = { grab: true }; out.stick = H.r(a.tugK);
+    out.on = !!R.tug; a.player.bot = b.player.bot = {};
+    return out;
+  });
+  ok(`stick held back: no heaves (${r.held}); a flick back on the beat: a heave (×${r.row}); a right-stick swing too (×${r.stick})`, r.on && r.held === 0 && r.row > 2 && r.stick > 2, r);
 }
 
 if (want('reset')) {

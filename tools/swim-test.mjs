@@ -1,9 +1,10 @@
-// Headless checks for open water and Hank's rescues: `node tools/swim-test.mjs [layout|dog|tire|drown|ko|asleep|alone|sheep|coyote|lake|sand]`.
+// Headless checks for open water and Hank's rescues: `node tools/swim-test.mjs [layout|dog|tire|drown|ko|first|asleep|alone|sheep|coyote|lake|sand]`.
 //   layout  the sea and the lake are open to swimmers and waders (no wall at the water line); the river stays shut to sheep
 //   dog     a dog runs off the beach into the sea and swims out (no invisible wall)
 //   tire    swimming tires a dog slowly: a full one paddles over a minute; spent, it goes under (drowning, out)
 //   drown   Hank: trunks on at the water's edge, swims out, tows it ashore, brings it round; dressed again after
 //   ko      knocked out on land: stays down (a partner nosing it doesn't help) till Hank comes and brings it round
+//   first   a dog down comes before everything: a patient, shearing, a burial all wait
 //   asleep  a dog down at night wakes Hank by the fire; he goes
 //   alone   nobody comes (Hank far off, giveUp short): it comes round on its own
 //   sheep   a sheep driven into the sea swims back ashore; one by the river is held off it
@@ -114,6 +115,23 @@ if (want('ko')) {
   });
   ok('knocked out: still down long after the stars (a partner nosing it doesn\'t help)', r.ko && r.stillDown, r);
   ok('...till Hank comes and brings it round (no trunks on dry land)', r.up && r.byHank && r.hankD < 2.5 && r.hp >= 0.25 && r.dressed, r);
+}
+
+if (want('first')) {
+  const r = await h.page.evaluate(() => {
+    const { G, HANK, hurtDog, pens, snakeBite, giveHank, giveHankClippers, killSheep, setGate } = GAME;
+    H.reset(11); const p = pens[1], d = H.d();
+    G.sheep.forEach((s, i) => { s.x = p.x + (i % 4 - 1.5) * 1.6; s.z = p.z + ((i >> 2) - 1.5) * 1.6; s.wool = 1; });
+    setGate(p, false); H.run(0.5);
+    const sick = G.sheep[0]; snakeBite(sick); sick.venom = 0.5;
+    giveHank({ venom: 1, bandage: 0, pills: 0, shovel: 1 }); giveHankClippers(); killSheep(G.sheep[1], 'eaten');   // a patient, a fleece and a body: all waiting
+    H.place(d, { x: p.exitX + 20, z: p.exitZ + 8 }); H.hank({ x: p.exitX - 6, z: p.exitZ });
+    hurtDog(d, 1);
+    const jobs = new Set(); let firstJob = null;
+    const t = H.run(60, () => { const j = HANK.rescue ? 'rescue' : HANK.care ? HANK.care.kind : HANK.job ? 'shear' : null; if (j) { jobs.add(j); if (!firstJob) firstJob = j; } return !d.ko; });
+    return { firstJob, jobsTillUp: [...jobs], up: !d.ko, t: H.r(t), venomLeft: H.r(sick.venom), cured: G.stats.cured || 0, sheared: G.wool };
+  });
+  ok('a dog down comes first: patient, shearing and burial all wait till it\'s up', r.up && r.firstJob === 'rescue' && r.jobsTillUp.join() === 'rescue' && r.cured === 0 && r.sheared === 0, r);
 }
 
 if (want('asleep')) {
