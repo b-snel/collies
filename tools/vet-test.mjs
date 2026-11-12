@@ -275,6 +275,21 @@ const r13 = await h.page.evaluate(() => {
 });
 ok('no shovel, or after dark: the body stays', r13.none && r13.night, r13);
 
+// 13a. a burial is the last thing he does: shearing to do, he puts the body down and shears
+const r13a = await h.page.evaluate(() => {
+  const { G, HANK, pens, setGate, killSheep, living, giveHankClippers } = GAME, pen = pens[1], ga = pen.camp.gateA;
+  G.clock.hour = 10; H.calm(); HANK.shovel = true; HANK.care = null; HANK.clippers = false; setGate(pen, false);
+  const L = living(), s = L.find(o => !o.lamb);
+  L.forEach((o, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 1.5; H.place(o, pen.x + Math.cos(a) * rr, pen.z + Math.sin(a) * rr); o.wool = 1; });
+  H.place(s, pen.x - Math.cos(ga) * (pen.R + 14), pen.z - Math.sin(ga) * (pen.R + 14)); killSheep(s, 'eaten'); const g = G.graves.at(-1);
+  HANK.x = g.x + 6; HANK.z = g.z; HANK.goal = null; HANK.asleep = false; HANK.upT = -99;
+  H.run(20, () => HANK.care && HANK.care.g === g); const bury = !!(HANK.care && HANK.care.kind === 'bury');
+  giveHankClippers(); HANK.upT = -99; H.run(4); const shear = !!HANK.job, dropped = !HANK.care;
+  HANK.job = null; HANK.clippers = false; HANK.shearing = false; H.run(1);
+  return { bury, shear, dropped };
+});
+ok('a burial gives way: shearing to do, the body waits', r13a.bury && r13a.shear && r13a.dropped, r13a);
+
 // 13b. a full cemetery: Hank adds a row at the back (the fence goes round it) and buries the next one there
 const r13b = await h.page.evaluate(() => {
   const { G, T, HANK, YARDS, killSheep, living, CAMPS, yardRoom } = GAME;

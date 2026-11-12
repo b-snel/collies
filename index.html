@@ -656,9 +656,10 @@ const T = {
   // MOUNTAIN PASS (PASS): past the Trading Post the trail climbs `rise` m (s0…top; flat flat m round each fire camp) up an icy pass to
   // the yeti's cave, the end. Snow full on from `snow`. Floor half widths hwW/hwE; the top past `arena`: aW/aE.
   // fires: camps at [s, lat], no pen: Hank lights one (light s) when he's there, it burns `burn` h. Heat: full within r0, none past r1 m.
+  // His first job up there: the flock's fire (the next one up within reach m, or one it's within left m past) out or under low h: lit.
   // spots: places round it (ring m out) for the coldest sheep within draw m (colder than want goes; under done: off it)
   pass: { s0: 1140, snow: 1182, top: 1478, rise: 44, flat: 14, hwW: 14, hwE: 11, arena: 1486, aW: 18, aE: 13,
-    fires: [[1262, -6], [1376, -6], [1484, -9]], light: 2.5, burn: 10, r0: 2.6, r1: 9.5, spots: 8, ring: 2.3, want: 0.3, done: 0.08, draw: 26, finish: 8 },   // finish: s the cave's shut on some of them before it ends
+    fires: [[1262, -6], [1376, -6], [1484, -9]], light: 2.5, burn: 10, low: 1.5, reach: 70, left: 14, r0: 2.6, r1: 9.5, spots: 8, ring: 2.3, want: 0.3, done: 0.08, draw: 26, finish: 8 },   // finish: s the cave's shut on some of them before it ends
   // COLD (s.cold 0…1, d.cold): in the pass it builds rate/h × (1 − wool × s.wool) × (1 + snow × s.snow) (× night, × blizz, × lamb; huddled with
   // ≥3 near: × huddle), less under heat; heat warms it off at warm/h; out of the pass it thaws thaw/h. Over slow it slows (at 1: slowK×).
   // At 1 for dieHours: dead of it. Dogs: dog/h, at 1 dogSlow× (never worse)
@@ -8031,7 +8032,7 @@ const tugSideOfEnd = (U, d) => d.ropeI < U.k ? -1 : d.ropeI > U.k ? 1 : (d.tugSi
 // ---------------- HANK'S TUG: a dog brings it to him; he walks to the far end, takes it, and tugs the lot of them ----------------
 function hankRopeFree() {
   const hk = HANK;
-  return G.mode === 'play' && !hk.asleep && !hk.climb && !hk.cross && !hk.care && !hk.job && !hk.shearing && !hk.tending && !hk.digging && !hk.building && !(hk.lift > 0) && !hankThreats(T.hankNap.wakeR).length;
+  return G.mode === 'play' && !hk.asleep && !hk.climb && !hk.cross && (!hk.care || hk.care.kind === 'bury') && !hk.job && !hk.shearing && !hk.tending && !hk.digging && !(hk.lift > 0) && !hankThreats(T.hankNap.wakeR).length && !fireDue();   // (a burial gives way: buryCan)
 }
 // the end furthest along it from every dog's grip (-1: none far enough)
 function hankRopeEnd(R) {
@@ -9748,16 +9749,20 @@ function dogCold(d, dt) {
   d.cold = clamp((d.cold || 0) + (up - heat * C.warm - (pk < 0.05 ? C.thaw : 0)) * dtH, 0, 1);
 }
 // ---------------- FIRES: Hank lights the one by the flock; it burns down (fuel h) ----------------
-// where Hank wants to be for it: the nearest fire camp to the flock in the pass that's out or burning low (or by night, any)
-function passFireGoal() {
-  const hk = HANK; if (G.mode !== 'play' || !flockInPass()) return null;
-  const fc = flockCenter(); let best = null, bd = 48;
-  for (const f of PASS.fires) { const d = Math.hypot(f.x - fc.x, f.z - fc.z); if (d < bd) { bd = d; best = f; } }
-  if (!best || (best.fuel > 1.5 && !isNight() && !hk.lightAt)) return null;
-  if (best.top && YETI.beaten) return null;   // (the top's fire: only while there's a yeti to burn)
+// where Hank wants to be for it: the flock's fire (the next one up, or the one it's at; not one it's left behind) if it's out or
+// burning low (g.light: his first job, before anything), or by night, to sit by
+function passFireGoal() { if (PASS.fgT !== G.time) { PASS.fgT = G.time; PASS.fg = passFireFind(); } return PASS.fg; }   // (asked a few times a step)
+function passFireFind() {
+  const hk = HANK, P = T.pass; if (G.mode !== 'play' || !flockInPass()) return null;
+  const fc = flockCenter(), fs = sAt(fc.x, fc.z); let best = null, bd = P.reach;
+  for (const f of PASS.fires) { const d = Math.hypot(f.x - fc.x, f.z - fc.z); if (f.s > fs - P.left && d < bd) { bd = d; best = f; } }
+  if (!best || (best.top && YETI.beaten)) return null;   // (the top's fire: only while there's a yeti to burn)
+  const light = best.fuel <= P.low || hk.lightAt > 0;
+  if (!light && !isNight()) return null;
   const a = Math.atan2(fc.z - best.z, fc.x - best.x) + 0.9;   // (the flock's side of it)
-  return { x: best.x + Math.cos(a) * 1.6, z: best.z + Math.sin(a) * 1.6, stop: 0.5, face: best, fire: best };
+  return { x: best.x + Math.cos(a) * 1.6, z: best.z + Math.sin(a) * 1.6, stop: 0.5, face: best, fire: best, light };
 }
+const fireDue = () => !!passFireGoal()?.light;   // MOUNTAIN PASS: a fire to light: patients, shearing, ropes and burials wait
 // Hank at the fire he's after: kneels and lights it (T.pass.light s)
 function hankFire(dt) {
   const hk = HANK, g = hk.goal, f = g && g.fire;
@@ -10489,6 +10494,7 @@ function resetPass() {
   Object.assign(PASS, { seen: false, cand: [], scanT: 0, said: {}, coldSaid: false, goatNext: T.goat.first, shutT: 0 });
   PASS.blizz = { on: false, k: 0, left: 0, next: T.blizz.first, wind: 0 };
   for (const f of PASS.fires) { f.fuel = 0; f.by = []; }
+  PASS.fgT = -1;
   for (const g of GOATS) Object.assign(g, { state: 'perch', x: g.home.x, y: g.home.y, z: g.home.z, yaw: g.home.yaw, look: g.home.yaw, t: 0, rest: 0, target: null, hop: null });
   SNOWBALLS.length = 0;
   Object.assign(YETI, { state: 'sleep', x: SIDE.home.x, z: SIDE.home.z, yaw: SIDE.home.yaw, t: 0, hp: 0, max: 0, on: false, beaten: false, how: '', next: 0, buttCd: 0, target: null, hurtT: 0 });
@@ -12488,10 +12494,11 @@ const hankY = (x, z) => Math.max(groundY(x, z), WATER_Y - 1.05);   // wading: ch
 function hankGoal() {
   const p0 = pens[0];
   if (G.mode === 'title') return { x: p0.exitX + p0.camp.tx * 3.4, z: p0.exitZ + p0.camp.tz * 3.4, stop: 0.6 };
-  const cg = careGoal(); if (cg) return cg;       // VET: a patient, or a body to bury
+  const pfg = passFireGoal(); if (pfg && pfg.light) return pfg;   // MOUNTAIN PASS: a fire to light, first of all
+  const cg = careGoal(); if (cg) return cg;       // VET: a patient, or (nothing else to do: buryCan) a body to bury
   const shg = shearGoal(); if (shg) return shg;   // shearing: in the pen, by the sheep he's after
   const rpg = hankRopeGoal(); if (rpg) return rpg;   // ROPES: a dog's brought him the rope
-  const pfg = passFireGoal(); if (pfg) return pfg;   // MOUNTAIN PASS: a fire to light (and by night, to sit by)
+  if (pfg) return pfg;   // MOUNTAIN PASS: by night, by the fire
   const live = G.sheep.filter(s => !s.dead && !s.grabbed);
   if (G.mode === 'end') { const dc = dogCentroid(); if (dc) return { x: dc.x - 3, z: dc.z + 3, stop: 4 }; }
   // evening and night: warming himself at the campfire of the pen the flock's in
@@ -12835,12 +12842,13 @@ function hankNap(dt) {
   const hk = HANK, N = T.hankNap, g = hk.goal, near = hankThreats(N.wakeR);
   if (near.length) hk.upT = G.time;
   if (hk.asleep) {
-    if (!near.length && isNight()) return;
+    if (!near.length && isNight() && !fireDue()) return;
     hk.asleep = false; hk.restT = 0; hk.watchT = 0;
+    if (!near.length && isNight()) { hk.upT = G.time; return; }   // MOUNTAIN PASS: up to stoke the fire before it's out
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && !hk.job && !hk.care && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient)
+  const atFire = isNight() && g && g.face && !hk.job && !hk.care && !fireDue() && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -12936,7 +12944,8 @@ function giveHankClippers(d = null) {
   return true;
 }
 const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
-const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && G.time - HANK.upT > T.shear.calm;   // (VET: patients and burials first)
+const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && G.time - HANK.upT > T.shear.calm && !fireDue();   // (VET: patients first; a burial gives way: buryCan)
+const shearWant = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm && !!(HANK.job || shearPick());   // shearing to do (beats a burial)
 const shearable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !!s.pen && s.pen.gateT < 0.05 && G.sheep.includes(s);
 function shearPick() {   // the woolliest penned sheep (near ones first), not one panicking, squaring up or feeding
   const hk = HANK; let best = null, bs = -1e9;
@@ -13164,8 +13173,9 @@ function giveHank(b, d = null) {
 }
 // ---------------- Hank's rounds ----------------
 const treatable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && s.state !== 'shear' && G.sheep.includes(s) && !overWater(s.x, s.z);
-const careCan = () => G.mode === 'play' && !HANK.asleep;
-const buryCan = () => careCan() && HANK.shovel && G.clock.hour >= T.remains.from && G.clock.hour < T.remains.to && !hankThreats(T.hankNap.wakeR).length;
+const careCan = () => G.mode === 'play' && !HANK.asleep && !fireDue();
+// a burial: the last thing he does. Not up the pass (the cemetery's far below: the fires come first), nor with shearing or a tug to do
+const buryCan = () => careCan() && HANK.shovel && G.clock.hour >= T.remains.from && G.clock.hour < T.remains.to && !flockInPass() && !HANK.ropeWant && !HANK.rope && !shearWant() && !hankThreats(T.hankNap.wakeR).length;
 function careNext(treatOnly = false) {
   const hk = HANK; let best = null, bs = -1e9;
   if (careCan()) for (const s of G.sheep) {
@@ -13221,7 +13231,7 @@ function updateCare(dt) {
   const hk = HANK;
   let j = hk.care;
   if (j && !careValid(j)) { careStop(); j = null; }
-  if (j && j.kind === 'bury' && j.phase === 'fetch' && (j.chk = (j.chk || 0) - dt) <= 0) { j.chk = 1; if (careNext(true)) { careStop(); j = null; } }   // a patient first
+  if (j && j.kind === 'bury' && j.phase !== 'dig' && (j.chk = (j.chk || 0) - dt) <= 0) { j.chk = 1; if (careNext(true)) { careStop(); j = null; } }   // a patient first (the body's put down)
   if (!j) {
     if ((hk.carePickT = (hk.carePickT || 0) - dt) > 0) return;
     hk.carePickT = 0.5; if (!(j = careNext())) return;
@@ -18246,7 +18256,7 @@ function renderOnce(dt = 1 / 60) {
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
-  ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, hankFire, fireLit });   // MOUNTAIN PASS
+  ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
