@@ -80,7 +80,7 @@ Run the ones touching your change; report the numbers.
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
-| `rope-test.mjs [layout\|drag\|taps\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ taps (drop, shake, buffered bite, Ⓑ no shake), tug of war (won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
+| `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; random trees in the grove, hunters by dogs and day |
 | `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
@@ -189,9 +189,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
 - **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
-  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Grab
-  a bucket to carry it (one per dog, mouth full); tap again: set down
-  (`dropBucket`); quick taps slosh some out (`bucketSlosh`). A lying one gets shoved by dogs running into it, flies (spilling)
+  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Hold
+  grab to carry a bucket (one per dog, mouth full); let go: set down
+  (`dropBucket`); Ⓑ sloshes some out (`bucketSlosh`). A lying one gets shoved by dogs running into it, flies (spilling)
   when pounced (`bucketPhysics`, `T.water.kick`). Wade/swim to fill, walk up to any water trough to tip in.
   Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
@@ -353,17 +353,17 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).
-- **Grab by taps** (Ⓧ / R / , / ✊, `grabPress`, `T.grabTap`, `inp.grabTap`): a tap bites (a press up to `buf` s
-  early still does: `d.grabBuf`); with something in its mouth one tap lets go `win` s later (running: a fling), a
-  quicker next tap shakes it instead (`shakeHold`). Ⓑ only pounces (a held gate: let go first). Bots holding `grab`:
-  each press once.
+- **Grab: hold Ⓧ** (R / , / ✊, `inp.grab`): held, it bites what comes in reach and keeps hold; let go: dropped
+  (running: a fling). Lost while held (slip, buck, knocked): no bite again till Ⓧ is let go (`d.grabLock`). Ⓑ with
+  something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: let go,
+  pounce. Bots: `grab: true` is held.
 - **Ropes** (`ROPES`, `T.rope`, own rng): one coiled off the trail on each leg, none in Falcon Canyon. Bitten
   anywhere (`ropeGrip`, `d.ropeI`), dragged: Verlet nodes (`ropeSim`), links solved outward from the grips, a little
-  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Quick taps: a wave (`ropeShake`).
+  stiff, sliding friction, dogs and sheep kick it. Carrying it costs no stamina. Ⓑ: a wave (`ropeShake`).
   Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
 - **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
-  (`d.tugS`: planted + walking back + Ⓧ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
+  (`d.tugS`: planted + walking back + Ⓑ taps, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
   Up to 4 dogs: across the knot each side's heaves add up and it moves as one (`ropeHold`).
 - **Hank's tug** (`hankRope`, `hankTug`, `HANK.rope`, `T.rope.tug.hank`): a dog brings a rope within `r` of him, he's free
@@ -371,7 +371,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   heaves every `every` s, tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
-  one tap tosses it (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
+  let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
   slides (`boneStep`, sub-stepped), bounces off rock and fences. Hits (`boneHits`) by real physics: J = (1+e)·vn / (1/m_bone
   + 1/m), Δv = J/m (`boneMass`: × size³ for sheep, × build for dogs), the bone gets J back. `boneHit`: dog knocked, sheep
   pushed or (light) bowled, ram provoked, coyote scared, cougar spooked / drops its catch, Hank staggers. Never its own
@@ -381,7 +381,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Dogs fly as sheep do.** `launchDog(d, vx, vz, vy, kind, by)`: same kinds, spin (`airSpin`),
   bounces (`airBounce`), hits (`airHits`: caroms, bowls, knocks), landing (`T.landKeep`), pose (`dogPose`).
 - **Grab a dog** (`grabKinds.dog`, `grabbableDog`, `d.heldBy`): by the scruff, like a sheep; it drops what
-  it had (a rope too: a tug lost). Its holder carries it (`updateHeldDog`, after it moves); one tap moving: flung (`'fling'`). Held:
+  it had (a rope too: a tug lost). Its holder carries it (`updateHeldDog`, after it moves); let go moving: flung (`'fling'`). Held:
   barks work, its stick tugs the holder, mash pounce to wriggle free (`heldDogInput`, `T.dogHeld`).
 - **Jump** (Ⓨ / X / [ / ⤴, `startJump`, `T.jump`): a hop on the spot (`d.hopT`, `hopH`); sprinting, a long vault.
   Mid-air: rams, pouncing dogs, flying sheep and cougar leaps miss. Clears fences, not the trough one. Lie is LT.

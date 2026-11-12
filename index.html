@@ -401,8 +401,8 @@
       <span class="h"></span><span class="h">🎮 Controller</span><span class="h">⌨ Keys (P1 · P2)</span>
       <span>Move</span><span>Left stick</span><span>WASD · Arrows</span>
       <span>Bark</span><span>Ⓐ</span><span>Space · /</span>
-      <span>Pounce</span><span>Ⓑ</span><span>E · .</span>
-      <span>Grab · again: drop (running: fling) · fast: shake</span><span>Ⓧ</span><span>R · ,</span>
+      <span>Pounce (shake when holding)</span><span>Ⓑ</span><span>E · .</span>
+      <span>Grab &amp; drag (let go to fling)</span><span>hold Ⓧ</span><span>R · ,</span>
       <span>Lie down</span><span>hold LT</span><span>C · '</span>
       <span>Jump (sprint: vault)</span><span>Ⓨ</span><span>X · [</span>
       <span>Sprint</span><span>RT or RB</span><span>L-Shift · R-Shift</span>
@@ -706,7 +706,7 @@ const T = {
   fenceClear: 0.7,             // flying things above this height pass over fences
   grabReach: 1.9, wriggle: 0.35, ramBuck: 1.3,
   dogHeld: { mash: 4, decay: 0.25, tug: 9 },   // a dog in another's jaws: mash pounce this many times to wriggle free; its stick tugs the holder
-  grabTap: { win: 0.3, buf: 0.2, shakeCd: 0.25 },   // Ⓧ: a next tap within win s shakes (a lone one lets go, win s on); pressed up to buf s early it still bites; shakes ≥ shakeCd s apart
+  shakeCd: 0.25,   // Ⓑ holding something: shakes ≥ this many s apart
   grabKinds: {                 // speed: dog top-speed factor; pull: how hard it fights; grip: stamina per second
     sheep: { speed: 0.75, pull: 5, grip: 0, reach: 1.15, lift: 0.35 },   // a ewe or lamb stays held as long as you like (grip 0)
     lamb: { speed: 0.9, pull: 3, grip: 0, reach: 0.95, lift: 0.42 },
@@ -1298,17 +1298,17 @@ function rumble(player, strong = 0.4, weak = 0.6, ms = 120) {
   try { gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }); } catch (e) {}
 }
 
-// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,grabTap,lie,jump}
-// bark, pounce, grabTap and jump are one-shot (edge) presses; sprint, creep, grab and lie are held.
-// Grab works by taps (updateDog: grabPress): tap to bite, tap again to drop, tap fast to shake.
+// read one player's controls this frame -> {mx,my,sprint,creep,bark,pounce,grab,lie,jump}
+// bark, pounce and jump are one-shot (edge) presses; sprint, creep, grab and lie are held.
+// Grab: hold to bite and keep hold, let go to drop (running: fling); Ⓑ while holding shakes.
 function readInput(p) {
-  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, grabTap: false, lie: false, jump: false };
+  const r = { mx: 0, my: 0, sprint: false, creep: false, bark: false, pounce: false, grab: false, lie: false, jump: false };
   if (p.kind === 'bot') return Object.assign(r, p.bot || {});   // scripted player for automated tests
   if (p.kind === 'net') return netReadInput(p, r);              // ONLINE: a friend's dog, driven by what their browser sends
   if (p.kind === 'touch') {   // a light push creeps; ⚡ sprints
     const m = Math.hypot(TOUCH.mx, TOUCH.my);
     if (m > 0.12) { const k = m < 0.5 ? (0.35 + 0.65 * (m - 0.12) / 0.38) / m : 1; r.mx = TOUCH.mx * k; r.my = TOUCH.my * k; r.creep = m < 0.5 && !TOUCH.held.sprint; }
-    r.sprint = !!TOUCH.held.sprint; r.lie = !!TOUCH.held.lie; r.grab = !!TOUCH.held.grab; r.grabTap = !!TOUCH.edge.grab; r.bark = !!TOUCH.edge.bark; r.pounce = !!TOUCH.edge.pounce; r.jump = !!TOUCH.edge.jump;
+    r.sprint = !!TOUCH.held.sprint; r.lie = !!TOUCH.held.lie; r.grab = !!TOUCH.held.grab; r.bark = !!TOUCH.edge.bark; r.pounce = !!TOUCH.edge.pounce; r.jump = !!TOUCH.edge.jump;
     return r;
   }
   if (p.kind === 'pad') {
@@ -1322,15 +1322,15 @@ function readInput(p) {
     r.creep = padPressed(gp, 4);                                              // LB
     r.lie = padPressed(gp, 6);                                                // LT
     r.jump = padEdge(p.index, gp, 3);                                         // Y
-    r.grab = padPressed(gp, 2); r.grabTap = padEdge(p.index, gp, 2);          // X: tap to grab / drop, tap fast to shake
+    r.grab = padPressed(gp, 2);                                               // X (hold)
     r.bark = padEdge(p.index, gp, 0);                                         // A
-    r.pounce = padEdge(p.index, gp, 1);                                       // B
+    r.pounce = padEdge(p.index, gp, 1);                                       // B (shakes while holding)
   } else {
     for (const k of KB) {   // one keyboard player: WASD and arrows both drive it
       r.mx += (anyKey(k.right) ? 1 : 0) - (anyKey(k.left) ? 1 : 0);
       r.my += (anyKey(k.down) ? 1 : 0) - (anyKey(k.up) ? 1 : 0);
       r.sprint ||= anyKey(k.sprint); r.creep ||= anyKey(k.creep); r.lie ||= anyKey(k.lie); r.grab ||= anyKey(k.grab);
-      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce); r.jump ||= anyEdge(k.jump); r.grabTap ||= anyEdge(k.grab);
+      r.bark ||= anyEdge(k.bark); r.pounce ||= anyEdge(k.pounce); r.jump ||= anyEdge(k.jump);
     }
     r.mx = clamp(r.mx, -1, 1); r.my = clamp(r.my, -1, 1);
     const m = Math.hypot(r.mx, r.my); if (m > 1) { r.mx /= m; r.my /= m; }
@@ -4551,9 +4551,7 @@ function updateDog(d, inp, dt) {
   d.barkBuf = inp.bark ? T.barkBuf : Math.max(0, (d.barkBuf || 0) - dt);   // pressed a touch early (or online, a hair before the host's cooldown): kept
   d.barkCd -= dt; d.barkAnim = Math.max(0, d.barkAnim - dt); d.barkAgo += dt; d.teamAgo += dt;
   if (d.holding && (d.holding.dead || d.holding.gone)) { d.holding = null; d.holdKind = null; }
-  // Ⓧ pressed (read here, so a press while stunned or flying is gone, not kept for later)
-  const press = inp.grabTap || (!!inp.grab && !d.grabWas && d.player.kind !== 'net');   // (bots hold it: each press once; a friend's come as taps)
-  d.grabWas = !!inp.grab;
+  if (!inp.grab && !d.holding) d.grabLock = false;   // Ⓧ let go (read here: while knocked over or flying it counts too)
   dogHealth(d, dt);
   if (d.maul) { updateMauledDog(d, inp, dt); return; }
   if (d.heldBy && heldDogInput(d, inp, dt)) return;   // in another dog's jaws (it carries this one: updateHeldDog)
@@ -4577,16 +4575,16 @@ function updateDog(d, inp, dt) {
   const mag = Math.hypot(inp.mx, inp.my);
   const wx = inp.mx * CAM_R.x - inp.my * CAM_F.x, wz = inp.mx * CAM_R.z - inp.my * CAM_F.z;
   d.inMag = mag; d.wx = mag > 0.05 ? wx / mag : 0; d.wz = mag > 0.05 ? wz / mag : 0;
-  // grab (Ⓧ) by taps: a tap bites (pressed a moment early, it still does: grabBuf; WATER: or picks up a bucket); one more
-  // tap lets go (running: a fling) unless another follows, and tapping fast shakes it (grabPress)
-  d.grabBuf = Math.max(0, (d.grabBuf || 0) - dt);
-  if (press) grabPress(d);
-  if (d.grabBuf > 0 && !d.holding && !bucketOf(d) && !inp.lie && d.hopT <= 0 && d.pounceT <= 0 && tryGrab(d)) { d.grabBuf = 0; d.tapAt = G.time; }
-  if (d.dropAt && G.time >= d.dropAt) { d.dropAt = 0; if (d.holding) releaseHold(d, true); else dropBucket(d); }
-  // pounce (a gate it's holding it lets go of first; anything else in its mouth: no)
+  // grab (Ⓧ): hold to bite and keep hold (WATER: or carry a bucket); let go to drop it (running: a fling)
+  if (!inp.grab) { if (d.holding) releaseHold(d, true); else dropBucket(d); d.grabLock = false; }
+  else if (!d.holding && !d.grabLock && !bucketOf(d) && !inp.lie && d.hopT <= 0 && d.pounceT <= 0) tryGrab(d);
+  d.grabHeld = !!inp.grab && !d.grabLock;   // (WATER: mouth free, it picks up a bucket)
+  // pounce, or shake whatever's in its mouth (a gate it lets go of first; ROPES: in a tug of war, a heave)
   if (inp.pounce) {
     if (d.holding && d.holdKind === 'gate') releaseHold(d, false);
-    if (!d.holding && !inp.lie) startPounce(d, wx, wz, mag);
+    if (d.holdKind === 'rope' && d.holding.tug) tugTap(d.holding, d);
+    else if (d.holding || bucketOf(d)) shakeHold(d);
+    else if (!inp.lie) startPounce(d, wx, wz, mag);
   }
   if (inp.jump) startJump(d);
   let mode = 'walk';
@@ -4645,7 +4643,7 @@ function heldDogInput(d, inp, dt) {
   const h = d.heldBy;
   if (!h || h.holding !== d || !G.dogs.includes(h)) { d.heldBy = null; return false; }
   const H = T.dogHeld;
-  d.pounceT = d.hopT = 0; d.mode = 'walk'; d.grabBuf = 0; d.inMag = 0;
+  d.pounceT = d.hopT = 0; d.mode = 'walk'; d.inMag = 0;
   if (d.stunT > 0) d.stunT -= dt;
   d.stamina = Math.min(1, d.stamina + T.staminaRegen * dogK(d, 'wind') * dt);
   d.heldWrig = Math.max(0, (d.heldWrig || 0) - H.decay * dt);
@@ -5482,22 +5480,11 @@ function tryGrab(d) {
   }
   return true;
 }
-// Ⓧ pressed: bite (in grabBuf s), or with something in its mouth: a lone tap lets go (after T.grabTap.win s), a quick
-// second tap (and every quick one after) shakes it instead. In a tug of war every tap heaves (ROPES).
-function grabPress(d) {
-  if (d.holdKind === 'rope' && d.holding.tug) { tugTap(d.holding, d); return; }
-  if (d.holding || bucketOf(d)) {
-    if (G.time - (d.tapAt ?? -9) < T.grabTap.win) { d.dropAt = 0; shakeHold(d); }
-    else d.dropAt = G.time + T.grabTap.win;
-    d.tapAt = G.time; return;
-  }
-  d.grabBuf = T.grabTap.buf;
-}
 function releaseHold(d, fling) {
   const H = d.holding, kind = d.holdKind; if (!H) return;
-  d.holding = null; d.holdKind = null; d.dropAt = 0; d.grabBuf = 0;
+  d.holding = null; d.holdKind = null; d.grabLock = true;   // let go of Ⓧ before biting again (no re-grab every frame after a slip or a buck)
   if (kind === 'gate') return;
-  if (kind === 'bone') { boneLetGo(H, d, fling); return; }   // BONES: a tap tosses it
+  if (kind === 'bone') { boneLetGo(H, d, fling); return; }   // BONES: let go, it's tossed
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), sp = Math.hypot(d.vx, d.vz), F = T.fling, pan = panOf(d.x, d.z), kg = Math.sqrt(dogK(d, 'grip'));   // BREEDS: a good grip throws further
   const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
   if (throwIt) train(d, 'grip', T.train.fling);
@@ -5528,10 +5515,10 @@ function releaseHold(d, fling) {
     startleSheep(s, fx, fz, 0.6);
   }
 }
-// Ⓧ tapped fast with something in its mouth
+// Ⓑ with something in its mouth
 function shakeHold(d) {
   if ((d.shakeCD || 0) > G.time) return;
-  d.shakeCD = G.time + T.grabTap.shakeCd; d.shakeT = 0.3; d.lastShake = 0;
+  d.shakeCD = G.time + T.shakeCd; d.shakeT = 0.3; d.lastShake = 0;
   const H = d.holding, kind = d.holdKind, pan = panOf(d.x, d.z), fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
   SFX.shake(pan); rumble(d.player, 0.45, 0.6, 130);
   if (!H) { const b = bucketOf(d); if (b) bucketSlosh(b, d); return; }   // WATER: it slops over
@@ -5545,7 +5532,7 @@ function shakeHold(d) {
     floatText(d.shakes > 1 ? 'SHAKE SHAKE!' : 'SHAKE!', H.x, H.y + 1.8, H.z, '#ff8a6b', 1.2 + d.shakes * 0.1);
     starBurst(H.x, H.y + 1, H.z, 5); shakeCam(0.18); dizzy(H, 1.5, 1.5);
     if (H.courage <= 0.05 || H.state === 'leave' || d.shakes >= 3) {   // shaken loose: tossed aside and it bolts
-      d.holding = null; d.holdKind = null; H.heldBy = null; d.dropAt = 0;
+      d.holding = null; d.holdKind = null; H.heldBy = null; d.grabLock = true;
       launchCoyote(H, fx * 9 + d.vx, fz * 9 + d.vz, 6, d); H.air.ghost = 0.15;
       if (H.state !== 'leave') { H.state = 'flee'; H.stateT = 0; H.fleeDur = 3; H.fx = d.x; H.fz = d.z; }
       floatText('AND STAY OUT!', H.x, H.y + 2.2, H.z, '#ffd36b', 1.3);
@@ -5622,7 +5609,7 @@ function updateHeldCoyote(c, dt) {
   if (c.prey) { const s = c.prey; s.x = c.x + Math.sin(c.yaw) * 0.9; s.z = c.z + Math.cos(c.yaw) * 0.9; s.y = groundY(s.x, s.z); s.yaw = c.yaw + Math.PI / 2; s.vx = c.vx; s.vz = c.vz; }
   if (Math.random() < dt * 1.5) Sound.yelp(panOf(c.x, c.z));
   if (d.lastShake > 1.2 && Math.random() < dt * T.wriggle) {   // it wriggles free unless you keep shaking it
-    d.holding = null; d.holdKind = null; c.heldBy = null; d.dropAt = 0;
+    d.holding = null; d.holdKind = null; c.heldBy = null; d.grabLock = true;
     c.y = groundY(c.x, c.z); c.vx = Math.cos(d.yaw) * 6; c.vz = -Math.sin(d.yaw) * 6;
     floatText('WRIGGLE!', c.x, c.y + 1.6, c.z, '#ff8a6b', 1.1); Sound.yelp(panOf(c.x, c.z));
     if (c.state === 'held' || (c.state !== 'leave' && !c.prey)) { c.state = 'flee'; c.stateT = 0; c.fleeDur = 1.5; c.fx = d.x; c.fz = d.z; }
@@ -5748,7 +5735,7 @@ function sweepGate(p, prev) {
 }
 function latchGate(p, speed) {
   p.phi = 0; p.w = 0; p.latched = true; p.fresh = false; p.noTouch = 0; p.auto = undefined;
-  for (const d of G.dogs) if (d.holding === p) { d.holding = null; d.holdKind = null; d.dropAt = 0; }
+  for (const d of G.dogs) if (d.holding === p) { d.holding = null; d.holdKind = null; d.grabLock = true; }
   updateGateGeometry(p); MV.latches++;
   const pan = panOf(p.gx, p.gz);
   SFX.clack(pan, 0.32); SFX.thud(pan, 0.2);
@@ -6413,14 +6400,14 @@ function pickBucket(b, d) {
   b.by = d; WATER.picks++;
   waterFx('pick', b.x, b.z); rumble(d.player, 0.2, 0.35, 80); hint('bucket');
 }
-// SHARED HOOK: the dog sets its bucket down where it stands, water and all (grab tapped again)
+// SHARED HOOK: the dog sets its bucket down where it stands, water and all (grab let go)
 function dropBucket(d) {
   const b = bucketOf(d); if (!b || d.air) return false;
-  d.dropAt = 0;
+  d.grabLock = true;
   b.by = null; b.x = d.x; b.z = d.z; b.drop = d; b.vx = b.vz = b.vy = b.h = 0;   // (drop: that dog doesn't shove it till it steps off)
   waterFx('drop', b.x, b.z); rumble(d.player, 0.15, 0.25, 60); return true;
 }
-// grab tapped fast: it shakes the bucket and some slops over
+// Ⓑ: it shakes the bucket and some slops over
 function bucketSlosh(b, d) {
   if (b.w < 0.01) return;
   const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw); b.w *= 1 - T.water.slosh;
@@ -6442,8 +6429,8 @@ function updateDogWater(d) {
   if (G.mode !== 'play') return;
   let b = bucketOf(d);
   if (!b) {
-    if (d.air || !(d.grabBuf > 0) || d.holding) return;   // grab tapped, mouth free: it picks one up
-    for (const o of BUCKETS) if (!o.by && !(o.h > 0.3) && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; d.grabBuf = 0; d.tapAt = G.time; break; }
+    if (d.air || !d.grabHeld || d.holding) return;   // grab held, mouth free: it picks one up
+    for (const o of BUCKETS) if (!o.by && !(o.h > 0.3) && Math.abs(o.x - d.x) < 2 && Math.abs(o.z - d.z) < 2 && Math.hypot(o.x - d.x, o.z - d.z) < T.water.pickR) { pickBucket(o, d); b = o; break; }
     if (!b) return;
   }
   if (b.w < T.water.bucket - 0.01 && dogAtWater(d)) fillBucket(b, d);
@@ -6477,7 +6464,7 @@ function bucketPhysics(b, dt) {
   const K = T.water.kick; b.vx ||= 0; b.vz ||= 0; b.vy ||= 0; b.h ||= 0;
   for (const d of G.dogs) {
     if (b.drop === d) { if (Math.hypot(d.x - b.x, d.z - b.z) > 1.5) b.drop = null; else continue; }
-    if ((d.grabBuf > 0 && !d.holding && !bucketOf(d)) || d.air || Math.abs(d.x - b.x) > 2 || Math.abs(d.z - b.z) > 2) continue;
+    if ((d.grabHeld && !d.holding && !bucketOf(d)) || d.air || Math.abs(d.x - b.x) > 2 || Math.abs(d.z - b.z) > 2) continue;
     const dx = b.x - d.x, dz = b.z - d.z, dd = Math.hypot(dx, dz) || 1e-3; if (dd > K.r + (d.pounceT > 0 ? 0.6 : 0) || b.h > 1) continue;
     if (d.pounceT > 0 && !(b.kickT > G.time)) {   // pounced: away it flies
       const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw); b.vx = fx * K.pounce + dx / dd * 2; b.vz = fz * K.pounce + dz / dd * 2; b.vy = K.up; b.h = Math.max(b.h, 0.05);
@@ -7131,9 +7118,9 @@ function drawSnakeOverlay() {
 // ROPES — a coil of rope off the trail on every leg (own rng: the same on
 // every screen). A dog bites it anywhere (Ⓧ) and drags it: nodes on sticks
 // (Verlet), a little stiff, dragging on the ground, kicked about by dogs and
-// sheep; tapping fast sends a wave down it. TUG OF WAR: a second dog bites
+// sheep; Ⓑ sends a wave down it. TUG OF WAR: a second dog bites
 // it too. The knot (a red rag halfway between their grips) starts on a white
-// line, with each side's line T.rope.tug.win m off. Walk back and tap Ⓧ to
+// line, with each side's line T.rope.tug.win m off. Walk back and tap Ⓑ to
 // heave (stamina; out: SLIP!, rope lost). Knot over your line, or the other
 // side lets go: won. Up to 4 dogs: each side heaves as one (ropeHold). Bring
 // it to Hank: he takes the far end and tugs the lot of them (HANK.rope).
@@ -7338,14 +7325,14 @@ function tugStart(R) {
   if (l < 0.5) { ux = R.x[k + 1] - R.x[k - 1]; uz = R.z[k + 1] - R.z[k - 1]; l = Math.hypot(ux, uz) || 1; }
   R.tug = { k, sx: (a.x + b.x) / 2, sz: (a.z + b.z) / 2, ux: ux / l, uz: uz / l, a: lo.color, b: hi.color, off: 0 };
   R.tug.net = { k, sx: +R.tug.sx.toFixed(2), sz: +R.tug.sz.toFixed(2), ux: +R.tug.ux.toFixed(3), uz: +R.tug.uz.toFixed(3), a: lo.color, b: hi.color };
-  for (const o of H) { o.tugK = 0; o.dropAt = 0; }
+  for (const o of H) o.tugK = 0;
   MV.tugs = (MV.tugs || 0) + 1;
   ropeFx('tug', R.x[k], R.z[k]); for (const o of H) rumble(o.player, 0.5, 0.6, 160);
   if (hk) { HANK.tugT = 0; HANK.heaveT = 0; hank(null, pick(["Ye want a tug, eh? Heave!", "Right, ye wee rascal. Pull!", "Come on then!"]), { force: true }); }
   else sayOnce('tug', null, "Tug o' war! Heave!");
   hint('tug');
 }
-// Ⓧ in a tug: a heave (a yank back, heavier a moment)
+// Ⓑ in a tug: a heave (a yank back, heavier a moment)
 function tugTap(R, d) {
   const U = R.tug, K = T.rope.tug, sd = tugSide(R, d);
   d.tugK = 1; d.stamina = Math.max(0, d.stamina - K.tapCost); d.shakeT = 0.12;
@@ -7544,7 +7531,7 @@ function drawRopeOverlay() {
   for (const R of ROPES) {
     if (R.tug) {
       const H = G.dogs.filter(d => d.holding === R), d = H.find(d => d.player && d.player.kind !== 'net') || H[0]; if (!d) continue;
-      const g = keyLabel(d.player, 'grab'); nudge('tug', R.x[R.tug.k], R.y[R.tug.k] + 2.4, R.z[R.tug.k], `${g} ${g} ${g}`, '#ffd36b');
+      const g = keyLabel(d.player, 'pounce'); nudge('tug', R.x[R.tug.k], R.y[R.tug.k] + 2.4, R.z[R.tug.k], `${g} ${g} ${g}`, '#ffd36b');
       continue;
     }
     if (R.found) continue;
@@ -7556,7 +7543,7 @@ function drawRopeOverlay() {
 // =====================================================================
 // BONES — dug up at a dig spot (T.dig.bone of the junk), a bone stays on
 // the map for good (saved on this device: BONE_KEY). A dog bites it (Ⓧ),
-// carries it crosswise in its jaws, and one more tap throws it (running:
+// carries it crosswise in its jaws, and letting go throws it (running:
 // further). It flies, tumbles, bounces and slides. Whatever it hits takes
 // a real impulse: J = (1 + e)·v / (1/m_bone + 1/m), so the change in speed
 // is J/m: a lamb or a coyote is bowled over, a sheep nudged, a cougar or
@@ -7601,7 +7588,7 @@ function bonePick(b, d) {
   if (caught) sayOnce('bone-catch', 'catch', 'What a catch!');
   hint('bone');
 }
-// let go: tossed (a tap: from the jaws, the dog's run carried into it) or just dropped (knocked about, swimming)
+// let go: tossed (Ⓧ let go: from the jaws, the dog's run carried into it) or just dropped (knocked about, swimming)
 function boneLetGo(b, d, toss) {
   const K = T.bone.toss, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), kg = Math.sqrt(dogK(d, 'grip'));
   b.by = null; b.x = d.x + fx * 0.95; b.z = d.z + fz * 0.95; b.h = T.rope.mouthY - 0.1; b.rot = d.yaw; b.from = d; b.t0 = G.time; b.hitE = null; boneDirty = true;
@@ -7738,7 +7725,7 @@ function syncBones() {
 function drawBoneOverlay() {
   if (G.mode !== 'play') return;
   for (const b of BONES) {
-    if (b.by) { const d = b.by; if (d.player && d.player.kind !== 'net') nudge('bone-throw', d.x, d.y + 2.3, d.z, `${keyLabel(d.player, 'grab')} throw`, '#efe6cf'); continue; }
+    if (b.by) { const d = b.by; if (d.player && d.player.kind !== 'net') nudge('bone-throw', d.x, d.y + 2.3, d.z, `let go ${keyLabel(d.player, 'grab')}: throw`, '#efe6cf'); continue; }
     if (b.h > 0) continue;
     const d = G.dogs.find(d => !d.holding && Math.abs(d.x - b.x) < 6 && Math.abs(d.z - b.z) < 6); if (!d) continue;
     nudge('bone', b.x, groundY(b.x, b.z) + 1.2, b.z, `${keyLabel(d.player, 'grab')} grab`, '#efe6cf');
@@ -11035,12 +11022,12 @@ const HINTS = {
   modes: 'Hold <b>LB</b> / <b>Q</b> to creep up gently. Hold <b>RT</b> / <b>Shift</b> to sprint (they’ll scatter!).',
   bark: 'Press <b>Ⓐ</b> / <b>Space</b> to bark — it spooks sheep and scares coyotes off.',
   pounce: 'Tap <b>Ⓑ</b> / <b>E</b> to <b>pounce</b>: a quick dash to get round the flock. Pounce into a sheep and it goes flying!',
-  grab: 'Tap <b>Ⓧ</b> / <b>R</b> to <b>grab</b> a stubborn sheep and drag it along. Tap again to drop it — running, you <b>fling</b> it, even over a fence. Tap fast to <b>shake</b>.',
+  grab: 'Hold <b>Ⓧ</b> / <b>R</b> to <b>grab</b> a stubborn sheep and drag it along. Let go while running to <b>fling</b> it — even over a fence. <b>Ⓑ</b> / <b>E</b> while holding: <b>shake</b>.',
   lie: 'Hold <b>LT</b> / <b>C</b> to <b>lie down</b>. A dog lying still settles the flock.',
   travel: 'Follow the trail to the next camp and pen the flock before nightfall.',
   grass: 'The grass here is getting thin. Hungry sheep wander off — <b>move on</b> to greener pasture.',
   dusk: 'Dusk is coming! Drive the flock into a pen and <b>push the gate shut</b> behind them — it clacks when it latches.',
-  night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (Ⓧ Ⓧ Ⓧ / R R R). Keep the flock together.',
+  night: 'Coyotes! <b>Bark</b>, <b>pounce</b> on them, or <b>grab</b> one and <b>shake</b> it (hold Ⓧ + Ⓑ / R + E). Keep the flock together.',
   'coyote-grab': 'Chase it down! <b>Pounce</b> on the coyote, or grab it and <b>shake</b>, to make it drop the sheep!',
   'cougar-grab': 'A cougar! Catch it before it climbs its tree: <b>pounce</b> on it, or run right into it, and it drops the sheep.',
   'falcon-grab': '🦅 <b>Bark</b> under it to make it drop the sheep — or at its nest.',
@@ -11064,10 +11051,10 @@ const HINTS = {
   snake: '🐍 <b>Rattlesnake!</b> Steer the flock wide of the rocks, or <b>bark</b> / <b>pounce</b> it back. A bitten sheep needs 💉: buy it at a trader, bring it to 🧓 Hank.',
   wound: 'Hurt! 🩸 needs 🩹, 🦠 needs 💊. Buy them at a trader and bring them to 🧓 Hank.',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
-  bucket: 'A <b>bucket</b> 🪣! <b>Grab</b> it to carry it (tap again: set it down). Wade into a river, lake or the sea to fill it.',
+  bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too, or bring it to 🧓 Hank: <b>tug of war</b>!',
-  bone: 'A <b>bone</b>! Tap <b>Ⓧ</b> / <b>R</b> again to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
-  tug: '<b>Tug of war!</b> Walk back and tap <b>Ⓧ</b> / <b>R</b> to heave. Knot over your line, or out-last them.',
+  bone: 'A <b>bone</b>! Let go of <b>Ⓧ</b> / <b>R</b> to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
+  tug: '<b>Tug of war!</b> Hold on, walk back and tap <b>Ⓑ</b> / <b>E</b> to heave. Knot over your line, or out-last them.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
   thirst: 'Sheep need <b>water</b> 💧. Fill a bucket 🪣 at water, tip it into a pen\'s water trough.',
@@ -11093,13 +11080,13 @@ const TOUCH_HINTS = {
   modes: 'Light push: <b>creep</b>. Hold ⚡: <b>sprint</b> (they scatter)',
   bark: '📣 <b>Bark</b>: spooks sheep and coyotes',
   pounce: '💥 <b>Pounce</b>: a dash. Into a sheep: it flies',
-  grab: '✊ <b>grab</b> · ✊ again: drop (running: <b>fling</b>) · ✊✊✊ <b>shake</b>',
+  grab: 'Hold ✊ to <b>grab</b>. Let go running: <b>fling</b>. ✊ + 💥 <b>shake</b>',
   lie: 'Hold 💤 to <b>lie down</b>: calms the flock',
   travel: 'Follow the trail ➤ Pen them by nightfall',
   grass: 'Grass thin. <b>Move on</b>',
   dusk: 'Dusk! Pen them, <b>push the gate shut</b>',
-  night: 'Coyotes! 📣 💥, or ✊✊✊ to <b>shake</b>',
-  'coyote-grab': '💥 the coyote, or ✊✊✊, to drop the sheep',
+  night: 'Coyotes! 📣 💥, or ✊ + 💥 to <b>shake</b>',
+  'coyote-grab': '💥 the coyote, or ✊ + 💥, to drop the sheep',
   'cougar-grab': 'Cougar! 💥 it or run into it',
   'falcon-grab': '🦅 📣 under it',
   'team-bark': '😾 📣 + 📣 <b>together</b>',
@@ -11122,10 +11109,10 @@ const TOUCH_HINTS = {
   snake: '🐍 Steer wide, 📣 / 💥 it. Bitten: 💉 ➜ 🧓',
   wound: '🩸 → 🩹 · 🦠 → 💊 · ➜ 🧓',
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
-  bucket: '🪣! ✊ to carry · wade in to fill',
+  bucket: '🪣! Hold ✊ to carry · wade in to fill',
   rope: 'Rope! 2+ dogs or 🧓: <b>tug of war</b>',
-  bone: 'Bone! ✊ again: <b>throw</b>',
-  tug: 'Tug! Walk back, ✊✊✊',
+  bone: 'Bone! Let go ✊: <b>throw</b>',
+  tug: 'Tug! Hold ✊, walk back, 💥💥💥',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
   thirst: 'Thirsty! 🪣 → water → 💧 trough',
@@ -14118,7 +14105,7 @@ const NET_BUILD = (() => {
   return (h >>> 0).toString(36) + '.' + t.length;
 })();
 // one-shot buttons (fire once per press): guests send them as events, the host applies each exactly once
-const NET_EDGES = new Set(['bark', 'pounce', 'jump', 'grabTap']);
+const NET_EDGES = new Set(['bark', 'pounce', 'jump']);
 const NET = {
   role: null,                 // null offline · 'host' · 'guest'
   peer: null, conn: null, code: '', myName: '', cid: '', status: '', statusErr: false,
@@ -14501,17 +14488,17 @@ function controlsHTML(dev) {
       <rect x="296" y="102" width="16" height="10" rx="5" class="cdPart"/><rect x="330" y="102" width="16" height="10" rx="5" class="cdPart"/>
       ${btn(412, 90, '#ffcf3f', 'Y')}${btn(388, 114, '#2f9cff', 'X')}${btn(436, 114, '#e84a3a', 'B')}${btn(412, 138, '#5fd35a', 'A')}
       ${L(206, 24, 140, 24, 'Lie down (hold)', 'end')}${L(196, 48, 140, 56, 'Creep (gentle)', 'end')}${L(210, 112, 140, 110, 'Move · click to sprint', 'end')}${L(262, 164, 140, 170, 'Move', 'end')}${L(304, 107, 140, 230, 'Hank’s barn', 'end')}
-      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab · tap fast: shake', 'start')}${L(449, 114, 500, 152, 'Pounce', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 207, 'Pause', 'start')}${L(390, 174, 500, 230, 'Map (click)', 'start')}
-    </svg><div class="ctrlNote">Tap Grab again to drop (running: fling). ${gates}${pads > 1 ? ' Every controller works the same way.' : ''}</div>`;
+      ${L(434, 24, 500, 24, 'Sprint', 'start')}${L(444, 48, 500, 56, 'Sprint', 'start')}${L(425, 90, 500, 88, 'Lie down (hold)', 'start')}${L(380, 104, 500, 120, 'Grab (hold)', 'start')}${L(449, 114, 500, 152, 'Pounce · shake', 'start')}${L(425, 140, 500, 184, 'Bark', 'start')}${L(338, 107, 500, 207, 'Pause', 'start')}${L(390, 174, 500, 230, 'Map (click)', 'start')}
+    </svg><div class="ctrlNote">Let go of Grab to fling. ${gates}${pads > 1 ? ' Every controller works the same way.' : ''}</div>`;
   }
   const cap = (k, c) => `<kbd class="cdCap" style="--c:${c || '#e8e2d0'}">${k}</kbd>`;
   const row = (k, t) => `<div class="kbRow"><span>${k}</span><b>${t}</b></div>`;
   const col = (h, rows) => `<div><div class="h">${h}</div>${rows.map(r => row(...r)).join('')}</div>`;
   const G1 = '#5fd35a', Y = '#ffcf3f', R = '#e84a3a', B = '#2f9cff', O = '#ff9a3a', P = '#c79bff';
   const P1 = [[cap('W', G1) + cap('A', G1) + cap('S', G1) + cap('D', G1), 'Move'], [cap('L-Shift', G1), 'Sprint'], [cap('Q', P), 'Creep (gentle)'], [cap('Space', Y), 'Bark'],
-    [cap('E', R), 'Pounce'], [cap('R', O), 'Grab · again: drop · fast: shake'], [cap('C', B) + ' hold', 'Lie down']];
+    [cap('E', R), 'Pounce (shake when holding)'], [cap('R', O) + ' hold', 'Grab (let go to fling)'], [cap('C', B) + ' hold', 'Lie down']];
   const P2 = [[cap('↑', G1) + cap('←', G1) + cap('↓', G1) + cap('→', G1), 'Move'], [cap('R-Shift', G1), 'Sprint'], [cap(';', P), 'Creep (gentle)'], [cap('/', Y), 'Bark'],
-    [cap('.', R), 'Pounce'], [cap(',', O), 'Grab · again: drop · fast: shake'], [cap("'", B) + ' hold', 'Lie down']];
+    [cap('.', R), 'Pounce (shake when holding)'], [cap(',', O) + ' hold', 'Grab (let go to fling)'], [cap("'", B) + ' hold', 'Lie down']];
   const SYS = [[cap('P') + cap('Esc'), 'Pause'], [cap('Tab'), 'Hank’s barn'], [cap('M'), 'Map']];
   const two = G.players.some(p => p.kind === 'kb' && p.index === 1);
   return `<div class="kbDiagram">${col(two ? 'Player 1' : 'Keyboard', P1.concat(SYS))}${two ? col('Player 2', P2) : ''}</div><div class="ctrlNote">${gates}${two ? '' : ' A friend can join on the arrow keys, or with a controller.'}</div>`;
@@ -14702,21 +14689,17 @@ function netPredPress(L, d, r, now) {
   if (!d || G.mode !== 'play' || G.paused || d.air || d.stunT > 0 || d.mauled) return;
   if (r.bark && now - (L.barkAt || -1e9) >= T.barkCd * 1000) { L.barkAt = now; barkFx(d); d._pBark = now; }
   if (d.heldBy) return;   // (in another dog's jaws: pounce wriggles, the host's)
-  if (r.pounce && !r.lie && !d._hold && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {
+  const he = netPredHeldAt(d, L, now), o = he ? he.o : d._hold || d.holding, b = bucketOf(d);
+  if (r.pounce && !r.lie && !o && !b && !(d.hopT > 0) && now - (L.pounceAt || -1e9) >= T.pounceCd * 1000) {   // (holding something: a shake, the host's to show)
     L.pounceAt = now; const [dx, dz] = netPredDir(d, r); L.pounces.push({ t: now, dx, dz });
     while (L.pounces.length > 1 && L.pounces[0].t < now - 1500) L.pounces.shift();
   }
-  // grab (grabPress): a tap bites (a moment early still does); holding something, a lone tap lets go a moment later, quick
-  // taps shake it (the host's to show); in a tug of war a tap heaves (the host's too)
-  const tap = r.grabTap || (!!r.grab && !L.grabWas), W = T.grabTap; L.grabWas = !!r.grab;
-  const he = netPredHeldAt(d, L, now), o = he ? he.o : d._hold;
-  if (tap) {
-    if (o || bucketOf(d)) { if (!(o && o.isRope && o.tug)) L.dropAt = now - (L.tapAt || -1e9) < W.win * 1000 ? 0 : now + W.win * 1000; }
-    else L.grabBuf = now + W.buf * 1000;
-    L.tapAt = now;
-  }
-  if (L.grabBuf > now && !o && !bucketOf(d) && !r.lie && !(d.hopT > 0) && !(d.pounceT > 0)) { const k = netPredPick(d); if (k) { L.grabEv = { t: now, o: k.o, grip: k.grip }; L.grabBuf = 0; L.tapAt = now; } }
-  if (L.dropAt && now >= L.dropAt) { L.dropAt = 0; if (o) L.grabEv = { t: now, o: null }; }
+  // grab: bite while Ⓧ's held (once per press after letting go), drop on release
+  const g = !!r.grab;
+  if (!g) { if (L.grabWas && o) L.grabEv = { t: now, o: null }; L.grabLock = false; }
+  else if (o) L.grabLock = true;
+  else if (!L.grabLock && !b && !r.lie && !(d.hopT > 0) && !(d.pounceT > 0)) { const k = netPredPick(d); if (k) { L.grabEv = { t: now, o: k.o, grip: k.grip }; L.grabLock = true; } }
+  L.grabWas = g;
 }
 function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const mx = h.mx || 0, my = h.my || 0, mag = Math.hypot(mx, my);
@@ -15496,7 +15479,7 @@ function step(dt) {
       && !HANK.care && !live.some(s => s.bleedRate > 0);   // VET: not while one's bleeding (time to fetch bandages) or Hank's seeing to one
     const dtH = stepClock(dt);
     regrowAcc += dtH; regrowT();   // in step, not frame, so headless tests (?sim) regrow the grass too
-    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; p.inp.grabTap = false; } }   // button presses fire once per frame, not once per sub-step
+    for (const p of G.players) if (p.dog) { updateDog(p.dog, p.inp || readInput(p), dt); if (p.inp) { p.inp.bark = false; p.inp.pounce = false; } }   // button presses fire once per frame, not once per sub-step
     leashDogs();
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b || a.heldBy === b || b.heldBy === a) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     updateSheep(dt, dtH);
@@ -15527,7 +15510,7 @@ function frame(now) {
   if (G.mode === 'play' && G.paused) pauseDogs();
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
-  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = p.inp.grabTap = false; p.skipInput = false; } }
+  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = false; p.skipInput = false; } }
   const simDt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // hit-stop: a few near-frozen frames on a big hit
   const n = Math.ceil(simDt / 0.025), sdt = simDt / n;
   for (let i = 0; i < n; i++) step(sdt);
@@ -15606,7 +15589,7 @@ Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetS
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
 Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
-Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, syncRopes, grabPress, tryGrab, releaseHold, shakeHold });   // ROPES, grab taps
+Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, syncRopes, tryGrab, releaseHold, shakeHold });   // ROPES, grab
 Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
