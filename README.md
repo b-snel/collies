@@ -1,6 +1,6 @@
 # Collies
 
-A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies, then up an icy mountain pass to the yeti's cave. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
+A 3D herding game. You're a border collie (or up to four of them) driving Hank's flock along one long trail, from a desert corral through a mountain valley and down to the sea, past the Promised Land and back into the desert to the Trading Post, where wool buys supplies, then up an icy mountain pass, past the yeti, down to Cold Harbour and away by sea to Cabo. Graze the flock as you go, pen it at a camp before nightfall, and keep the coyotes off it till dawn. Every sheep has a name, and the ones you lose are remembered.
 
 Live at **https://collies.app**
 
@@ -78,7 +78,17 @@ Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sh
 
 Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
 
-At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten his cave is open: pen the flock in it and shut the gate to win the journey.
+At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten, the ice goes from a gap in the east rim: a road leads down the mountainside to Cold Harbour, where the boat lies. (Online with friends the journey still ends up here: pen the flock in his cave and shut the gate.)
+
+## The sea
+
+Herd the flock down the harbour road, along the pier and up the gangway. With everyone aboard, grab ⚓ at the bow and push the stick up: she casts off, and the land falls astern. Grab the tiller to steer (Hank trims the sail); she won't sail straight into the wind. The flock is ballast: when she heels hard, herd them to the high side.
+
+Each island has a jetty. Sail in close by it, slowly, and Hank takes her lines: alongside she's mended and restocked, and the dogs can go ashore for flowers and salt for the troughs, sweet water from the spring for the bucket, and whatever's buried under the glinting mounds. All aboard again, ⚓ at the bow casts off.
+
+A sheep overboard is left astern fast. Grab a life ring off the rail, face her and let go to throw it; once she has hold of it, grab its line at the rail and hold on (pounce heaves) till she's back aboard.
+
+Orcas, reefs, a storm, sirens and a kraken lie between Cold Harbour and Cabo. Reaching Cabo wins.
 
 ## Snakes, wounds and Hank the vet
 
