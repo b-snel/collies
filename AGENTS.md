@@ -26,13 +26,14 @@ A sheep overboard: throw it a life ring, haul it in. Cabo: that wins.
 ### Run
 
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
-- `?debug`: FPS + cheats (`]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
+- `?debug`: FPS + dev menu (`` ` `` or click the FPS line; `DEV_STOPS`, `DEV_CHEATS`): the whole journey as a strip, click a
+  spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
   state and functions.
-- `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
+- `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
@@ -58,7 +59,7 @@ DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPO
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
-HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → `window.GAME`.
+HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -96,7 +97,7 @@ Run the ones touching your change; report the numbers.
 | `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset]` | ropes: one a leg, drag (links hold, no stamina), Ⓧ held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
 | `cougar-sim.mjs [day\|hunt\|rescue\|penned\|penguard\|grove]` | cougar behaviour; loners: a territory each, more each leg, off the pens, random trees, one out at a time |
-| `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only |
+| `falcon-test.mjs [eat\|bark\|nest\|dog\|dogbark\|night\|odds\|gone]` | falcon: nest kills, bark drops, dog carried, its dog barks it off, day only; past the canyon gone (snakes, pass, sea) |
 | `canyon-test.mjs [layout\|eat\|bark\|shy\|dog\|limits\|boss]` | Falcon Canyon: where, narrow, pillars, bones, a way through; swoop + eat on a pillar, bark drops, bark keeps them perched, dog carried, maxAir, day only, gorge only, reset; the Great Falcon: eats undefended (barks or not), eyrie shake, beaten by pounces, reset |
 | `den-defend-test.mjs` | startled den: defends, stays leashed, sleeps again |
 | `team-test.mjs [rules\|coyote\|pack\|cougar\|maul\|falcon]` | team bark: together/late/far/hoarse, one bark per coyote (team too), 4 dogs break a pack, cougar drops its catch / lets a dog go, falcon drops from further |
@@ -234,7 +235,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
   'falcon'`). A sheep (never rams): `s.grabbed` = falcon, carried to the nearest
   nest spire, eaten after `eatT`. A bark under it, or at the spire, drops it; its mark barking sends it off.
-  Off in `?sim` (`T.falcon.on`).
+  Only short of Falcon Canyon's far end (`falconLand`, nests too); once the flock's past it, gone for the journey
+  (`G.falconGone`): none in the snakes, up the pass, at sea. Off in `?sim` (`T.falcon.on`).
 - **Falcon Canyon** (`CANYON`, `T.canyon`, `canyonK`, own rng): a narrow red gorge (`s0`…`s1`)
   between the Promised Land and the snakes; the only way on. Bones and feathers at its mouth, a ram's
   skull on a stake each side, gloom (`GLOOM`, `CANYON.k`), moaning wind. `FALCONS[1…]` sit on rock

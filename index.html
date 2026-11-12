@@ -118,7 +118,17 @@
   #end .stats { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 12px; font-size:24px; margin:4px 0 14px; }
   #end .stats span { background:var(--panel); padding:2px 14px; border-radius:14px; }
   .hidden { opacity:0 !important; pointer-events:none !important; }
-  #fps { position:fixed; left:8px; bottom:8px; color:#fff; font:12px monospace; text-shadow:0 1px 0 #000; }
+  #fps { position:fixed; left:8px; bottom:8px; color:#fff; font:12px monospace; text-shadow:0 1px 0 #000; cursor:pointer; }
+  /* DEV MENU (?debug): the journey strip, the cheats */
+  #dev { position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:5; padding:6px 10px 10px; background:rgba(10,12,26,.82); border:2px solid rgba(255,248,232,.7); border-radius:14px; color:var(--cream); }
+  #dev[hidden] { display:none; }
+  #dev canvas { display:block; cursor:pointer; touch-action:none; }
+  #dev .devTop { display:flex; justify-content:space-between; font-size:13px; }
+  #dev .devX { cursor:pointer; opacity:.8; padding:0 4px; }
+  #dev .devBtns { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:4px; }
+  #dev button { font:600 18px Fredoka, sans-serif; color:var(--cream); background:rgba(255,248,232,.12); border:1px solid rgba(255,248,232,.5); border-radius:9px; padding:2px 8px; cursor:pointer; display:flex; align-items:center; gap:4px; }
+  #dev button small { font-size:11px; opacity:.75; }
+  #dev button:disabled { opacity:.3; cursor:default; }
   #buildLine { position:fixed; right:10px; bottom:8px; font-size:12px; color:rgba(255,248,232,.7); text-shadow:0 1px 0 rgba(0,0,0,.5); transition:opacity .6s; }
   #buildLine a { color:inherit; }
   #title.hidden ~ #buildLine { opacity:0; pointer-events:none; }
@@ -471,7 +481,8 @@
 <div id="barn" class="hidden"></div>
 <div id="dawn" class="hidden"></div>
 <div id="loading">Rounding up the flock…</div>
-<div id="fps"></div>
+<div id="fps" title="Dev menu (`)"></div>
+<div id="dev" hidden></div>
 <script type="module">
 import * as THREE from 'three';
 
@@ -2868,7 +2879,7 @@ const NESTS = [];
 {
   const nr = mulberry32(51237), nrr = (a, b) => a + nr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
-  for (const s0 of [150, 330, 470, 640, 664, 1000]) {
+  for (const s0 of [150, 330, 470, 640, 664]) {   // (none past FALCON CANYON: the falcon's gone by then)
     let best = null;
     for (let t = 0; t < 120 && !best; t++) {
       const ss = s0 + nrr(-30, 30), idx = pathIdx(ss), side = nr() < 0.5 ? -1 : 1, hw = side < 0 ? hwWArr[idx] : hwEArr[idx];
@@ -9543,14 +9554,17 @@ const nestById = v => v === 99 ? CANYON.eyrie : v >= 100 ? CANYON.perches[v - 10
 const falconSheepOK = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;
 const falconDogOK = d => !d.air && !d.heldBy && !d.ko && !d.maul && !(d.stunT > 0) && G.dogs.includes(d);
 function falconPick() {
-  const C = T.falcon, dogs = G.dogs.filter(falconDogOK);
+  const C = T.falcon, dogs = G.dogs.filter(d => falconDogOK(d) && falconLand(d));
   if (dogs.length && Math.random() < C.dogChance) return pick(dogs);
   let tot = 0; const w = [];
-  for (const s of G.sheep) { if (!falconSheepOK(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
+  for (const s of G.sheep) { if (!falconSheepOK(s) || !falconLand(s)) continue; const k = (s.lamb ? 3 : 1) * (1 + Math.max(0, 4 - (s.near || 0)) * 0.3); w.push([s, k]); tot += k; }
   let r = Math.random() * tot; for (const [s, k] of w) if ((r -= k) <= 0) return s;
   return dogs.length ? pick(dogs) : null;
 }
 const falconTargetOK = e => e && (e.isDog ? falconDogOK(e) : falconSheepOK(e));
+// FALCON: hunts only short of FALCON CANYON's far end. Once the flock's past it (the snakes, the MOUNTAIN PASS, the sea): gone
+// for the journey (G.falconGone)
+const falconLand = e => !inSea(e.x, e.z) && !HARB.mask[cellIdxAt(e.x, e.z)] && sAt(e.x, e.z) < T.canyon.s1;   // (not at sea, nor down the harbour road)
 // fly toward (tx, ty, tz) at spd, turning and banking
 function falconFly(F, tx, ty, tz, spd, dt, turn = 3) {
   const dx = tx - F.x, dy = ty - F.y, dz = tz - F.z, d = Math.hypot(dx, dy, dz) || 1, v = d < 2 ? spd * d / 2 : spd, q = Math.min(1, turn * dt);
@@ -9637,10 +9651,13 @@ function resetFalcon() {
     if (F.home) { const P = F.home; Object.assign(F, { state: 'perch', x: P.x, y: P.top + 0.7, z: P.z, vx: 0, vy: 0, vz: 0, yaw: P.yaw, look: P.yaw, bank: 0, rest: 0, flap: 0 }); }
     else F.state = 'away';
   }
-  G.falconIn = T.falcon.first; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
+  G.falconIn = T.falcon.first; G.falconGone = false; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
   Object.assign(CANYON.boss, { hp: 0, max: 0, on: false, beaten: false, met: false, next: T.canyon.boss.first });
 }
-function updateFalcon(dt, dtH) { updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH); }
+function updateFalcon(dt, dtH) {
+  if (!G.falconGone) { const fc = flockCenter(); if (fc.n && !falconLand(fc)) G.falconGone = true; }   // the flock's through FALCON CANYON
+  updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH);
+}
 function falconStep(F, dt, dtH) {
   const C = T.falcon, K = T.canyon; F.t += dt;
   if (F.prey && (F.prey.dead || !G.sheep.includes(F.prey))) F.prey = null;
@@ -9648,6 +9665,7 @@ function falconStep(F, dt, dtH) {
   switch (F.state) {
     case 'away': {
       if (F !== FALCON || !C.on || G.mode !== 'play' || G.clock.hour < C.from || G.clock.hour >= C.to) break;   // (a beaten GREAT FALCON stays gone)
+      if (G.falconGone) break;   // past FALCON CANYON: gone for good
       if ((G.falconIn = (G.falconIn ?? C.first) - dtH) > 0) break;
       G.falconIn = rnd(C.every[0], C.every[1]);
       falconCome(falconPick());
@@ -9664,7 +9682,7 @@ function falconStep(F, dt, dtH) {
       break;
     }
     case 'circle': {   // high up, round and round over its mark (from a pillar: up off it and round, lower and quicker)
-      const e = F.target; if (!falconTargetOK(e)) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
+      const e = F.target; if (!falconTargetOK(e) || (!F.home && !falconLand(e))) { const o = F.home ? null : falconPick(); if (o) F.target = o; else { falconGo(F); break; } }
       const KB = K.boss, t = F.target, cr = F.boss ? KB.circleR : F.home ? K.circleR : C.circleR, ch = F.boss ? KB.circleH : F.home ? K.circleH : C.circleH;
       F.ang += dt * (F.home ? 1.6 : 0.9);
       falconFly(F, t.x + Math.cos(F.ang) * cr, groundY(t.x, t.z) + ch, t.z + Math.sin(F.ang) * cr, F.boss ? KB.spd : F.home ? 13 : 11, dt, 4);
@@ -9672,7 +9690,7 @@ function falconStep(F, dt, dtH) {
       break;
     }
     case 'dive': {
-      const e = F.target; if (!falconTargetOK(e) || F.t > C.diveMax) { falconGo(F); break; }
+      const e = F.target; if (!falconTargetOK(e) || (!F.home && !falconLand(e)) || F.t > C.diveMax) { falconGo(F); break; }
       const gy = groundY(e.x, e.z) + (e.isDog ? 0.9 : 1.1) + (F.boss ? 0.6 : 0);
       falconFly(F, e.x + (e.vx || 0) * 0.15, gy, e.z + (e.vz || 0) * 0.15, F.boss ? K.boss.diveSpd : C.diveSpd, dt, 6);
       if (Math.random() < dt * 25) burst(F.x, F.y, F.z, 1, '#ffffff', { speed: 0.3, up: 0.1, size: 0.12, life: 0.35, grav: 0 });
@@ -17149,6 +17167,7 @@ function seaReset() {
     anchor: 'up', anchorT: 0, anchorN: 0, weigh: 0, holding: false, state: 0.2, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0, over: 0, hull: K.hull.hp, leg: 1, legK: 0, saved: -1, wake: [], wakeT: 0, storm: 0, rain: 0, fog: 0, calm: 0, ink: 0,
     hold: null, rogue: null, said: {}, docked: true, berth: 0, warp: null, moorOff: 0, pilot: null, aboardT: 0, near: false, legPast: false, arrived: false, dogOver: false, checkpoint: null, irons: 0, fear: 0, flash: 0, reefAim: null, lockWx: false, stores: Object.assign({}, K.stores), heelT: 0, slamT: 0, gybeT: -9, overT: -9, luff: 0, stall: 0 });
   S.jolt.u = S.jolt.v = 0; SEA_AWAY = false; QUAY.on = true; ISLE = null; seaLandOn(); DECK.lock = true; resetGate(DECK);
+  harbIce(!YETI.beaten || !seaWay());   // (the gap: shut again unless he's beaten)
   for (let i = 1; i < ROUTE.length; i++) isleShow(i, false);
   for (const st of STATIONS) st.by = null;
   WIND.gusts.length = 0; for (const w of SWAVES) w.ang = null;
@@ -17297,7 +17316,8 @@ function startGame(dev) {
   mapReset();   // MAP: all parchment
   setTimeout(() => hint('start'), 2500);
   hankGameStart();   // HANK: "Over here now!" (and his clips start loading)
-  const sea = /[?&]sea(?:=(\d|dock))?\b/.exec(location.search); if (sea) seaStart(sea[1] === 'dock' ? { dock: true, place: true } : { leg: +(sea[1] || 0) });   // SAILING (dev): ?sea starts at sea, ?sea=2 from the third island, ?sea=dock alongside the quay (as out of the cave)
+  const sea = /[?&]sea(?:=(\d|dock)(u)?)?\b/.exec(location.search); if (sea) seaStart(sea[1] === 'dock' ? { dock: true, place: true } : { leg: +(sea[1] || 0), under: !!sea[2] });   // SAILING (dev): ?sea alongside at Cold Harbour, all aboard; ?sea=2 alongside the third island (2u: under way from it); ?sea=dock the top of the harbour road
+  const go = DEBUG && !sea && /[?&]go=(\d+)/.exec(location.search); if (go) devJump(+go[1], { url: false });   // DEV MENU: ?debug&go=812 starts 812 m along the trail
 }
 function finishGame(n) {
   if (G.mode !== 'play') return;
@@ -18862,6 +18882,7 @@ function frame(now) {
   drawOverlay(dt);
   updateHUD(dt);
   updateMap(dt);   // MAP
+  if (DEBUG) devFrame(dt);   // DEV MENU
   const oceanNear = biomeW(sAt(cam.x, cam.z))[2];
   Sound.ambience(LIGHT.night, oceanNear, dt, CANYON.k, PASS.k, (PASS.blizz.k || 0) * PASS.k);
   seaAmbience(dt);   // SAILING: wind in the rig, water along the hull
@@ -18872,31 +18893,202 @@ function frame(now) {
   if (perfT > 2) { const avg = fpsAcc / fpsN; if (avg > 1 / 40 && renderer.getPixelRatio() > 1) { slowFrames++; if (slowFrames >= 2) { renderer.setPixelRatio(1); resize(); } } else slowFrames = 0; perfT = 0; if (DEBUG) $('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.calls} calls · ${G.sheep.length} sheep`; fpsAcc = 0; fpsN = 0; }
 }
 function regrowT(dt) { if (regrowAcc > 0.05) { regrowGrass(regrowAcc); regrowAcc = 0; } }
-function debugKeys() {
-  if (keyEdge.has('BracketRight')) G.clock.hour = (G.clock.hour + 1) % 24;
-  if (keyEdge.has('KeyN')) G.clock.hour = 19.9;
-  if (keyEdge.has('KeyB')) G.clock.hour = 5.9;   // (M is the map)
-  if (keyEdge.has('KeyK')) spawnCoyotes(1);
-  if (keyEdge.has('KeyJ')) { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } }   // COUGARS
-  if (keyEdge.has('KeyV')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); }   // FALCON
-  if (keyEdge.has('KeyU')) { const p = pathPoint(T.canyon.s0 - 26, 0); for (const d of G.dogs) { d.x = p.x + 3; d.z = p.z + 3; } for (const s of G.sheep) if (!s.dead) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); s.pen = null; } HANK.x = p.x + 6; HANK.z = p.z + 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 13)); }   // FALCON CANYON: to its mouth
-  // MOUNTAIN PASS: T to the foot of the pass, Y to the top (the yeti), G a goat comes, Z a blizzard now
-  if (keyEdge.has('KeyT') || keyEdge.has('KeyY')) { const top = keyEdge.has('KeyY'), p = pathPoint(top ? T.pass.top - 6 : T.pass.snow + 6, 0); for (const d of G.dogs) { d.x = p.x + 2; d.z = p.z + 2; d.crev = null; d.slide = null; } for (const s of G.sheep) if (!s.dead) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); s.pen = null; s.crev = null; s.slide = null; s.sink = 0; } HANK.x = p.x - 5; HANK.z = p.z + 4; HANK.air = HANK.slide = null; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 12)); }
-  if (keyEdge.has('KeyG')) { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; const e = G.dogs[0], g = e && [...GOATS].filter(g => g.state === 'perch').sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z))[0]; if (g) goatGo(g, goatPick(g) || e); }
-  if (keyEdge.has('KeyZ')) { PASS.blizz.next = 0; PASS.blizz.on = false; }
-  if (keyEdge.has('KeyO')) { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); }   // AGE: see them grey (they die at the next dawn past their span)
-  if (keyEdge.has('KeyH')) {   // VET: one bitten, one bleeding, one festering, one dead; Hank fully stocked and 🧶 to spend
+// =====================================================================
+// DEV MENU (?debug; ` or a click on the fps line): the whole journey as one strip, land then sea. Click anywhere on it to go
+// there (devJump / devSea); the URL keeps it (?go=m, ?sea=…), so a reload comes back. Under it the cheats, each with its key.
+// Host / offline only.
+// =====================================================================
+// where a jump on land lands: the camps, and what's worth testing between them (at: drawn there; s: you land there)
+const DEV_STOPS = [
+  ...CAMPS.map(c => ({ at: c.s, s: c.final ? c.s - 16 : c.s, icon: c.icon, name: c.name, camp: true })),
+  { at: T.canyon.s0, s: T.canyon.s0 - 26, icon: '🦅', name: 'Falcon Canyon' },
+  { at: T.snake.from, s: T.snake.from + 6, icon: '🐍', name: 'Rattlesnakes' },
+  { at: T.pass.snow, s: T.pass.snow + 6, icon: '❄', name: 'Mountain Pass' },
+  ...PASS.fires.filter(f => !f.top).map(f => ({ at: f.s, s: f.s, icon: '🔥', name: 'Fire camp', small: true })),
+  { at: T.pass.top, s: T.pass.top - 6, icon: '🦍', name: 'Yeti' },
+].sort((a, b) => a.at - b.at);
+const devLegOf = s => { let i = 0; while (i < CAMPS.length - 2 && s >= CAMPS[i + 1].s) i++; return i; };   // leg i: CAMPS[i] → CAMPS[i + 1]
+// the URL: where a reload starts (?go=m on land, ?sea=i / i u / dock at sea)
+function devUrl(go, sea) {
+  try { const u = new URL(location.href); u.searchParams.delete('go'); u.searchParams.delete('sea'); if (go != null) u.searchParams.set('go', Math.round(go)); if (sea != null) u.searchParams.set('sea', sea); u.search = u.searchParams.toString().replace(/=(?=&|$)/g, ''); history.replaceState(null, '', u); } catch (e) {}   // (?debug, not ?debug=)
+}
+// everyone (flock, dogs, Hank) to s m along the trail, everything let go of; camps short of it visited, the map uncovered to there
+function devJump(s, o = {}) {
+  if (G.mode !== 'play' || NET.role === 'guest') return false;
+  if (SEA.on) seaReset();   // back ashore
+  s = clamp(s, 12, FINAL.s - 16);
+  const free = (x, z) => sdfAt(x, z) > 1.2 && !penAt(x, z);
+  const spot = (c, r) => { for (let t = 0; t < 40; t++) { const a = rnd(0, TAU), q = Math.sqrt(Math.random()) * r, x = c.x + Math.cos(a) * q, z = c.z + Math.sin(a) * q; if (free(x, z)) return { x, z }; } return { x: c.x, z: c.z }; };
+  for (const d of G.dogs) { if (d.holding) releaseHold(d, false); dropBucket(d); if (d.maul) endMaul(d.maul, 'done'); }
+  for (const F of FALCONS) if (F.prey || F.dog) falconDrop(F, false);
+  for (const k of COUGARS) if (k.dog) k.dog = null;
+  const L = living(), fc = pathPoint(s, 0), r = 4 + Math.sqrt(L.length) * 0.9;
+  for (const sh of L) {
+    if (sh.grabbed) { sh.grabbed.prey = null; sh.grabbed = null; }
+    if (sh.heldBy) { const d = sh.heldBy; if (d.holding === sh) { d.holding = null; d.holdKind = null; } sh.heldBy = null; }
+    if (sh.snag) unsnag(sh); if (sh.bog) unbog(sh); if (sh.balk) endBalk(sh, false);
+    const q = spot(fc, r);
+    Object.assign(sh, { x: q.x, z: q.z, y: groundY(q.x, q.z), vx: 0, vz: 0, air: null, pen: null, wasPen: null, state: 'idle', thinkT: rnd(0.5, 2), tx: q.x, tz: q.z, eating: false, panic: 0, fear: 0,
+      hopY: 0, hopV: 0, slide: null, crev: null, sink: 0, burn: 0, lure: 0, seaHold: null });
+  }
+  const dp = pathPoint(Math.max(4, s - 10), 0);
+  G.dogs.forEach((d, i) => {
+    const q = spot({ x: dp.x + (i - (G.dogs.length - 1) / 2) * 1.8, z: dp.z }, 1.5);
+    Object.assign(d, { x: q.x, z: q.z, y: groundY(q.x, q.z), vx: 0, vz: 0, yaw: Math.atan2(dp.tx, dp.tz), air: null, heldBy: null, pounceT: 0, hopT: 0, stunT: 0, maul: null, mauled: false, tow: null, slide: null, crev: null });
+  });
+  shearStop(); careStop();
+  const hp = spot(pathPoint(Math.max(2, s - 14), -3), 2);
+  Object.assign(HANK, { x: hp.x, z: hp.z, y: groundY(hp.x, hp.z), vx: 0, vz: 0, lastX: hp.x, lastZ: hp.z, air: null, slide: null, climb: null, cross: null, rope: null, ropeI: -1, goal: null, asleep: false, stuckT: 0, farT: 0 });
+  G.visited = new Set(CAMPS.filter((c, i) => !i || c.s < s - 1).map(c => c.name));   // (the camp you land at: its banner as you get there)
+  const st = DEV_STOPS.find(t => Math.abs(t.s - s) < 1), lg = devLegOf(s); banner(st ? `${st.icon} ${st.name}` : `${CAMPS[lg].icon} → ${CAMPS[lg + 1].icon}`, `${Math.round(s)} m`);
+  if (s < T.canyon.s1) G.falconGone = false;   // (back before the canyon: the falcon's back; past it, it goes as it would)
+  { const R = T.map.r, rc = Math.ceil(R / VS), rv = MAP.rv;   // the map: uncovered all the way there
+    for (let i = 0, n = pathIdx(s); i <= n; i += 3) { const ci = Math.round((pX[i] - GMINX) / VS), cj = Math.round((pZ[i] - GMINZ) / VS);
+      for (let j = Math.max(0, cj - rc); j <= Math.min(VZ - 1, cj + rc); j++) for (let a = Math.max(0, ci - rc); a <= Math.min(VX - 1, ci + rc); a++) if ((a - ci) ** 2 + (j - cj) ** 2 <= rc * rc) rv[j * VX + a] = 1; }
+    MAP.full = true; }
+  if (o.hour) G.clock.hour = clamp(G.clock.hour, o.hour[0], o.hour[1]);
+  updateCamera(0, true);
+  if (o.url !== false) devUrl(s, null);
+  return true;
+}
+// at sea: island i (0: Cold Harbour, the flock at the top of its road; the rest: alongside its jetty), or under way from it
+function devSea(i, under) {
+  if (G.mode !== 'play' || NET.role === 'guest') return false;
+  i = clamp(i | 0, 0, ROUTE.length - 2);
+  const ok = under ? seaStart({ leg: i, under: true }) : i === 0 ? seaStart({ dock: true, place: true }) : seaStart({ leg: i });
+  if (ok) devUrl(null, under ? i + 'u' : i === 0 ? 'dock' : i);
+  return ok;
+}
+// the cheats: key, icon, what (tooltip), only at sea / ashore
+const dayHour = (a, b) => { G.clock.hour = clamp(G.clock.hour, a, b); };
+const DEV_CHEATS = [
+  { code: 'BracketRight', key: ']', icon: '⏩', tip: '+1 hour', fn: () => { G.clock.hour = (G.clock.hour + 1) % 24; } },
+  { code: 'KeyN', key: 'N', icon: '🕯', tip: 'Dusk', fn: () => { G.clock.hour = 19.9; } },
+  { code: 'KeyB', key: 'B', icon: '🌅', tip: 'Dawn', fn: () => { G.clock.hour = 5.9; } },   // (M is the map)
+  { code: 'KeyK', key: 'K', icon: '🐺', tip: 'A coyote', land: true, fn: () => spawnCoyotes(1) },
+  { code: 'KeyJ', key: 'J', icon: '🐆', tip: 'A cougar hunts', land: true, fn: () => { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } } },   // COUGARS
+  { code: 'KeyV', key: 'V', icon: '🦅', tip: 'A falcon comes', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); } },   // FALCON
+  { code: 'KeyG', key: 'G', icon: '🐐', tip: 'A goat comes (the pass)', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; const e = G.dogs[0], g = e && [...GOATS].filter(g => g.state === 'perch').sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z))[0]; if (g) goatGo(g, goatPick(g) || e); } },
+  { code: 'KeyZ', key: 'Z', icon: '🌨', tip: 'A blizzard (the pass)', land: true, fn: () => { PASS.blizz.next = 0; PASS.blizz.on = false; } },
+  { code: 'KeyO', key: 'O', icon: '⏳', tip: 'Flock +10 days', fn: () => { for (const s of G.sheep) if (!s.lamb) s.age += 10; toast('The flock is 10 days older', ''); } },   // AGE: see them grey (they die at the next dawn past their span)
+  { code: 'KeyH', key: 'H', icon: '🩸', tip: 'A bite, two wounds, a death; Hank stocked', fn: () => {   // VET
     const L = living().filter(s => !s.lamb);
     if (L[0]) snakeBite(L[0]); if (L[1]) { L[1].heldT = 6; L[1].grabBy = 'coyote'; woundSheep(L[1]); } if (L[2]) { L[2].heldT = 0; L[2].grabBy = 'falcon'; woundSheep(L[2]); } if (L[3]) killSheep(L[3], 'eaten');
-    giveHank({ venom: 1, bandage: 1, pills: 1, shovel: 1 }); G.wool = Math.max(G.wool || 0, 30); G.clock.hour = Math.max(8, Math.min(G.clock.hour, 15));
+    giveHank({ venom: 1, bandage: 1, pills: 1, shovel: 1 }); G.wool = Math.max(G.wool || 0, 30); dayHour(8, 15);
+  } },
+  { code: null, key: '', icon: '🧶', tip: '+100 wool', fn: () => { G.wool = (G.wool || 0) + 100; } },
+  { code: 'KeyF', key: 'F', icon: '🏪', tip: 'Into the Trading Post, ≥120 wool', fn: () => { const d = G.dogs[0]; if (d) { if (SEA.on) devJump(POST.s, { url: false }); const p = postPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); updateCamera(0, true); devUrl(POST.s, null); } } },   // VENDOR
+  // the old jumps (the strip does the same)
+  { code: 'KeyU', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🦅').s, { hour: [8, 13] }) },   // FALCON CANYON: its mouth
+  { code: 'KeyL', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🐍').s, { hour: [8, 14] }) },   // RATTLESNAKES
+  { code: 'KeyT', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '❄').s, { hour: [8, 12] }) },   // MOUNTAIN PASS: its foot
+  { code: 'KeyY', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🦍').s, { hour: [8, 12] }) },   // its top: the yeti
+  // SAILING: I to sea (again: on to the next island); 1…5 under way on that leg; 0 Hank trims / full manual; 9 a gale
+  { code: 'KeyI', hide: true, fn: () => { const i = SEA.on ? Math.min(ROUTE.length - 2, SEA.leg) : 0; if (seaStart({ leg: i })) devUrl(null, i); } },
+  ...[1, 2, 3, 4, 5].map(k => ({ code: 'Digit' + k, hide: true, fn: () => devSea(k - 1, true) })),
+  { code: 'Digit0', key: '0', icon: '🧓', tip: 'Hank trims / full manual', sea: true, fn: () => { SEA.assist = !SEA.assist; toast(SEA.assist ? '🧓 ⛵ ✔' : '🧓 ⛵ ✖', ''); } },
+  { code: 'Digit9', key: '9', icon: '⛈', tip: 'A gale', sea: true, fn: () => { SEA.lockWx = !SEA.lockWx; if (SEA.lockWx) { WIND.baseSpd = 20; WIND.gustK = 1.4; SEA.storm = 1; SEA.rain = 1; } toast(SEA.lockWx ? '⛈️' : '⛈️ ✖', ''); } },
+];
+const devCan = c => !(c.sea && !SEA.on) && !(c.land && SEA.on);
+function debugKeys() {
+  if (keyEdge.has('Backquote')) devToggle();
+  for (const c of DEV_CHEATS) if (c.code && keyEdge.has(c.code) && devCan(c)) c.fn();
+}
+// ---------------- the panel ----------------
+const DEV = { el: $('dev'), open: false, hov: null, t: 0, w: 0, h: 0 };
+const DEV_COL = { desert: [217, 178, 111], valley: [111, 174, 79], ocean: [126, 190, 160], promised: [154, 212, 90], canyon: [181, 80, 58], snow: [236, 242, 248], sea: [47, 127, 193] };
+const devSeaCum = ROUTE.reduce((a, w, i) => (a.push(i ? a[i - 1] + w.len : 0), a), []);
+// strip geometry: land 0…PATH_LEN, a gap (through the mountain), the sea by leg length
+function devGeo() {
+  const w = DEV.w, pad = 22, gap = 22, landW = (w - 2 * pad - gap) * 0.66, seaX = pad + landW + gap, seaW = w - pad - seaX;
+  return { pad, gap, landW, seaX, seaW, y: 52, bh: 14, lx: s => pad + s / PATH_LEN * landW, sx: m => seaX + m / devSeaCum[devSeaCum.length - 1] * seaW };
+}
+// what's under x: a stop (within a few px) or a point on the land, an island or a leg at sea
+function devHit(x) {
+  const g = devGeo();
+  if (x < g.seaX - g.gap / 2) {
+    let best = null, bd = 11; for (const t of DEV_STOPS) { const d = Math.abs(g.lx(t.at) - x); if (d < bd) { bd = d; best = t; } }
+    if (best) return { land: true, s: best.s, at: best.at, stop: best };
+    const s = clamp((x - g.pad) / g.landW * PATH_LEN, 12, FINAL.s - 16); return { land: true, s, at: s };
   }
-  if (keyEdge.has('KeyL')) { const p = pathPoint(T.snake.from + 6, 0); for (const d of G.dogs) { d.x = p.x - 2; d.z = p.z; } for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } HANK.x = p.x; HANK.z = p.z - 6; G.clock.hour = Math.max(8, Math.min(G.clock.hour, 14)); }   // RATTLESNAKES: to the desert past the Promised Land
-  // SAILING: I to sea (again: on to the next island); 1…5: under way on that leg; 0: Hank trims / full manual; 9: a gale
-  if (keyEdge.has('KeyI')) seaStart({ leg: SEA.on ? Math.min(ROUTE.length - 2, SEA.leg) : 0 });
-  for (let k = 1; k <= 5; k++) if (keyEdge.has('Digit' + k)) seaStart({ leg: k - 1, under: true });
-  if (keyEdge.has('Digit0') && SEA.on) { SEA.assist = !SEA.assist; toast(SEA.assist ? '🧓 ⛵ ✔' : '🧓 ⛵ ✖', ''); }
-  if (keyEdge.has('Digit9') && SEA.on) { SEA.lockWx = !SEA.lockWx; if (SEA.lockWx) { WIND.baseSpd = 20; WIND.gustK = 1.4; SEA.storm = 1; SEA.rain = 1; } toast(SEA.lockWx ? '⛈️' : '⛈️ ✖', ''); }
-  if (keyEdge.has('KeyF')) { const d = G.dogs[0]; if (d) { const p = postPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); } }   // VENDOR: to the Trading Post, 🧶 to spend
+  for (let i = 0; i < ROUTE.length; i++) if (Math.abs(g.sx(devSeaCum[i]) - x) < 11) return { isle: i };
+  const m = (x - g.seaX) / g.seaW * devSeaCum[devSeaCum.length - 1]; let i = 0; while (i < ROUTE.length - 2 && m >= devSeaCum[i + 1]) i++;
+  return { leg: i };
+}
+function devGo(h) { if (!h) return; const ok = h.land ? devJump(h.s) : h.isle != null ? devSea(Math.min(h.isle, ROUTE.length - 2), h.isle === ROUTE.length - 1) : devSea(h.leg, true); if (ok) Sound.chime([0, 7], 660, 0.1); }
+function devToggle(on = !DEV.open) {
+  if (on && (G.mode !== 'play' || NET.role === 'guest')) return;
+  DEV.open = on; DEV.el.hidden = !on; if (on) { devLayout(); devDraw(); }
+}
+function devLayout() {
+  const cv = DEV.cv, w = Math.min(980, innerWidth - 32), h = 96, dpr = Math.min(devicePixelRatio || 1, 2);
+  if (w === DEV.w && dpr === DEV.dpr) return;
+  Object.assign(DEV, { w, h, dpr }); cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  const g = devGeo(), b = DEV.band = document.createElement('canvas'); b.width = w; b.height = 1; const bx = b.getContext('2d'), img = bx.createImageData(w, 1);   // the band's colours, once per size
+  const mix = (a, c, k) => a.map((v, i) => v + (c[i] - v) * k);
+  for (let x = 0; x < w; x++) {
+    let col = null;
+    if (x >= g.pad && x <= g.pad + g.landW) { const s = (x - g.pad) / g.landW * PATH_LEN, bw = biomeW(s), C = DEV_COL; col = [0, 1, 2].map(i => bw[0] * C.desert[i] + bw[1] * C.valley[i] + bw[2] * C.ocean[i] + bw[3] * C.promised[i]); col = mix(mix(col, C.canyon, canyonK(s)), C.snow, passK(s)); }
+    else if (x >= g.seaX && x <= g.seaX + g.seaW) col = DEV_COL.sea;
+    if (col) { const o = x * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255; }
+  }
+  bx.putImageData(img, 0, 0);
+}
+function devDraw() {
+  const c = DEV.cv.getContext('2d'), { w, h, dpr } = DEV, g = devGeo(), y = g.y, bh = g.bh, hov = DEV.hov;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h); c.imageSmoothingEnabled = false;
+  c.drawImage(DEV.band, 0, 0, w, 1, 0, y - bh / 2, w, bh); c.imageSmoothingEnabled = true;
+  c.strokeStyle = 'rgba(255,248,232,.85)'; c.lineWidth = 1.5; c.strokeRect(g.pad, y - bh / 2, g.landW, bh); c.strokeRect(g.seaX, y - bh / 2, g.seaW, bh);
+  c.setLineDash([3, 3]); c.beginPath(); c.moveTo(g.pad + g.landW, y); c.lineTo(g.seaX, y); c.stroke(); c.setLineDash([]);   // through the mountain
+  c.fillStyle = 'rgba(255,248,232,.55)'; c.font = '500 10px Fredoka, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'top';
+  for (let m = 0; m <= PATH_LEN; m += 100) { const x = g.lx(m); c.fillRect(x - 0.5, y + bh / 2, 1, m % 500 ? 3 : 6); if (!(m % 500)) c.fillText(m, x, y + bh / 2 + 8); }
+  for (let i = 1; i < ROUTE.length - 1; i++) { const x = g.sx(devSeaCum[i]); c.fillRect(x - 0.5, y - bh / 2, 1, bh); }
+  // the leg under the pointer, lit
+  if (hov) {
+    let x0, x1;
+    if (hov.land) { const i = devLegOf(hov.at); x0 = i ? g.lx(CAMPS[i].s) : g.pad; x1 = i < CAMPS.length - 2 ? g.lx(CAMPS[i + 1].s) : g.pad + g.landW; }
+    else if (hov.leg != null) { x0 = g.sx(devSeaCum[hov.leg]); x1 = g.sx(devSeaCum[hov.leg + 1]); }
+    if (x0 != null) { c.fillStyle = 'rgba(255,248,232,.35)'; c.fillRect(x0, y - bh / 2, x1 - x0, bh); }
+  }
+  // stops: icons over the band
+  for (const t of DEV_STOPS) { const x = g.lx(t.at), sz = t.small ? 14 : t.camp ? 22 : 18; c.fillStyle = 'rgba(255,248,232,.8)'; c.fillRect(x - 0.5, y - bh / 2 - 4, 1, 4); drawArt(c, artOf(t.icon), x, y - bh / 2 - 6 - sz / 2, sz); }
+  ROUTE.forEach((r, i) => { const x = g.sx(devSeaCum[i]); drawArt(c, artOf(r.icon), x, y - bh / 2 - 17, 22); });
+  // you are here
+  let hx = null;
+  if (SEA.on) { const i = clamp(SEA.leg - 1, 0, ROUTE.length - 2), a = ROUTE[i], b = ROUTE[i + 1]; hx = g.sx(devSeaCum[i] + clamp(((SEA.e - a.e) * (b.e - a.e) + (SEA.n - a.n) * (b.n - a.n)) / (b.len * b.len), 0, 1) * b.len); }
+  else { const fc = flockCenter(), p = fc.n ? fc : G.dogs[0]; if (p) hx = g.lx(sAt(p.x, p.z)); }
+  if (hx != null) { c.fillStyle = '#fff8e8'; c.strokeStyle = '#1b1a22'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(hx, y + bh / 2 + 1); c.lineTo(hx - 6, y + bh / 2 + 11); c.lineTo(hx + 6, y + bh / 2 + 11); c.closePath(); c.fill(); c.stroke(); }
+  // the label: what a click does
+  if (hov) {
+    const x = hov.land ? g.lx(hov.at) : hov.isle != null ? g.sx(devSeaCum[hov.isle]) : DEV.hx;
+    const t = hov.land ? `${hov.stop ? hov.stop.icon + ' ' + hov.stop.name + ' · ' : ''}${Math.round(hov.s)} m` : hov.isle != null ? `${ROUTE[hov.isle].icon} ${ROUTE[hov.isle].name}` : `⛵ ${ROUTE[hov.leg].icon} → ${ROUTE[hov.leg + 1].icon}`;
+    c.strokeStyle = '#fff8e8'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, y - bh / 2); c.lineTo(x, y + bh / 2); c.stroke();
+    c.font = '600 13px Fredoka, sans-serif'; c.textBaseline = 'middle'; const tw = c.measureText(t).width, lx = clamp(x, tw / 2 + 4, w - tw / 2 - 4);
+    c.fillStyle = 'rgba(10,12,26,.85)'; c.fillRect(lx - tw / 2 - 5, h - 19, tw + 10, 18); c.fillStyle = '#fff8e8'; c.textAlign = 'center'; c.fillText(t, lx, h - 10);
+  }
+}
+// every frame while it's open: you-are-here moves, cheats that don't apply now greyed
+function devFrame(dt) {
+  if (!DEV.open) return;
+  if (G.mode !== 'play') { devToggle(false); return; }
+  if ((DEV.t -= dt) > 0) return; DEV.t = 0.25;
+  devLayout(); devDraw();
+  for (const b of DEV.btns) b.el.disabled = !devCan(b.c);
+  $('devAt').textContent = SEA.on ? `⛵ ${ROUTE[clamp(SEA.leg, 1, ROUTE.length - 1)].icon}` : `${Math.round(sAt(flockCenter().x, flockCenter().z))} m`;
+}
+if (DEBUG) {
+  DEV.el.innerHTML = '<div class="devTop"><b id="devAt"></b><span class="devX" title="Close (`)">✖</span></div><canvas></canvas><div class="devBtns"></div>';
+  DEV.cv = DEV.el.querySelector('canvas');
+  DEV.cv.addEventListener('pointermove', e => { const r = DEV.cv.getBoundingClientRect(); DEV.hx = e.clientX - r.left; DEV.hov = devHit(DEV.hx); devDraw(); });
+  DEV.cv.addEventListener('pointerleave', () => { DEV.hov = null; devDraw(); });
+  DEV.cv.addEventListener('pointerdown', e => { e.preventDefault(); const r = DEV.cv.getBoundingClientRect(); devGo(devHit(e.clientX - r.left)); devDraw(); });
+  DEV.el.querySelector('.devX').addEventListener('pointerdown', e => { e.preventDefault(); devToggle(false); });
+  DEV.btns = DEV_CHEATS.filter(c => !c.hide).map(c => {
+    const el = document.createElement('button'); el.title = c.tip + (c.key ? ` (${c.key})` : ''); el.innerHTML = `${c.icon}${c.key ? `<small>${c.key}</small>` : ''}`;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); if (devCan(c)) c.fn(); }); DEV.el.querySelector('.devBtns').appendChild(el); return { el, c };
+  });
+  DEV.el.addEventListener('pointerdown', e => e.stopPropagation());
+  $('fps').addEventListener('pointerdown', () => devToggle());   // (touch: no ` key)
 }
 // expose for debugging / automated tests
 window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
