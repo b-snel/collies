@@ -282,7 +282,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
   Edge arrows keep clear of it (`mapDodge`). At a trader, its pen ringed + 📍 (on the edge if off it). No trail bar.
-- **Barn**: Dogs (first; opens on it unless a sheep's asked for) and Sheep tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
+- **Barn**: Dogs (first; opens on it unless a sheep's asked for) and Sheep tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
   fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere.
