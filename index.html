@@ -717,8 +717,9 @@ const T = {
   // ICE GATE (GATE, T.iceGate): a band of ice wall to wall across the climb past the base camp (s0…s1 along the trail, wavy edges; world gen never sees
   // it: added after its draws). Onto it going up: a slip (keep× the speed it came up at, on up a moment), g m/s² back down it. The way on: a lit
   // torch melts a lane (≥ lane m wide, all the way: GATE.open); its melt never snows over. Hank waits at the base camp till then.
-  // A slip on it, no lane, no lit torch: Hank nags (nag s apart); a dog within near m of it: "grab the torch"
-  iceGate: { s0: 1171, s1: 1187, g: 9, keep: 0.4, lane: 2.4, nag: 15, near: 12 },
+  // A slip on it, no lane, no lit torch: Hank nags (nag s apart); a dog within near m of it: "grab the torch". Shut, the flock below it
+  // waits at its foot (UP: leans in to hold m short of its edge, from the climb's start)
+  iceGate: { s0: 1171, s1: 1187, g: 9, keep: 0.4, lane: 2.4, nag: 15, near: 12, hold: 2.5 },
   // CREVASSES (CREVS): n cracks len m long, hw m across. In: sunk sink m. A sheep's grabbed out; a dog mashes Ⓑ (mash presses,
   // decay/s) out, cost stamina a press (exhausted: nothing; no breath back till rest s after one), or a friend grabs it out. Calm sheep go round (avoid m)
   crev: { n: 7, len: [5, 8.5], hw: 0.62, sink: 0.72, mash: 8, decay: 0.6, cost: 0.025, rest: 0.4, avoid: 2.2, stress: 0.05 },
@@ -4253,7 +4254,7 @@ function killSheep(s, why) {
 }
 function findGrass(s, ccx, ccz) {
   let best = grassAt(s.x, s.z) + 0.05, bx = 0, bz = 0, found = false; const min = best;
-  const base = Math.random() * TAU, withFlock = inGrazeFront(s), up = passUp(s.x, s.z), uk = up.k, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
+  const base = Math.random() * TAU, withFlock = inGrazeFront(s), up = passUp(s.x, s.z), uk = up.k, ukb = up.kb, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
   for (let k = 0; k < 10; k++) {
     const a = base + k * TAU / 10, ca = Math.cos(a), sa = Math.sin(a), ud = ca * upx + sa * upz;
     for (const r of s.hunger > 0.45 ? [3, 6.5, 11, 17] : [3, 6.5, 11]) {
@@ -4267,7 +4268,7 @@ function findGrass(s, ccx, ccz) {
       // spread out: a spot another sheep is standing on (or heading for) is worth less, so they don't all pile onto one tuft
       for (const o of NBL) { const ox = o.state === 'seek' ? o.tx : o.x, oz = o.state === 'seek' ? o.tz : o.z, dd = Math.hypot(x - ox, z - oz); if (dd < T.grazeSpace) g -= (1 - dd / T.grazeSpace) * 0.25; }
       if (withFlock) g += 0.06 * (ca * MIND.gzX + sa * MIND.gzZ);   // and lean the way the flock is grazing
-      if (uk) { if (g <= min) continue; g = upScore(g, ud, uk, T.pass.up.seek); }   // (better grass: the nearer the way on, the better)
+      if (ukb) { if (g <= min) continue; g = upScore(g, ud, uk, T.pass.up.seek, ukb); }   // (better grass: the nearer the way on, the better)
       if (g > best) { best = g; bx = x; bz = z; found = true; }
     }
   }
@@ -4287,14 +4288,14 @@ function grazeScan() {
   if (n < 3) return;
   cx /= n; cz /= n; q /= n;
   let best = -1e9, bx = 0, bz = 0, raw = -1e9;
-  const up = passUp(cx, cz), uk = up.k, upx = up.x, upz = up.z;   // MOUNTAIN PASS: grazing on up the hill (raw: the best without that)
+  const up = passUp(cx, cz), uk = up.k, ukb = up.kb, upx = up.x, upz = up.z;   // MOUNTAIN PASS: grazing on up the hill (raw: the best without that)
   for (let k = 0; k < 16; k++) {
     const a = k / 16 * TAU, ux = Math.cos(a), uz = Math.sin(a), ud = ux * upx + uz * upz; let sc = -1e9, sc0 = -1e9;
     for (const r of [5, 9, 14, 20, 27, 35, 44]) {
       const x = cx + ux * r, z = cz + uz * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;   // walls, water and pens end the look that way
       const g = (grassAt(x, z) + grassAt(x + uz * 2.5, z - ux * 2.5) + grassAt(x - uz * 2.5, z + ux * 2.5)) / 3;   // a patch, not one tuft
-      sc = Math.max(sc, (uk ? upScore(g, ud, uk, 0) : g) - r * T.grazeLookCost); sc0 = Math.max(sc0, g - r * T.grazeLookCost);
+      sc = Math.max(sc, (ukb ? upScore(g, ud, uk, 0, ukb) : g) - r * T.grazeLookCost); sc0 = Math.max(sc0, g - r * T.grazeLookCost);
     }
     const on = 0.06 * (ux * MIND.gzX + uz * MIND.gzZ); sc += on; sc0 += on;   // keep heading the way it was going
     if (sc0 > raw) raw = sc0; if (uk) sc += T.pass.up.graze * uk * ud;
@@ -4643,9 +4644,9 @@ function grassDash(s) {
   s.dashCd = G.time + D.cd * rnd(0.7, 1.3);
   const far = D.rings[D.rings.length - 1] + D.alone, O = [];
   for (const o of G.sheep) if (o !== s && !o.dead && !o.pen && !o.grabbed && !o.air && Math.abs(o.x - s.x) < far && Math.abs(o.z - s.z) < far) O.push(o);
-  let best = here + D.better, bx = 0, bz = 0, found = false; const min = best, base = Math.random() * TAU, up = passUp(s.x, s.z), uk = up.k, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
+  let best = here + D.better, bx = 0, bz = 0, found = false; const min = best, base = Math.random() * TAU, up = passUp(s.x, s.z), uk = up.k, ukb = up.kb, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
   for (let k = 0; k < D.dirs; k++) {
-    const a = base + k * TAU / D.dirs, ca = Math.cos(a), sa = Math.sin(a), ud = ca * upx + sa * upz, us = g => uk ? upScore(g, ud, uk, T.pass.up.seek) : g;
+    const a = base + k * TAU / D.dirs, ca = Math.cos(a), sa = Math.sin(a), ud = ca * upx + sa * upz, us = g => ukb ? upScore(g, ud, uk, T.pass.up.seek, ukb) : g;
     for (const r of D.rings) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;   // walls, water and pens end the look that way
@@ -4669,10 +4670,10 @@ function offBare(s) {
   const B = T.bare;
   if (s.pen || s.stress > 0.5 || (s.bareCd || 0) > G.time || grassCapAt(s.x, s.z) >= B.cap) return false;
   s.bareCd = G.time + B.cd * rnd(0.7, 1.3);
-  let best = null, bd = 1e9; const base = Math.random() * TAU, up = passUp(s.x, s.z), upx = up.x, upz = up.z, uk = up.k;
+  let best = null, bd = 1e9; const base = Math.random() * TAU, up = passUp(s.x, s.z), upx = up.x, upz = up.z, ukb = up.kb;
   for (let k = 0; k < 12; k++) {
     const a = base + k * TAU / 12, ca = Math.cos(a), sa = Math.sin(a);
-    if (uk > 0.05 && ca * upx + sa * upz < -0.2) continue;   // MOUNTAIN PASS: the snow's no beach: not back down the hill for it
+    if (ukb > 0.05 && ca * upx + sa * upz < -0.2) continue;   // MOUNTAIN PASS: the snow's no beach: not back down the hill for it
     for (let r = 2; r <= B.r; r += 2) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;
@@ -10756,35 +10757,39 @@ function fireSpots(f) {
 // ---------------- UP: the flock leans on up the pass, toward the next camp ----------------
 // the flock's way on (flockMind, every T.knotT s): the next fire camp up from its middle; at one, left alone, it stays put by it
 function passUpFire() {
-  const U = T.pass.up, was = MIND.upF; MIND.upF = null;
+  const U = T.pass.up; let was = MIND.upF; MIND.upF = null;
   if (!U.on || G.mode !== 'play') return;
   let x = 0, z = 0, n = 0; for (const s of G.sheep) if (freeSheep(s)) { x += s.x; z += s.z; n++; }
   if (!n) return; const fs = sAt(x / n, z / n); if (passK(fs) <= 0) return;
+  if (gateShut() && fs < T.iceGate.s1 + 2) { MIND.upF = GATE.foot; return; }   // (ICE GATE shut, the flock below it: its foot's as far as it goes)
+  if (was === GATE.foot) was = null;   // (a lane through: on up)
   if (was && fs > was.s - U.past && fs < was.s + U.hold && G.time - MIND.workedT > T.grazeWorkedT) { MIND.upF = was; return; }   // (a dog's driven them on: the next)
   for (const f of PASS.fires) if (f.s > fs - U.past && (!MIND.upF || f.s < MIND.upF.s)) MIND.upF = f;
 }
 // SHARED HOOK: which way's on up from (x, z) (UPV x/z: unit; along the floor, straight for the camp once near: the floor's middle
 // abreast of its fire) and how keen (k 0…1: none below the pass, within T.pass.up.stop m of the camp, above it, off the floor, near the
-// yeti's arena or the hidden side trail)
-const UPV = { x: 0, z: 0, k: 0 };
+// yeti's arena or the hidden side trail; kb: how loath to go back down, as k but at the ice gate's foot)
+const UPV = { x: 0, z: 0, k: 0, kb: 0 };
 function passUp(x, z) {
-  const U = T.pass.up, f = MIND.upF; UPV.k = 0; if (!f) return UPV;
+  const U = T.pass.up, f = MIND.upF; UPV.k = UPV.kb = 0; if (!f) return UPV;
+  if (gateShut() && f.s >= GATE.foot.s) { const g = gateS(x, z); if (g.s < gateE1(g.lat) + 0.5) return gateHold(x, z, g.s, g.lat); }   // ICE GATE shut: this side of it, its foot
   const ci = trailInfo(x, z); if (ci.oW > 0 || ci.oE > 0 || ci.s > f.s + 2) return UPV;
   const m = f.mid || (f.mid = pathPoint(f.s, 0)), pk = passK(ci.s), dx = m.x - x, dz = m.z - z, d = Math.hypot(dx, dz) || 1e-3;
   const k = pk * smooth(U.stop, U.stop + 8, d) * (1 - smooth(T.pass.arena - U.edge - 8, T.pass.arena - U.edge, ci.s)) * (ci.s > SIDE.s0 - 24 ? smooth(SIDE.hw + 3, SIDE.hw + 12, sideD(x, z)) : 1);   // (nor by the hidden side trail's mouth)
   if (k < 0.01) return UPV;
   const i = ci.idx, w = 1 - smooth(U.near * 0.5, U.near, d), ux = tX[i] * (1 - w) + dx / d * w, uz = tZ[i] * (1 - w) + dz / d * w, ul = Math.hypot(ux, uz) || 1;
-  UPV.x = ux / ul; UPV.z = uz / ul; UPV.k = k; return UPV;
+  UPV.x = ux / ul; UPV.z = uz / ul; UPV.k = UPV.kb = k; return UPV;
 }
-// grass worth g that way (ud: its · the way on up, k: how keen), to a flock on the climb: less back down (behind), more on up (lean)
-const upScore = (g, ud, k, lean) => g * (1 - T.pass.up.behind * k * Math.max(0, -ud)) + lean * k * ud;
+// grass worth g that way (ud: its · the way on up, k: how keen, kb: how loath to go back), to a flock on the climb: less back down (behind), more on up (lean)
+const upScore = (g, ud, k, lean, kb = k) => g * (1 - T.pass.up.behind * kb * Math.max(0, -ud)) + lean * k * ud;
 // decideCalm: a cold sheep near a lit fire goes for a place there (bumping a warmer one off it). UP: one up the hill first; one it's
 // left behind only while it's still by it (back m), or freezing
 function warmGo(s) {
   const P = T.pass, U = P.up; if (s.pen || !(s.cold > P.want) || PASS.fires.every(f => f.fuel <= 0)) return false;
-  const ss = U.on ? sAt(s.x, s.z) : 0; let f = null, fd = 1e9;
+  const ss = sAt(s.x, s.z), shut = gateShut() && ss < T.iceGate.s1; let f = null, fd = 1e9;
   for (const o of PASS.fires) {
-    if (o.fuel <= 0) continue; const d = Math.hypot(o.x - s.x, o.z - s.z), up = !U.on || o.s > ss - U.back;
+    if (o.fuel <= 0 || (shut && o.s > T.iceGate.s1)) continue;   // (ICE GATE shut: not one past it)
+    const d = Math.hypot(o.x - s.x, o.z - s.z), up = !U.on || o.s > ss - U.back;
     if (d > (!U.on || o.top ? P.draw : up ? U.draw : s.cold > U.freeze ? P.draw : 0)) continue;   // (the yeti's: no further than ever)
     const e = up ? d : d + 1e3; if (e < fd) { fd = e; f = o; }
   }
@@ -11046,6 +11051,7 @@ const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f =
   const Tg = T.iceGate; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (let s = Tg.s0 - 3; s <= Tg.s1 + 3; s += 1) for (let lat = -32; lat <= 32; lat += 2) { const p = gatePt(s, lat); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
   GATE.box = [x0, x1, z0, z1]; GATE.on = true;
+  for (let b = 0; b < VZ; b++) for (let a = 0; a < VX; a++) { const v = b * VX + a, x = GMINX + a * VS, z = GMINZ + b * VS; if (x > x0 && x < x1 && z > z0 && z < z1 && gateIce0(x, z) > 0.05) { gCap[v] = gAmt[v] = gInit[v] = 0; grassDirty = true; } }   // (no grass on it: nobody grazes up onto it; rock under it)
   // the lane finder's grid: D m cells across (lat from L0) and up (s from S0): walkable? how iced?
   const D = 0.5, L0 = -22, nl = Math.round(44 / D) + 1, S0 = Tg.s0 - 2, ns = Math.round((Tg.s1 + 2 - S0) / D) + 1, n = nl * ns;
   const Gd = GATE.grid = { D, L0, S0, nl, ns, x: new Float32Array(n), z: new Float32Array(n), walk: new Uint8Array(n), k: new Float32Array(n), pass: new Uint8Array(n), room: new Uint8Array(n), from: new Int32Array(n), q: new Int32Array(n) };
@@ -11054,6 +11060,7 @@ const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f =
   const f = PASS.fires.find(o => o.base), mid = gatePt(Tg.s0 - 1, 0); let w = null;
   for (const [ds, dl] of [[-1.2, -3], [1, -3.2], [-2.8, -1.5], [-2.6, 2.5]]) { const q = gatePt(f.s + ds, f.lat + dl); if (sdfAt(q.x, q.z) > 1.2) { w = q; break; } }
   GATE.wait = { ...(w || gatePt(f.s - 3, f.lat)), face: mid }; GATE.mid = mid; GATE.base = f; GATE.ctr = gatePt((Tg.s0 + Tg.s1) / 2, 0);
+  GATE.foot = { s: Tg.s0 - Tg.hold, foot: true };   // (UP: MIND.upF while it's shut and the flock's below it)
   // drawn: a sheet of glassy blue ice over the floor, thicker in the middle, pale streaks down it, a glint sliding across; gone where it's
   // melted (as the patches are). A lip of broken ice along its top edge
   const pos = [], col = [], rel = [], idx = [], cA = new THREE.Color('#86c8f0'), cB = new THREE.Color('#d6f0ff'), cC = new THREE.Color('#5a9fd6'), cF = new THREE.Color('#f2f9ff'), cc = new THREE.Color();
@@ -11161,6 +11168,13 @@ function hankGate(g) {
   const o = bd > 2.2 ? P[0] : P[Math.min(P.length - 1, bi + 1)];
   return { x: o.x, z: o.z, stop: 0.25, noShy: true };
 }
+// UP (passUp), shut: from this side of it the flock leans in to wait at its foot (hold m short of its edge; none from there on up, none
+// out in the desert below the climb), in toward its middle; there, still loath to go back down (kb)
+function gateHold(x, z, s, lat) {
+  const I = T.iceGate, b = gateE0(lat) - I.hold - s; if (b <= -4 || s < T.pass.s0 - 10) return UPV;
+  const i = clamp(Math.floor(s / PS), 0, PN - 1), w = clamp(lat / 20, -0.8, 0.8), ux = tX[i] + tZ[i] * w, uz = tZ[i] - tX[i] * w, ul = Math.hypot(ux, uz);
+  UPV.x = ux / ul; UPV.z = uz / ul; UPV.k = smooth(-1, 6, b); UPV.kb = Math.max(UPV.k, smooth(-4, 0, b)); return UPV;
+}
 // the flock gathered at the foot of it with no lane: he waits by the base camp's fire, watching the ice (hankGoal, by day)
 function gateWaitGoal() {
   if (!gateShut() || G.mode !== 'play') return null;
@@ -11188,11 +11202,12 @@ function gateSlip(e) {
   PASS.gateSlips = (PASS.gateSlips || 0) + 1;
   if (!PASS.said.gate) { gateIntro(); return; }
   const n = (PASS.gateNag ?? -1) + 1, gap = T.iceGate.nag * Math.min(3, 1 + 0.3 * n);   // (less and less often)
-  if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < gap || HANK.asleep || hankFree() > G.time || !hankSees(e.x, e.z)) return;
+  if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < gap || HANK.asleep || hankBusy() > 0 || !hankSees(e.x, e.z)) return;
   const L = GATE_NAGS;
   if (hank(null, L[n < L.length ? n : L.length - 3 + (n - L.length) % 3], { force: true })) { PASS.gateNag = n; PASS.gateNagT = G.time; }
 }
 const hankFree = () => Math.max(HANK.lastSay + 3.2, ...HANK.pending.map(q => q.at + 3.2));   // (when he's done saying what he's saying)
+const hankBusy = () => Math.max(0, HANK.forceSay + 3.2 - G.time, ...HANK.pending.map(q => q.at + 3.2 - G.time));   // s till a nag (the gate's, the yeti's) can come: not over a line that matters (forced, or on its way); chatter it talks over
 function gateIntro() {
   const delay = Math.max(0.4, hankFree() - G.time); if (!passSay('gate', 'Grab the torch and clear us a path!', { delay })) return;
   PASS.gateNagT = G.time + delay; hint('torch'); hint('gate');
@@ -11345,7 +11360,7 @@ function updateTorches(dt, dtH) {
     }
     if (t.lit > 0) { t.lit -= dtH * (1 + (K.blizz - 1) * (PASS.blizz.k || 0) * passK(sAt(t.x, t.z))); if (t.lit <= 0) { t.lit = 0; torchFx('out', tx, tz); } }
     // the first lit fire a dog comes up to: what its stick's for
-    if (!t.by && !(t.lit > 0) && fireLit(t.f) && !PASS.said.torch && !(t.f.base && gateShut()) && G.dogs.some(o => Math.abs(o.x - t.x) + Math.abs(o.z - t.z) < 16)) {   // (ICE GATE: the base camp's: gateIntro)
+    if (!t.by && !(t.lit > 0) && fireLit(t.f) && !PASS.said.torch && !(t.f.base && gateShut()) && !(t.f.cave && YETI.on) && G.dogs.some(o => Math.abs(o.x - t.x) + Math.abs(o.z - t.z) < 16)) {   // (ICE GATE: the base camp's: gateIntro; THE ICE CAVE, him up: his nags)
       hint('torch'); passSay('torch', "See the stick by the fire? Light it! Melt the snow: there's grass under it.", { delay: 1.2 });
     }
   }
@@ -11432,6 +11447,7 @@ function syncTorches(dt) {
       if (Math.random() < dt * 22) burst(mx + rnd(-1.2, 1.2), groundY(mx, mz) + 0.2, mz + rnd(-1.2, 1.2), 1, '#f4f8ff', { speed: 0.4, up: 2.2, size: 0.28, life: 0.9, grav: -0.5 });
       if ((t.hissT = (t.hissT || 0) - dt) <= 0 && meltAt(mx, mz) < 0.98) { t.hissT = 0.45; SFX.sizzle(panOf(mx, mz), 0.08); }
     }
+    caveHiss(t, _tv.x, _tv.z, _tv.y - 0.6, dt);   // THE ICE CAVE: it holds
   }
 }
 // the overlay: what to press, the first few times (the stick, the fire, what it's for)
@@ -11615,6 +11631,13 @@ function caveFx(kind, x, z, r = 1) {
     shakeCam(0.18);
   }
 }
+// ...a burning sheep (or a lit torch) against its ice: steam, a hiss, a drip; it holds (nothing melts it: drawing only, each screen)
+function caveHiss(o, x, z, y, dt) {
+  const C = CAVE, d = caveD(x, z), a = Math.atan2(z - C.z, x - C.x); if (!C.shell || d < C.r - 1 || d > C.r + C.th + 0.9 || Math.abs(wrapA(a - C.a)) < C.mouth) return;
+  const wx = C.x + Math.cos(a) * (C.r + C.th * 0.3), wz = C.z + Math.sin(a) * (C.r + C.th * 0.3);
+  if (Math.random() < dt * 18) burst(wx + rnd(-0.4, 0.4), y + rnd(0.3, 1.4), wz + rnd(-0.4, 0.4), 1, '#f4f8ff', { speed: 0.4, up: 2, size: 0.26, life: 0.9, grav: -0.5 });
+  if ((o.caveHissT = (o.caveHissT || 0) - dt) <= 0) { o.caveHissT = 0.5; SFX.sizzle(panOf(x, z), 0.07); burst(wx, y + 2.2, wz, 2, '#bfe6fa', { speed: 0.2, up: -1, size: 0.08, life: 0.7, grav: 6 }); }
+}
 function snowHitFx(e) {
   if (!e) return; const pan = panOf(e.x, e.z);
   SFX.thud(pan, 0.35); if (e.isDog) Sound.yelp(pan); else if (e !== HANK) Sound.baa(e.pitch * 1.3, 0.45, pan, true);
@@ -11731,15 +11754,16 @@ const YETI_NAGS = {
 function yetiNag(dt) {
   const Y = YETI, N = Y.nag, K = T.yeti.nag; if (!N) return;
   if (!yetiOK() || !Y.on || Y.beaten || G.mode !== 'play') return;
-  N.t += dt; N.cd -= dt;
+  N.cd -= dt; if (!G.sheep.some(s => s.burn > 0 && !s.dead)) N.t += dt;   // (one alight: they're on it, the clock waits)
   if (N.t > (N.n ? K.every : K.first)) yetiNagOn('time');
 }
 function yetiNagOn(kind) {
   const Y = YETI, N = Y.nag, K = T.yeti.nag;
   if (!N || !yetiOK() || !Y.on || Y.beaten || G.mode !== 'play' || N.cd > 0) return false;
   if (!hankSees(Y.x, Y.z, Y.y + 3, 1.5) || HANK.asleep) return false;
+  const busy = hankBusy(); if (busy > (kind === 'time' ? 0 : 4.5)) { N.cd = Math.max(N.cd, 0.5); return false; }   // (he's saying something that matters: when he's done; what just happened, once he's said it)
   const tier = Math.min(K.tiers - 1, N.tier), lines = YETI_NAGS[kind] || YETI_NAGS.time, i = Math.min(tier < K.tiers - 1 ? tier : K.tiers - 2 + N.n % 2, lines.length - 1);   // (at the top: the last two, turn about)
-  if (!hank(null, lines[i], { force: true, delay: kind === 'time' ? 0 : 0.6 })) { N.cd = 1.5; return false; }   // (he's only just said it: in a moment)
+  if (!hank(null, lines[i], { force: true, delay: kind === 'time' ? 0 : Math.max(0.6, busy) })) { N.cd = 1.5; return false; }   // (he's only just said it: in a moment)
   N.tier = Math.min(K.tiers - 1, N.tier + 1); N.n++; N.cd = K.cd; N.t = 0;
   if (tier >= 3) yetiNagFx(tier);
   return true;
@@ -12179,6 +12203,7 @@ function syncPass(dt) {
         const by = s.air ? s.y : s.y + s.hopY, sc = s.scale * (s.grow || 1);
         for (let j = 0; j < 3; j++) { const a = j * 2.1 + t * 3, fl = 0.75 + 0.35 * Math.sin(t * 19 + j * 2 + s.id); _m4.compose(_pp.set(s.x + Math.cos(a) * 0.22 * sc, by + 0.75 * sc, s.z + Math.sin(a) * 0.22 * sc), _pq.identity(), _s.set(sc * fl, sc * fl * (1 + 0.3 * Math.sin(t * 13 + j)), sc * fl)); FLAMES[0].setMatrixAt(nf * 3 + j, _m4); _m4.compose(_pp, _pq, _s.set(sc * fl * 0.8, sc * fl, sc * fl * 0.8)); FLAMES[1].setMatrixAt(nf * 3 + j, _m4); }
         nf++; if (near && Math.random() < dt * 20) burst(s.x + rnd(-0.3, 0.3), by + 1.2 * sc, s.z + rnd(-0.3, 0.3), 1, Math.random() < 0.5 ? '#ffb340' : '#5a5560', { speed: 0.4, up: 2, size: 0.14, life: 0.7, grav: 2 });
+        if (near) caveHiss(s, s.x, s.z, by, dt);   // THE ICE CAVE: against it, it hisses (it holds)
       }
       if (near && s.cold > 0.5 && !s.burn && Math.random() < dt * 0.5) burst(s.x + Math.sin(s.yaw) * 0.8 * s.scale, s.y + 0.85 * s.scale, s.z + Math.cos(s.yaw) * 0.8 * s.scale, 1, '#f4f8ff', { speed: 0.3, up: 0.4, size: 0.18, life: 0.9, grav: 0.5 });
     }
@@ -14055,7 +14080,7 @@ const HANK_VOL_KEY = 'collies.hankVolume.v1';
 const HANK = {
   x: 0, z: 0, y: 0, vx: 0, vz: 0, yaw: Math.PI / 4, phase: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: 0, lastZ: 0, celebrate: false,
   // voice and bubble
-  line: null, sayT: 0, talkT: 0, lastSay: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
+  line: null, sayT: 0, talkT: 0, lastSay: -99, forceSay: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
   buf: {}, loading: {}, missing: {}, src: null, wsrc: null, gain: null, vol: 1, mute: false, prefetched: false, bubble: null,
   // what he keeps an eye on
   cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99, starving: 0,
@@ -14195,7 +14220,7 @@ function resetHank() {
   Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
-    lastSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
+    lastSay: -99, forceSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
 }
@@ -14214,7 +14239,7 @@ function updateHank(dt) {
   if (hk.climb) { hankClimb(dt); updateCare(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
   const g = hankGate(hk.goal) || hankCross(hk.goal) || hankDetour(hk.goal) || caveDetour(hk, hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (ICE GATE: wait, then up the lane; a goal in a pen: first the fence; VET: round a pen in the way; THE ICE CAVE: round to its mouth)
   if (G.mode !== 'play') hk.asleep = false;
-  if (hk.easeAt && Math.hypot(g.x - hk.easeAt.x, g.z - hk.easeAt.z) > 1.5) hk.easeAt = null;   // blocked short of his spot: he's there, till it moves on
+  if (hk.easeAt && (Math.hypot(g.x - hk.easeAt.x, g.z - hk.easeAt.z) > 1.5 || Math.hypot(hk.x - hk.easeAt.hx, hk.z - hk.easeAt.hz) > 1.5)) hk.easeAt = null;   // blocked short of his spot: he's there, till it moves on (or he's shoved off where he stood)
   hk.swim = hk.trunks && hankDeep(hk.x, hk.z);   // RESCUE: in his trunks, out of his depth: swimming
   const spd = hk.asleep || d < g.stop || hk.easeAt ? 0 : hk.swim ? Math.min(T.rescue.swim, (d - g.stop) * 1.5 + 0.5)
     : g.rescue ? Math.min(T.rescue.run, (d - g.stop) * 2 + 0.6) * (overWater(hk.x, hk.z) ? 0.5 : 1)   // RESCUE: running
@@ -14263,7 +14288,7 @@ function updateHank(dt) {
     if (hk.stuckT > (far ? 3 : 1.5)) {
       if (Math.hypot(hk.x - hk.lastX, hk.z - hk.lastZ) < (far ? 1.2 : 0.4)) {
         if (far) { hk.hopT = 1.5; hk.sideT = 1.5; hk.side = -(hk.side || 1); if (!onScreen(hk.x, hk.y + 1, hk.z, 0.1)) hk.farT = 9; }
-        else hk.easeAt = { x: g.x, z: g.z };
+        else hk.easeAt = { x: g.x, z: g.z, hx: hk.x, hz: hk.z };
       }
       hk.stuckT = 0; hk.lastX = hk.x; hk.lastZ = hk.z;
     }
@@ -14301,7 +14326,7 @@ function hank(id, text, opts = {}) {
     if (key === hk.lastKey) return hankLog(id, text, false, 'again');                                         // never the same line twice in a row
     const seen = hk.said[key]; if (seen !== undefined && t - seen < T.hankRepeat && t >= seen) return hankLog(id, text, false, 'recent');
   }
-  hk.said[key] = t; hk.lastKey = key; hk.lastSay = t;
+  hk.said[key] = t; hk.lastKey = key; hk.lastSay = t; if (opts.force) hk.forceSay = t;
   const line = hk.line = { id, text, whistle: opts.whistle || null, real: performance.now() };
   hk.sayT = 1.6 + text.length * 0.055; hk.talkT = 0.9;
   if (hk.bubble) hk.bubble.querySelector('span').textContent = text;

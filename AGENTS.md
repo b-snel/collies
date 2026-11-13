@@ -73,7 +73,7 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `kitSet(pen, kind, n)` (`food`/`water`/`salt`: show bought troughs and licks; `kitN`, `kitMax`),
 `snakeBite(s, n)`, `woundSheep(s)` (uses `s.heldT`, `s.grabBy`), `cureSheep(s, cure)`, `s.venom`/`s.bleed`/`s.infect`
 (0…1; `…Rate` > 0: getting worse; `s.ail` bits), `giveHank(wares, d)`, `HANK.meds`, `HANK.shovel`,
-`downhill(x, z)` (unit + slope), `passUp(x, z)` (the way on up: unit + k 0…1), `heatAt(x, z)` (0…1), `startSlide(e, 'ice'|'roll', o)`, `crevOut(e, hop)`,
+`downhill(x, z)` (unit + slope), `passUp(x, z)` (the way on up: unit + k 0…1, kb: loath to go back), `heatAt(x, z)` (0…1), `startSlide(e, 'ice'|'roll', o)`, `crevOut(e, hop)`,
 `s.cold`/`d.cold`/`s.snow` (0…1), `s.burn` (s left), `hankTumble(vx, vz, vy)`; `passSheepStep`, `passSheepMove`,
 `passHeld`, `passAir`, `passDogMove` (where the pass takes over),
 `MELT` / `meltAt(x, z)` / `meltDisc(x, z, r, r0, amt)` (snow melted, 0…1; `meltSet(v, m)` moves `gCap`), `torchHeat(x, z)`, `HEAP` / `HEAP2` / `heapH(x, z)` (in `groundY`), `sdfPatch(i0, i1, j0, j1)`, `inCave(x, z, pad)`,
@@ -116,7 +116,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|cave\|nag\|rock\|entry\|side\|gate\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the ice cave (walled but its mouth, Hank lights it and keeps in it, snowballs smash on it, his butt can't reach in, a burning sheep punted from its mouth hits him); nags (a line in, on a timer, on a pounce / a cold sheep, cooldown, tops out, a hit: back, beaten: none, reset); the rock wall falls on him; the door (in the way, a pounce wobbles it, 2 sheep: down, the way open, up again); side trail ≥5 m wide, ledge only up it, 5 sheep driven up; the ice gate: wall to wall, a dog / a driven sheep thrown back down it, Hank's "grab the torch" then nags ≥ `nag` s apart, he waits at the base camp, a lit torch carried up melts a lane (his lines), then Hank and a sheep up it, no blizzard shuts it, a dev jump melts it, reset, a friend's ice from the host's; burning sheep (melt the snow, the gate's ice); the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind |
+| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|cave\|nag\|rock\|entry\|side\|gate\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the ice cave (walled but its mouth, Hank lights it and keeps in it, snowballs smash on it, his butt can't reach in, a burning sheep punted from its mouth hits him); nags (a line in, on a timer, on a pounce / a cold sheep, cooldown, tops out, a hit: back, beaten: none, reset); the rock wall falls on him; the door (in the way, a pounce wobbles it, 2 sheep: down, the way open, up again); side trail ≥5 m wide, ledge only up it, 5 sheep driven up; the ice gate: wall to wall, a dog / a driven sheep thrown back down it, Hank's "grab the torch" then nags ≥ `nag` s apart, he waits at the base camp, a lit torch carried up melts a lane (his lines), then Hank and a sheep up it, no blizzard shuts it, a dev jump melts it, reset, a friend's ice from the host's; burning sheep (melt the snow, the gate's ice); the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind; the ice gate up: it waits at its foot, none onto it |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab pulls it out, pounce pops it just clear, calm sheep go round |
@@ -265,7 +265,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
     (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
 - **Hank never leans on a wall.** Blocked short of his spot he stands easy
-  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+  (`hk.easeAt`, till it moves or he's shoved off where he stood); far off, a hop and a sidestep (`hk.sideT`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
@@ -338,15 +338,17 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     a look for grass `seek`, grass back down counts `behind` less; flight off a dog to the side bends up `flee` (not with the dog above);
     the walk-on `move`; milling `wander`. None within `stop` m of the camp, above it, off the floor, by the side trail's mouth, within
     `edge` m of the arena. The cold: a lit fire up within `draw` m first (the top's: as ever); one behind only within `back` m past it, or freezing
-    (`freeze`). Calm ones go round the ice and the cracks along their edge, however keen. Host only (sheep).
+    (`freeze`). Calm ones go round the ice and the cracks along their edge, however keen. The ice gate shut, the flock below it: its foot
+    (`GATE.foot`, `gateHold`: in to `hold` m short of its edge, none on up; `kb`: grass back down still counts less), no fire past it. Host only (sheep).
   - **Base camp** (`T.pass.base`, `f.base`): a fire at the foot of the climb, added after world gen's draws (world gen never sees it). Its
     stick teaches the torch: `hint('torch')`, nudges (`drawTorchOverlay`), Hank's lines.
   - **Ice gate** (`GATE`, `T.iceGate`, `gateIce0` / `gateIce`, `gateS`): a band of ice wall to wall across the climb just past the base camp (`s0`…`s1`,
     wavy edges), switched on after world gen's draws and the scenery (`GATE.on`: before that `iceK` doesn't see it; its treads hidden: `instanced` `gate`).
     Up onto it: a skid (`keep`), then back down (`gateBack`, `g`), even creeping, no `slipCd`. The way on: a lit torch melts a lane (`gateScan`:
     ≥ `lane` m all the way, `GATE.open`, `GATE.path`); its melt never snows over (`gateV`). Hank waits by the base camp's fire (`gateWaitGoal`,
-    `hankGate`: `GATE.wait`), then walks up the lane; the flock's steered to it (`gateSteer` in `passAvoid`). Lines: "Grab the torch…" (`gateIntro`),
-    nags on a slip with no lane and no lit torch (`gateSlip`, `GATE_NAGS`, `nag` s apart, then further, what he sees), lit near it, the lane through (`gateOpenFx`).
+    `hankGate`: `GATE.wait`), then walks up the lane; the flock waits at its foot (Up), then it's steered to the lane (`gateSteer` in `passAvoid`).
+    No grass on it. Lines: "Grab the torch…" (`gateIntro`), nags on a slip with no lane and no lit torch (`gateSlip`, `GATE_NAGS`, `nag` s apart,
+    then further, what he sees; not over a line that matters: `hankBusy`), lit near it, the lane through (`gateOpenFx`).
     A dev jump onto it or past: all melted (`gateMelt`, `GATE.all`). Online: what's melted of it (`NET_TYPES.pass.gate`, `gateMask`: friends only melt
     more from it; none: iced again); guests find their own lane (`gateScanTick`).
   - **Torches** (`TORCHES`, `T.torch`, `holdKind 'torch'`): a stick by each fire (`f.torch`), stood in a cairn, leaning, a warm glow and a twinkle
@@ -372,13 +374,14 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     his spot, its mouth (±`mouth`) toward him: past his reach (leash + butt), in a punt's (~15 m). Walls `block`ed (a ring), a dome of
     glassy ice (fresnel), the doorway arched, icicles, the fire's glow (`C.glow`), a beacon on top. Snowballs smash on it (`caveFx`);
     he throws at what's out in the open first (`yetiPick`). While he's up Hank keeps in it (`passFireFind`); round to its mouth
-    (`caveDetour`).
+    (`caveDetour`). A burning sheep or a lit torch against it: steam, a hiss (`caveHiss`); nothing melts it.
   - **The yeti** (`YETI`, `T.yeti`, `SNOWBALLS`): wakes when something's past `arena`; rolls snowballs
     that grow, headbutts what's close; a pounce bounces off him. A burning sheep flying into him:
     a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`). HUD 🦍 ♥♥♥.
   - **Hank's nags** (`YETI.nag`, `T.yeti.nag`, `YETI_NAGS`, `yetiNag`, `yetiNagOn(kind)`): no hit yet: a line `first` s in, then every
-    `every` s; on a pounce off him, a cold sheep at him, a snowball bowling one (`kind`); `cd` s apart, only what he sees, subtitles only.
-    `tiers` lines a kind, snarkier (SIGH… / TSK!: `yetiNagFx`); a hit: a cheer, back `back` tiers (`yetiNagHit`). Beaten: none.
+    `every` s (the clock waits while one's alight); on a pounce off him, a cold sheep at him, a snowball bowling one (`kind`); `cd` s apart, only
+    what he sees, subtitles only; never over a line that matters (`hankBusy`: forced or on its way; the gate's nags too): after it. No torch
+    hint at the cave while he's up. `tiers` lines a kind, snarkier (SIGH… / TSK!: `yetiNagFx`); a hit: a cheer, back `back` tiers (`yetiNagHit`). Beaten: none.
   - **The rock wall** (`SIDE`, `ROCK`, `wallD`): the hidden side trail (`sideD`: a level road `hw`×2 wide, its mouth
     `flare` wider, `flat` m level past its edges) up behind the west rim to a ledge (only up it: a narrow cut to the
     rock); `cracks` sheep flying into the wall: it falls on him ('crushed', an arm out). A fin of
