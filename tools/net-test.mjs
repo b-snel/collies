@@ -496,9 +496,10 @@ try {
     const { G, makeLlama, llamaJoin, llamaSpitAt } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
     const g = makeLlama({ x: d.x + 4, z: d.z + 2, sex: 'f', age: 5 }); g.tame = 1; llamaJoin(g);
     const w = makeLlama({ x: d.x - 6, z: d.z + 3, sex: 'm', age: 5 }); w.cdH = 99; window.__ll = [g, w];
-    setTimeout(() => { g.hop = null; g.hopY = 0; g.air = null; g.state = 'guard'; g.spitCd = 0; llamaSpitAt(g, w, 'llama'); }, 400);
+    const tryIt = (n) => { if (GAME.LLAMA.spits.some(S => S.L === g) || n <= 0) return; g.hop = null; g.hopY = 0; g.air = null; if (g.state !== 'spit') { g.state = 'guard'; g.spitCd = 0; llamaSpitAt(g, w, 'llama'); } setTimeout(() => tryIt(n - 1), 250); };
+    setTimeout(() => tryIt(12), 400);   // (till its spit's away: a coyote may have its eye first)
   });
-  await sleep(1800);
+  await sleep(1800); await until(B, () => !!NET.fxIn.spitFx, null, 4000).catch(() => {});
   const llH = await A.page.evaluate(() => window.__ll.map(L => ({ id: NET.api.types.llama.id(L), x: L.x, z: L.z, tame: L.tame })));
   const llG = await B.page.evaluate(ids => ids.map(id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L ? { x: L.x, z: L.z, tame: L.tame, tassels: L.models.tassels[0].visible, n: GAME.LLAMAS.length } : null; }), llH.map(o => o.id));
   const llN = await A.page.evaluate(() => GAME.LLAMAS.length), spitIn = await B.page.evaluate(() => !!NET.fxIn.spitFx);
