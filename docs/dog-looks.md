@@ -9,7 +9,8 @@
   `ear`, `tail` (`dogTailGeo`: a tapered tube per kind, `dogTube`; brush under a plume), `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
   things hang there). Coats per breed (`L.coat` = its base hex, one each; `fitCoat`). Coat lengths where the breed has them (`hairs`, `L.hair`,
   `dogForm(id, hair)`: its own numbers and shape; `fitHair`): Border Collie rough / smooth, Belgian Shepherd short / long / wire, Dachshund, Dutch,
-  GSD, Huntaway, Icelandic, Pyrenean, Spanish Water Dog. Old saves' merged breeds: `BREED_WAS`. Hats and kit fitted per form (`dogGear(id, B)`:
+  GSD, Huntaway, Icelandic, Pyrenean, Spanish Water Dog. Old saves' merged breeds: `BREED_WAS`. Its bark (`DOG_VOICES`, `B.voice`, `M.voice`, `lookVoice`): the same
+  sample voiced by size and ways (`Sound.bark(p, pan, v)`: pitch, barks a go, chest, thin, dark, sharp, rasp, a snort, a bay); the Border Collie's as recorded. Hats and kit fitted per form (`dogGear(id, B)`:
   hat on the skull `hatY`, shades on its eyes, a flower behind its ear; collar kit in `M.neck`, scaled about the collar). Barn:
   ‹ › / L3; `L.breed`; Coat chips (`#barnHair`), Colour swatches in each coat's colours (`coatSwatches`); Ⓧ: the next colour, then length.
   Online: in the look (`look`; `hair` a pick like `coat`). Contact sheet: `node tools/dog-shots.mjs OUT.png` (`--breeds id:n:hair`, `--pack g,s`: the pack on).

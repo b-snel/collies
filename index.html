@@ -1240,17 +1240,68 @@ const Sound = (() => {
     const ng = ac.createGain(); env(ng, t, 0.004, 0.45, 0.07);
     n.connect(nf); nf.connect(ng); ng.connect(dest); n.start(t, Math.random()); n.stop(t + 0.1);
   }
+  // DOG BREEDS: a breed's voice (B.voice: DOG_VOICES) over the same bark. Its chain: chest (a low shelf), thin (a high-pass), dark (a
+  // low-pass), sharp (a presence peak), rasp (a growl's flutter and grit); it returns where the barks go in
+  let raspC = null;
+  function voiceChain(v, dest, t) {
+    let head = dest;
+    const f = (type, fq, q, gain) => { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = fq; if (q != null) b.Q.value = q; if (gain != null) b.gain.value = gain; b.connect(head); head = b; };
+    if (v.dark) f('lowpass', v.dark, 0.7);
+    if (v.sharp) f('peaking', 2600, 1.1, v.sharp);
+    if (v.thin) f('highpass', v.thin, 0.7);
+    if (v.chest) f('lowshelf', 300, null, v.chest);
+    if (v.rasp) {
+      if (!raspC) { raspC = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; raspC[i] = Math.tanh(3 * x); } }
+      const into = ac.createGain(), am = ac.createGain(), sh = ac.createWaveShaper(), wet = ac.createGain(), dry = ac.createGain();
+      sh.curve = raspC; wet.gain.value = v.rasp * 0.5; dry.gain.value = 1 - v.rasp * 0.3; am.gain.value = 1 - v.rasp * 0.4;
+      const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 34 + Math.random() * 8; lg.gain.value = v.rasp * 0.4;   // a growl's flutter
+      lfo.connect(lg); lg.connect(am.gain); lfo.start(t); lfo.stop(t + 2);
+      const lo = ac.createBiquadFilter(); lo.type = 'lowpass'; lo.frequency.value = 1400; lo.Q.value = 0.5;   // (the grit low in the throat)
+      into.connect(am); am.connect(dry); am.connect(sh); sh.connect(lo); lo.connect(wet); dry.connect(head); wet.connect(head); head = into;
+    }
+    return head;
+  }
+  function snort(t, k, dest) {   // a flat-faced dog's huff before it barks
+    const n = ac.createBufferSource(); n.buffer = noiseBuf;
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 750 * k; f.Q.value = 1.4;
+    const g = ac.createGain(); env(g, t, 0.012, 0.6, 0.09);
+    n.connect(f); f.connect(g); g.connect(dest); n.start(t, Math.random()); n.stop(t + 0.14);
+  }
+  function bay(t, k, len, dest) {   // a hound's "aroo": a held, falling howl, "a" closing to "oo"
+    const f0 = 420 * k, dur = 0.5 + 0.55 * len, o = ac.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0 * 0.82, t); o.frequency.exponentialRampToValueAtTime(f0, t + 0.12);
+    o.frequency.setValueAtTime(f0, t + dur * 0.55); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + dur);
+    const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = 5.5; lg.gain.value = f0 * 0.02; lfo.connect(lg); lg.connect(o.frequency);
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.42, t + 0.07);
+    g.gain.setValueAtTime(0.42, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const [fa, fb, q, a] of [[820, 430, 4, 1], [1250, 900, 6, 0.5], [2600, 2400, 8, 0.15]]) {
+      const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q; bp.frequency.setValueAtTime(fa, t); bp.frequency.exponentialRampToValueAtTime(fb, t + dur);
+      const bg = ac.createGain(); bg.gain.value = a; o.connect(bp); bp.connect(bg); bg.connect(g);
+    }
+    g.connect(dest); o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+  }
   const api = {
     init,
     get ready() { return !!ac; },
     get running() { return !!ac && ac.state === 'running'; },
     raw() { return ac && ac.state === 'running' ? { ac, noiseBuf, out, env } : null; },   // for synth sounds built elsewhere (dog-moves SFX)
     get ctx() { return ac; }, get dest() { return master; },   // for Hank's recorded voice (HANK section)
-    bark(p = 1, pan = 0) {
+    bark(p = 1, pan = 0, v = null) {   // v: its breed's voice (DOG_VOICES); none: the collie's own
       if (!ac) return; const t = ac.currentTime;
-      if (!barkBuf) { const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); return; }
-      const src = ac.createBufferSource(); src.buffer = barkBuf; src.playbackRate.value = p * (0.96 + Math.random() * 0.08);
-      src.connect(out(1.1, pan)); src.start(t);
+      if (!v) {
+        if (!barkBuf) { const d = out(0.7, pan); woof(t, p, d); woof(t + 0.16, p * 0.93, d); return; }
+        const src = ac.createBufferSource(); src.buffer = barkBuf; src.playbackRate.value = p * (0.96 + Math.random() * 0.08);
+        src.connect(out(1.1, pan)); src.start(t); return;
+      }
+      const k = v.p * (1 + (p - 1) * 0.5), d = voiceChain(v, out((barkBuf ? 1.1 : 0.7) * (v.vol || 1), pan), t), n = v.n || 1, gap = v.gap || 0.2;   // (its slot's pitch too, a little: P1…P4 still apart)
+      let t0 = t; if (v.snort) { snort(t, k, d); t0 += 0.12; }
+      for (let i = 0; i < n; i++) {
+        const ti = t0 + i * gap * (0.9 + Math.random() * 0.2), ki = k * (v.fall || 0.97) ** i * (0.96 + Math.random() * 0.08);
+        if (!barkBuf) { woof(ti, ki, d); continue; }
+        const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = barkBuf; src.playbackRate.value = ki; g.gain.value = i ? 0.82 : 1;
+        src.connect(g); g.connect(d); src.start(ti);
+      }
+      if (v.bay) bay(t0 + (n - 1) * gap + 0.17 / k, k, v.bay, d);
     },
     baa(p = 1, vol = 0.3, pan = 0, force = false) {
       // never a screaming chorus: at most two bleats at once (three if one matters), and the idle chatter is spaced out
@@ -4604,6 +4655,39 @@ const DOG_PATS = (() => {
     ticked: { ...solid, muz: 'k', skull: 'k', ears: 'k', tip: 'k', ticks: 'k', patch: 'k' }, heeler: { ...solid, muz: 'k', skull: 'k', ears: 'k', tip: 'k', ticks: 'k', patch: 'k', sock: 't', brows: 't' },
     oes: { ...collie, skull: 'w', ears: 'w', leg: 'w' }, bib: { ...solid, chest: 'w', belly: 'w', sock: 'w', tip: 'w' } };
 })();
+// DOG BREEDS: each one's bark (Sound.bark's voice): by its size and how it is. p: pitch (the sample's rate), n: barks a go, gap: s apart,
+// chest / sharp: dB (big and booming / piercing), thin / dark: Hz (a small dog's / a soft or gruff one's), rasp: a growl in it (0…1),
+// snort: a flat face's huff first, bay: a hound's "aroo" after (its length), vol. The Border Collie: none (the bark as recorded)
+const DOG_VOICES = {
+  sheltie: { p: 1.42, n: 3, gap: 0.14, thin: 300, sharp: 4 },   // shrill, and never just the once
+  bearded: { p: 1.05, n: 2, gap: 0.2, chest: 1 },   // bouncy
+  aussie: { p: 1, n: 2, gap: 0.22, chest: 2 }, miniaussie: { p: 1.26, n: 2, gap: 0.17, thin: 220 },
+  cattle: { p: 1.05, n: 1, sharp: 4, chest: 1 },   // quiet; when it does, sharp
+  kelpie: { p: 1.1, n: 2, gap: 0.17, sharp: 2 },
+  nzhuntaway: { p: 0.74, n: 3, gap: 0.32, fall: 0.99, chest: 7, vol: 1.3 },   // bred to drive sheep with a deep, booming bark, on and on
+  gsd: { p: 0.8, n: 2, gap: 0.3, chest: 5, vol: 1.15 }, belgian: { p: 0.92, n: 2, gap: 0.2, chest: 2, sharp: 3 }, dutch: { p: 0.88, n: 2, gap: 0.25, chest: 3 },
+  beauceron: { p: 0.78, n: 1, chest: 5, vol: 1.15 }, briard: { p: 0.8, n: 2, gap: 0.3, chest: 4 },
+  bouvier: { p: 0.74, n: 1, chest: 6, rasp: 0.2, vol: 1.1 }, picard: { p: 0.88, n: 1, chest: 2, vol: 0.85 },   // (gruff; the Picard seldom bothers)
+  canaan: { p: 1.05, n: 3, gap: 0.18, sharp: 3 },   // the alarm
+  cardigan: { p: 1.1, n: 2, gap: 0.2, chest: 3 }, pembroke: { p: 1.18, n: 2, gap: 0.18, chest: 2 },   // a big dog's bark in a small dog
+  entlebucher: { p: 1, n: 2, gap: 0.2, chest: 1 }, lapphund: { p: 1.05, n: 3, gap: 0.2 },
+  icelandic: { p: 1.2, n: 3, gap: 0.16, thin: 200 }, lancashire: { p: 1.45, n: 2, gap: 0.14, thin: 350 },
+  mudi: { p: 1.25, n: 3, gap: 0.13, thin: 250, sharp: 4 }, buhund: { p: 1.15, n: 3, gap: 0.15, sharp: 2 },
+  oes: { p: 0.82, n: 1, chest: 4, sharp: 2, vol: 1.2 },   // loud, ringing ("pot-casse")
+  pon: { p: 1, n: 2, gap: 0.2 }, puli: { p: 1.12, n: 3, gap: 0.15 }, pumi: { p: 1.32, n: 3, gap: 0.12, thin: 300, sharp: 5 },   // (the Pumi: a terrier of a herder)
+  pyrenean: { p: 1.3, n: 3, gap: 0.13, thin: 280 }, spanish: { p: 1, n: 2, gap: 0.2, chest: 1 },
+  vallhund: { p: 1.3, n: 2, gap: 0.15, thin: 250, bay: 0.15 },   // it sings a little
+  bergamasco: { p: 0.78, n: 1, chest: 4, vol: 0.9 },   // calm, seldom
+  english: { p: 1, n: 2, gap: 0.24, chest: 1 }, pwd: { p: 0.95, n: 2, gap: 0.25, chest: 2 },
+  frenchie: { p: 0.95, n: 1, dark: 1600, rasp: 0.35, snort: 1, vol: 0.7 },   // hardly barks: a gruff boof
+  lab: { p: 0.85, n: 2, gap: 0.3, chest: 3 }, golden: { p: 0.88, n: 1, chest: 3, dark: 3500, vol: 0.95 },   // friendly; the Golden soft
+  poodle: { p: 1.08, n: 2, gap: 0.2, sharp: 2 },
+  dachshund: { p: 1.1, n: 3, gap: 0.18, chest: 4, sharp: 1 },   // a big, deep bark for its size, and it keeps on
+  beagle: { p: 1.12, n: 1, bay: 1 },   // the bay
+  rottweiler: { p: 0.72, n: 1, chest: 7, rasp: 0.3, vol: 1.2 },   // deep, a rumble in it
+  gsp: { p: 0.95, n: 2, gap: 0.22, chest: 2 },
+  bulldog: { p: 0.78, n: 1, dark: 1500, rasp: 0.4, snort: 1, vol: 0.85 },   // low, gruff, wheezy
+};
 const DOG_BREEDS = [   // the herding dogs (the Border Collie first), a Portuguese Water Dog, then the ten most popular (AKC 2025: the German Shepherd's in both)
   ['border', 'Border Collie', 'h', { hairs: [['rough', 'Rough', { fur: 'rough', ruff: 0.55, tail: 'plume' }], ['smooth', 'Smooth', {}]] }, 'collie', [['Black and white', '#1d1b20'], ['Tricolour', '#1c1a1f', { pat: 'tri' }], ['Red and white', '#6b3a22']]],
   ['sheltie', 'Shetland Sheepdog', 'h', { leg: 0.86, head: 0.95, muz: 1.15, sw: 0.9, ear: 'tip', tail: 'plume', fur: 'rough', ruff: 1 }, 'collie', [['Sable', '#c07a35'], ['Tricolour', '#1c1a1f', { pat: 'tri' }], ['Blue merle', '#8d929c', { pat: 'merle' }]]],
@@ -4653,11 +4737,13 @@ const DOG_BREEDS = [   // the herding dogs (the Border Collie first), a Portugue
   const H = hairs ? hairs.map(([hid, n, ho]) => ({ id: hid, n, o: ho })) : null;   // (the breed as listed is its first coat)
   const B = { id, name, herd: grp.includes('h'), top: grp.includes('p'), ...base, ...(H ? H[0].o : {}), base, hairs: H, hair: H ? H[0].id : null, key: H ? id + ':' + H[0].id : id };
   B.coats = coats.map(([n, b, c = {}]) => ({ n, b, w: c.w || DOG_W, t: c.t || DOG_T, k: c.k || DOG_K, pat: c.pat || pat }));
+  B.voice = DOG_VOICES[id] || null;
   for (const k in DOG_FIT) B[k] = clamp(B[k], DOG_FIT[k][0], DOG_FIT[k][1]);
   if (H) H[0].B = B;
   return B;
 });
 const dogBreed = id => DOG_BREEDS.find(b => b.id === id) || DOG_BREEDS[0];
+const lookVoice = L => dogBreed(L && L.breed).voice;   // its bark (Sound.bark's voice)
 const isDogBreed = id => DOG_BREEDS.some(b => b.id === id);
 // a breed in one of its coat lengths (B.hairs): its own numbers and shape (its first: the breed itself); none: the breed
 function dogForm(id, hair) {
@@ -4968,7 +5054,7 @@ function buildDog(L, add) {
     if (g.fixed) add(par, g.fixed, MAT.vc);
     if (g.tint) add(par, g.tint, tintMat(collar));
   }
-  return { root, body, head, neck, legs, tail, tongue, hair, hz: S.head[2], hr: S.hr, mouthZ: S.mouthZ, back: S.back, breed: B.id, form: B.key, look: L };
+  return { root, body, head, neck, legs, tail, tongue, hair, hz: S.head[2], hr: S.hr, mouthZ: S.mouthZ, back: S.back, breed: B.id, form: B.key, voice: B.voice, look: L };
 }
 function makeDog(pi, look) {
   const C = PCOL[pi], L = look || dogLook(pi);
@@ -5206,7 +5292,7 @@ const fireflies = (() => {
   const seeds = Array.from({ length: n }, () => ({ ox: rnd(-45, 45), oz: rnd(-45, 45), p: rnd(0, TAU), s: rnd(0.3, 0.8) }));
   return { m, pos, seeds };
 })();
-expose(() => ({ POOP, poopFx, syncPoop, DOG_BREEDS, DOG_PATS, dogBreed, dogForm, dogForms, fitHair, BREED_WAS, dogShape, buildDog, fitCoat, FUR_MATS, furMat, furLite, SI }));   // CREATURE MODELS
+expose(() => ({ POOP, poopFx, syncPoop, DOG_BREEDS, DOG_PATS, DOG_VOICES, lookVoice, dogBreed, dogForm, dogForms, fitHair, BREED_WAS, dogShape, buildDog, fitCoat, FUR_MATS, furMat, furLite, SI }));   // CREATURE MODELS
 
 // =====================================================================
 // GAME STATE
@@ -6850,7 +6936,7 @@ function heldDogInput(d, inp, dt) {
 }
 function barkFx(d) {   // what a bark looks and sounds like (a guest plays its own dog's at once: netPredPress)
   d.barkAnim = 0.3;
-  Sound.bark(d.pitch, panOf(d.x, d.z));
+  Sound.bark(d.pitch, panOf(d.x, d.z), d.models.voice);   // (its breed's)
   spawnRing(d.x, d.y, d.z, barkR(d), d.color);
   floatText('WOOF!', d.x, d.y + 1.6, d.z, d.color);
 }
@@ -17502,7 +17588,7 @@ function titleRoles() {
 function pickTitleRole(id) {
   if (!isRole(id)) return;
   dogSet(0, { role: id }); saveDogs(); titleRoles();
-  Sound.bark(PCOL[0].pitch * (0.88 + ROLES.findIndex(b => b.id === id) * 0.06), 0);
+  Sound.bark(PCOL[0].pitch * (0.88 + ROLES.findIndex(b => b.id === id) * 0.06), 0, lookVoice(dogLook(0)));
   if (NET.role === 'guest') netSend({ t: 'b', ro: id });   // ONLINE: the host gives this screen's dog that role
 }
 const cycleTitleRole = dir => { const i = ROLES.findIndex(b => b.id === dogLook(0).role); pickTitleRole(ROLES[(i + dir + ROLES.length) % ROLES.length].id); };
@@ -17688,7 +17774,7 @@ function thumbPump() {   // (the barn's frame: one portrait at most)
 function thumbPop(img) { img.classList.remove('pop'); void img.offsetWidth; img.classList.add('pop'); }
 // pick a dog: its card squashes and hops, sparks fly, it barks; the one on the turntable hops and spins (barnRender)
 function barnPickDog(slot) {
-  BARN.dog = slot; barnModel(); barnRefresh(); Sound.bark(PCOL[barnSlot(slot)].pitch, 0);
+  BARN.dog = slot; barnModel(); barnRefresh(); Sound.bark(PCOL[barnSlot(slot)].pitch, 0, lookVoice(barnDogLook(slot)));
   const b = document.querySelector(`#barnList .dogCard[data-dog="${slot}"]`); if (!b) return;
   barnJuice(b, PCOL[barnSlot(slot)].ui);
 }
@@ -17727,7 +17813,7 @@ function breedPickOpen(on) {
     <div class="bpFilters" id="bpFilters"></div><div class="bpGrid" id="bpGrid"></div>`;
   card.appendChild(el);
   document.getElementById('bpView').appendChild(BARN.r.domElement); BARN.w = BARN.h = 0;
-  breedPickDraw(); breedPickSync(true); Sound.bark(PCOL[barnSlot(BARN.dog)].pitch, 0);
+  breedPickDraw(); breedPickSync(true); Sound.bark(PCOL[barnSlot(BARN.dog)].pitch, 0, lookVoice(barnDogLook(BARN.dog)));
 }
 function breedPickDraw() {
   const g = document.getElementById('bpGrid'), f = document.getElementById('bpFilters'); if (!g) return;
@@ -17754,7 +17840,7 @@ function breedPickSync(scroll) {   // the dog's breed lit and in view; its name 
 function breedPickSet(id) {
   const L = dogLook(BARN.dog), h = breedTileLook(L, dogBreed(id), BARN.dog).hair, same = L.breed === id && (!h || dogHair(L) === fitHair(id, h));
   if (same) { const b = document.querySelector(`#bpGrid .bpItem[data-breed="${id}"]`); if (b) barnJuice(b, PCOL[barnSlot(BARN.dog)].ui, 8); return; }
-  dogSet(BARN.dog, { breed: id }); if (h && dogBreed(id).hairs) dogSet(BARN.dog, { hair: h }); Sound.bark(PCOL[barnSlot(BARN.dog)].pitch * (0.9 + Math.random() * 0.2), 0);
+  dogSet(BARN.dog, { breed: id }); if (h && dogBreed(id).hairs) dogSet(BARN.dog, { hair: h }); Sound.bark(PCOL[barnSlot(BARN.dog)].pitch * (0.9 + Math.random() * 0.2), 0, dogBreed(id).voice);   // (its voice)
 }
 function breedFilter(v) {
   if (v === 'all') for (const k in BARN.bf) BARN.bf[k] = null;
@@ -17919,7 +18005,7 @@ function barnClick(e) {
     if (d.dog) { barnPickDog(+d.dog); return; }
     if (b.id === 'barnDice') { dogName(slot, pick(DOG_NAMES.filter(n => n !== barnDogLook(slot).name))); return; }
     if (d.role) { dogSet(slot, { role: d.role }); return; }
-    if (d.dbr) { cycleDogBreed(slot, +d.dbr); Sound.bark(PCOL[barnSlot(slot)].pitch * (0.9 + Math.random() * 0.2), 0); return; }
+    if (d.dbr) { cycleDogBreed(slot, +d.dbr); Sound.bark(PCOL[barnSlot(slot)].pitch * (0.9 + Math.random() * 0.2), 0, lookVoice(barnDogLook(slot))); return; }
     if (b.id === 'barnBreedOpen') { breedPickOpen(true); return; }
     if (b.id === 'bpDone') { breedPickOpen(false); return; }
     if (d.bf) { breedFilter(d.bf); return; }
@@ -22894,7 +22980,7 @@ function joinPlayer(dev) {
   const p = { kind: dev.kind, index: dev.index, slot, dog: null, skipInput: true, name: dev.name || dogLook(slot).name || PCOL[slot].name,   // the join press shouldn't also bark (DOG WARDROBE: a name from the barn)
     role: isRole(dev.role) ? dev.role : dogLook(slot).role };   // ROLES: a friend's own pick, else the barn's for that slot
   G.players.push(p); spawnDog(p);
-  Sound.bark(PCOL[slot].pitch, 0); rumble(p, 0.3, 0.5, 150);
+  Sound.bark(PCOL[slot].pitch, 0, lookVoice(dogLook(slot))); rumble(p, 0.3, 0.5, 150);
   if (G.players.length > 1) toast(`${roleOf(p.role).icon} ${p.name} joined the herd!`, 'good');
   hankDogJoined(p);   // HANK
   if (NET.role === 'host') netRoster();   // ONLINE: friends see who's playing
