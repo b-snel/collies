@@ -89,7 +89,10 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
-Run the ones touching your change; report the numbers.
+`node tools/test.mjs`: the tests for your change (diffed against origin/main), several at a time, a line each; report its last line.
+`--why` (what, why), `name[:arg]`, `--all`, `--list`. CI runs them all on every PR (`.github/workflows/tests.yml`): keep main green.
+Seeded (`SEED=n` / `SEED=random`: other dice), offline. `-sim`s print numbers, no checks ("ran"): read them.
+New `index.html` section → its line in `SECTIONS` (`tools/test.mjs`).
 
 | script | checks |
 | --- | --- |

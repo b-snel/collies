@@ -163,7 +163,7 @@ It's a static site with one build step, which stamps in the commit it was built 
 - `build.js`: copies the site into `dist/` and writes the commit, PR number and build time into the `const BUILD=...` line of `index.html`.
 - `wrangler.jsonc`, `_headers`: the Cloudflare Worker that serves `dist/`, and its caching headers.
 - `audio/`: Hank's voice clips and whistles. See [CREDITS.md](CREDITS.md).
-- `tools/`: a tiny static server and headless Playwright tests that drive the game through `window.GAME`. `AGENTS.md` lists them.
+- `tools/`: a tiny static server and headless Playwright tests that drive the game through `window.GAME`. `node tools/test.mjs` runs the ones for your change (`--all`: every one); `AGENTS.md` lists them.
 
 To run it locally:
 
