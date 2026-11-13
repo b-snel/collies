@@ -299,7 +299,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.ro`, `b`).
 - **Dog breeds** (`DOG_BREEDS`, `DOG_PATS`, `dogShape`, `buildDog`): looks only, nothing in the sim reads one. The herding
   dogs (Border Collie first, the default), a Portuguese Water Dog, + the AKC's ten most popular. One collie bent by numbers (`leg len fat head muz mw sw sh`,
-  `ear`, `tail`, `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
+  `ear`, `tail` (`dogTailGeo`: a tapered tube per kind, `dogTube`; brush under a plume), `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
   things hang there). Coats per breed (`L.coat` = its base hex, one each; `fitCoat`). Hats and kit fitted per breed (`dogGear(id, B)`:
   hat on the skull `hatY`, shades on its eyes, a flower behind its ear; collar kit in `M.neck`, scaled about the collar). Barn:
   ‹ › / L3; `L.breed`. Online: in the look (`look`). Contact sheet: `node tools/dog-shots.mjs OUT.png`.

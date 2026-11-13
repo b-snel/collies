@@ -3892,31 +3892,50 @@ function dogCap(e, dir, r, col, q = [1, 1, 1]) {
 }
 const dogDir = (rng, up = -1) => { for (;;) { const v = [rng() * 2 - 1, rng() * 2 - 1, rng() * 2 - 1], l = Math.hypot(...v); if (l > 0.2 && l < 1 && v[1] / l > up) return v.map(x => x / l); } };
 function strHash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
-// a tail along a curve: spheres tapering r0 → r1, the last in the tip's colour
-function dogTailGeo(B, col, tipCol) {
-  const out = [], rod = (L, r0, r1, a) => {
-    const g = CYL(r1 * 0.55, r0 * 1.1, L, 6).translate(0, L / 2, 0).rotateX(a); out.push(paint(g, col));
-    return [0, Math.cos(a) * L, Math.sin(a) * L];
-  };
-  const ball = (p, r, c = col) => out.push(P(SPH(7), c, { s: [r, r, r], p }));
-  const fat = B.fur === 'rough' ? 1 + 0.35 * B.ruff : B.fur === 'shaggy' || B.fur === 'cord' ? 1.4 : 1;
-  const t = B.tail;
-  if (t === 'long' || t === 'plume' || t === 'otter') {
-    const L = t === 'otter' ? 0.45 : 0.5, a = t === 'otter' ? -2.1 : -2.0, e = rod(L, (t === 'otter' ? 0.09 : 0.075) * fat, (t === 'otter' ? 0.04 : 0.035) * fat, a);
-    if (t === 'plume') out.push(P(SPH(8), col, { s: [0.085 * fat, 0.085 * fat, 0.2], r: [a + Math.PI / 2, 0, 0], p: e.map(v => v * 0.55) }));
-    ball(e.map(v => v * 0.92), (t === 'otter' ? 0.045 : t === 'plume' ? 0.075 : 0.06) * fat, tipCol);
-  } else if (t === 'whip' || t === 'dock') {
-    const e = t === 'dock' ? rod(0.2, 0.05, 0.03, -1.2) : rod(0.42, 0.05, 0.022, B.ta ?? -0.75);
-    ball(e, t === 'dock' ? 0.03 : 0.03, tipCol);
-  } else if (t === 'curl' || t === 'sickle') {
-    const R = 0.13, n = 15, sweep = (t === 'curl' ? 1.5 : 0.9) * Math.PI, f0 = Math.atan2(-0.6, -0.8), c = [0.8 * R, 0.6 * R];
-    for (let i = 0; i <= n; i++) {
-      const u = i / n, f = f0 + sweep * u;
-      ball([0, c[0] + R * Math.cos(f), c[1] + R * Math.sin(f)], lerp(0.055, 0.035, u) * fat, i === n ? tipCol : col);
+// a tube along a curve (tail space: y up, −z back), rounded at both ends: r(u) its radius, f(u) a brush hanging off its underside
+// (× r), col(u) its colour (0 root … 1 tip); x(u) bends it sideways
+function dogTube(pts, r, col, f = () => 0, x = null) {
+  const cv = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)), false, 'centripetal'), n = 22, rs = 10, R = [];
+  for (let i = 0; i <= n; i++) { const u = i / n, c = cv.getPointAt(u); if (x) c.x += x(u); R.push({ c, T: cv.getTangentAt(u), u, r: r(u), f: f(u) }); }
+  const cap = (e, sg) => { const out = []; for (let k = 1; k <= 4; k++) { const a = k / 4 * Math.PI / 2; out.push({ c: e.c.clone().addScaledVector(e.T, sg * e.r * Math.sin(a) * 0.9), T: e.T, u: e.u, r: e.r * Math.cos(a), f: e.f }); } return out; };
+  const rings = [...cap(R[0], -1).reverse(), ...R, ...cap(R[n], 1)], X = new THREE.Vector3(1, 0, 0), S = new THREE.Vector3(), N = new THREE.Vector3();
+  const pos = [], colr = [], idx = [], cc = new THREE.Color();
+  for (const g of rings) {
+    S.copy(X).addScaledVector(g.T, -g.T.dot(X)).normalize(); N.crossVectors(g.T, S);   // (N: its underside)
+    cc.set(col(g.u));
+    for (let j = 0; j < rs; j++) {
+      const t = j / rs * Math.PI * 2, cs = Math.cos(t), sn = Math.sin(t), dn = Math.max(0, sn), fl = 1 + g.f * dn ** 0.8;
+      const p = g.c.clone().addScaledVector(S, g.r * cs * (1 - 0.3 * g.f * dn)).addScaledVector(N, g.r * sn * fl);
+      pos.push(p.x, p.y, p.z); colr.push(cc.r, cc.g, cc.b);
     }
-  } else if (t === 'pom') { const e = rod(0.17, 0.035, 0.025, -0.55); ball(e, 0.085); }
-  else ball([0, 0.02, -0.03], (t === 'bob' ? 0.07 : 0.05) * fat);
-  return merge(...out);
+  }
+  for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < rs; j++) { const a = i * rs + j, b = i * rs + (j + 1) % rs, c = a + rs, d = b + rs; idx.push(a, b, c, b, d, c); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
+  g.setIndex(idx); g.computeVertexNormals(); return g.toNonIndexed();
+}
+// a tail by its kind (tail space, before the body's ×1.3): hangs low with an upturned hook (long, plume: a brush under it), an otter's
+// thick taper, a whip (carried at B.ta, curving forward), a docked one, a spitz curl over the back, a sickle, a pom, a bob, a stub
+function dogTailGeo(B, col, tipCol) {
+  const fat = B.fur === 'rough' ? 1 + 0.35 * B.ruff : B.fur === 'shaggy' || B.fur === 'cord' ? 1.4 : B.fur === 'curly' || B.fur === 'wire' ? 1.15 : 1;
+  const tip = k => u => u > k ? tipCol : col, all = () => col, t = B.tail, lerpR = (r0, r1, e = 1) => u => lerp(r0, r1, u ** e);
+  const arc = (a0, bend, L, m = 6) => { const out = []; let y = 0, z = 0; for (let i = 0; i <= m; i++) { out.push([0, y, z]); const a = a0 + bend * (i + 0.5) / m; y += Math.cos(a) * L / m; z += Math.sin(a) * L / m; } return out; };
+  if (t === 'long') return dogTube([[0, 0, 0], [0, -0.07, -0.12], [0, -0.18, -0.21], [0, -0.3, -0.27], [0, -0.37, -0.32], [0, -0.37, -0.39]], lerpR(0.068, 0.024, 0.9), tip(0.76));
+  if (t === 'plume') {   // low, full, a hook at the end; feathering hangs off its underside, most mid-way
+    const fe = B.fur === 'rough' ? 0.5 + 1.1 * B.ruff : B.fur === 'shaggy' ? 0.9 : 0.6;
+    return dogTube([[0, 0, 0], [0, -0.07, -0.12], [0, -0.17, -0.22], [0, -0.29, -0.3], [0, -0.36, -0.36], [0, -0.37, -0.44]],
+      u => (0.07 + 0.02 * Math.sin(Math.PI * u)) * fat * (1 - 0.55 * u ** 1.6), tip(0.74), u => fe * Math.sin(Math.PI * Math.min(1, u * 1.15)) ** 0.7);
+  }
+  if (t === 'otter') return dogTube([[0, 0, 0], [0, -0.04, -0.14], [0, -0.11, -0.27], [0, -0.2, -0.38], [0, -0.27, -0.45]], u => 0.026 + 0.085 * (1 - u) ** 0.8, tip(0.85));
+  if (t === 'whip') return dogTube(arc(B.ta ?? -0.75, 0.45, 0.44), lerpR(0.06, 0.02, 0.85), tip(0.76));
+  if (t === 'dock') return dogTube(arc(-1.15, 0.25, 0.2, 3), lerpR(0.058, 0.044), tip(0.85));
+  if (t === 'curl' || t === 'sickle') {   // up, then over the back (a spitz's curl a full ring and off to one side)
+    const Rr = t === 'curl' ? 0.13 : 0.16, sweep = (t === 'curl' ? 1.45 : 0.95) * Math.PI, f0 = Math.atan2(-0.6, -0.8), c = [0.8 * Rr, 0.6 * Rr], pts = [];
+    for (let i = 0; i <= 10; i++) { const f = f0 + sweep * i / 10; pts.push([0, c[0] + Rr * Math.cos(f), c[1] + Rr * Math.sin(f)]); }
+    return dogTube(pts, u => (t === 'curl' ? lerp(0.072, 0.042, u) : lerp(0.062, 0.03, u)) * fat, tip(0.85), t === 'curl' && B.fur === 'rough' ? u => -0.25 * Math.sin(Math.PI * u) : () => 0, t === 'curl' ? u => 0.06 * u * u : null);
+  }
+  if (t === 'pom') { const pts = arc(-0.55, 0.1, 0.16, 3), e = pts[pts.length - 1]; return merge(dogTube(pts, lerpR(0.04, 0.032), all), P(SPH(10), tipCol, { s: [0.085, 0.09, 0.085], p: [0, e[1] + 0.03, e[2] - 0.02] })); }
+  if (t === 'bob') return dogTube([[0, 0, 0], [0, -0.02, -0.05], [0, -0.05, -0.09]], lerpR(0.07 * fat, 0.056 * fat), all);
+  return dogTube([[0, 0, 0], [0, -0.035, -0.035], [0.012, -0.07, -0.05], [-0.004, -0.1, -0.045]], lerpR(0.052, 0.026), all);   // stub: a short low screw
 }
 // ---------------- FUR (drawing only): a dog's coat is streaked along the lie of its fur, and fur shells stand out from it: copies of each
 // coat part a little further out each, combed back, with tufts cut into them by a noise (the same noise at every shell: the tufts taper
