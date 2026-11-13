@@ -282,7 +282,33 @@
   .barnPad:empty { display:none; }
   #dawn.hidden { display:none; }
   #dawn { position:fixed; inset:0; z-index:6; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--barn-backdrop); color:var(--barn-ink); text-shadow:none; }
-  #dawn .barnCard { width:min(620px, 100%); }
+  #dawn .barnCard { width:min(620px, 100%); overflow:hidden; }   /* never scrolls: dawnFit makes it denser (f1 wide, f2 compact, f3 small), then zooms it */
+  #dawn .barnCard.f1 { width:min(1100px, 100%); }
+  #dawn .barnCard.fz { max-height:none; }
+  .dawnBody { display:flex; flex-direction:column; gap:10px; }
+  .dawnList { display:flex; flex-direction:column; gap:6px; }
+  #dawn .f1 .dawnBody { flex-flow:row wrap; align-items:flex-start; gap:10px 22px; }
+  #dawn .f1 .dawnSec { flex:1 1 300px; min-width:0; }
+  #dawn .f1 .dawnList { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:6px 16px; }
+  #dawn .f1 .dawnRow input { flex:0 1 200px; width:auto; min-width:70px; }
+  #dawn .f1 .dawnRow small { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  #dawn .f2 .dawnObit em, #dawn .f2 .dawnObit br, #dawn .f2 .dawnObit .bw, #dawn .f2 .dawnRow small { display:none; }
+  #dawn .f2 .dawnList { grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:4px 12px; }
+  #dawn .f2 .born .dawnList { grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); }
+  #dawn .f2 .dawnObit { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #dawn .f3 { padding:10px 14px; gap:6px; }
+  #dawn .f3 .barnHead h2 { font-size:22px; }
+  #dawn .f3 .dawnObit { font-size:13px; }
+  #dawn .f3 .dawnRow input, #dawn .f3 .dawnRow button { font-size:14px; padding:1px 6px; }
+  #dawn .f3 .dawnList { grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:2px 10px; }
+  #dawn .f3 .born .dawnList { grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); }
+  /* ▶ goes on only when held: it fills, let go early and it drains and shakes */
+  #dawn .bbtn.hold { position:relative; overflow:hidden; min-width:72px; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  #dawn .bbtn.hold > i { position:absolute; inset:0; background:rgba(27,26,34,.38); transform:scaleX(var(--h, 0)); transform-origin:left; transition:transform .25s; pointer-events:none; }
+  #dawn .bbtn.hold.held > i { transition:none; }
+  #dawn .bbtn.hold > span { position:relative; }
+  #dawn .bbtn.hold.nudge { animation:dawnNudge .35s; }
+  @keyframes dawnNudge { 20%, 60% { transform:translateX(-5px); } 40%, 80% { transform:translateX(5px); } }
   .dawnSec { display:flex; flex-direction:column; gap:6px; }
   .dawnSec .eyebrow { font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--barn-accent); }
   .dawnRow { display:flex; align-items:center; gap:6px; }
@@ -729,6 +755,8 @@ const T = {
   // MAP: a dog uncovers the land within r m (fading over the outer edge m); the minimap is span m across; uncovering every `every` s;
   // drawn hz times a second; the host's fog to friends at most every fogEvery s
   map: { r: 34, edge: 14, span: 150, every: 0.2, hz: 15, fogEvery: 8 },
+  // DAWN REPORT: hold Ⓐ / Enter / ▶ this many s to go on (mashing never skips it); nothing counts for the first grace s
+  dawn: { hold: 0.7, grace: 0.4 },
   // dog moves & physics: pounce, grab/drag/shake/fling, push-gates, the sheep launcher, juice
   jump: { dur: 0.5, h: 1.4, cd: 0.2, vault: { dur: 0.62, h: 1.9, v: 16, stamina: 0.08 } },   // Ⓨ: a hop on the spot (over rams, pouncing dogs); sprinting: a long vault
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceBuf: 0.2,   // pounceBuf: Ⓑ pressed up to this many s before it can (cooldown, a hop) still goes off
@@ -1390,14 +1418,17 @@ function padPressed(gp, b) { const btn = gp.buttons[b]; return !!btn && (btn.pre
 // Presses: polled every 4 ms between frames and at each frame's start (padFrame). A frame's readers all see the
 // presses up to its start (padHit); one that comes in mid-frame is the next frame's (never marked seen unread).
 function padEdge(i, gp, b) { return !!(padHit[i] && padHit[i].has(b)); }
-const padSeen = {}, padTap = {}, padHit = {};   // gamepad index -> last polled buttons / pressed since the last frame's start / this frame's presses
+const padSeen = {}, padTap = {}, padHit = {}, padT = {};   // gamepad index -> last polled buttons / pressed since the last frame's start / this frame's presses / per button {down, up, ups}: when it last went down, up, how many times up
 const padStk = {}, padSwg = {}, padSwgHit = {};   // the right stick: where it last swung to / swings since the last frame's start / this frame's
 function padPoll() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
     const was = padSeen[i] || [], now = padSeen[i] = gp.buttons.map(b => b.pressed || b.value > 0.4);
-    for (let b = 0; b < now.length; b++) if (now[b] && !was[b]) (padTap[i] ||= new Set()).add(b);
+    for (let b = 0; b < now.length; b++) if (now[b] !== !!was[b]) {
+      const P = (padT[i] ||= [])[b] ||= { down: 0, up: 0, ups: 0 };
+      if (now[b]) { P.down = performance.now(); (padTap[i] ||= new Set()).add(b); } else { P.up = performance.now(); P.ups++; }
+    }
     // a swing: pushed out from rest, or across to the other side (a waggle: shake, heave)
     const x = gp.axes[2] || 0, y = gp.axes[3] || 0, m = Math.hypot(x, y), S = padStk[i] ||= { x: 0, y: 0, rest: true };
     if (m > T.shake.swing) { const ux = x / m, uy = y / m; if (S.rest || ux * S.x + uy * S.y < -0.3) { S.x = ux; S.y = uy; S.rest = false; padSwg[i] = (padSwg[i] || 0) + 1; } }
@@ -15432,7 +15463,7 @@ const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '�
 // 🕯️ Obituaries: icon, name, bravery (and the day, on the end screen), eulogy
 function obitHTML(dead, day = false) {
   if (!dead.length) return '';
-  return `<div class="dawnSec"><span class="eyebrow">🕯️ Obituaries · ${dead.length}</span>${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5); return `<div class="dawnObit">${DAWN_ICON[cleanWhy(m.why)] || '🕯️'} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic} ${w}</span>${day ? `<span class="tag" title="Day">☀️ ${m.day | 0}</span>` : ''}<br><em>${escHTML(m.text || eulogy(m))}</em></div>`; }).join('')}</div>`;
+  return `<div class="dawnSec dead"><span class="eyebrow">🕯️ Obituaries · ${dead.length}</span><div class="dawnList">${dead.map(m => { const [ic, w] = braveWord(m.brave ?? 0.5), t = escHTML(m.text || eulogy(m)); return `<div class="dawnObit" title="${t}">${DAWN_ICON[cleanWhy(m.why)] || '🕯️'} <b>${escHTML(m.name)}</b><span class="tag" title="Bravery">${ic}<span class="bw"> ${w}</span></span>${day ? `<span class="tag" title="Day">☀️ ${m.day | 0}</span>` : ''}<br><em>${t}</em></div>`; }).join('')}</div></div>`;
 }
 // the end screen's: everyone lost this journey (G.lost: the host's, on a guest too)
 function endObit() { const el = $('eMem'); if (el) el.innerHTML = obitHTML(Array.isArray(G.lost) ? G.lost : [], true); }
@@ -15451,12 +15482,30 @@ function dawnView() {
 function dawnHTML(v, edit) {
   const { born, dead } = v;
   return `<div class="barnCard" role="dialog" aria-label="Dawn">
-    <div class="barnHead"><h2>🌅 Day ${v.day}</h2>${edit ? `<button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button>` : ''}</div>
-    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${escHTML(s.wool)}"></i>${edit ? `<input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>` : `<b>${escHTML(s.name)}</b>`}${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
+    <div class="barnHead"><h2>🌅 Day ${v.day}</h2></div>
+    <div class="dawnBody">
+    ${born.length ? `<div class="dawnSec born"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span><div class="dawnList">${born.map(s => `<div class="dawnRow" data-id="${s.id}"${s.mum ? ` title="Mum: ${escHTML(s.mum)}"` : ''}><i title="Wool" style="background:${escHTML(s.wool)}"></i>${edit ? `<input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>` : `<b>${escHTML(s.name)}</b>`}${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div></div>` : ''}
     ${obitHTML(dead)}
-    ${edit ? `<div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>` : `<div class="barnFoot"><span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span></div>`}
+    </div>
+    ${edit ? `<div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go hold" title="Hold Enter / Ⓐ" aria-label="Hold to go on"><i></i><span>▶</span></button></div>` : `<div class="barnFoot"><span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span></div>`}
   </div>`;
 }
+// it never scrolls: denser till it fits (f1 wide, side by side; f2 compact: eulogies and mums to the tooltip; f3 small), then zoomed out
+function dawnFit() {
+  const el = $('dawn'), c = el.querySelector('.barnCard'); if (!c || el.classList.contains('hidden')) return;
+  artDOM(c);   // icons in before it's measured
+  c.classList.remove('f1', 'f2', 'f3', 'fz'); c.style.zoom = '';
+  const over = () => c.scrollHeight > c.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1;
+  for (const f of ['f1', 'f2', 'f3']) { if (!over()) return; c.classList.add(f); }
+  if (!over()) return;
+  c.classList.add('fz');   // whole, then zoomed down to fit
+  const cs = getComputedStyle(el), aw = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), ah = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const fits = z => { c.style.zoom = z.toFixed(4); const r = c.getBoundingClientRect(); return r.height <= ah && r.width <= aw; };
+  // the biggest that fits, near enough. Zoomed out, more columns: about z² as tall (not always shorter the smaller, so step down)
+  const r = c.getBoundingClientRect(); let z = Math.min(1, Math.sqrt(Math.min(ah / r.height, aw / r.width)) * 1.2);
+  while (!fits(z) && z > 0.05) z *= 0.97;
+}
+addEventListener('resize', dawnFit);
 // ONLINE: a guest shows the host's card, read only, while the host has it open
 let dawnGuestKey = '';
 function dawnGuest(v) {
@@ -15464,11 +15513,11 @@ function dawnGuest(v) {
   const key = v ? JSON.stringify(v) : ''; if (key === dawnGuestKey) return; dawnGuestKey = key;
   const el = $('dawn');
   if (!v || typeof v !== 'object' || !Array.isArray(v.born) || !Array.isArray(v.dead)) { el.classList.add('hidden'); document.body.classList.remove('inDawn'); return; }
-  el.innerHTML = dawnHTML(v, false); el.classList.remove('hidden'); document.body.classList.add('inDawn');
+  el.innerHTML = dawnHTML(v, false); el.classList.remove('hidden'); document.body.classList.add('inDawn'); dawnFit();
 }
 function openDawn(born, dead) {
   if (BARN.open) closeBarn();
-  Object.assign(DAWN, { open: true, born, dead, day: G.clock.day }); keys.clear();
+  Object.assign(DAWN, { open: true, born, dead, day: G.clock.day, t0: performance.now(), hold: null }); keys.clear();
   const el = $('dawn');
   el.innerHTML = dawnHTML(dawnView(), true);
   const byId = row => born.find(s => s.id === +row.dataset.id);
@@ -15477,36 +15526,71 @@ function openDawn(born, dead) {
     inp.addEventListener('blur', () => { const s = byId(inp.closest('.dawnRow')); if (s) inp.value = s.name; });
   });
   el.querySelector('.barnCard').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return; const row = b.closest('.dawnRow'), s = row && byId(row);
-    if (b.dataset.go !== undefined) closeDawn();
-    else if (b.dataset.dice !== undefined && s) { barnSet(s, { name: sheepName({ not: s.name }) }); row.querySelector('input').value = s.name; }
+    const b = e.target.closest('button'); if (!b || !dawnReady()) return; const row = b.closest('.dawnRow'), s = row && byId(row);
+    if (b.dataset.dice !== undefined && s) { barnSet(s, { name: sheepName({ not: s.name }) }); row.querySelector('input').value = s.name; }
     else if (b.dataset.edit !== undefined && s) { closeDawn(); openBarn(s); }
     else if (b.dataset.flock !== undefined) { closeDawn(); openBarn(); }
   });
-  el.classList.remove('hidden'); document.body.classList.add('inDawn');
+  const go = el.querySelector('.hold');   // ▶: held, not clicked
+  go.addEventListener('pointerdown', e => { if (!e.button) dawnHoldStart('ptr'); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) go.addEventListener(t, () => dawnHoldEnd('ptr'));
+  go.addEventListener('contextmenu', e => e.preventDefault());
+  el.classList.remove('hidden'); document.body.classList.add('inDawn'); dawnFit();
   return true;
 }
 function closeDawn() {
-  if (!DAWN.open) return; DAWN.open = false;
+  if (!DAWN.open) return; DAWN.open = false; DAWN.hold = null;
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   $('dawn').classList.add('hidden'); document.body.classList.remove('inDawn'); keys.clear();
   saveFlock();   // new names stick
 }
-// in frame(): while open the world waits; pad Ⓐ/Ⓑ/Start closes, View opens the barn
+// HOLD TO GO ON: a fresh press (after grace s) of Ⓐ / Start, Enter / Space / Esc or ▶, held T.dawn.hold s. Let go early: it drains and shakes.
+const dawnReady = () => DAWN.open && performance.now() - (DAWN.t0 || 0) >= T.dawn.grace * 1000;
+// Timed from the press to the let-go (pads: when padPoll saw them), so slow frames neither cut a hold short nor stretch a tap.
+function dawnHoldStart(src, t0 = performance.now()) { if (!DAWN.open || DAWN.hold || t0 - DAWN.t0 < T.dawn.grace * 1000) return; DAWN.hold = { src, t0 }; dawnHoldDraw(0); }   // pressed in the first moment: nothing
+function dawnHoldEnd(src, t = performance.now()) {
+  const H = DAWN.hold; if (!H || (src && H.src !== src)) return;
+  if (t - H.t0 >= T.dawn.hold * 1000) return closeDawn();
+  DAWN.hold = null; dawnHoldDraw(0, true);
+}
+function dawnHoldDraw(k, nudge) {
+  const b = $('dawn').querySelector('.hold'); if (!b) return;
+  b.style.setProperty('--h', k.toFixed(3)); b.classList.toggle('held', !!DAWN.hold);
+  if (nudge) { b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); }
+}
+// in frame(): while open the world waits; pad Ⓐ / Start held goes on, View opens the barn
 function dawnFrame() {
   if (!DAWN.open) return false;
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  for (let i = 0; pads && i < pads.length; i++) { const gp = pads[i]; if (!gp) continue; if (padEdge(i, gp, 8)) { closeDawn(); openBarn(); break; } if (padEdge(i, gp, 0) || padEdge(i, gp, 1) || padEdge(i, gp, 9)) { closeDawn(); break; } }
+  for (let i = 0; pads && i < pads.length; i++) {
+    const gp = pads[i]; if (!gp) continue;
+    if (padEdge(i, gp, 8) && dawnReady()) { closeDawn(); openBarn(); break; }
+    for (const b of [0, 9]) if (padEdge(i, gp, b) && !DAWN.hold) {
+      const P = (padT[i] && padT[i][b]) || { down: 0, up: 0, ups: 0 };
+      if (!padPressed(gp, b)) { if (P.up - DAWN.t0 >= T.dawn.grace * 1000) dawnHoldDraw(0, true); continue; }   // a tap between frames: a shake
+      dawnHoldStart(`pad${i}:${b}`, P.down); if (DAWN.hold) DAWN.hold.ups = P.ups;
+    }
+  }
+  const H = DAWN.hold, pm = H && /^pad(\d+):(\d+)$/.exec(H.src);
+  if (pm) {   // let go since? once: timed to it; more (a mash between slow frames): not a hold
+    const i = +pm[1], b = +pm[2], gp = pads && pads[i], P = padT[i] && padT[i][b];
+    if (!gp) dawnHoldEnd(null, H.t0);
+    else if (P && P.ups > H.ups) dawnHoldEnd(null, P.ups === H.ups + 1 ? P.up : H.t0);
+    else if (!padPressed(gp, b)) dawnHoldEnd();
+  }
+  if (DAWN.open && DAWN.hold) { const k = (performance.now() - DAWN.hold.t0) / (T.dawn.hold * 1000); if (k >= 1) closeDawn(); else dawnHoldDraw(k); }
   endInputFrame(); return true;
 }
 addEventListener('keydown', e => {
   if (!DAWN.open) return;
   const typing = e.target && e.target.tagName === 'INPUT';
-  if (!e.repeat && (e.code === 'Escape' || (e.code === 'Enter' && !typing) || (e.code === 'Space' && !typing))) { e.preventDefault(); closeDawn(); }
+  if (e.code === 'Escape' || ((e.code === 'Enter' || e.code === 'Space') && !typing)) { e.preventDefault(); if (!e.repeat) dawnHoldStart('key:' + e.code); }
   else if (!e.repeat && e.code === 'Enter' && typing) e.target.blur();
-  else if (!e.repeat && e.code === 'Tab') { e.preventDefault(); closeDawn(); openBarn(); }
+  else if (!e.repeat && e.code === 'Tab') { e.preventDefault(); if (dawnReady()) { closeDawn(); openBarn(); } }
   e.stopImmediatePropagation();
 }, true);
+addEventListener('keyup', e => dawnHoldEnd('key:' + e.code), true);
+addEventListener('blur', () => dawnHoldEnd());
 
 // =====================================================================
 // FLOCK SAVE — the player's flock between journeys. Every living sheep's
