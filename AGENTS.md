@@ -14,7 +14,7 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
+desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
@@ -46,7 +46,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
   joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
-- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space jump, E grab, F bark, R pounce; mouse on the game (`#gl`): click bark, right click pounce (`Mouse0` / `Mouse2` in `KB`).
+- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space bark, E grab, F jump, R pounce; mouse on the game (`#gl`): hold click grab, right click pounce / shake (`Mouse0` / `Mouse2` in `KB`). Controls bar always up (`ctlBar`).
 - Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 - Map: minimap bottom left (over the controls bar while it's up; touch: under the flock
   panel); `M` / R3 / tap it → the whole trail, big. At a trader: 📍 its pen.
@@ -54,7 +54,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 ### Layout (`index.html`, top to bottom)
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
-→ scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING) →
+→ scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING, IDLE) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING, HAIR) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
@@ -94,6 +94,7 @@ Run the ones touching your change; report the numbers.
 | `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep, by weight (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
+| `idle-test.mjs [kinds\|odds\|wake\|sleep\|poop\|hank\|reset]` | idle dogs: poop (behind it, then the grass kicked), pee (a puddle), tail, nap (lying; by day up again, at night on); odds (night: naps); any input wakes it, busy: nothing; poops grabbed, thrown, SPLAT, gone, max, unsaved; Hank's moans (sees, awake); reset; off in `?sim` |
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
 | `rope-test.mjs [layout\|drag\|hold\|sheep\|tug\|even\|tired\|team\|hank\|reset\|beat\|teamheave\|dig\|give\|row]` | ropes: one a leg, drag (links hold, no stamina), grab held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2 holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset; the beat (pulses, on it big and cheap, mashing weak: beats mashing and off-beat), team heave, dig in (holds, breath back, never gains, broken on the beat), give slack (stumbles, Hank too), row and right-stick heaves |
 | `night-sim.mjs idle\|guard` | a night with coyotes, unguarded or guarded |
@@ -132,6 +133,8 @@ Run the ones touching your change; report the numbers.
 | `sea-net-test.mjs` | online at sea (`PEERSERVER=host:port`): alongside, the guest's stick hauls her lines in (%), cast off (land carried off, chase camera), pose and waves match, the guest's stick by its own camera, a ring thrown, a sheep overboard on it, orcas, the kraken's arms, fx relayed, no anchor drop just after |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
+| `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
+| `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -270,8 +273,11 @@ turns the stick into its own (`netReadInput`).
     it (`bossHit`): drops what it has. `hp` (+`perDog`) hits: gone for the journey, +`bounty` 🧶, the gorge quiet
     (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
     (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
-- **Hank never leans on a wall.** Blocked short of his spot he stands easy
-  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Hank never leans on a wall.** A pen in his way: round it, one side, kept (`hankRound`, `hk.round`); a goal in it: over
+  the fence (`hankCross`). Blocked short of his spot he stands easy (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Coyotes never shove at a fence.** A goal behind a shut pen's fence: the nearest spot this side (`navPenSide`); none
+  reachable: as near as it gets, standing (`NAVDIR.stop`). Pulls that cancel (walls, packmates) slow it, not spin it.
+  A sheep behind a shut fence isn't prey, whatever `s.pen` says (`shutIn`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
@@ -287,7 +293,8 @@ turns the stick into its own (`netReadInput`).
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
-  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere.
+  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).
+  Held to go on (`T.dawn`: Ⓐ / Start, Enter / Space / Esc, ▶; `dawnHoldStart`, timed by press and let-go, `padT`); nothing in the first `grace` s; mashing never skips it.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
@@ -310,6 +317,11 @@ turns the stick into its own (`netReadInput`).
   stamina spent, hp lost, s holding); levels at `lv` (max 5), each × (1 + `per`); ⬆ over the dog
   (`trainFx`). One journey: `resetGame` clears it; swap role and back keeps it. Off in `?sim`
   (`T.train.on`). Guests get `d.role` + levels (`rol`, `netDogRole`).
+- **Idle** (`T.idle`, `dogIdle`, `d.antic`/`d.anticT`, synced; drawn: `dogAntic`, `anticSpin`): no input `after` s, still, mouth free →
+  `poop` (`spawnPoop` at `drop` s, back feet kick the grass from `kick`), `pee` (`PUDDLES`, drawing only), `chase` (its tail; dizzy),
+  `sleep` (round once, then curled, mode `lie`; by day `nap` s, at night till woken). Odds `w.day` / `w.night` (night: mostly naps).
+  Any input or knock: `anticEnd`. Poops are BONES (`b.poop`, `boneK`, `POOP_GEO`): grabbed, carried, thrown, SPLAT!, gone after `life` s,
+  up to `max`, not saved, cleared on a new journey (`idleReset`); Hank moans on a pick, a throw, a hit (`poopSay`, `POOP_SAY`, what he sees). Off in `?sim`.
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
   down); at 0 knocked out (`d.ko`) till Hank brings it round (RESCUE), never dies. Cougar close (`maulR`, or bumped
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
