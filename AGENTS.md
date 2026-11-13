@@ -35,6 +35,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
+- Journey save: a reload carries on (localStorage `collies.journey`; title ▶, ✖ forgets). Not under `?sim`, `?sea`, `?go`, `?join`. See `docs/ui.md`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
   build → 🔄 on the title reloads (`checkBuild`).
@@ -98,6 +99,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - BARN
 - DAWN REPORT
 - saved flock
+- JOURNEY SAVE
 - VAGABOND (the VENDOR's wares)
 - LLAMAS
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
@@ -109,13 +111,14 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
-A new feature registers itself in its own section: its reset `onReset`, its drawing `onSync`, its test hooks `expose`; nothing goes into `resetGame`, the main loop or a `window.GAME` list. Order numbers (see each call): resets 10 sea … 180 balker, 300–420 game flow, 430 Hank; syncs 10 dogs … 240 poop. Lists that stay shared (`EMOJI_ART`, `newStats`, Hank's `…Can` checks, `netKindOf`, CSS selector lists): add a line.
+A new feature registers itself in its own section: its reset `onReset`, its drawing `onSync`, its test hooks `expose`, what a reload keeps `onSave`; nothing goes into `resetGame`, the main loop or a `window.GAME` list. Order numbers (see each call): resets 10 sea … 180 balker, 300–420 game flow, 430 Hank; syncs 10 dogs … 240 poop. Lists that stay shared (`EMOJI_ART`, `newStats`, Hank's `…Can` checks, `netKindOf`, CSS selector lists): add a line.
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update every caller:
 
 - `onReset(fn, o)`: a new journey; `resetGame` runs them, lowest `o` first (default 200: after the sea's back, before the flock and dogs)
 - `onSync(fn, o)`: every drawn frame; `frame` and `renderOnce` run them, `fn(dt, once)` (default 500: last)
 - `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
+- `onSave(key, save, load, o)`: JOURNEY SAVE; `save()` → plain JSON, `load(v)` on a resumed journey, lowest `o` first (`savePlain` / `loadPlain`, `journeyAt` / `journeyPlace`)
 - `knockDog`
 - `d.mud`/`d.wet` (0…1), `tubStep` (in a water trough: updateDog hands over)
 - `hurtDog(d, amt)` (1 = all hp)
