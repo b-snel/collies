@@ -103,7 +103,7 @@ const r5 = await h.page.evaluate(() => {
     const N = s.nads; maxCord = Math.max(maxCord, N.c.p.distanceTo(N.A) / ND.cord); for (const [j, o] of N.n.entries()) maxLink = Math.max(maxLink, o.p.distanceTo(N.c.p) / ND.link[j]);
   });
   s.air = null; s.pose = null; s.lift = 0; s.vx = 0;
-  const after = RUN(s, 5);
+  const after = RUN(s, 8);   // (a circling swing can take a while to die)
   return { maxCord, maxLink, ok: fly.concat(after).every(L => L.ok), end: after.at(-1), whip: Math.max(...fly.map(L => Math.hypot(L.n[0].f, L.n[0].s))) };
 });
 ok(`punted, somersaulting: they whip about (${r5.whip.toFixed(2)} m) but stay on (cord ≤ ${r5.maxCord.toFixed(2)}×, nut ≤ ${r5.maxLink.toFixed(2)}×)`, r5.ok && r5.whip > 0.08 && r5.maxCord <= 1.81 && r5.maxLink <= 1.71, r5);

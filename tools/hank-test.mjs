@@ -23,7 +23,7 @@ const results = []; const ok = (name, cond, info) => { results.push([cond ? 'PAS
   ok('every whistle id has audio/whistle/<id>.mp3', wmissing.length === 0, { whistles: wl, wmissing });
 }
 
-let h = await open({ query: '?sim&debug', port: 20000 + Math.floor(Math.random() * 20000) });
+let h = await open({ query: '?sim&debug' });
 await h.page.evaluate(() => { localStorage.clear(); });
 await h.page.reload(); await h.page.waitForFunction(() => window.GAME);
 // count stopped sources so we can see a new line cut the old one off
@@ -194,7 +194,7 @@ ok('fondly remembered (and saved)', r6.mem && r6.mem.name === 'Dolly' && r6.save
 await h.close();
 
 // 7. persistence across a reload: dress a sheep, save, reload -> it's in the new starting flock
-h = await open({ query: '?sim&debug', port: 20000 + Math.floor(Math.random() * 20000) });
+h = await open({ query: '?sim&debug' });
 const r7a = await h.page.evaluate(() => {
   localStorage.clear(); const { G, barnSet, saveFlock } = GAME;
   const s = G.sheep[0]; barnSet(s, { name: 'Biscuit Jr', hat: 'tophat', hatColor: '#8e44ad', wool: '#cfe0f2', acc: ['bowtie'], paint: [{ c: '#f6d743', s: 0.06, p: [0.5, 0.5] }] });

@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';
-const port = 8123 + Math.floor(Math.random() * 500), srv = await serve(port);
+const srv = await serve(0), port = srv.address().port;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = []; page.on('pageerror', e => errors.push(String(e)));
