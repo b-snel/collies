@@ -107,6 +107,7 @@ Run the ones touching your change; report the numbers.
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
+| `poop-test.mjs` | scared sheep poop, calm ones don't; pellets settle, then go |
 | `gateway-sim.mjs` | stalls at gates |
 | `straggler-sim.mjs [--trials N]` | stragglers behind the pen / the open leaf get in |
 | `morning-sim.mjs [--trials N]` | penned flock leaves at dawn and stays out |
@@ -116,7 +117,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge |
+| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab pulls it out, pounce pops it just clear, calm sheep go round |
@@ -202,6 +203,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   best green patch near a flockmate, not by a den or brambles, shouldering
   through (`grassDash`, `heft`). Hungry on good grass: less flock pull (`stay`),
   lets a calm drift go by (`tuck`), food beats flock (`want`).
+- **Scared sheep poop** (`T.poop`, `poopFx`, `POOP`, drawing only): past `at` stress or panic, now and then a few pellets out the back
+  (`Sound.prrt`); they bounce, lie `life` s, shrink away. Each screen its own; `poopFx` is an fx (guests get it).
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
@@ -351,8 +354,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   - **Ice** (`ICES`, `T.ice`, `startSlide`): onto it moving: slide downhill, spinning, legs going,
     slide whistle (`SFX.slip`). Dogs barely steer; a jump gets out. Hank too. Calm sheep go round.
   - **Crevasses** (`CREVS`, `T.crev`, `crevFall`): sheep or dogs (not hopping/lunging) drop in
-    ('crev', sunk). A sheep: grabbed out. A dog alone: mash Ⓑ out (`crevEsc`); with friends
-    (`crevAlone` false): only a friend's grab gets it out. Calm sheep go round.
+    ('crev', sunk). A sheep: grabbed out. A dog: mash Ⓑ out (`crevEsc`), `cost` stamina a press, no breath
+    back while mashing (`rest`); exhausted: 💨, nothing (`crevTiredFx`). A friend's grab gets it out too (`crevAlone` false: 🗣 ✊). Calm sheep go round.
   - **Goats** (`GOATS`, `T.goat`): on ledges; by day one bounds down at a sheep, dog or Hank in reach,
     windup ❗, charges, bonks it down the mountain (launched 'tumble', lands, rolls 'roll').
     A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
