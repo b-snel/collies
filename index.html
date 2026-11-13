@@ -1422,7 +1422,7 @@ const AMB = (() => {
   }
   // a call's way out: pan −1…1, dist 0 (near) … 1 (far: quieter, duller, wetter), lvl; returns its input
   function voice(pn, dist, lvl = 1) {
-    const g = gain(lvl), lp = filt('lowpass', 15000 * Math.pow(0.15, dist), 0.5), p = panr(pn, gain(1 - 0.6 * dist, evs));
+    const g = gain(lvl), lp = filt('lowpass', 16000 * Math.pow(0.35, dist), 0.5), p = panr(pn, gain(1 - 0.6 * dist, evs));
     chain(g, lp, p); p.connect(gain(0.12 + 0.7 * dist, send)); return g;
   }
   // a run of notes onto dest from t0: each [t, dur, amp, f0, f1, f2] (Hz, gliding through); w: 'sine' … or a PeriodicWave
@@ -1435,6 +1435,25 @@ const AMB = (() => {
       g.gain.setValueAtTime(0, T0); g.gain.linearRampToValueAtTime(a, T0 + at); g.gain.linearRampToValueAtTime(a * 0.7, T0 + d * 0.75); g.gain.linearRampToValueAtTime(0, T0 + d);
       chain(o, g, dest); o.start(T0); o.stop(T0 + d + 0.02);
     }
+  }
+  // a bird's notes onto dest from t0: each { t, d, a, f: [f0, f1, f2] (gliding through), atk (share of d rising), fm: [Hz, depth] (the pitch
+  // shaken: a burr fast, a vibrato slow), am: [Hz, depth] (a flutter) }. Smooth swells, not beeps
+  function tweet(dest, t0, list, w = WV.bird) {
+    for (const n of list) {
+      const T0 = t0 + n.t, d = n.d, [f0, f1 = f0, f2] = n.f, o = ac.createOscillator(), g = gain(0); let tail = o;
+      if (typeof w === 'string') o.type = w; else o.setPeriodicWave(w);
+      o.frequency.setValueAtTime(f0, T0);
+      if (f2) { o.frequency.exponentialRampToValueAtTime(f1, T0 + d * 0.45); o.frequency.exponentialRampToValueAtTime(f2, T0 + d); } else if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, T0 + d);
+      if (n.fm) { const m = ac.createOscillator(), mg = gain(f0 * n.fm[1]); m.frequency.value = n.fm[0]; chain(m, mg, o.frequency); m.start(T0); m.stop(T0 + d + 0.02); }
+      if (n.am) { const a = gain(1 - n.am[1] / 2), m = ac.createOscillator(), mg = gain(n.am[1] / 2); m.frequency.value = n.am[0]; chain(m, mg, a.gain); o.connect(a); tail = a; m.start(T0); m.stop(T0 + d + 0.02); }
+      g.gain.setValueCurveAtTime(swell(n.a, n.atk || 0.2), T0, d);
+      chain(tail, g, dest); o.start(T0); o.stop(T0 + d + 0.02);
+    }
+  }
+  function swell(a, atk) {   // a note's shape: up smoothly, away smoothly
+    const N = 24, c = new Float32Array(N);
+    for (let i = 0; i < N - 1; i++) { const x = i / (N - 1); c[i] = a * (x < atk ? Math.sin(Math.PI / 2 * x / atk) ** 2 : Math.cos(Math.PI / 2 * (x - atk) / (1 - atk)) ** 1.3); }
+    return c;
   }
   // a burst of noise through a filter: up in att s, dying away over dur s
   function burst(dest, T0, buf, type, f, q, amp, att, dur) {
@@ -1505,7 +1524,7 @@ const AMB = (() => {
 
   // ---------------- WATER: a river rushing (deep bands, low bubbles) or a brook trickling (bright, quick bubbles)
   function mkWater() {
-    const o = gain(1, beds), pn = panr(0, o), sum = gain(1, pn); pn.connect(gain(0.2, send));
+    const o = gain(1, beds), pn = panr(0, o), hp = filt('highpass', 160, 0.7), sum = gain(1, hp); hp.connect(pn); pn.connect(gain(0.2, send));
     const bands = [[420, 0.8], [1150, 1], [3000, 1.3]].map(([f, q]) => { const bp = filt('bandpass', f, q), g = gain(0, sum); bp.connect(g); return { bp, g, f }; });
     const s = loop(BUF.pink, bands[0].bp, R(0.9, 1.1)); s.connect(bands[1].bp); s.connect(bands[2].bp);
     const bub = [-0.4, 0, 0.4].map(d => { const p = panr(0, o); return { p, d, g: gain(1, p) }; });
@@ -1637,43 +1656,52 @@ const AMB = (() => {
   }
   function owl(pan, dist, a, p = 1) {   // a great horned owl: "hoo, h'hoo — hoo — hoo", soft and far
     hit('owl'); const v = voice(pan, dist, a), f = R(300, 340) * p;
-    notes(v, now() + 0.05, [[0, 0.32, 1], [0.62, 0.12, 0.7], [0.78, 0.3, 1], [1.4, 0.38, 0.9], [2.05, 0.42, 0.8]].map(([t, d, k]) => [t, d, 0.13 * k, f * 1.03, f * 0.97]), WV.coo, 0.06);
+    tweet(v, now() + 0.05, [[0, 0.32, 1], [0.62, 0.12, 0.7], [0.78, 0.3, 1], [1.4, 0.38, 0.9], [2.05, 0.42, 0.8]].map(([t, d, k]) => ({ t, d, a: 0.08 * k, f: [f * 1.03, f * 0.97], atk: 0.3, fm: [5, 0.006] })), WV.coo);
   }
   function poorwill(pan, dist) {   // "poor-will": a soft whistle, then one slurred up
-    hit('poorwill'); const f = R(1500, 1700); notes(voice(pan, dist, 1), now() + 0.05, [[0, 0.16, 0.07, f, f * 0.97], [0.24, 0.3, 0.08, f * 0.8, f * 1.25, f * 1.15]], WV.bird, 0.02);
+    hit('poorwill'); const f = R(1500, 1700); tweet(voice(pan, dist, 1), now() + 0.05, [{ t: 0, d: 0.16, a: 0.035, f: [f, f * 0.97], atk: 0.3 }, { t: 0.24, d: 0.3, a: 0.04, f: [f * 0.8, f * 1.25, f * 1.15], atk: 0.35, fm: [7, 0.01] }]);
   }
 
   // ---------------- BIRDS by day. A few of each kind round about, each with its own place, pitch and song, sung again and again
-  // (now and then one flies off and another comes). Notes: [t, dur, amp, f0, f1, f2]
+  // (now and then one flies off and another comes). Few at a time, mostly far. Notes: tweet's
+  const N_ = (t, d, a, f, o = {}) => Object.assign({ t, d, a, f }, o);
+  const burr = () => ({ fm: [R(45, 110), R(0.03, 0.08)] }), vib = (k = 0.01) => ({ fm: [R(5, 8), k] });
   const SONGS = {
-    warbler(b) {   // a quick jumble, its own; now and then a new one
+    warbler(b) {   // a quick jumble, its own (some notes burry, some clear); now and then a new one
       if (!b.motif || Math.random() < 0.12) {
         const L = b.motif = [], base = R(2700, 4600); let t = 0;
-        for (let i = 0, k = I(5, 9); i < k; i++) { const f = base * R(0.8, 1.25), d = R(0.04, 0.11), sh = Math.random(); L.push([t, d, R(0.6, 1), ...(sh < 0.3 ? [f, f * 1.3] : sh < 0.6 ? [f * 1.3, f] : sh < 0.85 ? [f, f * 1.35, f * 0.95] : [f, f * 1.02])]); t += d + R(0.02, 0.06); }
-        if (Math.random() < 0.5) { const f = base * R(1.1, 1.4); for (let i = 0, k = I(3, 5); i < k; i++, t += 0.06) L.push([t, 0.035, 0.8, f * 1.1, f * 0.9]); }   // a trill to end
+        for (let i = 0, k = I(5, 8); i < k; i++) { const f = base * R(0.8, 1.25), d = R(0.05, 0.12), sh = Math.random(); L.push(N_(t, d, R(0.6, 1), sh < 0.3 ? [f, f * 1.3] : sh < 0.6 ? [f * 1.3, f] : sh < 0.85 ? [f, f * 1.35, f * 0.95] : [f, f * 1.02], Math.random() < 0.3 ? burr() : { atk: 0.15 })); t += d + R(0.02, 0.06); }
+        if (Math.random() < 0.5) { const f = base * R(1.1, 1.4); for (let i = 0, k = I(3, 5); i < k; i++, t += 0.06) L.push(N_(t, 0.04, 0.8, [f * 1.1, f * 0.9], { atk: 0.1 })); }   // a trill to end
       }
-      return b.motif.map(([t, d, a, ...f]) => [t * R(0.97, 1.03), d, a * R(0.85, 1.1), ...f]);
+      return b.motif.map(n => ({ ...n, t: n.t * R(0.97, 1.03), a: n.a * R(0.85, 1.1) }));
     },
-    robin() { const L = []; let t = 0; for (let k = I(2, 4); k > 0; k--) { const f = R(1900, 2800); L.push([t, R(0.16, 0.26), R(0.7, 1), f * 0.9, f * 1.15, f]); t += R(0.32, 0.45); } return L; },   // "cheerily, cheer-up"
-    chick() { const f = R(3800, 4050); return Math.random() < 0.7 ? [[0, 0.3, 1, f, f * 0.98], [0.36, 0.34, 0.85, f * 0.86, f * 0.84]] : [[0, 0.3, 1, f, f * 0.98], [0.36, 0.14, 0.85, f * 0.86, f * 0.85], [0.52, 0.18, 0.75, f * 0.86, f * 0.84]]; },   // "fee-bee"
-    trill() { const f = R(3400, 5000), k = I(10, 21), g = R(0.048, 0.065), L = []; for (let i = 0; i < k; i++) L.push([i * g, 0.03, 0.6 + 0.4 * Math.sin(Math.PI * i / k), f * 1.15, f * 0.88]); return L; },
-    lark() { const L = []; let t = 0, f = R(3000, 3800); for (let i = 0, k = I(4, 6); i < k; i++) { const d = i < 2 ? R(0.18, 0.32) : R(0.07, 0.14); L.push([t, d, R(0.7, 1), f, f * R(0.85, 1.05)]); t += d + R(0.03, 0.08); f *= R(0.8, 1.02); } return L; },   // a meadowlark: clear, falling whistles
-    sky() { const L = [], len = R(5, 10); for (let t = 0; t < len; t += R(0.06, 0.12)) { const f = R(2600, 5400); L.push([t, R(0.035, 0.075), (0.5 + 0.5 * Math.random()) * Math.min(1, t / 1.2, (len - t) / 1.5), f, f * R(0.8, 1.25)]); } return L; },   // a skylark, high up: on and on
-    dove() { const f = R(440, 510); return [[0, 0.42, 0.8, f, f * 1.2, f * 1.06], [0.62, 0.36, 0.95, f * 1.08, f * 0.98], [1.2, 0.36, 0.85, f, f * 0.97], [1.78, 0.38, 0.75, f, f * 0.96]]; },   // a mourning dove: "ooo-AH, coo, coo, coo"
-    quail() { const f = R(1300, 1450); return [[0, 0.08, 0.7, f, f * 1.1], [0.14, 0.17, 1, f * 1.2, f * 1.6, f * 1.4], [0.38, 0.1, 0.8, f * 1.15, f * 1.05]]; },   // "chi-CA-go"
-    cwren() { const L = []; let t = 0, f = R(4000, 4500), g = 0.075; for (let i = 0, k = I(9, 13); i < k; i++) { L.push([t, 0.07, 0.9, f, f * 0.93]); t += g; g *= 1.07; f *= 0.94; } return L; },   // a canyon wren: falling, slowing, off the walls
+    robin() { const L = []; let t = 0; for (let k = I(2, 4); k > 0; k--) { const f = R(1900, 2800); L.push(N_(t, R(0.16, 0.26), R(0.7, 1), [f * 0.9, f * 1.15, f], { atk: 0.3, fm: [R(25, 45), 0.025] })); t += R(0.32, 0.45); } return L; },   // "cheerily, cheer-up": a little burry
+    chick() { const f = R(3800, 4050), a = N_(0, 0.3, 1, [f, f * 0.98], { atk: 0.25, ...vib(0.004) }); return Math.random() < 0.7 ? [a, N_(0.36, 0.34, 0.85, [f * 0.86, f * 0.84], { atk: 0.25 })] : [a, N_(0.36, 0.14, 0.85, [f * 0.86, f * 0.85]), N_(0.52, 0.18, 0.75, [f * 0.86, f * 0.84])]; },   // "fee-bee": two clear whistles
+    trill() { const f = R(3400, 5000), k = I(8, 16), g = R(0.05, 0.068), L = []; for (let i = 0; i < k; i++) L.push(N_(i * g, 0.034, 0.6 + 0.4 * Math.sin(Math.PI * i / k), [f * 1.15, f * 0.88], { atk: 0.12 })); return L; },
+    lark() { const L = []; let t = 0, f = R(3000, 3800); for (let i = 0, k = I(4, 6); i < k; i++) { const d = i < 2 ? R(0.18, 0.32) : R(0.07, 0.14); L.push(N_(t, d, R(0.7, 1), [f, f * R(0.85, 1.05)], { atk: 0.25, ...vib() })); t += d + R(0.03, 0.08); f *= R(0.8, 1.02); } return L; },   // a meadowlark: clear, falling, fluting
+    sky() { const L = [], len = R(3, 6); for (let t = 0; t < len; t += R(0.07, 0.13)) { const f = R(2600, 5400); L.push(N_(t, R(0.04, 0.08), (0.5 + 0.5 * Math.random()) * Math.min(1, t / 1, (len - t) / 1.2), [f, f * R(0.8, 1.25)], Math.random() < 0.3 ? burr() : {})); } return L; },   // a skylark, high up
+    quail() { const f = R(1300, 1450), o = { fm: [R(35, 50), 0.03] }; return [N_(0, 0.08, 0.7, [f, f * 1.1], o), N_(0.14, 0.17, 1, [f * 1.2, f * 1.6, f * 1.4], o), N_(0.38, 0.1, 0.8, [f * 1.15, f * 1.05], o)]; },   // "chi-CA-go"
+    cwren() { const L = []; let t = 0, f = R(4000, 4500), g = 0.075; for (let i = 0, k = I(9, 13); i < k; i++) { L.push(N_(t, 0.07, 0.9, [f, f * 0.93], { atk: 0.2 })); t += g; g *= 1.07; f *= 0.94; } return L; },   // a canyon wren: falling, slowing, off the walls
   };
-  const LOUD = { warbler: 0.09, robin: 0.09, chick: 0.08, trill: 0.08, lark: 0.1, sky: 0.07, dove: 0.08, quail: 0.1, cwren: 0.08, wren: 0.3, gull: 0.3, raven: 0.22, peck: 0.14 };
+  const LOUD = { warbler: 0.04, robin: 0.04, chick: 0.035, trill: 0.035, lark: 0.045, sky: 0.03, dove: 0.03, quail: 0.045, cwren: 0.035, wren: 0.12, gull: 0.1, raven: 0.12, peck: 0.05 };
+  function coo(v, b, t0) {   // a mourning dove: "hoo-OO-oo … hoo … hoo … hoo", soft and breathy
+    const f = R(440, 520) * b.p, L = [N_(0, 0.5, 0.7, [f * 0.92, f * 1.16, f * 1.02], { atk: 0.4 }), N_(0.75, 0.42, 0.9, [f * 1.04, f * 0.97], { atk: 0.3 }), N_(1.4, 0.42, 0.8, [f, f * 0.96], { atk: 0.3 }), N_(2.05, 0.44, 0.7, [f, f * 0.95], { atk: 0.3 })];
+    for (const n of L) n.fm = [5, 0.008];
+    tweet(v, t0, L, WV.coo);
+    for (const n of L) { const s = ac.createBufferSource(), bp = filt('bandpass', f * 1.05, 4), g = gain(0); s.buffer = BUF.pink; s.loop = true; g.gain.setValueCurveAtTime(swell(n.a * 1.5, n.atk), t0 + n.t, n.d); chain(s, bp, g, v); s.start(t0 + n.t, Math.random() * 4); s.stop(t0 + n.t + n.d + 0.02); }   // (its breath)
+    return 2.5;
+  }
   function cactusWren(v, b, t0) {   // "chuh-chuh-chuh": harsh, dry
     const f = R(2100, 2700) * b.p; let t = t0;
-    for (let i = 0, k = I(6, 9); i < k; i++, t += R(0.09, 0.12)) { burst(v, t, BUF.white, 'bandpass', f, 3, 0.6, 0.008, 0.06); notes(v, t, [[0, 0.05, 0.08, f * 0.5, f * 0.45]], 'sawtooth', 0.005); }
+    for (let i = 0, k = I(5, 8); i < k; i++, t += R(0.09, 0.12)) { burst(v, t, BUF.white, 'bandpass', f, 3, 0.6, 0.008, 0.06); tweet(v, t, [N_(0, 0.05, 0.08, [f * 0.5, f * 0.45], { atk: 0.15 })], 'sawtooth'); }
     return t - t0;
   }
   function gull(v, b, t0) {   // a herring gull: a long "kee-ow", or a laughing "ha-ha-ha-ha"
-    const bp = filt('bandpass', 1700 * b.p, 2.2); bp.connect(v);
-    if (Math.random() < 0.55) { notes(bp, t0, [[0, 0.42, 0.9, 950 * b.p, 1550 * b.p, 1150 * b.p]], 'sawtooth', 0.02); return 0.45; }
-    const L = []; let t = 0; for (let i = 0, k = I(4, 8); i < k; i++) { L.push([t, 0.11, 1 - i / (k + 2), 1350 * b.p, 1050 * b.p]); t += R(0.15, 0.2) + i * 0.01; }
-    notes(bp, t0, L, 'sawtooth', 0.01); return t;
+    const bp = filt('bandpass', 1700 * b.p, 2.2), b2 = filt('bandpass', 2900 * b.p, 3), g2 = gain(0.4); bp.connect(v); b2.connect(g2); g2.connect(v);
+    const rough = () => ({ atk: 0.15, fm: [R(28, 40), 0.03] }), go = L => { tweet(bp, t0, L, 'sawtooth'); tweet(b2, t0, L, 'sawtooth'); };
+    if (Math.random() < 0.55) { go([N_(0, 0.42, 0.9, [950 * b.p, 1550 * b.p, 1150 * b.p], rough())]); return 0.45; }
+    const L = []; let t = 0; for (let i = 0, k = I(3, 6); i < k; i++) { L.push(N_(t, 0.11, 1 - i / (k + 2), [1350 * b.p, 1050 * b.p], rough())); t += R(0.15, 0.2) + i * 0.01; }
+    go(L); return t;
   }
   function raven(v, b, t0) {   // "kraaa" off the crags, once to thrice: rough (a fast flutter on it)
     const k = I(1, 3);
@@ -1692,7 +1720,7 @@ const AMB = (() => {
   function birdOf(sp) {
     const L = S.roster[sp] || (S.roster[sp] = []);
     if (L.length < 3 || Math.random() < 0.06) {
-      const b = { pan: R(-0.85, 0.85), dist: sp === 'sky' ? R(0.5, 0.75) : R(0.2, 0.85), p: R(0.93, 1.07), motif: null };
+      const b = { pan: R(-0.85, 0.85), dist: sp === 'sky' ? R(0.55, 0.8) : R(0.35, 0.9), p: R(0.93, 1.07), motif: null };
       if (L.length >= 3) L.splice(Math.floor(Math.random() * L.length), 1); L.push(b); return b;
     }
     return PK(L);
@@ -1700,8 +1728,8 @@ const AMB = (() => {
   function sing(sp) {
     const b = birdOf(sp), v = voice(b.pan, b.dist, LOUD[sp] || 0.08), t0 = now() + 0.05; let len;
     hit(sp);
-    if (sp === 'wren') len = cactusWren(v, b, t0); else if (sp === 'gull') len = gull(v, b, t0); else if (sp === 'raven') len = raven(v, b, t0); else if (sp === 'peck') len = peck(v, b, t0);
-    else { const L = SONGS[sp](b).map(([t, d, a, ...f]) => [t, d, a, ...f.map(x => x * b.p)]); notes(v, t0, L, sp === 'dove' ? WV.coo : WV.bird, sp === 'dove' ? 0.06 : 0.008); len = L.reduce((e, x) => Math.max(e, x[0] + x[1]), 0); }
+    if (sp === 'wren') len = cactusWren(v, b, t0); else if (sp === 'gull') len = gull(v, b, t0); else if (sp === 'raven') len = raven(v, b, t0); else if (sp === 'peck') len = peck(v, b, t0); else if (sp === 'dove') len = coo(v, b, t0);
+    else { const L = SONGS[sp](b).map(n => ({ ...n, f: n.f.map(x => x * b.p) })); tweet(v, t0, L); len = L.reduce((e, n) => Math.max(e, n.t + n.d), 0); }
     S.busy.push(t0 + len);
   }
 
@@ -1768,7 +1796,7 @@ const AMB = (() => {
   function mkMoan() {
     const o = gain(1, beds), bp = filt('bandpass', 330, 7), g = gain(0, o), lfo = ac.createOscillator(), lg = gain(170), s = loop(BUF.pink, bp);
     lfo.frequency.value = 0.13; chain(lfo, lg, bp.frequency); lfo.start(); bp.connect(g);
-    const dh = filt('highpass', 150, 0.7), dp = filt('bandpass', 240, 1.3), d = gain(0, o), s2 = loop(BUF.pink, dh, 0.7); chain(dh, dp, d);
+    const dh = filt('highpass', 190, 0.7), dp = filt('bandpass', 290, 1.4), d = gain(0, o), s2 = loop(BUF.pink, dh, 0.7); chain(dh, dp, d);
     return { src: [s, lfo, s2], out: o, g, d };
   }
   function canyonStep(m) {
@@ -1776,13 +1804,13 @@ const AMB = (() => {
     const b = bed('moan', mkMoan); b.lvl = k;
     ease(b.g.gain, 0.3 * k * (0.5 + 0.5 * S.gust), 0.8);
     if (every('dread', 14)) S.drone = Math.random() < 0.55 ? R(0.5, 1) : 0;
-    ease(b.d.gain, 0.5 * k * S.drone, 3);
+    ease(b.d.gain, 0.4 * k * S.drone, 3);
   }
 
   // ---------------- each tick: what's here (m: ambMix), dt s since the last
   function step(m, dt) {
     const t = now(), h = m.hour, day = 1 - m.night, nite = smooth(0.4, 0.85, m.night), wet = Math.max(m.storm, m.rain, m.blizz, m.fog * 0.7), dry = 1 - wet;
-    const dawn = smooth(4.6, 5.8, h) * (1 - smooth(7.6, 9.4, h)), heat = smooth(10.5, 12.5, h) * (1 - smooth(16, 17.5, h));
+    const dawn = smooth(4.6, 5.8, h) * (1 - smooth(6.4, 8.2, h)), heat = smooth(10.5, 12.5, h) * (1 - smooth(16, 17.5, h));
     const pine = m.isle * (m.isleKind === 'pine'), palm = m.isle * (m.isleKind === 'palm'), fin = m.isle * (m.isleKind === 'final');
     ease(out.gain, (AMB.mute ? 0 : AMB.vol) * (m.indoor ? 0.6 : m.paused ? 0.6 : m.title ? 0.8 : 1), offline ? 0.3 : 0.8);
     ease(muff.frequency, m.indoor ? 650 : 20000 - 14000 * m.fog, 0.4);
@@ -1797,26 +1825,26 @@ const AMB = (() => {
     frogStep(m, nite * dry * (m.meadow * (0.3 + 0.7 * Math.max(m.lake, m.brook)) + 0.6 * (palm + fin)), nite * dry * (m.valley * (0.25 + 0.75 * m.river) + 0.3 * m.meadow * m.brook), dt);
     if (m.lake * nite > 0.2 && every('bull', 26 / m.lake)) bullfrog(m.lakeP + R(-0.4, 0.4), m.lake);
     const ow = nite * dry * (m.valley + 0.6 * m.meadow + 0.4 * pine + 0.3 * m.canyon);
-    if (ow > 0.05 && every('owl', 32 / ow)) { const p = R(-0.8, 0.8); owl(p, R(0.5, 0.85), 1); if (Math.random() < 0.5) later(R(3, 5.5), () => owl(-p, R(0.55, 0.9), 0.8, 1.12)); }   // (and its mate answers)
+    if (ow > 0.05 && every('owl', 45 / ow)) { const p = R(-0.8, 0.8); owl(p, R(0.5, 0.85), 1); if (Math.random() < 0.5) later(R(3, 5.5), () => owl(-p, R(0.55, 0.9), 0.8, 1.12)); }   // (and its mate answers)
     const pw = nite * dry * m.desert;
     if (pw > 0.05) {
-      if (!S.pw || t > S.pw.end) { const was = S.pw && S.pw.on; S.pw = { on: !was && Math.random() < pw * 1.4, end: t + (was ? R(25, 70) : R(12, 30)), pan: R(-0.8, 0.8), dist: R(0.35, 0.8) }; }
-      if (S.pw.on && every('pw', 2.4, 0.15)) poorwill(S.pw.pan, S.pw.dist);
+      if (!S.pw || t > S.pw.end) { const was = S.pw && S.pw.on; S.pw = { on: !was && Math.random() < pw, end: t + (was ? R(40, 100) : R(10, 20)), pan: R(-0.8, 0.8), dist: R(0.35, 0.8) }; }
+      if (S.pw.on && every('pw', 3.2, 0.2)) poorwill(S.pw.pan, S.pw.dist);
     }
     // day: songbirds (each place its own)
-    const lit = day * dry * (1 + 1.7 * dawn - 0.3 * heat);
+    const lit = day * dry * (1 + 0.8 * dawn - 0.35 * heat);
     const W = {
       robin: m.valley + 0.6 * pine, warbler: 1.2 * m.valley + 0.8 * m.meadow + 0.8 * pine + 0.6 * palm + fin + 0.2 * m.shore, chick: 0.8 * m.valley + 0.4 * m.meadow + 0.5 * pine,
-      trill: 0.5 * m.valley + 0.25 * m.desert * (1 - m.hot), peck: 0.35 * m.valley + 0.2 * pine, lark: 1.1 * m.meadow + fin, sky: 0.45 * m.meadow + 0.5 * fin,
-      dove: 0.7 * m.desert + 0.6 * palm, wren: 0.7 * m.desert, quail: 0.5 * m.desert * (1 - 0.6 * m.hot), cwren: 0.5 * m.canyon,
+      trill: 0.5 * m.valley + 0.15 * m.desert * (1 - m.hot), peck: 0.35 * m.valley + 0.2 * pine, lark: 1.1 * m.meadow + fin, sky: 0.25 * m.meadow + 0.4 * fin,
+      dove: 0.5 * m.desert + 0.6 * palm, wren: 0.3 * m.desert, quail: 0.3 * m.desert * (1 - 0.6 * m.hot), cwren: 0.4 * m.canyon,
     };
     let tot = 0; for (const k in W) tot += W[k];
-    if (tot > 0.01 && lit > 0.01 && every('bird', 1 / (0.16 * tot * lit)) && S.busy.length < 2 + (dawn > 0.5)) {
+    if (tot > 0.01 && lit > 0.01 && every('bird', 1 / (0.045 * tot * lit)) && S.busy.length < 1 + (dawn > 0.5 && tot > 2)) {   // (one at a time; two in a wood at dawn)
       let r = Math.random() * tot; for (const k in W) { r -= W[k]; if (r <= 0) { sing(k); break; } }
     }
     // the sea's birds and the mountain's
     const gl = (1.1 * m.shore + 1.2 * m.harb + m.isle + 0.9 * m.near * m.sea) * (day + 0.06) * (1 - 0.7 * m.storm) * (1 - m.calm);
-    if (gl > 0.02 && every('gull', 1 / (0.12 * gl))) sing('gull');
+    if (gl > 0.02 && every('gull', 1 / (0.06 * gl))) sing('gull');
     const rv = m.pass * day * (1 - m.blizz); if (rv > 0.05 && every('raven', 40 / rv)) sing('raven');
     // insects by day
     const ci = m.desert * heat * (0.5 + 1.2 * m.hot) * dry; if (ci > 0.02 && every('cicada', 14 / ci)) cicada(R(-0.8, 0.8), R(0.35, 0.85));

@@ -9,27 +9,29 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 const argv = process.argv.slice(2), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
 const secs = +(opt('--secs') || 16), wavDir = opt('--wav'), tone = +(opt('--tone') || 0), only = argv.filter((a, i) => !a.startsWith('--') && !(i && argv[i - 1].startsWith('--')));
-// where: s / lat on the trail, or at: a spot; hour; want: ambMix at least this; calls / beds: each 'a|b' needs one; none: never
+// where: s / lat on the trail, or at: a spot; hour; want: ambMix at least this; calls / beds: each 'a|b' needs one; none: never;
+// birds: at most this many birdsongs (they're few and far); secs: listen longer
 const PLACES = [
-  { name: 'desert-dawn', s: 110, hour: 6.3, want: { desert: 0.8 }, calls: ['dove|wren|quail|trill'], none: ['cricket', 'frog', 'wave', 'gull'] },
+  { name: 'desert-dawn', s: 110, hour: 6.3, secs: 40, birds: 6, want: { desert: 0.8 }, calls: ['dove|wren|quail|trill'], none: ['cricket', 'frog', 'wave', 'gull'] },
   { name: 'desert-night', s: 110, hour: 23, want: { desert: 0.8 }, calls: ['cricket'], none: ['dove', 'wren', 'quail', 'wave', 'frog'] },
-  { name: 'valley-river', s: 385, lat: -10, hour: 9, want: { valley: 0.8, river: 0.6 }, beds: ['river', 'wind'], calls: ['robin|warbler|chick|trill|peck'], none: ['cricket', 'dove', 'gull'] },
+  { name: 'valley-river', s: 385, lat: -10, hour: 9, secs: 30, birds: 9, want: { valley: 0.8, river: 0.6 }, beds: ['river', 'wind'], calls: ['robin|warbler|chick|trill|peck'], none: ['cricket', 'dove', 'gull'] },
   { name: 'valley-night', s: 300, hour: 1, want: { valley: 0.8 }, calls: ['cricket'], none: ['robin', 'warbler', 'chick', 'gull'] },
-  { name: 'oceanside', s: 545, lat: 8, hour: 11, want: { shore: 0.8, surf: 0.5 }, beds: ['surf'], calls: ['wave', 'gull'], none: ['cricket', 'frog'] },
+  { name: 'oceanside', s: 545, lat: 8, hour: 11, secs: 30, birds: 4, want: { shore: 0.8, surf: 0.5 }, beds: ['surf'], calls: ['wave', 'gull'], none: ['cricket', 'frog'] },
   { name: 'oceanside-night', s: 560, lat: 8, hour: 22.5, want: { shore: 0.8, surf: 0.5 }, calls: ['wave', 'cricket'] },
-  { name: 'meadow-brook', s: 728, lat: 4, hour: 10, want: { meadow: 0.8, brook: 0.5 }, beds: ['brook'], calls: ['lark|sky|warbler|chick'], none: ['cricket', 'gull', 'dove'] },
+  { name: 'meadow-brook', s: 728, lat: 4, hour: 10, secs: 30, birds: 7, want: { meadow: 0.8, brook: 0.5 }, beds: ['brook'], calls: ['lark|sky|warbler|chick'], none: ['cricket', 'gull', 'dove'] },
   { name: 'meadow-night', s: 790, lat: 16, hour: 0.5, want: { meadow: 0.8, lake: 0.2 }, calls: ['cricket', 'frog'], none: ['lark', 'warbler'] },
   { name: 'canyon', s: 932, hour: 12, want: { canyon: 0.8 }, beds: ['moan'], calls: ['cry|pebble|cwren'], none: ['gull', 'frog'] },
-  { name: 'snakes-noon', s: 985, hour: 13, want: { desert: 0.8, hot: 0.8 }, calls: ['cicada'], none: ['frog', 'gull'] },
+  { name: 'snakes-noon', s: 985, hour: 13, birds: 2, want: { desert: 0.8, hot: 0.8 }, calls: ['cicada'], none: ['frog', 'gull'] },
   { name: 'trading-post', at: 'market', hour: 15.5, want: { chime: 0.6, desert: 0.8 }, calls: ['chime'], none: ['gull', 'frog'] },
   { name: 'pass', s: 1300, hour: 11, want: { pass: 0.95 }, beds: ['wind'], none: ['cricket', 'frog', 'dove', 'warbler', 'gull', 'cicada'] },
   { name: 'pass-fire-night', at: 'fire', hour: 2, want: { pass: 0.9, fire: 0.5 }, beds: ['fire'], none: ['cricket', 'frog', 'owl', 'poorwill'] },
   { name: 'blizzard', s: 1300, hour: 13, blizz: 1, want: { blizz: 0.9 }, beds: ['wind'], none: ['cricket', 'raven'] },
   { name: 'cold-harbour', at: 'harbour', hour: 10, want: { harb: 0.8 }, calls: ['lap', 'tink|creak|bell'], none: ['cricket', 'dove', 'cicada'] },
   { name: 'at-sea', sea: { leg: 1, under: true }, hour: 11, want: { sea: 1 }, calls: ['creak'], none: ['cricket', 'dove', 'wave', 'robin'] },
-  { name: 'island', sea: { leg: 2 }, hour: 9, want: { isle: 1 }, calls: ['wave', 'gull'], none: ['cricket'] },
+  { name: 'island', sea: { leg: 2 }, hour: 9, secs: 30, want: { isle: 1 }, calls: ['wave', 'gull'], none: ['cricket'] },
 ];
 const h = await open({ query: '?sim&debug' });
+const BIRDS = ['warbler', 'robin', 'chick', 'trill', 'peck', 'lark', 'sky', 'dove', 'quail', 'wren', 'cwren', 'gull'];
 const todo = PLACES.filter(p => !only.length || only.some(o => p.name.includes(o)));
 const rows = [], fails = [];
 for (const P of todo) {
@@ -91,9 +93,10 @@ for (const P of todo) {
     }
     if (P.sea) GAME.resetGame();
     return out;
-  }, { P, secs, wav: !!wavDir, tone });
+  }, { P, secs: P.secs || secs, wav: !!wavDir, tone });
   const bad = [], has = k => k.split('|').some(x => (r.n[x] || 0) > 0);
   if (r.nan) bad.push(`${r.nan} NaN`);
+  const nb = BIRDS.reduce((a, k) => a + (r.n[k] || 0), 0); if (P.birds !== undefined && nb > P.birds) bad.push(`${nb} birdsongs (want ≤ ${P.birds})`);
   for (const [k, v] of Object.entries(P.want || {})) if (!(r.m[k] >= v)) bad.push(`mix ${k} ${(+r.m[k]).toFixed(2)} (want ≥ ${v})`);
   for (const c of P.calls || []) if (!has(c)) bad.push(`no ${c}`);
   for (const c of P.none || []) if (has(c)) bad.push(`${c} ×${r.n[c]}`);
@@ -113,19 +116,29 @@ for (const P of todo) {
 const CALLS = ['warbler', 'robin', 'chick', 'trill', 'peck', 'lark', 'sky', 'dove', 'quail', 'wren', 'cwren', 'gull', 'raven', 'cricket', 'peep', 'krek', 'bull', 'owl', 'poorwill',
   'cicada', 'bee', 'hopper', 'chime', 'creak', 'tink', 'bell', 'lap', 'ice', 'slide', 'pebble', 'cry'];
 if (!only.length || only.includes('calls')) {
-  const solo = await h.page.evaluate(async CALLS => {
+  const solo = await h.page.evaluate(async ({ CALLS, wav }) => {
     const { AMB } = GAME, res = {}, mix = { ...GAME.AMB_MIX }; for (const k in mix) if (typeof mix[k] === 'number') mix[k] = 0; mix.hour = 12; mix.isleKind = '';
+    const rnd0 = Math.random;
     for (const k of CALLS) {
+      let seed = 7654321; for (const c of k) seed = Math.imul(seed ^ c.charCodeAt(0), 2654435761) >>> 0;
+      Math.random = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
       const sr = 44100, secs = 12, off = new OfflineAudioContext(2, sr * secs, sr), tick = 0.05;
       AMB.attach(off, off.destination, true); AMB.update(mix, tick);
       for (let i = 1; i * tick < secs - 0.06; i++) off.suspend(i * tick).then(() => { AMB.update(mix, tick); if (i === 20 || i === 80 || i === 140) AMB.call(k); off.resume(); });
       const b = await off.startRendering(), L = b.getChannelData(0), R = b.getChannelData(1); let pk = 0, ss = 0, nOn = 0;
       for (let i = sr; i < b.length; i++) { const v = Math.max(Math.abs(L[i]), Math.abs(R[i])); pk = Math.max(pk, v); if (v > 1e-4) { ss += (L[i] * L[i] + R[i] * R[i]) / 2; nOn++; } }
       res[k] = { peak: 20 * Math.log10(pk + 1e-12), rms: 10 * Math.log10(ss / Math.max(1, nOn) + 1e-12) };
+      if (wav) {   // the three of it, at the game's level (×0.6)
+        const n = b.length - sr, dv = new DataView(new ArrayBuffer(44 + n * 4)), w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+        w(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); w(8, 'WAVE'); w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 4, true);
+        for (let i = 0, o = 44; i < n; i++) for (const d of [L, R]) { dv.setInt16(o, Math.max(-1, Math.min(1, d[sr + i] * 0.6)) * 32767, true); o += 2; }
+        const u8 = new Uint8Array(dv.buffer); let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); res[k].wav = btoa(s);
+      }
     }
-    return res;
-  }, CALLS);
-  const loud = Object.entries(solo).filter(([, v]) => v.peak > -14 || v.peak < -40);
+    Math.random = rnd0; return res;
+  }, { CALLS, wav: !!wavDir });
+  if (wavDir) { fs.mkdirSync(path.join(wavDir, 'calls'), { recursive: true }); for (const [k, v] of Object.entries(solo)) { fs.writeFileSync(path.join(wavDir, 'calls', `${k}.wav`), Buffer.from(v.wav, 'base64')); delete v.wav; } }
+  const loud = Object.entries(solo).filter(([k, v]) => v.peak > (BIRDS.includes(k) ? -26 : -14) || v.peak < -44);   // (birds: quiet)
   console.log('calls (peak / rms while sounding, dBFS):\n' + Object.entries(solo).map(([k, v]) => `  ${k.padEnd(9)} ${v.peak.toFixed(1).padStart(6)} ${v.rms.toFixed(1).padStart(6)}`).join('\n'));
   if (loud.length) { console.log('✖ too loud / quiet:', loud.map(([k]) => k).join(' ')); fails.push('calls'); }
 }
