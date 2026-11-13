@@ -11,6 +11,7 @@
 //   barn     opens on the Dogs: cards with portraits; the breed picker (a grid, filters)
 //   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
+//   pack     the DOG PACK on every breed: outside its body and fur, off the ground, clear of its head and legs; pockets fill in turn, salt on top, emptied: off
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -317,6 +318,42 @@ const order = r11.smooth && r11.smooth.join();
 ok('the breed picker: all 48 in a grid (the dog\'s own lit); coat and size filters; a click picks one (lit); → the next; Esc: back to the barn', r11.open && r11.tiles === 48 && r11.lit0.join() === 'border'
   && r11.smooth.length === 17 && r11.smooth.includes('smooth') && !r11.smooth.includes('border') && r11.smallSmooth.length > 0 && r11.smallSmooth.every(b => r11.smooth.includes(b)) && r11.smallSmooth.includes('frenchie') && !r11.smallSmooth.includes('lab')
   && r11.all === 48 && r11.picked === 'kelpie' && r11.lit1.join() === 'kelpie' && r11.right === 'nzhuntaway' && r11.closed, { ...r11, smooth: order });
+
+// 12. DOG PACK: every breed wears it (outside its body, off the ground, clear of its head and legs); pockets fill in turn; emptied: off
+const r12 = await h.page.evaluate(() => {
+  const { DOG_BREEDS, dogShape, dogPackBuild, dogPackSync, packHull, THREE } = GAME, out = { bad: [] };
+  const grp = () => new THREE.Group(), mesh = geo => new THREE.Mesh(geo);
+  for (const B of DOG_BREEDS) {
+    const S = dogShape(B), meshes = [], M = { look: { breed: B.id, collar: '#3d8ef0' }, body: grp() };
+    const pk = dogPackBuild(M, (par, geo) => { const m = mesh(geo); par.add(m); meshes.push(m); return m; });
+    dogPackSync(pk, 1, true, 0, true); M.body.updateMatrixWorld(true);
+    const H = packHull(S), legs = [[0.12, 0.27], [-0.12, 0.27], [0.12, -0.3], [-0.12, -0.3]].map(([x, z]) => [x * S.F, z * S.Ln]);
+    let inside = 0, minY = 9, head = 0, leg = 0, n = 0; const hr = 0.22 * S.hk;
+    for (const m of meshes) {
+      if (m.parent === pk.salt || pk.slots.some(sl => sl.g === m.parent)) continue;   // (what's in the pockets)
+      const a = m.geometry.attributes.position;
+      for (let i = 0; i < a.count; i++) {
+        const w = m.localToWorld(new THREE.Vector3(a.getX(i), a.getY(i), a.getZ(i))); n++;
+        for (const e of H) if (((w.x - e.c[0]) / e.s[0]) ** 2 + ((w.y - e.c[1]) / e.s[1]) ** 2 + ((w.z - e.c[2]) / e.s[2]) ** 2 < 0.97) { inside++; break; }
+        minY = Math.min(minY, w.y); if (((w.x - S.head[0]) / (hr * B.sw)) ** 2 + ((w.y - S.head[1]) / (hr * B.sh)) ** 2 + ((w.z - S.head[2]) / hr) ** 2 < 1) head++;   // (its skull, a bit over)
+        if (w.y < S.hipY - 0.02) for (const [lx, lz] of legs) if (Math.hypot(w.x - lx, w.z - lz) < S.legR + 0.005) leg++;
+      }
+    }
+    const r = { inside, minY: +minY.toFixed(3), head, leg };
+    if (inside || minY < 0.005 || head || leg) out.bad.push([B.id, r]);
+    out.n = (out.n || 0) + 1;
+  }
+  const M = { look: { breed: 'border', collar: '#e8473f' }, body: grp() }, pk = dogPackBuild(M, (par, geo) => { const m = mesh(geo); par.add(m); return m; });
+  const fill = k => { dogPackSync(pk, k, false, 0, true); return pk.slots.map(sl => sl.g.visible ? 1 : 0).join(''); };
+  out.fill = [0.2, 0.3, 0.55, 0.8, 1].map(fill); dogPackSync(pk, 0, true, 0, true); out.salt = [pk.root.visible, pk.salt.visible, pk.slots.some(sl => sl.g.visible)];
+  dogPackSync(pk, 0, false, 0, true); out.off = pk.root.visible;
+  for (let i = 0; i < 60; i++) dogPackSync(pk, 0.5, false, 1 / 60); out.pop = +pk.s.toFixed(2);
+  for (let i = 0; i < 90; i++) dogPackSync(pk, 0, false, 1 / 60); out.gone = pk.root.visible;
+  return out;
+});
+ok(`the pack on all ${r12.n} breeds: outside its body and fur, off the ground (a corgi's belly strap too), clear of its head and legs`, r12.n === 48 && r12.bad.length === 0, r12.bad.slice(0, 6));
+ok('the pack: pockets fill in turn (bags, then pockets), salt on top, empty: none; it pops on, comes off', r12.fill.join() === '1000,1100,1110,1111,1111' && r12.salt.join() === 'true,true,false' && r12.off === false
+  && Math.abs(r12.pop - 1) < 0.05 && r12.gone === false, r12);
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();

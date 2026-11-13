@@ -55,7 +55,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 
 `T` (all tuning) → `Sound` → `AMB` (ambience) → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING, IDLE) →
-DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
+DOG MOVES & PHYSICS → FORAGE (DOG PACK) → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING, HAIR) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VAGABOND (the VENDOR's wares) → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
@@ -135,7 +135,7 @@ Run the ones touching your change; report the numbers.
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `sea-net-test.mjs` | online at sea (`PEERSERVER=host:port`): alongside, the guest's stick hauls her lines in (%), cast off (land carried off, chase camera), pose and waves match, the guest's stick by its own camera, a ring thrown, a sheep overboard on it, orcas, the kraken's arms, fx relayed, no anchor drop just after |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
-| `role-test.mjs` | barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
+| `role-test.mjs` | barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; the pack on every breed (clear of body, ground, head, legs), pockets in turn; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
 | `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
 | `amb-test.mjs [place…] [--wav DIR] [--tone F]` | ambience: each leg by day / night found by `ambMix`, rendered offline (seeded): levels, no hum (under 100 Hz, steady tones), stereo, which beds and calls play where; each call's loudness; live smoke. `--wav`: listen (+ a tour .mp3); `--tone`: a hum added, must fail |
@@ -201,6 +201,8 @@ turns the stick into its own (`netReadInput`).
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough
   to tip in. The fence by the troughs can't be hopped (`byTrough`); tip over it.
+- **Dog pack** (DOG PACK, `dogPackBuild`, `dogPackSync`, drawing only): carrying greens or salt, a dog wears saddlebags in its collar's colour,
+  fitted to its breed's hull (`packHull`, `packR`). Greens fill the pockets in turn (bags, then outer pockets), salt in the top pocket. Emptied: it pops off.
 - **Trough mayhem.** Penned sheep eat/lick till full; no place → shove the
   weakest (`shoveStr`: small, old, lambs lose; rams win) off it (`barge`, `T.shove`).
   Needier shoves harder (`desp`); not one just arrived (`hold`); nearer beats one
@@ -317,12 +319,14 @@ turns the stick into its own (`netReadInput`).
   (`boneMass`). P1 picks on the title (chips, ←/→ / A/D / D-pad, eaten before join), anyone in the
   barn's Dogs tab (R3); kept per slot in `DOGS.looks[slot].role` (old saves: `breed`); `T.roleDef` per slot (all
   Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.ro`, `b`).
+- **Wearables: every breed.** Anything a dog wears (hats, kit, the pack): check it on all breeds before it ships: a `role-test.mjs` check over
+  `DOG_BREEDS` (outside the body, off the ground, clear of head and legs) and a look at `node tools/dog-shots.mjs OUT.png` (`--pack`, `--tilt`).
 - **Dog breeds** (`DOG_BREEDS`, `DOG_PATS`, `dogShape`, `buildDog`): looks only, nothing in the sim reads one. The herding
   dogs (Border Collie first, the default), a Portuguese Water Dog, + the AKC's ten most popular. One collie bent by numbers (`leg len fat head muz mw sw sh`,
   `ear`, `tail` (`dogTailGeo`: a tapered tube per kind, `dogTube`; brush under a plume), `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
   things hang there). Coats per breed (`L.coat` = its base hex, one each; `fitCoat`). Hats and kit fitted per breed (`dogGear(id, B)`:
   hat on the skull `hatY`, shades on its eyes, a flower behind its ear; collar kit in `M.neck`, scaled about the collar). Barn:
-  ‹ › / L3; `L.breed`. Online: in the look (`look`). Contact sheet: `node tools/dog-shots.mjs OUT.png`.
+  ‹ › / L3; `L.breed`. Online: in the look (`look`). Contact sheet: `node tools/dog-shots.mjs OUT.png` (`--pack g,s`: the pack on).
 - **Training** (`T.train`, `G.train[slot|role]`, `trainRec`): doing it earns xp in that trait
   (barks that reach something, bonks that hit, jumps on the move `jumpGap` apart, m sprinted,
   stamina spent, hp lost, s holding); levels at `lv` (max 5), each × (1 + `per`); ⬆ over the dog
