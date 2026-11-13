@@ -1,4 +1,4 @@
-// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|find|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|prey|sea|reset]`.
+// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|find|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|prey|save|sea|reset]`.
 //   layout  rare: two herds a journey (a lone male maybe), each on its own land leg, never the first; tucked away off the trail;
 //           not Falcon Canyon, the pass, the sea; males and females; off in ?sim
 //   find    a dog comes on a herd: found (the first: a banner), once
@@ -15,6 +15,7 @@
 //   grab    grabbed by the scruff, carried, flung; a grown wild one bucks free
 //   prey    a cria's taken as a lamb is: a coyote pack goes for it, drags it off, it's gone; a dog's pounce on the coyote drops it (it runs);
 //           a cougar goes for it before the sheep, up its tree with it
+//   save    a reload (JOURNEY SAVE): the same herds, the ones found still found, the guards back by the flock
 //   sea     guards aboard, kushed, at sea
 //   reset   a new journey: new herds, no guards
 import { open } from './harness.mjs';
@@ -331,6 +332,28 @@ if (want('prey')) {
   ok(`a coyote pack takes a cria (${r.coyote.took}), drags it off: gone`, r.coyote.took === 'coyote' && r.coyote.gone && r.coyote.lost >= 1, r);
   ok('a pounce on the coyote drops the cria: it runs', r.saved.saved && r.saved.ran && r.saved.alive, r);
   ok('a cougar goes for the cria first, up its tree with it', r.cougarPicks && r.cougar.up && r.cougar.gone && r.cougar.sheep === 0, r);
+}
+
+if (want('save')) {
+  await setup();
+  const before = await h.page.evaluate(() => {
+    const { LLAMAS, LLAMA, resetLlamas, makeLlama, llamaJoin, JOURNEY, journeySave } = GAME;
+    JOURNEY.off = false; resetLlamas(4242); LLAMA.herds[0].found = true; LLAMA.seen = true; LLAMA.found = 1;
+    const p = H.at(200, 0); H.flock(p.x, p.z);
+    const g = makeLlama({ x: p.x + 5, z: p.z, sex: 'f', age: 5, coat: 3, wool: 0.4 }); g.tame = 1; llamaJoin(g);
+    return { saved: journeySave(), seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join() };
+  });
+  await h.page.reload(); await h.page.waitForFunction(() => window.GAME, null, { timeout: 60000 });
+  const after = await h.page.evaluate(() => {
+    const { T, LLAMAS, LLAMA, JOURNEY, journeyRead, startGame, flockCenter } = GAME;
+    T.llama.on = true; JOURNEY.off = false; JOURNEY.saved = journeyRead(); startGame({ kind: 'bot', index: 0 });
+    const g = LLAMAS.find(L => L.tame === 2), fc = flockCenter();
+    return { resumed: JOURNEY.resumed, seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join(), seen: LLAMA.seen,
+      guard: g ? { coat: g.coat, wool: g.wool, near: +Math.hypot(g.x - fc.x, g.z - fc.z).toFixed(1) } : null };
+  });
+  ok(`a reload: the same herds (${after.wild}), found still found, the guard back by the flock (${after.guard && after.guard.near} m)`,
+    before.saved && after.resumed && after.seed === before.seed && after.wild === before.wild && after.found === before.found && after.seen
+    && after.guard && after.guard.coat === 3 && Math.abs(after.guard.wool - 0.4) < 0.01 && after.guard.near < 20, { before, after });
 }
 
 if (want('sea')) {

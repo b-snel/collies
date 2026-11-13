@@ -36,6 +36,8 @@
   topknot, big lashy eyes, a split-lip smile, two-toed feet; coats (`LLAMA_COATS`): white … black, paint, appaloosa, two-tone. Pacing
   walk, grazing, kushed, chewing, ears back when cross, cheeks puffed to spit. Tame: a halter; guards: tassels on the ears. Fleece by
   `L.wool`. Spit: `spitFx` (a glob, a splat). Sounds: `LSND` (hum, alarm, gurgle, spit). `llamaFx`: what the sim's events look and sound like.
+- **Journey save** (`onSave('llamas')`): the seed (the same herds), which were found, the guards (by the flock; aboard at sea). Wild
+  herds come back as they started.
 - **Online**: `NET_TYPES.llama` (`rp`: its rope, `ropeI`, held, flying), `llamaFx` / `spitFx` relayed; a guest wipes its own (`llamaWipe`).
 - **HUD / map**: 🦙 guards in the flock panel; the map: guards always, wild ones where a dog's been (`mapLlamas`). Dev: `\` a herd by
   the first dog, again: one a guard (`devLlama`).
