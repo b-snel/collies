@@ -410,7 +410,7 @@ if (want('storm')) {
       H.run(12, t => { H.steer(0); const h = Math.abs(SEA.heel); heel = Math.max(heel, h); if (at < 0 && g.hit) at = t; if (at < 0) pre.push(h); else if (t - at < 2) post = Math.max(post, h); });
       // kick: what the wave itself does, the most she heels in the 2 s after it hits over the 2 s before (a storm swell rolls her anyway)
       return { over: H.swimmers().length, heel: H.deg(heel), kick: H.deg(post - Math.max(0, ...pre.slice(-80))), hit: !SEA.rogue || SEA.rogue.hit }; };
-    out.beam = wave(Math.PI / 2); for (let k = 0; k < 2 && !out.beam.over; k++) out.beam = wave(Math.PI / 2);   // (who's swept off is chance: up to three waves)
+    out.beam = wave(Math.PI / 2); for (let k = 0; k < 2 && !(out.beam.over && out.beam.kick > 6); k++) out.beam = wave(Math.PI / 2);   // (chance: who's swept off, and where in the swell's roll it lands: up to three waves)
     out.bow = wave(0.1);
     return out;
   });
