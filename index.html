@@ -7184,6 +7184,30 @@ function fillTroughs(pen, food) {
   const n = pen.troughs.length; for (const tr of pen.troughs) { tr.food = food / n; tr.cap = Math.max(T.forage.troughCap, tr.food); tr.shown = tr.food; }
 }
 const troughFood = pen => pen.troughs.reduce((a, tr) => a + tr.food, 0);
+// SHARED STORES: one pool each of food, water, salt for every pen ashore (not the deck). Put in or eaten anywhere: the pool; each pen shows as much of it as it holds (`shareStores`, host)
+const STORE = { food: 0, water: 0, salt: 0 };
+const STORE_K = {
+  food: [troughFood, p => p.troughs.reduce((a, tr) => a + tr.cap, 0), (p, v) => {   // only the difference: in emptiest first, out fullest first
+    let k = v - troughFood(p); if (k > 1e-6) return stockTroughs(p, k);
+    for (const tr of [...p.troughs].sort((a, b) => b.food - a.food)) { if (k > -1e-6) break; const t = Math.min(tr.food, -k); tr.food -= t; k += t; }
+  }],
+  water: [p => p.water.w, p => p.water.cap, (p, v) => { p.water.w = v; }],
+  salt: [p => p.lick.salt, p => p.lick.cap, (p, v) => { p.lick.salt = v; }],
+};
+const storePens = () => pens.filter(p => !p.deck);
+function shareStores() {
+  const ps = storePens();
+  for (const k in STORE_K) {
+    const [get, cap, set] = STORE_K[k];
+    let pool = STORE[k];
+    for (const p of ps) { const was = p.store && p.store[k]; if (was !== undefined) pool += get(p) - was; }
+    STORE[k] = pool = Math.max(0, pool);
+    for (const p of ps) { const c = cap(p), v = Math.min(pool, c); set(p, v, c); (p.store = p.store || {})[k] = get(p); }
+  }
+}
+function storeReset(...ks) {   // a new journey: the pool is the most any pen starts with
+  for (const k of ks) { const [get, cap, set] = STORE_K[k], ps = storePens(); STORE[k] = Math.max(0, ...ps.map(get)); for (const p of ps) { set(p, Math.min(STORE[k], cap(p))); (p.store = p.store || {})[k] = get(p); } }
+}
 const FORAGE = { picked: 0, tipped: 0, tips: 0, salted: 0, saltPicked: 0, regrowT: 0, lastPick: -9, saltWarnDay: 0 };
 function resetForage() {
   kitReset();   // VENDOR: bought troughs and licks gone
@@ -7191,6 +7215,7 @@ function resetForage() {
   for (const r of SALT_ROCKS) { r.taken = false; r.growT = -9; }
   for (const d of G.dogs) { d.greens = 0; d.salt = 0; }
   resetPlants(); Object.assign(FORAGE, { picked: 0, tipped: 0, tips: 0, salted: 0, saltPicked: 0, saltWarnDay: 0 });
+  storeReset('food', 'salt');
 }
 // ---------------- the dogs gather as they go ----------------
 function pickPlant(p, d) {
@@ -7409,6 +7434,7 @@ function resetWater() {
   for (const p of pens) { p.water.w = p === pens[0] ? p.water.cap * T.water.startFill : 0; p.water.shown = p.water.w; }   // the first camp's starts full (no water out in the desert)
   for (const b of BUCKETS) Object.assign(b, { x: b.hx, z: b.hz, w: 0, by: null, drop: null, vx: 0, vz: 0, vy: 0, h: 0, rot: 0, spin: 0, kickT: 0 });
   Object.assign(WATER, { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 });
+  storeReset('water');
 }
 resetWater();
 const bucketOf = d => { for (const b of BUCKETS) if (b.by === d) return b; return null; };
@@ -19756,6 +19782,7 @@ function step(dt) {
     if (!SEA_AWAY) updatePass(dt, dtH);   // MOUNTAIN PASS: fires, blizzards, goats, the yeti, snowballs, the rock wall, his cave (till she's cast off)
     updateRemains(dtH);    // REMAINS: the fallen rot to tombstones
     updateVendor();   // VENDOR: each stall's pen, Hank's word at the stalls
+    shareStores();    // SHARED STORES: every pen's troughs, water, lick one pool
     updateApples();   // APPLES: grow back, rot
     checkLose();
   } else {
@@ -20048,7 +20075,7 @@ Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, d
 Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut });   // BURROWS
 Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
 Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
-Object.assign(window.GAME, { BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
+Object.assign(window.GAME, { STORE, shareStores, BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 Object.assign(window.GAME, { SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail,
   HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground, seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea,
   seaG, FORAGE, RINGS, ringStep, ringTarget, ringAim, ringsOut, seaSwimmers, seaSpd, SEAC, seaCam, isleShow, seaLandDepth, landSea, scene, camera,

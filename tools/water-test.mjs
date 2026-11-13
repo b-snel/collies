@@ -36,11 +36,11 @@ const r1 = await h.page.evaluate(() => {
 ok(`a water trough in every pen (${r1.length})`, r1.every(c => c.cap === 12 && c.spots >= 3), r1.map(c => c.spots));
 ok('open ground outside each trough', r1.every(c => c.roomOutside > 0.6), r1.map(c => c.roomOutside));
 ok('a bucket on open ground by each', r1.every(c => c.bucket > 1 && c.bucketFromTrough < 4), r1.map(c => [c.bucket, c.bucketFromTrough]));
-ok('first camp full, the rest empty', r1[0].w === r1[0].cap && r1.slice(1).every(c => c.w === 0), r1.map(c => c.w));
+ok('one pool: the first camp\'s full water in every pen', r1.every(c => c.w === c.cap), r1.map(c => c.w));
 
 // 2. running over it does nothing; holding grab picks it up (one per dog), fill at the river bank, tip in over the fence
 const r2 = await h.page.evaluate(() => {
-  const { G, T, pens, BUCKETS, WATER, bucketOf } = GAME; H.reset(11); const d = H.d(), pen = pens[1], b = BUCKETS[1], out = {};
+  const { G, T, pens, BUCKETS, WATER, bucketOf } = GAME; H.reset(11); const d = H.d(), pen = pens[1], b = BUCKETS[1], out = {}; for (const p of pens) p.water.w = 0;
   const bo = Math.hypot(b.x - pen.x, b.z - pen.z); H.place(d, b.x + (b.x - pen.x) / bo * 6, b.z + (b.z - pen.z) / bo * 6); H.walkTo(b.x, b.z, 10, 0.3); H.run(0.1); out.notWithoutGrab = !bucketOf(d);   // (from out in the field)
   H.g = true; H.idle(); H.run(0.2);
   out.picked = bucketOf(d) === b;
@@ -65,7 +65,7 @@ ok('empty: still in its mouth for the next trip', r2.keptEmpty, r2);
 
 // 3. swimming fills it too; tipping from inside the pen; barking with it; no grabbing a sheep (mouth full)
 const r3 = await h.page.evaluate(() => {
-  const { G, T, pens, BUCKETS, bucketOf, RIVER } = GAME; H.reset(11); const d = H.d(), b = BUCKETS[1], out = {};
+  const { G, T, pens, BUCKETS, bucketOf, RIVER } = GAME; H.reset(11); const d = H.d(), b = BUCKETS[1], out = {}; for (const p of pens) p.water.w = 0;
   H.g = true; H.idle(); b.by = d; b.w = 0;
   const mid = H.atRiver(-20, 0); H.place(d, mid.x, mid.z); d.air = { swim: true, kind: 'swim', t: 0, h: -3, vy: 0, spin: 0 };
   H.run(0.2); out.swimFull = b.w; out.swimming = !!(d.air && d.air.swim);
