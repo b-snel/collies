@@ -89,9 +89,9 @@ try {
   await A.page.evaluate(() => { const S = GAME.SEA; S.pilot = 0.6; S.u = 4; });
   await sleep(4000);
   await until(B, () => GAME.SEAC.k > 0.9, null, 8000).catch(() => {});
-  await A.page.evaluate(() => NET.api.setPause(true, 'test')); await sleep(900);
+  await A.page.evaluate(() => NET.api.hold(true, 'test')); await sleep(900);
   const [hp, gp] = await Promise.all([pose(A), pose(B)]);
-  await A.page.evaluate(() => NET.api.setPause(false));
+  await A.page.evaluate(() => NET.api.hold(false, 'test'));
   const dPos = Math.hypot(hp.e - gp.e, hp.n - gp.n), dH = Math.abs(hp.hdg - gp.hdg), dEta = Math.abs(hp.eta - gp.eta);
   check('under way: her place, heading, heel and the sea\'s height match on both screens (paused)', gp.on && !gp.docked && dPos < 0.1 && dH < 0.01 && Math.abs(hp.heel - gp.heel) < 0.01 && dEta < 0.05, { dPos: r2(dPos), dHdg: r2(dH), dEta: r2(dEta), e: r2(hp.e) });
   const cam = await B.page.evaluate(() => ({ k: GAME.SEAC.k }));
@@ -133,9 +133,9 @@ try {
   await until(B, () => GAME.RINGS[1].st === 'air' || GAME.RINGS[1].st === 'water', null, 5000).catch(() => {});
   await until(B, () => GAME.RINGS[1].st === 'water', null, 6000).catch(() => {});
   await A.page.evaluate(() => clearInterval(window.__aim));
-  await A.page.evaluate(() => NET.api.setPause(true, 'test')); await sleep(800);
+  await A.page.evaluate(() => NET.api.hold(true, 'test')); await sleep(800);
   const [hr, gr] = await Promise.all([A.page.evaluate(() => { const r = GAME.RINGS[1]; return { st: r.st, x: r.x, z: r.z, sheep: r.sheep && r.sheep.id }; }), B.page.evaluate(() => { const r = GAME.RINGS[1]; return { st: r.st, x: r.x, z: r.z, sheep: r.sheep && r.sheep.id, fx: NET.fxIn.ringFx || 0 }; })]);
-  await A.page.evaluate(() => NET.api.setPause(false));
+  await A.page.evaluate(() => NET.api.hold(false, 'test'));
   check('thrown: the guest sees the ring on the water where the host has it (and its effects)', gr.st === 'water' && Math.hypot(hr.x - gr.x, hr.z - gr.z) < 0.2 && gr.fx > 0, { host: hr.st, guest: gr.st, err: r2(Math.hypot(hr.x - gr.x, hr.z - gr.z)), fx: gr.fx });
   await A.page.evaluate(() => { const r = GAME.RINGS[1], s = window.__s, dx = r.x - r.hx, dz = r.z - r.hz, l = Math.hypot(dx, dz) || 1; if (!r.sheep && s.air) { s.x = r.x + dx / l * 0.8; s.z = r.z + dz / l * 0.8; } });   // (wherever it landed: she's by it, on the far side from the boat)
   await until(A, () => GAME.RINGS[1].sheep, null, 12000).catch(() => {});
@@ -154,7 +154,7 @@ try {
   await A.page.evaluate(() => { const { SEA, KRAKEN, krakenGrip } = GAME; KRAKEN.on = true; KRAKEN.calm = true; KRAKEN.max = KRAKEN.hp = 3; SEA.hold = { heel: 0 }; krakenGrip(1); });
   await until(A, () => GAME.KRAKEN.arms.filter(a => a.st === 'grip').length > 1, null, 10000).catch(() => {}); await sleep(800);
   const kr = await B.page.evaluate(() => { const Q = GAME.KRAKEN; return { on: Q.on, hp: Q.hp, arms: Q.arms.length, grip: Q.arms.filter(a => a.st === 'grip').length, fx: NET.fxIn.seaFx || 0 }; });
-  const kh = await A.page.evaluate(() => GAME.KRAKEN.arms.length), kst = await A.page.evaluate(() => ({ st: GAME.KRAKEN.arms.map(a => a.st + ':' + a.t.toFixed(1)), t: GAME.G.time, paused: GAME.G.paused, why: GAME.G.pauseWho }));
+  const kh = await A.page.evaluate(() => GAME.KRAKEN.arms.length), kst = await A.page.evaluate(() => ({ st: GAME.KRAKEN.arms.map(a => a.st + ':' + a.t.toFixed(1)), t: GAME.G.time, paused: GAME.G.paused, why: GAME.G.hold }));
   check('the kraken: its arms over the rail on the guest\'s screen, its hearts; sea effects relayed', kr.on && kr.hp === 3 && kr.arms === kh && kr.grip > 0 && kr.fx > 0, { ...kr, host: kh, kst });
   await shot('kraken', A, B);
 
