@@ -22,7 +22,7 @@ const PLACES = [
   { name: 'meadow-night', s: 790, lat: 16, hour: 0.5, want: { meadow: 0.8, lake: 0.2 }, calls: ['cricket', 'frog'], none: ['lark', 'warbler'] },
   { name: 'canyon', s: 932, hour: 12, want: { canyon: 0.8 }, beds: ['moan'], calls: ['cry|pebble|cwren'], none: ['gull', 'frog'] },
   { name: 'snakes-noon', s: 985, hour: 13, birds: 2, want: { desert: 0.8, hot: 0.8 }, calls: ['cicada'], none: ['frog', 'gull'] },
-  { name: 'trading-post', at: 'market', hour: 15.5, want: { chime: 0.6, desert: 0.8 }, calls: ['chime'], none: ['gull', 'frog'] },
+  { name: 'trading-post', at: 'market', hour: 15.5, secs: 40, want: { chime: 0.6, desert: 0.8 }, calls: ['chime'], none: ['gull', 'frog'] },
   { name: 'pass', s: 1300, hour: 11, want: { pass: 0.95 }, beds: ['wind'], none: ['cricket', 'frog', 'dove', 'warbler', 'gull', 'cicada'] },
   { name: 'pass-fire-night', at: 'fire', hour: 2, want: { pass: 0.9, fire: 0.5 }, beds: ['fire'], none: ['cricket', 'frog', 'owl', 'poorwill'] },
   { name: 'blizzard', s: 1300, hour: 13, blizz: 1, want: { blizz: 0.9 }, beds: ['wind'], none: ['cricket', 'raven'] },

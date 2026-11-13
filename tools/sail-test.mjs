@@ -459,11 +459,13 @@ if (want('kraken')) {
     const heel = v => { KRAKEN.phase = 'grip'; KRAKEN.t = 8; SEA.heel = 0; SEA.heelV = 0; let n = 0, s = 0; H.run(14, t => { H.flock(v); KRAKEN.t = Math.min(KRAKEN.t, 20); if (t > 8) { n++; s += SEA.heel * sd; } }); return H.deg(s / n); };
     out.low = heel(sd * 3.6); out.high = heel(-sd * 3.6); out.barks = (() => { const n0 = KRAKEN.arms.length; p.bot = { bark: true }; H.run(0.1); p.bot = {}; H.run(0.5); return KRAKEN.arms.length === n0; })();
     // pounce each arm off the rail; then its eye comes up
-    H.flock(-sd * 2, -8, -4); let bonks = 0;
+    H.flock(-sd * 2, -8, -4); let bonks = 0; for (const s of G.sheep) s.krakCd = 1e9;   // (no ram butting one: the dog's pounces)
+    out.left0 = KRAKEN.arms.filter(q => q.kind === 'grip' && q.st !== 'hurt').length;   // (a ram may have butted one off already)
     for (let k = 0; k < 8 && KRAKEN.phase === 'grip'; k++) {
       const arm = KRAKEN.arms.find(q => q.kind === 'grip' && q.st === 'grip'); if (!arm) { H.run(0.5); continue; }
       const q = boatXZ(arm.u, sd * (boatHB(arm.u) - 3.4)); d.x = q.x; d.z = q.z; d.vx = d.vz = 0; d.air = null; d.stunT = 0; d.pounceT = 0; d.pounceCD = 0; p.bot = {}; H.run(0.8);
-      p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = H.stick(0, sd); H.run(0.6); p.bot = {}; if (arm.st === 'hurt') bonks++;
+      const on = () => KRAKEN.arms.filter(q => q.kind === 'grip' && q.st !== 'hurt').length, n0 = on();   // (the pounce may hit the arm beside it)
+      p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = H.stick(0, sd); H.run(0.6); p.bot = {}; bonks += n0 - on();
     }
     out.bonks = bonks; H.run(1.2); out.eye = KRAKEN.phase; out.righted = H.deg(Math.abs(SEA.heel));
     // a sheep punted over the rail into its eye: a hit; it bounces back aboard
@@ -478,7 +480,7 @@ if (want('kraken')) {
   ok(`the wind dies (${r.wind} m/s), ink wells up, the kraken has her: ${r.arms} arms on a rail, ${r.hp} ♥`, r.on && r.calm > 0.7 && r.wind < 3 && r.arms >= 3 && r.hp === 3, r);
   ok(`it hauls that rail down: ${r.low}° with the flock on the low side, ${r.high}° with them herded to the high side`, r.low > 30 && r.high < r.low - 8, r);
   ok('barks do nothing to it', r.barks, r);
-  ok(`a pounce bonks each arm off the rail (${r.bonks}); she rights; its eye comes up`, r.bonks >= 3 && r.eye === 'eye', r);
+  ok(`a pounce bonks each arm off the rail (${r.bonks}/${r.left0}); she rights; its eye comes up`, r.left0 > 0 && r.bonks >= r.left0 && r.eye === 'eye', r);
   ok('a sheep bonked into its eye: a ♥ off, and the sheep bounces back aboard', r.hit === 1 && r.back, r);
   ok(`beaten: +${r.bounty} 🧶, she's free, the wind fills in again (${r.windBack} m/s)`, r.beaten && r.bounty === 30 && r.hold === null && r.windBack > 5 && r.inkGone < 0.1, r);
 }

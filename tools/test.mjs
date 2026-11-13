@@ -4,7 +4,7 @@
 //   --list     each test and what it checks                                  --why  what would run and why, nothing run
 //   -j N       N at once (default: cores)      --shard I/N  part I of N (CI)      --timeout S  per test (default 1200)
 // Online ones (net, sea-net, hybrid) only with PEERSERVER=host:port. Seeded: SEED=n another Math.random (harness.mjs).
-// Each a line: ok (its checks passed), FAIL (a FAIL line, or it crashed), ran (a sim: numbers, no checks; read them). Logs: --logs DIR.
+// Each a line: ok (its checks passed), FAIL (a FAIL line or "ok":false, or it crashed), ran (no checks: numbers; read them). Logs: --logs DIR.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,7 +143,7 @@ const one = t => new Promise(done => {
   const kill = setTimeout(() => { out.push(Buffer.from(`\n(timed out after ${LIMIT / 1000} s)\n`)); p.kill('SIGKILL'); }, LIMIT);
   p.on('close', code => {
     clearTimeout(kill);
-    const text = Buffer.concat(out).toString(), fails = text.split('\n').filter(l => /^FAIL\b/.test(l)), oks = (text.match(/^ok\b/gm) || []).length;
+    const text = Buffer.concat(out).toString(), fails = text.split('\n').filter(l => /^FAIL\b|"ok":false/.test(l)), oks = (text.match(/^(ok|PASS)\b|"ok":true/gm) || []).length;   // (ok / PASS lines, or {"ok":…})
     fs.writeFileSync(log, text);
     const st = code !== 0 || fails.length ? 'FAIL' : oks ? 'ok' : 'ran', secs = Math.round((Date.now() - s) / 1000);
     const name = t + (args.length ? ' ' + args.join(' ') : '');
