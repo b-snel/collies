@@ -129,7 +129,7 @@ Run the ones touching your change; report the numbers.
 | `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
-| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down |
+| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -425,6 +425,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Mouth loads swing** (CARRY SWING, `carrySwing`, `d.cw`, `T.carrySwing`, drawing only): anything in a
   dog's mouth (bucket, sheep, coyote, dog) hangs from its jaws on a pendulum: lags starts, stops, turns and hops,
   clonks off the chest (head jolts, tin tonk), kicks, sloshes. Cute and comical. New mouth load → turn it by `d.cw`.
+- **Fur** (FUR, `T.fur`, `furMat`, `furCoat`, `furShellGeo`, `furInk`, drawing only): each coat part (body, head, legs, tail, ears, locks)
+  streaked along the lie of its fur, with `n` shells over it in one mesh (`aFurK`: each vertex's shell, out along its normal and combed
+  back), tufts cut by a noise, darker roots, light-catching tips; its outline out in the fur, ragged (`ink`, `rag`). Eyes, nose, collar:
+  none. Coat length and tuft size per breed (`dogShape().furs`). Two programs for all of it. Still slow at pixel ratio 1: shells off
+  (`furLite`, `T.fur.auto`).
 - **Hair** (HAIR, `T.hair`, `hairPiece`, `hairStep`, `M.hair`, drawing only): long hair, cords and floppy ears swing. Each piece a rod
   from its root stepped in world space (Verlet): lags its root, damped against it (`damp`) and the air (`air`), springs back to how it
   grows (`k` per kind), hangs by its weight as the dog tips (upside down: it falls), off the ground, out of the coat (`hull`), at most

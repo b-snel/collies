@@ -4,9 +4,10 @@ import { open } from './harness.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const out = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'dogs.png';
-const h = await open({ query: '?debug', width: 900, height: 700 });
+const h = await open({ query: '?debug', width: +arg('--w', 900), height: +arg('--h', 700), scale: +arg('--scale', 1) });
 const png = await h.page.evaluate(async ({ breeds, items, angles, size, wrapN }) => {
   const { DOGS, DOG_ITEMS, BARN, openBarn, barnTab, barnRender, dogSet, G } = GAME;
+  GAME.T.fur.auto = false;   // (a slow headless browser mustn't take the fur off)
   DOGS.found = DOG_ITEMS.map(i => i.id);
   G.mode = 'title'; openBarn(); barnTab('dogs');
   const B = GAME.DOG_BREEDS || [{ id: null }];

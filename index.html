@@ -790,6 +790,9 @@ const T = {
       hank: { r: 3, take: 1.1, want: 8, base: 4.5, back: 1.5, heave: 2.2, beats: 1, heaveT: 0.4, yank: 2.5, walk: 0.9, tire: 8, tireR: 0.04, tireMin: 0.5, again: 6 } } },
   // CARRY SWING (drawing only): what's in a dog's mouth hangs on a pendulum L m long; damp /s; clonks off the chest past
   // back rad (bounce kept, clonk rad/s for a sound), fwd/side as far as it goes; kick: a held animal's wriggles; jolt: the head
+  // FUR (drawing only; lite: no shells, set when a machine's too slow (auto)): `n` shells over each coat part, each a little further out (len, body space; per coat: dogShape) and combed back,
+  // with tufts cut into them (dens: tufts per unit, cut: how much of the outer shell's left); the coat under it streaked along the lie of the fur
+  fur: { on: true, lite: false, auto: true, n: 4, cut: [0.28, 0.86], streak: 0.14, tip: 1.12, root: 0.78, under: 0.88, ink: 0.55, rag: 0.45, sheen: 0.045 },   // ink: how far out the outline sits (of len); rag: how ragged it is
   // HAIR (drawing only): long hair, cords and floppy ears swing. k: its spring back to how it grows (per kind), damp: against its root,
   // air: drag against the air (hair streams back a little at a run), sag: how much of its weight it hangs by when the dog's upright, max: how far it swings (rad)
   hair: { on: true, step: 1 / 120, maxDt: 0.05, damp: 4.5, air: 0.2, sag: 0.2, k: { ear: 34, lock: 24, cord: 18, fringe: 70, feather: 32 },
@@ -3859,7 +3862,9 @@ function dogShape(B) {
   return (B.shape = { F, Ln, lg, hipY, ty, torso, chest, ruff, fluff, neck, hull: [torso, chest, ruff, fluff].filter(Boolean),
     head: [0, 0.82 + ty - 0.57 + lift, 0.46 + fz], hk: B.head, tail: [0, ty + 0.07 * F, -0.55 * Ln + 0.05], legR: 0.06 * Math.sqrt(F) * ({ shaggy: 1.55, cord: 1.4, curly: 1.25, wire: 1.1, poodle: 0.85 }[B.fur] || 1 + 0.15 * B.ruff),
     hr: hipY / 0.47, back: ty + 0.27 * F + fluffy * 0.5, cz, hl, tip, mouthZ: tip - 0.04, ex, ey, ez: zs(ex, ey), zs, hatY: 0.19 * (sh - 1) + top,
-    flower: drop ? [0.19 * sw, 0.13 * sh, 0.06] : [0.12 * sw * B.ek + 0.05, 0.2 * sh, 0.04], fringe: B.fur === 'shaggy' || B.fur === 'cord' });
+    flower: drop ? [0.19 * sw, 0.13 * sh, 0.06] : [0.12 * sw * B.ek + 0.05, 0.2 * sh, 0.04], fringe: B.fur === 'shaggy' || B.fur === 'cord',
+    furs: { len: { short: B.fat > 1.12 && B.muz < 0.6 ? 0.012 : 0.02, rough: 0.026 + 0.022 * B.ruff, shaggy: 0.042, cord: 0.034, curly: 0.034, poodle: 0.036, wire: 0.03 }[B.fur],   // FUR
+      dens: { curly: 58, poodle: 58, cord: 30, shaggy: 34, wire: 44, rough: 46 }[B.fur] || 56, curl: B.fur === 'curly' || B.fur === 'poodle' } });
 }
 // a lens of colour set into an ellipsoid's skin (merle, ticks, patches, brindle): dir on the unit sphere, r its size, q its squash
 function dogCap(e, dir, r, col, q = [1, 1, 1]) {
@@ -3893,6 +3898,80 @@ function dogTailGeo(B, col, tipCol) {
   } else if (t === 'pom') { const e = rod(0.17, 0.035, 0.025, -0.55); ball(e, 0.085); }
   else ball([0, 0.02, -0.03], (t === 'bob' ? 0.07 : 0.05) * fat);
   return merge(...out);
+}
+// ---------------- FUR (drawing only): a dog's coat is streaked along the lie of its fur, and fur shells stand out from it: copies of each
+// coat part a little further out each, combed back, with tufts cut into them by a noise (the same noise at every shell: the tufts taper
+// out). Darker at the roots, lighter at the tips. One program for them all (no recompiles); a material per coat length and shell.
+const FUR_GLSL = `
+  float furH(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float furN(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(furH(i), furH(i + vec3(1, 0, 0)), f.x), mix(furH(i + vec3(0, 1, 0)), furH(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(furH(i + vec3(0, 0, 1)), furH(i + vec3(1, 0, 1)), f.x), mix(furH(i + vec3(0, 1, 1)), furH(i + vec3(1, 1, 1)), f.x), f.y), f.z); }`;
+const FUR_MATS = new Map();
+function furMat(F, shell) {   // the coat itself (streaked), or its shells (one mesh: aFurK, each vertex's shell height 0…1)
+  const key = shell ? `${F.len}|${F.dens}|${F.curl}` : 'coat'; let m = FUR_MATS.get(key); if (m) return m;
+  const C = T.fur, u = { uFurLen: { value: shell ? F.len : 0 }, uFurDens: { value: shell ? F.dens : 30 }, uFurCurl: { value: shell && F.curl ? 1 : 0 },
+    uFurCut: { value: new THREE.Vector2(...C.cut) }, uFurShade: { value: new THREE.Vector3(C.root, C.tip, C.under) }, uFurStreak: { value: C.streak }, uFurSheen: { value: C.sheen } };
+  m = MAT.vc.clone(); if (shell) { m.defines = { FUR_SHELL: 1 }; m.visible = !T.fur.lite; }
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+      uniform float uFurLen; varying vec3 vFurP; varying float vFurK;
+      #ifdef FUR_SHELL
+        attribute float aFurK;
+      #endif`).replace('#include <begin_vertex>', `#include <begin_vertex>
+      vFurP = position;
+      #ifdef FUR_SHELL
+        vFurK = aFurK; transformed += normal * uFurLen * aFurK + vec3(0.0, -0.55, -0.85) * uFurLen * aFurK * aFurK * 0.8;   // out, and combed back and down
+      #else
+        vFurK = 0.0;
+      #endif`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      uniform float uFurDens, uFurCurl, uFurStreak, uFurSheen; uniform vec2 uFurCut; uniform vec3 uFurShade; varying vec3 vFurP; varying float vFurK;` + FUR_GLSL).replace('#include <color_fragment>', `#include <color_fragment>
+      #ifdef FUR_SHELL
+        vec3 fq = vFurP * uFurDens * mix(vec3(1.0, 0.8, 0.28), vec3(1.4), uFurCurl);   // tufts drawn out along the lie (curly: round)
+        float fn = furN(fq) * 0.7 + furN(fq * 2.7 + 7.0) * 0.3, cut = mix(uFurCut.x, uFurCut.y, vFurK);
+        if (fn < cut) discard;
+        diffuseColor.rgb = diffuseColor.rgb * (mix(uFurShade.x, uFurShade.y, vFurK) + (fn - cut) * 0.25) + vFurK * uFurSheen * vec3(1.0, 0.96, 0.9);   // (the tips catch the light: a black coat shows it too)
+      #else
+        diffuseColor.rgb *= uFurShade.z * (1.0 - uFurStreak * (1.0 - smoothstep(0.25, 0.75, furN(vFurP * vec3(28.0, 28.0, 9.0)))));
+      #endif`);
+  };
+  m.customProgramCacheKey = () => shell ? 'dogFurShell' : 'dogFurCoat';
+  FUR_MATS.set(key, m); return m;
+}
+// a slow machine: the shells go (the streaked coat and its ragged outline stay)
+let furSlow = 0;
+function furLite() { T.fur.lite = true; for (const [k, m] of FUR_MATS) if (k !== 'coat') m.visible = false; }
+// a part's shells, all in one geometry: n copies of it, each vertex told its shell's height
+const FUR_GEO = new WeakMap();
+function furShellGeo(geo, n) {
+  const k0 = FUR_GEO.get(geo); if (k0 && k0.n === n) return k0.g;
+  const c = geo.attributes.position.count, A = (name, w) => { const src = geo.attributes[name].array, out = new Float32Array(c * w * n); for (let i = 0; i < n; i++) out.set(src, i * c * w); return new THREE.BufferAttribute(out, w); };
+  const g = new THREE.BufferGeometry(), k = new Float32Array(c * n);
+  for (let i = 0; i < n; i++) k.fill((i + 1) / n, i * c, (i + 1) * c);
+  g.setAttribute('position', A('position', 3)); g.setAttribute('normal', A('normal', 3)); g.setAttribute('color', A('color', 3)); g.setAttribute('aFurK', new THREE.BufferAttribute(k, 1));
+  g.boundingSphere = geo.boundingSphere ? geo.boundingSphere.clone() : null; if (g.boundingSphere) g.boundingSphere.radius += 0.1;
+  FUR_GEO.set(geo, { n, g }); return g;
+}
+// its outline, out in the fur and a little ragged (the same uniforms as the outline it stands in for: the world's or the barn's)
+const FUR_INK = new Map();
+function furInk(base, F) {
+  const key = base.uuid + '|' + F.len + '|' + F.dens; let m = FUR_INK.get(key); if (m) return m;
+  m = base.clone();   // (its sides and depth as the original's; its uniforms the original's own, so a resize reaches it)
+  m.uniforms = { ...base.uniforms, uFurOut: { value: F.len * T.fur.ink }, uFurDens: { value: F.dens * 1.1 }, uFurRag: { value: T.fur.rag * clamp(F.len / 0.03, 0.4, 1.3) } };   // (a short coat's edge, less ragged)
+  m.vertexShader = base.vertexShader.replace('uniform float uW;', 'uniform float uW, uFurOut, uFurDens, uFurRag;' + FUR_GLSL)
+    .replace('vec4 wp = m * vec4(position, 1.0);', 'vec4 wp = m * vec4(position + normal * uFurOut, 1.0); float rag = 1.0 + uFurRag * (furN(position * uFurDens) - 0.5) * 2.0;')
+    .replace('cp.xy += d * uW', 'cp.xy += d * rag * uW');
+  FUR_INK.set(key, m); return m;
+}
+// a coat part: its streaked coat, fur shells over it (one mesh), and its outline out in the fur
+function furCoat(add, par, geo, F, n = T.fur.n) {
+  const m = add(par, geo, T.fur.on ? furMat(F, false) : MAT.vc);
+  if (!m || !T.fur.on || !F || !(F.len > 0)) return m;
+  for (const c of m.children) if (c.material && c.material.uniforms && c.material.uniforms.uW) c.material = furInk(c.material, F);
+  const sh = new THREE.Mesh(furShellGeo(geo, n), furMat(F, true)); sh.castShadow = false; sh.receiveShadow = true; sh.raycast = () => {}; m.add(sh);
+  return m;
 }
 // a dog in its look (breed and coat, collar, and any hat or kit it's wearing). add(parent, geo, mat) adds a part
 // (the world's part() or the barn turntable's barnPart()). Returns the pieces syncDog animates.
@@ -3928,13 +4007,13 @@ function buildDog(L, add) {
     feathers.push({ p, len, up: [P(CYL(0.05, 0.03, len, 5), col('belly'), { s: [1, 1, 0.5], p: [p[0], p[1] - len / 2, p[2]] })] });
   }
   if (fur === 'poodle') bp.push(...[-1, 1].map(sd => P(SPH(9), col('torso'), { s: [0.1, 0.1, 0.1], p: [0.17 * F * sd, S.ty + 0.05, -0.38 * Ln] })));
-  add(body, merge(...bp));
+  const FU = S.furs; furCoat(add, body, merge(...bp), FU);   // FUR
   const hair = [], hairOf = (list, kind, two) => {   // HAIR: locks grouped by side and along its length, each group a piece (two: and a lower piece off it)
     const groups = new Map();
     for (const l of list) { const k = (l.p[0] < 0 ? 'L' : 'R') + Math.round((l.p[2] / Ln + 0.6) * 3); (groups.get(k) || groups.set(k, []).get(k)).push(l); }
     for (const g of groups.values()) {
       const m = i => g.reduce((a, l) => a + l.p[i], 0) / g.length, len = g.reduce((a, l) => a + l.len, 0) / g.length, piv = [m(0), m(1), m(2)], sd = Math.sign(piv[0]) || 1;
-      const u0 = [sd * 0.18, -1, 0], hl = two ? len / 2 : len, up = hairPiece(add, body, piv, u0, hl, kind, g.flatMap(l => l.up), { space: body, hull: S.hull });
+      const u0 = [sd * 0.18, -1, 0], hl = two ? len / 2 : len, up = hairPiece(add, body, piv, u0, hl, kind, g.flatMap(l => l.up), { space: body, hull: S.hull, fur: kind === 'lock' ? S.furs : null, shells: 2 });
       hair.push(up);
       if (two) hair.push(hairPiece(add, up.g, [piv[0], piv[1] - hl, piv[2]], u0, hl, kind, g.flatMap(l => l.lo), { up, space: body, hull: S.hull }));
     }
@@ -3948,9 +4027,10 @@ function buildDog(L, add) {
   if (col('blaze')) hp.push(P(SPH(8), col('blaze'), { s: [0.06, 0.15 * sh, 0.08], p: [0, 0.07, 0.14] }));
   hp.push(P(SPH(10), col('muz'), { s: [0.11 * mw, 0.1, S.hl], p: [0, -0.06, S.cz] }));
   if (mw > 1.15) hp.push(...[-1, 1].map(sd => P(SPH(8), col('muz'), { s: [0.07 * mw, 0.075, 0.08], p: [0.055 * mw * sd, -0.1, S.cz] })));   // jowls
-  hp.push(P(SPH(8), '#111111', { s: [0.05 * Math.min(1.25, mw), 0.04, 0.04], p: [0, B.muz < 0.6 ? 0.0 : -0.02, S.tip - 0.01] }));
+  const bare = [];   // (FUR: none on its eyes and nose)
+  bare.push(P(SPH(8), '#111111', { s: [0.05 * Math.min(1.25, mw), 0.04, 0.04], p: [0, B.muz < 0.6 ? 0.0 : -0.02, S.tip - 0.01] }));
   if (col('eye')) hp.push(P(SPH(8), col('eye'), { s: [0.075, 0.075, 0.05], p: [ex, ey + 0.01, ez - 0.035] }));
-  for (const sd of [-1, 1]) hp.push(P(SPH(8), '#ffffff', { s: [0.045, 0.05, 0.03], p: [ex * sd, ey, ez - 0.018] }), P(SPH(6), '#111111', { s: [0.028, 0.034, 0.02], p: [(ex + 0.003) * sd, ey, ez + 0.002] }));
+  for (const sd of [-1, 1]) bare.push(P(SPH(8), '#ffffff', { s: [0.045, 0.05, 0.03], p: [ex * sd, ey, ez - 0.018] }), P(SPH(6), '#111111', { s: [0.028, 0.034, 0.02], p: [(ex + 0.003) * sd, ey, ez + 0.002] }));
   if (col('brows')) for (const sd of [-1, 1]) hp.push(P(SPH(6), col('brows'), { s: [0.028, 0.02, 0.015], p: [0.06 * sw * sd, 0.115, S.zs(0.06 * sw, 0.115)] }));
   if (col('cheeks')) for (const sd of [-1, 1]) hp.push(P(SPH(7), col('cheeks'), { s: [0.05, 0.045, 0.06], p: [0.075 * mw * sd, -0.065, S.cz - 0.03] }));
   if (col('spots') && rng() < 0.7) hp.push(dogCap({ c: [0, 0, 0], s: [0.2 * sw, 0.19 * sh, 0.2] }, [0.5, 0.7, -0.5].map(v => v / 1.1), 0.08, col('spots')));
@@ -3967,7 +4047,7 @@ function buildDog(L, add) {
       ears.push({ piv: [ex2, top, -0.01], len: (0.2 + (mop ? 0.05 : 0)) * B.eL, geo: P(SPH(10), ec, { s: [0.035 * ek * w, (0.13 + (mop ? 0.03 : 0)) * B.eL, 0.085 * ek * (mop ? 1.15 : 1)], r: [0, 0, 0.18 * sd], p: [ex2, top - (0.11 + (mop ? 0.03 : 0)) * B.eL, -0.01] }) });
     }
     else if (e === 'rose') hp.push(P(SPH(8), ec, { s: [0.055, 0.035, 0.07], r: [0, 0.6 * sd, 0.5 * sd], p: [0.15 * sw * sd, 0.16 * sh, -0.04] }));
-    else if (e === 'bat') hp.push(P(CONE(0.1 * ek, 0.21 * ek, 8), ec, { s: [1, 1, 0.55], r: [-0.12, 0, -0.42 * sd], p: [0.13 * sw * sd, 0.21 * sh, -0.04] }),
+    else if (e === 'bat') hp.push(P(CONE(0.1 * ek, 0.21 * ek, 8), ec, { s: [1, 1, 0.55], r: [-0.12, 0, -0.42 * sd], p: [0.13 * sw * sd, 0.21 * sh, -0.04] })), bare.push(
       P(CONE(0.062 * ek, 0.14 * ek, 8), '#e8a3a0', { s: [1, 1, 0.3], r: [-0.12, 0, -0.42 * sd], p: [0.125 * sw * sd, 0.2 * sh, -0.012] }));
   }
   const fringe = [];
@@ -3978,21 +4058,21 @@ function buildDog(L, add) {
   } else if (fur === 'wire') hp.push(...[-1, 1].map(sd => P(SPH(7), col('skull'), { s: [0.045, 0.022, 0.035], r: [0, 0, -0.3 * sd], p: [ex * sd, ey + 0.065, ez - 0.005] })),
     P(SPH(10), col('muz'), { s: [0.1 * mw, 0.085, 0.09], p: [0, -0.12, S.tip - 0.08] }));
   else if (fur === 'curly' || fur === 'poodle') hp.push(P(SPH(10), col('skull'), { s: [0.17 * sw, 0.13, 0.16], p: [0, 0.16 * sh, -0.02] }));
-  add(head, merge(...hp));
+  furCoat(add, head, merge(...hp), FU); add(head, merge(...bare));
   const skull = [{ c: [0, 0, 0], s: [0.2 * sw, 0.19 * sh, 0.2] }];
-  for (const e of ears) hair.push(hairPiece(add, head, e.piv, [0, -1, 0], e.len, 'ear', [e.geo], { space: head, hull: skull }));
-  if (fringe.length) hair.push(hairPiece(add, head, [0, 0.2 * sh, ez - 0.06], [0, -0.55, 0.85], 0.1, 'fringe', fringe));
+  for (const e of ears) hair.push(hairPiece(add, head, e.piv, [0, -1, 0], e.len, 'ear', [e.geo], { space: head, hull: skull, fur: FU }));
+  if (fringe.length) hair.push(hairPiece(add, head, [0, 0.2 * sh, ez - 0.06], [0, -0.55, 0.85], 0.1, 'fringe', fringe, { fur: fur === 'shaggy' ? FU : null, shells: 2 }));
   const tongue = new THREE.Mesh(P(SPH(6), '#ff7a8a', { s: [0.05, 0.015, 0.09], p: [0.02, -0.12, S.tip - 0.07] }), MAT.vc); head.add(tongue);
   const lp = [[0.12 * F, 0.27 * Ln], [-0.12 * F, 0.27 * Ln], [0.12 * F, -0.3 * Ln], [-0.12 * F, -0.3 * Ln]];
   const legs = lp.map(([x, z]) => {
     const g = new THREE.Group(); g.position.set(x, S.hipY, z); body.add(g);
-    add(g, fur === 'poodle' ? merge(legGeo(col('leg'), col('sock'), S.lg, S.legR), P(SPH(8), col('sock'), { s: [0.1, 0.1, 0.1], p: [0, -S.lg * 0.8, 0] })) : legGeo(col('leg'), col('sock'), S.lg, S.legR));
+    furCoat(add, g, fur === 'poodle' ? merge(legGeo(col('leg'), col('sock'), S.lg, S.legR), P(SPH(8), col('sock'), { s: [0.1, 0.1, 0.1], p: [0, -S.lg * 0.8, 0] })) : legGeo(col('leg'), col('sock'), S.lg, S.legR), FU);
     if (fur === 'rough' && B.ruff >= 0.45 && z > 0) { const len = 0.07 + 0.08 * B.ruff, pv = [0, -S.lg * 0.15, -S.legR * 0.7];   // HAIR: feathering down the back of its forelegs
       hair.push(hairPiece(add, g, pv, [0, -0.6, -0.8], len, 'feather', [P(CYL(0.045, 0.02, len, 5), col('leg'), { s: [1, 1, 0.6], r: [-0.9, 0, 0], p: [0, pv[1] - len * 0.3, pv[2] - len * 0.4] })])); }
     return g;
   });
   const tail = new THREE.Group(); tail.position.set(...S.tail); body.add(tail);
-  add(tail, dogTailGeo(B, col('tail'), col('tip')));
+  furCoat(add, tail, dogTailGeo(B, col('tail'), col('tip')), FU);
   // DOG WARDROBE: what it dug up and is wearing (the tinted parts take the collar colour)
   for (const id of [L.hat, ...L.acc]) {
     const g = dogGear(id, B); if (!g) continue;
@@ -12536,7 +12616,8 @@ function carrySwing(d, dt) {
 function hairPiece(add, par, pivAbs, u0, L, kind, geos, o = {}) {
   const up = o.up, g = new THREE.Group(), b = up ? up.pivAbs : [0, 0, 0];
   g.position.set(pivAbs[0] - b[0], pivAbs[1] - b[1], pivAbs[2] - b[2]); par.add(g);
-  add(g, merge(...geos).translate(-pivAbs[0], -pivAbs[1], -pivAbs[2]));
+  const geo = merge(...geos).translate(-pivAbs[0], -pivAbs[1], -pivAbs[2]);
+  if (o.fur) furCoat(add, g, geo, o.fur, o.shells); else add(g, geo, T.fur.on ? furMat(null, false) : MAT.vc);   // (FUR: ears and locks furred (locks: two shells); cords streaked)
   const u = new THREE.Vector3(...u0).normalize(), end = pivAbs.map((v, i) => v + u.getComponent(i) * L);
   const inside = (o.hull || []).some(e => Math.hypot(...[0, 1, 2].map(i => (end[i] - e.c[i]) / e.s[i])) < 1.02);   // grows from inside the coat: no keeping it out
   return { g, kind, up, pivAbs, piv: g.position.clone(), u0: u, L, space: o.space || null, hull: inside ? null : o.hull || null, cosMax: Math.cos(T.hair.max[kind]),
@@ -20205,7 +20286,9 @@ function frame(now) {
   endInputFrame();
   // adaptive resolution: drop to 1x if the GPU is struggling
   fpsAcc += dt; fpsN++; perfT += dt;
-  if (perfT > 2) { const avg = fpsAcc / fpsN; if (avg > 1 / 40 && renderer.getPixelRatio() > 1) { slowFrames++; if (slowFrames >= 2) { renderer.setPixelRatio(1); resize(); } } else slowFrames = 0; perfT = 0; if (DEBUG) $('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.calls} calls · ${G.sheep.length} sheep`; fpsAcc = 0; fpsN = 0; }
+  if (perfT > 2) { const avg = fpsAcc / fpsN; if (avg > 1 / 40 && renderer.getPixelRatio() > 1) { slowFrames++; if (slowFrames >= 2) { renderer.setPixelRatio(1); resize(); } } else slowFrames = 0;
+    if (avg > 1 / 30 && renderer.getPixelRatio() <= 1 && T.fur.auto && !T.fur.lite) { furSlow++; if (furSlow >= 3) furLite(); } else furSlow = 0;   // FUR: still slow at the lowest resolution: no shells
+    perfT = 0; if (DEBUG) $('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.calls} calls · ${G.sheep.length} sheep`; fpsAcc = 0; fpsN = 0; }
 }
 function regrowT(dt) { if (regrowAcc > 0.05) { regrowGrass(regrowAcc); regrowAcc = 0; } }
 // =====================================================================
@@ -20452,7 +20535,7 @@ Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, sl
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
-Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, dogGear, buildDog, fitCoat, cycleDogBreed, netDogLook, hairStep, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
+Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, dogGear, buildDog, fitCoat, cycleDogBreed, netDogLook, hairStep, FUR_MATS, furMat, furLite, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();

@@ -8,6 +8,7 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
+//   fur      shells over every coat part (one mesh each), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 import { open } from './harness.mjs';
 const h = await open();
@@ -254,6 +255,31 @@ const r8 = await h.page.evaluate(() => {
 ok(`hair on ${r8.some.length} breeds (long coats, floppy ears; a smooth prick-eared coat: none)`, r8.some.length >= 15 && ['puli', 'bergamasco', 'oes', 'bearded', 'briard', 'beagle', 'dachshund', 'lab', 'golden', 'rough', 'poodle'].filter(b => b !== 'lab').every(b => r8.some.includes(b)) && r8.none.includes('malinois') && r8.none.includes('frenchie'), r8);
 ok('hair: still, it keeps its shape; shaken, it swings; then settles', ['puli', 'oes', 'beagle', 'golden'].every(b => r8[b].still < 20 && r8[b].shaken > r8[b].still + 25 && r8[b].settled < r8[b].still + 6), ['puli', 'oes', 'beagle', 'golden'].map(b => [b, r8[b]]));
 ok('hair: upside down, it hangs down (and never blows up)', ['puli', 'oes', 'beagle', 'golden'].every(b => r8[b].flipDown && !r8[b].nan), ['puli', 'oes', 'beagle', 'golden'].map(b => [b, r8[b]]));
+
+// 9. FUR: drawing only
+const r9 = await h.page.evaluate(() => {
+  const { BARN, openBarn, barnTab, dogSet, DOG_BREEDS, FUR_MATS, T } = GAME, out = { bad: [] };
+  openBarn(); barnTab('dogs');
+  const shells = o => { let n = 0; o.traverse(c => { if (c.material && c.material.defines && c.material.defines.FUR_SHELL) n++; }); return n; };
+  for (const B of DOG_BREEDS) {
+    dogSet(0, { breed: B.id, acc: [] }); const M = BARN.dogM;
+    const body = M.body.children.find(c => c.isMesh), head = M.head.children.filter(c => c.isMesh);
+    const ok = shells(body) === 1 && head.some(m => shells(m) === 1) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
+      && M.legs.every(g => shells(g) === 1) && shells(M.tail) === 1 && shells(M.neck) === 0;
+    if (!ok) out.bad.push(B.id);
+    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink) out.bad.push(B.id + ':ink');
+  }
+  out.total = (() => { dogSet(0, { breed: 'bearded' }); return shells(BARN.dogM.root); })();
+  out.mats = [...FUR_MATS.values()].filter(m => m.defines && m.defines.FUR_SHELL).length;
+  out.programs = new Set([...FUR_MATS.values()].map(m => m.customProgramCacheKey())).size;
+  const was = T.fur.lite; GAME.furLite && GAME.furLite(); out.lite = [...FUR_MATS.values()].filter(m => m.defines && m.defines.FUR_SHELL).every(m => !m.visible) && FUR_MATS.get('coat').visible;
+  T.fur.lite = was; for (const m of FUR_MATS.values()) m.visible = true;
+  GAME.closeBarn();
+  return out;
+});
+ok('fur: every breed\'s coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur', r9.bad.length === 0, r9.bad);
+ok(`fur: ${r9.mats} coat lengths, 2 programs (no recompiles)`, r9.programs === 2 && r9.mats >= 4, r9);
+ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();
