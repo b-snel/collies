@@ -22,3 +22,5 @@
   (`hankRopeFree`: awake, no job, nothing prowling): he walks to the far end, takes it, tugs every dog on it; walks back,
   heaves on every `beats`th beat (step in just before it: he stumbles), tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
   The vagabond plays the same (`vagRope`, `T.vag.tug`; `e.npc`, `ropeNpc(R)`); never both on one rope.
+- **A llama on it** (`R.llama`: LLAMAS): roped by a dog dragging it up to a wild one, a tug as Hank's (`T.llama.tug`); broken: led on it
+  (`ropeHold`: it barely pulls back). No dog-on-dog tug, nor Hank or the vagabond, on a rope with a llama on it.

@@ -14,7 +14,7 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
+desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Wild llama herds graze off the trail (land only) and breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
@@ -30,7 +30,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `X` coyotes dig into a pen, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
-  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
+  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard); `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
@@ -99,6 +99,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - DAWN REPORT
 - saved flock
 - VAGABOND (the VENDOR's wares)
+- LLAMAS
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
 - game flow
 - `ambMix`
@@ -198,6 +199,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `vagReach()` (dogs can get at him: on land, or ashore where she lies)
 - `vagSeaStart()` (from `seaStart`)
 - `vagBarkAt(d, busy)` (busy: loose sheep / foes the bark reached: not a nag)
+- `e.isLlama` (LLAMAS: on a rope it's an `e.npc`; `R.llama`, `ropeNpc(R)`), `llamaNeck(L, out)` (its halter), `launchLlama(L, vx, vz, vy, kind, by)` / `L.air` / `L.heldBy` (as a sheep's), `llamasAboard()`
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -281,6 +283,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/ui.md`: map, menus, barn, dawn report, end screen.
 - `docs/ambience.md`: the sound of each leg (`AMB`, `ambMix`).
 - `docs/vagabond.md`: the vagabond (trading, mood, at sea), the Trading Post.
+- `docs/llamas.md`: wild herds, population, capture (rope, tug), guards and their spit, bonk and grab, shearing.
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
 
@@ -298,8 +301,8 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Gamepad presses don't unlock audio.
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
 - Fixed light count, so shaders never recompile.
-- three's uuids use `Math.random`: a new mesh, geometry or material at load or in the sim moves the seeded tests' dice. Drawing-only ones: make them when first drawn.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
+- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`; MUDDY DOGS: `paws`, coat copies, flies).
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
   camp (pushed onto `PASS.fires` after them), nor the ice cave (the top fire moved in at the end of the pass scenery), nor the door
