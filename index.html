@@ -896,6 +896,7 @@ const T = {
   hankWalk: 2.6, hankJog: 5.4, hankR: 0.55, hankBehind: 10,   // m/s; m behind the dogs / the tail of the flock
   hankSight: 40, hankSightNight: 24,   // m: how far Hank can see coyotes and cougars (by lantern and campfire at night); he only calls out what he sees
   hankGap: 12, hankRepeat: 15,     // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
+  hankNagGap: 7,                   // s: one nag (the ice gate's, the yeti's) after another of either kind
   hankCmdGap: 20,                  // s between whistled herding commands ("Come bye!")
   hankNag: { greedy: 60, easy: 45, gently: 45, move: 90, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
   hankMove: { bare: 0.35, late: 16.5, idle: 10 },   // "Get that greedy one movin'!": grass round the flock eaten under bare× what it grows, or out from late (h); no dog on it for idle s
@@ -10762,9 +10763,10 @@ function passUpFire() {
   let x = 0, z = 0, n = 0; for (const s of G.sheep) if (freeSheep(s)) { x += s.x; z += s.z; n++; }
   if (!n) return; const fs = sAt(x / n, z / n); if (passK(fs) <= 0) return;
   if (gateShut() && fs < T.iceGate.s1 + 2) { MIND.upF = GATE.foot; return; }   // (ICE GATE shut, the flock below it: its foot's as far as it goes)
-  if (was === GATE.foot) was = null;   // (a lane through: on up)
+  const lane = GATE.on && !GATE.all && fs > GATE.base.s - U.past && fs < T.iceGate.s1 + 2;   // (a lane through, the flock at its foot: on up it, the base camp behind)
+  if (was === GATE.foot || (lane && was && was.s < T.iceGate.s1)) was = null;
   if (was && fs > was.s - U.past && fs < was.s + U.hold && G.time - MIND.workedT > T.grazeWorkedT) { MIND.upF = was; return; }   // (a dog's driven them on: the next)
-  for (const f of PASS.fires) if (f.s > fs - U.past && (!MIND.upF || f.s < MIND.upF.s)) MIND.upF = f;
+  for (const f of PASS.fires) if (f.s > fs - U.past && !(lane && f.s < T.iceGate.s1) && (!MIND.upF || f.s < MIND.upF.s)) MIND.upF = f;
 }
 // SHARED HOOK: which way's on up from (x, z) (UPV x/z: unit; along the floor, straight for the camp once near: the floor's middle
 // abreast of its fire) and how keen (k 0…1: none below the pass, within T.pass.up.stop m of the camp, above it, off the floor, near the
@@ -10772,7 +10774,7 @@ function passUpFire() {
 const UPV = { x: 0, z: 0, k: 0, kb: 0 };
 function passUp(x, z) {
   const U = T.pass.up, f = MIND.upF; UPV.k = UPV.kb = 0; if (!f) return UPV;
-  if (gateShut() && f.s >= GATE.foot.s) { const g = gateS(x, z); if (g.s < gateE1(g.lat) + 0.5) return gateHold(x, z, g.s, g.lat); }   // ICE GATE shut: this side of it, its foot
+  if (GATE.on && !GATE.all && f.s >= GATE.foot.s) { const g = gateS(x, z); if (g.s < gateE1(g.lat) + 0.5) return gateShut() ? gateHold(x, z, g.s, g.lat) : gateLead(x, z, g.s, g.lat); }   // ICE GATE, this side of it: shut, its foot; a lane, up it
   const ci = trailInfo(x, z); if (ci.oW > 0 || ci.oE > 0 || ci.s > f.s + 2) return UPV;
   const m = f.mid || (f.mid = pathPoint(f.s, 0)), pk = passK(ci.s), dx = m.x - x, dz = m.z - z, d = Math.hypot(dx, dz) || 1e-3;
   const k = pk * smooth(U.stop, U.stop + 8, d) * (1 - smooth(T.pass.arena - U.edge - 8, T.pass.arena - U.edge, ci.s)) * (ci.s > SIDE.s0 - 24 ? smooth(SIDE.hw + 3, SIDE.hw + 12, sideD(x, z)) : 1);   // (nor by the hidden side trail's mouth)
@@ -11175,6 +11177,13 @@ function gateHold(x, z, s, lat) {
   const i = clamp(Math.floor(s / PS), 0, PN - 1), w = clamp(lat / 20, -0.8, 0.8), ux = tX[i] + tZ[i] * w, uz = tZ[i] - tX[i] * w, ul = Math.hypot(ux, uz);
   UPV.x = ux / ul; UPV.z = uz / ul; UPV.k = smooth(-1, 6, b); UPV.kb = Math.max(UPV.k, smooth(-4, 0, b)); return UPV;
 }
+// ...a lane through: to its foot, then up it (none out in the desert below the climb)
+function gateLead(x, z, s, lat) {
+  const P = GATE.path; if (!P || s < T.pass.s0 - 10) return UPV;
+  let bi = 0, bd = 1e9; for (let i = 0; i < P.length; i++) { const d = Math.hypot(P[i].x - x, P[i].z - z); if (d < bd) { bd = d; bi = i; } }
+  const o = s < gateE0(lat) - 0.3 && bd > 2.2 ? P[0] : P[Math.min(P.length - 1, bi + 1)], dx = o.x - x, dz = o.z - z, d = Math.hypot(dx, dz) || 1;
+  UPV.x = dx / d; UPV.z = dz / d; UPV.k = UPV.kb = 1; return UPV;
+}
 // the flock gathered at the foot of it with no lane: he waits by the base camp's fire, watching the ice (hankGoal, by day)
 function gateWaitGoal() {
   if (!gateShut() || G.mode !== 'play') return null;
@@ -11204,10 +11213,10 @@ function gateSlip(e) {
   const n = (PASS.gateNag ?? -1) + 1, gap = T.iceGate.nag * Math.min(3, 1 + 0.3 * n);   // (less and less often)
   if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < gap || HANK.asleep || hankBusy() > 0 || !hankSees(e.x, e.z)) return;
   const L = GATE_NAGS;
-  if (hank(null, L[n < L.length ? n : L.length - 3 + (n - L.length) % 3], { force: true })) { PASS.gateNag = n; PASS.gateNagT = G.time; }
+  if (hank(null, L[n < L.length ? n : L.length - 3 + (n - L.length) % 3], { force: true })) { PASS.gateNag = n; PASS.gateNagT = HANK.nagAt = G.time; }
 }
 const hankFree = () => Math.max(HANK.lastSay + 3.2, ...HANK.pending.map(q => q.at + 3.2));   // (when he's done saying what he's saying)
-const hankBusy = () => Math.max(0, HANK.forceSay + 3.2 - G.time, ...HANK.pending.map(q => q.at + 3.2 - G.time));   // s till a nag (the gate's, the yeti's) can come: not over a line that matters (forced, or on its way); chatter it talks over
+const hankBusy = () => Math.max(0, HANK.forceEnd - G.time, HANK.nagAt + T.hankNagGap - G.time, ...HANK.pending.map(q => q.at + hankLen(q.text || HANK_LINES[q.id]) - G.time));   // s till a nag (the gate's, the yeti's) can come: not over a line that matters (forced, or on its way); chatter it talks over
 function gateIntro() {
   const delay = Math.max(0.4, hankFree() - G.time); if (!passSay('gate', 'Grab the torch and clear us a path!', { delay })) return;
   PASS.gateNagT = G.time + delay; hint('torch'); hint('gate');
@@ -11462,7 +11471,7 @@ function drawTorchOverlay() {
       else { const f = PASS.fires.find(o => o.fuel > 0 && Math.abs(o.x - d.x) + Math.abs(o.z - d.z) < 22); if (f) nudge('torch-dip', f.x, f.y + 2.2, f.z, '🪵 → 🔥', '#ffb340'); }
       continue;
     }
-    if (t.h > 0 || t.lit > 0) continue;
+    if (t.h > 0 || t.lit > 0 || (t.f.cave && YETI.on && !YETI.beaten)) continue;   // (THE ICE CAVE, him up: not now)
     const o = G.dogs.find(o => !o.holding && o.player && o.player.kind !== 'net' && Math.abs(o.x - t.x) < 7 && Math.abs(o.z - t.z) < 7); if (!o) continue;
     nudge('torch', t.x, groundY(t.x, t.z) + (torchPlanted(t) ? 2.1 : 1.1), t.z, `${keyLabel(o.player, 'grab')} 🪵`, '#ffb340');   // (over its head)
   }
@@ -11763,8 +11772,9 @@ function yetiNagOn(kind) {
   if (!hankSees(Y.x, Y.z, Y.y + 3, 1.5) || HANK.asleep) return false;
   const busy = hankBusy(); if (busy > (kind === 'time' ? 0 : 4.5)) { N.cd = Math.max(N.cd, 0.5); return false; }   // (he's saying something that matters: when he's done; what just happened, once he's said it)
   const tier = Math.min(K.tiers - 1, N.tier), lines = YETI_NAGS[kind] || YETI_NAGS.time, i = Math.min(tier < K.tiers - 1 ? tier : K.tiers - 2 + N.n % 2, lines.length - 1);   // (at the top: the last two, turn about)
-  if (!hank(null, lines[i], { force: true, delay: kind === 'time' ? 0 : Math.max(0.6, busy) })) { N.cd = 1.5; return false; }   // (he's only just said it: in a moment)
-  N.tier = Math.min(K.tiers - 1, N.tier + 1); N.n++; N.cd = K.cd; N.t = 0;
+  const dl = kind === 'time' ? 0 : Math.max(0.6, busy);
+  if (!hank(null, lines[i], { force: true, delay: dl })) { N.cd = 1.5; return false; }   // (he's only just said it: in a moment)
+  N.tier = Math.min(K.tiers - 1, N.tier + 1); N.n++; N.cd = K.cd; N.t = 0; HANK.nagAt = G.time + dl;
   if (tier >= 3) yetiNagFx(tier);
   return true;
 }
@@ -14080,7 +14090,7 @@ const HANK_VOL_KEY = 'collies.hankVolume.v1';
 const HANK = {
   x: 0, z: 0, y: 0, vx: 0, vz: 0, yaw: Math.PI / 4, phase: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, lastX: 0, lastZ: 0, celebrate: false,
   // voice and bubble
-  line: null, sayT: 0, talkT: 0, lastSay: -99, forceSay: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
+  line: null, sayT: 0, talkT: 0, lastSay: -99, forceEnd: -99, nagAt: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
   buf: {}, loading: {}, missing: {}, src: null, wsrc: null, gain: null, vol: 1, mute: false, prefetched: false, bubble: null,
   // what he keeps an eye on
   cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99, starving: 0,
@@ -14220,7 +14230,7 @@ function resetHank() {
   Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
-    lastSay: -99, forceSay: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
+    lastSay: -99, forceEnd: -99, nagAt: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
 }
@@ -14313,6 +14323,7 @@ function updateHank(dt) {
 
 // ---------------- his voice ----------------
 function hankLog(id, text, said, why) { const L = HANK.log; L.push({ t: +G.time.toFixed(2), id, text, said, why: why || '' }); if (L.length > 80) L.shift(); return said; }
+const hankLen = text => 1.6 + (text || '').length * 0.055;   // s a line's up
 function hank(id, text, opts = {}) {
   const hk = HANK;
   if (text == null) text = (id && HANK_LINES[id]) || '';
@@ -14326,9 +14337,9 @@ function hank(id, text, opts = {}) {
     if (key === hk.lastKey) return hankLog(id, text, false, 'again');                                         // never the same line twice in a row
     const seen = hk.said[key]; if (seen !== undefined && t - seen < T.hankRepeat && t >= seen) return hankLog(id, text, false, 'recent');
   }
-  hk.said[key] = t; hk.lastKey = key; hk.lastSay = t; if (opts.force) hk.forceSay = t;
+  hk.said[key] = t; hk.lastKey = key; hk.lastSay = t;
   const line = hk.line = { id, text, whistle: opts.whistle || null, real: performance.now() };
-  hk.sayT = 1.6 + text.length * 0.055; hk.talkT = 0.9;
+  hk.sayT = hankLen(text); hk.talkT = 0.9; if (opts.force) hk.forceEnd = t + hk.sayT;   // (a line that matters: till it's off the screen)
   if (hk.bubble) hk.bubble.querySelector('span').textContent = text;
   hankSpeak(line);
   return hankLog(id, text, true);
@@ -14947,7 +14958,7 @@ function careGoal() {
     if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: s };
     let ux = p ? p.x - s.x : hk.x - s.x, uz = p ? p.z - s.z : hk.z - s.z, l = Math.hypot(ux, uz);
     if (l < 1) { ux = hk.x - s.x; uz = hk.z - s.z; l = Math.hypot(ux, uz) || 1; }
-    const r = s.r + T.hankR + 0.15;
+    const r = s.r + T.hankR - 0.25;   // (a step in from his reach: one grazing on ahead of him, he keeps up with it close enough)
     return { x: s.x + ux / l * r, z: s.z + uz / l * r, stop: 0.2, noShy: true, pen: p, face: s };
   }
   const g = j.g, sl = j.Y.slots[j.slot];
@@ -20763,7 +20774,7 @@ Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, sl
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble,
   DOOR, WALLS, wallStruck, wallFall, updateWall, wallPounce, caveDetour, wallD, wallDraw, doorStamp, rubbleD, HEAP2, DEBRIS, CAVE, caveD, inCave, yetiPick, yetiNag, yetiNagOn, yetiNagHit, YETI_NAGS, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt,
-  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, hankGate, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
+  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, gateHold, gateLead, hankGate, hankBusy, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
