@@ -8,6 +8,7 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
+//   barn     opens on the Dogs: cards with portraits
 //   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 import { open } from './harness.mjs';
@@ -282,6 +283,20 @@ const r9 = await h.page.evaluate(() => {
 ok('fur: every long coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur; a short coat sleek, none', r9.bad.length === 0, r9.bad);
 ok(`fur: ${r9.mats} coat lengths, 2 programs (no recompiles)`, r9.programs === 2 && r9.mats >= 4, r9);
 ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
+
+// 10. the barn opens on the Dogs: a card each (a portrait), a click picks one; a sheep asked for opens the flock
+const r10 = await h.page.evaluate(() => {
+  const { G, BARN, openBarn, closeBarn, barnRender, THUMB } = GAME, out = {};
+  openBarn(); out.tab = BARN.tab; out.cards = document.querySelectorAll('#barnList .dogCard').length; out.first = document.querySelector('.barnTabs button').dataset.tab;
+  for (let i = 0; i < 8; i++) barnRender(1 / 60);
+  out.pics = [...document.querySelectorAll('#barnList .dogCard img')].filter(i => (i.getAttribute('src') || '').startsWith('data:image/png')).length;
+  document.querySelector('.dogCard[data-dog="2"]').click(); out.dog = BARN.dog; out.on = document.querySelector('.dogCard.on').dataset.dog;
+  out.sparks = document.querySelectorAll('.dogCard .spark').length; closeBarn();
+  openBarn(G.sheep.find(s => !s.dead)); out.sheepTab = BARN.tab; closeBarn();
+  return out;
+});
+ok('the barn opens on the Dogs (its tab first), a card each with its portrait; a click picks one (sparks); a sheep: the flock', r10.tab === 'dogs' && r10.first === 'dogs' && r10.cards === 4 && r10.pics === 4
+  && r10.dog === 2 && r10.on === '2' && r10.sparks > 0 && r10.sheepTab === 'sheep', r10);
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();
