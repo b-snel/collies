@@ -514,16 +514,17 @@ try {
   await B.page.evaluate(() => GAME.barnTab('dogs'));
   const gDogs = await B.page.evaluate(() => GAME.barnDogs().length + ':' + document.querySelectorAll('#barnList [data-dog]').length);
   await tap(B, '#barnRole [data-role="huntaway"]');
-  await tap(B, '#barnBreed [data-dbr="1"]');   // DOG BREEDS: the next one (Rough Collie)
+  await tap(B, '#barnHair [data-hair="smooth"]');   // DOG BREEDS: a smooth Border Collie…
+  await tap(B, '#barnBreed [data-dbr="1"]');   // …then the next one (a Shetland Sheepdog: one coat; the length kept for later)
   await tap(B, '#barnCoat [data-coat="#8d929c"]');   // (blue merle: one of its coats)
   await B.page.fill('#barnName', 'Mossy');
-  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.role === 'huntaway' && d.netLook && d.netLook.breed === 'rough' && d.netLook.coat === '#8d929c' && d.player.name === 'Mossy'; }, null, 5000).catch(() => {});
-  const gd2 = await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { role: d.role, breed: d.netLook && d.netLook.breed, coat: d.netLook && d.netLook.coat, collar: d.netLook && d.netLook.collar, name: d.player.name, roster: NET.roster.map(r => r.n).join() }; });
+  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.role === 'huntaway' && d.netLook && d.netLook.breed === 'sheltie' && d.netLook.coat === '#8d929c' && d.player.name === 'Mossy'; }, null, 5000).catch(() => {});
+  const gd2 = await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { role: d.role, breed: d.netLook && d.netLook.breed, hair: d.netLook && d.netLook.hair, coat: d.netLook && d.netLook.coat, collar: d.netLook && d.netLook.collar, name: d.player.name, roster: NET.roster.map(r => r.n).join() }; });
   await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.netLook && d.netLook.coat === '#8d929c' && d.role === 'huntaway'; }, null, 5000).catch(() => {});
   const gd2B = await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { coat: d.netLook && d.netLook.coat, breed: d.netLook && d.netLook.breed, role: d.role }; });
-  check("…its own dog: just its own listed; role, breed, coat and name picked there reach the host (collar: its slot's) and come back on its screen",
-    gDogs === '1:1' && gd2.role === 'huntaway' && gd2.breed === 'rough' && gd2.coat === '#8d929c' && gd2.collar === '#3d8ef0' && gd2.name === 'Mossy' && /Mossy/.test(gd2.roster)
-    && gd2B.coat === '#8d929c' && gd2B.breed === 'rough' && gd2B.role === 'huntaway', { gDogs, host: gd2, guest: gd2B });
+  check("…its own dog: just its own listed; role, breed, coat length, colour and name picked there reach the host (collar: its slot's) and come back on its screen",
+    gDogs === '1:1' && gd2.role === 'huntaway' && gd2.breed === 'sheltie' && gd2.hair === 'smooth' && gd2.coat === '#8d929c' && gd2.collar === '#3d8ef0' && gd2.name === 'Mossy' && /Mossy/.test(gd2.roster)
+    && gd2B.coat === '#8d929c' && gd2B.breed === 'sheltie' && gd2B.role === 'huntaway', { gDogs, host: gd2, guest: gd2B });
   // …a find by its dog goes in its wardrobe and straight on
   await A.page.evaluate(() => GAME.foundDogItem('crown', GAME.G.dogs.find(d => d.player.kind === 'net')));
   await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.netLook && d.netLook.hat === 'crown'; }, null, 5000).catch(() => {});
@@ -542,7 +543,7 @@ try {
   await sleep(300);
   const hb3 = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.G.paused, GAME.BARN.open, GAME.G.menus.join()].join())));
   check('both screens in the barn: the world waits ("⏸ Paused" over both barns; the host lists only its own dogs); one leaves: it goes on (the guest keeps its dog on its device)',
-    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,rough,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
+    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,sheltie,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
 
   // ---------------------------------------------------------------- stale input: nothing arrives for a second → zeroed
   await B.page.keyboard.down('KeyW');

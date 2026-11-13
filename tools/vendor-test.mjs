@@ -352,7 +352,7 @@ const r11 = await h.page.evaluate(() => {
   mv(VAG.pitches[0].s - 20); H.at(0); H.place(d, VAG.x + 16, VAG.z + 3); updateCamera(0, true); renderOnce();   // (the flock short of his first pitch, him in view)
   const P0 = VAG.pitches[0], P1 = VAG.pitches[1], x0 = VAG.x, z0 = VAG.z, R0 = T.vag.stayR; mv(P0.s + T.vag.past + 4); T.vag.stayR = 8;   // (the dog watching him: not "by him")
   for (let i = 0; i < 8; i++) { H.place(d, VAG.x + 16, VAG.z + 3); updateCamera(0, true); renderOnce(); mv(P0.s + T.vag.past + 4); H.run(3); }   // (watched: no skipping)
-  out.walk = { st: VAG.st, pi: VAG.pi, on: +Math.hypot(VAG.x - x0, VAG.z - z0).toFixed(1), toward: Math.hypot(VAG.x - P1.x, VAG.z - P1.z) < Math.hypot(x0 - P1.x, z0 - P1.z) }; T.vag.stayR = R0;
+  out.walk = { st: VAG.st, pi: VAG.pi, on: +Math.hypot(VAG.x - x0, VAG.z - z0).toFixed(1), toward: sAt(VAG.x, VAG.z) > sAt(x0, z0) + 10, s: [+sAt(x0, z0).toFixed(0), +sAt(VAG.x, VAG.z).toFixed(0), +P1.s.toFixed(0)] };   // (on along the trail: it winds) T.vag.stayR = R0;
   mv(P1.s + 60); const q = pathPoint(Math.max(10, P0.s - 80), 0); H.place(d, q.x, q.z); updateCamera(0, true); renderOnce(); H.run(0.5);   // (looking well back down the trail)
   out.skip = { st: VAG.st, pi: VAG.pi, at: +Math.hypot(VAG.x - VAG.pitches[VAG.pi].x, VAG.z - VAG.pitches[VAG.pi].z).toFixed(1), ahead: VAG.pitches[VAG.pi].s > P1.s };
   H.at(1); H.place(d, VAG.x + 30, VAG.z); G.clock.hour = 21.5; VAG.wakeT = -99; H.run(1.5); out.night = VAG.st;

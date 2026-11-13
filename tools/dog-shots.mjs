@@ -1,5 +1,5 @@
 // Every dog breed in every bit of kit, on the barn's turntable, as one contact sheet (a look check, not a test).
-// node tools/dog-shots.mjs OUT.png [--breeds a,b:1 (b in its 2nd coat)] [--items 'hat,acc|hat'] [--angles a,b] [--size px] [--wrap n (one look: n breeds a row)]
+// node tools/dog-shots.mjs OUT.png [--breeds a,b:1 (b in its 2nd coat),c::long (c's long coat)] [--items 'hat,acc|hat'] [--angles a,b] [--size px] [--wrap n (one look: n breeds a row)]
 //   [--pack greens,salt (DOG PACK on, e.g. 1,1 or 0.5,0)] [--tilt rad (look down on it)]
 import { open } from './harness.mjs';
 import { writeFileSync } from 'node:fs';
@@ -24,8 +24,9 @@ const png = await h.page.evaluate(async ({ breeds, items, angles, size, wrapN, p
     const r = Math.floor(i / wrap); let c = (i % wrap) * per;
     for (const lk of looks) {
       const [hat, ...acc] = lk;
-      const [bid, ci] = String(bl[i] || '').split(':'), B = GAME.dogBreed(bid);   // 'id:n': its nth coat
-      dogSet(0, { breed: bid || undefined, hat, acc }); if (ci !== undefined) dogSet(0, { coat: B.coats[+ci % B.coats.length].b });
+      const [bid, ci, hr] = String(bl[i] || '').split(':'), B = GAME.dogBreed(bid);   // 'id:n': its nth coat; 'id:n:long': in that coat length
+      dogSet(0, { breed: bid || undefined, hat, acc }); if (ci !== undefined && ci !== '') dogSet(0, { coat: B.coats[+ci % B.coats.length].b });
+      if (B.hairs) dogSet(0, { hair: hr || B.hair });
       for (const a of angs) {
         BARN.rot = a; BARN.drag = {}; barnRender(0); if (tilt) { BARN.stand.rotation.x = tilt; BARN.r.render(BARN.sc, BARN.cam); BARN.stand.rotation.x = 0; }
         const bm = await createImageBitmap(cv);
