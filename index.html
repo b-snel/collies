@@ -689,7 +689,7 @@ const T = {
   // TORCHES (TORCHES): a stick by each fire (lean m off it). ✊ carries it; its tip into a lit fire (within light m): alight for burn h (× blizz
   // in a blizzard). Lit: it melts the snow and the ice round it (MELT: rate/s, all of it within r0 m, none past r; lying: lieR), warms within
   // heat m (up to heatMax). A lit one into a camp's cold fire lights it. Let go: dropped (on the run: tossed, the run × mul + add, up m/s)
-  torch: { lean: 2.7, light: 1.25, burn: 3, blizz: 2.5, r: 2.8, r0: 1.4, lieR: 1.9, rate: 5, heat: 4, heatMax: 0.55, len: 1.1, toss: { add: 5, mul: 1, up: 4.5 } },
+  torch: { lean: 2.7, light: 1.25, burn: 3, blizz: 2.5, r: 2.8, r0: 1.4, lieR: 1.9, rate: 5, heat: 4, heatMax: 0.55, len: 1.3, toss: { add: 5, mul: 1, up: 4.5 } },
   // MELT (0 snow … 1 bare, on the 2 m grid): torches melt it; a lit fire too, within fire m (fireRate/h). It snows over again refreeze/h
   // (× night after dark), blizz/h × the blizzard. Under the snow: grass (cap under[0]…[1]), eaten once it's bare; under the ice: rock
   melt: { fire: 7.5, fireRate: 1.6, refreeze: 0.08, night: 1.5, blizz: 2.4, under: [0.45, 0.85], every: 0.25 },
@@ -1820,6 +1820,7 @@ function iceK(x, z) {   // 0 dry … 1 on the ice (a soft edge); melted (MELT): 
 const GS = { s: 0, lat: 0 };
 function gateS(x, z) { let i = gIdx[cellIdxAt(x, z)]; if (i < 0) i = 0; const dx = x - pX[i], dz = z - pZ[i]; GS.lat = -dx * tZ[i] + dz * tX[i]; GS.s = i * PS + dx * tX[i] + dz * tZ[i]; return GS; }
 const gateE0 = lat => T.iceGate.s0 + 0.7 * Math.sin(lat * 0.37 + 1.3) + 0.35 * Math.sin(lat * 0.91), gateE1 = lat => T.iceGate.s1 + 0.8 * Math.sin(lat * 0.29 + 4) + 0.4 * Math.sin(lat * 1.13 + 2);
+const gateUnder = (x, z) => { const g = gateS(x, z); return Math.abs(g.lat) < 30 && g.s > gateE0(g.lat) - 0.2 && g.s < gateE1(g.lat) + 0.2; };   // (drawing: the scenery's under it)
 function gateIce0(x, z) {
   const B = GATE.box; if (!B || x < B[0] || x > B[1] || z < B[2] || z > B[3]) return 0;
   const g = gateS(x, z), e0 = gateE0(g.lat), e1 = gateE1(g.lat);
@@ -2269,10 +2270,11 @@ function part(parent, geo, { mat = MAT.vc, outline = true, shadow = true, pos = 
 }
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
 // static instanced props, chunked along z so off-screen chunks are culled
-function instanced(geo, items, { outline = true, shadow = true, chunk = 110 } = {}) {
+function instanced(geo, items, { outline = true, shadow = true, chunk = 110, gate = false } = {}) {
   const groups = new Map();
   for (const it of items) {
     if (harbK(it.x, it.z) > 0.03 || harbRoad(it.x, it.z).d < 3) continue;   // COLD HARBOUR: the land's cut away there since (harbourCarve)
+    if (gate && gateUnder(it.x, it.z)) continue;   // ICE GATE: under its ice (the old road's treads)
     const k = Math.floor(it.z / chunk); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
   for (const list of groups.values()) {
     const m = new THREE.InstancedMesh(geo, MAT.vc, list.length);
@@ -3690,7 +3692,7 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
   if (GLOW.length) part(scene, merge(...GLOW), { mat: MAT.basic, shadow: false });
   // all of the above that's instanced
   for (const k of ['needleA', 'needleB', 'tooth', 'cobble']) if (D[k].length) instanced(GEOS[k], D[k]);
-  for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false });
+  for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false, gate: true });   // (none under the ICE GATE's ice)
   // the mist below this side's lip: three sheets under the floor, drifting, thicker the deeper; it lies in the valley all the way up
   { const pos = [], al = [], idx = []; let v = 0;
     for (const [dy, a0] of [[-4.2, 0.36], [-7.5, 0.42], [-12, 0.5]]) {
@@ -10872,21 +10874,21 @@ const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f =
   // where Hank waits for a lane: by the base camp's fire (on its far side from the stick: out of the way up), looking up at the ice
   const f = PASS.fires.find(o => o.base), mid = gatePt(Tg.s0 - 1, 0); let w = null;
   for (const [ds, dl] of [[-1.2, -3], [1, -3.2], [-2.8, -1.5], [-2.6, 2.5]]) { const q = gatePt(f.s + ds, f.lat + dl); if (sdfAt(q.x, q.z) > 1.2) { w = q; break; } }
-  GATE.wait = { ...(w || gatePt(f.s - 3, f.lat)), face: mid }; GATE.mid = mid; GATE.base = f;
+  GATE.wait = { ...(w || gatePt(f.s - 3, f.lat)), face: mid }; GATE.mid = mid; GATE.base = f; GATE.ctr = gatePt((Tg.s0 + Tg.s1) / 2, 0);
   // drawn: a sheet of glassy blue ice over the floor, thicker in the middle, pale streaks down it, a glint sliding across; gone where it's
   // melted (as the patches are). A lip of broken ice along its top edge
-  const pos = [], col = [], rel = [], idx = [], cA = new THREE.Color('#a9d9f5'), cB = new THREE.Color('#e6f6ff'), cC = new THREE.Color('#82bfe6'), cc = new THREE.Color();
+  const pos = [], col = [], rel = [], idx = [], cA = new THREE.Color('#86c8f0'), cB = new THREE.Color('#d6f0ff'), cC = new THREE.Color('#5a9fd6'), cF = new THREE.Color('#f2f9ff'), cc = new THREE.Color();
   const NL = 64, NU = 22, la0 = -21, la1 = 19;
   for (let a = 0; a <= NL; a++) for (let u = 0; u <= NU; u++) {
     const lat = lerp(la0, la1, a / NL), e0 = gateE0(lat) - 0.4, e1 = gateE1(lat) + 0.4, s = lerp(e0, e1, u / NU), p = gatePt(s, lat), y = terrainH(p.x, p.z);
     const th = Math.sin(u / NU * Math.PI), up = y - liftArr[pathIdx(s)], wall = clamp((up - 0.6) / 2, 0, 1);
     pos.push(p.x, y + 0.06 + 0.16 * th * (1 - wall), p.z); rel.push(up);
     const streak = 0.5 + 0.5 * Math.sin(lat * 1.7 + Math.sin(s * 0.6) * 1.4), edge = 1 - th;
-    cc.copy(cA).lerp(cB, streak * 0.55 * th).lerp(cC, edge * 0.45 + (vnoise(lat * 0.4, s * 0.4) - 0.5) * 0.3); col.push(cc.r, cc.g, cc.b);
+    cc.copy(cA).lerp(cB, streak * 0.55 * th).lerp(cC, edge * 0.45 + (vnoise(lat * 0.4, s * 0.4) - 0.5) * 0.3).lerp(cF, smooth(0.55, 0.72, vnoise(lat * 0.35 + 7, s * 0.45)) * 0.75 * th); col.push(cc.r, cc.g, cc.b);   // (frost in patches)
   }
   for (let a = 0; a < NL; a++) for (let u = 0; u < NU; u++) {
     const i = a * (NU + 1) + u, j = i + NU + 1;
-    if ([i, j, i + 1, j + 1].every(k => rel[k] > 2.4)) continue;   // (up the walls: nothing)
+    if (![i, j, i + 1, j + 1].some(k => rel[k] > -0.8 && rel[k] < 1.4)) continue;   // (on the floor, lapping up the walls a little; nothing up them, nor down past the lip)
     idx.push(i, j, i + 1, i + 1, j, j + 1);
   }
   let geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
@@ -10896,6 +10898,16 @@ const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f =
   for (let lat = la0 + 0.5; lat < la1; lat += grr(0.8, 1.5)) {
     const s = gateE1(lat) - grr(0.2, 0.9), p = gatePt(s, lat), y = terrainH(p.x, p.z); if (y - liftArr[pathIdx(s)] > 1.2 || sdfAt(p.x, p.z) < 0.2) continue;
     const r = grr(0.28, 0.6); lip.push(P(ICO(1, 0), GR() < 0.5 ? '#cdeafa' : '#b4dcf5', { s: [r * grr(0.8, 1.3), r * grr(0.7, 1.4), r * grr(0.8, 1.3)], r: [grr(-0.6, 0.6), grr(0, 3), grr(-0.6, 0.6)], p: [p.x, y + r * 0.45, p.z] }));
+  }
+  // cracks across it: dark zigzags just over its top
+  const top = (ss, lat) => { const e0 = gateE0(lat) - 0.4, e1 = gateE1(lat) + 0.4, u = clamp((ss - e0) / (e1 - e0), 0, 1), p = gatePt(ss, lat), y = terrainH(p.x, p.z); return { ...p, y: y + 0.075 + 0.16 * Math.sin(u * Math.PI) * (1 - clamp((y - liftArr[pathIdx(ss)] - 0.6) / 2, 0, 1)) }; };
+  for (let c = 0; c < 14; c++) {
+    let ss = grr(Tg.s0 + 1.5, Tg.s1 - 1.5), lat = grr(-12, 10), a = grr(0, TAU);
+    for (let k = 0, n = 4 + Math.floor(GR() * 5); k < n; k++) {
+      a += grr(-0.9, 0.9); const L = grr(0.5, 1.2), s2 = ss + Math.cos(a) * L, l2 = lat + Math.sin(a) * L, A = top(ss, lat), B = top(s2, l2);
+      if (sdfAt(A.x, A.z) > 0.3 && sdfAt(B.x, B.z) > 0.3) { const g = BOX(Math.hypot(B.x - A.x, B.z - A.z), 0.02, 0.06 - k * 0.005); lip.push(P(g, '#3d7db8', { r: [0, -Math.atan2(B.z - A.z, B.x - A.x), 0], p: [(A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2] })); }
+      ss = s2; lat = l2;
+    }
   }
   const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
   mat.onBeforeCompile = sh => { sh.uniforms.uMelt = U.uMelt; sh.uniforms.uGrassXf = U.uGrassXf; sh.uniforms.uTime = U.uTime;
@@ -11181,12 +11193,19 @@ function torchFx(kind, x, z) {
 const TORCH_GEO = (() => { const L = T.torch.len; return merge(P(CYL(0.05, 0.06, L, 6), '#8a5a32', { r: [Math.PI / 2, 0, 0] }), P(CYL(0.095, 0.085, 0.3, 7), '#4a3428', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.13] }),
   P(CYL(0.1, 0.1, 0.05, 7), '#d8b072', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.25] }), P(CYL(0.1, 0.1, 0.05, 7), '#d8b072', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.03] })); })();   // (a pitch-black head, pale rag bindings)
 // at home it stands in a little cairn in the snow, leaning (side on to the camera), a warm glow round its head (as over things worth finding)
-const TORCH_LEAN = 0.38, TORCH_GLOW = new THREE.SpriteMaterial({ map: FIND_GLOW.dig.map, color: '#ff9a3a', transparent: true, opacity: 0.5, depthWrite: false });   // (not additive: it shows on the snow)
+const TORCH_LEAN = 0.38, TORCH_GLOW = new THREE.SpriteMaterial({ map: FIND_GLOW.dig.map, color: '#ffb347', transparent: true, opacity: 0.6, depthWrite: false });   // (not additive: it shows on the snow)
+const TORCH_STAR = (() => {   // a twinkle over its head: a gold four-point star, seen through sheep
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), st = (r0, r1) => { c.beginPath(); for (let k = 0; k < 8; k++) { const a = k / 8 * TAU - Math.PI / 2, r = k % 2 ? r1 : r0; c.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); } c.closePath(); };
+  st(30, 7); c.fillStyle = 'rgba(150,70,0,.75)'; c.fill(); st(26, 5); const g = c.createRadialGradient(32, 32, 0, 32, 32, 26); g.addColorStop(0, '#fff'); g.addColorStop(0.35, '#ffe9a0'); g.addColorStop(1, '#ffa328'); c.fillStyle = g; c.fill();
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+})();
 const torchPlanted = t => !t.by && t.h < 0.01 && Math.abs(t.x - t.home.x) + Math.abs(t.z - t.home.z) < 0.05;
 for (const t of TORCHES) {
   const g = new THREE.Group(); part(g, TORCH_GEO); scene.add(g); t.mesh = g;
   t.flames = [['#ff9a2a', 0.13, 0.5], ['#ffe07a', 0.075, 0.32]].map(([c, r, h]) => { const m = new THREE.Mesh(CONE(r, h, 6).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: c })); m.visible = false; scene.add(m); return m; });
   t.glow = new THREE.Sprite(TORCH_GLOW.clone()); t.glow.scale.setScalar(1.3); scene.add(t.glow);
+  t.star = new THREE.Sprite(TORCH_STAR.clone()); t.star.renderOrder = 6; scene.add(t.star);
   t.lean = Math.atan2(CAM_R.x, CAM_R.z) + (t.i % 2 ? 0.3 : -0.3);
   const h = t.home, st = new THREE.Group(); st.position.set(h.x, terrainH(h.x, h.z), h.z); st.rotation.y = t.i * 1.7; scene.add(st);   // its cairn
   part(st, merge(P(SPH(8), '#f4f8fc', { s: [0.5, 0.17, 0.46], p: [0, 0.02, 0] }), P(ICO(1, 0), '#6c717e', { s: [0.2, 0.15, 0.18], p: [0.3, 0.09, 0.05] }),
@@ -11208,11 +11227,12 @@ function syncTorches(dt) {
     }
     g.updateMatrixWorld(true); g.localToWorld(_tv.set(0, 0, L / 2 - 0.08));
     // the glow round its head while it's lying about (brighter alight); a gold mote now and then
-    const gl = t.glow, show = near && !d && G.mode !== 'title'; gl.visible = show;
+    const gl = t.glow, show = near && !d && G.mode !== 'title'; gl.visible = show; t.star.visible = show && !(t.lit > 0);
     if (show) {
       const tw = (t0 * 0.5 + t.i * 0.7) % 2.4, k = tw < 0.5 ? Math.sin(tw / 0.5 * Math.PI) : 0, lit = t.lit > 0;
-      gl.position.set(_tv.x, _tv.y + 0.08, _tv.z); gl.scale.setScalar((lit ? 2.2 : 1.25) + 0.22 * Math.sin(t0 * 2.6 + t.i) + k * 0.45); gl.material.opacity = (lit ? 0.55 : 0.4) + 0.12 * Math.sin(t0 * 2.6 + t.i);
+      gl.position.set(_tv.x, _tv.y + 0.08, _tv.z); gl.scale.setScalar((lit ? 2.4 : 1.7) + 0.3 * Math.sin(t0 * 2.6 + t.i) + k * 0.6); gl.material.opacity = (lit ? 0.6 : 0.5) + 0.15 * Math.sin(t0 * 2.6 + t.i);
       if (k > 0 && (t.sparkT || 0) < t0 - 1 && Math.abs(t.x - cam.x) + Math.abs(t.z - cam.z) < 60) { t.sparkT = t0; burst(_tv.x, _tv.y + 0.2, _tv.z, 1, '#ffb340', { speed: 0.5, up: 1.4, size: 0.1, life: 0.9, grav: 0 }); }
+      t.star.position.set(_tv.x, _tv.y + 0.35, _tv.z); t.star.scale.setScalar(0.32 + k * 0.75); t.star.material.rotation = k * 0.8;
     }
     const lit = t.lit > 0 && near; t.flames[0].visible = t.flames[1].visible = lit; if (!lit) continue;
     const k = 0.75 + 0.25 * Math.min(1, t.lit / 0.5), s = k * (0.9 + 0.15 * Math.sin(t0 * 13 + t.i) + 0.1 * Math.sin(t0 * 21 + t.i * 3));
@@ -11233,14 +11253,14 @@ function drawTorchOverlay() {
     const d = t.by;
     if (d) {
       if (!d.player || d.player.kind === 'net') continue;
-      if (t.lit > 0 && gateShut() && Math.hypot(d.x - GATE.mid.x, d.z - GATE.mid.z) < 30) nudge('gate-melt', GATE.mid.x, groundY(GATE.mid.x, GATE.mid.z) + 1.4, GATE.mid.z, '🔥 → ❄️ ✖', '#7fd0f5');   // ICE GATE: through that
+      if (t.lit > 0 && gateShut() && Math.hypot(d.x - GATE.ctr.x, d.z - GATE.ctr.z) < 30) nudge('gate-melt', GATE.ctr.x, groundY(GATE.ctr.x, GATE.ctr.z) + 1.4, GATE.ctr.z, '🔥 → ❄️ ✖', '#7fd0f5');   // ICE GATE: through that
       else if (t.lit > 0) nudge('torch-melt', d.x, d.y + 2.3, d.z, '🔥 ❄️ → 🌿', '#ffb340');
       else { const f = PASS.fires.find(o => o.fuel > 0 && Math.abs(o.x - d.x) + Math.abs(o.z - d.z) < 22); if (f) nudge('torch-dip', f.x, f.y + 2.2, f.z, '🪵 → 🔥', '#ffb340'); }
       continue;
     }
     if (t.h > 0 || t.lit > 0) continue;
     const o = G.dogs.find(o => !o.holding && o.player && o.player.kind !== 'net' && Math.abs(o.x - t.x) < 7 && Math.abs(o.z - t.z) < 7); if (!o) continue;
-    nudge('torch', t.x, groundY(t.x, t.z) + 1.1, t.z, `${keyLabel(o.player, 'grab')} 🪵`, '#ffb340');
+    nudge('torch', t.x, groundY(t.x, t.z) + (torchPlanted(t) ? 2.1 : 1.1), t.z, `${keyLabel(o.player, 'grab')} 🪵`, '#ffb340');   // (over its head)
   }
 }
 // ---------------- GOATS: on the ledges up the walls ----------------
@@ -19996,7 +20016,7 @@ fireFx = fxDef('fireFx', fireFx); slipFx = fxDef('slipFx', slipFx); slideBonkFx 
 crevHelpFx = fxDef('crevHelpFx', crevHelpFx); igniteFx = fxDef('igniteFx', igniteFx); burnOutFx = fxDef('burnOutFx', burnOutFx); hotFx = fxDef('hotFx', hotFx); goatFx = fxDef('goatFx', goatFx);
 goatBonkFx = fxDef('goatBonkFx', goatBonkFx); goatPouncedFx = fxDef('goatPouncedFx', goatPouncedFx); snowHitFx = fxDef('snowHitFx', snowHitFx); yetiFx = fxDef('yetiFx', yetiFx); yetiButtFx = fxDef('yetiButtFx', yetiButtFx);
 yetiHitFx = fxDef('yetiHitFx', yetiHitFx); yetiBeatenFx = fxDef('yetiBeatenFx', yetiBeatenFx); rockCrackFx = fxDef('rockCrackFx', rockCrackFx); rockFallFx = fxDef('rockFallFx', rockFallFx); rockDownFx = fxDef('rockDownFx', rockDownFx);
-hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx);
+hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx); gateOpenFx = fxDef('gateOpenFx', gateOpenFx);   // (ICE GATE: a lane through)
 waterFx = fxDef('waterFx', waterFx);
 ropeFx = fxDef('ropeFx', ropeFx);
 boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won

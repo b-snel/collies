@@ -468,13 +468,16 @@ if (!only || only === 'gate') {
     out.lane = { open: GATE.open, n: GATE.path && GATE.path.length, dSlid, top: sAt(d.x, d.z) > I.s1 + 2, gateLit: !!PASS.said.gateLit, gateOpen: !!PASS.said.gateOpen };
     if (!GATE.open) return out;
     // Hank goes up it now; a driven sheep goes up it; it doesn't snow over (a blizzard)
-    let hUp = run(30, () => sAt(HANK.x, HANK.z) > I.s1 + 1.5); out.hankUp = +hUp.toFixed(1);
+    const f0 = PASS.fires[0], hi = pathPoint(f0.s - 12, 0); living().forEach((o, i) => { o.x = hi.x + (i % 4) * 1.5; o.z = hi.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });   // (the flock well up: where he's going's up past it)
+    let hUp = run(40, () => sAt(HANK.x, HANK.z) > I.s1 + 1.5); out.hankUp = +hUp.toFixed(1);
+    if (hUp < 0) out.hankWas = { s: +sAt(HANK.x, HANK.z).toFixed(1), goal: HANK.goal && { x: +HANK.goal.x.toFixed(1), z: +HANK.goal.z.toFixed(1), s: +sAt(HANK.goal.x, HANK.goal.z).toFixed(1), fire: !!HANK.goal.fire, care: !!HANK.care, wait: !!HANK.goal.gateWait }, asleep: HANK.asleep, hour: GAME.G.clock.hour, fc: +sAt(GAME.flockCenter().x, GAME.flockCenter().z).toFixed(1) };
     const L0 = GATE.path[0], L1 = GATE.path[GATE.path.length - 1], s2 = living().filter(o => !o.ram && !o.lamb)[1], dl = Math.hypot(L1.x - L0.x, L1.z - L0.z), lx = (L1.x - L0.x) / dl, lz = (L1.z - L0.z) / dl;
     Object.assign(s2, { x: L0.x, z: L0.z, vx: 0, vz: 0, slide: null, state: 'flee', fear: 1, fdx: lx, fdz: lz, alert: 2 }); let s2Slid = false;
     run(6, () => { if (!s2.slide && sAt(s2.x, s2.z) < I.s1) { s2.state = 'flee'; s2.fear = 1; const g = GATE.path.reduce((a, p) => Math.hypot(p.x - s2.x, p.z - s2.z) < Math.hypot(a.x - s2.x, a.z - s2.z) ? p : a), i = GATE.path.indexOf(g), n = GATE.path[Math.min(GATE.path.length - 1, i + 1)], nx = n.x - s2.x, nz = n.z - s2.z, nl = Math.hypot(nx, nz) || 1; s2.fdx = nx / nl; s2.fdz = nz / nl; } if (s2.slide) s2Slid = true; return sAt(s2.x, s2.z) > I.s1 + 1; });
     out.sheepUp = { s: +sAt(s2.x, s2.z).toFixed(1), slid: s2Slid };
     PASS.blizz.next = 0; run(25); PASS.blizz.on = false; PASS.blizz.next = 1e9; GAME.updateIceGate(1); out.blizzOpen = GATE.open;
     // a dev jump onto it: melted through; back below it: iced again; a new journey: iced
+    P.bot = {}; GAME.step(0.025);
     devJump(I.s0 + 10); out.devAll = GATE.all && GATE.open && living().every(o => sAt(o.x, o.z) > I.s0 - 30);
     devJump(b.s); out.devBack = !GATE.all && !GATE.open && iceK(pathPoint((I.s0 + I.s1) / 2, 0).x, pathPoint((I.s0 + I.s1) / 2, 0).z) > 0.9;
     resetPass(); const m = pathPoint((I.s0 + I.s1) / 2, 0); out.reset = !GATE.open && !GATE.all && iceK(m.x, m.z) > 0.9 && !PASS.said.gate;
