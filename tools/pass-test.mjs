@@ -1,4 +1,4 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|burn|finish]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|burn|finish|uphill]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
@@ -21,6 +21,9 @@
 //   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
 //             rest left below) drives them off the floor, up it and onto the ledge
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
+//   uphill    (UP, seeded, on vs off) left alone the flock goes up to a lit camp 30 m up, not onto the ice or into a crack; 30 m past
+//             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it;
+//             pressed from either side it veers up; cold, 15 m past a lit fire, it doesn't go back down to it
 //   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -227,9 +230,9 @@ if (!only || only === 'blizzard') {
     setup(1320, { blizz: true, hour: 11 });
     run(2); const on = PASS.blizz.on; let k = 0;
     run(40, () => { k = Math.max(k, PASS.blizz.k); }); const L = living(), snow = L.reduce((a, s) => a + (s.snow || 0), 0) / L.length;
-    const s = L[0]; s.snow = 1; const sn0 = s.snow;
-    for (let t = 0; t < 2; t += 0.025) { s.state = 'flee'; s.fear = 1; s.fdx = 0; s.fdz = 1; GAME.step(0.025); }
-    const shed = s.snow;
+    const s = L[0], p = pathPoint(1320, 0), { ICES, CREVS } = GAME, ice = ICES.splice(0), crev = CREVS.splice(0); s.snow = 1; s.x = p.x; s.z = p.z;   // (the flock's drifted on up: back on clear floor, no ice or cracks to stop it)
+    for (let t = 0; t < 2; t += 0.025) { s.state = 'flee'; s.fear = 1; s.fdx = p.tx; s.fdz = p.tz; GAME.step(0.025); }   // (up, away from the dog)
+    const shed = s.snow; ICES.push(...ice); CREVS.push(...crev);
     PASS.blizz.on = false; PASS.blizz.next = 1e9; const f = PASS.fires[1], q = L[1]; f.fuel = 5; q.snow = 1; q.x = f.x + 2.2; q.z = f.z; run(4); 
     return { on, k: +k.toFixed(2), snow: +snow.toFixed(2), shed: +shed.toFixed(2), melt: +q.snow.toFixed(2) };
   });
@@ -451,6 +454,62 @@ if (!only || only === 'burn') {
   });
   ok('a sheep carried into a fire catches; too hot to hold (dropped)', r.held && r.lit && r.dropped, r);
   ok(`it runs mad (${r.ran} m), then rolls it out: singed, alive`, r.ran > 3 && r.rolled && r.out && r.singed && r.alive && r.soot, r);
+}
+
+if (!only || only === 'uphill') {
+  const r = await ev(() => {
+    const { G, T, PASS, ICES, CREVS, pathPoint, sAt, living, step, iceK, crevAt } = GAME, U = T.pass.up;
+    const fc = () => { const L = living(); let x = 0, z = 0, s = 0; for (const o of L) { x += o.x; z += o.z; s += sAt(o.x, o.z); } return { x: x / L.length, z: z / L.length, s: s / L.length }; };
+    const clearAt = (s0) => [0, 3, -3, 6, -6, 9, -9].find(l => { const p = pathPoint(s0, l); for (let i = 0; i < 16; i++) { const x = p.x + (i % 4) * 1.5 - 2.2, z = p.z + Math.floor(i / 4) * 1.5 - 2.2; if (iceK(x, z) > 0 || iceK(x + 2, z) > 0 || iceK(x - 2, z) > 0 || iceK(x, z + 2) > 0 || iceK(x, z - 2) > 0 || crevAt(x, z, 2)) return false; } return true; }) ?? 0;
+    // the flock at s0 (clear of the ice), fires lit; idle / a dog sweeping up behind it at a walk / a dog crossing it from one side;
+    // up: UP on or off (off: as it was). Δs: how far up the trail it got (low: its lowest; back: sheep that got back past the dog).
+    // Seeded (seed: Math.random), so on and off see the same dice
+    const rand = Math.random, seeded = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const trial = (up, s0, o) => {
+      Math.random = seeded(o.seed ?? 7);
+      U.on = up; const ice = ICES.slice(), crev = CREVS.slice(); if (o.clear) { ICES.length = 0; CREVS.length = 0; }
+      setup(s0, { hour: 10, lat: o.clear ? 0 : clearAt(s0), dogS: s0 - 60, hankS: s0 - 20 });
+      for (const f of PASS.fires) f.fuel = 0; for (const i of o.lit) PASS.fires[i].fuel = 9;
+      for (const s of living()) { s.wool = 1; s.cold = o.cold || 0; }
+      const d = G.dogs[0], c0 = fc(), p0 = pathPoint(c0.s, 0), f = o.fire != null ? PASS.fires[o.fire] : null; let low = 0, back = 0, slid = 0, fell = 0, warmBehind = 0, near = 1e9;
+      if (o.side) { const p = pathPoint(c0.s, o.side * 13); d.x = p.x; d.z = p.z; }
+      for (let t = 0; t < o.t; t += 0.025) {
+        if (o.sweep) { const p = pathPoint(c0.s - 10 + t * 1.2, 0), l = Math.hypot(p.x - d.x, p.z - d.z); G.players[0].bot = l > 0.6 ? toward(p.x - d.x, p.z - d.z, l < 3 ? { creep: true } : {}) : {}; }
+        else if (o.side) G.players[0].bot = t < 5 ? toward(-p0.nx * o.side, -p0.nz * o.side) : { lie: true };
+        step(0.025);
+        const c = fc(), ds = sAt(d.x, d.z); low = Math.min(low, c.s - c0.s); if (f) near = Math.min(near, Math.hypot(c.x - f.x, c.z - f.z));
+        for (const s of living()) {
+          if (o.sweep && !s.wasBack && sAt(s.x, s.z) < ds - 2) { s.wasBack = true; back++; }
+          if (s.slide && s.slide.kind === 'ice' && !s.slid) { s.slid = true; slid++; } if (!s.slide) s.slid = false;
+          if (s.crev && !s.fell) { s.fell = true; fell++; }
+          if (o.behind != null && s.state === 'warm' && s.fire === PASS.fires[o.behind] && !s.wb) { s.wb = true; warmBehind++; }
+        }
+      }
+      G.players[0].bot = {}; ICES.length = 0; ICES.push(...ice); CREVS.length = 0; CREVS.push(...crev); U.on = true; Math.random = rand;
+      for (const s of living()) s.wasBack = s.slid = s.fell = s.wb = false;
+      const c = fc(), rear = Math.min(...living().map(o => sAt(o.x, o.z))) - c0.s;
+      return { ds: +(c.s - c0.s).toFixed(1), rear: +rear.toFixed(1), low: +low.toFixed(1), back, slid, fell, warm: warmBehind, near: f ? +near.toFixed(1) : null };
+    };
+    const F = PASS.fires, base = F.find(f => f.base), out = {};
+    for (const up of [false, true]) {
+      const k = up ? 'on' : 'off';
+      out[k] = {
+        mid: trial(up, F[0].s - 30, { t: 100, lit: [0, base.i], fire: 0 }),             // a lit camp 30 m up (the base camp lit, 67 m down; ice and a crack between)
+        foot: trial(up, base.s + 30, { t: 90, lit: [base.i] }),                         // 30 m past the base camp, lit (its melted camp and the snow line below)
+        sweep: [1, 2, 3, 4].map(seed => trial(up, base.s + 30, { t: 30, lit: [base.i], sweep: true, seed })).reduce((a, b) => ({ ds: +(a.ds + b.ds / 4).toFixed(1), rear: +(a.rear + b.rear / 4).toFixed(1), low: Math.min(a.low, b.low), back: a.back + b.back }), { ds: 0, rear: 0, low: 0, back: 0 }),   // ...a dog walking up behind it (4 goes)
+        sideE: trial(up, F[1].s - 30, { t: 12, lit: [1], side: 1, clear: true }),       // a dog crossing it from the east
+        sideW: trial(up, F[1].s - 30, { t: 12, lit: [1], side: -1, clear: true }),      // ...from the west
+        cold: trial(up, F[0].s + 15, { t: 40, lit: [0], cold: 0.5, behind: 0 }),        // cold, 15 m past a lit fire (the next one far up)
+      };
+    }
+    return out;
+  });
+  const { on, off } = r, s = o => `${o.ds} m (low ${o.low})`;
+  ok(`idle, a lit camp 30 m up: up to it (${on.mid.near} m off it), ${s(on.mid)} (was ${off.mid.near} m, ${s(off.mid)}); none onto the ice or into the crack (${on.mid.slid}, ${on.mid.fell})`, on.mid.ds > 15 && on.mid.low > -3 && on.mid.near < 10 && !on.mid.slid && !on.mid.fell, r);
+  ok(`idle past the base camp: on up ${s(on.foot)} (was ${s(off.foot)}: back down)`, on.foot.ds > 20 && on.foot.low > -3 && on.foot.ds > off.foot.ds + 20 && !on.foot.slid && !on.foot.fell, r);
+  ok(`a dog walking up behind it drives it faster: ${on.sweep.ds} m, the last one ${on.sweep.rear} m, ${on.sweep.back} back past it (was ${off.sweep.ds}, ${off.sweep.rear}, ${off.sweep.back})`, on.sweep.ds > off.sweep.ds && on.sweep.rear > off.sweep.rear && on.sweep.back <= 1, r);
+  ok(`pressed from the side it veers up: from the east ${on.sideE.ds} m, the west ${on.sideW.ds} m (was ${off.sideE.ds}, ${off.sideW.ds})`, on.sideE.ds > 5 && on.sideW.ds > 5 && on.sideE.low > -2 && on.sideW.low > -2, r);
+  ok(`cold, 15 m past a lit fire: not back down to it (${s(on.cold)}, ${on.cold.warm} by it; was ${s(off.cold)}, ${off.cold.warm})`, on.cold.warm <= 2 && on.cold.low > -3, r);
 }
 
 console.log(h.errors.length ? `errors: ${h.errors.slice(0, 5).join(' | ')}` : 'no page errors');
