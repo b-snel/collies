@@ -480,6 +480,9 @@ if (!only || only === 'gate') {
     out.sheepUp = { s: +sAt(s2.x, s2.z).toFixed(1), slid: s2Slid };
     PASS.blizz.next = 0; run(25); PASS.blizz.on = false; PASS.blizz.next = 1e9; GAME.updateIceGate(1); out.blizzOpen = GATE.open;
     // a dev jump onto it: melted through; back below it: iced again; a new journey: iced
+    // online: a friend's ice from the host's melt (a late friend: the lane; a new journey: none)
+    const mk = GAME.gateMask(); GAME.resetMelt(); GAME.gateScan(); out.mask = { n: mk.length, shut: !GATE.open }; GAME.gateMaskSet(mk); GAME.gateScan(); out.mask.back = GATE.open;
+    GAME.gateMaskSet('0'.repeat(mk.length)); GAME.gateScan(); out.mask.iced = !GATE.open && !/[1-9a-f]/.test(GAME.gateMask());
     P.bot = {}; GAME.step(0.025);
     devJump(I.s0 + 10); out.devAll = GATE.all && GATE.open && living().every(o => sAt(o.x, o.z) > I.s0 - 30);
     devJump(b.s); out.devBack = !GATE.all && !GATE.open && iceK(pathPoint((I.s0 + I.s1) / 2, 0).x, pathPoint((I.s0 + I.s1) / 2, 0).z) > 0.9;
@@ -494,6 +497,7 @@ if (!only || only === 'gate') {
   ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
   ok(`up it now: Hank (${r.hankUp} s), a driven sheep (${r.sheepUp?.s}, no slide); a blizzard doesn't shut it`, r.hankUp >= 0 && r.sheepUp?.s > 0 && !r.sheepUp.slid && r.blizzOpen, r);
   ok('a dev jump onto it: melted through; back below: iced again; a new journey: iced', r.devAll && r.devBack && r.reset, r);
+  ok(`online: a friend's ice from the host's (${r.mask?.n} hex digits): the lane, or none`, r.mask && r.mask.shut && r.mask.back && r.mask.iced, r.mask);
 }
 
 if (!only || only === 'burn') {

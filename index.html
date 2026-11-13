@@ -10994,6 +10994,13 @@ function gateMelt(on) {
   for (const v of GATE.V) meltSet(v, on ? 1 : 0);
   if (on) meltOn = true; GATE.all = on; gateScan();
 }
+// online: which of its vertices are melted (hex, 4 a digit), so a friend's ice is the host's (late, a dev jump; none: a new journey, all ice).
+// A friend only melts more of it from the host's (its own torches melt it too); none melted at the host: iced again
+function gateMask() { let s = '', b = 0, n = 0; for (const v of GATE.V) { b = b * 2 + (MELT[v] >= 0.5 ? 1 : 0); if (++n === 4) { s += b.toString(16); b = n = 0; } } return n ? s + (b << (4 - n)).toString(16) : s; }
+function gateMaskSet(m) {
+  if (!m || !/[1-9a-f]/.test(m)) { for (const v of GATE.V) if (MELT[v] > 0) meltSet(v, 0); return; }
+  GATE.V.forEach((v, i) => { if (((parseInt(m[i >> 2], 16) || 0) >> (3 - (i & 3))) & 1 && MELT[v] < 0.5) { meltSet(v, 1); meltOn = true; } });
+}
 // a slip on it going up, with no lane and no lit torch: Hank's on at them about the torch (more and more dry about it)
 const GATE_NAGS = ["Are you sure you don't want to use the torch to melt the ice?", "Ice doesn't care how fast ye run at it.", "The stick by the fire. Dip it in. Melt the ice.",
   "Still slidin'? I could watch this all day. Well. I am.", "Och, I've seen goats with more sense. THE TORCH!", "Torch. Fire. Ice. In that order.", "That ice'll be there till spring. Or till ye light the torch."];
@@ -18816,7 +18823,7 @@ const NET_TYPES = {
   torch: { tag: 'Z', all: () => TORCHES, id: t => t.i, static: true, fields: { x: .05, z: .05, h: .02, yaw: 'a', spin: .1, lit: .02, by: '@dog' } },   // the fire camps' sticks: where, burning how long yet, in whose jaws
   pass: { tag: 'P', one: () => PASS, fields: { bk: { c: .02, get: o => o.blizz.k, set: (o, v) => { o.blizz.k = v; } }, wind: { c: 'a', get: o => o.blizz.wind || 0, set: (o, v) => { o.blizz.wind = v; } },
     frozen: { c: 'b', get: () => !!finalPen.frozen, set: (o, v) => { finalPen.frozen = v; } }, ice: { c: 'b', get: () => HARB.ice, set: (o, v) => { HARB.ice = v; } },
-    gate: { c: 'b', get: () => GATE.all, set: (o, v) => { if (v !== GATE.all) gateMelt(v); } } } },   // (ICE GATE: melted through by a dev jump)
+    gate: { c: 's', get: () => gateMask(), set: (o, v) => gateMaskSet(v) } } },   // (ICE GATE: which bits of it are melted: a late friend, a dev jump, a new journey)
   rock: { tag: 'K', one: () => ROCK, fields: { cracks: 'i', state: 's', t: .02, dir: 'a', len: .05 }, animate: (R, dt) => { if (R.state === 'fall' || (R.state === 'down' && R.t < 2)) R.t += dt; } },
   snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05, x: .05, z: .05 } },   // RATTLESNAKES: out how far, striking at what
   yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
@@ -20381,7 +20388,7 @@ function renderOnce(dt = 1 / 60) {
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt,
-  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateBack, gateSteer, hankGate, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
+  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, hankGate, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
