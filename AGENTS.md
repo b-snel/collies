@@ -57,7 +57,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 → scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING, HAIR) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
@@ -129,7 +129,7 @@ Run the ones touching your change; report the numbers.
 | `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
-| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look |
+| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -425,6 +425,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Mouth loads swing** (CARRY SWING, `carrySwing`, `d.cw`, `T.carrySwing`, drawing only): anything in a
   dog's mouth (bucket, sheep, coyote, dog) hangs from its jaws on a pendulum: lags starts, stops, turns and hops,
   clonks off the chest (head jolts, tin tonk), kicks, sloshes. Cute and comical. New mouth load → turn it by `d.cw`.
+- **Hair** (HAIR, `T.hair`, `hairPiece`, `hairStep`, `M.hair`, drawing only): long hair, cords and floppy ears swing. Each piece a rod
+  from its root stepped in world space (Verlet): lags its root, damped against it (`damp`) and the air (`air`), springs back to how it
+  grows (`k` per kind), hangs by its weight as the dog tips (upside down: it falls), off the ground, out of the coat (`hull`), at most
+  `max` from rest. Locks grouped by side and along the body; a cord's lower piece hangs off its upper. buildDog makes them; syncDog, the barn step them.
 - **Ram nads** (`s.nads`, `T.nads`, drawing only): a cord and a pair on springs,
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;

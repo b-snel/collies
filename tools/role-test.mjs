@@ -8,6 +8,7 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
+//   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -229,6 +230,30 @@ ok('a coat it can\'t have isn\'t put on; a breed change keeps a coat it can have
 ok('an old save (role saved as `breed`): that role, a Border Collie, its coat', r7.old[0] === 'heeler' && r7.old[1] === 'border' && r7.old[2] === '#6b3a22', r7.old);
 ok('online: the host\'s look (a breed and coat) rebuilds a guest\'s dog', r7.net[0] === 'poodle' && r7.net[1] === '#232226', r7.net);
 ok('the barn: ‹ › steps the breed, the coats are that breed\'s, it wraps', r7.barn0 === 'Border Collie' && r7.barn1[0] === 'Rough Collie' && r7.barn1[1] === 'rough' && r7.barn1[2] === 3 && r7.barnWrap === 'bulldog', r7);
+
+// 8. HAIR: drawing only
+const r8 = await h.page.evaluate(() => {
+  const { BARN, openBarn, barnTab, dogSet, hairStep, DOG_BREEDS } = GAME, out = {};
+  openBarn(); barnTab('dogs');
+  const ang = P => 2 * Math.acos(Math.min(1, Math.abs(P.g.quaternion.w))) * 57.3, max = M => Math.max(0, ...M.hair.map(ang));
+  out.none = []; out.some = [];
+  for (const B of DOG_BREEDS) { dogSet(0, { breed: B.id }); (BARN.dogM.hair.length ? out.some : out.none).push(B.id); }
+  for (const b of ['puli', 'oes', 'beagle', 'golden']) {
+    dogSet(0, { breed: b }); const M = BARN.dogM, root = M.root, o = out[b] = {};
+    for (let f = 0; f < 120; f++) hairStep(M, 1 / 60, -9); o.still = +max(M).toFixed(1);
+    for (let f = 0; f < 30; f++) { root.position.x = 0.2 * Math.sin(f / 60 * 16); hairStep(M, 1 / 60, -9); } o.shaken = +max(M).toFixed(1);
+    root.position.x = 0; for (let f = 0; f < 150; f++) hairStep(M, 1 / 60, -9); o.settled = +max(M).toFixed(1);
+    root.rotation.z = Math.PI; root.position.y = 2; for (let f = 0; f < 120; f++) hairStep(M, 1 / 60, -9);
+    const P = M.hair.find(p => p.kind !== 'fringe');
+    o.flipDown = P.tip.y < P.pw.y - 0.5 * P.L * 1.3; o.nan = M.hair.some(p => !isFinite(p.tip.x + p.tip.y + p.tip.z));
+    root.rotation.z = 0; root.position.set(0, 0.02, 0);
+  }
+  GAME.closeBarn();
+  return out;
+});
+ok(`hair on ${r8.some.length} breeds (long coats, floppy ears; a smooth prick-eared coat: none)`, r8.some.length >= 15 && ['puli', 'bergamasco', 'oes', 'bearded', 'briard', 'beagle', 'dachshund', 'lab', 'golden', 'rough', 'poodle'].filter(b => b !== 'lab').every(b => r8.some.includes(b)) && r8.none.includes('malinois') && r8.none.includes('frenchie'), r8);
+ok('hair: still, it keeps its shape; shaken, it swings; then settles', ['puli', 'oes', 'beagle', 'golden'].every(b => r8[b].still < 20 && r8[b].shaken > r8[b].still + 25 && r8[b].settled < r8[b].still + 6), ['puli', 'oes', 'beagle', 'golden'].map(b => [b, r8[b]]));
+ok('hair: upside down, it hangs down (and never blows up)', ['puli', 'oes', 'beagle', 'golden'].every(b => r8[b].flipDown && !r8[b].nan), ['puli', 'oes', 'beagle', 'golden'].map(b => [b, r8[b]]));
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();

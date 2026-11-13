@@ -790,6 +790,10 @@ const T = {
       hank: { r: 3, take: 1.1, want: 8, base: 4.5, back: 1.5, heave: 2.2, beats: 1, heaveT: 0.4, yank: 2.5, walk: 0.9, tire: 8, tireR: 0.04, tireMin: 0.5, again: 6 } } },
   // CARRY SWING (drawing only): what's in a dog's mouth hangs on a pendulum L m long; damp /s; clonks off the chest past
   // back rad (bounce kept, clonk rad/s for a sound), fwd/side as far as it goes; kick: a held animal's wriggles; jolt: the head
+  // HAIR (drawing only): long hair, cords and floppy ears swing. k: its spring back to how it grows (per kind), damp: against its root,
+  // air: drag against the air (hair streams back a little at a run), sag: how much of its weight it hangs by when the dog's upright, max: how far it swings (rad)
+  hair: { on: true, step: 1 / 120, maxDt: 0.05, damp: 4.5, air: 0.2, sag: 0.2, k: { ear: 34, lock: 24, cord: 18, fringe: 70, feather: 32 },
+    max: { ear: 3, lock: 2.8, cord: 3, fringe: 0.7, feather: 2.8 } },
   carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
   coyotePounce: { courage: 0.75, kick: 19, up: 8 },
   coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
@@ -3908,14 +3912,34 @@ function buildDog(L, add) {
   if (col('stripes')) for (let i = 0; i < 14; i++) { const sd = i % 2 ? 1 : -1, z = lerp(-0.8, 0.7, (i >> 1) / 6) + (rng() - 0.5) * 0.15; bp.push(dogCap(skin, [sd * 0.85, (rng() - 0.3) * 0.5, z * 0.5].map((v, _, a) => v / Math.hypot(...a)), 0.1, col('stripes'), [0.22, 1.1, 0.3])); }
   if (col('bib')) for (const sd of [-1, 1]) bp.push(dogCap(S.chest, [0.35 * sd, -0.15, 0.92], 0.075, col('bib'), [1, 1.3, 1]));
   if (fur === 'curly' || fur === 'wire') for (let i = 0; i < (fur === 'curly' ? 30 : 12); i++) bp.push(dogCap(skin, dogDir(rng, -0.4), fur === 'curly' ? 0.075 : 0.11, col('torso')));
+  const locks = [], feathers = [];   // HAIR: what swings (grouped into pieces below)
   if (fur === 'shaggy' || fur === 'cord') for (let i = 0; i < (fur === 'cord' ? 60 : 34); i++) {   // locks of hair (cords) hanging off its coat: a mop, not a fleece
     const d = dogDir(rng, -0.25), e = S.fluff; if (d[2] > 0.55) continue;   // (the chest clear: what hangs on its collar shows)
     const p = [0, 1, 2].map(k => e.c[k] + e.s[k] * d[k] * 0.92), c = d[2] > 0.45 && fur === 'shaggy' ? col('chest') : col('torso');
-    if (fur === 'cord') { const len = Math.max(0.1, p[1] - S.hipY * (0.25 + rng() * 0.4)); bp.push(P(CYL(0.042, 0.036, len, 5), c, { r: [(rng() - 0.5) * 0.15, 0, (rng() - 0.5) * 0.15], p: [p[0] * 1.02, p[1] - len / 2, p[2]] }), P(SPH(5), c, { s: [0.04, 0.04, 0.04], p: [p[0] * 1.02, p[1] - len, p[2]] })); }
-    else { const len = 0.13 + rng() * 0.13, y = Math.atan2(d[0], d[2]); bp.push(P(CYL(0.07, 0.05, len, 6), c, { s: [1, 1, 0.45], r: [(rng() - 0.5) * 0.2, y, 0], p: [p[0] * 1.04, p[1] - len * 0.45, p[2] * 1.02] }), P(SPH(6), c, { s: [0.05, 0.03, 0.025], r: [0, y, 0], p: [p[0] * 1.04, p[1] - len * 0.95, p[2] * 1.02] })); }
+    p[0] *= fur === 'cord' ? 1.02 : 1.04;
+    if (fur === 'cord') { const len = Math.max(0.1, p[1] - S.hipY * (0.25 + rng() * 0.4)), m = p[1] - len / 2;   // two pieces: the lower hangs off the upper
+      locks.push({ p, len, up: [P(CYL(0.042, 0.039, len / 2 + 0.01, 5), c, { p: [p[0], p[1] - len / 4, p[2]] })],
+        lo: [P(CYL(0.039, 0.036, len / 2, 5), c, { p: [p[0], m - len / 4, p[2]] }), P(SPH(5), c, { s: [0.04, 0.04, 0.04], p: [p[0], p[1] - len, p[2]] })] }); }
+    else { const len = 0.13 + rng() * 0.13, y = Math.atan2(d[0], d[2]); p[2] *= 1.02;
+      locks.push({ p, len, up: [P(CYL(0.07, 0.05, len, 6), c, { s: [1, 1, 0.45], r: [0, y, 0], p: [p[0], p[1] - len * 0.45, p[2]] }), P(SPH(6), c, { s: [0.05, 0.03, 0.025], r: [0, y, 0], p: [p[0], p[1] - len * 0.95, p[2]] })] }); }
+  }
+  if (fur === 'rough' && B.ruff >= 0.45) for (let i = 0; i < 12; i++) {   // feathering: a fringe along its belly
+    const sd = i % 2 ? 1 : -1, z = lerp(-0.3, 0.25, (i >> 1) / 5) * Ln, len = (0.07 + 0.09 * B.ruff) * (0.85 + rng() * 0.3), p = [0.15 * F * sd, S.ty - 0.17 * F, z];
+    feathers.push({ p, len, up: [P(CYL(0.05, 0.03, len, 5), col('belly'), { s: [1, 1, 0.5], p: [p[0], p[1] - len / 2, p[2]] })] });
   }
   if (fur === 'poodle') bp.push(...[-1, 1].map(sd => P(SPH(9), col('torso'), { s: [0.1, 0.1, 0.1], p: [0.17 * F * sd, S.ty + 0.05, -0.38 * Ln] })));
   add(body, merge(...bp));
+  const hair = [], hairOf = (list, kind, two) => {   // HAIR: locks grouped by side and along its length, each group a piece (two: and a lower piece off it)
+    const groups = new Map();
+    for (const l of list) { const k = (l.p[0] < 0 ? 'L' : 'R') + Math.round((l.p[2] / Ln + 0.6) * 3); (groups.get(k) || groups.set(k, []).get(k)).push(l); }
+    for (const g of groups.values()) {
+      const m = i => g.reduce((a, l) => a + l.p[i], 0) / g.length, len = g.reduce((a, l) => a + l.len, 0) / g.length, piv = [m(0), m(1), m(2)], sd = Math.sign(piv[0]) || 1;
+      const u0 = [sd * 0.18, -1, 0], hl = two ? len / 2 : len, up = hairPiece(add, body, piv, u0, hl, kind, g.flatMap(l => l.up), { space: body, hull: S.hull });
+      hair.push(up);
+      if (two) hair.push(hairPiece(add, up.g, [piv[0], piv[1] - hl, piv[2]], u0, hl, kind, g.flatMap(l => l.lo), { up, space: body, hull: S.hull }));
+    }
+  };
+  hairOf(locks, fur === 'cord' ? 'cord' : 'lock', fur === 'cord'); hairOf(feathers, 'feather', false);
   const neck = new THREE.Group(); neck.position.set(...S.neck.p); neck.scale.setScalar(S.neck.k); body.add(neck);
   add(neck, collarGeo(collar, L.acc));
   const head = new THREE.Group(); head.position.set(...S.head); head.scale.setScalar(S.hk); body.add(head);
@@ -3930,7 +3954,7 @@ function buildDog(L, add) {
   if (col('brows')) for (const sd of [-1, 1]) hp.push(P(SPH(6), col('brows'), { s: [0.028, 0.02, 0.015], p: [0.06 * sw * sd, 0.115, S.zs(0.06 * sw, 0.115)] }));
   if (col('cheeks')) for (const sd of [-1, 1]) hp.push(P(SPH(7), col('cheeks'), { s: [0.05, 0.045, 0.06], p: [0.075 * mw * sd, -0.065, S.cz - 0.03] }));
   if (col('spots') && rng() < 0.7) hp.push(dogCap({ c: [0, 0, 0], s: [0.2 * sw, 0.19 * sh, 0.2] }, [0.5, 0.7, -0.5].map(v => v / 1.1), 0.08, col('spots')));
-  const ec = col('ears');
+  const ec = col('ears'), ears = [];
   for (const sd of [-1, 1]) {
     const e = B.ear, x = 0.12 * sw * sd;
     if (e === 'prick') hp.push(P(CONE(0.075 * ek, 0.2 * ek, 6), ec, { r: [-0.25, 0, -0.38 * sd], p: [x, 0.2 * sh, -0.02] }));
@@ -3938,24 +3962,33 @@ function buildDog(L, add) {
       const h = (e === 'tip' ? 0.14 : 0.07) * ek, f = (e === 'tip' ? 0.045 : 0.07) * ek;
       hp.push(P(CONE(0.075 * ek, h, 6), ec, { r: [-0.25, 0, -0.38 * sd], p: [x, 0.2 * sh - (0.2 - h) * 0.3 * ek, -0.02] }),
         P(SPH(8), ec, { s: [f, 0.022, f * 1.15], r: [0.55, 0, -0.5 * sd], p: [x + (0.18 * h + 0.012) * sd, 0.2 * sh + 0.42 * h, -0.02 - 0.12 * h + f * 0.55] }));
-    } else if (e === 'drop') hp.push(P(SPH(10), ec, { s: [0.035 * ek, 0.13 * B.eL, 0.085 * ek], r: [0, 0, 0.18 * sd], p: [(0.2 * sw + 0.015) * sd, 0.14 * sh - 0.11 * B.eL, -0.01] }));
+    } else if (e === 'drop') {   // HAIR: floppy, a piece each (hanging from where it joins the skull); a shaggy dog's long and hairy, out over its mop
+      const mop = fur === 'shaggy' || fur === 'cord', w = mop ? 1.45 : 1, ex2 = (mop ? 0.25 * sw + 0.02 : 0.2 * sw + 0.015) * sd, top = 0.14 * sh - (mop ? 0.02 : 0);
+      ears.push({ piv: [ex2, top, -0.01], len: (0.2 + (mop ? 0.05 : 0)) * B.eL, geo: P(SPH(10), ec, { s: [0.035 * ek * w, (0.13 + (mop ? 0.03 : 0)) * B.eL, 0.085 * ek * (mop ? 1.15 : 1)], r: [0, 0, 0.18 * sd], p: [ex2, top - (0.11 + (mop ? 0.03 : 0)) * B.eL, -0.01] }) });
+    }
     else if (e === 'rose') hp.push(P(SPH(8), ec, { s: [0.055, 0.035, 0.07], r: [0, 0.6 * sd, 0.5 * sd], p: [0.15 * sw * sd, 0.16 * sh, -0.04] }));
     else if (e === 'bat') hp.push(P(CONE(0.1 * ek, 0.21 * ek, 8), ec, { s: [1, 1, 0.55], r: [-0.12, 0, -0.42 * sd], p: [0.13 * sw * sd, 0.21 * sh, -0.04] }),
       P(CONE(0.062 * ek, 0.14 * ek, 8), '#e8a3a0', { s: [1, 1, 0.3], r: [-0.12, 0, -0.42 * sd], p: [0.125 * sw * sd, 0.2 * sh, -0.012] }));
   }
+  const fringe = [];
   if (fur === 'shaggy' || fur === 'cord') {   // a mop of a head: hair over the eyes, a beard
-    hp.push(P(SPH(12), col('skull'), { s: [0.24 * sw, 0.23 * sh, 0.22], p: [0, 0.03, -0.02] }), P(SPH(10), col('skull'), { s: [0.2 * sw, 0.08, 0.1], p: [0, 0.14, ez - 0.012] }),
-      P(SPH(10), col('muz'), { s: [0.12 * mw, 0.09, 0.1], p: [0, -0.11, S.tip - 0.09] }));
-    if (fur === 'cord') for (let i = 0; i < 9; i++) { const x = (i / 8 * 2 - 1) * 0.2 * sw; hp.push(P(CYL(0.026, 0.02, 0.17, 5), col('skull'), { p: [x, 0.07, ez - 0.02 - Math.abs(x) * 0.6] })); }
+    hp.push(P(SPH(12), col('skull'), { s: [0.24 * sw, 0.23 * sh, 0.22], p: [0, 0.03, -0.02] }), P(SPH(10), col('muz'), { s: [0.12 * mw, 0.09, 0.1], p: [0, -0.11, S.tip - 0.09] }));
+    fringe.push(P(SPH(10), col('skull'), { s: [0.2 * sw, 0.08, 0.1], p: [0, 0.14, ez - 0.012] }));   // HAIR: the fringe bounces
+    if (fur === 'cord') for (let i = 0; i < 9; i++) { const x = (i / 8 * 2 - 1) * 0.2 * sw; fringe.push(P(CYL(0.026, 0.02, 0.17, 5), col('skull'), { p: [x, 0.07, ez - 0.02 - Math.abs(x) * 0.6] })); }
   } else if (fur === 'wire') hp.push(...[-1, 1].map(sd => P(SPH(7), col('skull'), { s: [0.045, 0.022, 0.035], r: [0, 0, -0.3 * sd], p: [ex * sd, ey + 0.065, ez - 0.005] })),
     P(SPH(10), col('muz'), { s: [0.1 * mw, 0.085, 0.09], p: [0, -0.12, S.tip - 0.08] }));
   else if (fur === 'curly' || fur === 'poodle') hp.push(P(SPH(10), col('skull'), { s: [0.17 * sw, 0.13, 0.16], p: [0, 0.16 * sh, -0.02] }));
   add(head, merge(...hp));
+  const skull = [{ c: [0, 0, 0], s: [0.2 * sw, 0.19 * sh, 0.2] }];
+  for (const e of ears) hair.push(hairPiece(add, head, e.piv, [0, -1, 0], e.len, 'ear', [e.geo], { space: head, hull: skull }));
+  if (fringe.length) hair.push(hairPiece(add, head, [0, 0.2 * sh, ez - 0.06], [0, -0.55, 0.85], 0.1, 'fringe', fringe));
   const tongue = new THREE.Mesh(P(SPH(6), '#ff7a8a', { s: [0.05, 0.015, 0.09], p: [0.02, -0.12, S.tip - 0.07] }), MAT.vc); head.add(tongue);
   const lp = [[0.12 * F, 0.27 * Ln], [-0.12 * F, 0.27 * Ln], [0.12 * F, -0.3 * Ln], [-0.12 * F, -0.3 * Ln]];
   const legs = lp.map(([x, z]) => {
     const g = new THREE.Group(); g.position.set(x, S.hipY, z); body.add(g);
     add(g, fur === 'poodle' ? merge(legGeo(col('leg'), col('sock'), S.lg, S.legR), P(SPH(8), col('sock'), { s: [0.1, 0.1, 0.1], p: [0, -S.lg * 0.8, 0] })) : legGeo(col('leg'), col('sock'), S.lg, S.legR));
+    if (fur === 'rough' && B.ruff >= 0.45 && z > 0) { const len = 0.07 + 0.08 * B.ruff, pv = [0, -S.lg * 0.15, -S.legR * 0.7];   // HAIR: feathering down the back of its forelegs
+      hair.push(hairPiece(add, g, pv, [0, -0.6, -0.8], len, 'feather', [P(CYL(0.045, 0.02, len, 5), col('leg'), { s: [1, 1, 0.6], r: [-0.9, 0, 0], p: [0, pv[1] - len * 0.3, pv[2] - len * 0.4] })])); }
     return g;
   });
   const tail = new THREE.Group(); tail.position.set(...S.tail); body.add(tail);
@@ -3967,7 +4000,7 @@ function buildDog(L, add) {
     if (g.fixed) add(par, g.fixed, MAT.vc);
     if (g.tint) add(par, g.tint, tintMat(collar));
   }
-  return { root, body, head, neck, legs, tail, tongue, hz: S.head[2], hr: S.hr, mouthZ: S.mouthZ, back: S.back, breed: B.id };
+  return { root, body, head, neck, legs, tail, tongue, hair, hz: S.head[2], hr: S.hr, mouthZ: S.mouthZ, back: S.back, breed: B.id };
 }
 function makeDog(pi, look) {
   const C = PCOL[pi], L = look || dogLook(pi);
@@ -12493,6 +12526,67 @@ function carrySwing(d, dt) {
   }
   return w;
 }
+// =====================================================================
+// HAIR — long hair, cords and floppy ears swing (drawing only, each screen its own). Each piece is a rod from its root
+// (h.piv, in its parent's space) to a point at its end, stepped in world space (Verlet): it lags its root (inertia),
+// is damped against it and a little against the air, springs back to how it grows (T.hair.k), and hangs by its weight
+// as the dog tips (a dog upside down: it falls). Kept off the ground and out of the coat (h.hull), then turned to
+// point at that end. A cord's lower piece hangs off its upper one. buildDog makes them (M.hair); syncDog and the barn step them.
+// =====================================================================
+function hairPiece(add, par, pivAbs, u0, L, kind, geos, o = {}) {
+  const up = o.up, g = new THREE.Group(), b = up ? up.pivAbs : [0, 0, 0];
+  g.position.set(pivAbs[0] - b[0], pivAbs[1] - b[1], pivAbs[2] - b[2]); par.add(g);
+  add(g, merge(...geos).translate(-pivAbs[0], -pivAbs[1], -pivAbs[2]));
+  const u = new THREE.Vector3(...u0).normalize(), end = pivAbs.map((v, i) => v + u.getComponent(i) * L);
+  const inside = (o.hull || []).some(e => Math.hypot(...[0, 1, 2].map(i => (end[i] - e.c[i]) / e.s[i])) < 1.02);   // grows from inside the coat: no keeping it out
+  return { g, kind, up, pivAbs, piv: g.position.clone(), u0: u, L, space: o.space || null, hull: inside ? null : o.hull || null, cosMax: Math.cos(T.hair.max[kind]),
+    tip: new THREE.Vector3(), old: new THREE.Vector3(), pw: new THREE.Vector3(), on: false };
+}
+const _hrP = new THREE.Vector3(), _hrE = new THREE.Vector3(), _hrD = new THREE.Vector3(), _hrG = new THREE.Vector3(), _hrL = new THREE.Vector3(), _hrM = new THREE.Matrix4(), _hrS = new THREE.Matrix4();   // (HAIR)
+function hairStep(M, dt, floor = -1e9) {
+  const H = T.hair, list = M && M.hair; if (!H.on || !list || !list.length || !(dt > 0)) return;
+  dt = Math.min(dt, H.maxDt);
+  const n = Math.max(1, Math.ceil(dt / H.step)), h = dt / n, damp = Math.max(0, 1 - H.damp * h), air = Math.max(0, 1 - H.air * h);
+  M.root.updateWorldMatrix(true, true);
+  for (const P of list) {
+    const par = P.g.parent; if (P.up) par.updateWorldMatrix(false, false);   // (its upper piece has just turned)
+    const mw = par.matrixWorld;
+    _hrP.copy(P.piv).applyMatrix4(mw);                                   // its root now
+    _hrE.copy(P.u0).multiplyScalar(P.L).add(P.piv).applyMatrix4(mw).sub(_hrP);   // root → end, as it grows
+    const Lw = _hrE.length(), k = H.k[P.kind];
+    _hrG.set(0, -1, 0).transformDirection(mw).multiplyScalar(-9.8 * (1 - H.sag)).y -= 9.8;   // its weight, less what it's groomed to bear upright
+    if (!P.on || P.pw.distanceToSquared(_hrP) > 4) { P.tip.copy(_hrP).add(_hrE); P.old.copy(P.tip); P.pw.copy(_hrP); P.on = true; }
+    if (P.hull) _hrS.copy(P.space.matrixWorld).invert();
+    for (let i = 1; i <= n; i++) {
+      const f = i / n;
+      const px = lerp(P.pw.x, _hrP.x, f), py = lerp(P.pw.y, _hrP.y, f), pz = lerp(P.pw.z, _hrP.z, f);
+      const mx = (_hrP.x - P.pw.x) / n, my = (_hrP.y - P.pw.y) / n, mz = (_hrP.z - P.pw.z) / n;   // the root's move this substep
+      const vx = mx + ((P.tip.x - P.old.x) - mx) * damp, vy = my + ((P.tip.y - P.old.y) - my) * damp, vz = mz + ((P.tip.z - P.old.z) - mz) * damp;
+      P.old.copy(P.tip);
+      P.tip.x += vx * air + (k * (px + _hrE.x - P.tip.x) + _hrG.x) * h * h;
+      P.tip.y += vy * air + (k * (py + _hrE.y - P.tip.y) + _hrG.y) * h * h;
+      P.tip.z += vz * air + (k * (pz + _hrE.z - P.tip.z) + _hrG.z) * h * h;
+      _hrD.set(P.tip.x - px, P.tip.y - py, P.tip.z - pz); const l = _hrD.length() || 1e-6;   // the rod
+      P.tip.set(px + _hrD.x * Lw / l, py + _hrD.y * Lw / l, pz + _hrD.z * Lw / l);
+      if (P.tip.y < floor + 0.03) P.tip.y = floor + 0.03;   // off the ground
+      if (P.hull) {   // out of the coat
+        _hrL.copy(P.tip).applyMatrix4(_hrS); let out = false;
+        for (const e of P.hull) { const qx = (_hrL.x - e.c[0]) / e.s[0], qy = (_hrL.y - e.c[1]) / e.s[1], qz = (_hrL.z - e.c[2]) / e.s[2], q = Math.hypot(qx, qy, qz);
+          if (q < 1 && q > 1e-6) { _hrL.set(e.c[0] + qx / q * e.s[0], e.c[1] + qy / q * e.s[1], e.c[2] + qz / q * e.s[2]); out = true; } }
+        if (out) P.tip.copy(_hrL.applyMatrix4(P.space.matrixWorld));
+      }
+    }
+    P.pw.copy(_hrP);
+    _hrM.copy(mw).invert(); _hrD.copy(P.tip).applyMatrix4(_hrM).sub(P.piv).normalize();   // which way it points, in its parent's space
+    const c = _hrD.dot(P.u0);
+    if (c < P.cosMax) {   // no further than it can swing
+      _hrL.copy(_hrD).addScaledVector(P.u0, -c).normalize(); const s = Math.sqrt(1 - P.cosMax * P.cosMax);
+      _hrD.copy(P.u0).multiplyScalar(P.cosMax).addScaledVector(_hrL, s);
+      P.tip.copy(_hrD).multiplyScalar(P.L).add(P.piv).applyMatrix4(mw);
+    }
+    P.g.quaternion.setFromUnitVectors(P.u0, _hrD);
+  }
+}
 function syncDog(d, dt = 1 / 60) {
   const M = d.models, sp = Math.hypot(d.vx, d.vz), t = G.time;
   const hopK = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) : 0;
@@ -12550,6 +12644,7 @@ function syncDog(d, dt = 1 / 60) {
     M.head.rotation.x = 0.2; M.head.rotation.y = 0; M.tail.rotation.x = -1.0;
   }
   dogPose(d, M, t);
+  hairStep(M, dt, d.air || d.heldBy ? -1e9 : d.y);   // HAIR
 }
 // in the air it somersaults and wobbles about its middle as a sheep does (poseSheep); held, it dangles by the scruff (CARRY SWING)
 function dogPose(d, M, t) {
@@ -15254,12 +15349,12 @@ function barnPart(parent, geo, mat, pos, outline = true) {
 // the selected sheep, built from the flock's own shapes, dressed in its look
 function barnModel() {
   const B = BARN; if (!B.r) return;
-  if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; }
+  if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; B.dogM = null; }
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
     const M = buildDog(barnDogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat));
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2;
-    B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail;
+    B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail; B.dogM = M;
     return;
   }
   const s = B.sel; if (!s) return;
@@ -15298,6 +15393,7 @@ function barnRender(dt = 1 / 60) {
   }
   if (B.head) B.head.rotation.x = 0.05 + Math.sin(performance.now() / 900) * 0.06;
   if (B.tab === 'dogs' && B.dogTail) B.dogTail.rotation.y = Math.sin(performance.now() / 110) * 0.5;   // a happy wag
+  if (B.tab === 'dogs' && B.dogM) hairStep(B.dogM, Math.min(dt, 0.05), 0);   // HAIR: it swings as the turntable turns and the head bobs
   B.r.render(B.sc, B.cam);
 }
 // where on the fleece the pointer is, in paint (uv) units, or null
@@ -20356,7 +20452,7 @@ Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, sl
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
-Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, dogGear, buildDog, fitCoat, cycleDogBreed, netDogLook, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
+Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, dogGear, buildDog, fitCoat, cycleDogBreed, netDogLook, hairStep, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
