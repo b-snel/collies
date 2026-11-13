@@ -14,7 +14,7 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
+desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
@@ -75,6 +75,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - DIG SPOTS
 - BRAMBLES
 - BONK SPOTS
+- MUDDY DOGS
 - RATTLESNAKES
 - ROPES (+ TUG OF WAR)
 - BONES
@@ -115,6 +116,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `onSync(fn, o)`: every drawn frame; `frame` and `renderOnce` run them, `fn(dt, once)` (default 500: last)
 - `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
 - `knockDog`
+- `d.mud`/`d.wet` (0…1), `tubStep` (in a water trough: updateDog hands over)
 - `hurtDog(d, amt)` (1 = all hp)
 - `dogDrown(d)`
 - `reviveDog(d, self)`
@@ -269,7 +271,7 @@ One file a system: what it keeps true, its names. Read the one you're changing.
 A change to a system updates its file (a new system: a new file + its line here).
 
 - `docs/sheep.md`: lambs, age, forage, trough mayhem, shoves, grass dash, poop, lost sheep, shared stores, salt, water, ram bravery, ram nads.
-- `docs/dogs.md`: roles, training, idle, dog health, grab, bones, punts, flights, grabbing a dog, jump.
+- `docs/dogs.md`: roles, training, idle, muddy dogs, dog health, grab, bones, punts, flights, grabbing a dog, jump.
 - `docs/dog-looks.md`: anything drawn on a dog: the pack, wearables, breeds, mouth loads swing, fur, hair.
 - `docs/predators.md`: coyotes (packs, trapped, burrows, den defence, fences), cougars, falcon, Falcon Canyon, barks wearing off, team bark, rattlesnakes.
 - `docs/hank.md`: round pens, what he sees, shearing, rescue, wounds, vet, burial.

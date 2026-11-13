@@ -18,6 +18,9 @@
   back), tufts cut by a noise, darker roots, light-catching tips; its outline out in the fur, ragged (`ink`, `rag`). Eyes, nose, collar:
   none. Coat length and tuft size per breed (`dogShape().furs`); short coats sleek (`'sleek'`: no shells, clean outline). Belly feathering: flat sheets, a skirt. Two programs for all of it. Still slow at pixel ratio 1: shells off
   (`furLite`, `T.fur.auto`).
+- **Mud and wet** (MUDDY DOGS, drawing only): each dog its own copies of the fur materials (`dogMud(slot)`, `furMat(F, shell, mud)`;
+  one program still). `uMud` = (mud, -, seed, wet), `uMudM` world → the dog's root: caked from the feet up to a ragged line
+  (`mud × 1.3 − 0.1` m), splats above it, shells matted; wet: darker, shells slicked flat and combed down. The barn's: always clean.
 - **Hair** (HAIR, `T.hair`, `hairPiece`, `hairStep`, `M.hair`, drawing only): long hair, cords and floppy ears swing. Each piece a rod
   from its root stepped in world space (Verlet): lags its root, damped against it (`damp`) and the air (`air`), springs back to how it
   grows (`k` per kind), hangs by its weight as the dog tips (upside down: it falls), off the ground, out of the coat (`hull`), at most

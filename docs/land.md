@@ -14,7 +14,7 @@
     Shearing stops it.
   - **Mud** (`MUDS`, `T.mud`): bogs in Sweetgrass Meadow. Sheep slow, may
     stick (`s.bog`, sinking), calm ones go round; a pounce pops it out over
-    the nearest edge, muddy a while (`s.mud`). Dogs wade slow.
+    the nearest edge, muddy a while (`s.mud`). Dogs wade slow and come out caked (`d.mud`: docs/dogs.md, muddy dogs).
   - **Balker** (`T.balk`): of an evening (day 2 on) the bell ewe may plant
     herself in front of an open gate (`s.balk`, `p.balker`); pressure and
     grabs don't move her, the rest hang back. Bonked in: they follow

@@ -17,6 +17,14 @@
   `sleep` (round once, then curled, mode `lie`; by day `nap` s, at night till woken). Odds `w.day` / `w.night` (night: mostly naps).
   Any input or knock: `anticEnd`. Poops are BONES (`b.poop`, `boneK`, `POOP_GEO`): grabbed, carried, thrown, SPLAT!, gone after `life` s,
   up to `max`, not saved, cleared on a new journey (`idleReset`); Hank moans on a pick, a throw, a hit (`poopSay`, `POOP_SAY`, what he sees). Off in `?sim`.
+- **Muddy dogs** (MUDDY DOGS, `T.dirt`, `updateDirt`, `d.mud`/`d.wet` 0…1, synced): a bog cakes it (`mudK` × moving; lying: a
+  wallow; in at speed, a pounce or a landing: SPLUT, + `splat`). Never wears off, nor wades off. A swim washes it (`swim`/s). A hop or
+  jump over a pen's water trough (`waterTroughAt`): a jump always, a hop (pushing into it) only muddy, lands in it (`tubIn`, `d.tub`,
+  `tubStep` from updateDog; `d.tubT` synced, < 0: empty): SPLOOSH, `cost` water slopped out, sheep drinking there scatter, the water
+  mucky (`W.muck`, drawing only) a few h; a sit, scrubbed clean, out (`out` s early: stick / jump) on the pen side or the stick's. An
+  empty one: CLONK, dazed, still muddy. Out of the water: a shake (`shakeDue`, `dirtFx('shake')`) leaves `shake`× wet. A sheep in
+  muddy jaws gets muddy (`s.mud`). Hank says so once. Drawn (`syncDirt`): the coat (fur shader), the plunge, scrub, shake (twist,
+  spray, fluff), wallow, clods, drips, pawprints (`PAWS`), flies. `dirtFx` relayed online. Test: `mud-test.mjs`.
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
   down); at 0 knocked out (`d.ko`) till Hank brings it round (RESCUE), never dies. Cougar close (`maulR`, or bumped
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to

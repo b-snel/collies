@@ -31,7 +31,7 @@ const SECTIONS = {
   DOGS: CORE + ' role-test idle-test maul-test team-test swim-test input-test',
   'DOG MOVES & PHYSICS': 'moves-sim rush-test bone-test rope-test bonk-test bramble-test team-test maul-test vendor-test',
   FORAGE: 'forage-sim crowd-sim role-test vendor-test', WATER: 'water-test swim-test', 'DIG SPOTS': 'dig-test shear-test bone-test',
-  BRAMBLES: 'bramble-test', 'BONK SPOTS': 'bonk-test', RATTLESNAKES: 'vet-test', ROPES: 'rope-test', BONES: 'bone-test idle-test vendor-test',
+  BRAMBLES: 'bramble-test', 'BONK SPOTS': 'bonk-test mud-test', 'MUDDY DOGS': 'mud-test', RATTLESNAKES: 'vet-test', ROPES: 'rope-test', BONES: 'bone-test idle-test vendor-test',
   NAVIGATION: CORE + ' path-test den-test burrow-test',
   COYOTES: 'night-sim den-test den-defend-test burrow-test pen-trap-test team-test maul-test path-test moves-sim',
   COUGARS: 'cougar-sim maul-test team-test', FALCON: 'falcon-test canyon-test team-test', 'MOUNTAIN PASS': 'pass-test',
@@ -49,7 +49,7 @@ const FILES = [[/^tools\/(harness|serve)\.mjs$/, '*'], [/^vendor\//, '*'], [/^au
 const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26, 'bramble-test': 20, 'breed-sim': 50, 'burrow-test': 22, 'canyon-test': 37,
   'cluster-sim': 39, 'cougar-sim': 43, 'crowd-sim': 28, 'dawn-test': 96, 'den-defend-test': 18, 'den-test': 16, 'dig-test': 26, 'falcon-test': 62,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
-  'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
+  'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'mud-test': 30, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
   'pen-trap-test': 32, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
   'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90 };
 
