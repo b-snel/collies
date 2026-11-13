@@ -1065,6 +1065,13 @@ const T = {
   // Calm sheep go round (avoid m). Dogs wade (dogSlow×). Freed: muddy wool for `dirty` days
   mud: { on: !SIM, n: 8, r: [2.4, 3.6], slow: 0.55, dogSlow: 0.6, stickWalk: 0.25, stickRun: 1.4, runSpd: 3, avoid: 2.2, sink: 0.32, sinkT: 4,
     stress: 0.05, stressCap: 0.55, struggle: [1.5, 3.5], pop: { k: 0.6, up: 8 }, dirty: 1.5 },
+  // MUDDY DOGS: in a bog a dog cakes up (d.mud/s × mudK: still + walk × speed/walk, lying: lie); in at speed or a landing: + splat.
+  // Never wears off: a swim (swim/s), or a leap into a water trough (tub: min water in it, slops out cost; sit s, scrubbed clean by
+  // scrub × sit, out early after out s; hop m/s out; the water mucky muck h; dry: an empty one, a CLONK, drySit s; sheep within
+  // startle m scatter). Wet dries dry/s, a shake leaves shake×. carry: a sheep in its jaws gets this × its mud. Drawn: pawprints
+  // past prints (fresh for paws m), flies past flies.
+  dirt: { still: 0.12, walk: 0.55, lie: 1.2, splat: 0.3, swim: 0.55, carry: 0.6, dry: 0.06, shake: 0.3, prints: 0.15, paws: 45, flies: 0.7,
+    tub: { min: 0.5, cost: 1.5, sit: 1.5, scrub: 0.6, out: 0.6, hop: 6.5, muck: 5, drySit: 1, startle: 3 } },
   // STREAMS: narrow and shallow, from the hills to the lake at trail s; hw/depth m. Wading slows (slow×). Grass within lushR m of a stream
   // or the river is lusher (+lush capacity). Dogs fill buckets in them, sheep sip
   stream: { at: [425, 728, 872], hw: 1.3, depth: 0.7, slow: 0.8, lush: 0.45, lushR: 12 },
@@ -4876,34 +4883,46 @@ const FUR_GLSL = `
     return mix(mix(mix(furH(i), furH(i + vec3(1, 0, 0)), f.x), mix(furH(i + vec3(0, 1, 0)), furH(i + vec3(1, 1, 0)), f.x), f.y),
                mix(mix(furH(i + vec3(0, 0, 1)), furH(i + vec3(1, 0, 1)), f.x), mix(furH(i + vec3(0, 1, 1)), furH(i + vec3(1, 1, 1)), f.x), f.y), f.z); }`;
 const FUR_MATS = new Map();
-function furMat(F, shell) {   // the coat itself (streaked), or its shells (one mesh: aFurK, each vertex's shell height 0…1)
-  const key = shell ? `${F.len}|${F.dens}|${F.curl}` : F && F.sleek ? 'sleek' : 'coat'; let m = FUR_MATS.get(key); if (m) return m;
-  const C = T.fur, u = { uFurLen: { value: shell ? F.len : 0 }, uFurDens: { value: shell ? F.dens : 30 }, uFurCurl: { value: shell && F.curl ? 1 : 0 },
-    uFurCut: { value: new THREE.Vector2(...C.cut) }, uFurShade: { value: new THREE.Vector3(C.root, C.tip, C.under) }, uFurStreak: { value: key === 'sleek' ? C.sleek : C.streak }, uFurSheen: { value: C.sheen } };
-  m = MAT.vc.clone(); if (shell) { m.defines = { FUR_SHELL: 1 }; m.visible = !T.fur.lite; }
+// MUDDY DOGS: each dog its own copies (dogMud: one program still), uMud = (mud 0…1, -, seed, wet 0…1), uMudM: world → the dog's root
+const FUR_NOMUD = { u: { value: new THREE.Vector4() }, m: { value: new THREE.Matrix4() } };
+function furMat(F, shell, mud = null) {   // the coat itself (streaked), or its shells (one mesh: aFurK, each vertex's shell height 0…1)
+  const k0 = shell ? `${F.len}|${F.dens}|${F.curl}` : F && F.sleek ? 'sleek' : 'coat', key = k0 + (mud ? '|d' + mud.id : ''); let m = FUR_MATS.get(key); if (m) return m;
+  const C = T.fur, M = mud || FUR_NOMUD, u = { uFurLen: { value: shell ? F.len : 0 }, uFurDens: { value: shell ? F.dens : 30 }, uFurCurl: { value: shell && F.curl ? 1 : 0 },
+    uFurCut: { value: new THREE.Vector2(...C.cut) }, uFurShade: { value: new THREE.Vector3(C.root, C.tip, C.under) }, uFurStreak: { value: k0 === 'sleek' ? C.sleek : C.streak }, uFurSheen: { value: C.sheen },
+    uMud: M.u, uMudM: M.m };
+  m = MAT.vc.clone(); m.userData.fur = [F, shell]; if (shell) { m.defines = { FUR_SHELL: 1 }; m.visible = !T.fur.lite; }
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
-      uniform float uFurLen; varying vec3 vFurP; varying float vFurK;
+      uniform float uFurLen; uniform vec4 uMud; uniform mat4 uMudM; varying vec3 vFurP; varying float vFurK; varying float vMudY;
       #ifdef FUR_SHELL
         attribute float aFurK;
       #endif`).replace('#include <begin_vertex>', `#include <begin_vertex>
       vFurP = position;
       #ifdef FUR_SHELL
-        vFurK = aFurK; transformed += normal * uFurLen * aFurK + vec3(0.0, -0.55, -0.85) * uFurLen * aFurK * aFurK * 0.8;   // out, and combed back and down
+        float slick = 1.0 - 0.65 * uMud.w;   // MUDDY DOGS: wet, it lies flat
+        vFurK = aFurK; transformed += normal * uFurLen * slick * aFurK + vec3(0.0, -0.55, -0.85) * uFurLen * aFurK * aFurK * (0.8 + 0.6 * uMud.w);   // out, and combed back and down
       #else
         vFurK = 0.0;
-      #endif`);
+      #endif
+      vMudY = (uMudM * modelMatrix * vec4(transformed, 1.0)).y;   // MUDDY DOGS: how high up the dog`);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      uniform float uFurDens, uFurCurl, uFurStreak, uFurSheen; uniform vec2 uFurCut; uniform vec3 uFurShade; varying vec3 vFurP; varying float vFurK;` + FUR_GLSL).replace('#include <color_fragment>', `#include <color_fragment>
+      uniform float uFurDens, uFurCurl, uFurStreak, uFurSheen; uniform vec2 uFurCut; uniform vec3 uFurShade; uniform vec4 uMud; varying vec3 vFurP; varying float vFurK; varying float vMudY;` + FUR_GLSL).replace('#include <color_fragment>', `#include <color_fragment>
+      float mk = 0.0;   // MUDDY DOGS: caked from its feet up to a ragged line, splats above it
+      if (uMud.x > 0.002) {
+        float line = uMud.x * 1.3 - 0.1 + (furN(vFurP * 7.0 + uMud.z) - 0.5) * 0.28;
+        mk = max(smoothstep(-0.03, 0.03, line - vMudY), step(1.08 - uMud.x * 0.5, furN(vFurP * 3.6 + uMud.z * 1.7 + 11.0)) * smoothstep(0.2, 0.55, uMud.x));
+      }
       #ifdef FUR_SHELL
         vec3 fq = vFurP * uFurDens * mix(vec3(1.0, 0.8, 0.28), vec3(1.4), uFurCurl);   // tufts drawn out along the lie (curly: round)
         float fn = furN(fq) * 0.7 + furN(fq * 2.7 + 7.0) * 0.3, cut = mix(uFurCut.x, uFurCut.y, vFurK);
+        cut = mix(cut, 1.0, max(mk * 0.5, uMud.w * 0.35));   // matted, slicked
         if (fn < cut) discard;
         diffuseColor.rgb = diffuseColor.rgb * (mix(uFurShade.x, uFurShade.y, vFurK) + (fn - cut) * 0.25) + vFurK * uFurSheen * vec3(1.0, 0.96, 0.9);   // (the tips catch the light: a black coat shows it too)
       #else
         diffuseColor.rgb *= uFurShade.z * (1.0 - uFurStreak * (1.0 - smoothstep(0.25, 0.75, furN(vFurP * vec3(28.0, 28.0, 9.0)))));
-      #endif`);
+      #endif
+      diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.078, 0.04, 0.016), vec3(0.19, 0.1, 0.042), furN(vFurP * 23.0 + 3.0)), mk * 0.93) * (1.0 - 0.3 * uMud.w);`);
   };
   m.customProgramCacheKey = () => shell ? 'dogFurShell' : 'dogFurCoat';
   FUR_MATS.set(key, m); return m;
@@ -5059,13 +5078,16 @@ function buildDog(L, add) {
 function makeDog(pi, look) {
   const C = PCOL[pi], L = look || dogLook(pi);
   const M = buildDog(L, (par, geo, mat = MAT.vc) => part(par, geo, { mat })), root = M.root;
+  const mud = dogMud(pi);   // MUDDY DOGS: its coat's own materials once it's muddy or wet (syncDirt)
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.8, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: C.ui, transparent: true, opacity: 0.85, depthWrite: false }));
   ring.position.y = 0.06; root.add(ring);
   const pring = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: C.ui, transparent: true, opacity: 0.18, depthWrite: false }));
   pring.position.y = 0.08; root.add(pring);
   scene.add(root);
-  return { ...M, ring, pring, lookKey: JSON.stringify(L) };
+  return { ...M, ring, pring, mud, lookKey: JSON.stringify(L) };
 }
+const DOG_MUD = [];   // MUDDY DOGS: a player slot's uMud and uMudM (its coat's copies of the fur materials)
+function dogMud(pi) { return DOG_MUD[pi] ||= { id: pi, u: { value: new THREE.Vector4(0, 0, pi * 3.7 + 1.3, 0) }, m: { value: new THREE.Matrix4() } }; }
 function makeCoyote(alpha = false) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body); body.scale.setScalar(alpha ? 1.45 : 1.25);
   const fur = alpha ? '#8f6e4a' : '#b48c5a', dark = alpha ? '#4f3a26' : '#7d5f3d', belly = alpha ? '#d6c09a' : '#e6d3b0';
@@ -6809,6 +6831,7 @@ function updateDog(d, inp, dt) {
   if (d.maul) { updateMauledDog(d, inp, dt); return; }
   if (d.heldBy && heldDogInput(d, inp, dt)) return;   // in another dog's jaws (it carries this one: updateHeldDog)
   if (d.air && d.air.kind === 'falcon') return;   // FALCON: in its talons (it moves the dog)
+  if (d.tub && !d.air) { tubStep(d, inp, dt); return; }   // MUDDY DOGS: in a water trough
   if (d.air) { if (d.holding) releaseHold(d, false); d.mode = 'walk'; d.pounceT = 0; updateAirborneDog(d, inp, dt); return; }
   if (d.crev) { crevDogStep(d, inp, dt); return; }      // MOUNTAIN PASS: down a crack
   if (d.slide) { slideDogStep(d, inp, dt); return; }    // ...sliding on the ice, rolling down the mountain
@@ -7873,8 +7896,7 @@ function updateAirborneDog(d, inp, dt) {
       d.air = null; d.y = groundY(d.x, d.z); landDog(d, 0.15);
       burst(d.x, d.y + 0.7, d.z, 14, '#9fe3ff', { speed: 2.5, up: 2, size: 0.12, life: 0.6 });
       if (a.drown || d.ko) { dogOut(d); return; }   // RESCUE: towed ashore limp: out cold till Hank brings it round
-      floatText('*shake shake*', d.x, d.y + 1.7, d.z, '#cfefff', 0.9);
-      return;
+      return;   // (MUDDY DOGS: then a shake)
     }
     if (a.drown || d.ko) { drownStep(d, a, dt); return; }   // RESCUE: limp, low in the water, waiting for Hank
     const mx = inp.mx * CAM_R.x - inp.my * CAM_F.x, mz = inp.mx * CAM_R.z - inp.my * CAM_F.z, im = Math.min(1, Math.hypot(mx, mz));
@@ -8466,6 +8488,7 @@ function updateWorldPhysics(dt) {
   updateBones(dt);    // BONES: carried, thrown, bonking things
   moveApples(dt);     // APPLES: carried, dropped, lobbed
   updateDigs(dt);     // DIG SPOTS: dogs digging up treasure for the barn
+  updateDirt(dt);     // MUDDY DOGS: caked in the bogs, washed in the water
 }
 const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector3();
 // SHARED HOOK (called from syncSheep): somersaults, being carried, swimming, squash on landing. Rotates about the body, not the feet.
@@ -9776,6 +9799,233 @@ function drawBonkOverlay() {
 }
 expose(() => ({ STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree,
   appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt }));   // BONK SPOTS
+
+// =====================================================================
+// MUDDY DOGS — through a bog (MUD) a dog comes out caked: d.mud 0…1, paws first, then legs, belly, the lot (drawn in the
+// fur shader: dogMud, uMud). It never wears off. A swim washes it; so does a leap into a pen's water trough (a jump, or a
+// muddy dog hopping it: d.tub, a scrub, out; it slops water out and leaves the water mucky a while; an empty one: CLONK).
+// Wet (d.wet): fur slicked down, dripping, till a shake. Muddy: clods, drips, pawprints, flies; a sheep in its jaws gets muddy.
+// =====================================================================
+const DIRT = { said: false, tubs: 0, clonks: 0, cleans: 0, shakes: 0 };
+// the water trough (in use) under (x, z), pad m wider: { p, u, a: along it }
+function waterTroughAt(x, z, pad = 0) {
+  for (const p of pens) {
+    if (!p.water || Math.abs(p.x - x) > p.R + 4 || Math.abs(p.z - z) > p.R + 4) continue;
+    for (const u of p.water.at) {
+      const rx = x - u.x, rz = z - u.z, a = rx * u.tx + rz * u.tz, c = rx * u.tz - rz * u.tx;
+      if (Math.abs(a) < u.len / 2 - 0.25 + pad && Math.abs(c) < WATER_GEO.Wd / 2 + 0.2 + pad) return { p, u, a };
+    }
+  }
+  return null;
+}
+// ---- the sim (host): caked, washed, in and out of the trough
+function updateDirt(dt) {
+  if (G.mode !== 'play') return;
+  const D = T.dirt;
+  for (const d of G.dogs) {
+    d.mud ||= 0; d.wet ||= 0;
+    if (d.tub && (d.air || d.heldBy || d.maul || d.ko)) tubEnd(d);
+    const sw = !!(d.air && d.air.swim), up = !!(d.air || d.hopT > 0);
+    if (sw) {   // a swim washes it off
+      d.wet = 1; d.shakeDue = 0;
+      if (d.mud > 0) { d.mud = Math.max(0, d.mud - D.swim * dt); if (!d.mud) dirtClean(d); }
+    } else if (d._sw && !d.ko && !d.air) d.shakeDue = G.time + 0.15;   // out of the water: a shake
+    d._sw = sw;
+    if (!d.tub && d.wet > 0) d.wet = Math.max(0, d.wet - D.dry * dt);
+    if (d.shakeDue && G.time >= d.shakeDue && !up && !d.tub && !(d.stunT > 0)) { d.shakeDue = 0; if (d.wet > 0.2) { DIRT.shakes++; dirtFx('shake', d, d.mud); d.wet *= D.shake; } }
+    const mk = !up && !d.heldBy && !d.tub && T.mud.on && MUDS.length ? mudK(d.x, d.z) : 0;
+    if (mk > 0.3) {   // MUD: a bog cakes it (lying in one: a wallow)
+      const sp = Math.hypot(d.vx, d.vz), m0 = d.mud;
+      d.mud = Math.min(1, d.mud + (d.mode === 'lie' ? D.lie : D.still + D.walk * Math.min(2, sp / T.dogWalk)) * mk * dt);
+      if (!d.inMud) {   // in: at speed, a pounce or a landing, it goes in with a splat
+        d.inMud = true; const big = d._up || d.pounceT > 0 || sp > T.dogWalk * 1.15;
+        if (big) d.mud = Math.min(1, d.mud + D.splat);
+        dirtFx('in', d, big ? 1 : 0); if (big) rumble(d.player, 0.4, 0.5, 120);
+      }
+      if (m0 < 0.5 && d.mud >= 0.5) { hint('muddy'); if (!DIRT.said && hankSees(d.x, d.z)) { DIRT.said = true; hank(null, "Look at the state o' ye! Into the trough!"); } }
+      if (m0 < 0.97 && d.mud >= 0.97) dirtFx('caked', d);
+    } else if (mk < 0.1) d.inMud = false;
+    d._up = up;
+    if (d.mud > 0.3 && d.holdKind !== 'dog' && G.sheep.includes(d.holding)) d.holding.mud = Math.max(d.holding.mud || 0, d.mud * D.carry);   // a sheep in muddy jaws
+    // into a water trough: a jump at it, or a muddy dog hopping it
+    if (d.hopT > 0 && !d.tub && !(d.tubCd > G.time) && !d.holding && !bucketOf(d) && (d.jumped || d.mud > 0.05)) { const q = waterTroughAt(d.x, d.z); if (q) tubIn(d, q); }
+  }
+}
+function dirtClean(d) { d.mud = 0; DIRT.cleans++; dirtFx('clean', d); }
+function tubIn(d, q) {
+  const D = T.dirt.tub, dry = q.p.water.w < D.min;
+  d.tub = { p: q.p, u: q.u, a: clamp(q.a, -q.u.len / 2 + 0.7, q.u.len / 2 - 0.7), t: 0, dry, mud0: Math.max(d.mud, 0.2), hold: true };   // (hold: the push that took it in)
+  d.hopT = 0; d.jumped = false; d.pounceT = 0; d.vx = d.vz = 0; d.tubT = dry ? -D.drySit : D.sit;
+  if (dry) { DIRT.clonks++; dirtFx('clonk', d); rumble(d.player, 0.7, 0.4, 160); return; }
+  drinkWater(q.p, D.cost); DIRT.tubs++; d.wet = 1;
+  dirtFx('tub', d, d.mud); rumble(d.player, 0.5, 0.7, 220);
+  for (const s of G.sheep) if (!s.dead && !s.air && s.pen === q.p && Math.hypot(s.x - d.x, s.z - d.z) < D.startle) { startleSheep(s, s.x - d.x, s.z - d.z, 0.35); baaAt(s, 0.4, 1.2); }   // the ones drinking: soaked
+}
+function tubEnd(d) { d.tub = null; d.tubT = 0; }
+// SHARED HOOK (updateDog): in the trough it sits and scrubs; out after a while (sooner: push or jump), on the pen side or the way it's pushed
+function tubStep(d, inp, dt) {
+  const b = d.tub, D = T.dirt.tub, u = b.u, sit = b.dry ? D.drySit : D.sit;
+  b.t += dt; d.tubT = (b.dry ? -1 : 1) * Math.max(0.01, sit - b.t);
+  const tx = u.x + u.tx * b.a, tz = u.z + u.tz * b.a, k = Math.min(1, dt * 12);
+  d.x += (tx - d.x) * k; d.z += (tz - d.z) * k; d.vx = d.vz = 0; d.y = groundY(d.x, d.z); d.mode = 'walk';
+  d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt);
+  if (!b.dry) { d.wet = 1; if (d.mud > 0) { d.mud = Math.max(0, d.mud - b.mud0 / (D.sit * D.scrub) * dt); if (!d.mud) dirtClean(d); } }
+  const wx = inp.mx * CAM_R.x - inp.my * CAM_F.x, wz = inp.mx * CAM_R.z - inp.my * CAM_F.z, m = Math.hypot(wx, wz);
+  if (m < 0.3) b.hold = false; else if (!b.hold) d.yaw = lerpA(d.yaw, Math.atan2(wx, wz), Math.min(1, dt * 8));
+  if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }   // a bark from the bath
+  if (b.t >= sit || b.t > D.out && (m > 0.6 && !b.hold || inp.jump)) {   // (out early: a fresh push, or a jump)
+    let ox = wx, oz = wz, ol = m; if (ol < 0.6 || b.hold) { ox = u.box.solid.nx; oz = u.box.solid.nz; ol = 1; }   // (no fresh push: out into the pen)
+    tubEnd(d); d.tubCd = G.time + 0.9; startHop(d, -ox / ol, -oz / ol, D.hop); dirtFx('out', d, b.dry ? 0 : 1);
+    if (!b.dry) d.shakeDue = G.time + d.hopDur + 0.1;
+  }
+}
+function resetDirt() {
+  for (const d of G.dogs) { d.mud = d.wet = 0; d.tub = null; d.tubT = 0; d.tubCd = 0; d.shakeDue = 0; d.inMud = false; d._sw = false; d._mudS = d._wetS = 0; d.shakeAt = -9; }
+  for (const p of pens) if (p.water) p.water.muck = 0;
+  Object.assign(DIRT, { said: false, tubs: 0, clonks: 0, cleans: 0, shakes: 0 });
+  if (PAWS) for (const q of PAWS.list) q.t = -1;
+}
+onReset(resetDirt, 185);   // MUDDY DOGS: clean dogs, clear troughs, no prints
+// ---- what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
+function dirtFx(kind, d, k = 0) {
+  if (!d || !G.dogs.includes(d)) return;
+  const x = d.x, z = d.z, y = d.y, pan = panOf(x, z);
+  if (kind === 'in') {
+    mudFx(x, z, k ? 16 : 6);
+    if (k) { burst(x, y + 0.3, z, 12, '#3a2a1a', { speed: 3.6, up: 5.5, size: 0.2, life: 0.8, grav: -14 }); spawnRing(x, y + 0.05, z, 2.4, '#4e3822', 0.45); floatText('SPLUT!', x, y + 1.7, z, '#c8a27a', 1.25); SFX.thud(pan, 0.22); }
+  } else if (kind === 'caked') { floatText('🟤', x, y + 1.9, z, '#c8a27a', 1.4); Sound.chime([0, -3, -7], 330, 0.08, 0.07); }
+  else if (kind === 'tub') {
+    for (const c of ['#e8f8ff', '#9fe3ff', '#4aa8e8', '#ffffff']) burst(x, y + 0.7, z, 10, c, { speed: 3.4, up: 7.5, size: 0.15, life: 1, grav: -15 });
+    if (k > 0.05) burst(x, y + 0.6, z, Math.round(6 + k * 12), '#6b4a2a', { speed: 2.8, up: 6, size: 0.14, life: 0.9, grav: -15 });
+    spawnRing(x, y + 0.5, z, 2.8, '#e8f8ff', 0.5); spawnRing(x, y + 0.5, z, 1.5, '#ffffff', 0.32);
+    SFX.splash(pan, 0.5); SFX.thud(pan, 0.15); shakeCam(0.12);
+    floatText('SPLOOSH!', x, y + 1.9, z, '#9fe3ff', 1.45);
+    const q = waterTroughAt(x, z, 0.5); if (q) q.p.water.muck = Math.max(q.p.water.muck || 0, k);
+    d.tubAt = G.time;
+  } else if (kind === 'clonk') {
+    SFX.clank(pan, 0.45); SFX.bonk(pan, 0.25); floatText('CLONK!', x, y + 1.8, z, '#cdd6dc', 1.35);
+    starBurst(x, y + 1, z, 5, undefined, { speed: 2.5, up: 2.5, size: 0.22 }); dizzy(d, 1.2, 1.3); shakeCam(0.1); d.tubAt = G.time;
+  } else if (kind === 'out') { burst(x, y + 0.6, z, k ? 10 : 3, k ? '#9fe3ff' : '#e8dcc0', { speed: 2, up: 3, size: 0.12, life: 0.6, grav: -12 }); if (k) SFX.splash(pan, 0.15); }
+  else if (kind === 'clean') {
+    starBurst(x, y + 0.9, z, 9, ['#ffffff', '#fff3a0', '#bff0ff'], { speed: 2.4, up: 3.2, size: 0.22, life: 0.9, grav: -2 });
+    floatText('★', x, y + 2.1, z, '#fff3a0', 1.5); Sound.chime([0, 4, 7, 12], 880, 0.1, 0.05);
+  } else if (kind === 'shake') { d.shakeAt = G.time; d.shakeMud = k; d._shk = -1; floatText('*shake shake*', x, y + 1.8, z, k > 0.05 ? '#c8a27a' : '#cfefff', 1); }
+}
+// ---- drawing (every screen): the coat, the bath, the shake, wallowing, drips, clods, pawprints, flies; mucky water
+const FLIES = new Set();   // dogs with flies made
+let PAWS = null;   // (made on the first drawn frame: three's uuids use Math.random, and the seeded tests' sim mustn't see it)
+const paws = () => PAWS ||= (() => {   // muddy pawprints: a pool of flat stamps on the ground, shrinking away
+  const n = 200, toe = (x, z, r) => P(new THREE.CircleGeometry(r, 8), '#000', { p: [x, -z, 0] });   // (flat on the ground, toes forward: +z once laid down)
+  const geo = merge(P(new THREE.CircleGeometry(0.06, 10), '#000', { s: [1, 0.85, 1], p: [0, 0.02, 0] }), toe(-0.062, 0.05, 0.026), toe(-0.022, 0.078, 0.027), toe(0.022, 0.078, 0.027), toe(0.062, 0.05, 0.026)).rotateX(-Math.PI / 2);
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: '#3b2716', transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), n);
+  mesh.frustumCulled = false; mesh.count = 0; mesh.renderOrder = 1; scene.add(mesh); seaKeep(mesh);
+  return { mesh, n, list: Array.from({ length: n }, () => ({ x: 0, z: 0, y: 0, yaw: 0, t: -1, k: 1 })), next: 0 };
+})();
+const PAW_LIFE = 16;
+function pawPrint(x, z, yaw, k) { const P = paws(), q = P.list[P.next]; P.next = (P.next + 1) % P.n; Object.assign(q, { x, z, y: groundY(x, z) + 0.02, yaw, t: G.time, k }); }
+const _dv = new THREE.Vector3();
+function syncDirt(dt, once) {
+  const D = T.dirt, t = G.time, live = !once && dt > 0 && !G.paused;
+  for (const d of FLIES) if (!G.dogs.includes(d)) { d._flies.forEach(f => { f.visible = false; }); FLIES.delete(d); }   // (a dog that left)
+  for (const d of G.dogs) {
+    const M = d.models; if (!M || !M.mud) continue;
+    d._mudS = lerp(d._mudS || 0, d.mud || 0, Math.min(1, dt * ((d.mud || 0) < (d._mudS || 0) ? 3 : 7)));
+    d._wetS = lerp(d._wetS || 0, d.wet || 0, Math.min(1, dt * ((d.wet || 0) < (d._wetS || 0) ? 2.5 : 10)));
+    const hr = M.hr || 1, yaw = d.yaw, fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw), sp = Math.hypot(d.vx, d.vz);
+    const sw = d.air && d.air.swim, tub = d.tubT || 0, ground = !d.air && !d.heldBy && !(d.hopT > 0) && !tub;
+    M.body.position.x = 0; M.body.rotation.z = 0;
+    if (tub) {   // in the trough: down in it, paddling and scrubbing (an empty one: sat there, dazed)
+      const a = t - (d.tubAt ?? -9), sq = a < 0.4 ? Math.sin(a / 0.4 * Math.PI) * 0.22 * (1 - a / 0.4) : 0;
+      M.root.position.y = groundY(d.x, d.z) + 0.3 + (tub > 0 ? Math.sin(t * 9) * 0.03 : 0);
+      M.root.rotation.z += tub > 0 ? Math.sin(t * 13) * 0.1 : Math.sin(t * 3) * 0.06;
+      M.body.scale.x *= 1 + sq; M.body.scale.z *= 1 + sq; M.body.scale.y *= 1 - sq;
+      M.legs.forEach((g, i) => { g.rotation.x = tub > 0 ? Math.sin(t * 17 + i * 1.7) * 0.7 : (i < 2 ? -0.6 : 0.9); });
+      M.head.rotation.x = tub > 0 ? -0.25 + Math.sin(t * 7) * 0.12 : 0.2; M.head.rotation.z = tub > 0 ? 0 : Math.sin(t * 2.4) * 0.3;
+      M.tail.rotation.x = tub > 0 ? 0.6 : -0.6; M.tail.rotation.y = Math.sin(t * 20) * 0.7;
+      if (live && tub > 0) {
+        const wy = M.root.position.y + 0.3;
+        for (let n = 0, c = Math.round(dt * 26 + Math.random() * 0.5); n < c; n++) idleBit(d.x + rnd(-0.5, 0.5), wy, d.z + rnd(-0.5, 0.5), rnd(-1.6, 1.6), rnd(2, 4), rnd(-1.6, 1.6), rnd(0.05, 0.09), Math.random() < 0.6 ? '#9fe3ff' : '#ffffff', 0.5, -12);
+        if (d._mudS > 0.03 && Math.random() < dt * 22) idleBit(d.x + rnd(-0.4, 0.4), wy + 0.05, d.z + rnd(-0.4, 0.4), rnd(-0.4, 0.4), rnd(0.6, 1.4), rnd(-0.4, 0.4), rnd(0.08, 0.14), Math.random() < 0.5 ? '#7a5a3a' : '#e8dcc0', 0.6, -2);   // suds, mud and all
+        if (Math.random() < dt * 3) SFX.splash(panOf(d.x, d.z), 0.06);
+      }
+    }
+    const sa = t - (d.shakeAt ?? -9);
+    if (sa >= 0 && sa < 0.95 && !d.air && !d.heldBy) {   // the shake: nose to tail, a twist about its spine; spray off it in a ring
+      const env = Math.sin(sa / 0.95 * Math.PI), th = Math.sin(sa * 52) * 0.5 * env, h = 0.62 * hr;
+      M.body.rotation.z = th; M.body.position.x = h * Math.sin(th);
+      M.head.rotation.z = -Math.sin(sa * 52 - 0.9) * 0.55 * env; M.head.rotation.x = -0.1;
+      M.tail.rotation.y = Math.sin(sa * 52 + 1.4) * 1.1 * env;
+      const poof = sa > 0.7 ? Math.sin((sa - 0.7) / 0.25 * Math.PI) * 0.09 : 0; M.body.scale.multiplyScalar(1 + poof);   // and fluffed up
+      if (live) {
+        const n = Math.round(dt * 110 * env + Math.random() * 0.5), mud = d.shakeMud || 0;
+        for (let i = 0; i < n; i++) {
+          const a = rnd(-0.3, Math.PI + 0.3), s = rnd(3.5, 6.5), ca = Math.cos(a), sa2 = Math.sin(a), along = rnd(-0.5, 0.4);
+          idleBit(d.x + rx * ca * 0.3 + fx * along, d.y + h + sa2 * 0.2, d.z + rz * ca * 0.3 + fz * along, rx * ca * s + fx * rnd(-0.8, 0.8), sa2 * s * 0.7 + 1, rz * ca * s + fz * rnd(-0.8, 0.8),
+            rnd(0.07, 0.13), mud > 0.05 && Math.random() < 0.6 ? (Math.random() < 0.5 ? '#6b4a2a' : '#8a6a48') : Math.random() < 0.5 ? '#9fe3ff' : '#e8f8ff', 0.6, -12);
+        }
+        const beat = Math.floor(sa / 0.24); if (beat !== d._shk) { d._shk = beat; SFX.shake(panOf(d.x, d.z), 0.18 + 0.1 * env); }
+      }
+    }
+    if (ground && d.lieK > 0.5 && d._mudS > 0.05 && T.mud.on && MUDS.length && mudK(d.x, d.z) > 0.4) {   // lying in a bog: a wallow, on its back, legs kicking
+      const w = smooth(0.5, 1, d.lieK);
+      M.root.rotation.z += (1.6 + Math.sin(t * 4.2 + d.pitch * 3) * 1.1) * w * (d.player.slot % 2 ? -1 : 1); M.root.position.y += 0.45 * hr * w;   // (rolled about its middle, up out of the muck)
+      M.legs.forEach((g, i) => { g.rotation.x = lerp(g.rotation.x, Math.sin(t * 11 + i * 1.9) * 0.9, w); });
+      M.tail.rotation.y = Math.sin(t * 16) * 0.8 * w;
+      if (live && Math.random() < dt * 14) idleBit(d.x + rnd(-0.5, 0.5), d.y + 0.2, d.z + rnd(-0.5, 0.5), rnd(-2, 2), rnd(2, 3.5), rnd(-2, 2), rnd(0.08, 0.15), '#4e3822', 0.6, -12);
+      if (live && Math.random() < dt * 1.5) SFX.splash(panOf(d.x, d.z), 0.05);
+    }
+    // the coat: caked, wet (uMud), in the dog's own frame (uMudM). Its own copies of the fur materials from the first time
+    // (made here, not in makeDog: three's uuids use Math.random, and a clean dog mustn't move the seeded tests' dice)
+    if (!M.mudOwn && (d._mudS > 0.001 || d._wetS > 0.001)) { M.mudOwn = true; M.root.traverse(o => { const f = o.material && o.material.userData && o.material.userData.fur; if (f) o.material = furMat(f[0], f[1], M.mud); }); }
+    const seed = (d.player.slot || 0) * 3.7 + 1.3; M.mud.u.value.set(d._mudS, 0, seed, Math.min(1, d._wetS * 1.4));
+    M.root.updateMatrixWorld(true); M.mud.m.value.copy(M.root.matrixWorld).invert();
+    if (!live) continue;
+    // bits off it: clods flicked back off its paws, mud dripping, water dripping
+    const ms = d._mudS, ws = d._wetS;
+    if (ground && ms > 0.05 && sp > 1.5 && Math.random() < dt * ms * sp * 1.6) idleBit(d.x - fx * 0.3 + rx * rnd(-0.2, 0.2), d.y + 0.15, d.z - fz * 0.3 + rz * rnd(-0.2, 0.2), -fx * rnd(1.5, 3) + rnd(-0.5, 0.5), rnd(1.5, 3), -fz * rnd(1.5, 3) + rnd(-0.5, 0.5), rnd(0.06, 0.11), Math.random() < 0.6 ? '#4e3822' : '#6b4a2a', 0.55);
+    if (!sw && !tub && ms > 0.3 && Math.random() < dt * ms * 2) idleBit(d.x + rnd(-0.3, 0.3), d.y + 0.45 * hr, d.z + rnd(-0.3, 0.3), 0, -0.3, 0, rnd(0.05, 0.08), '#4e3822', 0.5, -14);
+    if (!sw && !tub && ws > 0.08 && Math.random() < dt * ws * 14) idleBit(d.x + rnd(-0.35, 0.35), d.y + 0.5 * hr, d.z + rnd(-0.35, 0.35), 0, -0.4, 0, rnd(0.05, 0.08), '#9fe3ff', 0.4, -14);
+    // pawprints: fresh out of a bog, fading as the mud wears off its pads
+    if (T.mud.on && MUDS.length && mudK(d.x, d.z) > 0.3) d._paw = 1;
+    else if (ground && ms > D.prints && sp > 0.8 && (d._paw || 0) > 0.02 && !wetAt(d.x, d.z)) {
+      d._pd = (d._pd || 0) + sp * dt; d._paw = Math.max(0, d._paw - sp * dt / D.paws);
+      if (d._pd > 0.42) { d._pd = 0; d._pside = -(d._pside || 1); const s = d._pside * 0.13; pawPrint(d.x + rx * s + fx * 0.25, d.z + rz * s + fz * 0.25, yaw, Math.min(1, d._paw * 1.6) * Math.min(1, ms * 2)); }
+    }
+    // flies round a filthy dog
+    const buzz = ms > D.flies && !sw && !tub && !d.air; if (!buzz && !d._flies) continue;
+    const fl = d._flies || (d._flies = Array.from({ length: 3 }, () => { const f = new THREE.Mesh(FLY_GEO, FLY_MAT); f.visible = false; scene.add(f); seaKeep(f); return f; })); FLIES.add(d);
+    fl.forEach((f, i) => { f.visible = buzz; if (!buzz) return; const a = t * (3.4 + i * 0.8) + i * 2.1; f.position.set(d.x + Math.cos(a) * (0.55 + 0.12 * i), d.y + 1.05 * hr + 0.2 * Math.sin(t * 6 + i * 2), d.z + Math.sin(a * 1.3) * (0.5 + 0.1 * i)); });
+  }
+  // the prints: shrink away over their last quarter
+  let n = 0; const PW = PAWS || { list: [], mesh: null };
+  for (const q of PW.list) {
+    if (q.t < 0) continue; const a = t - q.t; if (a > PAW_LIFE || a < 0) { q.t = -1; continue; }
+    const s = q.k * Math.min(1, (PAW_LIFE - a) / (PAW_LIFE * 0.25)); if (s < 0.05) continue;
+    _m4.compose(_dv.set(q.x, q.y, q.z), _q.setFromAxisAngle(_dv2.set(0, 1, 0), q.yaw), _s.setScalar(s * 1.15)); PW.mesh.setMatrixAt(n++, _m4);
+  }
+  if (PW.mesh) { PW.mesh.count = n; PW.mesh.instanceMatrix.needsUpdate = true; }
+  // mucky water: browner the more mud went in; clears in a few hours
+  for (const p of pens) {
+    const W = p.water; if (!W || !(W.muck > 0) && !W.mMat) continue;
+    if (live && W.muck > 0) W.muck = Math.max(0, W.muck - dt / (hourLen() * D.tub.muck));
+    if (!W.mMat) { W.mMat = MAT.vc.clone(); for (const u of p.waterSlots) u.fill.material = W.mMat; }
+    W.mMat.color.setRGB(1, 1, 1).lerp(_cDirt.set('#b89060'), Math.min(1, W.muck || 0) * 0.75);
+  }
+}
+const _dv2 = new THREE.Vector3(), _cDirt = new THREE.Color();
+onSync(syncDirt, 12);   // MUDDY DOGS: after syncDog (its pose), before the coat's drawn
+// overlay: a muddy dog near a pen with water in its trough: jump in
+function drawDirtOverlay() {
+  if (G.mode !== 'play') return;
+  for (const d of G.dogs) {
+    if (!(d.mud > 0.3) || d.tub || !d.player || d.player.kind === 'net') continue;
+    for (const p of pens) {
+      if (!p.water || p.water.w < T.dirt.tub.min || Math.abs(p.x - d.x) > p.R + 10 || Math.abs(p.z - d.z) > p.R + 10) continue;
+      const u = p.water.at.find(u => Math.hypot(u.x - d.x, u.z - d.z) < 9); if (u && nudge('tub', u.x, p.y + 1.6, u.z, `⤴ ${keyLabel(d.player, 'jump')} → 💧`, '#c8a27a')) return;
+    }
+  }
+}
+expose(() => ({ DIRT, paws, waterTroughAt, updateDirt, tubIn, tubEnd, tubStep, resetDirt, dirtFx, syncDirt, dogMud }));   // MUDDY DOGS
 
 // =====================================================================
 // RATTLESNAKES — coiled behind rocks along the desert trail past the
@@ -15274,6 +15524,7 @@ const HINTS = {
   bramble: '🌿 Stuck in the brambles! <b>Pounce</b> or <b>grab</b> it free.',
   cast: '🙃 A sheep is <b>cast</b>: on its back and can\'t get up! <b>Pounce</b> into it to flip it over, quick.',
   mud: '🟤 Stuck in the bog! <b>Pounce</b> into it to pop it out.',
+  muddy: '🟤 Muddy dog! <b>Swim</b>, or <b>jump</b> into a pen\'s 💧 water trough.',
   balk: '😤 The lead ewe won\'t go in, and the flock won\'t go without her. <b>Pounce</b> her through the gate!',
   apple: '🍎 <b>Pounce</b> into an apple tree to shake apples down. Hungry sheep go for them first. <b>Grab</b> one and stand still by a sheep: it comes for it.',
   snake: '🐍 <b>Rattlesnake!</b> Steer the flock wide of the rocks, or <b>bark</b> / <b>pounce</b> it back. A bitten sheep needs 💉: buy it from the vagabond, bring it to 🧓 Hank.',
@@ -15341,6 +15592,7 @@ const TOUCH_HINTS = {
   bramble: '🌿 Stuck! 💥 or ✊ it free',
   cast: '🙃 Cast! 💥 to flip it',
   mud: '🟤 Bogged! 💥 it out',
+  muddy: '🟤 🐕 → 🌊 or ⤴ 💧',
   balk: '😤 💥 her in!',
   apple: '🍎 💥 the tree · ✊ one to a 🐑',
   snake: '🐍 Steer wide, 📣 / 💥 it. Bitten: 💉 ➜ 🧓',
@@ -15596,6 +15848,7 @@ function drawOverlay(dt) {
   drawVendorOverlay();   // VENDOR: prices over the mats
   drawBrambleOverlay();  // BRAMBLES: snagged sheep
   drawBonkOverlay();     // BONK SPOTS: cast, bogged and balking sheep, apple trees
+  drawDirtOverlay();     // MUDDY DOGS: a muddy dog by a water trough
   drawSnakeOverlay();    // RATTLESNAKES: one rattling
   drawPassOverlay();     // MOUNTAIN PASS: frozen sheep, a dog down a crack (the way out)
   drawVetOverlay();      // VET: sick sheep, what Hank's short of, a dog's bag for him
@@ -23153,6 +23406,7 @@ const NET_TYPES = {
       cold: .02, crevEsc: .05, crev: { c: 'b', get: d => !!d.crev, set: (d, v) => { d.crev = v ? d.crev || true : null; } },   // MOUNTAIN PASS: frozen stiff; down a crack (how near out)
       slide: { c: 's', get: d => d.slide ? d.slide.kind : '', set: (d, v) => { d.slide = v ? (d.slide && d.slide.kind === v ? d.slide : { kind: v, t: 0, spin: 1 }) : null; } },   // ...sliding, rolling
       antic: { c: 's', get: d => d.antic || '', set: (d, v) => { v = v || null; if (v !== d.antic) { d.antic = v; d.anticT = 0; } } },   // IDLE: a poop, a pee, its tail, a nap (timed here: netAnimDog)
+      mud: .02, wet: .05, tubT: .05,   // MUDDY DOGS: caked, wet, in a water trough (s left; < 0: an empty one)
       ...NET_AIR,
     },
     make: (id, f) => netGuestDog(id, f), kill: d => netGuestKillDog(d), animate: (d, dt) => netAnimDog(d, dt),
@@ -23813,7 +24067,7 @@ function netKindOf(h) {   // one a line
     : h.isLlama ? (h.age >= T.llama.adultDays ? 'llama' : 'cria')   // LLAMAS
     : '';
 }
-function netPredOK(d) { return G.mode === 'play' && !G.paused && !menuUp() && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide && !(d.holding && (d.holding.isStation || d.holding.isRing && d.holding.st !== 'held')); }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding; SAILING: at a station, hauling a ring's line)
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !menuUp() && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide && !d.tubT && !(d.holding && (d.holding.isStation || d.holding.isRing && d.holding.st !== 'held')); }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding; SAILING: at a station, hauling a ring's line)
 function netPredPick(d) {   // what tryGrab would bite
   if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
   const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
@@ -24699,6 +24953,7 @@ idleFx = fxDef('idleFx', idleFx);                                    // IDLE: a 
 treeFx = fxDef('treeFx', treeFx);                                    // APPLES: a tree shaken                                 // WATER: picking up, filling, tipping a bucket
 appleFx = fxDef('appleFx', appleFx);   // APPLES: picked up, lobbed, taken from a dog's mouth
 poopFx = fxDef('poopFx', poopFx);   // POOP
+dirtFx = fxDef('dirtFx', dirtFx);   // MUDDY DOGS: splut, sploosh, clonk, a shake, clean
 seaFx = fxDef('seaFx', seaFx); ringFx = fxDef('ringFx', ringFx);   // SAILING: everything you see and hear of the voyage (its own synth: SEAS), the life rings
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);

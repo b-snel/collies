@@ -11,6 +11,7 @@
   to dogs and Hank (`SWIM_SDF`) and to sheep, coyotes, cougars (`WADE_SDF`; not the river). Out of their depth: sheep swim back
   (`sheepWadeIn`), coyotes swim out soggy and leave, cougars swim slow. Calm ones keep off it; bolting ones can be driven in.
   Dressed, Hank keeps out of the sea (`seaDeep`).
+- **Washing** (MUDDY DOGS): a swim washes a muddy dog; a dog leaping into a pen's water trough slops water out (docs/dogs.md).
 - **Swimming tires a dog** (`T.rescue.drain`, `idle` floating): ~90 s paddling from full. At 0: under (`dogDrown`, `a.drown`,
   `d.ko`), limp (`drownStep`).
 - **Sand** (`T.bare`, `offBare`): the beach grows nothing (zeroed after world gen); a calm sheep on it walks to grass; no wandering onto it.
