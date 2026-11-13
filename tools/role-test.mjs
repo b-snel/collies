@@ -8,7 +8,7 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
-//   fur      shells over every coat part (one mesh each), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
+//   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 import { open } from './harness.mjs';
 const h = await open();
@@ -264,10 +264,12 @@ const r9 = await h.page.evaluate(() => {
   for (const B of DOG_BREEDS) {
     dogSet(0, { breed: B.id, acc: [] }); const M = BARN.dogM;
     const body = M.body.children.find(c => c.isMesh), head = M.head.children.filter(c => c.isMesh);
-    const ok = shells(body) === 1 && head.some(m => shells(m) === 1) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
-      && M.legs.every(g => shells(g) === 1) && shells(M.tail) === 1 && shells(M.neck) === 0;
+    const n = B.fur === 'short' ? 0 : 1;   // a short coat: smooth (no shells, a clean outline)
+    const ok = shells(body) === n && head.some(m => shells(m) === n) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
+      && M.legs.every(g => shells(g) === n) && shells(M.tail) === n && shells(M.neck) === 0;
     if (!ok) out.bad.push(B.id);
-    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink) out.bad.push(B.id + ':ink');
+    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink !== !n) out.bad.push(B.id + ':ink');
+    if (!n && body.material !== FUR_MATS.get('sleek')) out.bad.push(B.id + ':sleek');
   }
   out.total = (() => { dogSet(0, { breed: 'bearded' }); return shells(BARN.dogM.root); })();
   out.mats = [...FUR_MATS.values()].filter(m => m.defines && m.defines.FUR_SHELL).length;
@@ -277,7 +279,7 @@ const r9 = await h.page.evaluate(() => {
   GAME.closeBarn();
   return out;
 });
-ok('fur: every breed\'s coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur', r9.bad.length === 0, r9.bad);
+ok('fur: every long coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur; a short coat sleek, none', r9.bad.length === 0, r9.bad);
 ok(`fur: ${r9.mats} coat lengths, 2 programs (no recompiles)`, r9.programs === 2 && r9.mats >= 4, r9);
 ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
 

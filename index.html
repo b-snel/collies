@@ -799,7 +799,7 @@ const T = {
   // back rad (bounce kept, clonk rad/s for a sound), fwd/side as far as it goes; kick: a held animal's wriggles; jolt: the head
   // FUR (drawing only; lite: no shells, set when a machine's too slow (auto)): `n` shells over each coat part, each a little further out (len, body space; per coat: dogShape) and combed back,
   // with tufts cut into them (dens: tufts per unit, cut: how much of the outer shell's left); the coat under it streaked along the lie of the fur
-  fur: { on: true, lite: false, auto: true, n: 4, cut: [0.28, 0.86], streak: 0.14, tip: 1.12, root: 0.78, under: 0.88, ink: 0.55, rag: 0.45, sheen: 0.045 },   // ink: how far out the outline sits (of len); rag: how ragged it is
+  fur: { on: true, lite: false, auto: true, n: 4, cut: [0.28, 0.86], streak: 0.14, sleek: 0.03, tip: 1.12, root: 0.78, under: 0.88, ink: 0.55, rag: 0.45, sheen: 0.045 },   // ink: how far out the outline sits (of len); rag: how ragged it is
   // HAIR (drawing only): long hair, cords and floppy ears swing. k: its spring back to how it grows (per kind), damp: against its root,
   // air: drag against the air (hair streams back a little at a run), sag: how much of its weight it hangs by when the dog's upright, max: how far it swings (rad)
   hair: { on: true, step: 1 / 120, maxDt: 0.05, damp: 4.5, air: 0.2, sag: 0.2, k: { ear: 34, lock: 24, cord: 18, fringe: 70, feather: 32 },
@@ -3882,8 +3882,8 @@ function dogShape(B) {
     head: [0, 0.82 + ty - 0.57 + lift, 0.46 + fz], hk: B.head, tail: [0, ty + 0.07 * F, -0.55 * Ln + 0.05], legR: 0.06 * Math.sqrt(F) * ({ shaggy: 1.55, cord: 1.4, curly: 1.25, wire: 1.1, poodle: 0.85 }[B.fur] || 1 + 0.15 * B.ruff),
     hr: hipY / 0.47, back: ty + 0.27 * F + fluffy * 0.5, cz, hl, tip, mouthZ: tip - 0.04, ex, ey, ez: zs(ex, ey), zs, hatY: 0.19 * (sh - 1) + top,
     flower: drop ? [0.19 * sw, 0.13 * sh, 0.06] : [0.12 * sw * B.ek + 0.05, 0.2 * sh, 0.04], fringe: B.fur === 'shaggy' || B.fur === 'cord',
-    furs: { len: { short: B.fat > 1.12 && B.muz < 0.6 ? 0.012 : 0.02, rough: 0.026 + 0.022 * B.ruff, shaggy: 0.042, cord: 0.034, curly: 0.034, poodle: 0.036, wire: 0.03 }[B.fur],   // FUR
-      dens: { curly: 58, poodle: 58, cord: 30, shaggy: 34, wire: 44, rough: 46 }[B.fur] || 56, curl: B.fur === 'curly' || B.fur === 'poodle' } });
+    furs: { len: { short: 0, rough: 0.026 + 0.022 * B.ruff, shaggy: 0.042, cord: 0.034, curly: 0.034, poodle: 0.036, wire: 0.03 }[B.fur],   // FUR
+      dens: { curly: 58, poodle: 58, cord: 30, shaggy: 34, wire: 44, rough: 46 }[B.fur] || 56, curl: B.fur === 'curly' || B.fur === 'poodle', sleek: B.fur === 'short' } });   // (short: a smooth coat, no shells)
 }
 // a lens of colour set into an ellipsoid's skin (merle, ticks, patches, brindle): dir on the unit sphere, r its size, q its squash
 function dogCap(e, dir, r, col, q = [1, 1, 1]) {
@@ -3928,9 +3928,9 @@ const FUR_GLSL = `
                mix(mix(furH(i + vec3(0, 0, 1)), furH(i + vec3(1, 0, 1)), f.x), mix(furH(i + vec3(0, 1, 1)), furH(i + vec3(1, 1, 1)), f.x), f.y), f.z); }`;
 const FUR_MATS = new Map();
 function furMat(F, shell) {   // the coat itself (streaked), or its shells (one mesh: aFurK, each vertex's shell height 0…1)
-  const key = shell ? `${F.len}|${F.dens}|${F.curl}` : 'coat'; let m = FUR_MATS.get(key); if (m) return m;
+  const key = shell ? `${F.len}|${F.dens}|${F.curl}` : F && F.sleek ? 'sleek' : 'coat'; let m = FUR_MATS.get(key); if (m) return m;
   const C = T.fur, u = { uFurLen: { value: shell ? F.len : 0 }, uFurDens: { value: shell ? F.dens : 30 }, uFurCurl: { value: shell && F.curl ? 1 : 0 },
-    uFurCut: { value: new THREE.Vector2(...C.cut) }, uFurShade: { value: new THREE.Vector3(C.root, C.tip, C.under) }, uFurStreak: { value: C.streak }, uFurSheen: { value: C.sheen } };
+    uFurCut: { value: new THREE.Vector2(...C.cut) }, uFurShade: { value: new THREE.Vector3(C.root, C.tip, C.under) }, uFurStreak: { value: key === 'sleek' ? C.sleek : C.streak }, uFurSheen: { value: C.sheen } };
   m = MAT.vc.clone(); if (shell) { m.defines = { FUR_SHELL: 1 }; m.visible = !T.fur.lite; }
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, u);
@@ -3961,7 +3961,7 @@ function furMat(F, shell) {   // the coat itself (streaked), or its shells (one 
 }
 // a slow machine: the shells go (the streaked coat and its ragged outline stay)
 let furSlow = 0;
-function furLite() { T.fur.lite = true; for (const [k, m] of FUR_MATS) if (k !== 'coat') m.visible = false; }
+function furLite() { T.fur.lite = true; for (const m of FUR_MATS.values()) if (m.defines && m.defines.FUR_SHELL) m.visible = false; }
 // a part's shells, all in one geometry: n copies of it, each vertex told its shell's height
 const FUR_GEO = new WeakMap();
 function furShellGeo(geo, n) {
@@ -4021,9 +4021,9 @@ function buildDog(L, add) {
     else { const len = 0.13 + rng() * 0.13, y = Math.atan2(d[0], d[2]); p[2] *= 1.02;
       locks.push({ p, len, up: [P(CYL(0.07, 0.05, len, 6), c, { s: [1, 1, 0.45], r: [0, y, 0], p: [p[0], p[1] - len * 0.45, p[2]] }), P(SPH(6), c, { s: [0.05, 0.03, 0.025], r: [0, y, 0], p: [p[0], p[1] - len * 0.95, p[2]] })] }); }
   }
-  if (fur === 'rough' && B.ruff >= 0.45) for (let i = 0; i < 12; i++) {   // feathering: a fringe along its belly
-    const sd = i % 2 ? 1 : -1, z = lerp(-0.3, 0.25, (i >> 1) / 5) * Ln, len = (0.07 + 0.09 * B.ruff) * (0.85 + rng() * 0.3), p = [0.15 * F * sd, S.ty - 0.17 * F, z];
-    feathers.push({ p, len, up: [P(CYL(0.05, 0.03, len, 5), col('belly'), { s: [1, 1, 0.5], p: [p[0], p[1] - len / 2, p[2]] })] });
+  if (fur === 'rough' && B.ruff >= 0.45) for (let i = 0; i < 10; i++) {   // feathering: a skirt along its belly, flat overlapping sheets (not teats)
+    const sd = i % 2 ? 1 : -1, z = lerp(-0.32, 0.22, (i >> 1) / 4) * Ln, len = (0.09 + 0.1 * B.ruff) * (0.85 + rng() * 0.3), p = [0.17 * F * sd, S.ty - 0.15 * F, z];
+    feathers.push({ p, len, up: [P(SPH(8), col('torso'), { s: [0.03, len * 0.6, 0.1 * Ln], r: [0, 0, 0.2 * sd], p: [p[0] + 0.02 * sd, p[1] - len * 0.4, p[2]] })] });
   }
   if (fur === 'poodle') bp.push(...[-1, 1].map(sd => P(SPH(9), col('torso'), { s: [0.1, 0.1, 0.1], p: [0.17 * F * sd, S.ty + 0.05, -0.38 * Ln] })));
   const FU = S.furs; furCoat(add, body, merge(...bp), FU);   // FUR
@@ -4032,7 +4032,7 @@ function buildDog(L, add) {
     for (const l of list) { const k = (l.p[0] < 0 ? 'L' : 'R') + Math.round((l.p[2] / Ln + 0.6) * 3); (groups.get(k) || groups.set(k, []).get(k)).push(l); }
     for (const g of groups.values()) {
       const m = i => g.reduce((a, l) => a + l.p[i], 0) / g.length, len = g.reduce((a, l) => a + l.len, 0) / g.length, piv = [m(0), m(1), m(2)], sd = Math.sign(piv[0]) || 1;
-      const u0 = [sd * 0.18, -1, 0], hl = two ? len / 2 : len, up = hairPiece(add, body, piv, u0, hl, kind, g.flatMap(l => l.up), { space: body, hull: S.hull, fur: kind === 'lock' ? S.furs : null, shells: 2 });
+      const u0 = [sd * 0.18, -1, 0], hl = two ? len / 2 : len, up = hairPiece(add, body, piv, u0, hl, kind, g.flatMap(l => l.up), { space: body, hull: S.hull, fur: kind === 'lock' || kind === 'feather' ? S.furs : null, shells: 2 });
       hair.push(up);
       if (two) hair.push(hairPiece(add, up.g, [piv[0], piv[1] - hl, piv[2]], u0, hl, kind, g.flatMap(l => l.lo), { up, space: body, hull: S.hull }));
     }
