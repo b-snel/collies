@@ -8,7 +8,8 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
-//   fur      shells over every coat part (one mesh each), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
+//   barn     opens on the Dogs: cards with portraits; the breed picker (a grid, filters)
+//   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 import { open } from './harness.mjs';
 const h = await open();
@@ -264,10 +265,12 @@ const r9 = await h.page.evaluate(() => {
   for (const B of DOG_BREEDS) {
     dogSet(0, { breed: B.id, acc: [] }); const M = BARN.dogM;
     const body = M.body.children.find(c => c.isMesh), head = M.head.children.filter(c => c.isMesh);
-    const ok = shells(body) === 1 && head.some(m => shells(m) === 1) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
-      && M.legs.every(g => shells(g) === 1) && shells(M.tail) === 1 && shells(M.neck) === 0;
+    const n = B.fur === 'short' ? 0 : 1;   // a short coat: smooth (no shells, a clean outline)
+    const ok = shells(body) === n && head.some(m => shells(m) === n) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
+      && M.legs.every(g => shells(g) === n) && shells(M.tail) === n && shells(M.neck) === 0;
     if (!ok) out.bad.push(B.id);
-    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink) out.bad.push(B.id + ':ink');
+    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink !== !n) out.bad.push(B.id + ':ink');
+    if (!n && body.material !== FUR_MATS.get('sleek')) out.bad.push(B.id + ':sleek');
   }
   out.total = (() => { dogSet(0, { breed: 'bearded' }); return shells(BARN.dogM.root); })();
   out.mats = [...FUR_MATS.values()].filter(m => m.defines && m.defines.FUR_SHELL).length;
@@ -277,9 +280,43 @@ const r9 = await h.page.evaluate(() => {
   GAME.closeBarn();
   return out;
 });
-ok('fur: every breed\'s coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur', r9.bad.length === 0, r9.bad);
+ok('fur: every long coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur; a short coat sleek, none', r9.bad.length === 0, r9.bad);
 ok(`fur: ${r9.mats} coat lengths, 2 programs (no recompiles)`, r9.programs === 2 && r9.mats >= 4, r9);
 ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
+
+// 10. the barn opens on the Dogs: a card each (a portrait), a click picks one; a sheep asked for opens the flock
+const r10 = await h.page.evaluate(() => {
+  const { G, BARN, openBarn, closeBarn, barnRender, THUMB } = GAME, out = {};
+  openBarn(); out.tab = BARN.tab; out.cards = document.querySelectorAll('#barnList .dogCard').length; out.first = document.querySelector('.barnTabs button').dataset.tab;
+  for (let i = 0; i < 8; i++) barnRender(1 / 60);
+  out.pics = [...document.querySelectorAll('#barnList .dogCard img')].filter(i => (i.getAttribute('src') || '').startsWith('data:image/png')).length;
+  document.querySelector('.dogCard[data-dog="2"]').click(); out.dog = BARN.dog; out.on = document.querySelector('.dogCard.on').dataset.dog;
+  out.sparks = document.querySelectorAll('.dogCard .spark').length; closeBarn();
+  openBarn(G.sheep.find(s => !s.dead)); out.sheepTab = BARN.tab; closeBarn();
+  return out;
+});
+ok('the barn opens on the Dogs (its tab first), a card each with its portrait; a click picks one (sparks); a sheep: the flock', r10.tab === 'dogs' && r10.first === 'dogs' && r10.cards === 4 && r10.pics === 4
+  && r10.dog === 2 && r10.on === '2' && r10.sparks > 0 && r10.sheepTab === 'sheep', r10);
+
+// 11. the breed picker: every breed in a grid, the dog's own lit; filters (group, coat, size); a click, the arrows; Esc: back
+const r11 = await h.page.evaluate(() => {
+  const { BARN, openBarn, closeBarn, dogLook, dogSet, DOG_BREEDS } = GAME, out = {}, lit = () => [...document.querySelectorAll('#bpGrid .bpItem.on')].map(b => b.dataset.breed);
+  const key = code => document.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+  dogSet(0, { breed: 'border' }); openBarn(); GAME.barnPickDog(0); document.getElementById('barnBreedOpen').click();
+  out.open = BARN.pick && !!document.querySelector('#breedPick #bpView canvas'); out.tiles = document.querySelectorAll('#bpGrid .bpItem').length; out.lit0 = lit();
+  document.querySelector('[data-bf="c:smooth"]').click(); out.smooth = [...document.querySelectorAll('#bpGrid .bpItem')].map(b => b.dataset.breed);
+  document.querySelector('[data-bf="s:s"]').click(); out.smallSmooth = [...document.querySelectorAll('#bpGrid .bpItem')].map(b => b.dataset.breed);
+  document.querySelector('[data-bf="all"]').click(); out.all = document.querySelectorAll('#bpGrid .bpItem').length;
+  document.querySelector('.bpItem[data-breed="kelpie"]').click(); out.picked = dogLook(0).breed; out.lit1 = lit();
+  key('ArrowRight'); out.right = dogLook(0).breed;
+  key('Escape'); out.closed = !BARN.pick && !document.getElementById('breedPick') && !!document.querySelector('#barnViewWrap canvas') && BARN.open;
+  closeBarn(); dogSet(0, { breed: 'border' });
+  return out;
+});
+const order = r11.smooth && r11.smooth.join();
+ok('the breed picker: all 48 in a grid (the dog\'s own lit); coat and size filters; a click picks one (lit); → the next; Esc: back to the barn', r11.open && r11.tiles === 48 && r11.lit0.join() === 'border'
+  && r11.smooth.length === 17 && r11.smooth.includes('smooth') && !r11.smooth.includes('border') && r11.smallSmooth.length > 0 && r11.smallSmooth.every(b => r11.smooth.includes(b)) && r11.smallSmooth.includes('frenchie') && !r11.smallSmooth.includes('lab')
+  && r11.all === 48 && r11.picked === 'kelpie' && r11.lit1.join() === 'kelpie' && r11.right === 'nzhuntaway' && r11.closed, { ...r11, smooth: order });
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();

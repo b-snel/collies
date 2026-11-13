@@ -131,7 +131,7 @@ Run the ones touching your change; report the numbers.
 | `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
-| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
+| `role-test.mjs` | barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
 | `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
@@ -287,7 +287,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
   Edge arrows keep clear of it (`mapDodge`). At a trader, its pen ringed + 📍 (on the edge if off it). No trail bar.
-- **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
+- **Barn**: Dogs (first; opens on it unless a sheep's asked for) and Sheep tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
   fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).
@@ -305,7 +305,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.ro`, `b`).
 - **Dog breeds** (`DOG_BREEDS`, `DOG_PATS`, `dogShape`, `buildDog`): looks only, nothing in the sim reads one. The herding
   dogs (Border Collie first, the default), a Portuguese Water Dog, + the AKC's ten most popular. One collie bent by numbers (`leg len fat head muz mw sw sh`,
-  `ear`, `tail`, `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
+  `ear`, `tail` (`dogTailGeo`: a tapered tube per kind, `dogTube`; brush under a plume), `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
   things hang there). Coats per breed (`L.coat` = its base hex, one each; `fitCoat`). Hats and kit fitted per breed (`dogGear(id, B)`:
   hat on the skull `hatY`, shades on its eyes, a flower behind its ear; collar kit in `M.neck`, scaled about the collar). Barn:
   ‹ › / L3; `L.breed`. Online: in the look (`look`). Contact sheet: `node tools/dog-shots.mjs OUT.png`.
@@ -443,7 +443,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Fur** (FUR, `T.fur`, `furMat`, `furCoat`, `furShellGeo`, `furInk`, drawing only): each coat part (body, head, legs, tail, ears, locks)
   streaked along the lie of its fur, with `n` shells over it in one mesh (`aFurK`: each vertex's shell, out along its normal and combed
   back), tufts cut by a noise, darker roots, light-catching tips; its outline out in the fur, ragged (`ink`, `rag`). Eyes, nose, collar:
-  none. Coat length and tuft size per breed (`dogShape().furs`). Two programs for all of it. Still slow at pixel ratio 1: shells off
+  none. Coat length and tuft size per breed (`dogShape().furs`); short coats sleek (`'sleek'`: no shells, clean outline). Belly feathering: flat sheets, a skirt. Two programs for all of it. Still slow at pixel ratio 1: shells off
   (`furLite`, `T.fur.auto`).
 - **Hair** (HAIR, `T.hair`, `hairPiece`, `hairStep`, `M.hair`, drawing only): long hair, cords and floppy ears swing. Each piece a rod
   from its root stepped in world space (Verlet): lags its root, damped against it (`damp`) and the air (`air`), springs back to how it
