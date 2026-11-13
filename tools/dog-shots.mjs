@@ -1,5 +1,5 @@
 // Every dog breed in every bit of kit, on the barn's turntable, as one contact sheet (a look check, not a test).
-// node tools/dog-shots.mjs OUT.png [--breeds a,b] [--items 'hat,acc|hat'] [--angles a,b] [--size px] [--wrap n (one look: n breeds a row)]
+// node tools/dog-shots.mjs OUT.png [--breeds a,b:1 (b in its 2nd coat)] [--items 'hat,acc|hat'] [--angles a,b] [--size px] [--wrap n (one look: n breeds a row)]
 import { open } from './harness.mjs';
 import { writeFileSync } from 'node:fs';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -21,7 +21,8 @@ const png = await h.page.evaluate(async ({ breeds, items, angles, size, wrapN })
     const r = Math.floor(i / wrap); let c = (i % wrap) * per;
     for (const lk of looks) {
       const [hat, ...acc] = lk;
-      dogSet(0, { breed: bl[i] || undefined, hat, acc });
+      const [bid, ci] = String(bl[i] || '').split(':'), B = GAME.dogBreed(bid);   // 'id:n': its nth coat
+      dogSet(0, { breed: bid || undefined, hat, acc }); if (ci !== undefined) dogSet(0, { coat: B.coats[+ci % B.coats.length].b });
       for (const a of angs) {
         BARN.rot = a; BARN.drag = {}; barnRender(0);
         const bm = await createImageBitmap(cv);
