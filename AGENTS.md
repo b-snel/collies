@@ -46,7 +46,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
   joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
-- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space jump, E grab, F bark, R pounce; mouse on the game (`#gl`): click bark, right click pounce (`Mouse0` / `Mouse2` in `KB`).
+- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space bark, E grab, F jump, R pounce; mouse on the game (`#gl`): hold click grab, right click pounce / shake (`Mouse0` / `Mouse2` in `KB`). Controls bar always up (`ctlBar`).
 - Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 - Map: minimap bottom left (over the controls bar while it's up; touch: under the flock
   panel); `M` / R3 / tap it → the whole trail, big. At a trader: 📍 its pen.
