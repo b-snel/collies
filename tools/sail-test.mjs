@@ -399,14 +399,17 @@ if (want('storm')) {
     let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
     // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
-    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); let heel = 0; H.run(12, () => { H.steer(0); heel = Math.max(heel, Math.abs(SEA.heel)); }); return { over: H.swimmers().length, heel: H.deg(heel), hit: !SEA.rogue || SEA.rogue.hit }; };
+    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); const g = SEA.rogue; let heel = 0, at = -1, pre = [], post = 0;
+      H.run(12, t => { H.steer(0); const h = Math.abs(SEA.heel); heel = Math.max(heel, h); if (at < 0 && g.hit) at = t; if (at < 0) pre.push(h); else if (t - at < 2) post = Math.max(post, h); });
+      // kick: what the wave itself does, the most she heels in the 2 s after it hits over the 2 s before (a storm swell rolls her anyway)
+      return { over: H.swimmers().length, heel: H.deg(heel), kick: H.deg(post - Math.max(0, ...pre.slice(-80))), hit: !SEA.rogue || SEA.rogue.hit }; };
     out.beam = wave(Math.PI / 2); for (let k = 0; k < 2 && !out.beam.over; k++) out.beam = wave(Math.PI / 2);   // (who's swept off is chance: up to three waves)
     out.bow = wave(0.1);
     return out;
   });
   ok(`the storm: a gale (${r.wind} m/s), a big sea (state ${r.state}), rain, lightning (${r.flash})`, r.storm > 0.9 && r.wind > 16 && r.state > 0.6 && r.rain > 0.8 && r.flash >= 2, r);
   ok(`the flock's frightened (stress ${r.stress})`, r.stress > 0.3, r);
-  ok(`a great wave abeam knocks her down (${r.beam.heel}°) and sweeps sheep off (${r.beam.over})`, r.beam.over >= 1 && r.beam.heel > 18 && r.beam.heel > r.bow.heel + 4, r);
+  ok(`a great wave abeam knocks her down (${r.beam.heel}°, +${r.beam.kick}° on her; bow ${r.bow.kick}°) and sweeps sheep off (${r.beam.over})`, r.beam.over >= 1 && r.beam.heel > 18 && r.beam.kick > 6 && r.beam.kick > r.bow.kick + 6, r);
   ok(`taken on the bow, nobody's lost (${r.bow.over}; ${r.bow.heel}°)`, r.bow.over === 0 && r.bow.hit, r);
 }
 
