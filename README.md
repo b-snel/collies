@@ -72,7 +72,9 @@ Sheep get thirsty too. Each pen has a water trough and a 🪣 bucket by it: grab
 
 Hank's ✂️ clippers are buried in a dig spot between the first two camps. Dig them up and bring them to him. When the flock is penned with the gate shut, Hank climbs in and shears the woolliest sheep, one by one, for 🧶. Wool grows back in a few days.
 
-A trader waits near the end of every leg: stand on a mat and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. The Trading Post, at the foot of the pass, sells the same.
+One trader, a scruffy vagabond with a huge pack, walks the trail ahead of the flock (somewhere new each journey), as far as the Trading Post at the foot of the pass. He calls out what he sells, and what you're short of first ("Infection? I've got pills for that!"). Run up to him and press Ⓐ (keyboard: Space; touch: 📣) and he lays his wares out on mats: stand on one and bark to buy with wool. 📍 picks which pen (one you've found) the goods go to; 🌾 💧 🧂 add a stocked trough, water trough or salt lick there, as many as the pen has room for, then refill them. By night he sleeps by his pack. At Cold Harbour he's waiting on the quay with his little sailing dinghy; for the first half of the voyage he sails alongside, pulls it up on each island's beach ahead of you to trade (and sleeps on the sand by it), then turns for home at Gull Rock.
+
+Mind your manners. Bonk him, bark at him, grab his coat and he takes it personally: a warning or three, then his prices go up, and push him too far and he's off for a day. Play fetch with him (bring him a bone or one of his sticks), a tug of war, or give him an apple and he softens: grudges forgotten, then a discount.
 
 ## The mountain pass
 
@@ -98,7 +100,7 @@ Back in the desert past the Promised Land, rattlesnakes hide behind rocks. One r
 
 A sheep you save from a coyote, cougar or falcon comes away cut. A deep cut 🩸 bleeds out in half a day; a shallow one 🦠 festers and kills in a day and a half.
 
-Hank can save them. Every trader sells 💉 anti-venom, 🩹 bandages and 💊 antibiotics: bark on the mat and your dog carries it in its bag. Take the bag to Hank. He walks to the sickest one he can help (over a pen fence if he has to) and treats it. Over each sick sheep, a ring shows how long it has left (green: Hank has the cure). Hank shows what he's short of.
+Hank can save them. The vagabond sells 💉 anti-venom, 🩹 bandages and 💊 antibiotics: bark on the mat and your dog carries it in its bag. Take the bag to Hank. He walks to the sickest one he can help (over a pen fence if he has to) and treats it. Over each sick sheep, a ring shows how long it has left (green: Hank has the cure). Hank shows what he's short of.
 
 ## The fallen
 

@@ -8,8 +8,10 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
 //            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
-//   fur      shells over every coat part (one mesh each), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
+//   barn     opens on the Dogs: cards with portraits; the breed picker (a grid, filters)
+//   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
+//   pack     the DOG PACK on every breed: outside its body and fur, off the ground, clear of its head and legs; pockets fill in turn, salt on top, emptied: off
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -264,10 +266,12 @@ const r9 = await h.page.evaluate(() => {
   for (const B of DOG_BREEDS) {
     dogSet(0, { breed: B.id, acc: [] }); const M = BARN.dogM;
     const body = M.body.children.find(c => c.isMesh), head = M.head.children.filter(c => c.isMesh);
-    const ok = shells(body) === 1 && head.some(m => shells(m) === 1) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
-      && M.legs.every(g => shells(g) === 1) && shells(M.tail) === 1 && shells(M.neck) === 0;
+    const n = B.fur === 'short' ? 0 : 1;   // a short coat: smooth (no shells, a clean outline)
+    const ok = shells(body) === n && head.some(m => shells(m) === n) && head.some(m => m.isMesh && shells(m) === 0 && !(m.material.defines || {}).FUR_SHELL)
+      && M.legs.every(g => shells(g) === n) && shells(M.tail) === n && shells(M.neck) === 0;
     if (!ok) out.bad.push(B.id);
-    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink) out.bad.push(B.id + ':ink');
+    const ink = body.children.find(c => c.material && c.material.uniforms && c.material.uniforms.uFurOut); if (!ink !== !n) out.bad.push(B.id + ':ink');
+    if (!n && body.material !== FUR_MATS.get('sleek')) out.bad.push(B.id + ':sleek');
   }
   out.total = (() => { dogSet(0, { breed: 'bearded' }); return shells(BARN.dogM.root); })();
   out.mats = [...FUR_MATS.values()].filter(m => m.defines && m.defines.FUR_SHELL).length;
@@ -277,9 +281,79 @@ const r9 = await h.page.evaluate(() => {
   GAME.closeBarn();
   return out;
 });
-ok('fur: every breed\'s coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur', r9.bad.length === 0, r9.bad);
+ok('fur: every long coat (body, head, legs, tail) has one shell mesh each, its eyes, nose and collar none, its outline out in the fur; a short coat sleek, none', r9.bad.length === 0, r9.bad);
 ok(`fur: ${r9.mats} coat lengths, 2 programs (no recompiles)`, r9.programs === 2 && r9.mats >= 4, r9);
 ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
+
+// 10. the barn opens on the Dogs: a card each (a portrait), a click picks one; a sheep asked for opens the flock
+const r10 = await h.page.evaluate(() => {
+  const { G, BARN, openBarn, closeBarn, barnRender, THUMB } = GAME, out = {};
+  openBarn(); out.tab = BARN.tab; out.cards = document.querySelectorAll('#barnList .dogCard').length; out.first = document.querySelector('.barnTabs button').dataset.tab;
+  for (let i = 0; i < 8; i++) barnRender(1 / 60);
+  out.pics = [...document.querySelectorAll('#barnList .dogCard img')].filter(i => (i.getAttribute('src') || '').startsWith('data:image/png')).length;
+  document.querySelector('.dogCard[data-dog="2"]').click(); out.dog = BARN.dog; out.on = document.querySelector('.dogCard.on').dataset.dog;
+  out.sparks = document.querySelectorAll('.dogCard .spark').length; closeBarn();
+  openBarn(G.sheep.find(s => !s.dead)); out.sheepTab = BARN.tab; closeBarn();
+  return out;
+});
+ok('the barn opens on the Dogs (its tab first), a card each with its portrait; a click picks one (sparks); a sheep: the flock', r10.tab === 'dogs' && r10.first === 'dogs' && r10.cards === 4 && r10.pics === 4
+  && r10.dog === 2 && r10.on === '2' && r10.sparks > 0 && r10.sheepTab === 'sheep', r10);
+
+// 11. the breed picker: every breed in a grid, the dog's own lit; filters (group, coat, size); a click, the arrows; Esc: back
+const r11 = await h.page.evaluate(() => {
+  const { BARN, openBarn, closeBarn, dogLook, dogSet, DOG_BREEDS } = GAME, out = {}, lit = () => [...document.querySelectorAll('#bpGrid .bpItem.on')].map(b => b.dataset.breed);
+  const key = code => document.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+  dogSet(0, { breed: 'border' }); openBarn(); GAME.barnPickDog(0); document.getElementById('barnBreedOpen').click();
+  out.open = BARN.pick && !!document.querySelector('#breedPick #bpView canvas'); out.tiles = document.querySelectorAll('#bpGrid .bpItem').length; out.lit0 = lit();
+  document.querySelector('[data-bf="c:smooth"]').click(); out.smooth = [...document.querySelectorAll('#bpGrid .bpItem')].map(b => b.dataset.breed);
+  document.querySelector('[data-bf="s:s"]').click(); out.smallSmooth = [...document.querySelectorAll('#bpGrid .bpItem')].map(b => b.dataset.breed);
+  document.querySelector('[data-bf="all"]').click(); out.all = document.querySelectorAll('#bpGrid .bpItem').length;
+  document.querySelector('.bpItem[data-breed="kelpie"]').click(); out.picked = dogLook(0).breed; out.lit1 = lit();
+  key('ArrowRight'); out.right = dogLook(0).breed;
+  key('Escape'); out.closed = !BARN.pick && !document.getElementById('breedPick') && !!document.querySelector('#barnViewWrap canvas') && BARN.open;
+  closeBarn(); dogSet(0, { breed: 'border' });
+  return out;
+});
+const order = r11.smooth && r11.smooth.join();
+ok('the breed picker: all 48 in a grid (the dog\'s own lit); coat and size filters; a click picks one (lit); → the next; Esc: back to the barn', r11.open && r11.tiles === 48 && r11.lit0.join() === 'border'
+  && r11.smooth.length === 17 && r11.smooth.includes('smooth') && !r11.smooth.includes('border') && r11.smallSmooth.length > 0 && r11.smallSmooth.every(b => r11.smooth.includes(b)) && r11.smallSmooth.includes('frenchie') && !r11.smallSmooth.includes('lab')
+  && r11.all === 48 && r11.picked === 'kelpie' && r11.lit1.join() === 'kelpie' && r11.right === 'nzhuntaway' && r11.closed, { ...r11, smooth: order });
+
+// 12. DOG PACK: every breed wears it (outside its body, off the ground, clear of its head and legs); pockets fill in turn; emptied: off
+const r12 = await h.page.evaluate(() => {
+  const { DOG_BREEDS, dogShape, dogPackBuild, dogPackSync, packHull, THREE } = GAME, out = { bad: [] };
+  const grp = () => new THREE.Group(), mesh = geo => new THREE.Mesh(geo);
+  for (const B of DOG_BREEDS) {
+    const S = dogShape(B), meshes = [], M = { look: { breed: B.id, collar: '#3d8ef0' }, body: grp() };
+    const pk = dogPackBuild(M, (par, geo) => { const m = mesh(geo); par.add(m); meshes.push(m); return m; });
+    dogPackSync(pk, 1, true, 0, true); M.body.updateMatrixWorld(true);
+    const H = packHull(S), legs = [[0.12, 0.27], [-0.12, 0.27], [0.12, -0.3], [-0.12, -0.3]].map(([x, z]) => [x * S.F, z * S.Ln]);
+    let inside = 0, minY = 9, head = 0, leg = 0, n = 0; const hr = 0.22 * S.hk;
+    for (const m of meshes) {
+      if (m.parent === pk.salt || pk.slots.some(sl => sl.g === m.parent)) continue;   // (what's in the pockets)
+      const a = m.geometry.attributes.position;
+      for (let i = 0; i < a.count; i++) {
+        const w = m.localToWorld(new THREE.Vector3(a.getX(i), a.getY(i), a.getZ(i))); n++;
+        for (const e of H) if (((w.x - e.c[0]) / e.s[0]) ** 2 + ((w.y - e.c[1]) / e.s[1]) ** 2 + ((w.z - e.c[2]) / e.s[2]) ** 2 < 0.97) { inside++; break; }
+        minY = Math.min(minY, w.y); if (((w.x - S.head[0]) / (hr * B.sw)) ** 2 + ((w.y - S.head[1]) / (hr * B.sh)) ** 2 + ((w.z - S.head[2]) / hr) ** 2 < 1) head++;   // (its skull, a bit over)
+        if (w.y < S.hipY - 0.02) for (const [lx, lz] of legs) if (Math.hypot(w.x - lx, w.z - lz) < S.legR + 0.005) leg++;
+      }
+    }
+    const r = { inside, minY: +minY.toFixed(3), head, leg };
+    if (inside || minY < 0.005 || head || leg) out.bad.push([B.id, r]);
+    out.n = (out.n || 0) + 1;
+  }
+  const M = { look: { breed: 'border', collar: '#e8473f' }, body: grp() }, pk = dogPackBuild(M, (par, geo) => { const m = mesh(geo); par.add(m); return m; });
+  const fill = k => { dogPackSync(pk, k, false, 0, true); return pk.slots.map(sl => sl.g.visible ? 1 : 0).join(''); };
+  out.fill = [0.2, 0.3, 0.55, 0.8, 1].map(fill); dogPackSync(pk, 0, true, 0, true); out.salt = [pk.root.visible, pk.salt.visible, pk.slots.some(sl => sl.g.visible)];
+  dogPackSync(pk, 0, false, 0, true); out.off = pk.root.visible;
+  for (let i = 0; i < 60; i++) dogPackSync(pk, 0.5, false, 1 / 60); out.pop = +pk.s.toFixed(2);
+  for (let i = 0; i < 90; i++) dogPackSync(pk, 0, false, 1 / 60); out.gone = pk.root.visible;
+  return out;
+});
+ok(`the pack on all ${r12.n} breeds: outside its body and fur, off the ground (a corgi's belly strap too), clear of its head and legs`, r12.n === 48 && r12.bad.length === 0, r12.bad.slice(0, 6));
+ok('the pack: pockets fill in turn (bags, then pockets), salt on top, empty: none; it pops on, comes off', r12.fill.join() === '1000,1100,1110,1111,1111' && r12.salt.join() === 'true,true,false' && r12.off === false
+  && Math.abs(r12.pop - 1) < 0.05 && r12.gone === false, r12);
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();
