@@ -40,7 +40,7 @@ const SECTIONS = {
   HAIR: 'role-test', HUD: 'dawn-test map-test hank-test input-test vendor-test', MAP: 'map-test',
   HANK: 'hank-test vet-test shear-test swim-test path-test pass-test rope-test', VET: 'vet-test', 'FLOCK LOOKS': 'hank-test role-test',
   'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim',
-  'FLOCK SAVE': 'hank-test age-sim shear-test', VAGABOND: 'vendor-test vet-test map-test', SAILING: 'sail-test vendor-test swim-test amb-test',
+  'FLOCK SAVE': 'hank-test age-sim shear-test', VAGABOND: 'vendor-test vet-test map-test', LLAMAS: 'llama-test rope-test', SAILING: 'sail-test vendor-test swim-test amb-test',
   'ONLINE CO-OP': 'net-test sea-net-test hybrid-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
 };
 // other files → tests ('*': all); a test's own file runs it; anything else: none
@@ -51,7 +51,7 @@ const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
   'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 44, 'pass-test': 37, 'path-test': 36,
   'pen-trap-test': 32, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
-  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90 };
+  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90 };
 
 const argv = process.argv.slice(2), flag = k => argv.includes(k), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
 const OPTS = new Set(['--base', '-j', '--shard', '--timeout', '--logs']), names = argv.filter((a, i) => !a.startsWith('-') && !OPTS.has(argv[i - 1]));

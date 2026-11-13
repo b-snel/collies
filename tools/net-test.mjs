@@ -491,6 +491,20 @@ try {
   const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
     boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
+  // LLAMAS: a guard and a wild one by the host's dog show on the guest (where, whose, its tassels); a spit flies on both
+  await A.page.evaluate(() => {
+    const { G, makeLlama, llamaJoin, llamaSpitAt } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
+    const g = makeLlama({ x: d.x + 4, z: d.z + 2, sex: 'f', age: 5 }); g.tame = 1; llamaJoin(g);
+    const w = makeLlama({ x: d.x - 6, z: d.z + 3, sex: 'm', age: 5 }); w.cdH = 99; window.__ll = [g, w];
+    setTimeout(() => { g.hop = null; g.hopY = 0; g.air = null; g.state = 'guard'; g.spitCd = 0; llamaSpitAt(g, w, 'llama'); }, 400);
+  });
+  await sleep(1800);
+  const llH = await A.page.evaluate(() => window.__ll.map(L => ({ id: NET.api.types.llama.id(L), x: L.x, z: L.z, tame: L.tame })));
+  const llG = await B.page.evaluate(ids => ids.map(id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L ? { x: L.x, z: L.z, tame: L.tame, tassels: L.models.tassels[0].visible, n: GAME.LLAMAS.length } : null; }), llH.map(o => o.id));
+  const llN = await A.page.evaluate(() => GAME.LLAMAS.length), spitIn = await B.page.evaluate(() => !!NET.fxIn.spitFx);
+  check('llamas: a guard and a wild one on the host show on the guest (where, whose, tassels on the guard); its spit reaches the guest',
+    llG.every(Boolean) && llG.every((o, i) => Math.hypot(o.x - llH[i].x, o.z - llH[i].z) < 1 && o.tame === llH[i].tame) && llG[0].tassels && !llG[1].tassels && llG[0].n === llN && spitIn, { llH, llG, llN, spitIn });
+  await A.page.evaluate(() => { for (const L of window.__ll) GAME.llamaRemove(L); });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
   const moods = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.MIND.mood, document.getElementById('hMood').textContent])));
