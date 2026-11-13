@@ -484,13 +484,14 @@ try {
     d.player.bot = { grab: true };
   });
   await sleep(800);
-  const boneG1 = await B.page.evaluate(() => { const b = GAME.BONES[0], d = GAME.G.dogs.find(d => d.player.slot === 0); return { n: GAME.BONES.length, held: !!b && b.by === d && d.holding === b }; });
+  const boneId = await A.page.evaluate(() => window.__bone.nid);   // (this one: poops and the vagabond's sticks are bones too)
+  const boneG1 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id), d = GAME.G.dogs.find(d => d.player.slot === 0); return { there: !!b, held: !!b && b.by === d && d.holding === b }; }, boneId);
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; });   // let go: thrown
   await sleep(3500);
   const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
-  const boneG2 = await B.page.evaluate(() => { const b = GAME.BONES[0]; return b ? { x: b.x, z: b.z, by: !!b.by } : null; });
+  const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
-    boneG1.n === 1 && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
+    boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
   const moods = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.MIND.mood, document.getElementById('hMood').textContent])));
@@ -499,7 +500,7 @@ try {
   // Hank's barn: every screen has its own. The guest's Tab opens it while the game goes on (its dog waits); it renames and dresses a sheep (the host has it)
   await B.page.keyboard.press('Tab');
   await until(A, () => GAME.G.dogs.find(d => d.player.kind === 'net').mode === 'lie', null, 5000).catch(() => {}); await sleep(200);
-  const gb1 = await B.page.evaluate(() => ({ open: GAME.BARN.open, back: !!document.getElementById('barnBack'), tools: document.getElementById('barnTools').hidden, fresh: !!document.getElementById('barnFresh'), badge: document.getElementById('menuBadge').textContent }));
+  const gb1 = await B.page.evaluate(() => ({ open: GAME.BARN.open, tab: GAME.BARN.tab, back: !!document.getElementById('barnBack'), fresh: !!document.getElementById('barnFresh'), badge: document.getElementById('menuBadge').textContent }));
   const gb1A = await A.page.evaluate(() => ({ paused: GAME.G.paused, menus: GAME.G.menus.join(), dog: GAME.G.dogs.find(d => d.player.kind === 'net').mode }));
   const bSheep = await B.page.evaluate(() => { const s = GAME.G.sheep.filter(s => !s.dead)[2]; GAME.barnTab('sheep'); GAME.barnSelect(s); return s.id; });
   await B.page.fill('#barnName', 'Clover');
@@ -509,7 +510,7 @@ try {
   await until(A, id => { const s = GAME.G.sheep.find(s => s.id === id); return s && s.name === 'Clover' && s.look && s.look.hat === 'tophat' && s.look.wool === '#4a4440'; }, bSheep, 5000).catch(() => {});
   const gb2 = await A.page.evaluate(id => { const s = GAME.G.sheep.find(s => s.id === id); return s && { name: s.name, hat: s.look && s.look.hat, wool: s.look && s.look.wool }; }, bSheep);
   check("Hank's barn on the guest: its own, opened mid-game (the game goes on, its dog waits); a sheep renamed and dressed there is on the host",
-    gb1.open && gb1.back && !gb1.tools && !gb1.fresh && /▶/.test(gb1.badge) && !gb1A.paused && gb1A.menus === '1' && gb1A.dog === 'lie' && gb2 && gb2.name === 'Clover' && gb2.hat === 'tophat' && gb2.wool === '#4a4440', { gb1, gb1A, gb2 });
+    gb1.open && gb1.tab === 'dogs' && gb1.back && !gb1.fresh && /▶/.test(gb1.badge) && !gb1A.paused && gb1A.menus === '1' && gb1A.dog === 'lie' && gb2 && gb2.name === 'Clover' && gb2.hat === 'tophat' && gb2.wool === '#4a4440', { gb1, gb1A, gb2 });
   // …its own dog: only its own in the list; a new role, breed, coat and name reach the host (and come back as its dog's look)
   await B.page.evaluate(() => GAME.barnTab('dogs'));
   const gDogs = await B.page.evaluate(() => GAME.barnDogs().length + ':' + document.querySelectorAll('#barnList [data-dog]').length);
