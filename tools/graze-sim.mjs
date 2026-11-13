@@ -14,6 +14,7 @@ const tri = args.indexOf('--trough'), trough = tri >= 0 ? +(args[tri + 1] || 0) 
 const ti = args.indexOf('--trials'), trials = ti >= 0 ? +args[ti + 1] : 1;
 const variants = JSON.parse(args.find(a => a.startsWith('[')) || '[{}]');
 const h = await open({ query: '?sim&debug' });
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
 for (const v of variants) for (let k = 0; k < trials; k++) {
   const r = await h.page.evaluate(([v, moveon, trough]) => {
     const { G, T, step, pathPoint, grassAt, sdfAt } = GAME, GR = GAME.grass;
@@ -100,5 +101,12 @@ for (const v of variants) for (let k = 0; k < trials; k++) {
     return out;
   }, [v, moveon, trough]);
   console.log(JSON.stringify(r));
+  if (!moveon && trough === null && !Object.keys(v).length) {   // checks: the default fill, as tuned
+    ok(`a hungry flock fills up: 3/4 under 0.5 by ${r.below05} s, under 0.3 by ${r.below03} s; ${r['90s']} at 90 s`, r.below05 <= 30 && r.below03 <= 50 && r['90s'] <= 0.2);
+    ok(`then mostly stops eating (eating ${Math.round(r.eatingShare * 100)}% of the time)`, r.eatingShare > 0.15 && r.eatingShare < 0.5);
+    ok(`grazers spread out: ${Math.round(r.touching * 100)}% touching, nearest ${r.nnMedian} m`, r.touching <= 0.15 && r.nnMedian > 1.6 && r.nnMedian < 3.5);
+  }
 }
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);

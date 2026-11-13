@@ -17,8 +17,11 @@ const r = await h.page.evaluate(() => {
   const col = () => ({ r: 0, g: 0, b: 0, set() { return this; }, setRGB(r, g, b) { this.r = r; this.g = g; this.b = b; return this; }, multiplyScalar(k) { this.r *= k; this.g *= k; this.b *= k; return this; }, lerp(o, k) { this.r += (o.r - this.r) * k; this.g += (o.g - this.g) * k; this.b += (o.b - this.b) * k; return this; } });
   const w = makeSheep(0, 0, { age: 10, black: false }), b = makeSheep(0, 0, { age: 10, black: true }); w.life = b.life = 50; w.hunger = b.hunger = 0.2;
   const at = (s, a, f) => { s.age = a; return +f(s, col()).r.toFixed(2); };
-  out.look = [10, 32, 41, 49].map(a => `day ${a}: white fleece ${at(w, a, sheepWoolColor)} face ${at(w, a, sheepHeadColor)} | black fleece ${at(b, a, sheepWoolColor)} face ${at(b, a, sheepHeadColor)} | oldK ${oldK(w).toFixed(2)} size ${ageGrow(w).toFixed(2)} "${ageWord(w)}"`);
-  out.yearling = [2, 4, 6, 8].map(a => { w.age = a; return `${a}:${ageGrow(w).toFixed(2)} ${ageWord(w)}`; }).join(' · ');
+  const lk = [10, 32, 41, 49].map(a => ({ a, w: at(w, a, sheepWoolColor), wf: at(w, a, sheepHeadColor), b: at(b, a, sheepWoolColor), bf: at(b, a, sheepHeadColor), old: oldK(w), size: ageGrow(w), word: ageWord(w) }));
+  out.look = lk.map(l => `day ${l.a}: white fleece ${l.w} face ${l.wf} | black fleece ${l.b} face ${l.bf} | oldK ${l.old.toFixed(2)} size ${l.size.toFixed(2)} "${l.word}"`);
+  const yl = [2, 4, 6, 8].map(a => { w.age = a; return { a, size: ageGrow(w), word: ageWord(w) }; });
+  out.yearling = yl.map(y => `${y.a}:${y.size.toFixed(2)} ${y.word}`).join(' · ');
+  const chk = { lk, yl, lifeDays: T.lifeDays };
   // a lifetime of dawns
   const lives = new Map(G.sheep.filter(s => !s.lamb).map(s => [s.name, s.life])), deaths = [];
   const n0 = G.sheep.length;
@@ -32,6 +35,7 @@ const r = await h.page.evaluate(() => {
     for (const m of G.lost.slice(lost0)) deaths.push({ name: m.name, why: m.why, day, age: ages.get(m.name), life: lives.get(m.name) });
   }
   const old = deaths.filter(d => d.why === 'old');
+  Object.assign(chk, { tooYoung: old.filter(d => d.age < T.lifeDays[0]).length, late: old.filter(d => d.age > T.lifeDays[1]).length, atAge: old.filter(d => d.life === undefined || d.age === d.life).length });
   out.flock = n0; out.diedOfOldAge = old.length; out.otherDeaths = deaths.length - old.length; out.stillAlive = G.sheep.length;
   out.ageAtDeath = old.length ? `${Math.min(...old.map(d => d.age))}-${Math.max(...old.map(d => d.age))}` : '-';
   out.diedAtTheirAge = old.filter(d => d.life === undefined || d.age === d.life).length + '/' + old.length;
@@ -43,8 +47,16 @@ const r = await h.page.evaluate(() => {
   GAME.resetGame(); const back = G.sheep.find(s => s.name === name);
   out.savedAge = back ? `${back.age}/${back.life}` : 'missing';
   GAME.freshFlock();
-  return out;
+  return { out, chk };
 });
-console.log(JSON.stringify(r, null, 1));
+console.log(JSON.stringify(r.out, null, 1));
+const o = r.out, c = r.chk, y = c.lk[0], ld = c.lk[3], ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) process.exitCode = 1; };
+ok(`the first flock: nobody old yet (lives ${o.startLives})`, o.startOld === 0);
+ok(`with age: white fleece greys (${y.w} → ${ld.w}), black fleece fades (${y.b} → ${ld.b}), "${ld.word}"`, ld.w < y.w - 0.1 && ld.b > y.b + 0.1 && y.old === 0 && ld.old > 0.5);
+ok(`yearlings smaller (${c.yl[0].size.toFixed(2)}), grown at 8 days`, c.yl[0].size < 0.95 && c.yl[3].size === 1 && y.size === 1);
+ok(`all ${o.flock} die of old age (${o.ageAtDeath} days), none before ${c.lifeDays[0]} or after ${c.lifeDays[1]}, nothing else`, o.diedOfOldAge === o.flock && o.stillAlive === 0 && o.otherDeaths === 0 && c.tooYoung === 0 && c.late === 0);
+ok(`each at the age it drew (${o.diedAtTheirAge})`, c.atAge === o.diedOfOldAge);
+ok(`the saved flock keeps ages (${o.savedAge})`, o.savedAge === '40/55');
+ok('no page errors', !h.errors.length);
 if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 3));
 await h.close();

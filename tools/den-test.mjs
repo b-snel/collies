@@ -23,4 +23,12 @@ const r = await h.page.evaluate(() => {
   return { log, finalState: c.state, gone: !!c.gone };
 });
 console.log(JSON.stringify(r)); console.log(h.errors.slice(0, 5));
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const L = r.log, home = L.filter(b => b.before === 'leave' || b.before === 'flee');
+ok(`bonked ${L.filter(b => b.airAfter).length}/${L.length} times, each one flies`, L.length === 8 && L.every(b => b.airAfter));
+ok(`running home too (${home.length} of them)`, home.length >= 3 && home.every(b => b.airAfter));
+ok(`its heart goes (${L[0].courage} → ${L.at(-1).courage}), it heads home (${r.finalState})`, L.at(-1).courage < L[0].courage - 1 && ['leave', 'flee', 'sleep'].includes(r.finalState));
+ok('never vanishes', !r.gone);
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);
