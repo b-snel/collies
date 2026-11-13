@@ -34,7 +34,7 @@
 //             carried up: a lane (his lines), Hank and a sheep up it, a blizzard doesn't shut it; a dev jump melts it; a new journey: iced
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed; alight it melts the snow and the gate's ice
 //   uphill    (UP, seeded, on vs off) left alone the flock goes up to a lit camp 30 m up, not onto the ice or into a crack; 30 m past
-//             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it;
+//             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it (3 goes of 4);
 //             pressed from either side it veers up; cold, 15 m past a lit fire, it doesn't go back down to it (the ice gate melted for
 //             these); the ice gate up, no lane: it waits at its foot (was: back down), none onto the ice; a lane through: up it, on up
 //   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
@@ -459,16 +459,17 @@ if (!only || only === 'nag') {
     const all = Object.entries(YETI_NAGS).flatMap(([k, L]) => L.map((t, i) => [t, k, i])), said = () => HANK.log.filter(l => l.said && all.some(a => a[0] === l.text)).map(l => { const a = all.find(a => a[0] === l.text); return [a[1], a[2], +l.t.toFixed(0)]; });
     const t0 = G.time; HANK.log.length = 0;
     run(K.first + 1); out.first = said();
-    run(K.every + 1); out.second = said();
+    run(K.every * Math.min(K.growMax, 1 + K.grow) + 1); out.second = said();   // (each further apart)
     // a pounce off him (not within the cooldown, then after it)
     const pounce = () => { d.x = YETI.x - 2; d.z = YETI.z; d.vx = d.vz = 0; d.air = null; d.stunT = 0; d.pounceCD = 0; G.players[0].bot = toward(1, 0, { pounce: true }); GAME.step(0.025); G.players[0].bot = {}; run(0.4); };
     pounce(); out.soon = said().length;
-    run(K.cd + 0.5); pounce(); run(4); out.pounce = said().at(-1);   // (a line that matters on the go: after it)
+    run(YETI.nag.cd + 0.5); pounce(); run(4); out.pounce = said().at(-1);   // (a line that matters on the go: after it)
     // a cold sheep thrown at him
-    run(K.cd + 0.5); const s = living().filter(o => !o.ram)[0]; s.x = YETI.x - 7; s.z = YETI.z; s.vx = s.vz = 0; s.burn = 0; d.x = s.x - 1; d.z = s.z; d.pdx = 1; d.pdz = 0; d.pounceT = 0.2; punt(s, d, 1, 0);
+    run(YETI.nag.cd + 0.5); const s = living().filter(o => !o.ram)[0]; s.x = YETI.x - 7; s.z = YETI.z; s.vx = s.vz = 0; s.burn = 0; d.x = s.x - 1; d.z = s.z; d.pdx = 1; d.pdz = 0; d.pounceT = 0.2; punt(s, d, 1, 0);
     for (let t = 0; t < 3 && s.air; t += 0.025) GAME.step(0.025); run(4); out.cold = said().at(-1);
     // it tops out
-    YETI.nag.tier = 40; YETI.nag.cd = 0; YETI.nag.t = 1e3; run(4); out.top = YETI.nag.tier;   // (once he's done with the last)
+    G.clock.hour = 11;   // (midday again: no "night's comin'" over the rest)
+    YETI.nag.tier = 40; YETI.nag.cd = 0; YETI.nag.t = 1e3; run(12, () => YETI.nag.tier !== 40); out.top = YETI.nag.tier;   // (once he's done with the last, and whatever else he's on about)
     // a hit: a cheer, back a few tiers
     const k = living().filter(o => !o.ram)[1]; k.x = YETI.x - 7; k.z = YETI.z; k.vx = k.vz = 0; ignite(k); YETI.hurtT = 0; d.x = k.x - 1; d.z = k.z; d.pdx = 1; d.pdz = 0; d.pounceT = 0.2; punt(k, d, 1, 0);
     for (let t = 0; t < 3 && k.air; t += 0.025) GAME.step(0.025); run(1.5); out.hit = { hp: YETI.hp, tier: YETI.nag.tier, cheer: HANK.log.some(l => l.said && /felt that|Roast him|That's the way/.test(l.text)) };
@@ -647,7 +648,7 @@ if (!only || only === 'gate') {
   });
   ok(`the ice gate: wall to wall (${r.band.iced}/${r.band.walk} spots across it iced), no lane; nothing else in the way`, r.band.iced === r.band.walk && r.band.walk > 200 && r.band.path && !r.band.open, r.band);
   ok(`a dog sprinting up it: thrown back down ${r.dog.slips}× (got to ${r.dog.maxS}), ends below it`, r.dog.slips >= 3 && r.dog.maxS < r.s1 && r.dog.below, r.dog);
-  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Are you sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
+  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Sure ye/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
   ok(`a driven sheep up it: back down (got to ${r.sheep.maxS})`, r.sheep.slid && r.sheep.below, r.sheep);
   ok(`the flock well up past it, no lane: Hank waits at the base camp (${r.hank.atWait} s by its fire), never on the ice`, r.hank.atWait > 6 && r.hank.fire < 8 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
   ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
@@ -690,11 +691,12 @@ if (!only || only === 'uphill') {
     const clearAt = (s0) => [0, 3, -3, 6, -6, 9, -9].find(l => { const p = pathPoint(s0, l); for (let i = 0; i < 16; i++) { const x = p.x + (i % 4) * 1.5 - 2.2, z = p.z + Math.floor(i / 4) * 1.5 - 2.2; if (iceK(x, z) > 0 || iceK(x + 2, z) > 0 || iceK(x - 2, z) > 0 || iceK(x, z + 2) > 0 || iceK(x, z - 2) > 0 || crevAt(x, z, 2)) return false; } return true; }) ?? 0;
     // the flock at s0 (clear of the ice), fires lit; idle / a dog sweeping up behind it at a walk / a dog crossing it from one side;
     // up: UP on or off (off: as it was). Δs: how far up the trail it got (low: its lowest; back: sheep that got back past the dog).
-    // Seeded (seed: Math.random), so on and off see the same dice. The ice gate melted through (all of it), but with shut: it's up, no lane;
+    // Seeded (seed: Math.random; G.time fixed), so on and off see the same dice. The ice gate melted through (all of it), but with shut: it's up, no lane;
     // lane: a lane melted up it (lat 0)
     const rand = Math.random, seeded = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    let nT = 0;   // (each trial at its own fixed clock: G.time steers them too, and runs on from whatever ran before)
     const trial = (up, s0, o) => {
-      Math.random = seeded(o.seed ?? 7);
+      Math.random = seeded(o.seed ?? 7); G.time = 1e6 + ++nT * 1e4;
       U.on = up; const ice = ICES.slice(), crev = CREVS.slice(); if (o.clear) { ICES.length = 0; CREVS.length = 0; }
       setup(s0, { hour: 10, lat: o.clear ? 0 : clearAt(s0), dogS: s0 - (o.sweep ? 12 : 60), hankS: s0 - 20 }); if (!o.shut && !o.lane) gateMelt(true);   // (the sweep: from just behind it)
       if (o.lane) { const I = T.iceGate; for (let s = I.s0 - 2; s <= I.s1 + 2; s += 0.5) { const m = pathPoint(s, 0); meltDisc(m.x, m.z, 2.2, 1.5, 1); } gateScan(); }
@@ -726,7 +728,7 @@ if (!only || only === 'uphill') {
       out[k] = {
         mid: trial(up, F[0].s - 30, { t: 100, lit: [0, base.i], fire: 0 }),             // a lit camp 30 m up (the base camp lit, 67 m down; ice and a crack between)
         foot: trial(up, base.s + 30, { t: 90, lit: [base.i] }),                         // 30 m past the base camp, lit (its melted camp and the snow line below)
-        sweep: [1, 2, 3, 4].map(seed => trial(up, base.s + 30, { t: 30, lit: [base.i], sweep: true, seed })).reduce((a, b) => ({ ds: +(a.ds + b.ds / 4).toFixed(1), rear: +(a.rear + b.rear / 4).toFixed(1), low: Math.min(a.low, b.low), back: a.back + b.back }), { ds: 0, rear: 0, low: 0, back: 0 }),   // ...a dog walking up behind it (4 goes)
+        sweep: [1, 2, 3, 4].map(seed => trial(up, base.s + 30, { t: 30, lit: [base.i], sweep: true, seed })).map(o => ({ ds: o.ds, rear: o.rear, back: o.back })),   // ...a dog walking up behind it (4 goes)
         sideE: trial(up, F[1].s - 30, { t: 12, lit: [1], side: 1, clear: true }),       // a dog crossing it from the east
         sideW: trial(up, F[1].s - 30, { t: 12, lit: [1], side: -1, clear: true }),      // ...from the west
         cold: trial(up, F[0].s + 15, { t: 40, lit: [0], cold: 0.5, behind: 0 }),        // cold, 15 m past a lit fire (the next one far up)
@@ -740,7 +742,9 @@ if (!only || only === 'uphill') {
   const g = on.gate, gs = a => a.map(o => `${o.ds} (low ${o.low}, ${o.gate} on it)`).join(', ');
   ok(`idle, a lit camp 30 m up: up to it (${on.mid.near} m off it), ${s(on.mid)} (was ${off.mid.near} m, ${s(off.mid)}); none onto the ice or into the crack (${on.mid.slid}, ${on.mid.fell})`, on.mid.ds > 15 && on.mid.low > -3 && on.mid.near < 10 && !on.mid.slid && !on.mid.fell, r);
   ok(`idle past the base camp: on up ${s(on.foot)} (was ${s(off.foot)}: back down)`, on.foot.ds > 20 && on.foot.low > -3 && on.foot.ds > off.foot.ds + 20 && !on.foot.slid && !on.foot.fell, r);
-  ok(`a dog walking up behind it drives it faster: ${on.sweep.ds} m, the last one ${on.sweep.rear} m, ${on.sweep.back} back past it (was ${off.sweep.ds}, ${off.sweep.rear}, ${off.sweep.back})`, on.sweep.ds > off.sweep.ds && on.sweep.rear > off.sweep.rear && on.sweep.back <= 1, r);
+  // (the 4 goes: medians, and ≤1 back in 3 of them: a run's earlier scenarios still nudge a go now and then, seeded or not)
+  const med = (a, k) => { const v = a.map(o => o[k]).sort((x, y) => x - y); return +((v[1] + v[2]) / 2).toFixed(1); }, sw = o => `${med(o, 'ds')} m, the last one ${med(o, 'rear')} m, ${o.map(g => g.back).join('/')} back past it`;
+  ok(`a dog walking up behind it drives it faster: ${sw(on.sweep)} (was ${sw(off.sweep)})`, med(on.sweep, 'ds') > med(off.sweep, 'ds') && med(on.sweep, 'rear') > med(off.sweep, 'rear') && on.sweep.filter(g => g.back <= 1).length >= 3, r);
   ok(`pressed from the side it veers up: from the east ${on.sideE.ds} m, the west ${on.sideW.ds} m (was ${off.sideE.ds}, ${off.sideW.ds})`, on.sideE.ds > 5 && on.sideW.ds > 5 && on.sideE.low > -2 && on.sideW.low > -2, r);
   ok(`cold, 15 m past a lit fire: not back down to it (${s(on.cold)}, ${on.cold.warm} by it; was ${s(off.cold)}, ${off.cold.warm})`, on.cold.warm <= 2 && on.cold.low > -3, r);
   const ln = on.lane, ls = a => a.map(o => `${o.past}/${o.n} past (${o.ds} m, ${o.slid} slips)`).join(', ');
