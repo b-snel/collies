@@ -502,6 +502,7 @@
     <div class="row"><span><i class="ic">🏠</i><span class="w">Penned</span></span><b id="hPen">0</b></div>
     <div class="row"><span><i class="ic">🍼</i><span class="w">Lambs born</span></span><b id="hBorn">0</b></div>
     <div class="row"><span><i class="ic">🪦</i><span class="w">Lost</span></span><b id="hLost">0</b></div>
+    <div class="row" id="hLlamaRow" style="display:none" title="Guard llamas"><span><i class="ic">🦙</i><span class="w">Llamas</span></span><b id="hLlama">0</b></div>
     <div class="row" id="hWoolRow" style="display:none" title="Wool from shearing"><span><i class="ic">🧶</i><span class="w">Wool</span></span><b id="hWool">0</b></div>
   </div>
   <div id="clock" class="panel">
@@ -932,6 +933,7 @@ const T = {
     lamb: { speed: 0.9, pull: 3, grip: 0, reach: 0.95, lift: 0.42 },
     ram: { speed: 0.5, pull: 9, grip: 0.16, reach: 1.25, lift: 0.25 },
     coyote: { speed: 0.6, pull: 11, grip: 0.13, reach: 1.2, lift: 0.4 },
+    llama: { speed: 0.55, pull: 8, grip: 0.1, reach: 1.3, lift: 0.3 }, cria: { speed: 0.85, pull: 3, grip: 0, reach: 1, lift: 0.4 },   // LLAMAS
     dog: { speed: 0.7, pull: 6, grip: 0.07, reach: 1.15, lift: 0.4 },   // another dog, by the scruff
     gate: { speed: 0.75, pull: 0, grip: 0.015 },
     rope: { speed: 0.92, pull: 0, grip: 0 }, tug: { speed: 0.42, pull: 1, grip: 0.03 },   // ROPES: dragging one (free); heaving in a tug of war (trains grip)
@@ -978,7 +980,7 @@ const T = {
   // air: drag against the air (hair streams back a little at a run), sag: how much of its weight it hangs by when the dog's upright, max: how far it swings (rad)
   hair: { on: true, step: 1 / 120, maxDt: 0.05, damp: 4.5, air: 0.2, sag: 0.2, k: { ear: 34, lock: 24, cord: 18, fringe: 70, feather: 32, skirt: 55 },
     max: { ear: 3, lock: 2.8, cord: 3, fringe: 0.7, feather: 1.2, skirt: 0.55 } },   // (skirt: the belly's feathering, a sway)
-  carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
+  carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55, llama: 0.68, cria: 0.48 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
   coyotePounce: { courage: 0.75, kick: 19, up: 8 },
   coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
   gate: { rate: 7, damp: 2.6, maxOut: 1.7, maxIn: 2.0, openAt: 1.25, sheep: { rate: 1.1, to: 1.0, near: 1.6 }, fresh: 0.35, lean: 0.45, dogDisc: 0.62, slam: 9, whack: 6 },
@@ -1086,6 +1088,22 @@ const T = {
   hankNag: { greedy: 60, easy: 45, gently: 45, move: 90, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
   hankMove: { bare: 0.35, late: 16.5, idle: 10 },   // "Get that greedy one movin'!": grass round the flock eaten under bare× what it grows, or out from late (h); no dog on it for idle s
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
+  // LLAMAS (on: off in ?sim). Wild herds, one a land leg (`legs`; not Falcon Canyon, the pass, the sea; own rng, a new seed each journey): a male,
+  // `f` females, a cria maybe (`cria`), now and then a bachelor (`bach`); each grazes its range (`range` m, `lat` m off the trail). Shy (`shy` m) of a dog
+  // faster than `creep` m/s (a creeping one gets close), or any within `close`. POPULATION: a grown male (`adultDays`) seeks the nearest free female
+  // within `seek` m (a bachelor `seekB`), they kush and mate `mateT` s, she's pregnant `gestH` h (spits a male off), then a cria; `mateCd` h before
+  // he looks again, `nurseH` h before she's free. Caps: `max` wild, `maxG` guards. CAPTURE: a dog with a rope within `catchR` m of a grown wild
+  // one: a TUG (tug: as Hank's, × L.str). Won: broken, led (lead: pull × its heave on the rope, near m behind); within `joinR` m of 2 sheep or in a
+  // pen: a guard. Lost: it bolts (`boltSpd` m/s, `bolt` s), wary `waryH` h. GUARDS: round the flock, its pen, aboard; `far` m off and out of sight:
+  // caught up; a foe within `alarm` m: a call, at it. SPIT: within `r` m, windup `wind` s, `fly` s, a hit within `hit` m, `cd` s; coyote: heart
+  // off; a dog crowding a wild one (`dogR` m, `dogT` s): stunned `dogStun` s. SHEAR: Hank, no sheep to shear (`min`, `yield` × wool × size²,
+  // `time` s), regrows over `regrowDays`. mass kg (punts: × size³); buck: s a grown wild one stands being held
+  llama: { on: !SIM, legs: 4, f: [2, 3], cria: 0.6, bach: 0.6, range: 14, lat: [9, 24], walk: 1.2, trot: 3.4, run: 7, r: 0.6,
+    shy: 9, creep: 3.6, close: 2.2, flee: 2.6, seek: 70, seekB: 170, mateT: 7, mateCd: 10, gestH: 30, nurseH: 14, adultDays: 2, max: 30, maxG: 8,
+    catchR: 2.8, waryH: 2, bolt: 4, boltSpd: 7.5, lead: { pull: 0.12, near: 2.6 }, joinR: 7, far: 45, alarm: 26, mass: 120, buck: 1.4,
+    tug: { base: 5.5, back: 1.5, heave: 3.2, beats: 2, heaveT: 0.45, yank: 3.8, walk: 1.8, tire: 10, tireR: 0.045, tireMin: 0.5 },
+    spit: { r: 11, cd: 2.4, wind: 0.45, fly: 0.45, hit: 1.8, coyote: 1.2, dogR: 2.2, dogT: 1.4, dogStun: 0.35 },
+    shear: { min: 0.5, yield: 6, time: 5, regrowDays: 4 } },
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
   shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, climbT: 1.2, giveUp: 15, skip: 45 },
@@ -5218,6 +5236,9 @@ function newStats() {
     kraken: 0,
     siren: 0,
     left: 0,
+    crias: 0,   // LLAMAS: born
+    llamas: 0,   // LLAMAS: brought to the flock
+    spits: 0,   // LLAMAS: a guard's that hit
   };
 }
 const G = {
@@ -7106,6 +7127,7 @@ function bark(d) {
     s.vx += ux * k * 4; s.vz += uz * k * 4; s.fdx = ux; s.fdz = uz;
     s.fear = Math.max(s.fear, 0.3 + k * 0.6); s.panic = Math.max(s.panic, (0.3 + k * 0.6) * calmer); s.hopV = Math.max(s.hopV, 2 + k * 2);
   }
+  loose += llamaBark(d);   // LLAMAS: wild ones run off
   const team = teamOf(d);
   if (team) foes = teamBark(team);   // TEAM BARK: the predators get that instead
   else {
@@ -7433,6 +7455,7 @@ function pounceHits(d) {
   if (yetiOK() && YETI.state !== 'dead' && Math.hypot(YETI.x - d.x, YETI.z - d.z) < 2.4) { knockDog(d, -d.pdx * 9, -d.pdz * 9, 0.5, 'BOING!'); yetiFx('scoff'); yetiNagOn('pounce'); return; }   // ...the yeti: like bonking a wall
   if (launcherPounce(d)) return;
   if (vagPounced(d)) return;   // VAGABOND: bonked (he takes it personally)
+  if (llamaPounce(d)) return;   // LLAMAS: punted as a sheep (on a rope: it stands its ground)
   for (const o of G.dogs) {   // another dog: punted like a sheep (not one under a cougar: that pounce frees it)
     if (o === d || o.air || o.heldBy || o.maul || o.mauled || o.hopT > 0) continue;   // (jumped over it)
     const bx = o.x - d.x, bz = o.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
@@ -7637,6 +7660,16 @@ function airHits(s, a, sv) {
     shakeCam(0.12 + 0.05 * o.air.chain);
     break;   // one carom per sheep per step
   }
+  if (sv > C.min) for (const o of LLAMAS) {   // LLAMAS: caromed as a sheep is (a big one takes less of it: by weight)
+    if (o === s || o.air || o.heldBy || o.hop || o.rope || o.state === 'shear' || SEA_AWAY) continue;
+    const ox = o.x - s.x, oz = o.z - s.z, od = Math.hypot(ox, oz) + 1e-6; if (od > C.r + 0.25) continue;
+    if (fenceBetween(s.x, s.z, o.x, o.z)) continue;
+    const k = clamp(Math.sqrt(T.bone.mass.sheep / llamaMass(o)), 0.5, 1.3);
+    launchLlama(o, (s.vx * C.keep + ox / od * sv * C.share) * k, (s.vz * C.keep + oz / od * sv * C.share) * k, C.up, 'carom', a.by);
+    s.vx *= 0.5; s.vz *= 0.5; MV.caroms++;
+    SFX.boing(panOf(o.x, o.z), 0.18, 1.05); floatText('CAROM!', o.x, o.y + 2.4, o.z, '#ffffff', 1.3); shakeCam(0.14);
+    break;
+  }
   if (sv > 8) for (const d of G.dogs) {
     if (d === s || d.air || d.heldBy || d.stunT > 0 || d.hopT > 0 || (d === a.by && a.t < 0.6)) continue;
     if (Math.hypot(d.x - s.x, d.z - s.z) < 1.1) { knockDog(d, s.vx * 0.6, s.vz * 0.6, 0.55, 'OOF!'); s.vx *= 0.5; s.vz *= 0.5; break; }
@@ -7822,6 +7855,11 @@ function tryGrab(d) {
     const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0);   // easier to snatch one flying at you
     if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; best = s; kind = s.ram ? 'ram' : s.lamb ? 'lamb' : 'sheep'; }
   }
+  for (const L of LLAMAS) {   // LLAMAS: by the scruff, as a sheep
+    if (!llamaGrabbable(L)) continue;
+    const dd = Math.hypot(L.x - mx, L.z - mz) - (L.air ? 0.5 : 0.25) * llamaSize(L);
+    if (dd < bd && !fenceBetween(d.x, d.z, L.x, L.z)) { bd = dd; best = L; kind = L.grown ? 'llama' : 'cria'; }
+  }
   for (const o of G.dogs) {   // another dog, by the scruff, as a sheep
     if (!grabbableDog(o, d)) continue;
     const dd = Math.hypot(o.x - mx, o.z - mz) - (o.air ? 0.5 : 0);
@@ -7853,6 +7891,7 @@ function tryGrab(d) {
   if (kind === 'ring') { ringPick(best, d); return true; }
   if (kind === 'ringRope') { ringRopeBite(best, d); return true; }
   if (kind === 'vag') { vagGrabbed(d); return true; }   // VAGABOND
+  if (kind === 'llama' || kind === 'cria') { llamaGrabbed(best, d); return true; }   // LLAMAS
   best.heldBy = d;
   if (kind === 'coyote') {
     if (best.state === 'pack') best.state = 'held';   // out of the pack's plans while it's in your jaws
@@ -7891,6 +7930,7 @@ function releaseHold(d, fling) {
   const throwIt = fling && sp > F.minSpeed && G.mode === 'play';
   if (throwIt) train(d, 'grip', T.train.fling);
   if (kind === 'rope') { ropeLetGo(H, d, throwIt); return; }   // ROPES
+  if (kind === 'llama' || kind === 'cria') { llamaLetGo(H, d, throwIt); return; }   // LLAMAS: dropped, or flung as a sheep
   H.heldBy = null;
   if (kind === 'dog') {   // flung as a sheep is (it flies like one too: launchDog)
     if (throwIt) {
@@ -9886,6 +9926,7 @@ function ropeDec(R, v) {
 // where a dog's jaws hold it (a hop or a lunge lifts it)
 function ropeMouth(d, out) {
   const K = T.rope, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  if (d.isLlama) return llamaNeck(d, out);   // LLAMAS: its halter
   if (d.npc) { out.x = d.x + fx * 0.75; out.z = d.z + fz * 0.75; out.y = groundY(d.x, d.z) + 1.05; return out; }   // HANK (VAGABOND): in his hands
   const hop = d.hopT > 0 ? Math.sin((1 - d.hopT / d.hopDur) * Math.PI) * (d.hopH || 1.25) : 0, lunge = d.pounceT > 0 ? Math.sin((1 - d.pounceT / T.pounceTime) * Math.PI) * 0.7 : 0;
   out.x = d.x + fx * K.reach; out.z = d.z + fz * K.reach; out.y = groundY(d.x, d.z) + K.mouthY + hop + lunge;
@@ -9909,6 +9950,7 @@ function ropeGrip(d, mx, mz, best) {
 function ropeBite(R, d, i) {
   d.ropeI = i; R.live = 2; R.found = true;
   Sound.growl(panOf(d.x, d.z), 0.08); ropeFx('bite', R.x[i], R.z[i]);
+  if (R.llama) return;   // LLAMAS: a llama's on it: a lead, not a game
   if (G.dogs.some(o => o !== d && o.holding === R)) R.want = true;   // TUG OF WAR (updateRopes starts it)
   else hint('rope');
 }
@@ -10018,7 +10060,7 @@ const tugSide = (R, d) => d.ropeI < R.tug.k ? -1 : d.ropeI > R.tug.k ? 1 : ((rop
 function tugStart(R) {
   const H = R.holders.filter(o => o.ropeI >= 0), hk = H.find(o => o.npc); if (H.length < 2) return;   // (hk: HANK, or the VAGABOND)
   let lo = H[0], hi = H[0]; for (const o of H) { if (o.ropeI < lo.ropeI) lo = o; if (o.ropeI > hi.ropeI) hi = o; }
-  if (hk) { const sd = hk.ropeI < R.n / 2 ? 1 : -1; let near = null; for (const o of H) if (o !== hk && (!near || sd * (o.ropeI - near.ropeI) < 0)) near = o; if (sd > 0) { lo = hk; hi = near; } else { lo = near; hi = hk; } }   // HANK: him against all of them
+  if (hk) { const sd = hk.isLlama ? (H.some(o => o !== hk && o.ropeI > hk.ropeI) ? 1 : -1) : hk.ropeI < R.n / 2 ? 1 : -1; let near = null; for (const o of H) if (o !== hk && (!near || sd * (o.ropeI - near.ropeI) < 0)) near = o; if (sd > 0) { lo = hk; hi = near; } else { lo = near; hi = hk; } }   // HANK: him against all of them
   const k = Math.round((lo.ropeI + hi.ropeI) / 2), a = ropeMouth(lo, _rmA), b = ropeMouth(hi, _rmB);
   let ux = b.x - a.x, uz = b.z - a.z, l = Math.hypot(ux, uz);
   if (l < 0.5) { ux = R.x[k + 1] - R.x[k - 1]; uz = R.z[k + 1] - R.z[k - 1]; l = Math.hypot(ux, uz) || 1; }
@@ -10028,6 +10070,7 @@ function tugStart(R) {
   MV.tugs = (MV.tugs || 0) + 1;
   ropeFx('tug', R.x[k], R.z[k]); for (const o of H) rumble(o.player, 0.5, 0.6, 160);
   if (hk === HANK) { HANK.tugT = 0; hank(null, pick(["Ye want a tug, eh? Heave!", "Right, ye wee rascal. Pull!", "Come on then!"]), { force: true }); }
+  else if (hk && hk.isLlama) hk.tugT = 0;   // LLAMAS
   else if (hk) { hk.tugT = 0; vagLine('tug'); }   // VAGABOND
   else sayOnce('tug', null, "Tug o' war! Heave!");
   hint('tug');
@@ -10063,6 +10106,7 @@ function tugGiven(R, e, sd) {
   const foe = R.holders.find(o => !o.npc && o.tugSide === -sd && o.giving && G.time - o.giveAt < K.t); if (!foe) return false;
   e.tugStumT = G.time + K.stum; e.wary = G.time + K.cd; e.tugK = 0; foe.feintT = G.time + K.next;
   if (e === HANK) { e.stumble = 0.6; hank(null, pick(["Whoa!", "Ye sly wee thing!", "Ach! Sneaky!"]), { force: true }); }
+  else if (e.isLlama) e.stumble = 0.6;   // LLAMAS
   else if (e.npc) { e.stumble = 0.6; vagLine('tugStum'); }   // VAGABOND
   else { landDog(e, 0.35); rumble(e.player, 0.6, 0.4, 160); }
   ropeFx('stum', e.x, e.z, e.npc ? 2.8 : 1.9); rumble(foe.player, 0.3, 0.6, 90);
@@ -10082,7 +10126,7 @@ function tugStep(R, dt) {
   const bi = Math.floor((G.time - U.t0) / K.beat.T + 1e-6), tick = bi !== U.bi;   // BEAT: the knot pulses (every screen)
   if (tick) { U.bi = bi; ropeFx('beat', R.x[U.k], R.z[U.k], R.i); }
   for (const d of H) {   // how hard each heaves: planted, walking back, heaving, dug in
-    if (d.npc) { hankTug(R, dt, tick && bi % (d === HANK ? K.hank : T.vag.tug).beats === 0, d); continue; }   // HANK (VAGABOND)
+    if (d.npc) { hankTug(R, dt, tick && bi % (d === HANK ? K.hank : d.isLlama ? T.llama.tug : T.vag.tug).beats === 0, d); continue; }   // HANK (VAGABOND, LLAMAS)
     const ax = d.tugSide * U.ux, az = d.tugSide * U.uz, away = (d.wx * ax + d.wz * az) * (d.inMag || 0), back = d.dugIn ? 0 : Math.max(0, away);
     const giving = !d.dugIn && -away > K.give.toward; if (giving && !d.giving) d.giveAt = G.time; d.giving = giving;   // GIVE: stepping in toward the knot
     const rb = back > K.row.on ? 1 : back < K.row.off ? 0 : d.rowB; if (rb && !d.rowB) tugTap(R, d); d.rowB = rb;   // ROW: a flick of the stick back is a heave
@@ -10098,7 +10142,7 @@ function tugStep(R, dt) {
 // DIG: a side with a dog dug in is an anchor: it gives only as far as the other side out-heaves it
 function ropeHold(R) {
   const K = T.rope.tug, S = R.holders.filter(d => d.ropeI >= 0).sort((a, b) => a.ropeI - b.ropeI);
-  for (const d of S) if (!R.tug) d.tugS = K.base;
+  for (const d of S) if (!R.tug) d.tugS = d.isLlama ? K.base * T.llama.lead.pull : K.base;   // (LLAMAS: led, it gives)
   const team = R.tug && S.filter(d => d.tugSide < 0), teamB = R.tug && S.filter(d => d.tugSide > 0), sum = g => g.reduce((t, d) => t + d.tugS, 0);
   for (let it = 0; it < 3; it++) for (let j = 0; j < S.length - 1; j++) {
     const a = S[j], b = S[j + 1], L = (b.ropeI - a.ropeI) * T.rope.seg * K.slack, ma = ropeMouth(a, _rmA), mb = ropeMouth(b, _rmB);
@@ -10151,9 +10195,10 @@ function hankRopeEnd(R) {
   return best;
 }
 // the man on it, if any: HANK or the VAGABOND (never both: each keeps off a rope the other has or wants)
-function ropeNpc(R) { return HANK.rope === R ? HANK : VAG.rope === R ? VAG : null; }
+function ropeNpc(R) { return HANK.rope === R ? HANK : VAG.rope === R ? VAG : R.llama || null; }   // (LLAMAS: on its halter)
 // in updateRopes, each rope: on it (still free to play?), on his way to it, or a dog bringing it to him
 function hankRope(R) {
+  if (R.llama) return;   // LLAMAS: not with a llama on it
   const hk = HANK, K = T.rope.tug.hank;
   if (hk.rope === R) { if (!R.tug || !hankRopeFree()) { if (R.tug) tugEnd(R, 0); else hankTugEnd(R, null); R.holders = R.holders.filter(o => o !== hk); } return; }
   if (hk.ropeWant === R) {
@@ -10175,18 +10220,19 @@ function hankRope(R) {
 function hankRopeGoal() { const hk = HANK, R = hk.ropeWant; if (!R || !(hk.ropeEnd >= 0)) return null; return { x: R.x[hk.ropeEnd], z: R.z[hk.ropeEnd], stop: 0.35, noShy: true }; }
 // tugStep: he walks back, heaving on the beat (tiring in the end); a dog stepping in just then: he stumbles (GIVE)
 function hankTug(R, dt, beat, hk = HANK) {   // (hk: the VAGABOND too)
-  const U = R.tug, K = hk === HANK ? T.rope.tug.hank : T.vag.tug, sd = hk.tugSide;
+  const U = R.tug, K = hk === HANK ? T.rope.tug.hank : hk.isLlama ? T.llama.tug : T.vag.tug, sd = hk.tugSide;   // (LLAMAS: as strong as it is: L.str)
   hk.tugT = (hk.tugT || 0) + dt;
   if (beat && G.time >= (hk.tugStumT || 0) && !tugGiven(R, hk, sd)) { hk.tugK = 1; ropeFx('heave', hk.x - sd * U.ux * 0.4, hk.z - sd * U.uz * 0.4, hk.color); }
   hk.tugK = Math.max(0, (hk.tugK || 0) - dt / K.heaveT);
   const tire = hk.tugT > K.tire ? Math.max(K.tireMin, 1 - (hk.tugT - K.tire) * K.tireR) : 1, stum = G.time < (hk.tugStumT || 0);
-  hk.tugS = (K.base + K.back + K.heave * hk.tugK) * tire * (stum ? T.rope.tug.give.k : 1);
+  hk.tugS = (K.base + K.back + K.heave * hk.tugK) * tire * (stum ? T.rope.tug.give.k : 1) * (hk.str || 1);
   const v = (K.walk + K.yank * hk.tugK) * tire * (stum ? 0.2 : 1); hk.vx = sd * U.ux * v; hk.vz = sd * U.uz * v;
   hk.x += hk.vx * dt; hk.z += hk.vz * dt; collideDog(hk, T.hankR); collideFences(hk, T.hankR);
-  hk.yaw = lerpA(hk.yaw, Math.atan2(-sd * U.ux, -sd * U.uz), Math.min(1, dt * 8));
+  const fw = hk.isLlama ? 1 : -1; hk.yaw = lerpA(hk.yaw, Math.atan2(fw * sd * U.ux, fw * sd * U.uz), Math.min(1, dt * 8));   // (LLAMAS: it pulls away, facing off)
 }
 // he lets go: won (a laugh), lost (yanked off his feet toward them: ax/az), or just stopped (null)
 function hankTugEnd(R, won, ax, az, hk = HANK) {   // (hk: the VAGABOND too: vagTugEnd)
+  if (hk.isLlama) { llamaTugEnd(R, won, ax, az, hk); return; }   // LLAMAS: broken, or off it bolts
   if (hk !== HANK) { vagTugEnd(R, won, ax, az); return; }
   hk.rope = null; hk.ropeI = -1; hk.tugK = 0; hk.goal = null; hk.ropeAgain = G.time + T.rope.tug.hank.again;
   if (won == null) return;
@@ -10256,6 +10302,7 @@ function syncRopes(dt) {
       ropeDrawAt(D, R, HANK.ropeI, _rv.add(_rt).multiplyScalar(0.5));
     }
     if (VAG.rope === R && VAG.ropeI >= 0 && VAG.model) { vagHands(_rv); ropeDrawAt(D, R, VAG.ropeI, _rv); }   // VAGABOND: his hands
+    if (R.llama && R.llama.ropeI >= 0 && R.llama.models) { llamaNeck(R.llama, _lmA); ropeDrawAt(D, R, R.llama.ropeI, _rv.set(_lmA.x, _lmA.y, _lmA.z)); }   // LLAMAS: its halter
     // the tube
     const pos = D.geo.attributes.position.array, nrm = D.geo.attributes.normal.array, S = ROPE_RAD, n = R.n, rr = K.r;
     for (let j = 0; j < D.M; j++) {
@@ -14884,6 +14931,12 @@ ART.twister = (({ E }) => ({ L: [[E(16, 6, 11, 3.2), '#9aa7b5'], [E(15, 12, 8, 2
   rock: { L: [['M4 24c0-5 2.4-9.5 6.5-11.5L14 6.5c3.6-1 7.4.6 9.4 4l1 4.5c2.4 2 3.6 5 3.6 9Z', '#8d8b86'], ['M11 12.6l3.6 2.2-1 5.2M23.6 14.6l-3.4 2.4 1.6 4', null, '#6a6863', 1.4], ['M9.6 14.8c1.2-2.6 3-4.6 5.4-5.8', null, W, 1.6],
     ['M2 25c2.4-1.8 4.6-1.8 7 0s4.6 1.8 7 0 4.6-1.8 7 0 4.6 1.8 7 0v4.5H2Z', '#f4fbff']] },
 }))(ART_H);
+// LLAMAS: a woolly head on a long neck, banana ears, a topknot
+ART.llama = (({ C, E, W }) => ({ L: [['M10.6 31V18.5h10.8V31Z', '#f4efe6'], ['M10.6 31V18.5h10.8V31', null, '#e6dccb', 1.2, 'n'],
+  ['M10.4 10.4C7.6 7.6 6.6 4 7.8 1.6c2 1.2 3.8 4.4 4.4 7.6ZM21.6 10.4c2.8-2.8 3.8-6.4 2.6-8.8-2 1.2-3.8 4.4-4.4 7.6Z', '#efe7da'], ['M10.2 8.4C8.6 6.6 8 4.6 8.4 3.2M21.8 8.4c1.6-1.8 2.2-3.8 1.8-5.2', null, '#c9a98a', 1, 'n'],
+  [E(16, 15.2, 7.8, 7.6), '#efe7da'], [E(16, 21.2, 5.2, 4.6), '#f4efe6'], [C(12.2, 8.4, 3) + C(16, 7, 3.4) + C(19.8, 8.4, 3), '#fbf8f2'],
+  [C(12.3, 14.8, 1.7) + C(19.7, 14.8, 1.7), '#2b2623', 0, 0, 'n'], [C(12.9, 14.1, 0.6) + C(20.3, 14.1, 0.6), '#ffffff', 0, 0, 'n'],
+  ['M14.4 20l-.7-.8M17.6 20l.7-.8M13.8 22.6c1.3 1.5 3.1 1.5 4.4 0', null, '#5a4a3e', 1.1, 'n'], [E(11.8, 10.6, 1.6, 0.9), W, 0, 0, 'n']] }))(ART_H);
 const EMOJI_ART = {   // one a line
   // SAILING
   '⚓': 'anchor',
@@ -15005,6 +15058,8 @@ const EMOJI_ART = {   // one a line
   '🌨': 'blizzard',
   '🏔': 'peak',
   '🪵': 'stick',
+  // LLAMAS
+  '🦙': 'llama',
 };
 const ART_RE = new RegExp(`((?:${Object.keys(EMOJI_ART).join('|')})\uFE0F?)`, 'u'), ART_ANY = new RegExp(ART_RE.source.slice(1, -1), 'u');   // split on (keeps each emoji as written) / test for
 const artPaths = a => a.P || (a.P = a.L.map(([d, f, s, w, fl = '']) => ({ p: new Path2D(d), f, s, w, e: fl.includes('e'), o: fl.includes('o'), n: fl.includes('n') })));
@@ -15141,6 +15196,10 @@ const HINTS = {
   bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too, or bring it to 🧓 Hank: <b>tug of war</b>!',
   bone: 'A <b>bone</b>! Let go of <b>RB</b> / <b>E</b> to <b>throw</b> it (running: further). It bonks what it hits: the smaller, the harder.',
+  llama: '🦙 <b>Llamas!</b> Creep up with a 🪢 <b>rope</b>: it goes on. Win the <b>tug</b> to tame one.',
+  'llama-tug': '🦙 <b>Tug!</b> Heave on the beat to break it. Lose: it bolts.',
+  'llama-led': '🦙 Broken! Lead it to the flock 🐑 or a pen.',
+  'llama-guard': '🦙 A guard! It follows the flock and spits at 🐺 🐆 🦅 🐍 🐐.',
   tug: '<b>Tug of war!</b> Walk back; <b>heave on the beat</b>: <b>Ⓑ</b>, the right stick, a flick back / <b>right click</b>. Together: team heave. <b>LT</b> / <b>C</b>: dig in. Step in as they heave: they stumble.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
@@ -15205,6 +15264,7 @@ const TOUCH_HINTS = {
   rope: 'Rope! 2+ dogs or 🧓: <b>tug of war</b>',
   bone: 'Bone! Let go ✊: <b>throw</b>',
   tug: 'Tug! Walk back, 💥 on the beat · 💤 dig in',
+  llama: '🦙 Creep up with a 🪢 · tug to tame', 'llama-tug': '🦙 💥 on the beat!', 'llama-led': '🦙 → 🐑', 'llama-guard': '🦙 🛡 🐑: 🐺 🐆 🦅 🐍 🐐',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
   thirst: 'Thirsty! 🪣 → water → 💧 trough',
@@ -15263,6 +15323,7 @@ function updateHUD(dt) {
     if (on) { const hp = '♥'.repeat(clamp(B.hp, 0, 9)) + '♡'.repeat(clamp(B.max - B.hp, 0, 9)); if ($('bossHp').textContent !== hp) $('bossHp').textContent = hp;
       const ic = B === KRAKEN ? '🐙' : B === YETI ? '🦍' : '🦅', el = $('bossIc'); if (el.dataset.ic !== ic) { el.dataset.ic = ic; el.textContent = ic; } } }
   const wr = $('hWoolRow'), wv = HANK.clippers || G.wool > 0 ? '' : 'none'; if (wr.style.display !== wv) wr.style.display = wv; $('hWool').textContent = G.wool;   // HANK: shearing
+  { const n = LLAMAS.filter(L => L.tame === 2).length, r = $('hLlamaRow'), v = n ? '' : 'none'; if (r.style.display !== v) r.style.display = v; $('hLlama').textContent = n; }   // LLAMAS: guards
   $('hBorn').textContent = G.stats.born; $('hLost').textContent = lostCount();
   const h = G.clock.hour, hh = Math.floor(h), mm = Math.floor((h - hh) * 60 / 10) * 10;
   $('hDay').textContent = `Day ${G.clock.day}`; $('hTime').textContent = `${hh}:${String(mm).padStart(2, '0')}${G.ff ? '  ⏩' : ''}`;
@@ -15662,6 +15723,7 @@ function mapMarks(c, u) {
   for (const k of G.coyotes) if (k.state !== 'sleep') foe(k.x, k.z, '#d8473f', 2.4);
   for (const k of COUGARS) if (!['away', 'perch', 'fed'].includes(k.state)) foe(k.x, k.z, '#e8892f', 3);
   for (const F of FALCONS) if (['circle', 'dive', 'carry', 'nest'].includes(F.state)) { const q = mapPt(F.x, F.z); if (on(q) && sees(F.x, F.z)) drawArt(c, 'falcon', q[0], q[1], 11 * u); }
+  mapLlamas(c, u, on, mapSeen);   // LLAMAS: guards; wild ones where a dog's been
   for (const d of G.dogs) {   // the dogs: an arrow each, their colour, the way they face
     const q = mapPt(d.x, d.z); if (!on(q, 6)) continue;
     const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), a = Math.atan2(-mapSy(fx, fz), mapSx(fx, fz)), s = 5 * u;
@@ -16444,12 +16506,14 @@ function shearPick() {   // the woolliest penned sheep (near ones first), not on
 }
 function shearStop() {
   const hk = HANK, j = hk.job;
-  if (j && j.s.state === 'shear') { j.s.state = 'idle'; j.s.thinkT = 0; }
+  if (j && j.s && j.s.state === 'shear') { j.s.state = 'idle'; j.s.thinkT = 0; }
+  if (j && j.L && j.L.state === 'shear') j.L.state = j.L.tame === 2 ? 'guard' : 'graze';   // LLAMAS
   hk.job = null; hk.shearing = false; hk.goal = null;
 }
 // hankGoal: next to the sheep, on the pen's middle side (g.pen: hankCross gets him over the fence first)
 function shearGoal() {
   const hk = HANK, j = hk.job; if (!j || G.mode !== 'play') return null;
+  if (j.L) return llamaShearGoal();   // LLAMAS
   const s = j.s, p = j.pen;
   if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: s };
   let ux = p.x - s.x, uz = p.z - s.z, l = Math.hypot(ux, uz);
@@ -16461,10 +16525,11 @@ function shearGoal() {
 function updateShear(dt) {
   const hk = HANK, S = T.shear;
   let j = hk.job;
+  if (j && j.L) { llamaShearStep(dt); return; }   // LLAMAS: a guard's fleece
   if (j && (!shearCan() || !shearable(j.s) || j.s.pen !== j.pen)) { shearStop(); j = null; }
   if (!j) {
     if (!shearCan() || (hk.pickT = (hk.pickT || 0) - dt) > 0) return;
-    hk.pickT = 0.5; if (!(j = shearNext())) return;
+    hk.pickT = 0.5; if (!(j = shearNext())) { llamaShearNext(); return; }   // (LLAMAS: no sheep to shear: a guard)
   }
   const s = j.s, inPen = !hk.climb && penAt(hk.x, hk.z) === j.pen;
   if (!j.on) {   // on his way: in reach (and in its pen) he sits it down; can't get to it in the pen for giveUp s: another
@@ -18766,6 +18831,7 @@ function vagLetGo(d) {   // releaseHold: let go, he dusts himself off, annoyed
 function vagShaken(d) { const v = VAG; vagAnnoy(T.vag.annoy.shake); v.screamT = 0; floatText('AAAH!', v.x, v.y + 3, v.z, '#ff7a6b', 1.3); }   // shakeHold: worried by the coat
 // ---- tug of war (as Hank's: hankTug moves him, hankTugEnd → vagTugEnd)
 function vagRope(R) {
+  if (R.llama) return;   // LLAMAS
   const v = VAG, K = T.vag.tug;
   if (v.rope === R) { if (!R.tug || !vagFree()) { if (R.tug) tugEnd(R, 0); else vagTugEnd(R, null); R.holders = R.holders.filter(o => o !== v); } return; }
   if (v.ropeWant === R) {
@@ -19529,6 +19595,884 @@ expose(() => ({ VAG, VSTALL, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, v
   vagFrame, vagSlot, vagSiteSea, vagLaunch0, vagPolar, seaDist, seaX, seaZ }));   // VAGABOND (SAILING: his Laser)
 
 // =====================================================================
+// LLAMAS — wild herds off the trail on every land leg (own rng, a new seed each journey: LLAMA.seed; none in Falcon Canyon, up the pass or
+// at sea). They graze their range, shy off dogs (a creeping one gets close), kush by night. POPULATION: a grown male seeks the nearest free
+// female (a bachelor looks further), they kush and mate (an orgle), she's pregnant gestH h (a male who comes near then: spat off), then a
+// cria that follows her and grows up; a young male grown leaves his herd. CAPTURE: a dog dragging a ROPE up to a grown wild one: the rope's on
+// its halter and it's a TUG OF WAR (the llama: a man on a rope, as Hank: e.npc, hankTug). Lost: it bolts, wary a while. Won: broken
+// (L.tame 1), led on the rope; brought to the flock (or into a pen): a guard (L.tame 2). GUARDS go where the flock goes (into its pen with
+// a hop, aboard her, kushed at sea), stand between it and trouble and SPIT at a foe in reach: coyotes, cougars, the falcon, snakes, goats.
+// Hank shears them (llamaShear*). A guard's cria is a guard. Bonked and grabbed as sheep are (launchLlama, airStep, holdStep).
+// L.state: graze kush flee court mate bolt tug led guard spit shear
+// =====================================================================
+const LLAMAS = [], LLAMA = { seed: 0, nid: 0, herds: [], spits: [], seen: false, said: {}, fc: null, fr: 6, pen: null };
+const LLAMA_COATS = [   // [fleece, face and legs, marks, pattern]: white, cream, fawn, brown, chocolate, black, grey, paint, appaloosa, two-tone
+  ['#f4efe6', '#efe7da'], ['#ead9bb', '#e2cfaa'], ['#c99f6e', '#b98d5c'], ['#7d5335', '#6c472c'], ['#4c3224', '#3f2a1e'],
+  ['#2e2825', '#2e2825'], ['#a39c93', '#8f887f'], ['#f4efe6', '#7d5335', '#7d5335', 'paint'], ['#efe7da', '#efe7da', '#5b3b27', 'spots'], ['#5b3b27', '#f4efe6'],
+];
+const LLAMA_TASSELS = ['#e8473f', '#ff8fb8', '#ffd34d', '#3fbf5a', '#3d8ef0', '#ff8a2a', '#9b59d0'];
+const llamaSize = L => (L.sex === 'm' ? 1.05 : 1) * lerp(0.5, 1, clamp(L.age / T.llama.adultDays, 0, 1));
+const llamaMass = L => T.llama.mass * llamaSize(L) ** 3;   // (BONES, punts)
+const llamaWild = L => !L.tame;
+const llamaFree = L => !L.heldBy && !L.air && !L.hop && !L.rope && L.state !== 'shear';
+// its neck, where the halter's ring is (ROPES: the rope's end, there)
+function llamaNeck(L, out) {
+  const k = llamaSize(L), fx = Math.sin(L.yaw), fz = Math.cos(L.yaw), lie = (L.kushK || 0) * 0.55;
+  out.x = L.x + fx * 0.62 * k; out.z = L.z + fz * 0.62 * k; out.y = (L.y ?? groundY(L.x, L.z)) + (1.55 - lie) * k + (L.hopY || 0); return out;
+}
+function llamaMouth(L, out) {
+  const k = llamaSize(L), fx = Math.sin(L.yaw), fz = Math.cos(L.yaw);
+  out.x = L.x + fx * 0.95 * k; out.z = L.z + fz * 0.95 * k; out.y = (L.y ?? groundY(L.x, L.z)) + 1.82 * k; return out;
+}
+// ---------------- where they live: a herd a leg (own rng) ----------------
+const llamaSpotOK = (x, z) => sdfAt(x, z) > 4 && !wetAt(x, z) && !inRiver(x, z) && !inSea(x, z) && harbK(x, z) <= 0 && iceK(x, z) === 0 && passK(sAt(x, z)) <= 0 && canyonK(sAt(x, z)) <= 0
+  && CAMPS.every(c => Math.hypot(x - c.x, z - c.z) > c.R + 16) && DENS.every(d => Math.hypot(x - d.x, z - d.z) > 18) && offMarket(x, z, 6) && !brambleAt(x, z, 4) && !mudAt(x, z, 4)
+  && LAIRS.every(l => Math.hypot(x - l.x, z - l.z) > 10) && APPLE_TREES.every(t => Math.hypot(x - t.x, z - t.z) > 4) && SNAKES.every(n => Math.hypot(x - n.x, z - n.z) > 10)
+  && LAUNCHERS.every(S => Math.hypot(x - S.x, z - S.z) > 18) && pens.every(p => p.deck || Math.hypot(x - p.x, z - p.z) > p.R + 10);
+function llamaPlan(seed) {
+  const R = mulberry32(seed >>> 0), rr = (a, b) => a + R() * (b - a), K = T.llama, out = [];
+  for (let li = 0; li < Math.min(K.legs, CAMPS.length - 2); li++) {   // the land legs (the pass and the sea: none)
+    const a = CAMPS[li].s + 40, b = CAMPS[li + 1].s - 25, want = 1 + (R() < K.bach ? 1 : 0), got = [];
+    for (let t = 0; t < 400 && got.length < want; t++) {
+      const s = lerp(a, b, R());
+      if (canyonK(s - 30) > 0 || canyonK(s + 30) > 0 || passK(s) > 0 || Math.abs(s - RIVER.s) < 40 || got.some(q => Math.abs(q.s - s) < 50)) continue;
+      const k = pathIdx(s), side = R() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) - 5; if (room < K.lat[0]) continue;
+      const p = pathPoint(s, side * rr(K.lat[0], Math.min(K.lat[1], room)));
+      if (llamaSpotOK(p.x, p.z)) got.push({ s, x: p.x, z: p.z, leg: li, bach: got.length > 0, r: R() });
+    }
+    out.push(...got);
+  }
+  return out;
+}
+let _llamaR = Math.random;
+function makeLlama(o) {
+  const K = T.llama, a = _llamaR() * TAU, L = { isLlama: true, npc: true, id: ++LLAMA.nid, x: o.x, z: o.z, y: groundY(o.x, o.z), vx: 0, vz: 0, yaw: o.yaw ?? a,
+    sex: o.sex, age: o.age, coat: o.coat ?? Math.floor(_llamaR() * LLAMA_COATS.length), look: o.look ?? Math.floor(_llamaR() * 1e6), wool: o.wool ?? (0.75 + _llamaR() * 0.25),
+    tame: o.tame || 0, herd: o.herd || null, mum: o.mum || null, r: K.r, state: o.tame === 2 ? 'guard' : 'graze', t: 0, prev: null, goal: null, goT: 0,
+    thinkT: _llamaR() * 3, waryH: 0, preg: 0, cdH: o.cdH ?? _llamaR() * 4, mate: null, rope: null, ropeI: -1, tugS: 0, tugSide: 0, tugK: 0, tugT: 0, stumble: 0,
+    spitCd: 0, crowdT: 0, color: '#e8a24a', hop: null, hopY: 0, air: null, heldBy: null, kushK: 0, grazeK: 0, leg: _llamaR() * TAU, ga: _llamaR() * TAU, alarmAt: 0, stuckT: 0, lastD: 1e9, pose: null };
+  L.grown = L.age >= K.adultDays; L.str = (L.sex === 'm' ? 1.15 : 1) * lerp(0.6, 1, clamp(L.age / K.adultDays, 0, 1));
+  LLAMAS.push(L); llamaModel(L); return L;
+}
+function llamaRemove(L) {
+  llamaUnrope(L);
+  if (L.heldBy) { const d = L.heldBy; if (d.holding === L) { d.holding = null; d.holdKind = null; d.grabLock = true; } L.heldBy = null; }
+  if (L.models) { const r = L.models.root; if (r.parent) r.parent.remove(r); L.models = null; }
+  const i = LLAMAS.indexOf(L); if (i >= 0) LLAMAS.splice(i, 1);
+  for (const o of LLAMAS) { if (o.mum === L) o.mum = null; if (o.mate === L) { o.mate = null; if (o.state === 'court' || o.state === 'mate') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
+  if (HANK.job && HANK.job.L === L) shearStop();
+}
+// a new journey: new herds (T.llama.on), no guards
+function resetLlamas(seed) {
+  for (const L of [...LLAMAS]) llamaRemove(L);
+  LLAMA.herds = []; LLAMA.spits.length = 0; LLAMA.seen = false; LLAMA.said = {};
+  if (!T.llama.on) return;
+  LLAMA.seed = seed ?? (Math.random() * 2 ** 31) >>> 0;
+  const R = mulberry32((LLAMA.seed ^ 0x2b1d5a) >>> 0), rr = (a, b) => a + R() * (b - a), K = T.llama; _llamaR = R;
+  for (const P of llamaPlan(LLAMA.seed)) {
+    const H = { id: LLAMA.herds.length, x: P.x, z: P.z, s: P.s }; LLAMA.herds.push(H);
+    const at = () => { for (let t = 0; t < 20; t++) { const a = R() * TAU, r = rr(1, K.range * 0.5), x = H.x + Math.cos(a) * r, z = H.z + Math.sin(a) * r; if (sdfAt(x, z) > 1.5 && !wetAt(x, z)) return { x, z }; } return { x: H.x, z: H.z }; };
+    if (P.bach) { H.bach = true; makeLlama({ ...at(), sex: 'm', age: rr(2.2, 4), herd: H }); continue; }
+    makeLlama({ ...at(), sex: 'm', age: rr(3, 9), herd: H });
+    const fs = []; for (let i = 0, n = Math.round(rr(K.f[0], K.f[1])); i < n; i++) fs.push(makeLlama({ ...at(), sex: 'f', age: rr(2.4, 9), herd: H }));
+    if (R() < K.cria) { const m = fs[0], c = makeLlama({ x: m.x + 1, z: m.z, sex: R() < 0.5 ? 'm' : 'f', age: rr(0.2, 1.2), herd: H, mum: m, coat: R() < 0.7 ? m.coat : undefined }); m.cdH = K.nurseH; c.yaw = m.yaw; }
+  }
+  _llamaR = Math.random;
+}
+// ---------------- moving ----------------
+const _lmA = { x: 0, y: 0, z: 0 }, _lmB = { x: 0, y: 0, z: 0 };
+function llamaMove(L, gx, gz, spd, dt, stop = 0.4, F = L.tame ? SWIM_SDF : SDF) {
+  const dx = gx - L.x, dz = gz - L.z, d = Math.hypot(dx, dz);
+  let tx = 0, tz = 0;
+  if (d > stop) { const v = Math.min(spd, (d - stop) * 1.8 + 0.25); tx = dx / d * v; tz = dz / d * v; }
+  const a = Math.min(1, dt * 4); L.vx += (tx - L.vx) * a; L.vz += (tz - L.vz) * a;
+  L.x += L.vx * dt; L.z += L.vz * dt;
+  collideWorld(L, L.r, F); collideFences(L, L.r);
+  const sp = Math.hypot(L.vx, L.vz); if (sp > 0.25) L.yaw = lerpA(L.yaw, Math.atan2(L.vx, L.vz), Math.min(1, dt * 5));
+  return d;
+}
+function llamaStop(L, dt) { const k = Math.max(0, 1 - dt * 5); L.vx *= k; L.vz *= k; L.x += L.vx * dt; L.z += L.vz * dt; collideWorld(L, L.r, L.tame ? SWIM_SDF : SDF); collideFences(L, L.r); }
+// over a fence (or aboard): a hop, ~1 s, from where it is to (x, z)
+function llamaHop(L, x, z, T0 = 0.8, up = 1.3) { L.hop = { ax: L.x, az: L.z, ay: L.y, bx: x, bz: z, by: groundY(x, z), t: 0, T: T0, up }; L.yaw = Math.atan2(x - L.x, z - L.z); llamaFx('hop', L.x, L.z); }
+function llamaHopStep(L, dt) {
+  const h = L.hop, u = Math.min(1, (h.t += dt) / h.T);
+  L.x = lerp(h.ax, h.bx, u); L.z = lerp(h.az, h.bz, u); L.y = lerp(h.ay, h.by, u); L.hopY = Math.sin(u * Math.PI) * (h.up + Math.abs(h.by - h.ay) * 0.3); L.vx = L.vz = 0;
+  if (u >= 1) { L.hop = null; L.hopY = 0; L.y = groundY(L.x, L.z); L.pose = { landT: G.time, sq: 0.15 }; }
+}
+// to (gx, gz): over a pen's fence first if it's in a pen and the goal isn't (or the other way); aboard her with a leap
+function llamaGo(L, gx, gz, spd, dt, stop = 0.5) {
+  const pIn = penAt(L.x, L.z), pG = penAt(gx, gz);
+  if (pIn === pG) return llamaMove(L, gx, gz, spd, dt, stop);
+  if (pG && pG.deck) { const d = Math.hypot(gx - L.x, gz - L.z); if (d < 9) { llamaHop(L, gx, gz, 1, 1.8); return d; } return llamaMove(L, gx, gz, spd, dt, 0); }
+  const P = pIn && !pIn.deck ? pIn : pG, leaving = P === pIn;
+  if (!P || P.deck) return llamaMove(L, gx, gz, spd, dt, stop);
+  const a = leaving ? Math.atan2(gz - P.z, gx - P.x) : Math.atan2(L.z - P.z, L.x - P.x), at = r => ({ x: P.x + Math.cos(a) * r, z: P.z + Math.sin(a) * r });
+  const near = at(P.R + (leaving ? -1.2 : 1.3)), far = at(P.R + (leaving ? 1.6 : -1.6));
+  if (Math.hypot(L.x - near.x, L.z - near.z) < 0.9 || (!leaving && Math.hypot(L.x - P.x, L.z - P.z) < P.R + 1.9)) { llamaHop(L, far.x, far.z); return Math.hypot(gx - L.x, gz - L.z); }
+  llamaMove(L, near.x, near.z, spd, dt, 0.2);
+  return Math.hypot(gx - L.x, gz - L.z);
+}
+// ---------------- the sim (host): every llama, the spits in the air, ropes brought up to them ----------------
+function updateLlamas(dt, dtH) {
+  if (!LLAMAS.length) return;
+  const K = T.llama, live = [];
+  for (const s of G.sheep) if (!s.dead && !s.grabbed && Number.isFinite(s.x + s.z)) live.push(s);   // (one gone NaN never drags them with it)
+  { let x = 0, z = 0, n = 0; const by = new Map(); for (const s of live) { if (s.pen) by.set(s.pen, (by.get(s.pen) || 0) + 1); if (!s.air) { x += s.x; z += s.z; n++; } }
+    LLAMA.fc = n ? { x: x / n, z: z / n, n } : null; let r = 0; if (n) for (const s of live) if (!s.air) r += (s.x - LLAMA.fc.x) ** 2 + (s.z - LLAMA.fc.z) ** 2;
+    LLAMA.fr = n ? clamp(Math.sqrt(r / n), 2.5, 16) : 4;
+    let bp = null, bn = 0; for (const [p, k] of by) if (k > bn) { bn = k; bp = p; } LLAMA.pen = bp && bn >= live.length * 0.5 ? bp : null; }
+  if (SEA_AWAY) {   // SAILING: the land's gone (and the wild ones with it); the guards kush aboard
+    let i = 0; for (const L of LLAMAS) { if (L.tame !== 2) continue; llamaAboard(L, i++); L.wool = Math.min(1, L.wool + dtH / 24 / K.shear.regrowDays); }
+    return;
+  }
+  for (const L of [...LLAMAS]) llamaStep(L, dt, dtH);
+  llamaSpitsStep();
+  llamaApart(dt);
+  llamaCatch();
+  if (!LLAMA.seen && G.mode === 'play' && LLAMAS.some(L => !L.tame && G.dogs.some(d => Math.hypot(d.x - L.x, d.z - L.z) < 24))) {
+    LLAMA.seen = true; hint('llama'); const L = LLAMAS.find(L => !L.tame && hankSees(L.x, L.z)); if (L) hank(null, "Llamas! Get a rope on one: it'll guard the flock.", { force: true, delay: 0.8 });
+  }
+}
+function llamaStep(L, dt, dtH) {
+  const K = T.llama;
+  L.t += dt; L.age += dtH / 24; L.cdH -= dtH; L.waryH = Math.max(0, L.waryH - dtH); L.spitCd -= dt; L.stumble = Math.max(0, L.stumble - dt);
+  if (L.state !== 'shear') L.wool = Math.min(1, L.wool + dtH / 24 / K.shear.regrowDays);
+  const grown = L.age >= K.adultDays; if (grown && !L.grown) llamaGrownUp(L); L.grown = grown;
+  L.str = (L.sex === 'm' ? 1.15 : 1) * lerp(0.6, 1, clamp(L.age / K.adultDays, 0, 1));
+  if (L.preg > 0 && (L.preg -= dtH) <= 0) { L.preg = 0; llamaBirth(L); }
+  const lie = L.state === 'kush' || L.state === 'mate'; L.kushK = clamp(L.kushK + (lie ? dt * 1.5 : -dt * 2.5), 0, 1);
+  if (L.heldBy) { updateHeldLlama(L, dt); return; }
+  if (L.air) { llamaAirStep(L, dt); return; }
+  if (L.hop) { llamaHopStep(L, dt); return; }
+  L.y = overWater(L.x, L.z) ? Math.max(groundY(L.x, L.z), WATER_Y - 0.75) : groundY(L.x, L.z);   // (wading: the river)
+  if (L.mate && (L.mate.heldBy || L.mate.air || !LLAMAS.includes(L.mate))) { if (L.state === 'mate' || L.state === 'court') L.state = L.tame === 2 ? 'guard' : 'graze'; L.mate = null; }
+  switch (L.state) {
+    case 'tug': {   // ROPES: hankTug moves it (updateRopes); here: a spit now and then at the dog on the other end
+      if (!L.rope) { L.state = 'graze'; break; }
+      if (!L.rope.tug && L.t > 3) { llamaUnrope(L); L.state = 'graze'; break; }
+      L.grazeK = 0;
+      if (L.spitCd <= 0 && Math.random() < dt * 0.35) { const d = G.dogs.find(o => o.holding === L.rope); if (d) llamaSpitAt(L, d, 'dog'); }
+      return;
+    }
+    case 'spit': {
+      const e = L.spitE; L.vx *= 0.8; L.vz *= 0.8;
+      if (!e) { L.state = L.prev || 'graze'; break; }
+      L.yaw = lerpA(L.yaw, Math.atan2(e.x - L.x, e.z - L.z), Math.min(1, dt * 10));
+      if (L.t >= K.spit.wind) llamaSpitLaunch(L);
+      return;
+    }
+    case 'shear': L.vx = L.vz = 0; if (!HANK.job || HANK.job.L !== L) L.state = L.tame === 2 ? 'guard' : 'graze'; return;
+    case 'mate': {
+      L.vx = L.vz = 0; const o = L.mate;
+      if (!o || o.state !== 'mate') { L.state = L.tame === 2 ? 'guard' : 'graze'; L.mate = null; break; }
+      if (L.sex === 'm') { L.x = lerp(L.x, o.x - Math.sin(o.yaw) * 0.7, Math.min(1, dt * 3)); L.z = lerp(L.z, o.z - Math.cos(o.yaw) * 0.7, Math.min(1, dt * 3)); L.yaw = lerpA(L.yaw, o.yaw, Math.min(1, dt * 3));
+        if (Math.random() < dt * 1.2) llamaFx('orgle', L.x, L.z);
+        if (L.t > K.mateT) llamaMated(L, o); }
+      return;
+    }
+    case 'led': llamaLed(L, dt); return;
+    case 'bolt': {
+      const s = L.t / K.bolt, wob = Math.sin(L.t * 3 + L.id) * 0.4, ux = L.fx * Math.cos(wob) - L.fz * Math.sin(wob), uz = L.fz * Math.cos(wob) + L.fx * Math.sin(wob);
+      llamaMove(L, L.x + ux * 6, L.z + uz * 6, K.boltSpd * (1 - 0.4 * s), dt, 0);
+      if (L.t > K.bolt) { L.state = L.tame === 2 ? 'guard' : 'graze'; L.goal = null; }
+      return;
+    }
+    case 'flee': {
+      llamaMove(L, L.x + L.fx * 6, L.z + L.fz * 6, L.fleeSpd || K.trot, dt, 0);
+      if (L.t > L.fleeT) { L.state = L.tame === 2 ? 'guard' : 'graze'; L.goal = null; }
+      return;
+    }
+  }
+  if (L.tame === 2) llamaGuard(L, dt); else llamaWildStep(L, dt);
+}
+// ---------------- wild: graze the range, shy of dogs, kush by night; crias at mum's side; a grown male courts ----------------
+function llamaWildStep(L, dt) {
+  const K = T.llama, H = L.herd || { x: L.x, z: L.z }, nd = nearestDog(L.x, L.z), dog = nd.dog, dd = nd.d;
+  if (dog && dd < K.shy * (L.waryH > 0 ? 1.6 : 1) && !dog.ko && !(dog.air && dog.air.swim)) {
+    const sp = Math.hypot(dog.vx, dog.vz);
+    if (L.waryH > 0 || dd < K.close || sp > K.creep) {
+      if (L.grown && dd < K.spit.dogR && L.spitCd <= 0 && (L.crowdT += dt) > K.spit.dogT) { L.crowdT = 0; llamaSpitAt(L, dog, 'dog'); return; }
+      if (L.state !== 'flee') { llamaFlee(L, dog.x, dog.z, L.waryH > 0 || sp > T.dogWalk * 0.7 ? K.run : K.trot); return; }
+    }
+  } else L.crowdT = 0;
+  if (L.state === 'court') { llamaCourt(L, dt); return; }
+  const night = isNight();
+  if (L.mum && !L.grown && LLAMAS.includes(L.mum) && L.mum.tame === L.tame) {   // a cria: by mum
+    const m = L.mum, sd = L.id % 2 ? 1 : -1, gx = m.x - Math.sin(m.yaw) * 0.6 + Math.cos(m.yaw) * sd * 0.9, gz = m.z - Math.cos(m.yaw) * 0.6 - Math.sin(m.yaw) * sd * 0.9;
+    const d = llamaMove(L, gx, gz, m.state === 'flee' || m.state === 'bolt' ? K.run : K.trot, dt, 0.5);
+    L.state = m.kushK > 0.5 && d < 1.2 ? 'kush' : 'graze'; L.grazeK = lerp(L.grazeK, m.grazeK, Math.min(1, dt * 2));
+    return;
+  }
+  if (L.sex === 'm' && L.grown && L.cdH <= 0 && (L.thinkT -= dt) <= 0) {
+    L.thinkT = 1.5 + Math.random() * 1.5; const f = llamaMateFor(L);
+    if (f) { L.state = 'court'; L.mate = f; L.t = 0; f.suitor = L; return; }
+    if (H.bach && Math.random() < 0.25) llamaRoam(L);   // a bachelor: on to look elsewhere
+  }
+  if (night) {   // kushed near the herd's middle
+    const sd = (L.id * 2.39) % TAU, gx = H.x + Math.cos(sd) * 2.2, gz = H.z + Math.sin(sd) * 2.2;
+    if (L.state === 'kush') { llamaStop(L, dt); L.grazeK = Math.max(0, L.grazeK - dt); return; }
+    const d = llamaMove(L, gx, gz, K.walk, dt, 0.6); L.grazeK = Math.max(0, L.grazeK - dt * 2);
+    if (d < 0.9 || L.t > 30) { L.state = 'kush'; L.t = 0; }
+    return;
+  }
+  if (L.state === 'kush') { if (Math.random() < dt * 0.5) { L.state = 'graze'; L.t = 0; } else { llamaStop(L, dt); return; } }
+  llamaGraze(L, H.x, H.z, K.range, dt);
+}
+// a walk to a fresh patch, then heads down a while
+function llamaGraze(L, hx, hz, range, dt) {
+  const K = T.llama;
+  if (!L.goal || (L.goT -= dt) <= 0) {
+    L.goT = 3 + Math.random() * 6;
+    for (let t = 0; t < 8; t++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * range, x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r; if (sdfAt(x, z) > 1.2 && !wetAt(x, z) && !penAt(x, z)) { L.goal = { x, z }; break; } }
+    if (!L.goal) L.goal = { x: hx, z: hz };
+  }
+  const d = Math.hypot(L.goal.x - L.x, L.goal.z - L.z);
+  if (d > 0.8) { llamaGo(L, L.goal.x, L.goal.z, d > range * 1.5 ? K.trot : K.walk, dt, 0.6); L.grazeK = Math.max(0, L.grazeK - dt * 2.5); }
+  else { llamaStop(L, dt); L.grazeK = Math.min(1, L.grazeK + dt * 1.5); }
+}
+function llamaFlee(L, fx, fz, spd) {
+  const K = T.llama, dx = L.x - fx, dz = L.z - fz, d = Math.hypot(dx, dz) || 1, H = L.herd;
+  let ux = dx / d, uz = dz / d;
+  if (H) { const hx = H.x - L.x, hz = H.z - L.z, hd = Math.hypot(hx, hz); if (hd > K.range * 1.4) { ux += hx / hd * 0.6; uz += hz / hd * 0.6; const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l; } }   // (not far off its range)
+  L.state = 'flee'; L.t = 0; L.fleeT = K.flee * (0.8 + Math.random() * 0.4); L.fx = ux; L.fz = uz; L.fleeSpd = spd; L.grazeK = 0; L.goal = null; L.kushK = Math.min(L.kushK, 0.6);
+  if (L.mate) { const o = L.mate; L.mate = null; if (o.mate === L) { o.mate = null; if (o.state === 'mate' || o.state === 'court') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
+  if (G.time > (L.alarmAt || 0)) { L.alarmAt = G.time + 6; llamaFx('alarm', L.x, L.z, llamaSize(L)); }
+  for (const o of LLAMAS) if (o !== L && !o.tame && o.herd === L.herd && o.state !== 'flee' && llamaFree(o) && o.state !== 'tug' && Math.hypot(o.x - L.x, o.z - L.z) < 14) {   // the herd runs with it
+    o.state = 'flee'; o.t = 0; o.fleeT = L.fleeT; o.fx = ux; o.fz = uz; o.fleeSpd = spd; o.grazeK = 0; o.goal = null;
+  }
+}
+// a bachelor: off along the trail to look for a herd (its range moves with it)
+function llamaRoam(L) {
+  const H = L.herd; if (!H) return;
+  for (let t = 0; t < 10; t++) {
+    const s = clamp(H.s + (Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 60), CAMPS[0].s + 30, POST.s - 20), k = pathIdx(s), side = Math.random() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) - 5;
+    if (room < T.llama.lat[0]) continue;
+    const p = pathPoint(s, side * (T.llama.lat[0] + Math.random() * (Math.min(T.llama.lat[1], room) - T.llama.lat[0])));
+    if (llamaSpotOK(p.x, p.z)) { H.x = p.x; H.z = p.z; H.s = s; L.goal = null; return; }
+  }
+}
+function llamaGrownUp(L) {
+  if (L.sex !== 'm' || L.tame) return;
+  if (!LLAMAS.some(o => o !== L && o.sex === 'm' && o.grown && !o.tame && o.herd === L.herd)) return;
+  const H = { id: LLAMA.herds.length, x: L.x, z: L.z, s: sAt(L.x, L.z), bach: true }; LLAMA.herds.push(H); L.herd = H; L.mum = null; llamaRoam(L);   // grown: his father sees him off
+}
+// ---------------- POPULATION: courting, mating, a cria ----------------
+const llamaCount = tame => LLAMAS.filter(o => tame ? o.tame === 2 : !o.tame).length;
+function llamaMateFor(L) {
+  const K = T.llama, far = L.tame === 2 ? 30 : L.herd && L.herd.bach ? K.seekB : K.seek; let best = null, bd = far;
+  for (const f of LLAMAS) {
+    if (f.sex !== 'f' || !f.grown || f.preg > 0 || f.cdH > 0 || !llamaFree(f) || ['mate', 'flee', 'bolt', 'tug', 'led', 'spit'].includes(f.state)) continue;
+    if (L.tame === 2 ? f.tame !== 2 : f.tame === 1) continue;   // (a guard courts guards; a wild one, wild ones and guards)
+    if (f.suitor && f.suitor !== L && f.suitor.mate === f && LLAMAS.includes(f.suitor)) continue;
+    if (llamaCount(f.tame === 2) >= (f.tame === 2 ? K.maxG : K.max)) continue;   // (full up)
+    const d = Math.hypot(f.x - L.x, f.z - L.z); if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+function llamaCourt(L, dt) {
+  const K = T.llama, f = L.mate;
+  if (!f || !LLAMAS.includes(f) || !llamaFree(f) || f.state === 'flee' || f.state === 'bolt' || L.t > 40) { L.state = L.tame === 2 ? 'guard' : 'graze'; L.mate = null; L.cdH = 1; return; }
+  const d = llamaGo(L, f.x - Math.sin(f.yaw) * 0.8, f.z - Math.cos(f.yaw) * 0.8, K.trot, dt, 0.3); L.grazeK = 0;
+  if (d > 1.4) return;
+  if (f.preg > 0 || f.cdH > 0) {   // pregnant: she spits him off
+    if (f.spitCd <= 0) llamaSpitAt(f, L, 'llama'); L.state = L.tame === 2 ? 'guard' : 'graze'; L.mate = null; L.cdH = 2; return;
+  }
+  const rival = LLAMAS.find(o => o !== L && o.sex === 'm' && o.grown && o.mate === f && (o.state === 'court' || o.state === 'mate'));
+  if (rival) {   // two after her: a spitting match, the weaker gives up
+    const lose = rival.str * (0.8 + Math.random() * 0.4) > L.str * (0.8 + Math.random() * 0.4) ? L : rival, win = lose === L ? rival : L;
+    if (win.spitCd <= 0) llamaSpitAt(win, lose, 'llama');
+    lose.mate = null; lose.cdH = 3; if (lose.state === 'mate' || lose.state === 'court') lose.state = lose.tame === 2 ? 'guard' : 'graze';
+    if (lose === L) return;
+  }
+  L.state = 'mate'; L.t = 0; f.state = 'mate'; f.t = 0; f.mate = L; f.vx = f.vz = 0; f.goal = null;
+  llamaFx('court', f.x, f.z);
+}
+function llamaMated(m, f) {
+  const K = T.llama;
+  f.preg = K.gestH * (0.85 + Math.random() * 0.3); f.dad = m; f.state = f.tame === 2 ? 'guard' : 'graze'; f.mate = null; f.suitor = null; f.t = 0;
+  m.state = m.tame === 2 ? 'guard' : 'graze'; m.mate = null; m.cdH = K.mateCd; m.t = 0;
+  llamaFx('mated', f.x, f.z);
+}
+function llamaBirth(f) {
+  const K = T.llama, tame = f.tame === 2 ? 2 : 0;
+  if (llamaCount(tame === 2) >= (tame === 2 ? K.maxG : K.max) || f.tame === 1) return;
+  const a = f.yaw + Math.PI * 0.75, x = f.x + Math.sin(a) * 1, z = f.z + Math.cos(a) * 1, dad = f.dad && LLAMAS.includes(f.dad) ? f.dad : null;
+  const c = makeLlama({ x, z, sex: Math.random() < 0.5 ? 'm' : 'f', age: 0, herd: f.herd, mum: f, tame, coat: Math.random() < 0.6 || !dad ? f.coat : dad.coat, wool: 0.6, yaw: f.yaw });
+  if (tame === 2) { c.ga = f.ga + 0.4; llamaKeep(c, true); }
+  f.cdH = K.nurseH; f.dad = null;
+  G.stats.crias++;
+  llamaFx('born', c.x, c.z);
+  if (hankSees(c.x, c.z)) hank(null, pick(["A wee cria! Would ye look at that.", "A new wee llama! Welcome, lad.", "A cria! Aw, the legs on it."]), { force: true, delay: 0.8 });
+}
+// ---------------- CAPTURE: a rope brought up to it; the tug (as Hank's: hankTug moves it); won: led; to the flock: a guard ----------------
+function llamaCatch() {
+  const K = T.llama;
+  for (const R of ROPES) {
+    if (R.tug || R.llama || ropeNpc(R)) continue;
+    const d = G.dogs.find(o => o.holding === R && o.ropeI >= 0); if (!d) continue;
+    for (const L of LLAMAS) {
+      if (L.tame || !L.grown || L.waryH > 0 || !llamaFree(L) || L.state === 'mate' || L.state === 'bolt' || L.state === 'spit') continue;
+      if (Math.abs(L.x - d.x) > K.catchR + 1 || Math.abs(L.z - d.z) > K.catchR + 1 || Math.hypot(L.x - d.x, L.z - d.z) > K.catchR) continue;
+      if (llamaRope(L, R, d)) break;
+    }
+  }
+}
+// its halter on the rope a little past the dog's grip (the rest of it trails): the knot starts on a near-taut rope
+function llamaRope(L, R, d) {
+  const m = ropeMouth(d, _lmA), nk = llamaNeck(L, _lmB), n = Math.ceil(Math.hypot(nk.x - m.x, nk.z - m.z) / T.rope.seg) + 2;
+  const up = R.n - 1 - d.ropeI >= d.ropeI ? 1 : -1, i = clamp(d.ropeI + up * n, 0, R.n - 1);
+  if (Math.abs(i - d.ropeI) < 4) return false;
+  L.rope = R; L.ropeI = i; R.llama = L; R.live = 2; R.found = true; R.want = true;
+  L.state = 'tug'; L.t = 0; L.tugT = 0; L.tugK = 0; L.grazeK = 0; L.kushK = 0; L.vx = L.vz = 0; L.goal = null;
+  if (L.mate) { const o = L.mate; L.mate = null; if (o.mate === L) { o.mate = null; if (o.state === 'mate') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
+  llamaFx('roped', L.x, L.z); hint('llama-tug');
+  return true;
+}
+// off the rope (it stays where it is: in a dog's mouth, or on the ground)
+function llamaUnrope(L) {
+  const R = L.rope; if (!R) return;
+  if (R.tug && ropeNpc(R) === L) { R.tug = null; R.want = false; }
+  L.rope = null; L.ropeI = -1; L.tugK = 0; if (R.llama === L) R.llama = null; R.live = 2;
+}
+// hankTugEnd for a llama: won (it out-pulled them, or they let go): off it bolts, wary a while; lost: broken, led on the rope; null: just off
+function llamaTugEnd(R, won, ax, az, L) {
+  const K = T.llama; L.tugK = 0; L.t = 0;
+  if (won === false) {
+    L.tame = 1; L.state = 'led'; L.waryH = 0; L.fleeT = 0; llamaKeep(L, true);
+    llamaFx('broken', L.x, L.z); hint('llama-led');
+    if (hankSees(L.x, L.z)) hank(null, pick(["Ye've broken it! Bring it to the flock.", "That's the way! Lead it home."]), { force: true, delay: 0.4 });
+    return;
+  }
+  llamaUnrope(L);
+  if (won) {
+    const l = Math.hypot(ax, az) || 1; L.state = 'bolt'; L.fx = ax / l; L.fz = az / l; L.waryH = K.waryH;
+    llamaFx('bolt', L.x, L.z); if (hankSees(L.x, L.z)) hank(null, pick(["It's away! Try again later.", "Ach, it got loose!"]), { force: true, delay: 0.3 });
+  } else L.state = 'graze';
+}
+// broken, on the rope: it walks after whoever has the other end; brought to the flock (or into a pen), it's one of them
+function llamaLed(L, dt) {
+  const K = T.llama, R = L.rope;
+  if (!R) { L.state = L.tame === 2 ? 'guard' : 'graze'; return; }
+  const d = G.dogs.find(o => o.holding === R && o.ropeI >= 0); L.grazeK = 0;
+  if (d) { const m = ropeMouth(d, _lmA), dd = Math.hypot(m.x - L.x, m.z - L.z); if (dd > K.lead.near) llamaGo(L, m.x, m.z, Math.min(K.run, Math.hypot(d.vx, d.vz) + 2), dt, K.lead.near); else llamaStop(L, dt); }
+  else { llamaStop(L, dt); L.grazeK = Math.min(1, L.grazeK + dt); }
+  const p = penAt(L.x, L.z);
+  let near = 0; if (!p) for (const s of G.sheep) if (!s.dead && Math.abs(s.x - L.x) < K.joinR && Math.abs(s.z - L.z) < K.joinR && Math.hypot(s.x - L.x, s.z - L.z) < K.joinR && ++near >= 2) break;
+  if ((p && !p.deck) || near >= 2) llamaJoin(L);
+}
+function llamaJoin(L) {
+  llamaUnrope(L); L.tame = 2; L.state = 'guard'; L.t = 0; L.goal = null; L.herd = null;
+  const fc = LLAMA.fc; L.ga = fc ? Math.atan2(L.z - fc.z, L.x - fc.x) : Math.random() * TAU; llamaKeep(L, true);
+  for (const o of LLAMAS) if (o.mum === L && !o.grown && !o.tame) { o.tame = 2; o.state = 'guard'; o.herd = null; llamaKeep(o, true); }   // her cria comes too
+  G.stats.llamas++;
+  llamaFx('join', L.x, L.z); hint('llama-guard');
+  if (hankSees(L.x, L.z)) hank(null, pick(["A guard llama! The coyotes'll think twice now.", "Grand! She'll mind the flock for us.", "A llama in the flock! Watch it spit."]), { force: true, delay: 0.5 });
+}
+// SAILING: a guard's model stays with the boat (not the land's) once it's ours
+function llamaKeep(L, on) { if (L.models) L.models.root.userData.sea = !!on; }
+// ---------------- GUARDS: by the flock, between it and trouble; into its pen; spit ----------------
+function llamaGuard(L, dt) {
+  const K = T.llama, foe = llamaFoe(L, K.alarm);
+  if (foe) {
+    L.grazeK = 0; if (L.mate) { L.mate = null; } L.state = 'guard';
+    if (G.time > (L.alarmAt || 0)) { L.alarmAt = G.time + 14; llamaFx('alarm', L.x, L.z, llamaSize(L)); if (hankSees(foe.e.x, foe.e.z) && !LLAMA.said.alarm) { LLAMA.said.alarm = true; hank(null, "Hear that? The llama's seen something!", { force: true, delay: 0.5 }); } }
+    const fd = Math.hypot(foe.e.x - L.x, foe.e.z - L.z);
+    if (fd < K.spit.r && L.spitCd <= 0 && L.grown) { llamaSpitAt(L, foe.e, foe.kind); return; }
+    const fc = LLAMA.fc || L, ux = fc.x - foe.e.x, uz = fc.z - foe.e.z, ul = Math.hypot(ux, uz) || 1, r = Math.min(K.spit.r * 0.6, ul);   // at it, on the flock's side
+    llamaGo(L, foe.e.x + ux / ul * r, foe.e.z + uz / ul * r, K.run, dt, 0.5);
+    return;
+  }
+  if (L.state === 'court') { llamaCourt(L, dt); return; }
+  const g = llamaGuardGoal(L); if (!g) { llamaStop(L, dt); return; }
+  if (L.sex === 'm' && L.grown && L.cdH <= 0 && (L.thinkT -= dt) <= 0) { L.thinkT = 3 + Math.random() * 3; const f = llamaMateFor(L); if (f) { L.state = 'court'; L.mate = f; L.t = 0; f.suitor = L; return; } }
+  const d = Math.hypot(g.x - L.x, g.z - L.z);
+  if (d > K.far && !onScreen(L.x, L.y + 1, L.z, 0.15) && !onScreen(g.x, groundY(g.x, g.z) + 1, g.z, 0.15)) { llamaPlace(L, g.x, g.z); return; }   // far behind, out of sight: caught up
+  if (L.mum && !L.grown && LLAMAS.includes(L.mum) && L.mum.tame === 2 && !L.mum.hop) { const m = L.mum, sd = L.id % 2 ? 1 : -1; g.x = m.x - Math.sin(m.yaw) * 0.6 + Math.cos(m.yaw) * sd * 0.9; g.z = m.z - Math.cos(m.yaw) * 0.6 - Math.sin(m.yaw) * sd * 0.9; }
+  if (d < 1.2 && g.kush) { if (L.state !== 'kush') { L.state = 'kush'; L.t = 0; } llamaStop(L, dt); return; }
+  if (L.state === 'kush' && d < 3) { llamaStop(L, dt); return; }
+  L.state = 'guard';
+  if (d > 1.4) {   // after the flock (stuck a while: a hop toward it)
+    const before = L.lastD; llamaGo(L, g.x, g.z, d > 14 ? K.run : d > 5 ? K.trot : K.walk * 1.3, dt, 0.8); L.grazeK = Math.max(0, L.grazeK - dt * 3);
+    L.stuckT = before - d < 0.3 * dt && d > 4 ? L.stuckT + dt : 0; L.lastD = d;
+    if (L.stuckT > 5) { L.stuckT = 0; const k = Math.min(5, d) / d, x = L.x + (g.x - L.x) * k, z = L.z + (g.z - L.z) * k; if (swimSdfAt(x, z) > L.r) llamaHop(L, x, z, 0.9, 1.6); }
+  } else { llamaStop(L, dt); L.stuckT = 0; L.grazeK = Math.min(1, L.grazeK + dt * (isNight() ? 0 : 1.2)); }
+}
+// where a guard stands: in the flock's pen (kushed by night), else round the flock's edge (its own place on it: L.ga, drifting)
+function llamaGuardGoal(L) {
+  const fc = LLAMA.fc, P = LLAMA.pen; if (!fc) return null;
+  L.ga += (Math.random() - 0.5) * 0.02;
+  if (P && !P.deck) { const a = L.ga, r = P.R * 0.55; return { x: P.x + Math.cos(a) * r, z: P.z + Math.sin(a) * r, kush: isNight() }; }
+  if (P && P.deck) { const q = llamaDeckSpot(LLAMAS.filter(o => o.tame === 2).indexOf(L)); return { x: q.x, z: q.z, kush: true }; }
+  const r = LLAMA.fr + 2.2; let x = fc.x + Math.cos(L.ga) * r, z = fc.z + Math.sin(L.ga) * r;
+  if (swimSdfAt(x, z) < 1 || penAt(x, z)) { x = fc.x + Math.cos(L.ga) * LLAMA.fr * 0.5; z = fc.z + Math.sin(L.ga) * LLAMA.fr * 0.5; }
+  return { x, z, kush: false };
+}
+function llamaPlace(L, x, z) {
+  for (let t = 0; t < 12; t++) { const a = Math.random() * TAU, r = 2 + t * 0.8, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (sdfAt(px, pz) > L.r + 0.4 && !wetAt(px, pz) && penAt(px, pz) === penAt(x, z)) { x = px; z = pz; break; } }
+  L.x = x; L.z = z; L.y = groundY(x, z); L.vx = L.vz = 0; L.goal = null; L.stuckT = 0;
+}
+// SAILING: aboard, a place forward of the mast each, kushed
+function llamaDeckSpot(i) { i = Math.max(0, i); return boatXZ(4.5 + (i >> 1) * 1.7, (i % 2 ? 1 : -1) * 1.5); }
+function llamaAboard(L, i) {
+  const q = llamaDeckSpot(i);
+  if (L.heldBy || L.air || L.hop) { L.air = null; L.hop = null; L.hopY = 0; if (L.heldBy) { const d = L.heldBy; if (d.holding === L) { d.holding = null; d.holdKind = null; } L.heldBy = null; } }
+  if (!onDeck(L.x, L.z, 0.4) || Math.hypot(L.x - q.x, L.z - q.z) > 0.5) { L.x = q.x; L.z = q.z; }
+  L.y = groundY(L.x, L.z); L.vx = L.vz = 0; L.state = 'kush'; L.kushK = 1; L.yaw = Math.atan2(BOAT.fx, BOAT.fz); L.grazeK = 0;
+}
+// SAILING: cast off (or started at sea): every guard leaps aboard
+function llamasAboard() { let i = 0; for (const L of LLAMAS) if (L.tame === 2) llamaAboard(L, i++); }
+// ---------------- SPIT ----------------
+// what a guard spits at: the nearest foe within R m (→ { e, kind } or null)
+function llamaFoe(L, R) {
+  let best = null, bd = R * R;
+  const see = (e, kind) => { const d2 = (e.x - L.x) ** 2 + (e.z - L.z) ** 2; if (d2 < bd) { bd = d2; best = { e, kind }; } };
+  for (const c of G.coyotes) if (!c.air && !c.heldBy && !c.gone && c.state !== 'burrow' && c.state !== 'sleep' && c.state !== 'dead' && (c.state !== 'leave' || c.prey)) see(c, 'coyote');
+  for (const k of COUGARS) if (['stalk', 'leap', 'drag', 'vault', 'leapDog', 'maul'].includes(k.state) || (k.state === 'climb' && k.prey && k.h < 2.5)) see(k, 'cougar');
+  for (const F of FALCONS) if (!F.boss && ((F.state === 'dive' && F.target) || (F.state === 'carry' && (F.prey || F.dog))) && F.y - groundY(F.x, F.z) < 9) see(F, 'falcon');
+  for (const n of SNAKES) if (n.state !== 'hide' && n.state !== 'back' && n.k > 0.3) see(n, 'snake');
+  for (const g of GOATS) if (['down', 'windup', 'charge', 'skid'].includes(g.state)) see(g, 'goat');
+  return best;
+}
+function llamaSpitAt(L, e, kind) {
+  if (L.state === 'spit' || L.heldBy || L.air || L.hop) return;
+  if (L.state !== 'tug') { L.prev = ['graze', 'guard', 'kush', 'flee', 'led'].includes(L.state) ? (L.state === 'kush' ? (L.tame === 2 ? 'guard' : 'graze') : L.state) : (L.tame === 2 ? 'guard' : 'graze'); L.state = 'spit'; L.t = 0; L.kushK = Math.min(L.kushK, 0.5); }
+  L.spitE = e; L.spitK = kind; L.spitCd = T.llama.spit.cd;
+  if (L.state === 'tug') llamaSpitLaunch(L);
+  else llamaFx('wind', L.x, L.z, llamaSize(L));
+}
+function llamaSpitLaunch(L) {
+  const K = T.llama.spit, e = L.spitE, kind = L.spitK, m = llamaMouth(L, _lmA);
+  if (L.state === 'spit') { L.state = L.prev || 'graze'; L.t = 0; }
+  L.spitE = null; if (!e) return;
+  const ey = kind === 'falcon' ? e.y : kind === 'llama' ? (e.y ?? 0) + 1.6 * llamaSize(e) : (e.y ?? groundY(e.x, e.z)) + (kind === 'dog' ? 0.75 : kind === 'snake' ? 0.3 : 0.7);
+  const x = e.x + (e.vx || 0) * K.fly, z = e.z + (e.vz || 0) * K.fly;
+  spitFx(+m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +x.toFixed(2), +ey.toFixed(2), +z.toFixed(2), K.fly);
+  LLAMA.spits.push({ e, kind, L, at: G.time + K.fly, x, z });
+}
+function llamaSpitsStep() {
+  const K = T.llama.spit;
+  for (let i = LLAMA.spits.length - 1; i >= 0; i--) {
+    const S = LLAMA.spits[i]; if (G.time < S.at) continue; LLAMA.spits.splice(i, 1);
+    if (Math.hypot(S.e.x - S.x, S.e.z - S.z) < K.hit + Math.hypot(S.e.vx || 0, S.e.vz || 0) * 0.15) llamaSpitHit(S.e, S.kind, S.L);
+  }
+}
+// a hit: in the eye. Coyotes and cougars turn tail (dropping what they have), the falcon lets go, a snake goes home, a goat bounds off
+function llamaSpitHit(e, kind, L) {
+  const K = T.llama.spit, dx = e.x - L.x, dz = e.z - L.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
+  if (kind === 'coyote') { if (G.coyotes.includes(e) && e.state !== 'burrow') hitCoyote(e, K.coyote, ux * 6, uz * 6, L, 'PTOO!'); }
+  else if (kind === 'cougar') {
+    floatText('PTOO!', e.x, e.y + 1.9, e.z, '#b8e36b', 1.2);
+    if (e.state === 'maul') endMaul(e, 'done'); else if (e.prey) cougarDrop(e, true); else cougarSpooked(e, 1);
+  } else if (kind === 'falcon') { floatText('PTOO!', e.x, e.y + 1, e.z, '#b8e36b', 1.2); if (e.prey || e.dog) falconDrop(e, true); else falconGo(e); }
+  else if (kind === 'snake') { floatText('PTOO!', e.x, e.y + 1, e.z, '#b8e36b', 1.1); snakeBack(e, T.snake.scareCd); }
+  else if (kind === 'goat') { floatText('PTOO!', e.x, e.y + 1.8, e.z, '#b8e36b', 1.1); goatHome(e, true); }
+  else if (kind === 'dog') {
+    if (!G.dogs.includes(e) || e.ko) return;
+    if (e.holding && e.holding.isRope && e.holding.tug) floatText('PTOO!', e.x, e.y + 1.8, e.z, '#b8e36b', 1.1);   // (in a tug: just the goo)
+    else knockDog(e, ux * 4, uz * 4, K.dogStun, 'PTOO!');
+    e.spitT = G.time;
+  } else if (kind === 'llama') {
+    if (!LLAMAS.includes(e)) return; floatText('PTOO!', e.x, e.y + 2.2, e.z, '#b8e36b', 1.1);
+    if (llamaFree(e) && e.state !== 'tug' && e.state !== 'mate') llamaFlee(e, L.x, L.z, T.llama.trot);
+  }
+  if (L.tame === 2 && kind !== 'dog' && kind !== 'llama') {
+    G.stats.spits++;
+    if (!LLAMA.said.spit && hankSees(e.x, e.z)) { LLAMA.said.spit = true; hank(null, pick(["Ha! Right in the eye!", "Pfft! Good llama!", "That's put it off its supper!"]), { force: true, delay: 0.4 }); }
+  }
+}
+// ---------------- a dog and a llama: a bark sends wild ones off; a pounce punts it (as a sheep); grabbed by the scruff, carried, flung ----------------
+function llamaBark(d) {   // → how many it reached (herding: VAGABOND's nag counts these)
+  let n = 0; const R = barkR(d);
+  for (const L of LLAMAS) {
+    if (Math.hypot(L.x - d.x, L.z - d.z) > R) continue; n++;
+    if (!L.tame && llamaFree(L) && L.state !== 'tug' && L.state !== 'flee') llamaFlee(L, d.x, d.z, T.llama.run);
+  }
+  return n;
+}
+const llamaPouncable = L => !L.air && !L.heldBy && !L.hop && !SEA_AWAY && L.state !== 'shear';
+function llamaPounce(d) {
+  let best = null, bd = T.pounceHitR + 0.25;
+  for (const L of LLAMAS) { if (!llamaPouncable(L)) continue; const q = Math.hypot(L.x - d.x, L.z - d.z) - (llamaSize(L) - 0.5) * 0.4; if (q < bd && !fenceBetween(d.x, d.z, L.x, L.z)) { bd = q; best = L; } }
+  if (!best) return false;
+  const L = best, rx = L.x - d.x, rz = L.z - d.z, rl = Math.hypot(rx, rz) || 1;
+  if (L.rope || L.state === 'tug') {   // on a rope: it stands its ground
+    const px = d.pdx, pz = d.pdz; endLunge(d); knockDog(d, -px * 7, -pz * 7, 0.35, 'BOING!'); llamaFx('grump', L.x, L.z, llamaSize(L)); return true;
+  }
+  const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, llamaMass(L));
+  train(d, 'bonk', T.train.bonk);
+  launchLlama(L, d.pdx * P.speed * kb + rx / rl * P.radial, d.pdz * P.speed * kb + rz / rl * P.radial, (L.grown ? P.up : P.lambUp) * Math.sqrt(kb), 'punt', d).bounces = P.bounces;
+  endLunge(d); MV.punts++;
+  llamaFx('punt', L.x, L.z, llamaSize(L));
+  starBurst(L.x, L.y + 1, L.z, 7, undefined, { speed: 4, up: 3 }); burst(L.x, L.y + 0.3, L.z, 10, '#e8dcc0', { speed: 3, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
+  shakeCam(0.24); hitStop(0.055); rumble(d.player, 0.6, 0.5, 150);
+  return true;
+}
+// SHARED HOOK owner: L.air set → it's flying (llamaAirStep moves it), as a sheep
+function launchLlama(L, vx, vz, vy, kind, by = null) {
+  if (L.heldBy) { const d = L.heldBy; if (d.holding === L) { d.holding = null; d.holdKind = null; } L.heldBy = null; }
+  if (L.mate) { const o = L.mate; L.mate = null; if (o.mate === L) { o.mate = null; if (o.state === 'mate') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
+  if (L.state === 'mate' || L.state === 'court' || L.state === 'spit' || L.state === 'kush') L.state = L.tame === 2 ? 'guard' : 'graze';
+  L.hop = null; L.hopY = 0; L.kushK = 0; L.grazeK = 0;
+  L.air = { kind, by, h: Math.max(L.y, groundY(L.x, L.z)), vy, t: 0, spin: 0, bounces: 1, chain: 0, t0: G.time, ghost: 0, noLand: 0.05 };
+  L.vx = vx; L.vz = vz; L.pose = {};
+  return L.air;
+}
+function llamaAirStep(L, dt) {
+  const a = L.air, res = airStep(L, a, L.r, dt);
+  a.spin += dt * airSpin(a); L.y = a.h; L.leg += dt * 24;
+  const sp = Math.hypot(L.vx, L.vz);
+  if (sp > 0.5) L.yaw = lerpA(L.yaw, Math.atan2(L.vx, L.vz), Math.min(1, dt * 6));
+  if (a.h - groundY(L.x, L.z) < 1.8) airHits(L, a, sp);   // (it caroms sheep, bowls coyotes, knocks dogs over)
+  if (L.air !== a) return;
+  if (sp > 9 && Math.random() < dt * 18) burst(L.x, L.y + 0.9, L.z, 1, '#ffffff', { speed: 0.3, up: 0.2, size: 0.18, life: 0.4, grav: 0 });
+  if (res === 'water') {   // in the drink: it scrambles out
+    splashFx(L.x, L.z, 1.2); L.air = null; L.vx *= 0.2; L.vz *= 0.2;
+    for (let i = 0; i < 6 && sdfAt(L.x, L.z) < L.r; i++) collideWorld(L, L.r, SDF);
+    if (sdfAt(L.x, L.z) < L.r) unstick(L, L.r);
+    L.y = groundY(L.x, L.z); llamaLanded(L, a, 0); return;
+  }
+  if (res === 'ground') {
+    const impact = -a.vy; a.vy = 0;
+    if (a.bounces > 0 && impact > 3) {
+      a.bounces--; a.vy = impact * airBounce(a); L.vx *= T.bounceSide; L.vz *= T.bounceSide;
+      SFX.boing(panOf(L.x, L.z), 0.12, 1.1); burst(L.x, L.y + 0.15, L.z, 8, '#e8dcc0', { speed: 2.4, up: 1.2, size: 0.22, life: 0.6, grav: 0 });
+      L.pose = { landT: G.time, sq: Math.min(0.4, impact * 0.025) };
+    } else {
+      L.air = null; L.y = groundY(L.x, L.z); L.vx *= T.landKeep; L.vz *= T.landKeep;
+      if (sdfAt(L.x, L.z) < L.r) collideWorld(L, L.r, L.tame ? SWIM_SDF : SDF);
+      L.pose = { landT: G.time, sq: Math.min(0.42, 0.12 + impact * 0.02) };
+      SFX.thud(panOf(L.x, L.z), 0.32); burst(L.x, L.y + 0.15, L.z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 });
+      if (impact > 10) dizzy(L, 1.6, 2.1 * llamaSize(L));
+      llamaLanded(L, a, impact);
+    }
+  }
+}
+// down again: a wild one's off (spitting back at whoever did it, maybe); a guard shakes it off and sees to the flock
+function llamaLanded(L, a, impact) {
+  const by = a && a.by && G.dogs.includes(a.by) ? a.by : null;
+  if (!L.tame) { if (by && L.grown && L.spitCd <= 0 && Math.random() < 0.6) llamaSpitAt(L, by, 'dog'); else llamaFlee(L, by ? by.x : L.x - L.vx, by ? by.z : L.z - L.vz, T.llama.run); }
+  else if (L.tame === 2) { L.state = 'guard'; if (by && L.grown && L.spitCd <= 0 && Math.random() < 0.35) llamaSpitAt(L, by, 'dog'); }
+  else L.state = 'led';
+  llamaFx('grump', L.x, L.z, llamaSize(L));
+}
+// grabbed by the scruff: it rides at the jaws (holdStep), legs going; a grown wild one bucks free and spits
+const llamaGrabbable = L => !L.heldBy && !L.rope && !L.hop && L.state !== 'shear' && L.state !== 'tug' && !SEA_AWAY && !(L.air && L.air.h - groundY(L.x, L.z) > 1.8);
+function llamaGrabbed(L, d) {
+  const caught = !!L.air; L.air = null; L.heldBy = d; L.kushK = 0; L.grazeK = 0;
+  if (L.mate) { const o = L.mate; L.mate = null; if (o.mate === L) { o.mate = null; if (o.state === 'mate') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
+  if (L.state === 'mate' || L.state === 'court' || L.state === 'spit' || L.state === 'kush' || L.state === 'flee' || L.state === 'bolt') L.state = L.tame === 2 ? 'guard' : 'graze';
+  if (caught) { floatText('NICE CATCH!', L.x, L.y + 2.4, L.z, '#ffd36b', 1.5); starBurst(L.x, L.y + 1, L.z, 8); Sound.chime([0, 7, 12], 784, 0.16); }
+  else floatText('GOTCHA!', L.x, L.y + 2.2, L.z, '#ffffff', 1.1);
+  llamaFx('grump', L.x, L.z, llamaSize(L));
+}
+function updateHeldLlama(L, dt) {
+  const d = L.heldBy;
+  if (!d || d.holding !== L) { L.heldBy = null; return; }
+  const k = T.grabKinds[d.holdKind] || T.grabKinds.llama;
+  holdStep(d, L, k, L.r, dt);
+  L.y = groundY(L.x, L.z) + k.lift; L.yaw = d.yaw + Math.PI / 2; L.leg += dt * 22;
+  if (Math.random() < dt * 0.4) llamaFx('grump', L.x, L.z, llamaSize(L));
+  if (!L.tame && L.grown && d.holdT > T.llama.buck) {   // a wild one won't stand for it
+    const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+    releaseHold(d, false); knockDog(d, -fx * 10, -fz * 10, 0.5, 'BUCKED!'); L.spitCd = 0; llamaSpitAt(L, d, 'dog');
+  }
+}
+function llamaLetGo(L, d, fling) {
+  L.heldBy = null; const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), F = T.fling, kg = Math.sqrt(dogK(d, 'grip')), pan = panOf(d.x, d.z);
+  if (fling) {
+    const a = launchLlama(L, (d.vx * F.mul + fx * F.add) * kg * 0.85, (d.vz * F.mul + fz * F.add) * kg * 0.85, F.up * 0.9, 'fling', d);
+    a.ghost = 0.12; a.h = groundY(L.x, L.z) + 0.6;
+    SFX.whoosh(pan, 0.3); floatText('YEET!', L.x, L.y + 2.2, L.z, '#ffd36b', 1.3); MV.flings++;
+  } else { L.y = groundY(L.x, L.z); L.vx = d.vx * 0.5; L.vz = d.vz * 0.5; collideWorld(L, L.r, L.tame ? SWIM_SDF : SDF); L.pose = { landT: G.time, sq: 0.15 }; llamaLanded(L, null, 0); }
+}
+// llamas keep apart; sheep and dogs off them (a llama's the bigger: they give way)
+function llamaApart(dt) {
+  const N = LLAMAS.length, solid = L => !L.air && !L.heldBy && !L.hop && L.state !== 'mate';
+  for (let i = 0; i < N; i++) {
+    const A = LLAMAS[i]; if (!solid(A)) continue; const ra = 0.55 * llamaSize(A);
+    for (let j = i + 1; j < N; j++) {
+      const B = LLAMAS[j]; if (!solid(B) || A.mum === B || B.mum === A) continue;
+      const dx = B.x - A.x, dz = B.z - A.z, r = ra + 0.55 * llamaSize(B); if (!(Math.abs(dx) < r && Math.abs(dz) < r)) continue;
+      const d = Math.hypot(dx, dz); if (!(d < r && d > 1e-4)) continue; const k = (r - d) / d * 0.5;
+      if (A.state !== 'tug') { A.x -= dx * k; A.z -= dz * k; } if (B.state !== 'tug') { B.x += dx * k; B.z += dz * k; }
+    }
+    for (const s of G.sheep) {
+      if (s.dead || s.air || s.heldBy || s.grabbed || s.state === 'shear') continue;
+      const dx = s.x - A.x, dz = s.z - A.z, r = ra + (s.r || 0.5) * 0.85; if (!(Math.abs(dx) < r && Math.abs(dz) < r)) continue;
+      const d = Math.hypot(dx, dz); if (!(d < r && d > 1e-4)) continue; const k = (r - d) / d;
+      s.x += dx * k * 0.75; s.z += dz * k * 0.75; if (A.state !== 'tug') { A.x -= dx * k * 0.25; A.z -= dz * k * 0.25; }
+    }
+    for (const d of G.dogs) {
+      if (d.air || d.heldBy || d.holding === A || (A.rope && d.holding === A.rope)) continue;
+      const dx = d.x - A.x, dz = d.z - A.z, r = ra + T.dogR; if (!(Math.abs(dx) < r && Math.abs(dz) < r)) continue;
+      const dd = Math.hypot(dx, dz); if (!(dd < r && dd > 1e-4)) continue; const k = (r - dd) / dd;
+      d.x += dx * k * 0.8; d.z += dz * k * 0.8; if (A.state !== 'tug') { A.x -= dx * k * 0.2; A.z -= dz * k * 0.2; }
+    }
+  }
+}
+// ---------------- SHEARING (HANK): a guard, when there's no sheep to shear: by it, it stands, the fleece comes off ----------------
+const llamaShearable = L => LLAMAS.includes(L) && L.tame === 2 && L.grown && !L.heldBy && !L.air && !L.hop && !L.rope && !SEA_AWAY && ['guard', 'kush', 'shear'].includes(L.state);
+function llamaShearPick() {
+  const hk = HANK; let best = null, bs = -1e9;
+  for (const L of LLAMAS) {
+    if (!llamaShearable(L) || L.wool < T.llama.shear.min || (L.shearSkip || 0) > G.time || llamaFoe(L, T.llama.alarm)) continue;
+    const sc = L.wool - 0.01 * Math.hypot(L.x - hk.x, L.z - hk.z); if (sc > bs) { bs = sc; best = L; }
+  }
+  return best;
+}
+function llamaShearNext() { const L = llamaShearPick(); return L ? (HANK.goal = null, HANK.job = { L, s: null, pen: penAt(L.x, L.z), t: 0, on: false, k: 0, w0: 1, snipT: 0 }) : null; }
+function llamaShearGoal() {
+  const hk = HANK, j = hk.job, L = j.L, p = penAt(L.x, L.z);
+  if (j.on) return { x: hk.x, z: hk.z, stop: 9, noShy: true, pen: p, face: L };
+  const a = L.yaw + Math.PI / 2, r = 0.55 * llamaSize(L) + T.hankR + 0.2;
+  return { x: L.x + Math.sin(a) * r, z: L.z + Math.cos(a) * r, stop: 0.25, noShy: true, pen: p, face: L };
+}
+function llamaShearStep(dt) {
+  const hk = HANK, S = T.llama.shear, j = hk.job, L = j.L;
+  if (!shearCan() || !llamaShearable(L) || (!j.on && llamaFoe(L, T.llama.alarm))) { shearStop(); return; }
+  if (!j.on) {
+    if ((j.t += dt) > T.shear.giveUp * 2) { L.shearSkip = G.time + T.shear.skip; shearStop(); return; }
+    if (hk.climb || penAt(hk.x, hk.z) !== penAt(L.x, L.z) || Math.hypot(L.x - hk.x, L.z - hk.z) > 0.55 * llamaSize(L) + T.hankR + T.shear.reach + 0.4) return;
+    Object.assign(j, { on: true, k: 0, w0: L.wool }); hk.shearing = true; hk.goal = null;
+    L.state = 'shear'; L.vx = L.vz = 0; L.kushK = 0; L.grazeK = 0;
+    if (hk.shearDay !== G.clock.day) { hk.shearDay = G.clock.day; hank(null, "A llama's fleece! Hold still, lass."); }
+  }
+  hk.vx = hk.vz = 0; L.vx = L.vz = 0;
+  j.k = Math.min(1, j.k + dt / S.time); L.wool = j.w0 * (1 - j.k);
+  if ((j.snipT -= dt) <= 0) { j.snipT = 0.3; llamaFx('snip', L.x, L.z, L.coat); }
+  if (j.k < 1) return;
+  const n = Math.max(1, Math.round(S.yield * j.w0 * llamaSize(L) ** 2));
+  G.wool += n; L.wool = 0; L.state = 'guard';
+  floatText(`+${n} 🧶`, L.x, L.y + 2.3, L.z, '#fff8e8', 1.3); Sound.chime([0, 4, 7], 784, 0.12, 0.06);
+  shearStop();
+}
+// ---------------- sounds (each screen: LSND; the sim's go through llamaFx, relayed) ----------------
+const LSND = (() => {
+  const R = () => Sound.raw();
+  return {
+    hum(pan = 0, vol = 0.1, p = 1) {   // a soft nasal "mmm?"
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, dur = 0.55 + Math.random() * 0.35, f0 = 300 * p * (0.92 + Math.random() * 0.16), d = A.out(vol, pan);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1300 * p; f.Q.value = 2; f.connect(d);
+      const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.12); g.gain.setValueAtTime(0.8, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); g.connect(f);
+      for (const [m, ty, a] of [[1, 'triangle', 0.8], [2, 'sine', 0.35], [3.01, 'sine', 0.12]]) {
+        const o = ac.createOscillator(); o.type = ty; o.frequency.setValueAtTime(f0 * m * 0.94, t); o.frequency.linearRampToValueAtTime(f0 * m * 1.08, t + dur * 0.7); o.frequency.linearRampToValueAtTime(f0 * m, t + dur);
+        const v = ac.createOscillator(); v.frequency.value = 5.5; const vg = ac.createGain(); vg.gain.value = f0 * m * 0.012; v.connect(vg); vg.connect(o.frequency);
+        const og = ac.createGain(); og.gain.value = a; o.connect(og); og.connect(g); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
+      }
+    },
+    alarm(pan = 0, vol = 0.18, p = 1) {   // the alarm call: a high, braying "mwa-ha-ha-ha"
+      const A = R(); if (!A) return; const ac = A.ac, t0 = ac.currentTime, d = A.out(vol, pan);
+      const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1500 * p; f.Q.value = 1.6; f.connect(d);
+      for (let i = 0; i < 4; i++) {
+        const t = t0 + i * 0.17, b = (720 - i * 60) * p, o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(b * 0.8, t); o.frequency.exponentialRampToValueAtTime(b * 1.2, t + 0.04); o.frequency.exponentialRampToValueAtTime(b * 0.7, t + 0.15);
+        const g = ac.createGain(); A.env(g, t, 0.015, 0.8, 0.14); o.connect(g); g.connect(f); o.start(t); o.stop(t + 0.2);
+      }
+    },
+    spit(pan = 0, vol = 0.3) {   // a gurgle up, then "PTOO!"
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, d = A.out(vol, pan);
+      const n = ac.createBufferSource(); n.buffer = A.noiseBuf; const nf = ac.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.setValueAtTime(900, t); nf.frequency.exponentialRampToValueAtTime(2600, t + 0.08); nf.Q.value = 1.2;
+      const ng = ac.createGain(); A.env(ng, t, 0.005, 1, 0.14); n.connect(nf); nf.connect(ng); ng.connect(d); n.start(t, Math.random()); n.stop(t + 0.2);
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.09);
+      const og = ac.createGain(); A.env(og, t, 0.003, 0.9, 0.1); o.connect(og); og.connect(d); o.start(t); o.stop(t + 0.14);
+    },
+    gurgle(pan = 0, vol = 0.14) {   // winding up to spit (and the orgle, longer: n)
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, dur = 0.4, d = A.out(vol, pan);
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.linearRampToValueAtTime(150, t + dur);
+      const am = ac.createGain(); am.gain.value = 0.5; const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 18 + Math.random() * 8; const lg = ac.createGain(); lg.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700; const g = ac.createGain(); A.env(g, t, 0.04, 0.9, dur);
+      o.connect(am); am.connect(f); f.connect(g); g.connect(d); o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+    },
+    splat(pan = 0, vol = 0.22) {
+      const A = R(); if (!A) return; const ac = A.ac, t = ac.currentTime, d = A.out(vol, pan);
+      const n = ac.createBufferSource(); n.buffer = A.noiseBuf; const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(300, t + 0.15);
+      const g = ac.createGain(); A.env(g, t, 0.004, 1, 0.16); n.connect(f); f.connect(g); g.connect(d); n.start(t, Math.random()); n.stop(t + 0.2);
+    },
+  };
+})();
+// what it looks and sounds like (ONLINE: fxDef): x, z where; a: size (or a coat for 'snip')
+function llamaFx(kind, x, z, a = 1) {
+  const y = groundY(x, z), pan = panOf(x, z), near = Math.hypot(x - cam.x, z - cam.z) < 60;
+  if (kind === 'alarm') { if (near) LSND.alarm(pan, 0.16, 1.15 - 0.3 * a); floatText('❗', x, y + 2.6 * a, z, '#ffd36b', 1.2); }
+  else if (kind === 'wind') { if (near) LSND.gurgle(pan, 0.12); }
+  else if (kind === 'grump') { if (near) LSND.hum(pan, 0.12, 1.25 - 0.3 * a); }
+  else if (kind === 'punt') { SFX.boing(pan, 0.26); if (near) LSND.hum(pan, 0.16, 1.5 - 0.3 * a); floatText(pick(['BOING!', 'PUNT!', 'WHEEE!']), x, y + 2.2 * a, z, '#ffffff', 1.35); }
+  else if (kind === 'hop') { SFX.whoosh(pan, 0.12); burst(x, y + 0.1, z, 6, '#e8dcc0', { speed: 1.6, up: 1, size: 0.2, life: 0.5, grav: 0 }); }
+  else if (kind === 'orgle') { if (near) LSND.gurgle(pan, 0.08); if (Math.random() < 0.5) floatText('♥', x, y + 1.8, z, '#ff8fb8', 1); }
+  else if (kind === 'court') { if (near) LSND.hum(pan, 0.14, 0.9); floatText('♥', x, y + 2, z, '#ff8fb8', 1.2); }
+  else if (kind === 'mated') { confetti(x, y + 1.4, z, 12); floatText('💓', x, y + 2.2, z, '#ff8fb8', 1.3); }
+  else if (kind === 'born') { Sound.chime([0, 4, 7, 12], 784, 0.12, 0.08); floatText('🦙', x, y + 1.8, z, '#fff8e8', 1.5); burst(x, y + 0.8, z, 14, '#ff8fb8', { speed: 2, up: 3, size: 0.14, life: 1.2, grav: -3 }); if (near) LSND.hum(pan, 0.12, 1.5); }
+  else if (kind === 'roped') { floatText('🪢!', x, y + 2.6, z, '#ffd36b', 1.4); SFX.whoosh(pan, 0.25); if (near) LSND.alarm(pan, 0.16, 1); shakeCam(0.12); }
+  else if (kind === 'broken') { floatText('🦙 ♥', x, y + 2.6, z, '#ff8fb8', 1.6); confetti(x, y + 1.6, z, 24); Sound.chime([0, 4, 7, 12], 659, 0.14); }
+  else if (kind === 'bolt') { floatText('💨', x, y + 2.4, z, '#ffffff', 1.4); if (near) LSND.alarm(pan, 0.2, 1.1); burst(x, y + 0.2, z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 }); }
+  else if (kind === 'join') { floatText('🛡 🐑', x, y + 2.8, z, '#7ed957', 1.5); Sound.chime([0, 5, 9, 12], 523, 0.16, 0.1); spawnRing(x, y, z, 4, '#7ed957', 0.6); }
+  else if (kind === 'snip') { const c = LLAMA_COATS[a] || LLAMA_COATS[0]; burst(x, y + 1.1, z, 4, c[0], { speed: 1.6, up: 2.2, size: 0.18, life: 0.9, grav: -3 }); SFX.snip(pan); }
+}
+// SPIT: a glob from its mouth to (x1, y1, z1) in T s, a splat (ONLINE: fxDef: every screen flies its own)
+let SPIT_GEO = null;   // (made on first use: nothing new at load, so seeded runs roll the same dice with llamas off)
+const spitGeo = () => SPIT_GEO || (SPIT_GEO = merge(P(SPH(7), '#e6f2c8', { s: [0.1, 0.09, 0.12] }), P(SPH(6), '#9cc46a', { s: [0.065, 0.055, 0.07], p: [0.035, 0.025, -0.03] }), P(SPH(5), '#bcdc8a', { s: [0.04, 0.04, 0.05], p: [-0.04, -0.02, -0.07] })));
+const SPITS = [];
+function spitFx(x0, y0, z0, x1, y1, z1, T0) {
+  let S = SPITS.find(o => !o.on);
+  if (!S) { S = { m: part(scene, spitGeo(), { shadow: false }) }; seaKeep(S.m); SPITS.push(S); }
+  Object.assign(S, { on: true, x0, y0, z0, x1, y1, z1, t: 0, T: T0 }); S.m.visible = true; S.m.position.set(x0, y0, z0);
+  LSND.spit(panOf(x0, z0), 0.3); floatText('PTOO!', x0, y0 + 0.5, z0, '#b8e36b', 1.25);
+}
+function syncSpits(dt) {
+  for (const S of SPITS) {
+    if (!S.on) continue; S.t += dt; const u = Math.min(1, S.t / S.T);
+    S.m.position.set(lerp(S.x0, S.x1, u), lerp(S.y0, S.y1, u) + Math.sin(u * Math.PI) * 0.8, lerp(S.z0, S.z1, u)); S.m.rotation.set(S.t * 9, S.t * 7, 0);
+    if (u >= 1) {
+      S.on = false; S.m.visible = false; LSND.splat(panOf(S.x1, S.z1), 0.22);
+      for (const c of ['#e6f2c8', '#9cc46a', '#bcdc8a']) burst(S.x1, S.y1, S.z1, 5, c, { speed: 2.4, up: 1.6, size: 0.12, life: 0.7, grav: -8 });
+    }
+  }
+}
+// ---------------- its model: a woolly barrel, a long woolly neck, banana ears, a fluffy topknot, big lashy eyes, a split-lip smile;
+// two-toed padded feet. Fleece (FUR shells) on the barrel and neck, short hair on the face and legs. Built per coat, shared ----------------
+const LLAMA_GEO = new Map(), LLAMA_FUR = { len: 0.055, dens: 22, curl: false }, LLAMA_FUR_NECK = { len: 0.045, dens: 26, curl: false };
+const llShade = (hex, k) => '#' + new THREE.Color(hex).multiplyScalar(k).getHexString();
+function llamaGeo(ci) {
+  if (LLAMA_GEO.has(ci)) return LLAMA_GEO.get(ci);
+  const [wool, face, mark = face, pat] = LLAMA_COATS[ci], rng = mulberry32(9137 + ci * 77), dark = '#2e2420', toe = '#3a2e27';
+  const woolAt = (x, y, z) => pat === 'paint' && (Math.sin(x * 9 + z * 5 + ci) + Math.cos(z * 7 - y * 6)) > 0.7 ? mark : wool;
+  const fp = [P(SPH(14), wool, { s: [0.36, 0.36, 0.6] })];
+  for (let i = 0; i < 18; i++) {   // locks: a lumpy, soft fleece
+    const a = rng() * TAU, b = (rng() - 0.3) * 1.25, r = 0.13 + rng() * 0.08, x = Math.cos(a) * Math.cos(b) * 0.29, y = Math.sin(b) * 0.27 + 0.02, z = Math.sin(a) * Math.cos(b) * 0.5;
+    fp.push(P(SPH(8), woolAt(x, y, z), { s: [r, r * 0.9, r * 1.15], p: [x, y, z] }));
+  }
+  for (let i = 0; i < 6; i++) { const z = lerp(-0.42, 0.36, i / 5), sd = i % 2 ? 1 : -1; fp.push(P(SPH(7), wool, { s: [0.1, 0.12, 0.13], p: [sd * 0.16, -0.27, z] })); }   // the belly's fringe
+  if (pat === 'spots') for (let i = 0; i < 16; i++) { const a = rng() * TAU, b = (rng() - 0.1) * 1.1; fp.push(P(SPH(6), mark, { s: [0.06, 0.05, 0.07], p: [Math.cos(a) * Math.cos(b) * 0.355, Math.sin(b) * 0.34 + 0.02, Math.sin(a) * Math.cos(b) * 0.585] })); }
+  const neck = merge(P(CYL(0.145, 0.2, 0.8, 12), wool, { p: [0, 0.36, 0.02] }), P(SPH(10), wool, { s: [0.21, 0.18, 0.23], p: [0, 0.0, 0] }), P(SPH(10), wool, { s: [0.155, 0.14, 0.165], p: [0, 0.74, 0.02] }),
+    ...[0.15, 0.32, 0.5].map((y, i) => P(SPH(7), woolAt(0.1, y, 0.1 * i), { s: [0.12, 0.1, 0.12], p: [(i % 2 ? 1 : -1) * 0.07, y, 0.08] })));
+  const head = merge(
+    P(SPH(12), face, { s: [0.13, 0.14, 0.15] }), P(SPH(10), face, { s: [0.088, 0.088, 0.15], p: [0, -0.045, 0.15] }),
+    P(SPH(8), llShade(face, 0.82), { s: [0.07, 0.056, 0.04], p: [0, -0.03, 0.282] }),   // the nose
+    P(BOX(0.007, 0.045, 0.02), dark, { p: [0, -0.075, 0.296] }), P(new THREE.TorusGeometry(0.036, 0.0075, 4, 10, Math.PI), dark, { r: [0, 0, Math.PI], p: [0, -0.078, 0.286] }),   // the split lip, a smile
+    ...[-1, 1].map(sd => P(SPH(5), dark, { s: [0.013, 0.006, 0.008], r: [0, 0, sd * 0.6], p: [sd * 0.03, -0.012, 0.302] })),   // nostrils (slits)
+    ...[[0, 0.13, 0.02, 0.085], [0.06, 0.115, -0.02, 0.07], [-0.06, 0.115, -0.02, 0.07], [0, 0.16, -0.05, 0.075], [0, 0.115, 0.075, 0.055]].map(([x, y, z, r]) => P(SPH(8), wool, { s: [r, r * 0.85, r], p: [x, y, z] })));   // the topknot
+  const eyes = merge(...[-1, 1].flatMap(sd => [
+    P(SPH(10), '#1d1612', { s: [0.05, 0.06, 0.04], p: [sd * 0.09, 0.02, 0.1] }), P(SPH(6), '#ffffff', { s: [0.017, 0.02, 0.012], p: [sd * 0.1, 0.045, 0.13] }), P(SPH(5), '#ffffff', { s: [0.008, 0.009, 0.006], p: [sd * 0.115, 0.004, 0.128] }),
+    ...[0, 1, 2].map(k => P(BOX(0.006, 0.034, 0.006), dark, { r: [0.3, 0, sd * (0.25 + k * 0.4)], p: [sd * (0.072 + k * 0.018), 0.078 - k * 0.008, 0.112] }))]));
+  const ear = sd => merge(P(SPH(8), face, { s: [0.036, 0.12, 0.03], p: [0, 0.1, 0] }), P(SPH(7), face, { s: [0.03, 0.065, 0.028], r: [0, 0, sd * 0.55], p: [-sd * 0.028, 0.21, 0] }),
+    P(SPH(6), llShade(face, 0.72), { s: [0.016, 0.085, 0.01], p: [0, 0.11, 0.022] }));
+  const leg = merge(P(CYL(0.1, 0.072, 0.36, 8), wool, { p: [0, -0.14, 0] }), P(CYL(0.05, 0.044, 0.52, 7), face, { p: [0, -0.56, 0] }), P(SPH(6), face, { s: [0.058, 0.05, 0.058], p: [0, -0.34, 0.01] }),
+    ...[-1, 1].flatMap(sd => [P(SPH(6), toe, { s: [0.032, 0.026, 0.06], p: [sd * 0.026, -0.835, 0.03] }), P(CONE(0.018, 0.04, 5), '#5a4a3c', { r: [Math.PI / 2, 0, 0], p: [sd * 0.026, -0.84, 0.09] })]));
+  const tail = merge(P(SPH(8), wool, { s: [0.075, 0.12, 0.1], p: [0, 0.05, -0.03] }), P(SPH(7), wool, { s: [0.06, 0.08, 0.07], p: [0, 0.14, -0.06] }));
+  const g = { fleece: merge(...fp), core: P(SPH(12), llShade(wool, 0.9), { s: [0.27, 0.28, 0.52] }), neck, head, eyes, earL: ear(-1), earR: ear(1), leg, tail };
+  LLAMA_GEO.set(ci, g); return g;
+}
+let LLAMA_HALTER = null;   // (first use)
+const llamaHalterGeo = () => LLAMA_HALTER || (LLAMA_HALTER = (() => { const c = '#d23a2e', m = '#d9dee4';
+  return merge(P(new THREE.TorusGeometry(0.094, 0.011, 5, 16), c, { s: [1, 0.95, 1], p: [0, -0.045, 0.2] }), P(new THREE.TorusGeometry(0.142, 0.011, 5, 18), c, { r: [-0.55, 0, 0], p: [0, 0.0, -0.03] }),
+    ...[-1, 1].map(sd => P(BOX(0.01, 0.01, 0.2), c, { r: [0.45, 0, 0], p: [sd * 0.1, -0.03, 0.08] })), P(new THREE.TorusGeometry(0.022, 0.006, 5, 10), m, { p: [0, -0.135, 0.15] })); })());
+function llamaTasselGeo(L) { const r = mulberry32(L.look), c = () => LLAMA_TASSELS[Math.floor(r() * LLAMA_TASSELS.length)];
+  return [-1, 1].map(() => merge(P(SPH(6), c(), { s: [0.034, 0.034, 0.034], p: [0, 0.07, 0.032] }), P(SPH(6), c(), { s: [0.03, 0.03, 0.03], p: [0, 0.12, 0.034] }), P(CYL(0.008, 0.008, 0.13, 4), c(), { p: [0, 0.02, 0.04] }), P(SPH(5), c(), { s: [0.026, 0.026, 0.026], p: [0, -0.05, 0.04] }))); }
+function llamaModel(L) {
+  const Gm = llamaGeo(L.coat % LLAMA_COATS.length), add = (par, geo, mat = MAT.vc) => part(par, geo, { mat });
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body); root.rotation.order = 'YXZ';
+  add(body, Gm.core).position.set(0, 1.0, -0.02);
+  const fleece = new THREE.Group(); fleece.position.set(0, 1.0, -0.02); body.add(fleece); furCoat(add, fleece, Gm.fleece, LLAMA_FUR);
+  const tail = new THREE.Group(); tail.position.set(0, 1.14, -0.6); tail.rotation.x = -0.5; body.add(tail); furCoat(add, tail, Gm.tail, LLAMA_FUR_NECK);
+  const neck = new THREE.Group(); neck.position.set(0, 1.12, 0.4); body.add(neck); furCoat(add, neck, Gm.neck, LLAMA_FUR_NECK);
+  const head = new THREE.Group(); head.position.set(0, 0.8, 0.05); neck.add(head); const hs = new THREE.Group(); hs.scale.setScalar(1.15); head.add(hs); add(hs, Gm.head);
+  const eyes = part(hs, Gm.eyes, { outline: false, shadow: false });
+  const ears = [-1, 1].map(sd => { const e = new THREE.Group(); e.position.set(sd * 0.066, 0.1, -0.035); e.rotation.order = 'ZXY'; hs.add(e); add(e, sd < 0 ? Gm.earL : Gm.earR); return e; });
+  const halter = part(hs, llamaHalterGeo(), { shadow: false }); halter.visible = false;
+  const tg = llamaTasselGeo(L), tassels = ears.map((e, i) => { const m = part(e, tg[i], { outline: false, shadow: false }); m.visible = false; return m; });
+  const legs = [[0.15, 0.86, 0.34], [-0.15, 0.86, 0.34], [0.15, 0.88, -0.38], [-0.15, 0.88, -0.38]].map(h => { const g = new THREE.Group(); g.position.set(h[0], h[1], h[2]); body.add(g); add(g, Gm.leg); return g; });
+  scene.add(root);
+  L.models = { root, body, fleece, tail, neck, head, eyes, ears, halter, tassels, legs, blinkT: Math.random() * 4, earT: 0, humT: 3 + Math.random() * 10 };
+  if (L.tame) llamaKeep(L, true);
+  return L.models;
+}
+// ---------------- drawing (every screen) ----------------
+const _lq = new THREE.Vector3();
+function syncLlamas(dt) {
+  syncSpits(dt);
+  const t = G.time;
+  for (const L of LLAMAS) {
+    const M = L.models; if (!M) continue;
+    const on = (!SEA_AWAY || L.tame === 2) && Math.abs(L.x - cam.x) + Math.abs(L.z - cam.z) < cam.view * 2.6 + 30; M.root.visible = on; if (!on) continue;
+    const k = llamaSize(L), st = L.state, sp = Math.hypot(L.vx, L.vz), lift = L.air || L.heldBy;
+    // the pose: flying (somersaults), held (swings from the jaws), hopping, landing squash
+    let rx = 0, rz = 0, sy = 1, sxz = 1;
+    if (L.air) { const a = L.air; rx = a.kind === 'punt' || a.kind === 'launch' || a.kind === 'tumble' ? -(a.spin || 0) : Math.sin((a.spin || 0) * 3) * 0.25; rz = a.kind === 'carom' || a.kind === 'fling' ? (a.spin || 0) * 0.6 : 0; }
+    else if (L.heldBy) { const w = L.heldBy.cw; rz = 0.2 + Math.sin(t * 14 + L.id) * 0.15 - (w ? w.p : 0); rx = -(w ? w.r : 0); }
+    if (L.pose && L.pose.landT !== undefined) { const q = (t - L.pose.landT) / 0.35; if (q < 1) { const a = (L.pose.sq || 0.2) * (1 - q) * Math.cos(q * Math.PI * 2.5); sy = 1 - a; sxz = 1 + a * 0.6; } }
+    const y = (L.air ? L.y : L.y ?? groundY(L.x, L.z)) + (L.hopY || 0), c = (L.heldBy ? 1.5 : 1.0) * k;
+    M.root.position.set(L.x, y, L.z); M.root.scale.set(k * sxz, k * sy, k * sxz);
+    M.root.quaternion.setFromEuler(_ce.set(rx, L.yaw, rz, 'YXZ'));
+    if (rx || rz) { _lq.set(0, c, 0).applyQuaternion(M.root.quaternion); M.root.position.x -= _lq.x; M.root.position.y += c - _lq.y; M.root.position.z -= _lq.z; }
+    // walking (llamas pace: a side's legs together), kushed, grazing, the neck and head
+    const lie = lift ? 0 : L.kushK || 0, run = lift ? 1 : clamp(sp / 3, 0, 1.4), tug = st === 'tug' && L.rope;
+    L.leg = (L.leg || 0) + dt * (lift ? 0 : sp * 2.6 / Math.max(0.5, k));
+    M.body.position.y = -0.56 * lie; M.body.rotation.x = tug ? (L.tugK > 0.4 ? -0.28 : 0.1) + Math.sin(t * 9) * 0.04 : st === 'spit' ? -0.06 : 0;
+    M.legs.forEach((g, i) => {
+      const fold = (i < 2 ? 1.5 : -1.5) * lie, side = i % 2 ? Math.PI : 0;
+      g.rotation.x = lift ? Math.sin(t * 26 + i * 1.7) * 0.8 : fold + (1 - lie) * Math.sin(L.leg + side) * 0.5 * Math.min(1, run);
+    });
+    const graze = (L.grazeK || 0) * (1 - lie), spitK = st === 'spit' ? clamp(L.t / T.llama.spit.wind, 0, 1) : 0, up = st === 'flee' || st === 'bolt' || st === 'spit' ? 1 : 0;
+    M.neck.rotation.x = lerp(0.12, 1.95, graze) - 0.15 * up + Math.sin(L.leg * 2) * 0.04 * Math.min(1, run) + (tug ? 0.35 : 0) - 0.2 * lie + (lift ? -0.4 : 0);
+    M.head.rotation.x = lerp(-0.12, -0.75, graze) - 0.3 * spitK + (graze > 0.5 ? Math.sin(t * 7 + L.id) * 0.05 : 0) + 0.15 * lie;
+    M.head.rotation.y = !graze && !tug && !spitK ? Math.sin(t * 0.37 + L.id * 1.7) * 0.35 * (st === 'guard' || st === 'kush' || st === 'graze' ? 1 : 0.2) : 0;
+    M.head.rotation.z = graze > 0.3 || st === 'kush' ? Math.sin(t * 8 + L.id) * 0.04 : 0;   // chewing (the cud)
+    M.head.scale.set(1 + 0.18 * spitK, 1, 1 + 0.06 * spitK);   // cheeks puffed
+    const angry = spitK > 0 || tug || st === 'flee' || st === 'bolt' || lift || (L.alarmAt && L.alarmAt - G.time > 12);
+    if ((M.earT -= dt) <= 0) M.earT = 1 + Math.random() * 3;
+    M.ears.forEach((e, i) => { const tw = M.earT < 0.15 ? Math.sin(M.earT * 40) * 0.3 : 0; e.rotation.x = lerp(e.rotation.x, angry ? -1.15 : -0.05 + tw, Math.min(1, dt * 10)); e.rotation.z = (i ? -1 : 1) * (angry ? 0.3 : 0.16); });
+    if ((M.blinkT -= dt) <= 0) M.blinkT = 2 + Math.random() * 4; M.eyes.scale.y = M.blinkT < 0.12 ? 0.15 : 1;
+    M.tail.rotation.x = -0.5 - (up || tug ? 0.5 : 0) + Math.sin(t * 3 + L.id) * 0.05;
+    M.fleece.scale.setScalar(lerp(0.76, 1, clamp(L.wool, 0, 1))); M.tail.scale.setScalar(lerp(0.7, 1, clamp(L.wool, 0, 1)));
+    M.halter.visible = L.tame > 0 || !!L.rope; M.tassels[0].visible = M.tassels[1].visible = L.tame === 2;
+    if (st === 'shear' && Math.random() < dt * 3) burst(L.x, y + 1.1 * k, L.z, 1, LLAMA_COATS[L.coat % LLAMA_COATS.length][0], { speed: 1.2, up: 1.5, size: 0.16, life: 0.8, grav: -3 });
+    if (L.preg > 0 && st === 'kush' && Math.random() < dt * 0.05) floatText('♥', L.x, y + 1.8 * k, L.z, '#ff8fb8', 0.9);
+    if ((M.humT -= dt) <= 0) { M.humT = 6 + Math.random() * 14; if (G.mode === 'play' && Math.hypot(L.x - cam.x, L.z - cam.z) < 26 && !lift) LSND.hum(panOf(L.x, L.z), 0.07, k < 0.8 ? 1.5 : L.sex === 'm' ? 0.85 : 1); }
+  }
+}
+// ONLINE: a guest's llama, from the host's snapshot; and every frame between them
+function netGuestLlama(id, f) {
+  const L = makeLlama({ x: f.x || 0, z: f.z || 0, sex: f.sex || 'f', age: f.age || 3, coat: f.coat || 0, look: f.look || 1, tame: f.tame || 0, yaw: f.yaw || 0 });
+  L.nid = id; return L;
+}
+function netAnimLlama(L, dt) {
+  const lifted = L.air || L.heldBy;
+  L.y = (lifted ? groundY(L.x, L.z) + (L.lift || 0) : groundY(L.x, L.z));
+  if (L.air) { L.air.spin = L.airSpin || 0; L.air.vy = L.vlift || 0; }
+  const lie = L.state === 'kush' || L.state === 'mate'; L.kushK = clamp((L.kushK || 0) + (lie ? dt * 1.5 : -dt * 2.5), 0, 1);
+  const gz = L.state === 'graze' && Math.hypot(L.vx, L.vz) < 0.3; L.grazeK = clamp((L.grazeK || 0) + (gz ? dt * 1.5 : -dt * 2.5), 0, 1);
+  if (L.state !== L._st) { L._st = L.state; L.t = 0; } else L.t += dt;
+  llamaKeep(L, L.tame === 2);
+}
+function netLlamaRope(L, v) {
+  const R = v >= 0 ? ROPES[v] || null : null;
+  if (L.rope && L.rope !== R && L.rope.llama === L) L.rope.llama = null;
+  L.rope = R; if (R) R.llama = L;
+}
+function llamaWipe() { for (const L of [...LLAMAS]) llamaRemove(L); }   // (ONLINE: a guest forgets its own; the host's come next)
+// the map: guards always, wild ones where a dog's been (MAP)
+function mapLlamas(c, u, on, seen) {
+  for (const L of LLAMAS) {
+    if (L.tame !== 2 && !seen(L.x, L.z)) continue; if (SEA_AWAY && L.tame !== 2) continue;
+    const q = mapPt(L.x, L.z); if (!on(q)) continue;
+    drawArt(c, 'llama', q[0], q[1], (L.tame === 2 ? 10 : 8) * u * (L.grown ? 1 : 0.75));
+  }
+}
+// dev (?debug): a wild herd by the first dog; with one there, a guard
+function devLlama() {
+  const d = G.dogs[0]; if (!d) return;
+  const wild = LLAMAS.filter(L => !L.tame && Math.hypot(L.x - d.x, L.z - d.z) < 20);
+  if (wild.length) { const L = wild.find(o => o.grown) || wild[0]; llamaUnrope(L); L.tame = 1; llamaJoin(L); return; }
+  const H = { id: LLAMA.herds.length, x: d.x + 8, z: d.z + 8, s: sAt(d.x, d.z) }; LLAMA.herds.push(H);
+  makeLlama({ x: H.x, z: H.z, sex: 'm', age: 5, herd: H }); makeLlama({ x: H.x + 1.5, z: H.z, sex: 'f', age: 4, herd: H }); makeLlama({ x: H.x, z: H.z + 1.5, sex: 'f', age: 4, herd: H });
+}
+resetLlamas();
+onReset(() => resetLlamas(), 175);   // LLAMAS: new herds, no guards
+onSync(syncLlamas, 55);   // LLAMAS: and their spit
+expose(() => ({ LLAMAS, LLAMA, LLAMA_COATS, makeLlama, llamaRemove, resetLlamas, llamaPlan, llamaSpotOK, updateLlamas, llamaStep, llamaMateFor, llamaBirth, llamaCatch, llamaRope,
+  llamaUnrope, llamaTugEnd, llamaJoin, llamaFoe, llamaSpitAt, llamaSpitHit, llamaBark, llamaPounce, launchLlama, llamaGrabbed, llamaLetGo, llamaGrabbable, llamaShearPick, llamaShearNext,
+  llamasAboard, llamaDeckSpot, llamaNeck, llamaSize, syncLlamas, devLlama, llamaFx, spitFx, newCoyote }));   // LLAMAS
+
+// =====================================================================
 // SAILING — a boat under sail, the flock on deck (issue #74). The deck is a pen (DECK) and never moves in the world: the sea goes by
 // under it. She lies alongside at Cold Harbour, below the pass (HARB: real land, down a road from the summit), till she casts off; from
 // then on the land's carried off with the sea (LAND under seaG) and everything alive is aboard or in the water (SEA_AWAY).
@@ -20228,6 +21172,7 @@ function seaCastOff(force = false) {
   if (!from) seaLandOff();   // Cold Harbour: the land's left behind, and whoever wasn't brought down with it
   else isleShow(from, false);
   S.docked = false; QUAY.on = false; ISLE = null; SEA_AWAY = true; resetGate(DECK); DECK.lock = true; S.moorOff = from; S.near = false;
+  llamasAboard();   // LLAMAS: every guard leaps aboard
   S.aweighT = T.sea.anchor.lock; st.free = false;   // (the stick's still up: no drop by accident)
   for (const d of G.dogs) {   // (a dog in the gangway: in)
     if (d.air || onDeck(d.x, d.z)) continue;
@@ -21877,6 +22822,7 @@ function seaStart(o = {}) {
     else { seaMoored(); banner(w.name, `⛵ ➜ ${nx.icon} ${nx.name}`); setTimeout(() => hint('sea-start'), 1500); }
   }
   vagSeaStart();   // VAGABOND: waiting on the quay with his Laser (or out there with her)
+  if (!dock) llamasAboard(); else if (o.place) for (const L of LLAMAS) if (L.tame === 2) llamaPlace(L, HARB.pts[1].x, HARB.pts[1].z);   // LLAMAS: the guards with the flock
   seaCamReset(); updateCamera(0, true);
   return true;
 }
@@ -22189,6 +23135,12 @@ const NET_TYPES = {
     fields: { pts: { c: 's', get: R => ropeEnc(R), set: (R, v) => ropeDec(R, v) },
       tug: { c: 'j', get: R => R.tug ? R.tug.net : null, set: (R, v) => { R.tug = v && typeof v === 'object' ? Object.assign({ off: 0, net: v }, v) : null; } } },
   },
+  llama: {   // LLAMAS: where, what it's at; its sex, age (size), coat, fleece; ours (1 led, 2 a guard); on a rope (which, where), held, flying
+    tag: 'l', all: () => LLAMAS, id: L => L.nid || (L.nid = ++NET.nid),
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', sex: 's', age: .01, coat: 'i', look: 'i', wool: .02, tame: 'i', hopY: .02, tugK: .05,
+      rp: { c: 'i', get: L => L.rope ? L.rope.i : -1, set: (L, v) => netLlamaRope(L, v) }, ropeI: 'i', heldBy: '@dog', ...NET_AIR },
+    make: (id, f) => netGuestLlama(id, f), kill: L => llamaRemove(L), animate: (L, dt) => netAnimLlama(L, dt),
+  },
   bone: {   // BONES: where each lies (or flies, how high, tumbling), which dog has it
     tag: 'O', all: () => BONES, id: b => b.nid || (b.nid = ++NET.nid),
     fields: { x: 'p', z: 'p', h: .02, rot: 'a', roll: 'a', by: '@dog', stick: 'b',   // (VAGABOND: a stick)
@@ -22453,6 +23405,7 @@ function netRefStr(v) {
   const pi = pens.indexOf(v); if (pi >= 0) return 'p' + pi;
   if (G.dogs.includes(v)) return 'd' + v.player.slot;
   if (v === VAG) return 'V0';   // VAGABOND: by his coat
+  if (v.isLlama) return 'l' + NET_TYPES.llama.id(v);   // LLAMAS: by the scruff
   return null;
 }
 function netRefFind(v) { if (!v || typeof v !== 'string') return null; const T = NET_TAGS[v[0]]; return T ? netFind(T, +v.slice(1)) : null; }
@@ -22771,6 +23724,7 @@ function netKindOf(h) {   // one a line
     : h.isStation ? 'station'
     : h.isRing ? (h.st === 'held' ? 'ring' : 'ringRope')
     : h === VAG ? 'vag'
+    : h.isLlama ? (h.age >= T.llama.adultDays ? 'llama' : 'cria')   // LLAMAS
     : '';
 }
 function netPredOK(d) { return G.mode === 'play' && !G.paused && !menuUp() && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide && !(d.holding && (d.holding.isStation || d.holding.isRing && d.holding.st !== 'held')); }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding; SAILING: at a station, hauling a ring's line)
@@ -22784,6 +23738,7 @@ function netPredPick(d) {   // what tryGrab would bite
     const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0); if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; o = s; }
   }
   for (const e of G.dogs) { if (!grabbableDog(e, d)) continue; const dd = Math.hypot(e.x - mx, e.z - mz) - (e.air ? 0.5 : 0); if (dd < bd && !fenceBetween(d.x, d.z, e.x, e.z)) { bd = dd; o = e; } }
+  for (const L of LLAMAS) { if (!llamaGrabbable(L)) continue; const dd = Math.hypot(L.x - mx, L.z - mz) - (L.air ? 0.5 : 0.25) * llamaSize(L); if (dd < bd && !fenceBetween(d.x, d.z, L.x, L.z)) { bd = dd; o = L; } }   // LLAMAS
   for (const p of pens) {
     if (p.lock || Math.abs(p.hinge.x - d.x) > 9 || Math.abs(p.hinge.z - d.z) > 9) continue;
     const q = distSeg(mx, mz, p.gateSeg), r = q.t * p.gateLen; if (r < 0.8 || q.d > 1.3) continue;
@@ -23350,6 +24305,7 @@ function netGuestWipe() {
   for (const c of G.coyotes) scene.remove(c.models.root);
   for (const g of G.graves) scene.remove(g.root);
   for (const b of [...BONES]) killBone(b);   // (BONES: the host's come next; this screen's own are kept on this device)
+  llamaWipe();   // LLAMAS: the host's come next
   G.dogs = []; G.players = []; G.sheep = []; G.coyotes = []; G.packs = []; G.graves = []; resetBurrows();   // (BURROWS: the host's come next)
   particles.length = 0; floats.length = 0; poopClear();
   for (const T of NET_LIST) if (T.make) NET.ids[T.tag] = new Map();
@@ -23651,6 +24607,7 @@ wallWobFx = fxDef('wallWobFx', wallWobFx); caveFx = fxDef('caveFx', caveFx); yet
 hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx); gateOpenFx = fxDef('gateOpenFx', gateOpenFx);   // (ICE GATE: a lane through)
 waterFx = fxDef('waterFx', waterFx);
 ropeFx = fxDef('ropeFx', ropeFx);
+llamaFx = fxDef('llamaFx', llamaFx); spitFx = fxDef('spitFx', spitFx);   // LLAMAS: calls, hums, hops, a cria; spit flying
 boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won
 idleFx = fxDef('idleFx', idleFx);                                    // IDLE: a poop, a pee, dizzy from its tail, 💤
 treeFx = fxDef('treeFx', treeFx);                                    // APPLES: a tree shaken                                 // WATER: picking up, filling, tipping a bucket
@@ -23732,6 +24689,7 @@ function step(dt) {
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b || a.heldBy === b || b.heldBy === a) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     if (SEA.on) seaStep(dt, dtH); else seaWake();   // SAILING: wind, waves, the boat, her stations, what's out there (till then: has the flock come down to her?)
     updateSheep(dt, dtH);
+    updateLlamas(dt, dtH);   // LLAMAS: herds, courting, crias; ropes brought up; guards and their spit
     if (!SEA.on) {   // (nothing of the land's comes to sea, or down to the harbour)
     updateCoyotes(dt);
     updateBurrows(dt);     // BURROWS: dogs filling them in
@@ -23871,6 +24829,7 @@ const DEV_CHEATS = [
   { code: 'KeyN', key: 'N', icon: '🕯', tip: 'Dusk', fn: () => { G.clock.hour = 19.9; } },
   { code: 'KeyB', key: 'B', icon: '🌅', tip: 'Dawn', fn: () => { G.clock.hour = 5.9; } },   // (M is the map)
   { code: 'KeyK', key: 'K', icon: '🐺', tip: 'A coyote', land: true, fn: () => spawnCoyotes(1) },
+  { code: 'Backslash', key: '\\', icon: '🦙', tip: 'Llamas here (again: one a guard)', land: true, fn: () => devLlama() },   // LLAMAS
   { code: 'KeyX', key: 'X', icon: '🕳', tip: 'Coyotes dig into a pen', land: true, fn: () => devBurrow() },   // BURROWS
   { code: 'KeyJ', key: 'J', icon: '🐆', tip: 'A cougar hunts', land: true, fn: () => { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } } },   // COUGARS
   { code: 'KeyV', key: 'V', icon: '🦅', tip: 'A falcon comes', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); } },   // FALCON
