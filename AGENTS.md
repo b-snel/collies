@@ -203,6 +203,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
+- **Shared stores** (`STORE`, `shareStores`, `storeReset`): food, water and salt are one pool each across every pen ashore
+  (not the deck). Put in or eaten anywhere: the pool; each pen shows as much as it holds. Start: the most any pen had.
 - **Salt** (`s.salt`) runs down slowly (~8 days); out too long = death. Camp
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
