@@ -108,11 +108,14 @@ try {
   check('the guest\'s stick up: its dog runs up the guest\'s screen (its camera\'s way)', mv.sp > 2 && mv.dot > 0.9, { ...mv, dot: r2(mv.dot), sp: r2(mv.sp) });
 
   // ---------------------------------------------------------------- a sheep overboard, a life ring thrown to it
-  await A.page.evaluate(() => {
-    const { G, SEA, boatXZ, seaOverRail } = GAME; SEA.u = 0.3; SEA.hoist = 0; SEA.pilot = null;
-    const s = G.sheep.find(s => !s.dead && !s.air); const q = boatXZ(-5.4, 3); s.x = q.x; s.z = q.z; seaOverRail(s, 1, 5, 4, 'test'); window.__s = s;
-  });
-  await sleep(2500);
+  for (let k = 0; k < 3; k++) {   // (one over the starboard rail; again if it didn't make it)
+    await A.page.evaluate(() => {
+      const { G, SEA, boatXZ, seaOverRail, onDeck } = GAME; SEA.u = 0.3; SEA.hoist = 0; SEA.pilot = null;
+      const s = G.sheep.find(s => !s.dead && !s.air && !s.lamb && !s.heldBy && !s.grabbed && onDeck(s.x, s.z)); const q = boatXZ(-5.4, 3); s.x = q.x; s.z = q.z; s.vx = s.vz = 0; seaOverRail(s, 1, 5, 4, 'test'); window.__s = s;
+    });
+    if (await until(A, () => { const s = window.__s; return s.air && s.air.sea; }, null, 4000).then(() => true, () => false)) break;
+  }
+  await sleep(1200);
   const over = await B.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.dead && s.air && s.air.sea); return s ? { sea: s.air.sea, lung: s.air.lung, y: s.y } : null; });
   check('a sheep overboard: the guest has it in the sea, its breath running', over && over.sea && over.lung > 0 && over.lung <= 1, over);
   await A.page.evaluate(() => {   // the host's dog takes the starboard ring and throws it to her
@@ -134,11 +137,12 @@ try {
   const [hr, gr] = await Promise.all([A.page.evaluate(() => { const r = GAME.RINGS[1]; return { st: r.st, x: r.x, z: r.z, sheep: r.sheep && r.sheep.id }; }), B.page.evaluate(() => { const r = GAME.RINGS[1]; return { st: r.st, x: r.x, z: r.z, sheep: r.sheep && r.sheep.id, fx: NET.fxIn.ringFx || 0 }; })]);
   await A.page.evaluate(() => NET.api.setPause(false));
   check('thrown: the guest sees the ring on the water where the host has it (and its effects)', gr.st === 'water' && Math.hypot(hr.x - gr.x, hr.z - gr.z) < 0.2 && gr.fx > 0, { host: hr.st, guest: gr.st, err: r2(Math.hypot(hr.x - gr.x, hr.z - gr.z)), fx: gr.fx });
-  await A.page.evaluate(() => { const r = GAME.RINGS[1], s = window.__s; if (!r.sheep && s.air) { s.x = r.x + 0.5; s.z = r.z; } });   // (wherever it landed: she's by it)
+  await A.page.evaluate(() => { const r = GAME.RINGS[1], s = window.__s, dx = r.x - r.hx, dz = r.z - r.hz, l = Math.hypot(dx, dz) || 1; if (!r.sheep && s.air) { s.x = r.x + dx / l * 0.8; s.z = r.z + dz / l * 0.8; } });   // (wherever it landed: she's by it, on the far side from the boat)
   await until(A, () => GAME.RINGS[1].sheep, null, 12000).catch(() => {});
   await sleep(600);
   const on = await B.page.evaluate(() => { const r = GAME.RINGS[1], s = r.sheep; return { ring: !!s, onRing: !!(s && s.air && s.air.ring === r) }; });
-  check('the sheep takes hold of the ring: on the guest\'s screen too', on.ring && on.onRing, on);
+  const onH = await A.page.evaluate(() => { const r = GAME.RINGS[1], s = window.__s; return { st: r.st, sheep: !!r.sheep, air: s.air && (s.air.kind || 'swim'), dead: s.dead, why: s.why, d: Math.hypot(s.x - r.x, s.z - r.z) }; });
+  check('the sheep takes hold of the ring: on the guest\'s screen too', on.ring && on.onRing, { ...on, host: onH });
   await shot('ring', A, B);
 
   // ---------------------------------------------------------------- orcas, the kraken
