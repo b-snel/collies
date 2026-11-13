@@ -133,6 +133,7 @@ Run the ones touching your change; report the numbers.
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
+| `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -269,8 +270,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     it (`bossHit`): drops what it has. `hp` (+`perDog`) hits: gone for the journey, +`bounty` 🧶, the gorge quiet
     (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
     (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
-- **Hank never leans on a wall.** Blocked short of his spot he stands easy
-  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Hank never leans on a wall.** A pen in his way: round it, one side, kept (`hankRound`, `hk.round`); a goal in it: over
+  the fence (`hankCross`). Blocked short of his spot he stands easy (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Coyotes never shove at a fence.** A goal behind a shut pen's fence: the nearest spot this side (`navPenSide`); none
+  reachable: as near as it gets, standing (`NAVDIR.stop`). Pulls that cancel (walls, packmates) slow it, not spin it.
+  A sheep behind a shut fence isn't prey, whatever `s.pen` says (`shutIn`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
