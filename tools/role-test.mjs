@@ -12,6 +12,10 @@
 //   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
 //   pack     the DOG PACK on every breed: outside its body and fur, off the ground, clear of its head and legs; pockets fill in turn, salt on top, emptied: off
+// Checks: barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's
+//   effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat
+//   + item, size, looks only, old saves, barn ‹ ›, net look; the pack on every breed (clear of body, ground, head, legs), pockets in turn;
+//   hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;

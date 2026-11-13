@@ -1,5 +1,8 @@
 // Headless test: `node tools/burrow-test.mjs [dig|fill|raid|trap|dismay|leave|mid|guard|rules]`. Coyotes dig under a shut pen's fence,
 // go under, drag a sheep out the same way; a dog standing on the hole fills it in.
+// Checks: burrows: a pack digs under a shut pen's fence (off the gateway, no fast-forward), goes under, drags one out, gate shut; a dog
+//   standing on either end fills it (not a few m off, not running); filled with one inside: shut in, mauls; fills: heart lost, gives up; out
+//   the same way at dawn, or when the pack gives up mid-tunnel; dug away from a dog; not night one, not off, gone on a new journey
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
