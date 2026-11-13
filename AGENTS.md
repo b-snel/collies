@@ -53,13 +53,13 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 
 ### Layout (`index.html`, top to bottom)
 
-`T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
+`T` (all tuning) → `Sound` → `AMB` (ambience) → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING, IDLE) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING, HAIR) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
-HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
+HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → `ambMix` → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
@@ -134,6 +134,7 @@ Run the ones touching your change; report the numbers.
 | `role-test.mjs` | barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
 | `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
+| `amb-test.mjs [place…] [--wav DIR] [--tone F]` | ambience: each leg by day / night found by `ambMix`, rendered offline (seeded): levels, no hum (under 100 Hz, steady tones), stereo, which beds and calls play where; each call's loudness; live smoke. `--wav`: listen (+ a tour .mp3); `--tone`: a hum added, must fail |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -282,6 +283,12 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   the first two camps (`CLIP_DIG`); dug up, they're his. Awake, no predator near, he climbs into a
   shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
   time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
+- **Ambience** (`AMB`, `ambMix` → `AMB_MIX`, all synthesized, each screen its own, no NET): each leg its own. Gusty stereo wind
+  (sand, leaves, grass, snow hissing on top; a whistle up the pass, a blizzard howls), river, brooks, surf (waves break and wash), lake
+  and quay lapping, campfires crackle; birds by day (each leg its own, a dawn chorus), crickets, frogs, owls, a poorwill by night; cicadas,
+  bees, gulls, chimes at the Trading Post, ravens and ice up the pass, stones and a far falcon in the canyon, rigging, creaks and a bell at
+  Cold Harbour, the hull at sea (`seaAmbience` beds go through `AMB.bus()`). No hum: nothing steady (a tone, or under ~130 Hz); beds
+  breathe. 🍃 volume (`ambVolume`). New place: an `ambMix` field + its part of `AMB`'s `step`; check with `amb-test.mjs`.
 - **Map** (`MAP`, `T.map`, drawing only): parchment till a dog's been within `r` m (`MAP.rv`, 2 m grid,
   `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps, traders,
   salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
@@ -613,6 +620,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 
 - Read buttons once per frame, not per substep. Pad presses: `padEdge` (sampled at the frame's start, `padFrame`); never re-read the pad at the frame's end to mark presses seen.
 - Gamepad presses don't unlock audio.
+- Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - Changed `index.html`, `vendor/` or icons → bump `CACHE` in `sw.js`.

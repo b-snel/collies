@@ -204,13 +204,15 @@
   #hankBubble.edge::after, #hankBubble.edge::before { display:none; }
   #hankBubble.edge .arr { display:block; }
   body.inBarn #hankBubble, body.inDawn #hankBubble { display:none; }
-  .hankVol { display:inline-flex; align-items:center; gap:8px; font-size:15px; text-shadow:none; }
-  .hankVol input[type=range] { width:120px; accent-color:var(--barn-accent); }
-  .hankVol output { min-width:3.2em; text-align:right; font-variant-numeric:tabular-nums; }
-  .hankVol button, .tbtn, .bbtn { font:inherit; font-weight:600; font-size:15px; color:var(--barn-ink); background:var(--barn-chip); border:2px solid var(--barn-edge);
+  .hankVol, .ambVol { display:inline-flex; align-items:center; gap:8px; font-size:15px; text-shadow:none; }
+  .hankVol input[type=range], .ambVol input[type=range] { width:120px; accent-color:var(--barn-accent); }
+  .hankVol output, .ambVol output { min-width:3.2em; text-align:right; font-variant-numeric:tabular-nums; }
+  .hankVol button, .ambVol button, .tbtn, .bbtn { font:inherit; font-weight:600; font-size:15px; color:var(--barn-ink); background:var(--barn-chip); border:2px solid var(--barn-edge);
     border-radius:12px; padding:4px 12px; cursor:pointer; text-shadow:none; }
-  .hankVol button.on { background:#ff7a6b; color:#1b1a22; }
-  .tbtn:hover, .bbtn:hover, .hankVol button:hover { filter:brightness(1.15); }
+  .hankVol button.on, .ambVol button.on { background:#ff7a6b; color:#1b1a22; }
+  #tVol .hankVol, #tVol .ambVol { display:flex; margin:6px 0; }
+  #tVol .hankVol > span:first-child, #tVol .ambVol > span:first-child { min-width:4.6em; }
+  .tbtn:hover, .bbtn:hover, .hankVol button:hover, .ambVol button:hover { filter:brightness(1.15); }
   #titleExtras { margin-top:14px; display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; background:var(--panel); padding:8px 14px;
     border-radius:16px; border:2px solid rgba(255,248,232,.6); }
   #tHome[hidden] { display:none; }
@@ -532,7 +534,7 @@
       <span>Map</span><span>click R3</span><span>M</span>
     </div>
     </section>
-    <section id="tVol" class="tcard" hidden><h3>🔊 Sound<button class="tX" type="button" aria-label="Close">✕</button></h3><span class="hankVol"></span></section>
+    <section id="tVol" class="tcard" hidden><h3>🔊 Sound<button class="tX" type="button" aria-label="Close">✕</button></h3><span class="hankVol"></span><span class="ambVol"></span></section>
   </div>
   <div id="coopNote" style="margin-top:14px;font-size:15px;opacity:.85">Local co-op for up to 4 dogs — friends press Ⓐ anytime to join.</div>
   <div id="netBox" class="net">
@@ -1095,7 +1097,7 @@ function fbm(x, z, o = 3) { let s = 0, a = 0.5, f = 1, n = 0; for (let i = 0; i 
 // AUDIO — everything synthesized with WebAudio, no files
 // =====================================================================
 const Sound = (() => {
-  let ac = null, master = null, noiseBuf = null, amb = null, crick = [], barkBuf = null, lastBaa = 0, lastYelp = 0, baaEnds = [];
+  let ac = null, master = null, noiseBuf = null, barkBuf = null, lastBaa = 0, lastYelp = 0, baaEnds = [];   // (the world's own sounds: AMB, below)
   function init() {
     if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
@@ -1103,44 +1105,8 @@ const Sound = (() => {
     master = ac.createGain(); master.gain.value = 0.6; master.connect(ac.destination);
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    amb = { wind: loopNoise('lowpass', 380, 0), surf: loopNoise('lowpass', 650, 0), crick: crickets() };
     fetch('audio/sfx/bark1.mp3').then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(b => new Promise((res, rej) => ac.decodeAudioData(b, res, rej)))
       .then(b => { barkBuf = b; }).catch(() => {});   // real bark (CC0); synth woof till then
-  }
-  function loopNoise(type, freq, gain) {
-    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-    const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq;
-    const g = ac.createGain(); g.gain.value = gain;
-    src.connect(f); f.connect(g); g.connect(master); src.start(); return g;
-  }
-  // crickets: a few chirpers, each its own pitch, place and loose rhythm (one steady tone sounded like an alarm)
-  function crickets() {
-    const bus = ac.createGain(); bus.gain.value = 0;
-    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200;
-    bus.connect(lp); lp.connect(master);
-    crick = [0, 1, 2, 3].map(() => ({ f: 3500 + Math.random() * 1100, pan: Math.random() * 1.6 - 0.8, vol: 0.5 + Math.random() * 0.5, next: 0, gap: 0.6 + Math.random() * 1.4 }));
-    return bus;
-  }
-  function chirp(c, t, bus) {   // one chirp: 2-4 quick pulses, softly enveloped
-    const o = ac.createOscillator(); o.frequency.value = c.f * (0.99 + Math.random() * 0.02);
-    const g = ac.createGain(); g.gain.value = 0;
-    const p = ac.createStereoPanner ? ac.createStereoPanner() : null;
-    o.connect(g); if (p) { p.pan.value = c.pan; g.connect(p); p.connect(bus); } else g.connect(bus);
-    const n = 2 + Math.floor(Math.random() * 3), pw = 0.016, gap = 0.028;
-    for (let i = 0; i < n; i++) {
-      const a = t + i * gap, v = c.vol * (i === n - 1 ? 0.7 : 1);
-      g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(v, a + 0.004); g.gain.linearRampToValueAtTime(0, a + pw);
-    }
-    o.start(t); o.stop(t + n * gap + 0.02);
-  }
-  function moan() {
-    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 330; bp.Q.value = 7;
-    const lfo = ac.createOscillator(); lfo.frequency.value = 0.13; const lg = ac.createGain(); lg.gain.value = 170; lfo.connect(lg); lg.connect(bp.frequency);
-    const g = ac.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(master); src.start(); lfo.start();
-    const d = ac.createGain(); d.gain.value = 0; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240; lp.connect(d); d.connect(master);
-    for (const [f, type, a] of [[49, 'sine', 0.5], [49.7, 'sine', 0.5], [73.6, 'triangle', 0.25], [98.4, 'sine', 0.2]]) { const o = ac.createOscillator(); o.type = type; o.frequency.value = f; const og = ac.createGain(); og.gain.value = a; o.connect(og); og.connect(lp); o.start(); }
-    return { g, d };
   }
   // a falcon's cry far off, echoing off rock (FALCON CANYON)
   function echoCry(pan, vol, wait = 0) {
@@ -1387,24 +1353,510 @@ const Sound = (() => {
       for (const f of [55, 58.3, 82.4, 110.6]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.94, t + dur); o.connect(lp); o.start(t); o.stop(t + dur + 0.05); }
       echoCry(-0.4, vol * 0.4, 1.3);
     },
-    ambience(night, ocean, dt, canyon = 0, snow = 0, blizz = 0) {
-      if (!ac) return; const k = Math.min(1, dt * 2);
-      if (snow > 0.01 && !amb.gale) { amb.gale = loopNoise('bandpass', 520, 0); }   // MOUNTAIN PASS: the wind over the pass, a gale in a blizzard
-      if (amb.gale) { amb.gale.gain.value = lerp(amb.gale.gain.value, (0.035 * snow + 0.16 * blizz) * (0.75 + 0.25 * Math.sin(ac.currentTime * 0.8) * Math.sin(ac.currentTime * 1.9)), k); }
-      if (canyon > 0.01 && !amb.moan) amb.moan = moan();   // FALCON CANYON: wind moaning down the gorge, a drone under it, cries echoing off the walls
-      if (amb.moan) { amb.moan.g.gain.value = lerp(amb.moan.g.gain.value, 0.1 * canyon, k); amb.moan.d.gain.value = lerp(amb.moan.d.gain.value, 0.06 * canyon, k); }
-      if (canyon > 0.4 && Math.random() < dt * 0.14 * canyon) echoCry(Math.random() * 1.6 - 0.8, 0.03 + Math.random() * 0.03);
-      amb.wind.gain.value = lerp(amb.wind.gain.value, 0.05 * (1 - night * 0.5), k);
-      amb.crick.gain.value = lerp(amb.crick.gain.value, 0.02 * night, k);
-      if (night > 0.05) for (const c of crick) {   // schedule each cricket's next chirp, loosely
-        const now = ac.currentTime; if (c.next < now) c.next = now + Math.random() * c.gap;
-        if (c.next < now + 0.2) { chirp(c, c.next, amb.crick); c.next += c.gap * (0.6 + Math.random() * 0.8) + (Math.random() < 0.12 ? 2 + Math.random() * 4 : 0); }
-      }
-      const surf = 0.11 * ocean * (0.6 + 0.4 * Math.sin(ac.currentTime * 0.6));
-      amb.surf.gain.value = lerp(amb.surf.gain.value, surf, k);
-    },
   };
   return api;
+})();
+
+// =====================================================================
+// AMBIENCE (AMB) — the world round the camera, leg by leg, all synthesized. ambMix (by the main loop) says what's here, AMB
+// plays it (20 Hz). Beds (stereo noise loops, eased): wind in gusts (leaves, grass, sand or snow hissing on top; a whistle over
+// edges), river and brook (bubbles in them), surf (each wave swells, breaks, the foam runs back), a fire's breath and crackle,
+// the canyon's moan, crickets far off. Calls (one-shots, left / right, near / far: far is quieter, duller, more reverb): birds
+// by day (each leg its own, a dawn chorus, a lull in the heat), crickets, frogs, owls, a poorwill by night, cicadas in the
+// heat, bees, gulls by the sea, chimes at the Trading Post, ravens, ice and far slides up the pass, stones and a far falcon
+// in the canyon, rigging, creaks and a bell at Cold Harbour, the hull working at sea. Each screen its own (no NET).
+// No hum: nothing steady under ~130 Hz. Own volume (🍃 AMB.vol, AMB.mute). AMB.n: calls so far by kind (tools/amb-test.mjs).
+// =====================================================================
+const AMB = (() => {
+  let ac = null, out = null, muff = null, beds = null, evs = null, send = null, rev = null, echo = null, BUF = null, WV = null, offline = false;
+  const S = { acc: 0, gust: 0.3, gTo: 0.3, gT: 0, gK: 0.3, turb: 0, tTo: 0, next: {}, roster: {}, bed: {}, frogs: [], busy: [], later: [], pw: null, set: 0, drone: 0 };
+  const n = {};
+  const R = (a, b) => a + Math.random() * (b - a), PK = a => a[Math.floor(Math.random() * a.length)], I = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const now = () => ac.currentTime, hit = k => { n[k] = (n[k] || 0) + 1; };
+  const gain = (v = 0, to = null) => { const g = ac.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
+  const filt = (type, f, q = 0.7) => { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
+  const NOPAN = { value: 0, setTargetAtTime() {}, setValueAtTime() {}, linearRampToValueAtTime() {} };
+  const panr = (v, to) => { if (!ac.createStereoPanner) { const g = gain(1, to); g.pan = NOPAN; return g; } const p = ac.createStereoPanner(); p.pan.value = clamp(v, -1, 1); p.connect(to); return p; };
+  const chain = (...a) => { for (let i = 0; i < a.length - 1; i++) a[i].connect(a[i + 1]); return a[a.length - 1]; };
+  const ease = (prm, v, tc = 0.3) => prm.setTargetAtTime(v, now(), tc);
+  function poisson(l) { let k = 0, p = Math.exp(-l), s = p; const u = Math.random(); while (u > s && k < 40) { k++; p *= l / k; s += p; } return k; }
+  // ---- noise, made once per context: stereo (each ear its own), long, the end running on into the start (no click at the loop)
+  function noiseBuf(kind, sec) {
+    const sr = ac.sampleRate, len = Math.floor(sr * sec), f = Math.floor(sr * 0.08), b = ac.createBuffer(2, len, sr), x = new Float32Array(len + f);
+    for (let c = 0; c < 2; c++) {
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, pk = 1e-9;
+      for (let i = 0; i < len + f; i++) {
+        const w = Math.random() * 2 - 1;
+        if (kind === 'pink') { b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852; b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898; x[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362; b6 = w * 0.115926; }
+        else if (kind === 'brown') { b0 = (b0 + 0.02 * w) / 1.02; x[i] = b0; }
+        else x[i] = w;
+      }
+      const d = b.getChannelData(c);
+      for (let i = 0; i < len; i++) { d[i] = i < f ? x[i] * (i / f) + x[len + i] * (1 - i / f) : x[i]; pk = Math.max(pk, Math.abs(d[i])); }
+      for (let i = 0; i < len; i++) d[i] *= 0.9 / pk;
+    }
+    return b;
+  }
+  // a room the size of the land: a soft, darkening 2.6 s tail with a few early reflections
+  function impulse(sec) {
+    const sr = ac.sampleRate, len = Math.floor(sr * sec), b = ac.createBuffer(2, len, sr);
+    for (let c = 0; c < 2; c++) {
+      const d = b.getChannelData(c); let y = 0;
+      for (let i = 0; i < len; i++) { const t = i / sr, k = 0.1 + 0.8 * Math.exp(-t * 3); y += (Math.random() * 2 - 1 - y) * k; d[i] = y / Math.sqrt(k) * Math.exp(-6.9 * t / sec) * Math.min(1, t / 0.012); }
+      for (let r = 0; r < 7; r++) d[Math.floor(sr * R(0.008, 0.08))] += R(0.25, 0.7) * (Math.random() < 0.5 ? -1 : 1) * (1 - r / 9);
+    }
+    return b;
+  }
+  function attach(ctx, dest, off = false) {
+    ac = ctx; offline = off; Object.assign(S, { acc: 0, next: {}, roster: {}, bed: {}, frogs: [], busy: [], later: [], pw: null, set: 0 }); for (const k in n) delete n[k];
+    BUF = { pink: noiseBuf('pink', 6), brown: noiseBuf('brown', 6), white: noiseBuf('white', 3) };
+    WV = { bird: ac.createPeriodicWave(new Float32Array(4), new Float32Array([0, 1, 0.1, 0.03])), coo: ac.createPeriodicWave(new Float32Array(5), new Float32Array([0, 1, 0.32, 0.09, 0.03])) };
+    out = gain(0); muff = filt('lowpass', 20000, 0.5); const hp = filt('highpass', 45, 0.6); chain(out, muff, hp); hp.connect(dest);
+    beds = gain(1, out); evs = gain(1, out);
+    const cv = ac.createConvolver(); cv.buffer = impulse(2.6); cv.connect(out);
+    send = gain(1); rev = gain(0.3); chain(send, rev, cv);
+    echo = gain(0); const dl = ac.createDelay(1.5), fb = gain(0.34), lp = filt('lowpass', 2000); dl.delayTime.value = 0.43;   // canyon walls, the pass: a slap back
+    chain(send, echo, dl, lp, fb, dl); lp.connect(out); lp.connect(cv);
+  }
+  // a call's way out: pan −1…1, dist 0 (near) … 1 (far: quieter, duller, wetter), lvl; returns its input
+  function voice(pn, dist, lvl = 1) {
+    const g = gain(lvl), lp = filt('lowpass', 15000 * Math.pow(0.15, dist), 0.5), p = panr(pn, gain(1 - 0.6 * dist, evs));
+    chain(g, lp, p); p.connect(gain(0.12 + 0.7 * dist, send)); return g;
+  }
+  // a run of notes onto dest from t0: each [t, dur, amp, f0, f1, f2] (Hz, gliding through); w: 'sine' … or a PeriodicWave
+  function notes(dest, t0, list, w = 'sine', att = 0.008) {
+    for (const [t, d, a, f0, f1 = f0, f2] of list) {
+      const o = ac.createOscillator(), g = gain(0), T0 = t0 + t, at = Math.min(att, d * 0.3);
+      if (typeof w === 'string') o.type = w; else o.setPeriodicWave(w);
+      o.frequency.setValueAtTime(f0, T0);
+      if (f2) { o.frequency.exponentialRampToValueAtTime(f1, T0 + d * 0.45); o.frequency.exponentialRampToValueAtTime(f2, T0 + d); } else if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, T0 + d);
+      g.gain.setValueAtTime(0, T0); g.gain.linearRampToValueAtTime(a, T0 + at); g.gain.linearRampToValueAtTime(a * 0.7, T0 + d * 0.75); g.gain.linearRampToValueAtTime(0, T0 + d);
+      chain(o, g, dest); o.start(T0); o.stop(T0 + d + 0.02);
+    }
+  }
+  // a burst of noise through a filter: up in att s, dying away over dur s
+  function burst(dest, T0, buf, type, f, q, amp, att, dur) {
+    const s = ac.createBufferSource(), fl = filt(type, f, q), g = gain(0); s.buffer = buf; s.loop = true;
+    g.gain.setValueAtTime(0, T0); g.gain.linearRampToValueAtTime(amp, T0 + att); g.gain.exponentialRampToValueAtTime(amp * 1e-3 + 1e-6, T0 + att + dur);
+    chain(s, fl, g, dest); s.start(T0, Math.random() * (buf.duration - 0.2)); s.stop(T0 + att + dur + 0.02);
+  }
+  // a struck thing ringing: parts [ratio, amp, decay s]
+  function ping(dest, t, f, parts, amp) {
+    for (const [k, a, d] of parts) { const o = ac.createOscillator(), g = gain(0); o.frequency.value = f * k; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp * a, t + 0.002); g.gain.exponentialRampToValueAtTime(1e-5, t + d); chain(o, g, dest); o.start(t); o.stop(t + d + 0.05); }
+  }
+  function bubble(dest, t, f0, amp, d) {   // a bubble: a pure note rising fast as it dies (running water is thousands of these)
+    const o = ac.createOscillator(), g = gain(0); o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * R(1.4, 2.3), t + d);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp, t + 0.003); g.gain.exponentialRampToValueAtTime(amp * 2e-3 + 1e-6, t + d);
+    chain(o, g, dest); o.start(t); o.stop(t + d + 0.01);
+  }
+  // true when key's turn comes round: mean s apart (± jit); Infinity / 0 rate: never (and when it comes back, soon)
+  function every(key, mean, jit = 0.6) {
+    const t = now(), nx = S.next;
+    if (!(mean < 1e5)) { nx[key] = null; return false; }
+    if (nx[key] == null || nx[key] - t > mean * (1 + jit) * 1.5) { nx[key] = t + mean * R(0.15, 1); return false; }
+    if (t < nx[key]) return false;
+    nx[key] = t + mean * R(1 - jit, 1 + jit); return true;
+  }
+  const later = (dt, fn) => S.later.push({ t: now() + dt, fn });
+  // ---- beds: made when first wanted, stopped after a while unheard
+  function bed(k, make) { let b = S.bed[k]; if (!b) { b = S.bed[k] = make(); b.idle = 0; b.lvl = 0; } return b; }
+  function loop(buf, to, rate = 1) { const s = ac.createBufferSource(); s.buffer = buf; s.loop = true; s.playbackRate.value = rate; s.connect(to); s.start(now(), Math.random() * buf.duration); return s; }
+  function tidy(dt) {
+    for (const k in S.bed) { const b = S.bed[k]; b.idle = b.lvl > 1e-3 ? 0 : b.idle + dt; if (b.idle < 12) continue;
+      for (const s of b.src) { try { s.stop(); } catch (e) {} } b.out.disconnect(); delete S.bed[k]; }
+  }
+
+  // ---------------- WIND: the air (a band of pink noise that opens with each gust), a whistle over edges, a hiss on top (leaves,
+  // grass, sand, snow) that flutters. Gusts: a slow random walk between lulls and blows, gustier in some places
+  const AIR = {   // by place: [level, band Hz, Q, gustiness, floor (of a lull), hiss, hiss Hz, whistle]
+    desert: [0.9, 650, 0.55, 0.9, 0.12, 0.5, 3400, 0], valley: [0.6, 820, 0.5, 0.7, 0.2, 1, 2200, 0], shore: [0.6, 560, 0.5, 0.6, 0.2, 0.3, 2900, 0],
+    meadow: [0.45, 950, 0.5, 0.6, 0.15, 0.75, 2600, 0], canyon: [0.55, 380, 1.1, 0.8, 0.2, 0.15, 3000, 0.45], pass: [1.6, 600, 0.75, 1, 0.12, 0.6, 4400, 0.6],
+    harb: [0.75, 560, 0.6, 0.6, 0.3, 0.25, 3000, 0.15], isle: [0.5, 600, 0.5, 0.5, 0.3, 0.45, 2600, 0],
+  };
+  function mkWind() {
+    const o = gain(1, beds), a = filt('highpass', 140, 0.6), bp = filt('bandpass', 700, 0.6), air = gain(0, o), src = [loop(BUF.pink, a, R(0.96, 1.04))];
+    chain(a, bp, air);
+    const wh = filt('bandpass', 900, 9), wg = gain(0, o); chain(a, wh, wg);
+    const hs = filt('highpass', 3000, 0.5), hl = filt('lowpass', 9500, 0.5), hg = gain(0, o); src.push(loop(BUF.white, hs)); chain(hs, hl, hg);
+    return { src, out: o, air, bp, wh, wg, hs, hg };
+  }
+  function gusts(dt, gusty) {
+    if ((S.gT -= dt) <= 0) { const big = Math.random() < 0.2 + 0.35 * gusty; S.gTo = big ? R(0.6, 1) : R(0, 0.4); S.gT = big ? R(2, 6) : R(3, 10); S.gK = big ? R(0.4, 1.1) : R(0.15, 0.45); }
+    S.gust += (S.gTo - S.gust) * Math.min(1, dt * S.gK);
+    if (Math.random() < dt * 2.5) S.tTo = R(-1, 1);   // and under the gusts, eddies: a second or so each
+    S.turb += (S.tTo - S.turb) * Math.min(1, dt * 2.2);
+  }
+  function windStep(m, dt) {
+    let ws = 0; const a = [0, 0, 0, 0, 0, 0, 0, 0];
+    for (const k in AIR) { const w = m[k]; if (!(w > 0)) continue; ws += w; for (let i = 0; i < 8; i++) a[i] += AIR[k][i] * w; }
+    if (ws > 0) for (let i = 0; i < 8; i++) a[i] /= ws;
+    let [L, f, q, gusty, floor, hiss, hf, wh] = a; const bz = m.blizz;
+    gusts(dt, gusty + bz);
+    L = (L * Math.min(1, ws) * (1 - 0.45 * m.night * (1 - m.pass)) + 1.2 * bz) * (1 - m.calm); floor = lerp(floor, 0.4, bz); hiss += 1.1 * bz; wh += 0.8 * bz;
+    const g = S.gust, tb = S.turb * (0.2 + 0.5 * g), want = L * (floor + (1 - floor) * g) * (1 + 0.45 * tb);
+    if (want < 1e-3 && !S.bed.wind) return;
+    const b = bed('wind', mkWind); b.lvl = want;
+    ease(b.air.gain, 0.16 * want, 0.25); ease(b.bp.frequency, (f || 600) * (0.75 + 0.6 * g) * (1 + 0.18 * tb), 0.3); ease(b.bp.Q, q || 0.6, 1);
+    ease(b.wg.gain, 0.12 * wh * L * g * g, 0.4); ease(b.wh.frequency, 650 + 950 * g + 140 * Math.sin(now() * 0.37) + 120 * tb, 0.4);
+    ease(b.hg.gain, 0.03 * hiss * L * (0.15 + 0.85 * Math.pow(g, 1.6)) * R(0.5, 1.1), 0.07); ease(b.hs.frequency, hf || 3000, 1);
+  }
+
+  // ---------------- WATER: a river rushing (deep bands, low bubbles) or a brook trickling (bright, quick bubbles)
+  function mkWater() {
+    const o = gain(1, beds), pn = panr(0, o), sum = gain(1, pn); pn.connect(gain(0.2, send));
+    const bands = [[420, 0.8], [1150, 1], [3000, 1.3]].map(([f, q]) => { const bp = filt('bandpass', f, q), g = gain(0, sum); bp.connect(g); return { bp, g, f }; });
+    const s = loop(BUF.pink, bands[0].bp, R(0.9, 1.1)); s.connect(bands[1].bp); s.connect(bands[2].bp);
+    const bub = [-0.4, 0, 0.4].map(d => { const p = panr(0, o); return { p, d, g: gain(1, p) }; });
+    return { src: [s], out: o, pn, bands, bub };
+  }
+  function waterStep(k, lvl, pan, dt) {
+    if (lvl < 1e-3 && !S.bed[k]) return;
+    const b = bed(k, mkWater), riv = k === 'river', mix = riv ? [0.5, 0.34, 0.12] : [0.06, 0.16, 0.16]; b.lvl = lvl;
+    ease(b.pn.pan, pan, 0.5); for (const u of b.bub) ease(u.p.pan, clamp(pan + u.d, -1, 1), 0.5);
+    b.bands.forEach((u, i) => { ease(u.g.gain, 0.18 * lvl * mix[i] * R(0.7, 1.3), 0.18); ease(u.bp.frequency, u.f * (riv ? 1 : 1.35) * R(0.88, 1.12), 0.35); });
+    for (let i = poisson(lvl * (riv ? 34 : 22) * dt); i > 0; i--) {
+      const f0 = Math.exp(riv ? R(5.4, 7.2) : R(6.2, 7.9)), d = R(0.6, 1.3) * 1.6 / Math.sqrt(f0);
+      bubble(PK(b.bub).g, now() + R(0.02, 0.02 + dt), f0, lvl * (riv ? 0.03 : 0.035) * Math.pow(Math.random(), 1.5), d);
+    }
+  }
+
+  // ---------------- SURF: waves. Between them the far wash; each one swells (the filter opening), breaks, and its foam fizzes
+  // up the sand and back. Now and then a set of bigger ones
+  function mkSurf() {
+    const o = gain(1, beds), pn = panr(0, o), lp = filt('lowpass', 8000, 0.5), all = gain(1, lp); lp.connect(pn); pn.connect(gain(0.25, send));
+    const bh = filt('highpass', 380, 0.6), bl = filt('lowpass', 1800, 0.5), bg = gain(0, all), s = loop(BUF.pink, bh, R(0.9, 1)); chain(bh, bl, bg);
+    return { src: [s], out: o, pn, lp, all, bg };
+  }
+  function wave(b, size) {
+    hit('wave'); const t = now() + 0.05, rise = R(1.3, 2.4), wash = R(2.6, 4.4) * (0.7 + 0.4 * size), c = t + rise, end = c + wash * 1.7;
+    const p = panr(R(-0.35, 0.35), b.all); p.pan.setValueAtTime(p.pan.value, c); p.pan.linearRampToValueAtTime(clamp(p.pan.value + R(-0.4, 0.4), -1, 1), end);   // (along the beach)
+    const s = ac.createBufferSource(), hp = filt('highpass', 200, 0.7), lp = filt('lowpass', 300, 0.7), g = gain(0); s.buffer = BUF.pink; s.loop = true; s.playbackRate.value = R(0.85, 1.1);
+    lp.frequency.setValueAtTime(300, t); lp.frequency.exponentialRampToValueAtTime(700 + 500 * size, c - 0.1); lp.frequency.exponentialRampToValueAtTime(2200 + 1800 * size, c + 0.12); lp.frequency.exponentialRampToValueAtTime(500, c + wash);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06 * size, c - 0.15); g.gain.linearRampToValueAtTime(0.26 * size, c + 0.1); g.gain.setTargetAtTime(0, c + 0.25, wash / 3.2);
+    chain(s, hp, lp, g, p); s.start(t, Math.random() * 5); s.stop(end);
+    const f = ac.createBufferSource(), fh = filt('highpass', 2600, 0.5), fl = filt('lowpass', 9000, 0.5), fg = gain(0); f.buffer = BUF.white; f.loop = true;
+    fg.gain.setValueAtTime(0, c); fg.gain.linearRampToValueAtTime(0.05 * size, c + 0.6 + 0.4 * size); fg.gain.setTargetAtTime(0, c + 0.9 + 0.4 * size, wash / 3);
+    chain(f, fh, fl, fg, p); f.start(c, Math.random() * 2); f.stop(end + 0.5);
+  }
+  function surfStep(m, dt) {
+    const lvl = m.surf; if (lvl < 1e-3 && !S.bed.surf) return;
+    const b = bed('surf', mkSurf); b.lvl = lvl;
+    ease(b.pn.pan, m.surfP, 0.8); ease(b.lp.frequency, 1600 + 10000 * lvl * lvl, 0.8); ease(b.all.gain, lvl, 0.8);
+    ease(b.bg.gain, 0.035 * (0.55 + 0.45 * Math.sin(now() * 0.13) * Math.sin(now() * 0.071 + 1)), 0.6);
+    if (lvl > 0.02 && every('wave', (S.set > 0 ? 5.5 : 7.5) / (0.7 + 0.5 * lvl))) { const big = S.set > 0; if (big) S.set--; else if (Math.random() < 0.12) S.set = 3; wave(b, big ? R(0.9, 1.2) : R(0.45, 0.9)); }
+  }
+  function lap(dest, size, t = now() + R(0.02, 0.06)) {   // water slapping a bank, a quay, the hull; now and then a glug
+    hit('lap'); burst(dest, t, BUF.pink, 'bandpass', R(260, 700), R(1, 2.2), 0.5 * size, R(0.01, 0.035), R(0.1, 0.28));
+    if (Math.random() < 0.35) bubble(dest, t + R(0.03, 0.12), R(170, 420), 0.05 * size, R(0.04, 0.09));
+  }
+  function lapStep(m) {
+    const lk = m.lake * m.lake * 0.8, lvl = Math.max(lk, m.harb, m.isle * 0.7, m.sea * m.roll * 0.5);
+    if (lvl < 0.06 || !every('lap', 1.1 / (0.4 + lvl))) return;
+    const pan = lvl === lk ? m.lakeP + R(-0.5, 0.5) : R(-0.7, 0.7), v = voice(pan, lvl === lk ? R(0.3, 0.6) : R(0.1, 0.4), lvl);
+    lap(v, 1); if (Math.random() < 0.3) lap(v, 0.6, now() + R(0.25, 0.45));   // a double slap
+  }
+
+  // ---------------- FIRE: a soft breath, a crackle of tiny clicks (now and then a run of them), a sap pop with a thump
+  function mkFire() {
+    const o = gain(1, beds), pn = panr(0, o), lp = filt('lowpass', 9000, 0.5); lp.connect(pn); pn.connect(gain(0.15, send));
+    const rh = filt('highpass', 220, 0.7), rl = filt('lowpass', 900, 0.7), rg = gain(0, lp), s = loop(BUF.pink, rh, 0.8); chain(rh, rl, rg);
+    return { src: [s], out: o, pn, lp, rg, cr: gain(1, lp) };
+  }
+  function crackle(dest, lvl, t) {
+    const k = Math.random() < 0.22 ? I(2, 5) : 1;
+    for (let i = 0; i < k; i++, t += R(0.004, 0.028)) burst(dest, t, BUF.white, 'highpass', R(1200, 5000), 0.7, 0.16 * lvl * Math.pow(Math.random(), 2.2) * (i ? 0.6 : 1) + 1e-4, 0.0006, R(0.003, 0.02));
+  }
+  function pop(dest, lvl) {
+    hit('pop'); const t = now() + 0.03, o = ac.createOscillator(), g = gain(0);
+    burst(dest, t, BUF.white, 'bandpass', R(900, 1800), 0.8, 0.2 * lvl, 0.0005, 0.03);
+    o.frequency.setValueAtTime(R(160, 210), t); o.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06 * lvl, t + 0.003); g.gain.exponentialRampToValueAtTime(1e-4, t + 0.08); chain(o, g, dest); o.start(t); o.stop(t + 0.1);
+  }
+  function fireStep(m, dt) {
+    const lvl = m.fire; if (lvl < 1e-3 && !S.bed.fire) return;
+    const b = bed('fire', mkFire); b.lvl = lvl;
+    ease(b.pn.pan, m.fireP, 0.3); ease(b.lp.frequency, 2500 + 12000 * lvl, 0.3); ease(b.rg.gain, 0.05 * lvl * R(0.6, 1.2), 0.08);
+    for (let i = poisson(lvl * 11 * dt); i > 0; i--) crackle(b.cr, lvl, now() + R(0.02, 0.02 + dt));
+    if (lvl > 0.05 && every('pop', 5 / lvl)) pop(b.cr, lvl);
+  }
+
+  // ---------------- NIGHT: crickets (each its own note, place and pace, in bouts; warmer, quicker), a shimmer of far ones; frogs
+  // by the water (spring peepers in the meadow, chorus frogs by the river, a bullfrog on the lake); owls in the trees, answering;
+  // a poorwill in the desert
+  function mkCrick() {
+    const o = gain(1, beds), g = gain(0, o), lp = filt('lowpass', 7000, 0.5); lp.connect(g); g.connect(gain(0.15, send));
+    const cs = filt('bandpass', 4700, 2.5), am = gain(0.6), cg = gain(0, o), lfo = ac.createOscillator(), lg = gain(0.4); lfo.frequency.value = R(22, 30); chain(lfo, lg, am.gain); lfo.start();
+    const s = loop(BUF.white, cs); chain(cs, am, cg);
+    const ch = Array.from({ length: 6 }, () => ({ f: R(3700, 4900), vol: R(0.35, 1), gap: R(0.55, 1.3), next: 0, on: Math.random() < 0.6, flip: 0, p: panr(R(-0.85, 0.85), lp) }));
+    return { src: [s, lfo], out: o, g, cg, ch };
+  }
+  function chirp(c, t) {   // a cricket: 2-4 quick pulses of one pure note
+    hit('cricket'); const o = ac.createOscillator(), g = gain(0), k = I(2, 4); o.frequency.value = c.f * R(0.99, 1.01);
+    for (let i = 0; i < k; i++) { const a = t + i * 0.03, v = c.vol * (i === k - 1 ? 0.7 : 1); g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(v, a + 0.004); g.gain.linearRampToValueAtTime(0, a + 0.017); }
+    chain(o, g, c.p); o.start(t); o.stop(t + k * 0.03 + 0.02);
+  }
+  function crickStep(m, lvl, warm, far, dt) {
+    if (lvl < 1e-3 && !S.bed.crick) return;
+    const b = bed('crick', mkCrick), t0 = now(); b.lvl = lvl;
+    ease(b.g.gain, 0.05 * lvl, 1.5); ease(b.cg.gain, 0.006 * lvl * far, 2);
+    for (const c of b.ch) {
+      if (t0 > c.flip) { c.on = c.on ? false : Math.random() < 0.3 + 0.7 * lvl; c.flip = t0 + (c.on ? R(12, 50) : R(4, 20)); }   // a bout, then a rest
+      if (!c.on || lvl < 0.05) { c.next = 0; continue; }
+      if (c.next < t0) c.next = t0 + Math.random() * c.gap;
+      while (c.next < t0 + dt + 0.1) { chirp(c, c.next); c.next += c.gap / warm * R(0.85, 1.15) + (Math.random() < 0.08 ? R(1.5, 5) : 0); }
+    }
+  }
+  function peep(f, t, a) { hit('frog'); notes(f.v, t, [[0, R(0.11, 0.16), 0.06 * a, f.f * 0.82, f.f]], 'sine', 0.01); }   // a spring peeper: one bright rising "peep"
+  function krek(f, t, a) {   // a chorus frog: a rising rattle, a thumb run along a comb
+    hit('frog'); let tt = t, gap = 0.045;
+    for (let i = 0, k = I(7, 12); i < k; i++, tt += gap, gap *= 0.93) burst(f.v, tt, BUF.white, 'bandpass', f.f * (1 + i * 0.02), 4, 0.3 * a, 0.002, 0.018);
+  }
+  function bullfrog(pan, a) {   // "jug-o-rum": low, slow, two or three (its rumble filtered off)
+    hit('bull'); const v = voice(pan, R(0.3, 0.7), a), t0 = now() + 0.05;
+    for (let i = 0, k = I(2, 3); i < k; i++) {
+      const t = t0 + i * R(0.5, 0.7), o = ac.createOscillator(), bp = filt('bandpass', 330, 1.5), g = gain(0);
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(R(105, 125), t); o.frequency.linearRampToValueAtTime(R(85, 100), t + 0.4);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18, t + 0.06); g.gain.linearRampToValueAtTime(0.12, t + 0.3); g.gain.linearRampToValueAtTime(0, t + 0.42);
+      chain(o, bp, g, v); o.start(t); o.stop(t + 0.45);
+    }
+  }
+  function frogStep(m, peepK, krekK, dt) {
+    if (peepK < 0.02 && krekK < 0.02) return;
+    if (!S.frogs.length) S.frogs = Array.from({ length: 7 }, (_, i) => ({ kind: i < 4 ? 'peep' : 'krek', f: i < 4 ? R(2600, 3300) : R(1700, 2400), gap: i < 4 ? R(0.7, 1.3) : R(1.1, 2.2), pan: R(-0.9, 0.9), dist: R(0.15, 0.8), on: false, flip: 0, next: 0, v: null }));
+    const t0 = now();
+    for (const f of S.frogs) {
+      const want = f.kind === 'peep' ? peepK : krekK;
+      if (t0 > f.flip) { f.on = f.on ? false : Math.random() < want * 1.3; f.flip = t0 + (f.on ? R(6, 25) : R(3, 15)); }
+      if (!f.on || want < 0.03) { f.next = 0; continue; }
+      if (!f.v) f.v = voice(f.pan, f.dist, 1);
+      if (f.next < t0) f.next = t0 + Math.random() * f.gap;
+      while (f.next < t0 + dt + 0.1) { (f.kind === 'peep' ? peep : krek)(f, f.next, want); f.next += f.gap * R(0.9, 1.1); }
+    }
+  }
+  function owl(pan, dist, a, p = 1) {   // a great horned owl: "hoo, h'hoo — hoo — hoo", soft and far
+    hit('owl'); const v = voice(pan, dist, a), f = R(300, 340) * p;
+    notes(v, now() + 0.05, [[0, 0.32, 1], [0.62, 0.12, 0.7], [0.78, 0.3, 1], [1.4, 0.38, 0.9], [2.05, 0.42, 0.8]].map(([t, d, k]) => [t, d, 0.13 * k, f * 1.03, f * 0.97]), WV.coo, 0.06);
+  }
+  function poorwill(pan, dist) {   // "poor-will": a soft whistle, then one slurred up
+    hit('poorwill'); const f = R(1500, 1700); notes(voice(pan, dist, 1), now() + 0.05, [[0, 0.16, 0.07, f, f * 0.97], [0.24, 0.3, 0.08, f * 0.8, f * 1.25, f * 1.15]], WV.bird, 0.02);
+  }
+
+  // ---------------- BIRDS by day. A few of each kind round about, each with its own place, pitch and song, sung again and again
+  // (now and then one flies off and another comes). Notes: [t, dur, amp, f0, f1, f2]
+  const SONGS = {
+    warbler(b) {   // a quick jumble, its own; now and then a new one
+      if (!b.motif || Math.random() < 0.12) {
+        const L = b.motif = [], base = R(2700, 4600); let t = 0;
+        for (let i = 0, k = I(5, 9); i < k; i++) { const f = base * R(0.8, 1.25), d = R(0.04, 0.11), sh = Math.random(); L.push([t, d, R(0.6, 1), ...(sh < 0.3 ? [f, f * 1.3] : sh < 0.6 ? [f * 1.3, f] : sh < 0.85 ? [f, f * 1.35, f * 0.95] : [f, f * 1.02])]); t += d + R(0.02, 0.06); }
+        if (Math.random() < 0.5) { const f = base * R(1.1, 1.4); for (let i = 0, k = I(3, 5); i < k; i++, t += 0.06) L.push([t, 0.035, 0.8, f * 1.1, f * 0.9]); }   // a trill to end
+      }
+      return b.motif.map(([t, d, a, ...f]) => [t * R(0.97, 1.03), d, a * R(0.85, 1.1), ...f]);
+    },
+    robin() { const L = []; let t = 0; for (let k = I(2, 4); k > 0; k--) { const f = R(1900, 2800); L.push([t, R(0.16, 0.26), R(0.7, 1), f * 0.9, f * 1.15, f]); t += R(0.32, 0.45); } return L; },   // "cheerily, cheer-up"
+    chick() { const f = R(3800, 4050); return Math.random() < 0.7 ? [[0, 0.3, 1, f, f * 0.98], [0.36, 0.34, 0.85, f * 0.86, f * 0.84]] : [[0, 0.3, 1, f, f * 0.98], [0.36, 0.14, 0.85, f * 0.86, f * 0.85], [0.52, 0.18, 0.75, f * 0.86, f * 0.84]]; },   // "fee-bee"
+    trill() { const f = R(3400, 5000), k = I(10, 21), g = R(0.048, 0.065), L = []; for (let i = 0; i < k; i++) L.push([i * g, 0.03, 0.6 + 0.4 * Math.sin(Math.PI * i / k), f * 1.15, f * 0.88]); return L; },
+    lark() { const L = []; let t = 0, f = R(3000, 3800); for (let i = 0, k = I(4, 6); i < k; i++) { const d = i < 2 ? R(0.18, 0.32) : R(0.07, 0.14); L.push([t, d, R(0.7, 1), f, f * R(0.85, 1.05)]); t += d + R(0.03, 0.08); f *= R(0.8, 1.02); } return L; },   // a meadowlark: clear, falling whistles
+    sky() { const L = [], len = R(5, 10); for (let t = 0; t < len; t += R(0.06, 0.12)) { const f = R(2600, 5400); L.push([t, R(0.035, 0.075), (0.5 + 0.5 * Math.random()) * Math.min(1, t / 1.2, (len - t) / 1.5), f, f * R(0.8, 1.25)]); } return L; },   // a skylark, high up: on and on
+    dove() { const f = R(440, 510); return [[0, 0.42, 0.8, f, f * 1.2, f * 1.06], [0.62, 0.36, 0.95, f * 1.08, f * 0.98], [1.2, 0.36, 0.85, f, f * 0.97], [1.78, 0.38, 0.75, f, f * 0.96]]; },   // a mourning dove: "ooo-AH, coo, coo, coo"
+    quail() { const f = R(1300, 1450); return [[0, 0.08, 0.7, f, f * 1.1], [0.14, 0.17, 1, f * 1.2, f * 1.6, f * 1.4], [0.38, 0.1, 0.8, f * 1.15, f * 1.05]]; },   // "chi-CA-go"
+    cwren() { const L = []; let t = 0, f = R(4000, 4500), g = 0.075; for (let i = 0, k = I(9, 13); i < k; i++) { L.push([t, 0.07, 0.9, f, f * 0.93]); t += g; g *= 1.07; f *= 0.94; } return L; },   // a canyon wren: falling, slowing, off the walls
+  };
+  const LOUD = { warbler: 0.09, robin: 0.09, chick: 0.08, trill: 0.08, lark: 0.1, sky: 0.07, dove: 0.08, quail: 0.1, cwren: 0.08, wren: 0.3, gull: 0.3, raven: 0.22, peck: 0.14 };
+  function cactusWren(v, b, t0) {   // "chuh-chuh-chuh": harsh, dry
+    const f = R(2100, 2700) * b.p; let t = t0;
+    for (let i = 0, k = I(6, 9); i < k; i++, t += R(0.09, 0.12)) { burst(v, t, BUF.white, 'bandpass', f, 3, 0.6, 0.008, 0.06); notes(v, t, [[0, 0.05, 0.08, f * 0.5, f * 0.45]], 'sawtooth', 0.005); }
+    return t - t0;
+  }
+  function gull(v, b, t0) {   // a herring gull: a long "kee-ow", or a laughing "ha-ha-ha-ha"
+    const bp = filt('bandpass', 1700 * b.p, 2.2); bp.connect(v);
+    if (Math.random() < 0.55) { notes(bp, t0, [[0, 0.42, 0.9, 950 * b.p, 1550 * b.p, 1150 * b.p]], 'sawtooth', 0.02); return 0.45; }
+    const L = []; let t = 0; for (let i = 0, k = I(4, 8); i < k; i++) { L.push([t, 0.11, 1 - i / (k + 2), 1350 * b.p, 1050 * b.p]); t += R(0.15, 0.2) + i * 0.01; }
+    notes(bp, t0, L, 'sawtooth', 0.01); return t;
+  }
+  function raven(v, b, t0) {   // "kraaa" off the crags, once to thrice: rough (a fast flutter on it)
+    const k = I(1, 3);
+    for (let i = 0; i < k; i++) {
+      const t = t0 + i * R(0.55, 0.8), f = R(380, 470) * b.p, bp = filt('bandpass', 1050, 1.6), am = gain(0.6), lfo = ac.createOscillator(), lg = gain(0.4);
+      lfo.type = 'square'; lfo.frequency.value = R(45, 60); chain(lfo, lg, am.gain); chain(bp, am, v);
+      notes(bp, t, [[0, R(0.28, 0.38), 1, f, f * 1.08, f * 0.9]], 'sawtooth', 0.03); lfo.start(t); lfo.stop(t + 0.42);
+    }
+    return k * 0.7;
+  }
+  function peck(v, b, t0) {   // a woodpecker drumming on a dead pine
+    const k = I(12, 21), g = R(0.05, 0.065), f = R(900, 1400) * b.p;
+    for (let i = 0; i < k; i++) { const t = t0 + i * g * (1 + i * 0.006), a = 0.5 + 0.5 * (1 - i / k); notes(v, t, [[0, 0.025, 0.5 * a, f * 1.1, f]], 'triangle', 0.001); burst(v, t, BUF.white, 'bandpass', f * 2, 2, 0.5 * a, 0.0005, 0.012); }
+    return k * g;
+  }
+  function birdOf(sp) {
+    const L = S.roster[sp] || (S.roster[sp] = []);
+    if (L.length < 3 || Math.random() < 0.06) {
+      const b = { pan: R(-0.85, 0.85), dist: sp === 'sky' ? R(0.5, 0.75) : R(0.2, 0.85), p: R(0.93, 1.07), motif: null };
+      if (L.length >= 3) L.splice(Math.floor(Math.random() * L.length), 1); L.push(b); return b;
+    }
+    return PK(L);
+  }
+  function sing(sp) {
+    const b = birdOf(sp), v = voice(b.pan, b.dist, LOUD[sp] || 0.08), t0 = now() + 0.05; let len;
+    hit(sp);
+    if (sp === 'wren') len = cactusWren(v, b, t0); else if (sp === 'gull') len = gull(v, b, t0); else if (sp === 'raven') len = raven(v, b, t0); else if (sp === 'peck') len = peck(v, b, t0);
+    else { const L = SONGS[sp](b).map(([t, d, a, ...f]) => [t, d, a, ...f.map(x => x * b.p)]); notes(v, t0, L, sp === 'dove' ? WV.coo : WV.bird, sp === 'dove' ? 0.06 : 0.008); len = L.reduce((e, x) => Math.max(e, x[0] + x[1]), 0); }
+    S.busy.push(t0 + len);
+  }
+
+  // ---------------- the rest of the land's calls
+  function cicada(pan, dist) {   // in the heat: a buzz that swells, holds, winds down
+    hit('cicada'); const v = voice(pan, dist, 1), t = now() + 0.05, up = R(1.5, 3), hold = R(2, 5), down = R(1.5, 3), end = t + up + hold + down, f = R(4200, 5600);
+    const s = ac.createBufferSource(), bp = filt('bandpass', f * 0.8, 7), am = gain(0.5), lfo = ac.createOscillator(), lg = gain(0.5), g = gain(0); s.buffer = BUF.white; s.loop = true;
+    lfo.type = 'triangle'; lfo.frequency.value = R(90, 140);
+    bp.frequency.setValueAtTime(f * 0.8, t); bp.frequency.linearRampToValueAtTime(f, t + up); bp.frequency.setValueAtTime(f, t + up + hold); bp.frequency.linearRampToValueAtTime(f * 0.75, end);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.12, t + up); g.gain.setValueAtTime(0.12, t + up + hold); g.gain.linearRampToValueAtTime(0, end);
+    chain(lfo, lg, am.gain); chain(s, bp, am, g, v); s.start(t, Math.random() * 2); lfo.start(t); s.stop(end + 0.05); lfo.stop(end + 0.05);
+  }
+  function bee() {   // a bee going by, left to right or back: a little higher coming, lower going
+    hit('bee'); const dir = Math.random() < 0.5 ? 1 : -1, t = now() + 0.05, d = R(1.6, 3), f = R(190, 240), p = panr(-0.9 * dir, evs);
+    const o = ac.createOscillator(), vib = ac.createOscillator(), vg = gain(f * 0.02), bp = filt('bandpass', 520, 1), lp = filt('lowpass', 2400, 0.5), g = gain(0);
+    p.pan.setValueAtTime(-0.9 * dir, t); p.pan.linearRampToValueAtTime(0.9 * dir, t + d);
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 1.04, t); o.frequency.setValueAtTime(f * 1.04, t + d * 0.4); o.frequency.linearRampToValueAtTime(f * 0.96, t + d * 0.6);
+    vib.frequency.value = R(5, 9); chain(vib, vg, o.frequency);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.08, t + d * 0.5); g.gain.linearRampToValueAtTime(0, t + d);
+    chain(o, bp, lp, g, p); o.start(t); vib.start(t); o.stop(t + d + 0.05); vib.stop(t + d + 0.05);
+  }
+  function hopper(pan) {   // a grasshopper's dry rasp, a few times
+    hit('hopper'); const v = voice(pan, R(0.2, 0.6), 1), t0 = now() + 0.05, f = R(5500, 7500);
+    for (let i = 0, k = I(3, 7); i < k; i++) { const t = t0 + i * R(0.22, 0.32); for (let j = 0; j < 6; j++) burst(v, t + j * 0.025, BUF.white, 'bandpass', f, 2, 0.15, 0.002, 0.015); }
+  }
+  const CHIMES = [784, 880, 1047, 1175, 1319, 1568];   // G A C D E G: pentatonic, no two clash
+  function chime(pan, a) {   // the Trading Post's chimes: a tube struck, its partials ringing out (a free bar's), its note beating a little
+    hit('chime'); const t = now() + R(0.02, 0.12), f = PK(CHIMES) * R(0.998, 1.002);
+    ping(voice(pan + R(-0.15, 0.15), 0.2, a), t, f, [[1, 1, 3.2], [1.0016, 0.6, 3], [2.76, 0.4, 1.6], [5.4, 0.2, 0.8], [8.93, 0.08, 0.4]], 0.045 * R(0.4, 1));
+  }
+  function creak(pan, dist, a, f = R(500, 900)) {   // wood working: a stick-slip judder through a woody body (a mooring line, the hull, a sign)
+    hit('creak'); const v = voice(pan, dist, a), t = now() + 0.05, d = R(0.35, 0.9), o = ac.createOscillator(), b1 = filt('bandpass', f, 9), b2 = filt('bandpass', f * 2.3, 6), g = gain(0), r0 = R(18, 35);
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(r0, t); o.frequency.linearRampToValueAtTime(r0 * R(1.4, 2.4), t + d * R(0.3, 0.6)); o.frequency.linearRampToValueAtTime(r0 * R(0.7, 1.1), t + d);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.35, t + 0.06); g.gain.setValueAtTime(0.35, t + d - 0.1); g.gain.linearRampToValueAtTime(0, t + d);
+    o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(v); o.start(t); o.stop(t + d + 0.02);
+  }
+  function tink(pan, a) {   // a halyard slapping a mast, a block knocking: tink, tink-tink
+    hit('tink'); const v = voice(pan, R(0.2, 0.6), a), t0 = now() + 0.03, f = R(1800, 2600);
+    for (let i = 0, k = I(1, 3); i < k; i++) ping(v, t0 + i * R(0.12, 0.3), f * R(0.99, 1.01), [[1, 1, 0.35], [2.32, 0.5, 0.2], [4.1, 0.25, 0.1]], 0.05 * R(0.5, 1));
+  }
+  function bell(pan, a) {   // a buoy's bell out on the water, rung twice as it rocks
+    hit('bell'); const v = voice(pan, 0.85, a), t = now() + 0.05, f = R(560, 610), parts = [[1, 1, 2.8], [1.19, 0.35, 1.6], [1.5, 0.25, 1.2], [2, 0.5, 1.4], [2.66, 0.2, 0.8]];
+    ping(v, t, f, parts, 0.06); if (Math.random() < 0.7) ping(v, t + R(1.1, 1.9), f, parts, 0.04);
+  }
+  function ice(pan) {   // the ice settling: a crack, then a long falling "pyoo" through the cold
+    hit('ice'); const v = voice(pan, R(0.5, 0.9), 1), t = now() + 0.05;
+    burst(v, t, BUF.white, 'highpass', 2500, 0.7, 0.1, 0.0005, 0.03); notes(v, t + 0.01, [[0, R(0.35, 0.8), 0.045, R(1600, 2600), R(220, 400)]], 'sine', 0.002);
+  }
+  function slide(pan) {   // far off, snow or rock letting go: a long rumble, a patter of stones
+    hit('slide'); const v = voice(pan, 0.9, 1), t = now() + 0.05, d = R(3, 5), s = ac.createBufferSource(), hp = filt('highpass', 90, 0.7), lp = filt('lowpass', 420, 0.7), g = gain(0); s.buffer = BUF.brown; s.loop = true;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + d * 0.3); g.gain.linearRampToValueAtTime(0, t + d);
+    chain(s, hp, lp, g, v); s.start(t, Math.random() * 3); s.stop(t + d + 0.1);
+    for (let i = 0; i < 14; i++) burst(v, t + R(0.3, d * 0.8), BUF.white, 'bandpass', R(1500, 3500), 2, 0.06 * Math.random() + 1e-3, 0.001, 0.02);
+  }
+  function pebbles(pan) {   // a few stones skittering down the canyon wall
+    hit('pebble'); const v = voice(pan, R(0.4, 0.8), 1); let t = now() + 0.05, g = R(0.08, 0.14);
+    for (let i = 0, k = I(4, 11); i < k; i++, t += g, g *= R(0.75, 1.05)) burst(v, t, BUF.white, 'bandpass', R(2000, 4200), 3, 0.32 * R(0.4, 1), 0.0006, 0.02);
+  }
+  function cry(pan) {   // a falcon far up the canyon, its cry coming back off the walls (the echo send)
+    hit('cry'); const v = voice(pan, 0.8, 0.16), t = now() + 0.05, dur = R(0.8, 1.1), b = R(2000, 2500), bp = filt('bandpass', 2400, 1.4); bp.connect(v);
+    notes(bp, t, [[0, dur, 1, b * 0.8, b, b * 0.55]], 'sawtooth', 0.05);
+  }
+  // the canyon: wind moaning down it (a narrow band that wanders), and now and then a deep breath welling up the gorge, and going
+  function mkMoan() {
+    const o = gain(1, beds), bp = filt('bandpass', 330, 7), g = gain(0, o), lfo = ac.createOscillator(), lg = gain(170), s = loop(BUF.pink, bp);
+    lfo.frequency.value = 0.13; chain(lfo, lg, bp.frequency); lfo.start(); bp.connect(g);
+    const dh = filt('highpass', 150, 0.7), dp = filt('bandpass', 240, 1.3), d = gain(0, o), s2 = loop(BUF.pink, dh, 0.7); chain(dh, dp, d);
+    return { src: [s, lfo, s2], out: o, g, d };
+  }
+  function canyonStep(m) {
+    const k = m.canyon; if (k < 1e-3 && !S.bed.moan) return;
+    const b = bed('moan', mkMoan); b.lvl = k;
+    ease(b.g.gain, 0.3 * k * (0.5 + 0.5 * S.gust), 0.8);
+    if (every('dread', 14)) S.drone = Math.random() < 0.55 ? R(0.5, 1) : 0;
+    ease(b.d.gain, 0.5 * k * S.drone, 3);
+  }
+
+  // ---------------- each tick: what's here (m: ambMix), dt s since the last
+  function step(m, dt) {
+    const t = now(), h = m.hour, day = 1 - m.night, nite = smooth(0.4, 0.85, m.night), wet = Math.max(m.storm, m.rain, m.blizz, m.fog * 0.7), dry = 1 - wet;
+    const dawn = smooth(4.6, 5.8, h) * (1 - smooth(7.6, 9.4, h)), heat = smooth(10.5, 12.5, h) * (1 - smooth(16, 17.5, h));
+    const pine = m.isle * (m.isleKind === 'pine'), palm = m.isle * (m.isleKind === 'palm'), fin = m.isle * (m.isleKind === 'final');
+    ease(out.gain, (AMB.mute ? 0 : AMB.vol) * (m.indoor ? 0.6 : m.paused ? 0.6 : m.title ? 0.8 : 1), offline ? 0.3 : 0.8);
+    ease(muff.frequency, m.indoor ? 650 : 20000 - 14000 * m.fog, 0.4);
+    ease(rev.gain, 0.22 + 0.25 * m.valley + 0.45 * m.canyon + 0.35 * m.pass + 0.2 * m.harb, 0.8); ease(echo.gain, 0.55 * m.canyon + 0.3 * m.pass, 0.8);
+    for (let i = S.later.length - 1; i >= 0; i--) if (S.later[i].t <= t) { S.later[i].fn(); S.later.splice(i, 1); }
+    S.busy = S.busy.filter(e => e > t);
+    windStep(m, dt);
+    waterStep('river', m.river, m.riverP, dt); waterStep('brook', m.brook, m.brookP, dt);
+    surfStep(m, dt); lapStep(m); fireStep(m, dt); canyonStep(m);
+    // night
+    crickStep(m, smooth(0.25, 0.8, m.night) * dry * Math.min(1, 0.8 * m.desert + 0.7 * m.valley + 0.45 * m.shore + m.meadow + 0.25 * m.canyon + 0.6 * palm + 0.6 * fin), 0.85 + 0.35 * m.desert, 0.4 + m.meadow + m.valley, dt);
+    frogStep(m, nite * dry * (m.meadow * (0.3 + 0.7 * Math.max(m.lake, m.brook)) + 0.6 * (palm + fin)), nite * dry * (m.valley * (0.25 + 0.75 * m.river) + 0.3 * m.meadow * m.brook), dt);
+    if (m.lake * nite > 0.2 && every('bull', 26 / m.lake)) bullfrog(m.lakeP + R(-0.4, 0.4), m.lake);
+    const ow = nite * dry * (m.valley + 0.6 * m.meadow + 0.4 * pine + 0.3 * m.canyon);
+    if (ow > 0.05 && every('owl', 32 / ow)) { const p = R(-0.8, 0.8); owl(p, R(0.5, 0.85), 1); if (Math.random() < 0.5) later(R(3, 5.5), () => owl(-p, R(0.55, 0.9), 0.8, 1.12)); }   // (and its mate answers)
+    const pw = nite * dry * m.desert;
+    if (pw > 0.05) {
+      if (!S.pw || t > S.pw.end) { const was = S.pw && S.pw.on; S.pw = { on: !was && Math.random() < pw * 1.4, end: t + (was ? R(25, 70) : R(12, 30)), pan: R(-0.8, 0.8), dist: R(0.35, 0.8) }; }
+      if (S.pw.on && every('pw', 2.4, 0.15)) poorwill(S.pw.pan, S.pw.dist);
+    }
+    // day: songbirds (each place its own)
+    const lit = day * dry * (1 + 1.7 * dawn - 0.3 * heat);
+    const W = {
+      robin: m.valley + 0.6 * pine, warbler: 1.2 * m.valley + 0.8 * m.meadow + 0.8 * pine + 0.6 * palm + fin + 0.2 * m.shore, chick: 0.8 * m.valley + 0.4 * m.meadow + 0.5 * pine,
+      trill: 0.5 * m.valley + 0.25 * m.desert * (1 - m.hot), peck: 0.35 * m.valley + 0.2 * pine, lark: 1.1 * m.meadow + fin, sky: 0.45 * m.meadow + 0.5 * fin,
+      dove: 0.7 * m.desert + 0.6 * palm, wren: 0.7 * m.desert, quail: 0.5 * m.desert * (1 - 0.6 * m.hot), cwren: 0.5 * m.canyon,
+    };
+    let tot = 0; for (const k in W) tot += W[k];
+    if (tot > 0.01 && lit > 0.01 && every('bird', 1 / (0.16 * tot * lit)) && S.busy.length < 2 + (dawn > 0.5)) {
+      let r = Math.random() * tot; for (const k in W) { r -= W[k]; if (r <= 0) { sing(k); break; } }
+    }
+    // the sea's birds and the mountain's
+    const gl = (1.1 * m.shore + 1.2 * m.harb + m.isle + 0.9 * m.near * m.sea) * (day + 0.06) * (1 - 0.7 * m.storm) * (1 - m.calm);
+    if (gl > 0.02 && every('gull', 1 / (0.12 * gl))) sing('gull');
+    const rv = m.pass * day * (1 - m.blizz); if (rv > 0.05 && every('raven', 40 / rv)) sing('raven');
+    // insects by day
+    const ci = m.desert * heat * (0.5 + 1.2 * m.hot) * dry; if (ci > 0.02 && every('cicada', 14 / ci)) cicada(R(-0.8, 0.8), R(0.35, 0.85));
+    const bz = (m.meadow + 0.5 * fin) * day * (1 - dawn) * dry; if (bz > 0.05 && every('bee', 22 / bz)) bee();
+    const gh = (m.meadow + 0.5 * m.desert) * heat * dry; if (gh > 0.05 && every('hopper', 18 / gh)) hopper(R(-0.8, 0.8));
+    // the pass: ice, now and then a slide far off; the canyon: stones, a falcon far up
+    const ic = m.pass * (0.6 + 0.6 * m.night); if (ic > 0.05 && every('ice', 38 / ic)) ice(R(-0.9, 0.9));
+    if (m.pass > 0.3 && every('slide', 200 / m.pass)) slide(R(-1, 1));
+    if (m.canyon > 0.3) { if (every('pebble', 26 / m.canyon)) pebbles(R(-0.9, 0.9)); if (day > 0.5 && every('cry', 9 / m.canyon)) cry(R(-0.8, 0.8)); }
+    // the Trading Post's chimes (in the gusts; its sign creaks in a big one)
+    if (m.chime > 0.02) {
+      for (let i = poisson(m.chime * (0.08 + 2.4 * Math.max(0, S.gust - 0.25) ** 2) * dt); i > 0; i--) chime(m.chimeP, m.chime);
+      if (S.gust > 0.55 && every('sign', 25 / m.chime)) creak(m.chimeP, 0.35, 0.5 * m.chime, R(350, 500));
+    }
+    // Cold Harbour: rigging, mooring lines, a bell out on the water; alongside an island: the jetty; at sea: the hull working as she rolls
+    if (m.harb > 0.05) {
+      if (every('tink', 4 / (m.harb * (0.4 + S.gust)))) tink(R(-0.6, 0.6), m.harb);
+      if (every('creak', 7 / m.harb)) creak(R(-0.7, 0.7), R(0.2, 0.5), 0.6 * m.harb);
+      if (every('bell', 16 / m.harb)) bell(R(0.3, 0.9) * (Math.random() < 0.5 ? -1 : 1), m.harb);
+    }
+    if (m.isle > 0.05 && every('creak', 12 / m.isle)) creak(R(-0.6, 0.6), R(0.2, 0.4), 0.4 * m.isle);
+    if (m.sea > 0.05 && m.roll > 0.05 && every('hull', 3.5 / m.roll)) creak(R(-0.5, 0.5), 0.15, 0.4 + 0.5 * m.roll, R(260, 520));
+  }
+  function update(m, dt) {
+    if (!ac) { const A = Sound.raw(); if (!A) return; attach(A.ac, Sound.dest); }
+    if (!offline && ac.state !== 'running') return;
+    S.acc += dt; if (S.acc < 0.05) return;
+    const t = Math.min(S.acc, 0.25); S.acc = 0; step(m, t); tidy(t);
+  }
+  return {
+    vol: 1, mute: false, n, update, attach,
+    call(k) {   // one call on its own, in the middle (tools/amb-test.mjs)
+      if (LOUD[k]) return sing(k);
+      const f = { cicada: () => cicada(0, 0.5), bee, hopper: () => hopper(0), chime: () => chime(0, 1), creak: () => creak(0, 0.3, 1), tink: () => tink(0, 1), bell: () => bell(0, 1), ice: () => ice(0), slide: () => slide(0),
+        pebble: () => pebbles(0), cry: () => cry(0), owl: () => owl(0, 0.6, 1), poorwill: () => poorwill(0, 0.5), bull: () => bullfrog(0, 1), lap: () => lap(voice(0, 0.3, 1), 1),
+        cricket: () => chirp({ f: 4300, vol: 1, p: voice(0, 0.3, 0.05) }, now() + 0.05), peep: () => peep({ f: 3000, v: voice(0, 0.4, 1) }, now() + 0.05, 1), krek: () => krek({ f: 2000, v: voice(0, 0.4, 1) }, now() + 0.05, 1) }[k];
+      if (f) f();
+    },
+    get on() { return !!ac; },
+    beds: () => Object.keys(S.bed),
+    bus: () => beds, noise: k => BUF && BUF[k],   // (SAILING: the sea's own beds go in here, so the 🍃 volume has them too)
+  };
 })();
 
 // =====================================================================
@@ -14561,6 +15013,26 @@ function hankVolumeUI(el) {
   el.querySelector('button').addEventListener('click', () => { Sound.init(); hankVolume(null, !HANK.mute); });
   hankVolume();
 }
+// AMBIENCE: the world's own sounds (AMB), its volume (to 150%) and mute, remembered on this device
+const AMB_VOL_KEY = 'collies.ambVolume.v1';
+try { const o = JSON.parse(localStorage.getItem(AMB_VOL_KEY) || 'null'); if (o) { AMB.vol = clamp(+o.vol || 0, 0, 1.5); AMB.mute = !!o.mute; } } catch (e) {}
+function ambVolume(vol, mute) {
+  if (vol !== undefined && vol !== null) AMB.vol = clamp(+vol || 0, 0, 1.5);
+  if (mute !== undefined && mute !== null) AMB.mute = !!mute;
+  try { localStorage.setItem(AMB_VOL_KEY, JSON.stringify({ vol: AMB.vol, mute: AMB.mute })); } catch (e) {}
+  document.querySelectorAll('.ambVol').forEach(el => { const i = el.querySelector('input'), o = el.querySelector('output'), b = el.querySelector('button'); if (!i) return;
+    i.value = Math.round(AMB.vol * 100); o.textContent = Math.round(AMB.vol * 100) + '%'; b.textContent = AMB.mute ? '🔇 Muted' : 'Mute'; b.classList.toggle('on', AMB.mute); });
+  return { vol: AMB.vol, mute: AMB.mute };
+}
+function ambVolumeUI(el) {
+  if (!el) return;
+  el.innerHTML = `<span title="The world: wind, water, birds">🍃</span><input type="range" min="0" max="150" step="5" aria-label="World sounds volume"><output></output><button type="button" aria-label="Mute the world sounds"></button>`;
+  const i = el.querySelector('input');
+  i.addEventListener('input', () => { Sound.init(); ambVolume(i.value / 100); });
+  i.addEventListener('keydown', e => e.stopPropagation());
+  el.querySelector('button').addEventListener('click', () => { Sound.init(); ambVolume(null, !AMB.mute); });
+  ambVolume();
+}
 
 // ---------------- his model, lantern and bubble (every rendered frame) ----------------
 function syncHank(dt) {
@@ -14819,7 +15291,7 @@ function escHTML(v) { return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;',
 function initHankUI() {
   HANK.bubble = document.getElementById('hankBubble');
   const tb = document.getElementById('tBarn'); if (tb) tb.addEventListener('click', () => { Sound.init(); openBarn(); });
-  document.querySelectorAll('.hankVol').forEach(hankVolumeUI);
+  document.querySelectorAll('.hankVol').forEach(hankVolumeUI); document.querySelectorAll('.ambVol').forEach(ambVolumeUI);
   resetHank();
 }
 
@@ -16124,13 +16596,13 @@ function openBarn(sel) {
     <div class="barnMem" id="barnMem" hidden></div>
     <div class="barnFoot">
       <button type="button" class="bbtn" id="barnMemBtn" hidden></button>
-      <span class="hankVol"></span>
+      <span class="hankVol"></span><span class="ambVol"></span>
       ${BARN.fromTitle ? '<button type="button" class="bbtn" id="barnFresh">Start a fresh flock</button>' : ''}
       ${BARN.watch ? `<span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span>` : `<button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button>`}</div>
     <div class="barnPad" id="barnPad"></div>
   </div>`;
   barnStage(); document.getElementById('barnViewWrap').appendChild(BARN.r.domElement); BARN.w = BARN.h = 0;
-  hankVolumeUI(el.querySelector('.hankVol'));
+  hankVolumeUI(el.querySelector('.hankVol')); ambVolumeUI(el.querySelector('.ambVol'));
   const nm = document.getElementById('barnName'); nm.readOnly = !!BARN.watch;
   nm.addEventListener('input', () => {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
@@ -17856,19 +18328,20 @@ const SEAS = (() => {
     },
   };
 })();
-// the sea's own noise (each screen makes its own, as Sound.ambience): wind in the rig, water along the hull, the sail shaking, rain
-const SEA_AMB = { wind: null };
+// the sea's own noise (each screen makes its own, into AMB's beds: the 🍃 volume has it): wind in the rig, water along the hull, the sail
+// shaking, rain. Stereo, nothing under 120 Hz, eased (no zipper)
+const SEA_AMB = { ac: null };
 function seaAmbience(dt) {
-  const A = Sound.raw(); if (!A) return;
-  const S = SEA, M = SEA_AMB, k = Math.min(1, dt * 2.5);
-  if (!M.wind) {
-    const loop = (type, f, q) => { const src = A.ac.createBufferSource(); src.buffer = A.noiseBuf; src.loop = true; const fl = A.ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = A.ac.createGain(); g.gain.value = 0; src.connect(fl); fl.connect(g); g.connect(A.out(1, 0)); src.start(0, Math.random() * 1.5); return { g, fl }; };
-    M.wind = loop('bandpass', 500, 1.4); M.hull = loop('lowpass', 700, 0.5); M.rain = loop('highpass', 3200, 0.4); M.flapT = 0;
+  const bus = AMB.bus(); if (!bus) return;
+  const S = SEA, M = SEA_AMB, ac = bus.context, t0 = ac.currentTime, set = (p, v, tc = 0.25) => p.setTargetAtTime(v, t0, tc);
+  if (M.ac !== ac) {
+    M.ac = ac; const loop = (type, f, q, buf) => { const src = ac.createBufferSource(); src.buffer = AMB.noise(buf); src.loop = true; const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 120; const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const g = ac.createGain(); g.gain.value = 0; src.connect(hp); hp.connect(fl); fl.connect(g); g.connect(bus); src.start(0, Math.random() * 3); return { g, fl, hp }; };
+    M.wind = loop('bandpass', 500, 1.1, 'pink'); M.hull = loop('lowpass', 700, 0.5, 'pink'); M.hull.hp.frequency.value = 260; M.rain = loop('highpass', 3200, 0.4, 'white'); M.flapT = 0;
   }
   const on = S.on && G.mode === 'play' ? 1 : 0, w = S.aw || 0, sp = Math.abs(S.u);
-  M.wind.g.gain.value = lerp(M.wind.g.gain.value, on * clamp((w - 3) / 22, 0, 1) * 0.16, k); M.wind.fl.frequency.value = lerp(M.wind.fl.frequency.value, 380 + w * 34 + Math.sin(S.t * 0.9) * 60, k);
-  M.hull.g.gain.value = lerp(M.hull.g.gain.value, on * clamp(sp / 9, 0, 1) * 0.13, k); M.hull.fl.frequency.value = lerp(M.hull.fl.frequency.value, 400 + sp * 90, k);
-  M.rain.g.gain.value = lerp(M.rain.g.gain.value, on * S.rain * 0.07, k);
+  set(M.wind.g.gain, on * clamp((w - 3) / 22, 0, 1) * 0.16 * (0.75 + 0.25 * Math.sin(S.t * 0.7) * Math.sin(S.t * 1.9)), 0.4); set(M.wind.fl.frequency, 380 + w * 34 + Math.sin(S.t * 0.9) * 60, 0.4);
+  set(M.hull.g.gain, on * clamp(sp / 9, 0, 1) * 0.13 * (0.7 + 0.6 * clamp(Math.abs(S.pitchV) * 4, 0, 1)) * rnd(0.8, 1.2), 0.15); set(M.hull.fl.frequency, 700 + sp * 120, 0.4);
+  set(M.rain.g.gain, on * S.rain * 0.07, 0.5);
   if (on && S.hoist > 0.08 && S.luff > 0.35 && w > 2.5) { M.flapT -= dt * (1 + w * 0.12); if (M.flapT <= 0) { M.flapT = rnd(0.12, 0.3); SEAS.flap(0, 0.05 + 0.012 * w * S.luff); } }
 }
 
@@ -20840,7 +21313,7 @@ appleFx = fxDef('appleFx', appleFx);
 poopFx = fxDef('poopFx', poopFx);   // POOP   // APPLES: picked up, lobbed, taken from a dog's mouth
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
-  if (!d || typeof d.value !== 'function' || k === 'init' || k === 'ambience' || k === 'raw') continue;
+  if (!d || typeof d.value !== 'function' || k === 'init' || k === 'raw') continue;
   Sound[k] = fxDef('S.' + k, d.value, { pan: SND_PAN[k] });
 }
 for (const k of Object.keys(SFX)) if (typeof SFX[k] === 'function') SFX[k] = fxDef('X.' + k, SFX[k], { pan: 0 });   // dog-moves synth sounds (pan first)
@@ -20848,6 +21321,46 @@ for (const k of Object.keys(SFX)) if (typeof SFX[k] === 'function') SFX[k] = fxD
 window.NET = NET;
 NET.api = { host: netHost, join: netJoin, leave: netLeave, stop: netStopHosting, rejoin: netRejoin, setPause, snap: netSnapTick, link: netLink, fx, fxDef,
   types: NET_TYPES, build: NET_BUILD, limits: NETT, grass: () => gAmt, eat: eatGrass };   // (for tests: tools/net-test.mjs)
+
+// ---------------- AMBIENCE: what's round this screen's camera, for AMB (0…1 unless said; …P: where it is, −1 left … 1 right) ----------------
+const AMB_MIX = { desert: 0, hot: 0, valley: 0, shore: 0, meadow: 0, canyon: 0, pass: 0, blizz: 0, harb: 0, sea: 0, isle: 0, near: 0, roll: 0,
+  river: 0, riverP: 0, brook: 0, brookP: 0, lake: 0, lakeP: 0, surf: 0, surfP: 0, fire: 0, fireP: 0, chime: 0, chimeP: 0,
+  night: 0, hour: 12, storm: 0, rain: 0, fog: 0, calm: 0, indoor: 0, paused: 0, title: 0, isleKind: '' };
+const AMB_TO = { ...AMB_MIX }, AMB_NOW = new Set(['hour', 'night', 'indoor', 'paused', 'title', 'isleKind']);   // (eased toward, but these at once)
+const ambPan = (x, z) => clamp(((x - cam.x) * CAM_R.x + (z - cam.z) * CAM_R.z) / 36, -1, 1);
+function ambMix(dt, indoor = false) {
+  const M = AMB_TO, x = cam.x, z = cam.z;
+  for (const k in M) if (k !== 'isleKind') M[k] = 0;
+  M.isleKind = ''; M.night = LIGHT.night; M.hour = G.clock.hour; M.paused = G.paused ? 1 : 0; M.title = G.mode === 'title' ? 1 : 0; M.indoor = indoor ? 1 : 0;
+  if (SEA_AWAY) {   // SAILING: the land's gone; under way, or alongside an island (its beach, its jetty)
+    const S = SEA; M.storm = S.storm; M.rain = S.rain; M.fog = S.fog; M.calm = S.calm;
+    if (S.docked && S.berth > 0) { const w = ROUTE[S.berth]; M.isle = 1; M.isleKind = w.final ? 'final' : w.kind; M.surf = w.kind === 'rock' ? 0.7 : 0.5; M.surfP = ambPan(BOAT.x - BOAT.rx * 40, BOAT.z - BOAT.rz * 40); }
+    else { M.sea = 1; M.roll = clamp((Math.abs(S.heelV) + Math.abs(S.pitchV)) * 3, 0, 1); }
+    let dm = 1e9; for (const w of ROUTE) dm = Math.min(dm, seaDist(w.ie, w.in) - w.r); M.near = 1 - smooth(40, 380, dm);
+  } else {
+    const hb = M.harb = harbK(x, z), ci = trailRaw(x, z), s = ci.s, w = biomeW(s), pk = passK(s) * (1 - hb), ck = canyonK(s) * (1 - hb), land = (1 - hb) * (1 - pk) * (1 - 0.85 * ck);
+    M.pass = pk; M.blizz = (PASS.blizz.k || 0) * pk; M.canyon = ck;
+    M.desert = w[0] * land; M.hot = M.desert * smooth(700, 900, s); M.valley = w[1] * land; M.shore = w[2] * land; M.meadow = w[3] * land;
+    if (M.shore + M.meadow > 0.01) {   // (the sea, the lake: east. How far to the water's edge)
+      const nx = -tZ[ci.idx], nz = tX[ci.idx]; let dw = 140; for (let d = 0; d <= 136; d += 8) if (terrainH(x + nx * d, z + nz * d) < WATER_Y + 0.3) { dw = d; break; }
+      M.surf = M.shore * lerp(0.3, 1, 1 - smooth(5, 100, dw)); M.lake = M.meadow * (1 - smooth(4, 90, dw)); M.surfP = M.lakeP = ambPan(x + nx * (dw + 10), z + nz * (dw + 10));
+    }
+    if (hb > 0) { M.surf = Math.max(M.surf, 0.25 * hb); M.surfP = ambPan(HARB.end.x, HARB.end.z); }   // (the bay)
+    const ra = riverAcross(x, z), al = riverAlong(x, z);
+    if (al > -120) { M.river = (1 - smooth(3, 75, Math.max(0, Math.abs(ra) - RIVER.hw) + Math.max(0, -90 - al))) * land; M.riverP = ambPan(x - RIVER.tx * ra, z - RIVER.tz * ra); }
+    const sd = streamD(x, z);
+    if (sd < 34) { let bd = 1e9, bx = x, bz = z; for (const st of STREAMS) for (const p of st.pts) { const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; bx = p.x; bz = p.z; } } M.brook = (1 - smooth(1.5, 32, sd - T.stream.hw)) * land; M.brookP = ambPan(bx, bz); }
+    let fd = 1e9, fx = x, fz = z; const near = (f, d) => { if (d < fd) { fd = d; fx = f.x; fz = f.z; } };
+    for (const p of pens) if (!p.deck && p.fire) near(p.fire, Math.hypot(p.fire.x - x, p.fire.z - z));
+    for (const f of PASS.fires) if (f.fuel > 0) near(f, Math.hypot(f.x - x, f.z - z));
+    for (const t of TORCHES) if (t.lit > 0) near(t, Math.hypot(t.x - x, t.z - z) + 8);   // (a torch: a little fire)
+    M.fire = 1 - smooth(2.5, 26, fd); M.fireP = ambPan(fx, fz);
+    M.chime = 1 - smooth(6, 45, Math.hypot(MARKET.x - x, MARKET.z - z)); M.chimeP = ambPan(MARKET.x, MARKET.z);
+  }
+  const k = Math.min(1, dt * 1.2);
+  for (const key in M) AMB_MIX[key] = AMB_NOW.has(key) ? M[key] : lerp(AMB_MIX[key], M[key], k);
+  return AMB_MIX;
+}
 
 // =====================================================================
 // MAIN LOOP
@@ -20895,7 +21408,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   padFrame();   // this frame's gamepad presses
   let dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // rAF time can predate `last` on the first frame
-  if (barnFrame(dt) || dawnFrame()) { netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
+  const inBarn = barnFrame(dt);
+  if (inBarn || dawnFrame()) { AMB.update(ambMix(dt, inBarn), dt); netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
   titleRoleInput();   // ROLES: ←/→ on the title pick P1's role (before anything reads them as a join)
   if (netFrameStart(now, dt)) {   // ONLINE: false on a guest, which never runs the game (the host's snapshots move everything). Body left at its old indent.
   // joining / confirming
@@ -20941,8 +21455,7 @@ function frame(now) {
   updateHUD(dt);
   updateMap(dt);   // MAP
   if (DEBUG) devFrame(dt);   // DEV MENU
-  const oceanNear = biomeW(sAt(cam.x, cam.z))[2];
-  Sound.ambience(LIGHT.night, oceanNear, dt, CANYON.k, PASS.k, (PASS.blizz.k || 0) * PASS.k);
+  AMB.update(ambMix(dt), dt);   // AMBIENCE: the land (or the sea) round the camera
   seaAmbience(dt);   // SAILING: wind in the rig, water along the hull
   netFrameEnd(now, dt);   // ONLINE: snapshots out, status chip, pause screen
   endInputFrame();
@@ -21169,6 +21682,7 @@ window.GAME = { POOP, poopFx, syncPoop, FALCON, FALCONS, CANYON, BOSS, updateBos
 Object.assign(window.GAME, { FINAL, POST, MARKET, STALLS, finalPen, postPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, stockTroughs, resetVendor, syncVendor,
   KIT, kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav });   // VENDOR
 Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
+Object.assign(window.GAME, { AMB, AMB_MIX, ambMix, ambVolume, seaAmbience, HARB });   // AMBIENCE
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt });   // BONK SPOTS
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
