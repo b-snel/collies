@@ -3,6 +3,7 @@
 // PEERSERVER=host:port uses your own PeerJS server (e.g. `npx peer --port 9000`) instead of the public 0.peerjs.com.
 // Checks: connect + lobby, the guest's keys move its dog on the host, the flock matches on both screens (time-aligned),
 // grass grazed on the host reaches the guest, buckets and pen water too, coyotes and tombstones appear/vanish, a silent guest's input is zeroed,
+// each screen pauses on its own (the world waits only once both have), the guest's own barn (a sheep, its dog, a find) and dawn card,
 // a dropped guest's dog waits and Rejoin takes it back, a rope dragged and a tug of war, a bone thrown, host-hidden pauses, wrong code / other build / full are
 // reported, a second friend drops in mid-journey, and the traffic in bytes per second with 14 and with 60 sheep.
 // WebGL drawing is switched off while checking (SwiftShader would starve the CPU and slow the game clock) and back
@@ -80,9 +81,9 @@ function alignedErrors(host, guest) {
 // the whole grass map, host vs guest, byte by byte. Grazing changes cells every frame, so the host pauses first
 // (the grass ticks keep running) and both are read once the last corrections have landed.
 async function grassDiff(H, Gst) {
-  await H.page.evaluate(() => NET.api.setPause(true, 'test')); await sleep(900);
+  await H.page.evaluate(() => NET.api.hold(true, 'test')); await sleep(900);
   const [ha, ga] = await Promise.all([H.page.evaluate(() => Array.from(NET.api.grass(), v => Math.round(v * 255))), Gst.page.evaluate(() => Array.from(NET.api.grass(), v => Math.round(v * 255)))]);
-  await H.page.evaluate(() => NET.api.setPause(false));
+  await H.page.evaluate(() => NET.api.hold(false, 'test'));
   let mx = 0, nd = 0; for (let k = 0; k < ha.length; k++) { const d = Math.abs(ha[k] - ga[k]); if (d > mx) mx = d; if (d > 2) nd++; }
   return { cells: ha.length, maxByteDiff: mx, cellsOffBy3plus: nd };
 }
@@ -113,7 +114,7 @@ try {
 
   // ---------------------------------------------------------------- guest joins from the invite link (lobby)
   const B = await openPage(`?debug&join=${code}${PS}`);
-  await B.page.evaluate(() => GAME.pickTitleBreed('backer'));   // BREEDS: their pick goes with the hello
+  await B.page.evaluate(() => GAME.pickTitleRole('backer'));   // ROLES: their pick goes with the hello
   const prefilled = await B.page.evaluate(() => document.getElementById('netCode').value);
   const t0 = Date.now();
   await joinAs(B, 'Moss');
@@ -123,10 +124,10 @@ try {
   await sleep(300);
   const lobby = await B.page.evaluate(() => ({ roster: NET.roster.map(r => r.n), mode: GAME.G.mode, sheep: GAME.G.sheep.length, press: document.querySelector('#title .press').textContent }));
   check('guest joins from the invite link; lobby shows both and the host\'s flock', prefilled === code && lobby.roster.join() === 'Hostie,Moss' && /Waiting for Hostie/.test(lobby.press), { joinMs: report.numbers.joinMs, ...lobby });
-  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].breed);
-  await B.page.evaluate(() => GAME.pickTitleBreed('heeler'));   // a change of mind in the lobby
-  await until(A, () => NET.seats[0].subs[0].breed === 'heeler', null, 5000).catch(() => {});
-  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].breed);
+  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].role);
+  await B.page.evaluate(() => GAME.pickTitleRole('heeler'));   // a change of mind in the lobby
+  await until(A, () => NET.seats[0].subs[0].role === 'heeler', null, 5000).catch(() => {});
+  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].role);
 
   // ---------------------------------------------------------------- host starts; the guest gets a dog
   await A.page.evaluate(() => { GAME.startGame({ kind: 'bot', index: 0 }); GAME.G.players[0].bot = {}; GAME.T.falcon.on = GAME.T.bramble.on = false; });   // (no falcon carrying a dog off, no snags, mid-check: as in ?sim)
@@ -134,12 +135,12 @@ try {
   await sleep(300);
   const st = await B.page.evaluate(() => ({ slot: NET.slot, dogs: GAME.G.dogs.map(d => d.player.name), titleHidden: document.getElementById('title').classList.contains('hidden'), hud: !document.getElementById('hud').classList.contains('hidden'), chip: document.getElementById('netChipT').textContent }));
   check('journey starts on both; the guest has its own named dog', st.slot === 1 && st.dogs.includes('Moss') && st.dogs.includes('Hostie') && st.titleHidden && st.hud, st);
-  // BREEDS & TRAINING: the guest's own pick, and its levels as the host trains it
+  // ROLES & TRAINING: the guest's own pick, and its levels as the host trains it
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); GAME.T.train.on = true; GAME.train(d, 'bark', 25); });
   await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.lv && d.lv.bark === 1; }, null, 5000).catch(() => {});
-  const br = { hi: hiBreed, lobby: lobbyBreed, host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').breed),
-    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.breed, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
-  check('the guest\'s breed: picked before joining, changed in the lobby, its dog\'s on both screens; levels reach the guest', br.hi === 'backer' && br.lobby === 'heeler' && br.host === 'heeler' && br.guest[0] === 'heeler' && br.guest[1] === 1 && br.guest[2] > 1, br);
+  const br = { hi: hiBreed, lobby: lobbyBreed, host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').role),
+    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.role, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
+  check('the guest\'s role: picked before joining, changed in the lobby, its dog\'s on both screens; levels reach the guest', br.hi === 'backer' && br.lobby === 'heeler' && br.host === 'heeler' && br.guest[0] === 'heeler' && br.guest[1] === 1 && br.guest[2] > 1, br);
   report.numbers.fps = { host: await fpsOf(A), guest: await fpsOf(B) };
 
   // ---------------------------------------------------------------- guest input moves its dog (on the host)
@@ -182,8 +183,8 @@ try {
   const [recA, recB] = await Promise.all([takeRecord(A), takeRecord(B)]);
   report.numbers.flockLive = alignedErrors(recA, recB);
   check('flock matches while being driven (p95 < 0.5 m, time-aligned)', report.numbers.flockLive.movingShare > 0.3 && report.numbers.flockLive.p95 < 0.5, report.numbers.flockLive);
-  // settle: pause on the host; the guest should land exactly where the host is
-  await A.page.evaluate(() => NET.api.setPause(true, 'Hostie'));
+  // settle: the world held on the host; the guest should land exactly where the host is
+  await A.page.evaluate(() => NET.api.hold(true, 'test'));
   await sleep(800);
   const sheepPos = P => P.page.evaluate(() => GAME.G.sheep.map(s => [s.id, s.x, s.z]));
   const [hs, gs] = await Promise.all([sheepPos(A), sheepPos(B)]);
@@ -191,11 +192,29 @@ try {
   const settled = Math.max(...hs.map(([id, x, z]) => { const q = gm.get(id); return q ? Math.hypot(q[1] - x, q[2] - z) : 99; }));
   report.numbers.flockSettledMaxErr = r3(settled);
   check('flock matches exactly once the host pauses (max error, m)', settled < 0.05 && hs.length === gs.length, { maxErr: r3(settled), sheep: [hs.length, gs.length] });
-  const pauseWhy = await B.page.evaluate(() => !document.getElementById('pause').classList.contains('hidden') && document.getElementById('pauseWhy').textContent);
-  check('the guest sees the pause screen, and who paused', pauseWhy === 'Paused by Hostie', { why: pauseWhy });
+  await A.page.evaluate(() => NET.api.hold(false, 'test'));
+  await until(B, () => !GAME.G.paused, null, 5000);
+  // MENUS: each screen pauses on its own; the world waits only once every screen has
+  const pz = P => P.page.evaluate(() => ({ paused: GAME.G.paused, menus: GAME.G.menus.join(), menu: GAME.MENU.pause, shown: !document.getElementById('pause').classList.contains('hidden'),
+    title: document.getElementById('pauseT').textContent, live: document.getElementById('pause').classList.contains('live'), who: document.getElementById('pauseWho').textContent }));
+  const t0p = await A.page.evaluate(() => GAME.G.time);
+  await A.page.keyboard.press('KeyP'); await sleep(900);
+  const [p1A, p1B] = await Promise.all([pz(A), pz(B)]);
+  const p1 = { ...p1A, ran: r2(await A.page.evaluate(() => GAME.G.time) - t0p), dog: await A.page.evaluate(() => GAME.G.dogs[0].mode), guest: p1B };
+  check('the host pauses alone: its own menu ("Menu", ▶ the guest), the game goes on, its dog lies down, ⏸ by it on the guest',
+    !p1.paused && p1.menu && p1.shown && p1.title === 'Menu' && p1.live && /⏸ Hostie/.test(p1.who) && /▶ Moss/.test(p1.who) && p1.ran > 0.2 && p1.dog === 'lie' && !p1B.shown && !p1B.paused && p1B.menus === '0', p1);
   await B.page.keyboard.press('KeyP');
-  await until(A, () => !GAME.G.paused, null, 5000);
-  check('the guest pressing P unpauses the host', true);
+  await until(A, () => GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  const [p2A, p2B] = await Promise.all([pz(A), pz(B)]);
+  check('the guest pauses too: now the world waits, "Paused" on both screens, ⏸ by both', p2A.paused && p2B.paused && p2A.title === 'Paused' && p2B.title === 'Paused' && !p2B.live && p2B.shown
+    && /⏸ Hostie/.test(p2B.who) && /⏸ Moss/.test(p2B.who) && p2A.menus === '0,1', { host: p2A, guest: p2B });
+  await B.page.keyboard.press('KeyP');
+  await until(A, () => !GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  const [p3A, p3B] = await Promise.all([pz(A), pz(B)]);
+  await A.page.keyboard.press('KeyP'); await sleep(300);
+  const p4 = await pz(A);
+  check('the guest carries on: the world goes on, the host still in its menu; then the host too', !p3A.paused && p3A.shown && p3A.title === 'Menu' && !p3B.shown && p3A.menus === '0'
+    && !p4.paused && !p4.shown && p4.menus === '', { host: p3A, guest: p3B, after: p4 });
   let shots = {};
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });
@@ -392,14 +411,26 @@ try {
   await until(B, id => GAME.G.graves.length === 2, hatId, 5000).catch(() => {});
   const graveHat = await B.page.evaluate(() => { let h = null; const g = GAME.G.graves[GAME.G.graves.length - 1]; g && g.root.traverse(o => { if (o.userData.hat) h = o.userData.hat; }); return h; });
   check('a hat and paint from the barn show on the guest, and the hat rests on her tombstone', hat.hat === 'tophat' && hat.paint === 1 && hat.tile >= 0 && hat.tophatsDrawn >= 1 && graveHat === 'tophat', { ...hat, graveHat });
-  // the dawn report: the guest sees the host's card (read only) and it goes when the host carries on
-  const dawnName = await A.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.ram); GAME.openDawn([s], [{ name: 'Tumble', why: 'eaten', brave: 0.3, text: GAME.eulogy({ name: 'Tumble', why: 'eaten', brave: 0.3 }) }]); return s.name; });
+  // the dawn report: every screen gets its own card; the guest names a lamb on it (the host gets the name); the world waits only while both are open
+  const dawnLamb = await A.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.ram && !s.dead); GAME.openDawn([s], [{ name: 'Tumble', why: 'eaten', brave: 0.3, text: GAME.eulogy({ name: 'Tumble', why: 'eaten', brave: 0.3 }) }]); return { id: s.id, name: s.name }; });
   await until(B, () => !document.getElementById('dawn').classList.contains('hidden'), null, 5000).catch(() => {});
+  await until(A, () => GAME.G.paused, null, 5000).catch(() => {});
   const dawnB = await B.page.evaluate(() => { const el = document.getElementById('dawn'); return { shown: !el.classList.contains('hidden'), text: el.textContent, inputs: el.querySelectorAll('input').length, paused: GAME.G.paused }; });
+  await B.page.fill('#dawn .dawnRow input', 'Puddle');
+  await until(A, id => (GAME.G.sheep.find(s => s.id === id) || {}).name === 'Puddle', dawnLamb.id, 5000).catch(() => {});
+  const dawnNamed = await A.page.evaluate(id => (GAME.G.sheep.find(s => s.id === id) || {}).name, dawnLamb.id);
   await A.page.evaluate(() => GAME.closeDawn());
-  await until(B, () => document.getElementById('dawn').classList.contains('hidden'), null, 5000).catch(() => {});
-  const dawnGone = await B.page.evaluate(() => document.getElementById('dawn').classList.contains('hidden') && !GAME.G.paused);
-  check('the dawn report shows on the guest (read only) and closes with the host\'s', dawnB.shown && dawnB.text.includes(dawnName) && dawnB.text.includes('Tumble') && !dawnB.inputs && dawnB.paused && dawnGone, { ...dawnB, text: undefined, dawnGone });
+  await until(B, () => !GAME.G.paused, null, 5000).catch(() => {});
+  const dawnStill = await B.page.evaluate(() => !document.getElementById('dawn').classList.contains('hidden') && !GAME.G.paused && document.getElementById('menuBadge').textContent);
+  const [holdS, graceS] = await B.page.evaluate(() => { document.activeElement && document.activeElement.blur(); return [GAME.T.dawn.hold, GAME.T.dawn.grace]; });   // (held to go on; not in its first moment)
+  await sleep(graceS * 1000 + 150);
+  await B.page.keyboard.down('Enter'); await sleep(holdS * 1000 + 500); await B.page.keyboard.up('Enter');
+  await sleep(300);
+  const dawnGone = await B.page.evaluate(() => document.getElementById('dawn').classList.contains('hidden') && !GAME.DAWN.open);
+  const dawnMenus = await A.page.evaluate(() => GAME.G.menus.join());
+  check('the dawn report: on the guest too, its own (names a lamb: the host has it); the world waits only while both are open; each closes its own',
+    dawnB.shown && dawnB.text.includes('Tumble') && dawnB.inputs === 1 && dawnB.paused && dawnNamed === 'Puddle' && /▶/.test(dawnStill || '') && dawnGone && dawnMenus === '',
+    { ...dawnB, text: undefined, was: dawnLamb.name, dawnNamed, dawnStill, dawnGone, dawnMenus });
   // the guest's own moves: pounce (a one-shot) and lie down (held)
   const gdog = () => A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { pounceT: d.pounceT, mode: d.mode }; });
   await probe(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.pounceT; });
@@ -453,37 +484,66 @@ try {
     d.player.bot = { grab: true };
   });
   await sleep(800);
-  const boneG1 = await B.page.evaluate(() => { const b = GAME.BONES[0], d = GAME.G.dogs.find(d => d.player.slot === 0); return { n: GAME.BONES.length, held: !!b && b.by === d && d.holding === b }; });
+  const boneId = await A.page.evaluate(() => window.__bone.nid);   // (this one: poops and the vagabond's sticks are bones too)
+  const boneG1 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id), d = GAME.G.dogs.find(d => d.player.slot === 0); return { there: !!b, held: !!b && b.by === d && d.holding === b }; }, boneId);
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; });   // let go: thrown
   await sleep(3500);
   const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
-  const boneG2 = await B.page.evaluate(() => { const b = GAME.BONES[0]; return b ? { x: b.x, z: b.z, by: !!b.by } : null; });
+  const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
-    boneG1.n === 1 && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
+    boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
   const moods = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.MIND.mood, document.getElementById('hMood').textContent])));
   check('dog-move sounds and juice reach the guest; its mood readout matches the host', Object.keys(fxIn).some(k => k.startsWith('X.')) && Math.abs(moods[0][0] - moods[1][0]) < 0.06,
     { sfx: Object.keys(fxIn).filter(k => k.startsWith('X.') || k === 'shakeCam' || k === 'hitStop' || k === 'dizzy' || k === 'landDog'), mood: moods });
-  // the barn is the host's: Tab does nothing on a guest; the host in the barn pauses the game for the friends
-  await B.page.keyboard.press('Tab'); await sleep(300);
-  const guestBarn = await B.page.evaluate(() => GAME.BARN.open);
-  await A.page.evaluate(() => GAME.openBarn());
-  await until(B, () => GAME.G.paused && /barn/.test(document.getElementById('pauseWhy').textContent), null, 15000).catch(() => {});
-  const barnWhy = await B.page.evaluate(() => document.getElementById('pauseWhy').textContent);
-  // …and the friends watch: the host's pick, tab and edits show on the guest's barn, read only
-  const wSheep = await A.page.evaluate(() => { const s = GAME.G.sheep.filter(s => !s.dead)[2]; GAME.barnSelect(s); GAME.barnSet(s, { hat: 'tophat' }); return s.id; });
-  await until(B, id => GAME.BARN.open && GAME.BARN.watch && GAME.BARN.sel && GAME.BARN.sel.id === id && GAME.BARN.sel.look && GAME.BARN.sel.look.hat === 'tophat', wSheep, 5000).catch(() => {});
-  const watch = await B.page.evaluate(() => ({ open: GAME.BARN.open, watch: GAME.BARN.watch, sel: GAME.BARN.sel && GAME.BARN.sel.id, hat: GAME.BARN.sel && GAME.BARN.sel.look && GAME.BARN.sel.look.hat,
-    shown: !document.getElementById('barn').classList.contains('hidden'), back: !!document.getElementById('barnBack'), tools: document.getElementById('barnTools').hidden, ro: document.getElementById('barnName').readOnly }));
-  await A.page.evaluate(() => GAME.barnTab('dogs'));
-  await until(B, () => GAME.BARN.tab === 'dogs', null, 5000).catch(() => {});
-  const wTab = await B.page.evaluate(() => GAME.BARN.tab);
+  // Hank's barn: every screen has its own. The guest's Tab opens it while the game goes on (its dog waits); it renames and dresses a sheep (the host has it)
+  await B.page.keyboard.press('Tab');
+  await until(A, () => GAME.G.dogs.find(d => d.player.kind === 'net').mode === 'lie', null, 5000).catch(() => {}); await sleep(200);
+  const gb1 = await B.page.evaluate(() => ({ open: GAME.BARN.open, tab: GAME.BARN.tab, back: !!document.getElementById('barnBack'), fresh: !!document.getElementById('barnFresh'), badge: document.getElementById('menuBadge').textContent }));
+  const gb1A = await A.page.evaluate(() => ({ paused: GAME.G.paused, menus: GAME.G.menus.join(), dog: GAME.G.dogs.find(d => d.player.kind === 'net').mode }));
+  const bSheep = await B.page.evaluate(() => { const s = GAME.G.sheep.filter(s => !s.dead)[2]; GAME.barnTab('sheep'); GAME.barnSelect(s); return s.id; });
+  await B.page.fill('#barnName', 'Clover');
+  const tap = (P, sel) => P.page.evaluate(sel => document.querySelector(sel).click(), sel);   // (the test window is tiny: the barn card scrolls under a real click)
+  await tap(B, '#barnHats [data-hat="tophat"]');
+  await tap(B, '#barnWool [data-wool="#4a4440"]');
+  await until(A, id => { const s = GAME.G.sheep.find(s => s.id === id); return s && s.name === 'Clover' && s.look && s.look.hat === 'tophat' && s.look.wool === '#4a4440'; }, bSheep, 5000).catch(() => {});
+  const gb2 = await A.page.evaluate(id => { const s = GAME.G.sheep.find(s => s.id === id); return s && { name: s.name, hat: s.look && s.look.hat, wool: s.look && s.look.wool }; }, bSheep);
+  check("Hank's barn on the guest: its own, opened mid-game (the game goes on, its dog waits); a sheep renamed and dressed there is on the host",
+    gb1.open && gb1.tab === 'dogs' && gb1.back && !gb1.fresh && /▶/.test(gb1.badge) && !gb1A.paused && gb1A.menus === '1' && gb1A.dog === 'lie' && gb2 && gb2.name === 'Clover' && gb2.hat === 'tophat' && gb2.wool === '#4a4440', { gb1, gb1A, gb2 });
+  // …its own dog: only its own in the list; a new role, breed, coat and name reach the host (and come back as its dog's look)
+  await B.page.evaluate(() => GAME.barnTab('dogs'));
+  const gDogs = await B.page.evaluate(() => GAME.barnDogs().length + ':' + document.querySelectorAll('#barnList [data-dog]').length);
+  await tap(B, '#barnRole [data-role="huntaway"]');
+  await tap(B, '#barnBreed [data-dbr="1"]');   // DOG BREEDS: the next one (Rough Collie)
+  await tap(B, '#barnCoat [data-coat="#8d929c"]');   // (blue merle: one of its coats)
+  await B.page.fill('#barnName', 'Mossy');
+  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.role === 'huntaway' && d.netLook && d.netLook.breed === 'rough' && d.netLook.coat === '#8d929c' && d.player.name === 'Mossy'; }, null, 5000).catch(() => {});
+  const gd2 = await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { role: d.role, breed: d.netLook && d.netLook.breed, coat: d.netLook && d.netLook.coat, collar: d.netLook && d.netLook.collar, name: d.player.name, roster: NET.roster.map(r => r.n).join() }; });
+  await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.netLook && d.netLook.coat === '#8d929c' && d.role === 'huntaway'; }, null, 5000).catch(() => {});
+  const gd2B = await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { coat: d.netLook && d.netLook.coat, breed: d.netLook && d.netLook.breed, role: d.role }; });
+  check("…its own dog: just its own listed; role, breed, coat and name picked there reach the host (collar: its slot's) and come back on its screen",
+    gDogs === '1:1' && gd2.role === 'huntaway' && gd2.breed === 'rough' && gd2.coat === '#8d929c' && gd2.collar === '#3d8ef0' && gd2.name === 'Mossy' && /Mossy/.test(gd2.roster)
+    && gd2B.coat === '#8d929c' && gd2B.breed === 'rough' && gd2B.role === 'huntaway', { gDogs, host: gd2, guest: gd2B });
+  // …a find by its dog goes in its wardrobe and straight on
+  await A.page.evaluate(() => GAME.foundDogItem('crown', GAME.G.dogs.find(d => d.player.kind === 'net')));
+  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.netLook && d.netLook.hat === 'crown'; }, null, 5000).catch(() => {});
+  const gFind = { host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').netLook.hat), guest: await B.page.evaluate(() => [GAME.DOGS.found.includes('crown'), GAME.dogLook(0).hat].join()) };
+  check("…a hat its dog digs up goes in the guest's own wardrobe, and on", gFind.host === 'crown' && gFind.guest === 'true,crown', gFind);
+  // the host opens its barn too: now both are in a menu, the world waits (the guest's dog isn't in the host's list); both close: it goes on
+  await A.page.evaluate(() => { GAME.openBarn(); GAME.barnTab('dogs'); });
+  await until(A, () => GAME.G.paused, null, 5000).catch(() => {});
+  await Promise.all([A, B].map(P => until(P, () => /Paused/.test(document.getElementById('menuBadge').textContent), null, 3000).catch(() => {})));
+  const hb = await A.page.evaluate(() => ({ paused: GAME.G.paused, dogs: GAME.barnDogs().join(), badge: document.getElementById('menuBadge').textContent }));
+  const hbB = await B.page.evaluate(() => ({ paused: GAME.G.paused, badge: document.getElementById('menuBadge').textContent }));
+  await B.page.keyboard.press('Escape'); await sleep(300);
+  const hb2 = await A.page.evaluate(() => GAME.G.paused);
+  const kept = await B.page.evaluate(() => { const L = (JSON.parse(localStorage.getItem(GAME.DOGS_KEY) || '{}').looks || [])[0] || {}; return [L.role, L.breed, L.coat, L.hat].join(); });
   await A.page.evaluate(() => GAME.closeBarn());
-  await until(B, () => !GAME.G.paused && !GAME.BARN.open, null, 5000).catch(() => {});
-  const barnAfter = await B.page.evaluate(() => GAME.G.paused || GAME.BARN.open || !document.getElementById('barn').classList.contains('hidden'));
-  check("Hank's barn is the host's: a guest can't open it, watches the host in it (read only), and it closes with the host's", !guestBarn && /Hank's barn/.test(barnWhy) && !barnAfter
-    && watch.open && watch.watch && watch.sel === wSheep && watch.hat === 'tophat' && watch.shown && !watch.back && watch.tools && watch.ro && wTab === 'dogs', { guestBarn, barnWhy, watch, wTab, openAfter: barnAfter });
+  await sleep(300);
+  const hb3 = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.G.paused, GAME.BARN.open, GAME.G.menus.join()].join())));
+  check('both screens in the barn: the world waits ("⏸ Paused" over both barns; the host lists only its own dogs); one leaves: it goes on (the guest keeps its dog on its device)',
+    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,rough,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
 
   // ---------------------------------------------------------------- stale input: nothing arrives for a second → zeroed
   await B.page.keyboard.down('KeyW');
@@ -505,7 +565,7 @@ try {
   await until(A, () => NET.seats.length === 1 && !NET.seats[0].conn, null, 8000);
   await sleep(1300);
   const waiting = await A.page.evaluate(() => { const p = GAME.G.players.find(p => p.kind === 'net'), d = p.dog; return { players: GAME.G.players.length, speed: Math.hypot(d.vx, d.vz), mode: d.mode, toasts: [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent) }; });
-  check('dropped guest: "lost" card on the guest; on the host the dog lies down and waits', waiting.players === 2 && waiting.speed < 0.3 && waiting.mode === 'lie' && waiting.toasts.some(t => /Moss lost connection/.test(t)), { ...waiting, speed: r2(waiting.speed) });
+  check('dropped guest: "lost" card on the guest; on the host the dog lies down and waits', waiting.players === 2 && waiting.speed < 0.3 && waiting.mode === 'lie' && waiting.toasts.some(t => /Mossy lost connection/.test(t)), { ...waiting, speed: r2(waiting.speed) });
   if (SHOTS) { await drawing(B, true); await sleep(1500); const ib = await B.page.screenshot(); fs.writeFileSync(path.join(SHOTS, 'guest-lost.png'), ib); await drawing(B, false); }
   await B.page.click('#netRejoin');
   await until(B, () => NET.inRoom && !NET.dead && NET.slot === 1, null, 20000);
@@ -513,7 +573,7 @@ try {
   await sleep(800);
   const back = await A.page.evaluate(() => ({ sheep: GAME.G.sheep.length, players: GAME.G.players.length, seats: NET.seats.length, name: GAME.G.players.find(p => p.kind === 'net').name, toasts: [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent) }));
   const bg = await B.page.evaluate(() => ({ dogs: GAME.G.dogs.length, sheep: GAME.G.sheep.length, lostHidden: document.getElementById('netLost').classList.contains('hidden') }));
-  check('Rejoin reclaims the same dog (seat kept by client id)', back.players === 2 && back.seats === 1 && back.name === 'Moss' && bg.dogs === 2 && bg.sheep === back.sheep && bg.lostHidden && back.toasts.some(t => /Moss is back/.test(t)), { ...back, guest: bg });
+  check('Rejoin reclaims the same dog (seat kept by client id)', back.players === 2 && back.seats === 1 && back.name === 'Mossy' && bg.dogs === 2 && bg.sheep === back.sheep && bg.lostHidden && back.toasts.some(t => /Mossy is back/.test(t)), { ...back, guest: bg });
   const q0 = await hostDog(); await B.page.keyboard.down('KeyA'); await sleep(1200); await B.page.keyboard.up('KeyA'); await sleep(400); const q1 = await hostDog();
   check('the rejoined guest drives its dog again', Math.hypot(q1.x - q0.x, q1.z - q0.z) > 1.5, { moved: r2(Math.hypot(q1.x - q0.x, q1.z - q0.z)) });
 
@@ -556,7 +616,7 @@ try {
   const hostHour = await A.page.evaluate(() => +GAME.G.clock.hour.toFixed(2)), hostGraves = await A.page.evaluate(() => GAME.G.graves.length);
   await until(B, () => GAME.G.dogs.length === 3, null, 8000);
   const gd3 = await grassDiff(A, F);
-  check('a second guest drops in mid-journey with the full state (dogs, flock, grave, clock, grass)', third.slot === 2 && third.names.join() === 'Hostie,Juniper,Moss' && third.graves === hostGraves && Math.abs(third.hour - hostHour) < 0.05 && gd3.maxByteDiff <= 3, { ...third, hostHour, hostGraves, grass: gd3 });
+  check('a second guest drops in mid-journey with the full state (dogs, flock, grave, clock, grass)', third.slot === 2 && third.names.join() === 'Hostie,Juniper,Mossy' && third.graves === hostGraves && Math.abs(third.hour - hostHour) < 0.05 && gd3.maxByteDiff <= 3, { ...third, hostHour, hostGraves, grass: gd3 });
 
   // ---------------------------------------------------------------- a local player drops in on the host too
   await A.page.evaluate(() => { const p = GAME.joinPlayer({ kind: 'bot', index: 1 }); p.bot = {}; });
@@ -575,11 +635,9 @@ try {
   }
 
   // ---------------------------------------------------------------- the end of the journey, and a new one
-  await A.page.evaluate(() => { const p = GAME.finalPen; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
-  await sleep(500);
-  await A.page.evaluate(() => GAME.setGate(GAME.finalPen, false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
-  await sleep(300);
-  await A.page.evaluate(() => { GAME.yetiBeaten('fire'); GAME.setGate(GAME.finalPen, false); });   // MOUNTAIN PASS: the yeti beaten, the flock shut in his cave: the end
+  await A.page.evaluate(() => { for (const c of GAME.G.coyotes) c.gone = true; GAME.seaStart({ leg: 4 }); });   // SAILING: all aboard at the last island
+  await sleep(800);
+  await A.page.evaluate(() => GAME.seaMoor(5));   // alongside the Promised Land: the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
   const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent, stars: document.getElementById('eStars').textContent, obit: document.getElementById('eMem').textContent }));
@@ -592,9 +650,10 @@ try {
   await until(A, () => GAME.G.mode === 'play' && GAME.G.sheep.length === 14, null, 8000);
   await until(B, () => GAME.G.mode === 'play' && GAME.G.sheep.length === 14 && document.getElementById('end').style.opacity === '0', null, 8000);
   await sleep(1200);
-  const again = await B.page.evaluate(() => ({ day: GAME.G.clock.day, hour: +GAME.G.clock.hour.toFixed(1), graves: GAME.G.graves.length, dogs: GAME.G.dogs.length, hud: !document.getElementById('hud').classList.contains('hidden') }));
+  const again = await B.page.evaluate(() => ({ day: GAME.G.clock.day, hour: +GAME.G.clock.hour.toFixed(1), graves: GAME.G.graves.length, dogs: GAME.G.dogs.length, hud: !document.getElementById('hud').classList.contains('hidden'),
+    ashore: !GAME.SEA.on && GAME.LAND.parent === GAME.scene && GAME.QUAY.on && !GAME.inSea(0, 0) }));   // (SAILING: back on the land)
   const gd4 = await grassDiff(A, B);
-  check('a guest pressing Enter starts a new journey for everyone (flock, clock, graves, grass reset)', again.day === 1 && again.graves === 0 && again.dogs === 4 && again.hud && gd4.maxByteDiff <= 3, { ...again, grass: gd4 });
+  check('a guest pressing Enter starts a new journey for everyone (flock, clock, graves, grass reset; ashore again)', again.day === 1 && again.graves === 0 && again.dogs === 4 && again.hud && gd4.maxByteDiff <= 3 && again.ashore, { ...again, grass: gd4 });
   report.errors = { host: A.errors, guest: B.errors, guest2: F.errors };
   check('no page errors', !A.errors.length && !B.errors.length && !F.errors.length, report.errors);
 } catch (e) {
