@@ -1,6 +1,7 @@
 // Test runner: `node tools/test.mjs [name[:arg,…] …] [--all] [--base REF] [-j N] [--shard I/N] [--list] [--why] [--timeout S]`.
 //   no names   the tests for what's changed since REF (default: where this branch left origin/main), uncommitted and new files too
 //   names      those (`bramble`, `pass:yeti` → `pass-test.mjs yeti`)       --all  every one
+//   --merge [C] after merging main: only what the merge C (default HEAD) resolved, its lines unlike both parents (`git diff --cc`)
 //   --list     each test and what it checks                                  --why  what would run and why, nothing run
 //   -j N       N at once (default: cores)      --shard I/N  part I of N (CI)      --timeout S  per test (default 1200)
 // Online ones (net, sea-net, hybrid) only with PEERSERVER=host:port. Seeded: SEED=n another Math.random (harness.mjs).
@@ -56,6 +57,8 @@ const argv = process.argv.slice(2), flag = k => argv.includes(k), opt = k => { c
 const OPTS = new Set(['--base', '-j', '--shard', '--timeout', '--logs']), names = argv.filter((a, i) => !a.startsWith('-') && !OPTS.has(argv[i - 1]));
 const head = t => (src[t].match(/^\/\/ (.*)/) || [, ''])[1].replace(/^Headless (test|checks?)( for)?:? ?/i, '');
 const sh = (...a) => { try { return execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 }); } catch (e) { return null; } };
+const commit = c => c && !c.startsWith('-') && sh('rev-parse', '--verify', '-q', c + '^{commit}')?.trim();
+const MERGE = flag('--merge') && (commit(opt('--merge')) ? names.splice(names.indexOf(opt('--merge')), 1)[0] : 'HEAD');   // (--merge then a test's name: a test)
 const words = s => s.split(/\s+/).filter(Boolean);
 
 if (flag('--list')) { for (const t of TESTS) console.log(`${t.padEnd(16)} ${head(t).slice(0, 140)}`); process.exit(0); }
@@ -69,30 +72,46 @@ for (const n of names) {
   if (!t) { console.error(`no test "${nm}" (node tools/test.mjs --list)`); process.exit(2); }
   add(t, 'asked', a ? a.split(',') : []);
 }
-if (!names.length && !flag('--all')) changed();
+if (MERGE) merged(MERGE);
+else if (!names.length && !flag('--all')) changed();
 
-function changed() {
-  const base = opt('--base') || ['origin/main', 'main'].map(r => sh('merge-base', 'HEAD', r)).find(Boolean)?.trim();
-  if (!base) { console.error('no base to diff against (git fetch origin main, or --base REF)'); process.exit(2); }
-  const diff = sh('diff', '-U0', '--no-color', '--no-ext-diff', base) || '';
+// a -U0 diff (or a merge's --cc one) → file → lines of the result in its hunks
+function hunks(diff) {
   const files = new Map(); let f = null;
   for (const l of diff.split('\n')) {
     let m;
     if ((m = l.match(/^\+\+\+ (?:b\/(.*)|\/dev\/null)/))) { f = m[1] || null; if (f && !files.has(f)) files.set(f, []); }
-    else if (l.startsWith('diff --git ')) { const g = l.match(/ b\/(.*)$/); f = g && g[1]; if (f && !files.has(f)) files.set(f, []); }
-    else if (f && (m = l.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/))) { const c = +m[1], d = m[2] === undefined ? 1 : +m[2]; for (let i = 0; i < Math.max(d, 1); i++) files.get(f).push(Math.max(1, c + i)); }
+    else if ((m = l.match(/^diff --(?:git .*? b\/|cc |combined )(.*)$/))) { f = m[1]; if (f && !files.has(f)) files.set(f, []); }
+    else if (f && (m = l.match(/^@@+ (?:-\d+(?:,\d+)? )+\+(\d+)(?:,(\d+))? @@/))) { const c = +m[1], d = m[2] === undefined ? 1 : +m[2]; for (let i = 0; i < Math.max(d, 1); i++) files.get(f).push(Math.max(1, c + i)); }
   }
+  return files;
+}
+function changed() {
+  const base = opt('--base') || ['origin/main', 'main'].map(r => sh('merge-base', 'HEAD', r)).find(Boolean)?.trim();
+  if (!base) { console.error('no base to diff against (git fetch origin main, or --base REF)'); process.exit(2); }
+  const files = hunks(sh('diff', '-U0', '--no-color', '--no-ext-diff', base) || '');
   for (const u of (sh('ls-files', '--others', '--exclude-standard') || '').split('\n').filter(Boolean)) files.set(u, []);
   console.log(`changed since ${base.slice(0, 9)}: ${[...files.keys()].join(', ') || 'nothing'}`);
+  mapFiles(files);
+}
+// a merge: only hunks where the result is unlike every parent (what was resolved by hand, or an evil merge)
+function merged(c) {
+  const sha = commit(c), ps = sha && words(sh('rev-list', '--parents', '-n', '1', sha) || '').slice(1);
+  if (!ps || ps.length < 2) { console.error(`${c} isn't a merge commit (--merge [COMMIT])`); process.exit(2); }
+  const files = hunks(sh('diff-tree', '--cc', '-U0', '--no-color', '--no-ext-diff', sha) || '');
+  console.log(`merge ${sha.slice(0, 9)}: resolved ${[...files].map(([f, l]) => `${f} (${l.length})`).join(', ') || 'nothing: clean'}`);
+  mapFiles(files, sh('show', sha + ':index.html'));
+}
+function mapFiles(files, html) {
   for (const [file, lines] of files) {
     const own = file.match(/^tools\/(.*-(?:test|sim))\.mjs$/);
     if (own) { add(own[1], file); continue; }
-    if (file === 'index.html') { indexHtml(lines); continue; }
+    if (file === 'index.html') { indexHtml(lines, html); continue; }
     for (const [re, list] of FILES) if (re.test(file)) addAll(list, file);
   }
 }
-function indexHtml(lines) {
-  const L = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').split('\n'), secAt = [], seen = new Set(), def = /^(?:async\s+)?function\*?\s+(\w+)|^(?:const|let|var)\s+(\w+)/;
+function indexHtml(lines, html) {
+  const L = (html || fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')).split('\n'), secAt = [], seen = new Set(), def = /^(?:async\s+)?function\*?\s+(\w+)|^(?:const|let|var)\s+(\w+)/;
   let sec = 'PAGE';
   for (let i = 0; i < L.length; i++) {
     const t = /^\/\/ ={20,}/.test(L[i]) && (L[i + 1] || '').match(/^\/\/ ((\b[A-Z][A-Z'&/]*)([ ,/&-]+[A-Z][A-Z'&/]*)*)/);
@@ -128,7 +147,7 @@ todo.sort((a, b) => (SECS[b] || 40) - (SECS[a] || 40));   // longest first
 if (flag('--why') || !todo.length) {
   for (const t of todo) console.log(`${t.padEnd(16)} ${[...pick.get(t).why].slice(0, 6).join(', ')}`);
   if (skip.length) console.log(`skipped (no PEERSERVER): ${skip.join(' ')}`);
-  if (!todo.length) console.log('nothing to run');
+  if (!todo.length) console.log(MERGE ? 'nothing to re-run (push: CI runs them all)' : 'nothing to run');
   process.exit(0);
 }
 
