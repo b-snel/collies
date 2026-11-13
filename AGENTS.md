@@ -9,7 +9,7 @@ file, comments, commits and PRs: short.
 ## The game
 
 3D border-collie herding, one file `index.html` (three.js r160 from
-`vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a breed,
+`vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a role and a breed,
 better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
@@ -54,17 +54,17 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 ### Layout (`index.html`, top to bottom)
 
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
-→ scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
+→ scenery → fences/pens → models (DOG BREEDS) → particles → `G` → SHEEP → DOGS (ROLES & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
-REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
+REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING, HAIR) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update
 every caller: `knockDog`, `hurtDog(d, amt)` (1 = all hp), `dogDrown(d)`, `reviveDog(d, self)`, `collideWade(e, r)` / `wadeSdfAt`, `train(d, trait, amt)` (xp),
-`dogK(d, trait)` (breed × training multiplier, 1 = as tuned), `barkR(d)`, `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
+`dogK(d, trait)` (role × training multiplier, 1 = as tuned), `barkR(d)`, `hitCoyote`, `provokeRam`, `hank`, `sheepWoolColor`,
 `s.headM`/`s.bodyM`, `s.air`/`s.heldBy`/`c.heldBy`/`d.heldBy`, `p.gateT` (0 shut…1
 open), `troughEat(tr, amt)` (1 = 1.0 hunger), `lickSalt(pen, amt)`, `stockTroughs(pen, amt)`,
 `fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched →
@@ -130,7 +130,7 @@ Run the ones touching your change; report the numbers.
 | `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
-| `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
+| `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -289,18 +289,24 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
   `localStorage['collies.dogs.v1']`. Some junk is a bone (`T.dig.bone`, `digBone`): BONES.
-- **Breeds** (`BREEDS`, `T.breeds`, `T.traits`): 📣 bark (reach, scare), 💥 bonk (punts,
+- **Roles** (`ROLES`, `T.roles`, `T.traits`): 📣 bark (reach, scare), 💥 bonk (punts,
   predator hits), ⤴ jump (height, air time), ⚡ speed, 💨 stamina, 🛡 grit (damage, heal, KO,
   mashing free), ✊ grip (hold cost, drag speed, flings, shakes). ★ 1…3 each, 14 in all; ★★ =
-  as tuned. Header (all ★★, learns `learn`×), Huntaway, Heeler, Outrunner, Backer; body size
-  per breed. P1 picks on the title (chips, ←/→ / A/D / D-pad, eaten before join), anyone in the
-  barn's Dogs tab (R3); kept per slot in `DOGS.looks[slot].breed`; `T.breedDef` per slot (all
-  Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.br`, `b`).
-- **Training** (`T.train`, `G.train[slot|breed]`, `trainRec`): doing it earns xp in that trait
+  as tuned. Header (all ★★, learns `learn`×), Huntaway, Heeler, Outrunner, Backer; `build` its weight
+  (`boneMass`). P1 picks on the title (chips, ←/→ / A/D / D-pad, eaten before join), anyone in the
+  barn's Dogs tab (R3); kept per slot in `DOGS.looks[slot].role` (old saves: `breed`); `T.roleDef` per slot (all
+  Headers in `?sim`). Online: a guest's title pick goes to the host (`hi.ro`, `b`).
+- **Dog breeds** (`DOG_BREEDS`, `DOG_PATS`, `dogShape`, `buildDog`): looks only, nothing in the sim reads one. The herding
+  dogs (Border Collie first, the default), a Portuguese Water Dog, + the AKC's ten most popular. One collie bent by numbers (`leg len fat head muz mw sw sh`,
+  `ear`, `tail`, `fur`, `pat`), clamped to `DOG_FIT`: feet on the ground, near the collie's size, mouth at `M.mouthZ` (carried
+  things hang there). Coats per breed (`L.coat` = its base hex, one each; `fitCoat`). Hats and kit fitted per breed (`dogGear(id, B)`:
+  hat on the skull `hatY`, shades on its eyes, a flower behind its ear; collar kit in `M.neck`, scaled about the collar). Barn:
+  ‹ › / L3; `L.breed`. Online: in the look (`look`). Contact sheet: `node tools/dog-shots.mjs OUT.png`.
+- **Training** (`T.train`, `G.train[slot|role]`, `trainRec`): doing it earns xp in that trait
   (barks that reach something, bonks that hit, jumps on the move `jumpGap` apart, m sprinted,
   stamina spent, hp lost, s holding); levels at `lv` (max 5), each × (1 + `per`); ⬆ over the dog
-  (`trainFx`). One journey: `resetGame` clears it; swap breed and back keeps it. Off in `?sim`
-  (`T.train.on`). Guests get `d.breed` + levels (`brd`, `netDogBreed`).
+  (`trainFx`). One journey: `resetGame` clears it; swap role and back keeps it. Off in `?sim`
+  (`T.train.on`). Guests get `d.role` + levels (`rol`, `netDogRole`).
 - **Dog health** (`d.hp`, `T.dogHp`): heals after a few s unhurt (faster lying
   down); at 0 knocked out (`d.ko`) till Hank brings it round (RESCUE), never dies. Cougar close (`maulR`, or bumped
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
@@ -422,6 +428,15 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Mouth loads swing** (CARRY SWING, `carrySwing`, `d.cw`, `T.carrySwing`, drawing only): anything in a
   dog's mouth (bucket, sheep, coyote, dog) hangs from its jaws on a pendulum: lags starts, stops, turns and hops,
   clonks off the chest (head jolts, tin tonk), kicks, sloshes. Cute and comical. New mouth load → turn it by `d.cw`.
+- **Fur** (FUR, `T.fur`, `furMat`, `furCoat`, `furShellGeo`, `furInk`, drawing only): each coat part (body, head, legs, tail, ears, locks)
+  streaked along the lie of its fur, with `n` shells over it in one mesh (`aFurK`: each vertex's shell, out along its normal and combed
+  back), tufts cut by a noise, darker roots, light-catching tips; its outline out in the fur, ragged (`ink`, `rag`). Eyes, nose, collar:
+  none. Coat length and tuft size per breed (`dogShape().furs`). Two programs for all of it. Still slow at pixel ratio 1: shells off
+  (`furLite`, `T.fur.auto`).
+- **Hair** (HAIR, `T.hair`, `hairPiece`, `hairStep`, `M.hair`, drawing only): long hair, cords and floppy ears swing. Each piece a rod
+  from its root stepped in world space (Verlet): lags its root, damped against it (`damp`) and the air (`air`), springs back to how it
+  grows (`k` per kind), hangs by its weight as the dog tips (upside down: it falls), off the ground, out of the coat (`hull`), at most
+  `max` from rest. Locks grouped by side and along the body; a cord's lower piece hangs off its upper. buildDog makes them; syncDog, the barn step them.
 - **Ram nads** (`s.nads`, `T.nads`, drawing only): a cord and a pair on springs,
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
   collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
@@ -439,7 +454,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   Drawn as a twisted tube through the nodes (`syncRopes`); online: `NET_TYPES.rope` (`pts`, `tug`).
 - **Tug of war** (`R.tug`, `T.rope.tug`): a second dog bites it → `tugStart`. Knot (red rag) halfway between
   grips, on a white line; each side's line `win` m off. Grips can't stretch apart (`ropeHold`): the harder heave
-  (`d.tugS`: planted + walking back + heaves, each a yank; × breed grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
+  (`d.tugS`: planted + walking back + heaves, each a yank; × role grip) drags the other; it trains grip. Stamina drains (`grabKinds.tug`,
   `backDrain`, `tapCost`): out → SLIP!. Knot over a line, or a side lets go: `tugEnd` (losers yanked, OOF!).
   Up to 4 dogs: across the knot each side's heaves add up and it moves as one (`ropeHold`).
   - **Heaves** (`tugTap`): Ⓑ, a right-stick swing, or a flick of the stick back (row: `rowB`). Full only wound up
