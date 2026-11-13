@@ -1,5 +1,7 @@
-// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|sea|reset]`.
-//   layout  herds on the land legs only (not Falcon Canyon, the pass, the sea), males and females; off in ?sim
+// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|find|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|prey|save|sea|reset]`.
+//   layout  rare: two herds a journey (a lone male maybe), each on its own land leg, never the first; tucked away off the trail;
+//           not Falcon Canyon, the pass, the sea; males and females; off in ?sim
+//   find    a dog comes on a herd: found (the first: a banner), once
 //   mate    a male courts a free female, they kush and mate, she's pregnant; a cria, at her side; grows up; a pregnant one spits a male off; caps
 //   shy     a dog walking at one: it runs; creeping up: it stays
 //   lose    a dog with a rope creeps up: the rope's on it, a tug; the dog just holds: the llama wins, bolts, wary (no rope on it again)
@@ -11,6 +13,9 @@
 //   shear   Hank (clippers, no sheep to shear) shears a guard: 🧶
 //   punt    a pounce punts it as a sheep (flies, lands, off it runs); on a rope: it stands
 //   grab    grabbed by the scruff, carried, flung; a grown wild one bucks free
+//   prey    a cria's taken as a lamb is: a coyote pack goes for it, drags it off, it's gone; a dog's pounce on the coyote drops it (it runs);
+//           a cougar goes for it before the sheep, up its tree with it
+//   save    a reload (JOURNEY SAVE): the same herds, the ones found still found, the guards back by the flock
 //   sea     guards aboard, kushed, at sea
 //   reset   a new journey: new herds, no guards
 import { open } from './harness.mjs';
@@ -47,18 +52,34 @@ if (want('layout')) {
   const r = await h.page.evaluate(() => {
     const { T, LLAMAS, LLAMA, resetLlamas, sAt, canyonK, passK, CAMPS, POST, inSea, wetAt, sdfAt } = GAME, out = { simOff: LLAMAS.length === 0 && T.llama.on === false, seeds: [] };
     T.llama.on = true;
-    for (const seed of [1, 7, 42, 1234, 99999]) {
+    for (const seed of [1, 7, 42, 1234, 99999, 31337, 5, 2024]) {
       resetLlamas(seed);
-      const s = LLAMA.herds.map(H => sAt(H.x, H.z));
+      const s = LLAMA.herds.map(H => sAt(H.x, H.z)), legs = s.map(v => CAMPS.findIndex((c, i) => v > c.s && v < (CAMPS[i + 1] || { s: 1e9 }).s));
       out.seeds.push({ herds: LLAMA.herds.length, n: LLAMAS.length, m: LLAMAS.filter(L => L.sex === 'm').length, f: LLAMAS.filter(L => L.sex === 'f').length,
-        legs: new Set(s.map(v => CAMPS.findIndex((c, i) => v > c.s && v < (CAMPS[i + 1] || { s: 1e9 }).s))).size,
+        legs: legs.join(''), apart: new Set(legs).size === legs.length, lat: Math.round(Math.min(...LLAMA.herds.map(H => Math.abs(GAME.trailInfo(H.x, H.z).lat)))),
         bad: LLAMAS.filter(L => canyonK(sAt(L.x, L.z)) > 0 || passK(sAt(L.x, L.z)) > 0 || inSea(L.x, L.z) || wetAt(L.x, L.z) || sdfAt(L.x, L.z) < 0.5 || sAt(L.x, L.z) > POST.s).length });
     }
     T.llama.on = false; resetLlamas(); out.off = LLAMAS.length;
     return out;
   });
   ok('off in ?sim (none)', r.simOff && r.off === 0, r);
-  ok(`herds on the land legs: ${r.seeds.map(q => q.herds + '/' + q.n).join(' ')}`, r.seeds.every(q => q.herds >= 4 && q.legs >= 4 && q.m >= 4 && q.f >= 8 && q.bad === 0), r);
+  ok(`rare: ${r.seeds.map(q => q.herds + '/' + q.n).join(' ')} (herds / llamas), legs ${r.seeds.map(q => q.legs).join(' ')}, ≥ ${Math.min(...r.seeds.map(q => q.lat))} m off the trail`,
+    r.seeds.every(q => q.herds >= 2 && q.herds <= 3 && q.n >= 4 && q.n <= 10 && q.m >= 2 && q.f >= 2 && q.apart && !q.legs.includes('0') && q.lat >= 12 && q.bad === 0), r);
+}
+
+if (want('find')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, LLAMAS, LLAMA, resetLlamas } = GAME, d = G.dogs[0];
+    resetLlamas(42); const H0 = LLAMA.herds[0], L = LLAMAS.find(o => o.herd === H0), out = { before: !H0.found && !LLAMA.seen };
+    H.place(d, L.x + T.llama.findR + 6, L.z); H.run(0.5); out.far = !H0.found;
+    H.place(d, L.x + T.llama.findR - 4, L.z); H.run(0.2); out.found = H0.found && LLAMA.seen && LLAMA.found === 1 && G.hints.llama === true;
+    const banner = document.querySelector('#banner .t').textContent; out.banner = banner;
+    H.run(1); out.once = LLAMA.found === 1;
+    const H1 = LLAMA.herds[1], L1 = LLAMAS.find(o => o.herd === H1); H.place(d, L1.x + 6, L1.z); H.run(0.2); out.second = H1.found && LLAMA.found === 2;
+    return out;
+  });
+  ok(`a dog comes on a herd: found ("${r.banner}"), once; the next herd too`, r.before && r.far && r.found && /Llamas/.test(r.banner) && r.once && r.second, r);
 }
 
 if (want('mate')) {
@@ -271,6 +292,70 @@ if (want('grab')) {
   ok('a grown wild one: bucks free', r.adult && r.bucked, r);
 }
 
+if (want('prey')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, makeLlama, pens, spawnPack, COUGARS, cougarHunt, cougarTarget, LLAMAS } = GAME, P0 = pens[0], d = G.dogs[0], p0 = d.player, out = {};
+    const pen = () => { for (const s of G.sheep) { H.place(s, P0.x + (Math.random() - 0.5) * 5, P0.z + (Math.random() - 0.5) * 5); s.pen = P0; } GAME.setGate(P0, false); };
+    const herd = (x, z) => { const Hd = { id: 90, x, z, s: GAME.sAt(x, z) }, m = makeLlama({ x, z, sex: 'f', age: 5, herd: Hd }), c = makeLlama({ x: x + 1.2, z, sex: 'm', age: 0.5, herd: Hd, mum: m }); m.cdH = c.cdH = 99; return c; };
+    const spot = GAME.pathPoint(GAME.sAt(P0.x, P0.z) + 40, 0);
+    // a coyote pack, the flock shut in: it goes for the cria, drags it off, it's gone
+    pen(); H.place(d, P0.x - 60, P0.z - 60); G.clock.hour = 22; G.clock.day = 3;
+    let c = herd(spot.x, spot.z), took = null;
+    spawnPack(2, { howl: false });
+    H.run(150, () => { G.clock.hour = 22; if (c.grabbed && !took) took = c.grabbed.isCougar ? 'cougar' : 'coyote'; return !LLAMAS.includes(c); });   // (held at night: the flock's shut in, the night would fly by)
+    out.coyote = { took, gone: !LLAMAS.includes(c), lost: G.stats.criasLost };
+    // again: a dog's pounce on the coyote drops it, and it runs
+    for (const o of G.coyotes) { o.state = 'leave'; o.gone = true; } H.run(0.1);
+    c = herd(spot.x, spot.z); spawnPack(2, { howl: false }); let saved = false, ran = false;
+    H.run(150, () => {
+      G.clock.hour = 22; const k = c.grabbed;
+      if (k && !k.isCougar) { const dx = k.x - d.x, dz = k.z - d.z; if (Math.hypot(dx, dz) > 6) H.place(d, k.x - dx / Math.hypot(dx, dz) * 2, k.z - dz / Math.hypot(dx, dz) * 2); p0.bot = H.inp(k.x - d.x, k.z - d.z, { pounce: true }); }
+      else p0.bot = {};
+      if (!c.grabbed && took === 'again') { saved = LLAMAS.includes(c); ran = ran || c.state === 'flee'; }
+      if (c.grabbed) took = 'again';
+      return saved && ran;
+    });
+    p0.bot = {}; out.saved = { saved, ran, alive: LLAMAS.includes(c) };
+    for (const o of G.coyotes) { o.state = 'leave'; o.gone = true; } H.run(0.1);
+    // a cougar: the cria before the sheep, up its tree with it
+    const k = COUGARS[0], Lr = k.lair, ux = Math.sin(Lr.yaw), uz = Math.cos(Lr.yaw);
+    for (const s of G.sheep) { H.place(s, Lr.x + ux * 17 + (Math.random() - 0.5) * 6, Lr.z + uz * 17 + (Math.random() - 0.5) * 6); s.pen = null; s.lamb = false; }
+    H.place(d, Lr.x + ux * 70, Lr.z + uz * 70);
+    c = herd(Lr.x + ux * 20, Lr.z + uz * 20); G.clock.hour = 21;
+    out.cougarPicks = cougarTarget(k) === c;
+    cougarHunt(k, 0); let up = false;
+    H.run(120, () => { up = up || (c.grabbed === k && k.state === 'climb'); return !LLAMAS.includes(c); });
+    out.cougar = { up, gone: !LLAMAS.includes(c), sheep: G.sheep.filter(s => s.dead).length };
+    return out;
+  });
+  ok(`a coyote pack takes a cria (${r.coyote.took}), drags it off: gone`, r.coyote.took === 'coyote' && r.coyote.gone && r.coyote.lost >= 1, r);
+  ok('a pounce on the coyote drops the cria: it runs', r.saved.saved && r.saved.ran && r.saved.alive, r);
+  ok('a cougar goes for the cria first, up its tree with it', r.cougarPicks && r.cougar.up && r.cougar.gone && r.cougar.sheep === 0, r);
+}
+
+if (want('save')) {
+  await setup();
+  const before = await h.page.evaluate(() => {
+    const { LLAMAS, LLAMA, resetLlamas, makeLlama, llamaJoin, JOURNEY, journeySave } = GAME;
+    JOURNEY.off = false; resetLlamas(4242); LLAMA.herds[0].found = true; LLAMA.seen = true; LLAMA.found = 1;
+    const p = H.at(200, 0); H.flock(p.x, p.z);
+    const g = makeLlama({ x: p.x + 5, z: p.z, sex: 'f', age: 5, coat: 3, wool: 0.4 }); g.tame = 1; llamaJoin(g);
+    return { saved: journeySave(), seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join() };
+  });
+  await h.page.reload(); await h.page.waitForFunction(() => window.GAME, null, { timeout: 60000 });
+  const after = await h.page.evaluate(() => {
+    const { T, LLAMAS, LLAMA, JOURNEY, journeyRead, startGame, flockCenter } = GAME;
+    T.llama.on = true; JOURNEY.off = false; JOURNEY.saved = journeyRead(); startGame({ kind: 'bot', index: 0 });
+    const g = LLAMAS.find(L => L.tame === 2), fc = flockCenter();
+    return { resumed: JOURNEY.resumed, seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join(), seen: LLAMA.seen,
+      guard: g ? { coat: g.coat, wool: g.wool, near: +Math.hypot(g.x - fc.x, g.z - fc.z).toFixed(1) } : null };
+  });
+  ok(`a reload: the same herds (${after.wild}), found still found, the guard back by the flock (${after.guard && after.guard.near} m)`,
+    before.saved && after.resumed && after.seed === before.seed && after.wild === before.wild && after.found === before.found && after.seen
+    && after.guard && after.guard.coat === 3 && Math.abs(after.guard.wool - 0.4) < 0.01 && after.guard.near < 20, { before, after });
+}
+
 if (want('sea')) {
   await setup();
   const r = await h.page.evaluate(() => {
@@ -293,7 +378,7 @@ if (want('reset')) {
     resetGame();
     return { guards: LLAMAS.filter(o => o.tame === 2).length, n: LLAMAS.length, herds: LLAMA.herds.length, gone: !LLAMAS.includes(L), seed: LLAMA.seed !== s0 };
   });
-  ok(`a new journey: new herds (${r.n}), no guards`, r.guards === 0 && r.n > 8 && r.herds >= 4 && r.gone, r);
+  ok(`a new journey: new herds (${r.n}), no guards`, r.guards === 0 && r.n >= 4 && r.herds >= 2 && r.gone, r);
 }
 
 errors.push(...h.errors);

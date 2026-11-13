@@ -61,3 +61,4 @@
   after its mark (`snakeSlide`, `slither`; `n.x0/z0` home), strike one in reach, back home a
   while (`cd`). Bark or pounce: back. Bite: `s.venom`, slower, sickly, dead in
   `dieHours` untreated.
+- **Crias** (LLAMAS): coyote packs and cougars take a cria as a lamb (`criaPrey`): picked, grabbed, dragged, dropped, eaten the same (`preyKill`).

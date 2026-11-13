@@ -1,13 +1,18 @@
 # Llamas
 
-- **Wild herds** (`LLAMAS`, `LLAMA`, `T.llama`; `on`: off in `?sim`): one a land leg (`legs`), now and then a bachelor (`bach`); none in Falcon
-  Canyon, up the pass or at sea. Own rng, a new seed a journey (`LLAMA.seed`, `llamaPlan`, `llamaSpotOK`). A herd: a male, `f` females, a cria
-  maybe. They graze their range (`range` m, `llamaGraze`), kush by night, shy off a dog going faster than `creep` m/s (`shy` m) or any within
-  `close` (a creeping dog gets close); a bark sends them off (`llamaBark`: herding, not a nag). A dog crowding one (`spit.dogR`, `dogT` s): spat at.
+- **Wild herds** (`LLAMAS`, `LLAMA`, `T.llama`; `on`: off in `?sim`): rare, a find. `herds` a journey, each on its own leg of `legs` (never the
+  first), tucked away `lat` m off the trail; now and then (`bach`) a lone male on another. None in Falcon Canyon, up the pass or at sea. Own
+  rng, a new seed a journey (`LLAMA.seed`, `llamaPlan`, `llamaSpotOK`). A herd: a male, `f` females, a cria maybe. Found: the first dog within
+  `findR` of one (`llamaFind`, `H.found`): ❗🦙, a chime; the journey's first, a banner, Hank's word, the hint. They graze their range (`range` m,
+  `llamaGraze`), kush by night, shy off a dog going faster than `creep` m/s (`shy` m) or any within `close` (a creeping dog gets close); a bark
+  sends them off (`llamaBark`: herding, not a nag). A dog crowding one (`spit.dogR`, `dogT` s): spat at.
 - **Population**: a grown male (`adultDays`, `L.grown`) seeks the nearest free female within `seek` m (`seekB`: a bachelor), `llamaMateFor`;
   they kush and mate `mateT` s (an orgle, ♥), she's pregnant `gestH` h (`L.preg`; a male near: spat off), then a cria at her side
   (`llamaBirth`, `L.mum`), grown at `adultDays`; a young male grown leaves his herd (`llamaGrownUp`, `llamaRoam`). Two males after one:
   a spitting match, the weaker gives up. Caps: `max` wild, `maxG` guards. A guard's cria is a guard; wild males court guards too.
+- **Prey** (COYOTES, COUGARS): a cria's taken as a lamb is (`criaPrey`; in `pickPackTarget`, `cougarTarget`: lambs first). `L.grabbed`:
+  the predator, which moves it (it dangles, kicking); a shut pen keeps it safe (`L.pen`). Dropped (a dog, a guard's spit): off it runs.
+  Carried home: gone (`preyKill` → `llamaKilled`, `G.stats.criasLost`; no grave). Online: `grabbed`; a coyote's `prey` is a sheep or a cria.
 - **Capture** (ROPES): a dog dragging a rope within `catchR` of a grown wild one (not `L.waryH`): the rope's on its halter (`llamaRope`,
   `R.llama`, `L.ropeI` a little past the dog's grip) and it's a tug of war, the llama as a man on a rope (`e.npc`, `ropeNpc(R)`,
   `hankTug` with `T.llama.tug` × `L.str`; it pulls facing away, spits at the dog now and then: just goo). Heaves on the beat break it;
@@ -31,6 +36,8 @@
   topknot, big lashy eyes, a split-lip smile, two-toed feet; coats (`LLAMA_COATS`): white … black, paint, appaloosa, two-tone. Pacing
   walk, grazing, kushed, chewing, ears back when cross, cheeks puffed to spit. Tame: a halter; guards: tassels on the ears. Fleece by
   `L.wool`. Spit: `spitFx` (a glob, a splat). Sounds: `LSND` (hum, alarm, gurgle, spit). `llamaFx`: what the sim's events look and sound like.
+- **Journey save** (`onSave('llamas')`): the seed (the same herds), which were found, the guards (by the flock; aboard at sea). Wild
+  herds come back as they started.
 - **Online**: `NET_TYPES.llama` (`rp`: its rope, `ropeI`, held, flying), `llamaFx` / `spitFx` relayed; a guest wipes its own (`llamaWipe`).
 - **HUD / map**: 🦙 guards in the flock panel; the map: guards always, wild ones where a dog's been (`mapLlamas`). Dev: `\` a herd by
   the first dog, again: one a guard (`devLlama`).

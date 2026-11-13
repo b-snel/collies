@@ -28,7 +28,7 @@
   Each section keeps its own (`onSave`): `core` (clock, `G.time`, tally, wool, hints, lost, training), `flock` (every living sheep's plain
   fields, look, mum, spot), `dogs`, `hank` (spot, kit), `pass` (fuel, ice gate, walls, yeti), `graves`, `where` (land: `devJump` to the
   flock's s, then every saved spot that fits; sea: `seaStart` alongside the last island reached, `SEA.saved`), `pens` (gates, bought kit,
-  `STORE`), `map` (fog, `G.visited`), `llamas` (seed, guards), `falcon`, `sea` (hold, hull, deck troughs), `coyotes` / `cougars` (still
+  `STORE`), `map` (fog, `G.visited`), `llamas` (seed, herds found, guards), `falcon`, `sea` (hold, hull, deck troughs), `coyotes` / `cougars` (still
   hunting: back). Not kept: what's mid-air or in a mouth, the vagabond's mood (he's at his next pitch), dens, grass, melted snow, ropes.
   New builds: each part loads alone (one that throws keeps its fresh state); `loadPlain` copies a field only onto the same type or a
   field the code doesn't set yet; a spot that's not walkable or `T.save.lag` m off along the trail goes by the flock (`journeyPlace`).
