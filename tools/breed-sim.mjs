@@ -1,6 +1,7 @@
 // Headless economy test: `node tools/breed-sim.mjs [days] [--norams] [--trough N] [--set key=value ...]`. The flock is parked at the valley camp:
 // out grazing by day, everyone put in the pen at 19:00 (gate shut, water topped up), let out at dawn. Rams court the fed ewes in the
 // closed pen in the evening; bred ewes lamb at dawn. Prints the flock each morning (the demo's "14 -> 22 by day 4").
+// Checks: flock parked for days: lambs, pasture, starvation
 import { open } from './harness.mjs';
 const days = +process.argv.find(a => /^\d+$/.test(a)) || 4, noRams = process.argv.includes('--norams');
 const tri = process.argv.indexOf('--trough'), trough = tri >= 0 ? +process.argv[tri + 1] : 0;   // --trough N: N units of feed spread over the pen's troughs every evening

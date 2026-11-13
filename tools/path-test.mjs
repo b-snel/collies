@@ -1,4 +1,6 @@
 // Headless test: `node tools/path-test.mjs [hank|coyote|den]`. Hank and coyotes round a shut pen: no shoving at the fence, no wiggling.
+// Checks: round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by
+//   the fence; coyotes home to their dens
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();
