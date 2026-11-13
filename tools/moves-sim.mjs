@@ -45,7 +45,7 @@ await h.page.evaluate(() => {
 });
 
 const tests = {
-  // 1. pounce into a sheep: it's punted ~10 m and lands safely
+  // 1. pounce into a sheep: it's punted ~20 m and lands safely
   async punt() {
     return h.page.evaluate(() => {
       const { G, pathPoint } = GAME, out = [];
