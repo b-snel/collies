@@ -15,7 +15,7 @@ better with practice), local or online, drive a flock along one trail
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
-Traders on every leg sell troughs, medicine and a shovel for wool;
+A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
@@ -28,7 +28,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - `node tools/serve.mjs` → http://localhost:8000 (`file://` won't work).
 - `?debug`: FPS + dev menu (`` ` `` or click the FPS line; `DEV_STOPS`, `DEV_CHEATS`): the whole journey as a strip, click a
   spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `X` coyotes dig into a pen, `J`
-  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶,
+  cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard; `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
@@ -58,7 +58,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
 MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
-DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
+DOG WARDROBE, BARN, DAWN REPORT, saved flock → VAGABOND (the VENDOR's wares) → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
@@ -82,7 +82,10 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `s.seaHold`, `s.lure`, `seaBark(d, k, team)`, `seaPounce(d)`, `seaFx(kind, k, x, z, a)`, `seaCheckpoint(w)` → `SEA.checkpoint`,
 `SEA.onSave(w, snap)` (for the save system to come), `seaWay()` (is the sea the way on?), `harbIce(on)`, `seaWake()` (the flock's through the gap), `seaMoor(i)`, `seaCastOff()`,
 `inSea(x, z)`, `QUAY` / `ISLE` / `seaGround(x, z)` / `seaH(x, z)` (what there is to stand on out there, and how high), `seaFresh(x, z)`,
-`LAND` / `seaKeep(obj)` (the land's, or the boat's), `ringSheep(s, a, dt)`, `p.off` / `r.off` / `sp.off` (an island's things while she's not there), `sp.chest`.
+`LAND` / `seaKeep(obj)` (the land's, or the boat's), `ringSheep(s, a, dt)`, `p.off` / `r.off` / `sp.off` (an island's things while she's not there), `sp.chest`,
+`e.npc` (HANK, VAG: a man on a rope; `ropeNpc(R)`, `hankTug(R, dt, beat, hk)`, `hankTugEnd(R, won, ax, az, hk)`), `VAG.mode` ('land' | 'sea' | 'away'; 'sea': `VAG.seaStep(dt, dtH)` runs him),
+`vagAt(x, z, yaw)`, `vagHide()`, `vagLayout(x, z, yaw, tight)` → `{ L: [x, z, yaw(, 1: tight)], ok }`, `vagPlaceMats(L)`, `vagTrade(d)`, `vagRate()` (price ×), `vagGood(kind)`, `vagGrief()`,
+`vagReach()` (dogs can get at him: on land, or ashore where she lies), `vagSeaStart()` (from `seaStart`), `vagBarkAt(d, busy)` (busy: loose sheep / foes the bark reached: not a nag).
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -115,7 +118,7 @@ Run the ones touching your change; report the numbers.
 | `age-sim.mjs` | ageing and old-age deaths |
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
-| `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
+| `vendor-test.mjs` | the vagabond: pitches (1–2 a leg, seeded, the last at the Trading Post, none up the pass), stalls gone; the trade press (pad bark, keyboard Space), packing up; 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen; nags (not herding, not from afar), bonks (worse each time), 3 warnings then prices up (capped); fetch, apple, tug: grievances off then a discount (capped); grabbed (screams, dragged, dusts off); leaves for a day, back ahead; walks on, skips ahead off screen, sleeps, woken; new journey; no Cabo, the Trading Post doesn't end it; at sea: Cold Harbour's quay (trade, 🌾 to the deck), cast off, sails by her (clear, heeled, boom to leeward, out of reach), beached ahead of her, trades on the island, asleep by his boat, Gull Rock: bye, gone |
 | `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
@@ -274,10 +277,10 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   shut pen (`hankCross`) and shears the woolliest (`s.wool` ≥ `min`) one at a
   time on its rump (`s.state 'shear'`): `G.wool` += yield × size². Wool regrows over `regrowDays`, saved with the flock.
 - **Map** (`MAP`, `T.map`, drawing only): parchment till a dog's been within `r` m (`MAP.rv`, 2 m grid,
-  `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps, traders,
-  salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
+  `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps,
+  salt, graves once uncovered; the vagabond where he is once met (`VAG.seen`); flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
-  Edge arrows keep clear of it (`mapDodge`). At a trader, its pen ringed + 📍 (on the edge if off it). No trail bar.
+  Edge arrows keep clear of it (`mapDodge`). By his wares, the pen they go to ringed + 📍 (on the edge if off it). No trail bar.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
@@ -307,19 +310,31 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   `coyoteBarkWorks`; a team bark too, barks within `same` s are that one), a cougar
   for `T.barkWise`; then bold (`barkWorks`, hint `coyote-wise`): only a bonk moves it,
   and it lunges at dogs to nip. Packs lose less heart per bark (`packK`).
-- **Traders** (`STALLS`, `T.vendor`): a stall `before` m short of each camp
-  past the first (the Trading Post's: `MARKET`, the only one there); a second row of mats
-  (`row2`) for the vet's wares. A dog on a mat barks
-  (`vendorBark`, host) to buy with `G.wool`. 📍 picks the pen (found ones,
-  `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough /
-  water trough / lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9
-  (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width apart, flush to it, no pockets), then batches. Water and salt: one pool per
-  pen (`p.water.at`, `p.lick.at`). New journey: back to base (`kitReset`).
-  A dog stepping on a mat: the ware hops, its name plate pops up (`WARE_KINDS`
-  `name`/`more`/`sub`, `drawWarePop`), each screen on its own.
-- **Trading Post** (`POST`, `postPen`, `MARKET`, `WARES`): desert, no water, the foot of
-  the pass. ✂️ free while Hank has none. Too poor or no room: ✖, nothing spent
-  (`vendorFx`). No trader up the pass, none delivers to the yeti's cave (`penFound`).
+- **The vagabond** (`VAG`, `T.vag`, VAGABOND; on: off in `?sim`): the one trader, on foot. No stalls: their sites (`STALLS`) are clearings
+  world gen still flattens and stamps (freed after its draws: `vagStall`; nothing moves). Each journey a new `VAG.seed` (own rng, `vagPlan`):
+  1–2 pitches a land leg (`VAG.pitches`: trail's edge, clear flat ground with room for the mats, not in the canyon, by the river, a camp,
+  den, cemetery), the last where the Trading Post's stall stood; never up the pass. He waits at the next pitch ahead of the flock;
+  it's `past` m past, nobody by him: walks on along the trail (`st 'walk'`, clear of the pens); behind and off screen: just there. By
+  night asleep on his bedroll. Cues (`vagCalls`, `vagNeeds`: Hank's missing cures, a shovel, clippers, low `STORE`s first), his own
+  bubble (`#vagBubble`, `vagSay`, a fx), only on screen with a dog by.
+  - **Trading**: a dog within `tradeR`: Ⓐ (pad, touch 📣) / Space (keyboard; a friend's: either) is `vagPress` (not a bark or jump; asleep:
+    woken, grumbling): `vagTrade` lays the mats out where he stands (`vagLayout`, `vagPlaceMats`: rows, turned / shifted to fit, popping
+    in one by one), wares big (`ware` ×), price tags (icon, price, count; `vagTag`). Packed `packT` s after no dog's within `stayR`.
+    VENDOR as before on his one "stall" (`VSTALL` = `MARKET`, `ALL_WARES` = `WARES`): a dog on a mat barks (`vendorBark`, host) to buy
+    with `G.wool`. 📍 picks the pen (found ones, `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough / water trough /
+    lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9 (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width
+    apart, flush to it, no pockets), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
+    (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. Too poor or no room: ✖,
+    nothing spent (`vendorFx`); none delivers to the yeti's cave (`penFound`).
+  - **Mood**: a bonk (`vagPounced`; a flying sheep: `vagAirHit`), a nag (`barkN` barks within `barkR` in `barkWin` s that bought nothing
+    and reached no loose sheep or foe: `vagBarkAt`; herding by him isn't one), a grab (`vagGrip`, `holdKind 'vag'`: dragged, flailing, screaming; let go: dusts off) are grievances (`VAG.griev`,
+    `vagGrief`): `mood.free` warn, then prices × `vagRate` (up, capped; in `wareDeal`, so tags, buying, fx agree; ↑ / ↓ on the tags).
+    Fetch (a dog's bone or stick let go by him or thrown at him: caught, thrown on; `vagFetch`; his sticks: `b.stick`, not saved),
+    a tug (`vagRope`, as Hank's), an apple held out or dropped by him: good deeds (`vagGood`, `gap` s apart): a grievance off, else
+    `VAG.good` (a discount, capped). Each act also `VAG.annoy` (decays /h): at `leave` a spiteful line, off out of sight (`vagLeave`),
+    gone `awayH` h, back at a pitch ahead of the flock (`vagBack`). Online: `NET_TYPES.vag`, `vagSay`, `vagFx`.
+  - **At sea**: his Laser (Sailing, below).
+- **Trading Post** (`POST`, `postPen`): desert, no water, the foot of the pass; the vagabond's last pitch is by it.
 - **Mountain pass** (`PASS`, `T.pass`, `passK`, `liftArr`): past the Trading Post the floor
   climbs `rise` m (flat at each fire camp); `blk` is by height over the floor. Walls in ledges
   west, a lip then the drop east. Nothing else up there (dens, nests, plants, salt, brambles, digs).
@@ -450,6 +465,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Hank's tug** (`hankRope`, `hankTug`, `HANK.rope`, `T.rope.tug.hank`): a dog brings a rope within `r` of him, he's free
   (`hankRopeFree`: awake, no job, nothing prowling): he walks to the far end, takes it, tugs every dog on it; walks back,
   heaves on every `beats`th beat (step in just before it: he stumbles), tires after `tire` s. Lost: OOF, stumbles. Either way he lets go (`again` s). Online: `NET_TYPES.hank` `rope`/`ropeI`.
+  The vagabond plays the same (`vagRope`, `T.vag.tug`; `e.npc`, `ropeNpc(R)`); never both on one rope.
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
   let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
@@ -483,7 +499,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Wounds** (`T.wound`): a sheep a predator lets go of is cut (`woundSheep`):
   deep bleeds (`bleedHours`), shallow festers (`infectHours`). No night
   fast-forward while one bleeds.
-- **Vet** (`VET`, `T.vet`): traders' second row 💉 🩹 💊 🪏 goes straight
+- **Vet** (`VET`, `T.vet`): the vagabond's second row 💉 🩹 💊 🪏 goes straight
   to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
   (`HANK.care`, `s.state 'treat'`), before shearing (even the one he is shearing). His jobs: a dog down (RESCUE, above all), fire, patients, a tug, shearing, burials, then sleep (`hankWorkDue`: work keeps him up, or gets him up). Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
@@ -566,6 +582,14 @@ Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with frie
   A loose arm snatches a sheep (`s.seaHold`): bonk it and it drops it. Arms off: its head comes up, dazed: a sheep
   (or a dog) flying into its eye is a hit and bounces back aboard (`krakenEyeHits`). `hp` (+`perDog`) hits: beaten,
   +`bounty` 🧶, the wind fills in. Barks: 😾. HUD: 🐙 ♥♥♥ (`#bossBar`).
+- **The vagabond's Laser** (`VAG.sea`, `T.vag.sea`, `vagSeaStep`; `seaStart` → `vagSeaStart`): white single-hander, a red star up its sail
+  (`makeLaser`, in `seaG`; `syncLaser`). Cold Harbour: on the quay's far end, his Laser pulled up by him. For legs 1…`legs` (to Gull Rock) he
+  sails by her (sea coords: a slot off her port bow, `vagSlot`; `vagSail`: polar × wind, no-go zone, tacks, heel and boom to leeward, clear of
+  her by `keep` and the reefs; far behind out of sight: caught up). Near the next island (`landR`), or by night, he makes for its beach ahead
+  of her and pulls up (`vagLand`). Sites (`vagSite`: deck coords at that berth, own rng: his spot, the mats' layout (tight grid), his boat, his
+  bed by it). Ashore where she lies (`vagReach`): as on land (trade, deliveries to the deck: `penFound`, sleep, bonk, grab, fetch, tug);
+  else drawn on the sea, waiting (by night asleep). She casts off: after her (`vagLaunch0`); his last island: `bye`, home over the horizon
+  (`vagPart`), gone (`st 'off'`). Put out: off in his Laser for a day, back by sea. Under way out of reach; hails (`vagSeaCalls`).
 - **HUD**: the dial (`drawSeaDial`): wind arrow, no-go wedge, boom (green drawing, amber luffing / stalled, dashed:
   best), rudder, heel + where the flock's weight is, knots, reefs, hull ♥. The sail's cloth tints the same. Compass:
   the next island (the boat, alongside; from the yeti's end: Cold Harbour). Map: a chart with the coast on it (`seaChart`; minimap
@@ -587,8 +611,9 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - Changed `index.html`, `vendor/` or icons → bump `CACHE` in `sw.js`.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
-  camp (pushed onto `PASS.fires` after them), nor `MELT` (all 0 then).
-- Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`) or lies aboard.
+  camp (pushed onto `PASS.fires` after them), nor `MELT` (all 0 then). It still sees the old stalls (`STALLS`: flattened, stamped; freed by `vagStall`).
+- Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`: the vagabond, his bed and mats are) or lies aboard.
+  Far off the boat under way, draw in `seaG` (sea coords): the world's frame heels with her.
 
 ## Demo slices
 
