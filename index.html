@@ -705,9 +705,9 @@ const T = {
   // ICE (ICES): n patches, r m. On one at over minSpd m/s: it slides (steer× grip), downhill g m/s², fric/s; off it fric2/s; done under stop
   // m/s off the ice, or after max s. Calm sheep go round (avoid m)
   ice: { n: 11, r: [2.4, 4.2], steer: 0.1, g: 5.5, fric: 0.25, fric2: 3.2, stop: 0.8, max: 3.5, minSpd: 0.6, avoid: 2 },
-  // CREVASSES (CREVS): n cracks len m long, hw m across. In: sunk sink m. A sheep's grabbed out; a dog on its own mashes Ⓑ (mash presses,
-  // decay/s) out, with friends one of them grabs it out. Calm sheep go round (avoid m)
-  crev: { n: 7, len: [5, 8.5], hw: 0.62, sink: 0.72, mash: 8, decay: 0.6, avoid: 2.2, stress: 0.05 },
+  // CREVASSES (CREVS): n cracks len m long, hw m across. In: sunk sink m. A sheep's grabbed out; a dog mashes Ⓑ (mash presses,
+  // decay/s) out, cost stamina a press (exhausted: nothing; no breath back till rest s after one), or a friend grabs it out. Calm sheep go round (avoid m)
+  crev: { n: 7, len: [5, 8.5], hw: 0.62, sink: 0.72, mash: 8, decay: 0.6, cost: 0.025, rest: 0.4, avoid: 2.2, stress: 0.05 },
   // GOATS (GOATS): n on ledges up the walls. By day (from…to), while something's within reach m below, one comes every `every` s (maxOut
   // at once): down in a bound (hop s), a windup (❗, windup s), a charge at spd m/s up to chargeT s; within hitR: BONK, its mark flies
   // downhill (kick m/s down the slope, push along the charge, up m/s). Home again (hop s), rests rest s. A bark within barkR or a pounce: home
@@ -10675,7 +10675,7 @@ function slideBonkFx(e) {
 function crevFall(e, c) {
   const u = clamp((e.x - c.x) * c.ax + (e.z - c.z) * c.az, -c.hl + 0.4, c.hl - 0.4), v = (e.x - c.x) * -c.az + (e.z - c.z) * c.ax;
   e.crev = c; e.crevSide = Math.sign(v) || 1; e.crevEsc = 0; e.slide = null; e.x = c.x + c.ax * u; e.z = c.z + c.az * u; e.vx = e.vz = 0;
-  if (e.isDog) { if (e.holding) releaseHold(e, false); e.pounceT = e.hopT = 0; e.mode = 'walk'; e.y = groundY(e.x, e.z); hint(crevAlone(e) ? 'crev-solo' : 'crev-team'); }
+  if (e.isDog) { if (e.holding) releaseHold(e, false); e.pounceT = e.hopT = 0; e.crevRest = 0; e.mode = 'walk'; e.y = groundY(e.x, e.z); hint(crevAlone(e) ? 'crev-solo' : 'crev-team'); }
   else { e.state = 'crev'; e.eating = false; e.sink = T.crev.sink; e.y = groundY(e.x, e.z); if (e.fire) e.fire = null; hint('crev'); }
   crevFx(e);
   if (hankSees(e.x, e.z)) passSay('crev', e.isDog ? "Down a crack! Haul yerself out!" : "One's down a crack! Grab her out!");
@@ -10710,17 +10710,26 @@ function crevSheepStep(s, dt, dtH) {
   if (s.burn > 0) burnTick(s, dt); else sheepCold(s, dtH);
   if (!CREVS.includes(c)) crevOut(s);
 }
-// a dog down a crack: no control. On its own: mash Ⓑ to climb out. With friends: one of them has to grab it out (Ⓧ)
+// a dog down a crack: no control. Mash Ⓑ to climb out, a press costs stamina (exhausted: 💨, rest); a friend can grab it out (Ⓧ)
 function crevDogStep(d, inp, dt) {
-  const C = T.crev; d.vx = d.vz = 0; d.pounceT = d.hopT = 0; d.mode = 'walk'; d.y = groundY(d.x, d.z); d.inMag = 0; d.pounceBuf = 0;   // (Ⓑ: climbing out)
+  const C = T.crev, wind = dogK(d, 'wind'); d.vx = d.vz = 0; d.pounceT = d.hopT = 0; d.mode = 'walk'; d.y = groundY(d.x, d.z); d.inMag = 0; d.pounceBuf = 0;   // (Ⓑ: climbing out)
   d.crevEsc = Math.max(0, (d.crevEsc || 0) - C.decay * dt); d.leg += dt * 22;
-  d.stamina = Math.min(1, d.stamina + T.staminaRegen * dt);
+  if (d.crevRest > 0) d.crevRest -= dt;   // (mashing: no breath back)
+  else { d.stamina = Math.min(1, d.stamina + T.staminaRegen * wind * dt); if (d.stamina > 0.35) d.exhausted = false; }
   dogCold(d, dt * 1.5);
   if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
   if (inp.pounce) {
-    if (crevAlone(d)) { d.crevEsc += dogK(d, 'grit') / C.mash; mashFx(d); if (d.crevEsc >= 1) crevOut(d); }
-    else crevHelpFx(d);
+    if (d.exhausted) { crevTiredFx(d); if (!crevAlone(d)) crevHelpFx(d); }
+    else {
+      const st0 = d.stamina; d.stamina = Math.max(0, d.stamina - C.cost / wind); d.crevRest = C.rest; if (d.stamina <= 0) d.exhausted = true;
+      train(d, 'wind', (st0 - d.stamina) * T.train.wind);
+      d.crevEsc += dogK(d, 'grit') / C.mash; mashFx(d); if (d.crevEsc >= 1) crevOut(d);
+    }
   }
+}
+function crevTiredFx(d) {   // mashing on empty: the bar flashes, a puff
+  if (!d) return; d.crevTiredAt = G.time; rumble(d.player, 0.2, 0.1, 50);
+  burst(d.x, d.y + 0.7, d.z, 3, '#eef3f8', { speed: 1.2, up: 1.2, size: 0.2, life: 0.5, grav: 0 });
 }
 function crevHelpFx(d) { if (!d || G.time - (d.helpAt || -9) < 0.8) return; d.helpAt = G.time; floatText('HELP!', d.x, d.y + 1.4, d.z, d.color, 1.1); Sound.whimper(panOf(d.x, d.z), d.pitch); }
 // calm sheep give the ice, the cracks and a fire's flames a wide berth (a running one barely looks; nobody walks into a fire)
@@ -11493,6 +11502,7 @@ function updatePass(dt, dtH) {
   updateGoats(dt); updateYeti(dt); updateSnowballs(dt); updateRock(dt);
   // the yeti's pen: iced shut while he's there; then a pen for the night, and the way goes on down the harbour road to the sea (SAILING).
   // (seaWay false: shut the flock in, and that's the journey)
+  if (YETI.beaten && HARB.ice && seaWay() && G.mode === 'play') { harbIce(false); hank(null, "The way down's open! Bring 'em to the boat!", { force: true }); hint('harbour'); }   // SAILING: (the gap still iced: it thaws)
   const p = finalPen;
   if (p.frozen) { p.phi = 0; p.latched = true; updateGateGeometry(p); }
   else if (G.mode === 'play') {
@@ -11628,9 +11638,12 @@ function drawPassOverlay() {
   for (const d of G.dogs) {
     if (!d.crev && !(d.cold > 0.6)) continue;
     const [px, py, pz] = proj(d.x, d.y + 2.2, d.z); if (pz > 1) continue;
-    if (d.crev) { const solo = crevAlone(d), key = solo ? keyLabel(d.player.kind === 'net' ? null : d.player, 'pounce') : '✊', sc = 1 + 0.12 * Math.sin(G.time * 12);
-      ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc); forageChip(0, 0, solo ? `${key} ${key} ${key}` : `🗣 ✊`, solo ? 'rgba(60,110,170,.9)' : 'rgba(170,70,60,.9)'); ctx.restore();
-      if (solo) { const w = 50, k = clamp(d.crevEsc || 0, 0, 1); ctx.fillStyle = 'rgba(0,0,0,.4)'; rr(px - w / 2, py + 14, w, 6, 3); ctx.fill(); ctx.fillStyle = '#7ed957'; rr(px - w / 2, py + 14, w * k, 6, 3); ctx.fill(); } }
+    if (d.crev) {   // mash (💨: rest first) + how near out; a friend free: ✊ too
+      const key = keyLabel(d.player.kind === 'net' ? null : d.player, 'pounce'), tired = d.exhausted, sc = tired ? 1 : 1 + 0.12 * Math.sin(G.time * 12), ft = G.time - (d.crevTiredAt ?? -9), fl = ft >= 0 && ft < 0.3 ? 1 - ft / 0.3 : 0;
+      ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc); if (tired) ctx.globalAlpha = 0.6; forageChip(0, 0, tired ? `💨 ${key}` : `${key} ${key} ${key}`, 'rgba(60,110,170,.9)'); ctx.restore();
+      const w = 50, k = clamp(d.crevEsc || 0, 0, 1); ctx.fillStyle = fl > 0 ? `rgba(255,90,70,${(0.4 + 0.5 * fl).toFixed(2)})` : 'rgba(0,0,0,.4)'; rr(px - w / 2 - 2 * fl, py - 21 - fl, w + 4 * fl, 6 + 2 * fl, 3); ctx.fill();
+      ctx.fillStyle = tired ? '#ff7a6b' : '#7ed957'; rr(px - w / 2, py - 21, w * k, 6, 3); ctx.fill();
+      if (!crevAlone(d)) forageChip(px, py - 38, `🗣 ✊`, 'rgba(170,70,60,.9)'); }
     else { ctx.font = '16px Fredoka, sans-serif'; richText('❄️', px, py); }
   }
 }
@@ -12818,8 +12831,8 @@ const HINTS = {
   torch: '🪵 A stick by every 🔥: <b>grab</b> it (RB / E) and dip it in the fire.',
   'torch-lit': '🔥 Carry it over the snow: it melts ❄️ (ice too). There\'s <b>grass</b> 🌿 under it. It snows over again in a 🌨️.',
   crev: 'Down a crack! <b>Grab</b> it out (RB / E).',
-  'crev-solo': 'Down a crack! Mash <b>pounce</b> (Ⓑ / E) to climb out.',
-  'crev-team': 'Down a crack! A friend has to <b>grab</b> you out (RB / E).',
+  'crev-solo': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R) to climb out. Each costs 💨.',
+  'crev-team': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R), each costs 💨; or a friend <b>grabs</b> you out (RB / E).',
   goat: '🐐 Goats bonk you down the mountain. <b>Bark</b> them home, or <b>pounce</b> one.',
   yeti: '🦍 Snowballs! <b>Jump</b> them. Fire hurts him: <b>grab</b> a sheep into a 🔥, then <b>pounce</b> it at him. ×3',
   'yeti-fire': '🔥 Now <b>pounce</b> it at the yeti!',
@@ -12879,8 +12892,8 @@ const TOUCH_HINTS = {
   ice: 'Ice! ⤴ out of a slide',
   torch: '🪵 ✊ → 🔥', 'torch-lit': '🔥 ❄️ → 🌿',
   crev: 'Down a crack! ✊ it out',
-  'crev-solo': 'Down a crack! 💥💥💥',
-  'crev-team': 'Down a crack! A friend ✊',
+  'crev-solo': 'Down a crack! 💥💥💥 (💨)',
+  'crev-team': 'Down a crack! 💥💥💥 (💨) or a friend ✊',
   goat: '🐐 📣 or 💥',
   yeti: '🦍 🐑 → 🔥 (✊), then 💥 at him ×3',
   'yeti-fire': '🔥 💥 it at 🦍!',
@@ -19887,7 +19900,7 @@ finishGame = fxDef('finishGame', finishGame);
 vendorFx = fxDef('vendorFx', vendorFx);   // VENDOR: a sale, a no
 // MOUNTAIN PASS
 fireFx = fxDef('fireFx', fireFx); slipFx = fxDef('slipFx', slipFx); slideBonkFx = fxDef('slideBonkFx', slideBonkFx); crevFx = fxDef('crevFx', crevFx); crevOutFx = fxDef('crevOutFx', crevOutFx);
-crevHelpFx = fxDef('crevHelpFx', crevHelpFx); igniteFx = fxDef('igniteFx', igniteFx); burnOutFx = fxDef('burnOutFx', burnOutFx); hotFx = fxDef('hotFx', hotFx); goatFx = fxDef('goatFx', goatFx);
+crevHelpFx = fxDef('crevHelpFx', crevHelpFx); crevTiredFx = fxDef('crevTiredFx', crevTiredFx); igniteFx = fxDef('igniteFx', igniteFx); burnOutFx = fxDef('burnOutFx', burnOutFx); hotFx = fxDef('hotFx', hotFx); goatFx = fxDef('goatFx', goatFx);
 goatBonkFx = fxDef('goatBonkFx', goatBonkFx); goatPouncedFx = fxDef('goatPouncedFx', goatPouncedFx); snowHitFx = fxDef('snowHitFx', snowHitFx); yetiFx = fxDef('yetiFx', yetiFx); yetiButtFx = fxDef('yetiButtFx', yetiButtFx);
 yetiHitFx = fxDef('yetiHitFx', yetiHitFx); yetiBeatenFx = fxDef('yetiBeatenFx', yetiBeatenFx); rockCrackFx = fxDef('rockCrackFx', rockCrackFx); rockFallFx = fxDef('rockFallFx', rockFallFx); rockDownFx = fxDef('rockDownFx', rockDownFx);
 hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx);
