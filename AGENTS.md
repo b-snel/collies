@@ -339,7 +339,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     Up onto it: a skid (`keep`), then back down (`gateBack`, `g`), even creeping, no `slipCd`. The way on: a lit torch melts a lane (`gateScan`:
     ≥ `lane` m all the way, `GATE.open`, `GATE.path`); its melt never snows over (`gateV`). Hank waits by the base camp's fire (`gateWaitGoal`,
     `hankGate`: `GATE.wait`), then walks up the lane; the flock's steered to it (`gateSteer` in `passAvoid`). Lines: "Grab the torch…" (`gateIntro`),
-    nags on a slip with no lane and no lit torch (`gateSlip`, `GATE_NAGS`, `nag` s apart, what he sees), lit near it, the lane through (`gateOpenFx`).
+    nags on a slip with no lane and no lit torch (`gateSlip`, `GATE_NAGS`, `nag` s apart, then further, what he sees), lit near it, the lane through (`gateOpenFx`).
     A dev jump onto it or past: all melted (`gateMelt`, `GATE.all`). Online: what's melted of it (`NET_TYPES.pass.gate`, `gateMask`: friends only melt
     more from it; none: iced again); guests find their own lane (`gateScanTick`).
   - **Torches** (`TORCHES`, `T.torch`, `holdKind 'torch'`): a stick by each fire (`f.torch`), stood in a cairn, leaning, a warm glow and a twinkle
