@@ -4931,7 +4931,7 @@ function buildDog(L, add) {
 function makeDog(pi, look) {
   const C = PCOL[pi], L = look || dogLook(pi);
   const M = buildDog(L, (par, geo, mat = MAT.vc) => part(par, geo, { mat })), root = M.root;
-  const mud = dogMud(pi); root.traverse(o => { const f = o.material && o.material.userData && o.material.userData.fur; if (f) o.material = furMat(f[0], f[1], mud); });   // MUDDY DOGS
+  const mud = dogMud(pi);   // MUDDY DOGS: its coat's own materials once it's muddy or wet (syncDirt)
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.8, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: C.ui, transparent: true, opacity: 0.85, depthWrite: false }));
   ring.position.y = 0.06; root.add(ring);
   const pring = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: C.ui, transparent: true, opacity: 0.18, depthWrite: false }));
@@ -9714,7 +9714,7 @@ function resetDirt() {
   for (const d of G.dogs) { d.mud = d.wet = 0; d.tub = null; d.tubT = 0; d.tubCd = 0; d.shakeDue = 0; d.inMud = false; d._sw = false; d._mudS = d._wetS = 0; d.shakeAt = -9; }
   for (const p of pens) if (p.water) p.water.muck = 0;
   Object.assign(DIRT, { said: false, tubs: 0, clonks: 0, cleans: 0, shakes: 0 });
-  PAWS.n = 0; for (const q of PAWS.list) q.t = -1;
+  if (PAWS) for (const q of PAWS.list) q.t = -1;
 }
 onReset(resetDirt, 185);   // MUDDY DOGS: clean dogs, clear troughs, no prints
 // ---- what it looks and sounds like (relayed online: fxDef in ONLINE CO-OP)
@@ -9743,7 +9743,9 @@ function dirtFx(kind, d, k = 0) {
   } else if (kind === 'shake') { d.shakeAt = G.time; d.shakeMud = k; d._shk = -1; floatText('*shake shake*', x, y + 1.8, z, k > 0.05 ? '#c8a27a' : '#cfefff', 1); }
 }
 // ---- drawing (every screen): the coat, the bath, the shake, wallowing, drips, clods, pawprints, flies; mucky water
-const PAWS = (() => {   // muddy pawprints: a pool of flat stamps on the ground, shrinking away
+const FLIES = new Set();   // dogs with flies made
+let PAWS = null;   // (made on the first drawn frame: three's uuids use Math.random, and the seeded tests' sim mustn't see it)
+const paws = () => PAWS ||= (() => {   // muddy pawprints: a pool of flat stamps on the ground, shrinking away
   const n = 200, toe = (x, z, r) => P(new THREE.CircleGeometry(r, 8), '#000', { p: [x, -z, 0] });   // (flat on the ground, toes forward: +z once laid down)
   const geo = merge(P(new THREE.CircleGeometry(0.06, 10), '#000', { s: [1, 0.85, 1], p: [0, 0.02, 0] }), toe(-0.062, 0.05, 0.026), toe(-0.022, 0.078, 0.027), toe(0.022, 0.078, 0.027), toe(0.062, 0.05, 0.026)).rotateX(-Math.PI / 2);
   const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: '#3b2716', transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), n);
@@ -9751,10 +9753,11 @@ const PAWS = (() => {   // muddy pawprints: a pool of flat stamps on the ground,
   return { mesh, n, list: Array.from({ length: n }, () => ({ x: 0, z: 0, y: 0, yaw: 0, t: -1, k: 1 })), next: 0 };
 })();
 const PAW_LIFE = 16;
-function pawPrint(x, z, yaw, k) { const q = PAWS.list[PAWS.next]; PAWS.next = (PAWS.next + 1) % PAWS.n; Object.assign(q, { x, z, y: groundY(x, z) + 0.02, yaw, t: G.time, k }); }
+function pawPrint(x, z, yaw, k) { const P = paws(), q = P.list[P.next]; P.next = (P.next + 1) % P.n; Object.assign(q, { x, z, y: groundY(x, z) + 0.02, yaw, t: G.time, k }); }
 const _dv = new THREE.Vector3();
 function syncDirt(dt, once) {
   const D = T.dirt, t = G.time, live = !once && dt > 0 && !G.paused;
+  for (const d of FLIES) if (!G.dogs.includes(d)) { d._flies.forEach(f => { f.visible = false; }); FLIES.delete(d); }   // (a dog that left)
   for (const d of G.dogs) {
     const M = d.models; if (!M || !M.mud) continue;
     d._mudS = lerp(d._mudS || 0, d.mud || 0, Math.min(1, dt * ((d.mud || 0) < (d._mudS || 0) ? 3 : 7)));
@@ -9802,7 +9805,9 @@ function syncDirt(dt, once) {
       if (live && Math.random() < dt * 14) idleBit(d.x + rnd(-0.5, 0.5), d.y + 0.2, d.z + rnd(-0.5, 0.5), rnd(-2, 2), rnd(2, 3.5), rnd(-2, 2), rnd(0.08, 0.15), '#4e3822', 0.6, -12);
       if (live && Math.random() < dt * 1.5) SFX.splash(panOf(d.x, d.z), 0.05);
     }
-    // the coat: caked, wet (uMud), in the dog's own frame (uMudM)
+    // the coat: caked, wet (uMud), in the dog's own frame (uMudM). Its own copies of the fur materials from the first time
+    // (made here, not in makeDog: three's uuids use Math.random, and a clean dog mustn't move the seeded tests' dice)
+    if (!M.mudOwn && (d._mudS > 0.001 || d._wetS > 0.001)) { M.mudOwn = true; M.root.traverse(o => { const f = o.material && o.material.userData && o.material.userData.fur; if (f) o.material = furMat(f[0], f[1], M.mud); }); }
     const seed = (d.player.slot || 0) * 3.7 + 1.3; M.mud.u.value.set(d._mudS, 0, seed, Math.min(1, d._wetS * 1.4));
     M.root.updateMatrixWorld(true); M.mud.m.value.copy(M.root.matrixWorld).invert();
     if (!live) continue;
@@ -9818,18 +9823,18 @@ function syncDirt(dt, once) {
       if (d._pd > 0.42) { d._pd = 0; d._pside = -(d._pside || 1); const s = d._pside * 0.13; pawPrint(d.x + rx * s + fx * 0.25, d.z + rz * s + fz * 0.25, yaw, Math.min(1, d._paw * 1.6) * Math.min(1, ms * 2)); }
     }
     // flies round a filthy dog
-    const fl = M.flies || (M.flies = Array.from({ length: 3 }, () => { const f = new THREE.Mesh(FLY_GEO, FLY_MAT); f.visible = false; scene.add(f); seaKeep(f); return f; }));
-    const buzz = ms > D.flies && !sw && !tub && !d.air;
+    const buzz = ms > D.flies && !sw && !tub && !d.air; if (!buzz && !d._flies) continue;
+    const fl = d._flies || (d._flies = Array.from({ length: 3 }, () => { const f = new THREE.Mesh(FLY_GEO, FLY_MAT); f.visible = false; scene.add(f); seaKeep(f); return f; })); FLIES.add(d);
     fl.forEach((f, i) => { f.visible = buzz; if (!buzz) return; const a = t * (3.4 + i * 0.8) + i * 2.1; f.position.set(d.x + Math.cos(a) * (0.55 + 0.12 * i), d.y + 1.05 * hr + 0.2 * Math.sin(t * 6 + i * 2), d.z + Math.sin(a * 1.3) * (0.5 + 0.1 * i)); });
   }
   // the prints: shrink away over their last quarter
-  let n = 0; const PW = PAWS;
+  let n = 0; const PW = PAWS || { list: [], mesh: null };
   for (const q of PW.list) {
     if (q.t < 0) continue; const a = t - q.t; if (a > PAW_LIFE || a < 0) { q.t = -1; continue; }
     const s = q.k * Math.min(1, (PAW_LIFE - a) / (PAW_LIFE * 0.25)); if (s < 0.05) continue;
     _m4.compose(_dv.set(q.x, q.y, q.z), _q.setFromAxisAngle(_dv2.set(0, 1, 0), q.yaw), _s.setScalar(s * 1.15)); PW.mesh.setMatrixAt(n++, _m4);
   }
-  PW.mesh.count = n; PW.mesh.instanceMatrix.needsUpdate = true;
+  if (PW.mesh) { PW.mesh.count = n; PW.mesh.instanceMatrix.needsUpdate = true; }
   // mucky water: browner the more mud went in; clears in a few hours
   for (const p of pens) {
     const W = p.water; if (!W || !(W.muck > 0) && !W.mMat) continue;
@@ -9851,7 +9856,7 @@ function drawDirtOverlay() {
     }
   }
 }
-expose(() => ({ DIRT, PAWS, waterTroughAt, updateDirt, tubIn, tubEnd, tubStep, resetDirt, dirtFx, syncDirt, dogMud }));   // MUDDY DOGS
+expose(() => ({ DIRT, paws, waterTroughAt, updateDirt, tubIn, tubEnd, tubStep, resetDirt, dirtFx, syncDirt, dogMud }));   // MUDDY DOGS
 
 // =====================================================================
 // RATTLESNAKES — coiled behind rocks along the desert trail past the

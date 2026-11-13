@@ -151,7 +151,7 @@ if (want('carry')) {
 if (want('reset')) {
   const r = await h.page.evaluate(() => {
     const d = H.d(); d.mud = 1; d.wet = 1; H.trough().p.water.muck = 1; GAME.resetGame();
-    return { mud: d.mud, wet: d.wet, muck: H.trough().p.water.muck, prints: GAME.PAWS.list.filter(q => q.t >= 0).length };
+    return { mud: d.mud, wet: d.wet, muck: H.trough().p.water.muck, prints: GAME.paws().list.filter(q => q.t >= 0).length };
   });
   ok('a new journey: clean dogs, clear water, no prints', r.mud === 0 && r.wet === 0 && r.muck === 0 && r.prints === 0, r);
 }

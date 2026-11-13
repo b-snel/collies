@@ -298,6 +298,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Gamepad presses don't unlock audio.
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
 - Fixed light count, so shaders never recompile.
+- three's uuids use `Math.random`: a new mesh, geometry or material at load or in the sim moves the seeded tests' dice. Drawing-only ones: make them when first drawn.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
