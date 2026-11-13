@@ -12,7 +12,8 @@
 //             asleep by one burning low: up to stoke it
 //   blizzard  a blizzard piles snow on them; running shakes it off; a fire melts it
 //   ice       onto the ice: a sheep, a dog, Hank slide downhill and stop; a calm sheep goes round
-//   crev      a sheep in a crack: grabbed out; a dog alone: mashing pounce climbs out; with a friend: mashing won't, the friend grabs it out
+//   crev      a sheep in a crack: grabbed out; a dog mashes pounce out (alone or not), each press costs stamina, none left: stuck till
+//             rested; a friend can grab it out
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
 //   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws; its heap's a
@@ -269,25 +270,31 @@ if (!only || only === 'crev') {
     const grabbed = s.heldBy === d && !s.crev;
     G.players[0].bot = toward(nx, nz, { grab: true }); run(1); G.players[0].bot = {}; GAME.step(0.025); run(1);
     const out = !s.crev && !s.heldBy;
-    // a dog alone: mash pounce
-    d.x = c.x; d.z = c.z; crevFall(d, c); const dIn = !!d.crev; let presses = 0;
-    for (let i = 0; i < 30 && d.crev; i++) { G.players[0].bot = { pounce: true }; GAME.step(0.025); presses++; G.players[0].bot = {}; GAME.step(0.025); }
-    const climbed = !d.crev;
-    // with a friend: mashing doesn't, the friend grabs it out
+    // a dog alone: mash pounce, each press costs stamina
+    const mash = n => { let k = 0; for (let i = 0; i < n && d.crev; i++) { G.players[0].bot = { pounce: true }; GAME.step(0.025); k++; G.players[0].bot = {}; GAME.step(0.025); } return k; };
+    const fall = () => { d.x = c.x; d.z = c.z; d.vx = d.vz = 0; crevFall(d, c); };
+    d.stamina = 1; d.exhausted = false; fall(); const dIn = !!d.crev;
+    const presses = mash(30), climbed = !d.crev, spent = +(1 - d.stamina).toFixed(3);
+    // no stamina: mashing does nothing (the bar flashes); rested, out
+    fall(); d.stamina = 0; d.exhausted = true; const t0 = G.time; mash(14);
+    const tired = { in: !!d.crev, esc: d.crevEsc, flash: d.crevTiredAt >= t0, st: +d.stamina.toFixed(2) };
+    run(3); const rested = { st: +d.stamina.toFixed(2), ex: d.exhausted }; mash(30); const restOut = !d.crev;
+    // with a friend about: mashing still gets it out; the friend can grab it out too
     const p2 = joinPlayer({ kind: 'bot', index: 1 }), o = p2.dog; p2.bot = {}; o.x = c.x + nx * 6; o.z = c.z + nz * 6;
-    d.x = c.x; d.z = c.z; d.vx = d.vz = 0; crevFall(d, c);
-    for (let i = 0; i < 30; i++) { G.players[0].bot = { pounce: true }; GAME.step(0.025); G.players[0].bot = {}; GAME.step(0.025); }
-    const mashNo = !!d.crev;
+    d.stamina = 1; d.exhausted = false; fall(); const teamPresses = mash(30), teamMash = !d.crev;
+    fall();
     o.x = d.x + nx * 1.9; o.z = d.z + nz * 1.9; o.yaw = Math.atan2(-nx, -nz); o.vx = o.vz = 0;
     p2.bot = { grab: true }; GAME.step(0.025); run(0.2);
     const pulled = !d.crev && d.heldBy === o;
     GAME.dropPlayer(p2);
-    return { sIn, stuck, grabbed, out, dIn, climbed, presses, mashNo, pulled };
+    return { sIn, stuck, grabbed, out, dIn, climbed, presses, spent, cost: GAME.T.crev.cost, tired, rested, restOut, teamPresses, teamMash, pulled };
   });
   ok('a sheep falls in a crack and stays there', r.sIn && r.stuck, r);
   ok('a dog grabs it out, carries it off and sets it down', r.grabbed && r.out, r);
   ok(`a dog on its own mashes pounce and climbs out (${r.presses} presses)`, r.dIn && r.climbed && r.presses > 3, r);
-  ok('with a friend: mashing won\'t get it out; the friend grabs it out', r.mashNo && r.pulled, r);
+  ok(`each mash costs stamina (${r.spent} for ${r.presses})`, r.spent >= r.presses * r.cost * 0.9 && r.spent < 0.6, r);
+  ok(`no stamina: mashing does nothing, the bar flashes; rested (${r.rested.st}), out`, r.tired.in && r.tired.esc === 0 && r.tired.flash && r.tired.st > 0.1 && !r.rested.ex && r.restOut, r);
+  ok(`with a friend about it still mashes out (${r.teamPresses} presses); the friend can grab it out`, r.teamMash && r.pulled, r);
 }
 
 if (!only || only === 'goat') {
