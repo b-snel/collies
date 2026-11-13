@@ -328,7 +328,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     night, blizzard, lamb; huddled less; `heatAt` warms; below thaws. At 1 for `dieHours`: dead ('cold').
     Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
   - **Fires** (`PASS.fires`, camps without pens): Hank lights the flock's (`passFireGoal`: the next one up within
-    `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it.
+    `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it
+    (his side of it kept while the flock's all round it, `f.hankA`; blocked short of it, he stokes it and sleeps from as near as he gets).
     Out or under `low` h: his first job after a dog down (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
     (two rings) round it, the coldest first (`warmGo`, state 'warm'); nobody's jostled into it (`fireShove`). Warm out to `r1`.
     Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it. The top one's in the ice cave.

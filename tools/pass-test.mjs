@@ -399,7 +399,6 @@ if (!only || only === 'cave') {
     tc.x = f.x + 0.5; tc.z = f.z; tc.h = 0; GAME.step(0.025); out.torch = tc.lit > 0; GAME.torchHome(tc);
     YETI.state = 'sleep'; YETI.beaten = false; const d = G.dogs[0], q = pathPoint(T.pass.arena + 6, 4); d.x = q.x; d.z = q.z; run(1); YETI.next = 1e9; YETI.buttCd = 1e9;
     HANK.x = f.x - C.ax * 8; HANK.z = f.z - C.az * 8; HANK.goal = null; out.shelterT = +run(25, () => inCave(HANK.x, HANK.z, 0.5)).toFixed(1); run(1); out.shelter = YETI.on && inCave(HANK.x, HANK.z, 0.5);   // (from right behind it: round to its mouth)
-    if (!out.shelter) out.dbg = { on: YETI.on, st: YETI.state, hk: [+(HANK.x - f.x).toFixed(1), +(HANK.z - f.z).toFixed(1)], goal: HANK.goal && [+(HANK.goal.x - f.x).toFixed(1), +(HANK.goal.z - f.z).toFixed(1), !!HANK.goal.fire], care: HANK.care && HANK.care.kind, asleep: HANK.asleep, air: !!HANK.air, slide: !!HANK.slide, mode: G.mode, h: G.clock.hour };
     // a snowball at a sheep in it: smashed on it, the sheep's fine
     const L = living().filter(o => !o.ram && !o.lamb), s = L[0]; s.x = f.x + C.ax * 2.2 - C.az * 1.2; s.z = f.z + C.az * 2.2 + C.ax * 1.2; s.vx = s.vz = 0; s.state = 'idle'; s.pen = null;
     const bx = YETI.x + C.ax * -2.6, bz = YETI.z + C.az * -2.6, bl = Math.hypot(s.x - bx, s.z - bz); SNOWBALLS.length = 0;
@@ -417,11 +416,14 @@ if (!only || only === 'cave') {
     const ux = YETI.x - k.x, uz = YETI.z - k.z, ul = Math.hypot(ux, uz); d.x = k.x - ux / ul; d.z = k.z - uz / ul; d.pdx = ux / ul; d.pdz = uz / ul; d.pounceT = 0.2; d.air = null; punt(k, d, ux / ul, uz / ul);
     for (let t = 0; t < 3 && k.air; t += 0.025) GAME.step(0.025);
     out.punt = { from: +ul.toFixed(1), hp: [hp0, YETI.hp] };
+    // a night in it: the flock round the fire, Hank asleep by it (the night held: warm by a fire it hurries)
+    setup(f.s, { hour: 21, hankS: f.s - 6 }); f.fuel = 8; living().forEach((o, i) => { const a = C.a + Math.PI + (i % 7 - 3) * 0.35, rr = 2.6 + Math.floor(i / 7) * 1.2; o.x = C.x + Math.cos(a) * rr; o.z = C.z + Math.sin(a) * rr; o.vx = o.vz = 0; o.cold = 0.5; });
+    out.night = run(60, () => { G.clock.hour = 23; return HANK.asleep && inCave(HANK.x, HANK.z); }) >= 0;
     return out;
   });
   ok(`the top fire's in the ice cave, its mouth toward him (${r.mouth} m off his spot: past his reach, in a punt's)`, r.inCave && r.mouth > 11.5 && r.mouth < 17, r);
   ok(`walled all round (${r.walled}) but its mouth (${r.open} open); ${r.spots} warm places round the fire; a way in; its stick in it, lit in its fire`, r.walled > 0.95 && r.open > 0.9 && r.spots >= 16 && r.way && r.stick && r.torch, r);
-  ok(`Hank lights it as the flock comes up (${r.litT} s), and keeps in it while he's up (from behind it: in in ${r.shelterT} s)`, r.litT >= 0 && r.hankIn && r.shelter, r);
+  ok(`Hank lights it as the flock comes up (${r.litT} s), and keeps in it while he's up (from behind it: in in ${r.shelterT} s); a night: asleep in it`, r.litT >= 0 && r.hankIn && r.shelter && r.night, r);
   ok(`a snowball at a sheep in it smashes on it (${r.ball.at} m from its middle): the sheep's fine`, !r.ball.hit && r.ball.at !== null && r.ball.at < 9.5, r.ball);
   ok('his butt can\'t reach in (him at the end of his leash)', !r.butted, r);
   ok(`a burning sheep punted from its mouth (${r.punt.from} m) hits him: hp ${r.punt.hp.join(' → ')}`, r.punt.hp[1] === r.punt.hp[0] - 1, r.punt);

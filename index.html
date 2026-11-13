@@ -10689,7 +10689,8 @@ function passFireFind() {
   if (!best || (best.top && YETI.beaten)) return null;   // (the top's fire: only while there's a yeti to burn)
   const light = best.fuel <= P.low || hk.lightAt > 0;
   if (!light && !isNight() && !(best.cave && YETI.on)) return null;   // (THE ICE CAVE: while he's up, Hank keeps in it)
-  const a = Math.atan2(fc.z - best.z, fc.x - best.x) + 0.9;   // (the flock's side of it)
+  const want = Math.atan2(fc.z - best.z, fc.x - best.x) + 0.9, fd = Math.hypot(fc.x - best.x, fc.z - best.z);   // (the flock's side of it)
+  let a = best.hankA; if (a === undefined) a = best.cave && fd < 4 ? CAVE.a + 0.9 : want; else if (fd > 4 && Math.abs(wrapA(want - a)) > 0.7) a = want; best.hankA = a;   // (kept while the flock's all round it: he settles)
   return { x: best.x + Math.cos(a) * 1.6, z: best.z + Math.sin(a) * 1.6, stop: 0.5, face: best, fire: best, light };
 }
 const fireDue = () => !!passFireGoal()?.light;   // MOUNTAIN PASS: a fire to light: patients, shearing, ropes and burials wait
@@ -10698,7 +10699,7 @@ function hankFire(dt) {
   const hk = HANK, g = hk.goal, f = g && g.fire;
   hk.lighting = false;
   if (!f || hk.asleep || G.mode !== 'play' || hk.trunks) { hk.lightAt = 0; return; }
-  if (Math.hypot(g.x - hk.x, g.z - hk.z) > g.stop + 0.8 || f.fuel > T.pass.burn * 0.8) { hk.lightAt = 0; return; }
+  if ((Math.hypot(g.x - hk.x, g.z - hk.z) > g.stop + 0.8 && !(hk.easeAt && Math.hypot(f.x - hk.x, f.z - hk.z) < 4.5)) || f.fuel > T.pass.burn * 0.8) { hk.lightAt = 0; return; }   // (the flock all round it: from as near as he gets)
   hk.lighting = true; hk.lightAt = (hk.lightAt || 0) + dt;
   if (Math.random() < dt * 3) burst(f.x, f.y + 0.3, f.z, 2, '#ffd36b', { speed: 0.6, up: 1.2, size: 0.08, life: 0.5, grav: 2 });
   if (hk.lightAt > T.pass.light) { hk.lightAt = 0; const was = f.fuel; f.fuel = T.pass.burn; fireFx(f.i, was > 0); if (was <= 0) passSay('fire', pick(["The beacon's lit! Bring the cold ones in by the fire.", "The beacon's lit! Get 'em in close to it."])); }
@@ -11766,7 +11767,7 @@ function updatePass(dt, dtH) {
 function resetPass() {
   Object.assign(PASS, { seen: false, cand: [], scanT: 0, said: {}, coldSaid: false, goatNext: T.goat.first, shutT: 0 });
   PASS.blizz = { on: false, k: 0, left: 0, next: T.blizz.first, wind: 0 };
-  for (const f of PASS.fires) { f.fuel = 0; f.by = []; }
+  for (const f of PASS.fires) { f.fuel = 0; f.by = []; f.hankA = undefined; }
   PASS.fgT = -1; resetTorches(); resetMelt();
   for (const g of GOATS) Object.assign(g, { state: 'perch', x: g.home.x, y: g.home.y, z: g.home.z, yaw: g.home.yaw, look: g.home.yaw, t: 0, rest: 0, target: null, hop: null });
   SNOWBALLS.length = 0;
@@ -14233,7 +14234,7 @@ function hankNap(dt) {
     for (const o of near) { o.hankGrab = null; o.hankMaul = null; o.hankSaw = false; if (o.pack) o.pack.hankSeen = false; }   // startled: shout what's there, seen before or not
     return;
   }
-  const atFire = isNight() && g && g.face && !hk.job && !hk.care && !hk.rescue && !hk.trunks && !fireDue() && Math.hypot(g.x - hk.x, g.z - hk.z) < g.stop + 0.5;   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first)
+  const gd = g ? Math.hypot(g.x - hk.x, g.z - hk.z) : 1e9, atFire = isNight() && g && g.face && !hk.job && !hk.care && !hk.rescue && !hk.trunks && !fireDue() && (gd < g.stop + 0.5 || (hk.easeAt && gd < 4));   // (not mid-shearing, nor seeing to a patient; MOUNTAIN PASS: the fire lit first; the flock all round it: as near as he gets)
   hk.restT = atFire && !hk.pending.length && G.time - hk.lastSay > 2 && G.time - hk.upT > N.stay && !hankWorkDue(dt) ? hk.restT + dt : 0;
   if (hk.restT > N.settle) { hk.asleep = true; hk.restT = 0; hk.zzzT = 1; }
 }
@@ -14710,7 +14711,7 @@ function hankDetour(g) {
 // the way at a time) to its mouth, or past it to the far side; then on as he was
 function caveDetour(e, g) {
   if (!g || !CAVE.shell) return null;
-  const C = CAVE, R = C.r + C.th, ein = inCave(e.x, e.z, 0.3), gin = inCave(g.x, g.z, 0.3), ea = Math.atan2(e.z - C.z, e.x - C.x), out = (a, r) => ({ x: C.x + Math.cos(a) * r, z: C.z + Math.sin(a) * r, stop: 0.2, noShy: g.noShy, carry: g.carry });
+  const C = CAVE, R = C.r + C.th, ein = inCave(e.x, e.z, 0.3), gin = inCave(g.x, g.z, 0.3), ea = Math.atan2(e.z - C.z, e.x - C.x), out = (a, r) => ({ x: C.x + Math.cos(a) * r, z: C.z + Math.sin(a) * r, stop: 0.2, noShy: true, carry: g.carry });
   if (ein) return gin ? null : out(C.a, R + 1.6);   // (out of its mouth first)
   if (caveD(e.x, e.z) < R + 0.4 && Math.abs(wrapA(ea - C.a)) < C.mouth) return gin ? null : out(C.a, R + 1.6);   // (in its mouth: out of it)
   let ta;
@@ -20415,7 +20416,7 @@ function renderOnce(dt = 1 / 60) {
 }
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble,
-  DOOR, WALLS, wallStruck, wallFall, updateWall, wallPounce, wallD, wallDraw, doorStamp, rubbleD, HEAP2, DEBRIS, CAVE, caveD, inCave, yetiPick, yetiNag, yetiNagOn, yetiNagHit, YETI_NAGS, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
+  DOOR, WALLS, wallStruck, wallFall, updateWall, wallPounce, caveDetour, wallD, wallDraw, doorStamp, rubbleD, HEAP2, DEBRIS, CAVE, caveD, inCave, yetiPick, yetiNag, yetiNagOn, yetiNagHit, YETI_NAGS, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
