@@ -671,7 +671,7 @@ const T = {
   // scared off, it keeps what it dug). Open: one at a time they go under (`through` s, from `mouth` m) and drag a sheep out the same way.
   // A dog standing still on either end fills it (`fill` s for a whole one; within r, under maxSpeed): every pack there loses `dismay` heart.
   // out: its mouths, m either side of the fence; up to `max` at once
-  burrow: { on: !SIM, fromDay: 2, chance: 0.7, wait: 10, time: 9, through: 0.9, mouth: 0.8, fill: 2.6, r: 1.4, maxSpeed: 3.2, dismay: 0.4, max: 8, out: 0.95, shy: 8 },   // shy: a dog this near and it won't dig or go under
+  burrow: { on: !SIM, fromDay: 2, chance: 0.9, wait: 3, time: 5, through: 0.9, mouth: 0.8, fill: 2.6, r: 1.4, maxSpeed: 3.2, dismay: 0.4, max: 8, out: 0.95, shy: 8 },   // shy: a dog this near and it won't dig or go under
   // coyote dens: each den keeps its own pack, asleep by day; the nearest wakes at nightfall
   denStart: 2, denMax: 5, denRange: 230, denShow: 150, denHide: 240, denTravel: 6.8, denWake: 4.5,
   // a sleeping den startled (dog within denWake, sheep within sheepWake): the pack wakes and drives off dogs and sheep
@@ -9591,15 +9591,34 @@ function findPath(sx, sz, tx, tz, maxExp = 7000) {
   // string-pull: keep only the corners
   const out = []; let i = 0;
   while (i < pts.length - 1) { let j = Math.min(pts.length - 1, i + 30); while (j > i + 1 && !navLOS(pts[i].x, pts[i].z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); i = j; }
+  out.reach = best === t;   // (else: the way to the nearest it could get)
   return out;
 }
+// a goal on the other side of a shut pen's fence (in it from out of it, or out of it from in it): the nearest spot this side instead
+const NAVSIDE = { x: 0, z: 0 };
+function navPenSide(e, gx, gz) {
+  for (const p of pens) {
+    if (p.deck || gateOpen(p) || Math.abs(gx - p.x) > p.R + 3 && Math.abs(e.x - p.x) > p.R + 3) continue;
+    const gin = insidePen(p, gx, gz, 0.4), ein = insidePen(p, e.x, e.z, 0.4); if (gin === ein) continue;
+    let ax = gx - p.x, az = gz - p.z, al = Math.hypot(ax, az);
+    if (al < p.R * 0.4) { ax = e.x - p.x; az = e.z - p.z; al = Math.hypot(ax, az); }   // (one in the middle: the nearest bit of fence)
+    al = al || 1; const r = ein ? p.R - 1.2 : p.R + 1.2;
+    NAVSIDE.x = p.x + ax / al * r; NAVSIDE.z = p.z + az / al * r; return NAVSIDE;
+  }
+  return null;
+}
 // steer an animal toward a goal, around whatever's in the way. Returns the unit direction in NAVDIR.
-const NAVDIR = { x: 0, z: 0, d: 0 };
+// Can't get there (behind a shut pen's fence, or walled off): it goes as near as it can and stands (NAVDIR.stop, x = z = 0), never shoving at it.
+const NAVDIR = { x: 0, z: 0, d: 0, stop: false };
+const navStand = () => { NAVDIR.x = NAVDIR.z = 0; NAVDIR.stop = true; return NAVDIR; };
 function navSteer(e, gx, gz) {
+  NAVDIR.stop = false;
+  const side = navPenSide(e, gx, gz); if (side) { gx = side.x; gz = side.z; }
   const dx0 = gx - e.x, dz0 = gz - e.z, d0 = Math.hypot(dx0, dz0) || 1e-4;
   NAVDIR.d = d0;
+  if (side && d0 < 0.5) return navStand();
   e.losT = (e.losT || 0) - 1;
-  if (e.losT <= 0 || Math.hypot(gx - e.lgx, gz - e.lgz) > 2) { e.losT = 4; e.lgx = gx; e.lgz = gz; e.los = d0 < 2.2 || navLOS(e.x, e.z, gx, gz); }
+  if (e.losT <= 0 || Math.hypot(gx - e.lgx, gz - e.lgz) > 2) { e.losT = 4; e.lgx = gx; e.lgz = gz; e.los = d0 < 2.2 ? !fenceBetween(e.x, e.z, gx, gz) : navLOS(e.x, e.z, gx, gz); }
   if (e.los) {
     e.path = null; NAVDIR.x = dx0 / d0; NAVDIR.z = dz0 / d0; return NAVDIR;
   }
@@ -9608,6 +9627,7 @@ function navSteer(e, gx, gz) {
   }
   const P = e.path;
   while (e.pathI < P.length - 1 && Math.hypot(P[e.pathI].x - e.x, P[e.pathI].z - e.z) < 1.3) e.pathI++;
+  if (!P.reach && e.pathI >= P.length - 1) { const L = P[P.length - 1]; if (!L || Math.hypot(L.x - e.x, L.z - e.z) < 0.6) return navStand(); }   // as near as it gets
   const w = P[e.pathI] || { x: gx, z: gz }, dx = w.x - e.x, dz = w.z - e.z, d = Math.hypot(dx, dz) || 1e-4;
   NAVDIR.x = dx / d; NAVDIR.z = dz / d; return NAVDIR;
 }
@@ -9636,7 +9656,8 @@ const NEAR = { dog: null, d: 1e9 };
 const _ndc = new THREE.Vector3();
 function onScreen(x, y, z, margin = 0.05) { _ndc.set(x, y, z).project(camera); return Math.abs(_ndc.x) < 1 + margin && Math.abs(_ndc.y) < 1 + margin; }
 const penShut = p => p.gateT < 0.3;
-const huntable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && !(s.pen && penShut(s.pen));   // coyotes never go for a ram
+const shutIn = (x, z) => pens.some(p => !p.deck && penShut(p) && insidePen(p, x, z, 0.5));   // behind a shut fence (whatever s.pen says)
+const huntable = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && !(s.pen && penShut(s.pen)) && !shutIn(s.x, s.z);   // coyotes never go for a ram
 function guarded(s, r = 9) { for (const d of G.dogs) if (Math.hypot(d.x - s.x, d.z - s.z) < r) return true; return false; }
 let packIds = 0;
 function newCoyote(x, z, pack, alpha, yaw = 0, state = 'pack') {
@@ -9942,8 +9963,8 @@ function updatePack(p, dt, fc) {
       let pen = null, bd = 1e9; for (const q of pens) { const d = Math.hypot(q.x - L.x, q.z - L.z); if (d < bd && G.sheep.some(s => !s.dead && s.pen === q)) { bd = d; pen = q; } }
       p.members.forEach((c, i) => {
         if (!pen) { post(c, fc.x + Math.cos(i * 2) * 18, fc.z + Math.sin(i * 2) * 18, T.coyoteTrot, 0); return; }
-        const a = G.time * 0.12 + i * TAU / p.members.length + p.id, R = pen.R + 5;
-        post(c, pen.x + Math.cos(a) * R, pen.z + Math.sin(a) * R, 2.8, 0.6);
+        const a = G.time * 0.12 + i * TAU / p.members.length + p.id, R = pen.R + 5, x = pen.x + Math.cos(a) * R, z = pen.z + Math.sin(a) * R;
+        post(c, x, z, Math.hypot(x - c.x, z - c.z) > 25 ? T.denTravel : 2.8, 0.6);   // (far off: on its way)
       });
       if (p.phaseT > 2 && anyTarget) setPhase(p, 'gather');
       else if (pen && !anyTarget && burrowOK(pen)) {   // BURROWS: under the fence (some nights), then (open) in
@@ -9998,7 +10019,7 @@ function penHavoc(c, nd, ndd) {
   if (G.time < (c.restT || 0)) return false;
   if (nd && ndd < T.coyoteMaul.dodgeR) { const ex = c.x - nd.x, ez = c.z - nd.z, e = Math.hypot(ex, ez) || 1; c.hx = ex / e; c.hz = ez / e; c.hs = T.coyoteRun; return true; }
   const s = penPrey(c, c.trap); if (!s) return false;
-  const n = navSteer(c, s.x, s.z); c.hx = n.x; c.hz = n.z; c.hs = T.coyoteRun;
+  const n = navSteer(c, s.x, s.z); c.hx = n.x; c.hz = n.z; c.hs = n.stop ? 0 : T.coyoteRun;
   if (Math.hypot(s.x - c.x, s.z - c.z) < 1.05) grab(c, s);
   return true;
 }
@@ -10035,7 +10056,7 @@ function updateCoyotes(dt) {
       if (ndd < 1.4 && !c.bold) scareCoyote(c, 0.5, nd, true);   // a bold one takes a real bonk
       else if (ndd < fearR && !c.bold && !(c.pack && c.pack.phase === 'defend')) scareCoyote(c, c.prey ? 0.3 : 0.2, nd);   // a bold one (wise to barking) holds its ground
     }
-    let dX = 0, dZ = 0, spd = 0, crouchW = 0;
+    let dX = 0, dZ = 0, spd = 0, crouchW = 0, bed = false;
     c.inPen = penAt(c.x, c.z); c.trap = c.inPen && penShut(c.inPen) ? c.inPen : null;
     if (c.state !== 'drag') c.mauling = false;
     if (c.state === 'pack' && c.trap && c.courage > 0 && !(c.pack && c.pack.phase === 'retreat')) {   // shut in: whatever's in here with it
@@ -10046,13 +10067,13 @@ function updateCoyotes(dt) {
       case 'pack': {
         if (c.gx === undefined) { c.gx = c.x; c.gz = c.z; c.spd = 0; }
         const dd = Math.hypot(c.gx - c.x, c.gz - c.z);
-        if (dd > 0.6) { const n = navSteer(c, c.gx, c.gz); dX = n.x; dZ = n.z; spd = dd < 2 ? c.spd * dd / 2 : c.spd; }
+        if (dd > 0.6) { const n = navSteer(c, c.gx, c.gz); dX = n.x; dZ = n.z; spd = n.stop ? 0 : dd < 2 ? c.spd * dd / 2 : c.spd; }   // (stop: as near as it can get)
         crouchW = c.crouchW || 0;
         // wary of dogs unless it's go time
         const bold = c.pack && (c.pack.phase === 'strike' || c.pack.phase === 'escape' || c.pack.phase === 'defend' || (c.pack.phase === 'feint' && c.role === 'decoy'));
         if (!bold && !c.bold) for (const d of G.dogs) { const ex = c.x - d.x, ez = c.z - d.z, e = Math.hypot(ex, ez); if (e < 11 && e > 0) { dX += ex / e * (11 - e) / 11 * 1.6; dZ += ez / e * (11 - e) / 11 * 1.6; spd = Math.max(spd, 3.5); } }
         if (nd && ndd < T.coyoteBark.lungeR && G.time >= (c.nipAt || 0) - 0.3 && canNip(c, nd) && (c.bold || c.role === 'screen')) {   // goes for the dog
-          const n = navSteer(c, nd.x, nd.z); dX = n.x; dZ = n.z; spd = T.coyoteRun; crouchW = 0.6;
+          const n = navSteer(c, nd.x, nd.z); dX = n.x; dZ = n.z; spd = n.stop ? 0 : T.coyoteRun; crouchW = 0.6;
           if (c.growlT <= 0) { c.growlT = 1.5; Sound.growl(panOf(c.x, c.z), 0.14); }
         }
         const P = c.pack, h = P && P.digger === c && (P.phase === 'dig' || P.phase === 'raid') ? P.hole : null;   // BURROWS: at its mouth
@@ -10100,7 +10121,7 @@ function updateCoyotes(dt) {
         if (c.den) {   // home to the den, then sleep
           const sl = c.den.slots[c.slot % c.den.slots.length], d = Math.hypot(sl.x - c.x, sl.z - c.z);
           if (d < 1.1) { c.state = 'sleep'; c.stateT = 0; c.x = sl.x; c.z = sl.z; c.yaw = sl.yaw; c.vx = c.vz = 0; c.alone = false; break; }
-          const n = navSteer(c, sl.x, sl.z); dX = n.x; dZ = n.z; spd = d < 3 ? 2.5 : d > 30 ? T.denTravel : 5; break;
+          const n = navSteer(c, sl.x, sl.z); dX = n.x; dZ = n.z; spd = d < 3 ? 2.5 : d > 30 ? T.denTravel : 5; bed = d < 3; break;   // (bed: in among the others)
         }
         const hx = c.pack ? c.pack.homeX : c.x * 2 - fc.x, hz = c.pack ? c.pack.homeZ : c.z * 2 - fc.z;
         const dx = c.x - fc.x, dz = c.z - fc.z, d = Math.hypot(dx, dz) || 1;
@@ -10111,9 +10132,10 @@ function updateCoyotes(dt) {
       }
     }
     // separation between coyotes + wall avoidance
-    for (const o of G.coyotes) { if (o === c) continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz); if (d < 2.2 && d > 0) { dX += dx / d * 0.6; dZ += dz / d * 0.6; } }
+    const m0 = Math.min(1, Math.hypot(dX, dZ));   // (how hard it meant to go)
+    if (!bed) for (const o of G.coyotes) { if (o === c || o.state === 'sleep') continue; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz); if (d < 2.2 && d > 0) { dX += dx / d * 0.6; dZ += dz / d * 0.6; } }
     const sd = sdfAt(c.x, c.z); if (sd < 1.6) { const g = sdfGrad(c.x, c.z), k = wadeSdfAt(c.x, c.z) > sd + 0.5 && c.state === 'flee' ? Math.min(1.6 - sd, 1.2) * 0.25 : (1.6 - sd) * 0.8; dX += g.x * k; dZ += g.z * k; }   // (OPEN WATER: bolting, it can be driven in)
-    const l = Math.hypot(dX, dZ); const tvx = l > 1e-3 ? dX / l * spd : 0, tvz = l > 1e-3 ? dZ / l * spd : 0;
+    const l = Math.hypot(dX, dZ), sk = l > 1e-3 ? spd / Math.max(l, m0) : 0, tvx = dX * sk, tvz = dZ * sk;   // (a wall or a packmate cancelling its pull: it slows, not round and round at full tilt)
     const k = Math.min(1, 6 * dt); c.vx += (tvx - c.vx) * k; c.vz += (tvz - c.vz) * k;
     if (c.tumble > 0) { c.vx *= 0.9; c.vz *= 0.9; }
     c.x += c.vx * dt; c.z += c.vz * dt;
@@ -14122,7 +14144,7 @@ const HANK = {
   // asleep on his mat (sim); lieK 0 standing…1 lying (render)
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
   // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
-  clippers: false, job: null, shearing: false, climb: null, cross: null, lift: 0,
+  clippers: false, job: null, shearing: false, climb: null, cross: null, round: null, lift: 0,
   // VET: what the dogs brought him (HANK.meds: doses of each; HANK.shovel), the job in hand (care), bent over a patient or digging
   meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false,   // (REMAINS: building a cemetery)
   // ROPES: the rope he's tugging (ropeI: his grip), the one he's walking to (ropeEnd), when he'll play again; his tug colour
@@ -14248,7 +14270,7 @@ function hankGoal() {
   return { x: p.x, z: p.z, stop: 1.5 };
 }
 function resetHank() {
-  const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, lift: 0, rope: null, ropeI: -1, ropeWant: null, ropeAgain: 0, air: null, slide: null, lighting: false, lightAt: 0 });   // (ROPES; MOUNTAIN PASS)   // shearing: the clippers are buried again
+  const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, round: null, lift: 0, rope: null, ropeI: -1, ropeWant: null, ropeAgain: 0, air: null, slide: null, lighting: false, lightAt: 0 });   // (ROPES; MOUNTAIN PASS)   // shearing: the clippers are buried again
   Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
@@ -14270,7 +14292,8 @@ function updateHank(dt) {
   if (hankPassStep(dt)) { hk.bumpCD = Math.max(0, hk.bumpCD - dt); hk.lighting = false; return; }   // MOUNTAIN PASS: knocked flying, rolling, sliding on the ice
   if (hk.rope) { hk.y = hankY(hk.x, hk.z); hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt); return; }   // ROPES: in a tug (hankTug moves him)
   if (hk.climb) { hankClimb(dt); updateCare(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
-  const g = hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
+  const g = hankCross(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence)
+  const w = hankRound(g) || g, wl = Math.hypot(w.x - hk.x, w.z - hk.z) || 1e-4, ux = (w.x - hk.x) / wl, uz = (w.z - hk.z) / wl;   // which way: round a pen in the way
   if (G.mode !== 'play') hk.asleep = false;
   if (hk.easeAt && Math.hypot(g.x - hk.easeAt.x, g.z - hk.easeAt.z) > 1.5) hk.easeAt = null;   // blocked short of his spot: he's there, till it moves on
   hk.swim = hk.trunks && hankDeep(hk.x, hk.z);   // RESCUE: in his trunks, out of his depth: swimming
@@ -14281,9 +14304,9 @@ function updateHank(dt) {
   let ax = 0, az = 0;
   if (!g.noShy && !hk.asleep) for (const s of G.sheep) { if (s.dead) continue; const ex = hk.x - s.x, ez = hk.z - s.z, e2 = ex * ex + ez * ez; if (e2 > 9 || e2 < 1e-6) continue; const e = Math.sqrt(e2), k = (3 - e) / 3; ax += ex / e * k; az += ez / e * k; }   // (noShy: lets him walk among the sheep)
   const sd = swimSdfAt(hk.x, hk.z); if (sd < 2) { const gr = swimGrad(hk.x, hk.z); ax += gr.x * (2 - sd) * 0.8; az += gr.z * (2 - sd) * 0.8; }
-  if (!hk.trunks && !g.rescue && seaDeep(hk.x + dx / d * 1.5, hk.z + dz / d * 1.5)) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * 1.2; az += gr.z * 1.2; }   // OPEN WATER: dressed, he keeps out of the sea
-  let tvx = dx / d * spd + ax * 1.5, tvz = dz / d * spd + az * 1.5;
-  if (hk.sideT > 0) { hk.sideT -= dt; tvx -= dz / d * hk.side * spd; tvz += dx / d * hk.side * spd; }   // stuck far off: a sidestep round it
+  if (!hk.trunks && !g.rescue && seaDeep(hk.x + ux * 1.5, hk.z + uz * 1.5)) { const gr = sdfGrad(hk.x, hk.z); ax += gr.x * 1.2; az += gr.z * 1.2; }   // OPEN WATER: dressed, he keeps out of the sea
+  let tvx = ux * spd + ax * 1.5, tvz = uz * spd + az * 1.5;
+  if (hk.sideT > 0) { hk.sideT -= dt; tvx -= uz * hk.side * spd; tvz += ux * hk.side * spd; }   // stuck far off: a sidestep round it
   const tl = Math.hypot(tvx, tvz), cap = Math.max(spd, 1.5); if (tl > cap) { tvx *= cap / tl; tvz *= cap / tl; }
   const k = 1 - Math.exp(-dt * 4); hk.vx += (tvx - hk.vx) * k; hk.vz += (tvz - hk.vz) * k;
   if (hk.stumble > 0) { hk.vx *= 0.9; hk.vz *= 0.9; }
@@ -15070,18 +15093,29 @@ function treatHold(s, dt, dtH) {
   s.yaw = lerpA(s.yaw, Math.atan2(HANK.x - s.x, HANK.z - s.z), Math.min(1, dt * 6));
   s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH);
 }
-// round a pen that's in the way of a care goal (rather than climbing over it, or through it)
-function hankDetour(g) {
-  if (!g || !g.noShy) return null;
-  const hk = HANK, dx = g.x - hk.x, dz = g.z - hk.z, L2 = dx * dx + dz * dz; if (L2 < 1) return null;
+// round a pen that's in the way (any goal; a goal in that pen: hankCross). He keeps to the side he picked till the way's clear: no dithering
+const HROUND = { x: 0, z: 0 };
+function hankRound(g) {
+  const hk = HANK, dx = g.x - hk.x, dz = g.z - hk.z, L2 = dx * dx + dz * dz; if (L2 < 1) { hk.round = null; return null; }
+  let P = null, bt = 2, M = 0;
   for (const p of pens) {
-    if (p === g.pen || insidePen(p, hk.x, hk.z, -1) || insidePen(p, g.x, g.z, -1)) continue;
-    const t = ((p.x - hk.x) * dx + (p.z - hk.z) * dz) / L2; if (t <= 0 || t >= 1) continue;
-    const cx = hk.x + dx * t - p.x, cz = hk.z + dz * t - p.z, c = Math.hypot(cx, cz), m = p.R + 1.4; if (c >= m) continue;
-    const nx = c > 1e-3 ? cx / c : -dz / Math.sqrt(L2), nz = c > 1e-3 ? cz / c : dx / Math.sqrt(L2);   // round the side the path's already on
-    return { x: p.x + nx * (m + 1.5), z: p.z + nz * (m + 1.5), stop: 0.1, noShy: true, carry: g.carry };
+    if (p.deck || p === g.pen || insidePen(p, hk.x, hk.z, 0)) continue;
+    const rh = Math.hypot(hk.x - p.x, hk.z - p.z), rg = Math.hypot(g.x - p.x, g.z - p.z);
+    const m = Math.max(p.R + 0.6, Math.min(p.R + 1.2, rh - 0.05, rg - 0.05));   // (a goal or Hank by the fence: a tighter ring)
+    const t = clamp(((p.x - hk.x) * dx + (p.z - hk.z) * dz) / L2, 0, 1);
+    if (Math.hypot(hk.x + dx * t - p.x, hk.z + dz * t - p.z) >= m || t >= bt) continue;
+    bt = t; P = p; M = m;
   }
-  return null;
+  if (!P) { hk.round = null; return null; }
+  let R = hk.round;
+  if (!R || R.p !== P) {   // which way round: the side the straight line passes (the shorter)
+    const cr = dx * (P.z - hk.z) - dz * (P.x - hk.x);
+    R = hk.round = { p: P, side: cr > 0 ? 1 : -1 };
+  }
+  const rx = hk.x - P.x, rz = hk.z - P.z, r = Math.hypot(rx, rz) || 1e-4;
+  const a = Math.atan2(rz, rx) + R.side * Math.max(Math.acos(Math.min(1, M / r)), 0.45), rr = M + 0.4;   // to the tangent; on the ring: a step on round it
+  HROUND.x = P.x + Math.cos(a) * rr; HROUND.z = P.z + Math.sin(a) * rr;
+  return HROUND;
 }
 // ---------------- RESCUE: a dog out cold (or drowning) waits for him. He drops everything (wakes, lets go of a rope, puts a body down) and
 // runs to it; in the water his swim trunks go on at its edge (hankChange), he swims out, tows it back to the shore (shoreNear) and brings it
@@ -20875,9 +20909,9 @@ Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsD
 Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
 Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt });   // BONK SPOTS
 Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
-  YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
+  YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankRound, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { ROLES, TRAITS, roleOf, cleanRole, dogK, barkR, dogStats, setRole, train, trainRec, trainProg, dogTrainView, pickTitleRole, cycleTitleRole, titleRoleInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogRole, keyEdge });   // ROLES & TRAINING
-Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut });   // BURROWS
+Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut, huntable, navSteer });   // BURROWS
 Object.assign(window.GAME, { dogIdle, anticEnd, spawnPoop, poopSay, idleReset, PUDDLES, POOP_SAY, anticShown, syncDog, puddleAdd });   // IDLE
 Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, puntK, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
 Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
