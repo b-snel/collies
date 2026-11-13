@@ -113,7 +113,7 @@ try {
 
   // ---------------------------------------------------------------- guest joins from the invite link (lobby)
   const B = await openPage(`?debug&join=${code}${PS}`);
-  await B.page.evaluate(() => GAME.pickTitleBreed('backer'));   // BREEDS: their pick goes with the hello
+  await B.page.evaluate(() => GAME.pickTitleRole('backer'));   // ROLES: their pick goes with the hello
   const prefilled = await B.page.evaluate(() => document.getElementById('netCode').value);
   const t0 = Date.now();
   await joinAs(B, 'Moss');
@@ -123,10 +123,10 @@ try {
   await sleep(300);
   const lobby = await B.page.evaluate(() => ({ roster: NET.roster.map(r => r.n), mode: GAME.G.mode, sheep: GAME.G.sheep.length, press: document.querySelector('#title .press').textContent }));
   check('guest joins from the invite link; lobby shows both and the host\'s flock', prefilled === code && lobby.roster.join() === 'Hostie,Moss' && /Waiting for Hostie/.test(lobby.press), { joinMs: report.numbers.joinMs, ...lobby });
-  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].breed);
-  await B.page.evaluate(() => GAME.pickTitleBreed('heeler'));   // a change of mind in the lobby
-  await until(A, () => NET.seats[0].subs[0].breed === 'heeler', null, 5000).catch(() => {});
-  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].breed);
+  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].role);
+  await B.page.evaluate(() => GAME.pickTitleRole('heeler'));   // a change of mind in the lobby
+  await until(A, () => NET.seats[0].subs[0].role === 'heeler', null, 5000).catch(() => {});
+  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].role);
 
   // ---------------------------------------------------------------- host starts; the guest gets a dog
   await A.page.evaluate(() => { GAME.startGame({ kind: 'bot', index: 0 }); GAME.G.players[0].bot = {}; GAME.T.falcon.on = GAME.T.bramble.on = false; });   // (no falcon carrying a dog off, no snags, mid-check: as in ?sim)
@@ -134,11 +134,11 @@ try {
   await sleep(300);
   const st = await B.page.evaluate(() => ({ slot: NET.slot, dogs: GAME.G.dogs.map(d => d.player.name), titleHidden: document.getElementById('title').classList.contains('hidden'), hud: !document.getElementById('hud').classList.contains('hidden'), chip: document.getElementById('netChipT').textContent }));
   check('journey starts on both; the guest has its own named dog', st.slot === 1 && st.dogs.includes('Moss') && st.dogs.includes('Hostie') && st.titleHidden && st.hud, st);
-  // BREEDS & TRAINING: the guest's own pick, and its levels as the host trains it
+  // ROLES & TRAINING: the guest's own pick, and its levels as the host trains it
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); GAME.T.train.on = true; GAME.train(d, 'bark', 25); });
   await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.lv && d.lv.bark === 1; }, null, 5000).catch(() => {});
   const br = { hi: hiBreed, lobby: lobbyBreed, host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').breed),
-    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.breed, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
+    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.role, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
   check('the guest\'s breed: picked before joining, changed in the lobby, its dog\'s on both screens; levels reach the guest', br.hi === 'backer' && br.lobby === 'heeler' && br.host === 'heeler' && br.guest[0] === 'heeler' && br.guest[1] === 1 && br.guest[2] > 1, br);
   report.numbers.fps = { host: await fpsOf(A), guest: await fpsOf(B) };
 
@@ -575,11 +575,9 @@ try {
   }
 
   // ---------------------------------------------------------------- the end of the journey, and a new one
-  await A.page.evaluate(() => { const p = GAME.finalPen; for (const s of GAME.G.sheep) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * (p.R - 2); s.x = p.x + Math.cos(a) * r; s.z = p.z + Math.sin(a) * r; s.vx = s.vz = 0; } for (const c of GAME.G.coyotes) c.gone = true; });
-  await sleep(500);
-  await A.page.evaluate(() => GAME.setGate(GAME.finalPen, false));   // shut and latched (pushing it shut is moves-sim's job; this is about the finale reaching everyone)
-  await sleep(300);
-  await A.page.evaluate(() => { GAME.yetiBeaten('fire'); GAME.setGate(GAME.finalPen, false); });   // MOUNTAIN PASS: the yeti beaten, the flock shut in his cave: the end
+  await A.page.evaluate(() => { for (const c of GAME.G.coyotes) c.gone = true; GAME.seaStart({ leg: 4 }); });   // SAILING: all aboard at the last island
+  await sleep(800);
+  await A.page.evaluate(() => GAME.seaMoor(5));   // alongside the Promised Land: the end
   await until(B, () => GAME.G.mode === 'end' && document.getElementById('end').style.opacity === '1', null, 8000);
   await sleep(400);
   const endOf = P => P.page.evaluate(() => ({ mode: GAME.G.mode, title: document.getElementById('eTitle').textContent, line: document.getElementById('eLine').textContent, stats: document.getElementById('eStats').textContent, stars: document.getElementById('eStars').textContent, obit: document.getElementById('eMem').textContent }));
@@ -592,9 +590,10 @@ try {
   await until(A, () => GAME.G.mode === 'play' && GAME.G.sheep.length === 14, null, 8000);
   await until(B, () => GAME.G.mode === 'play' && GAME.G.sheep.length === 14 && document.getElementById('end').style.opacity === '0', null, 8000);
   await sleep(1200);
-  const again = await B.page.evaluate(() => ({ day: GAME.G.clock.day, hour: +GAME.G.clock.hour.toFixed(1), graves: GAME.G.graves.length, dogs: GAME.G.dogs.length, hud: !document.getElementById('hud').classList.contains('hidden') }));
+  const again = await B.page.evaluate(() => ({ day: GAME.G.clock.day, hour: +GAME.G.clock.hour.toFixed(1), graves: GAME.G.graves.length, dogs: GAME.G.dogs.length, hud: !document.getElementById('hud').classList.contains('hidden'),
+    ashore: !GAME.SEA.on && GAME.LAND.parent === GAME.scene && GAME.QUAY.on && !GAME.inSea(0, 0) }));   // (SAILING: back on the land)
   const gd4 = await grassDiff(A, B);
-  check('a guest pressing Enter starts a new journey for everyone (flock, clock, graves, grass reset)', again.day === 1 && again.graves === 0 && again.dogs === 4 && again.hud && gd4.maxByteDiff <= 3, { ...again, grass: gd4 });
+  check('a guest pressing Enter starts a new journey for everyone (flock, clock, graves, grass reset; ashore again)', again.day === 1 && again.graves === 0 && again.dogs === 4 && again.hud && gd4.maxByteDiff <= 3 && again.ashore, { ...again, grass: gd4 });
   report.errors = { host: A.errors, guest: B.errors, guest2: F.errors };
   check('no page errors', !A.errors.length && !B.errors.length && !F.errors.length, report.errors);
 } catch (e) {

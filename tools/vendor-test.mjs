@@ -1,5 +1,5 @@
 // Headless checks for the vagabond (VAG), the one trader: his pitches (1–2 a land leg, a new seed each journey, the last at the Trading
-// Post, none up the pass); Ⓐ / Space by him lays his wares out (not a bark, not a jump); a dog on a mat barks to buy with wool: 📍 picks
+// Post, none up the pass); the bark (Ⓐ / Space) by him lays his wares out (not a bark); a dog on a mat barks to buy with wool: 📍 picks
 // a pen found on the way, 🌾 💧 🧂 add a stocked trough / water trough / lick there up to what the pen holds (by its size), then batches;
 // his mood: bonks, nags (barks), grabs are grievances (the first three warn, then prices go up), fetch / a tug / an apple work them off,
 // then a discount; grabbed he screams; annoyed past bearing he's off for a day; he walks on, skips ahead, sleeps; no Cabo. At sea: his
@@ -58,7 +58,7 @@ await h.page.evaluate(() => {
   H.reset();
 });
 
-// 2. the trade press: by him a bark (pad, touch) lays his wares out (no bark); a keyboard's is Space (jump); away from him, a bark's a bark
+// 2. the trade press: by him a bark (Ⓐ, Space, 📣) lays his wares out (no bark); a jump's a jump; away from him, a bark's a bark
 const r2 = await h.page.evaluate(() => {
   const { G, VAG, vagPress } = GAME, d = G.dogs[0], out = {};
   H.at(1); H.by(6); d.barkCd = 0; let b0 = G.barks || 0; H.press('bark'); out.far = { out: VAG.out, barked: (G.barks || 0) - b0 };
@@ -69,7 +69,7 @@ const r2 = await h.page.evaluate(() => {
   return out;
 });
 ok('a bark away from him is a bark; by him it lays his wares out (no bark)', !r2.far.out && r2.far.barked === 1 && r2.near.out && r2.near.barked === 0 && r2.near.lay && r2.mats, r2);
-ok('keyboard: Space (jump) trades, a click (bark) doesn\'t', !r2.kbBark && r2.kbJump, r2);
+ok('keyboard: Space (bark) trades, F (jump) doesn\'t', r2.kbBark && !r2.kbJump, r2);
 ok('packed up once nobody\'s by them a while', r2.packed, r2);
 
 // 3. too poor: nothing spent, nothing in the pen, still playing
@@ -387,7 +387,7 @@ ok('a new journey: a new seed, at his first pitch, packed, no grudges; sticks by
 // off, a parting word, over the horizon, gone; gone the rest of the voyage; a new journey: back on the land
 const r15 = await h.page.evaluate(() => {
   const { G, VAG, T, SEA, seaStart, seaCastOff, vagPress, vagFrame, vagReach, boatXZ, boatU, boatV, BOAT, DECK, kitN, ALL_WARES, vendorBark, seaDist, ROUTE, ISLES, onQuay } = GAME;
-  const out = {}, d = G.dogs[0], run = H.run, aboard = () => { const p = boatXZ(-6, 0); H.place(d, p.x, p.z); run(0.3); }, press = () => vagPress(d, { bark: true, jump: true });
+  const out = {}, d = G.dogs[0], run = H.run, aboard = () => { const p = boatXZ(-6, 0); H.place(d, p.x, p.z); run(0.3); }, press = () => vagPress(d, { bark: true });
   H.reset(); G.wool = 200; seaStart({ leg: 0 }); run(0.2);
   out.harb = { mode: VAG.mode, ph: VAG.sea.ph, i: VAG.sea.i, reach: vagReach(), laser: VAG.sea.b.on && VAG.sea.b.beach === 1, quay: onQuay(VAG.x, VAG.z) };
   H.by(2.2); out.trade = press(); run(1.5); out.mats = VAG.out && ALL_WARES.every(w => onQuay(w.x, w.z, 1));
