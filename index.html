@@ -685,7 +685,13 @@ const T = {
   // spots: places round it (spots[i] in a ring ring[i] m out) for the coldest sheep within draw m (colder than want goes; under done: off it)
   // base: the base camp at the foot of the climb [s, lat] (a fire like the rest; world gen never sees it: added after its draws)
   pass: { s0: 1140, snow: 1182, top: 1478, rise: 44, flat: 14, hwW: 14, hwE: 11, arena: 1486, aW: 18, aE: 13,
-    fires: [[1262, -6], [1376, -6], [1484, -9]], base: [1165, -3], light: 2.5, burn: 10, low: 1.5, reach: 70, left: 14, r0: 3.4, r1: 12.5, spots: [8, 12], ring: [2.4, 3.7], want: 0.3, done: 0.08, draw: 26, finish: 8 },   // finish: s the cave's shut on some of them before it ends
+    fires: [[1262, -6], [1376, -6], [1484, -9]], base: [1165, -3], light: 2.5, burn: 10, low: 1.5, reach: 70, left: 14, r0: 3.4, r1: 12.5, spots: [8, 12], ring: [2.4, 3.7], want: 0.3, done: 0.08, draw: 26, finish: 8,   // finish: s the cave's shut on some of them before it ends
+    // UP (MIND.upF, passUp): the flock's way on is the next fire camp up (its middle past m beyond one: the next; at one, left alone: that
+    // one till hold m past it). Toward it, up the floor: the grazing front leans graze (a climb: pace × grazeMove), a look for grass seek,
+    // grass back down counts behind× less; flight off a dog bends up flee× (not with the dog above); the walk-on move×; milling: wander.
+    // None within stop m of the camp (straight for it from near m), above it, off the floor, within edge m of the yeti's arena. The cold:
+    // a lit fire up within draw m first; one behind only within back m past it, or freezing (colder than freeze)
+    up: { on: true, past: 10, hold: 30, stop: 7, near: 24, edge: 16, graze: 0.25, seek: 0.2, behind: 0.5, flee: 0.7, move: 0.6, wander: 0.35, pace: 0.45, draw: 40, back: 8, freeze: 0.7 } },
   // TORCHES (TORCHES): a stick by each fire (lean m off it). ✊ carries it; its tip into a lit fire (within light m): alight for burn h (× blizz
   // in a blizzard). Lit: it melts the snow and the ice round it (MELT: rate/s, all of it within r0 m, none past r; lying: lieR), warms within
   // heat m (up to heatMax). A lit one into a camp's cold fire lights it. Let go: dropped (on the run: tossed, the run × mul + add, up m/s)
@@ -4077,7 +4083,7 @@ function makeSheep(x, z, { lamb = false, mother = null, black = Math.random() < 
   };
 }
 // flock-wide mind: the hub strays head for, co-op flanking, the mood, Hank's cooldowns
-const MIND = { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, gzX: 1, gzZ: 0, gzCx: 0, gzCz: 0, gzQ: 0, workedT: -99 };
+const MIND = { hub: null, hubT: 0, upF: null, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, gzX: 1, gzZ: 0, gzCx: 0, gzCz: 0, gzQ: 0, gzUp: 0, workedT: -99 };
 const freeSheep = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.pen;
 function sheepSay(id, text, cd = 30) {
   const t = G.time; if (G.mode !== 'play' || t - MIND.lastSay < 12 || t < (MIND.said[id] || -1e9)) return false;
@@ -4085,7 +4091,7 @@ function sheepSay(id, text, cd = 30) {
 }
 function spawnFlock() {
   const c = CAMPS[0]; G.sheep = [];
-  Object.assign(MIND, { hub: null, hubT: 0, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, workedT: -99 });
+  Object.assign(MIND, { hub: null, hubT: 0, upF: null, flanked: false, flankT: 0, mood: 0, moodHi: false, playT: 0, said: {}, lastSay: -99, ramNagDay: 0, gzT: 0, gzOk: false, workedT: -99 });
   const place = () => { for (let k = 0; k < 50; k++) { const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * (c.R - 1.6); const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (G.sheep.every(o => dist2(o, { x, z }) > 1.4)) return [x, z]; } return [c.x, c.z]; };
   for (let i = 0; i < T.startAdults; i++) {
     const [x, z] = place(), ram = i >= T.startAdults - T.startRams;
@@ -4115,10 +4121,10 @@ function killSheep(s, why) {
   mournSheep(s, why);   // FLOCK SAVE: fondly remembered (and Hank says something)
 }
 function findGrass(s, ccx, ccz) {
-  let best = grassAt(s.x, s.z) + 0.05, bx = 0, bz = 0, found = false;
-  const base = Math.random() * TAU, withFlock = inGrazeFront(s);
+  let best = grassAt(s.x, s.z) + 0.05, bx = 0, bz = 0, found = false; const min = best;
+  const base = Math.random() * TAU, withFlock = inGrazeFront(s), up = passUp(s.x, s.z), uk = up.k, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
   for (let k = 0; k < 10; k++) {
-    const a = base + k * TAU / 10, ca = Math.cos(a), sa = Math.sin(a);
+    const a = base + k * TAU / 10, ca = Math.cos(a), sa = Math.sin(a), ud = ca * upx + sa * upz;
     for (const r of s.hunger > 0.45 ? [3, 6.5, 11, 17] : [3, 6.5, 11]) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2) continue;
@@ -4130,6 +4136,7 @@ function findGrass(s, ccx, ccz) {
       // spread out: a spot another sheep is standing on (or heading for) is worth less, so they don't all pile onto one tuft
       for (const o of NBL) { const ox = o.state === 'seek' ? o.tx : o.x, oz = o.state === 'seek' ? o.tz : o.z, dd = Math.hypot(x - ox, z - oz); if (dd < T.grazeSpace) g -= (1 - dd / T.grazeSpace) * 0.25; }
       if (withFlock) g += 0.06 * (ca * MIND.gzX + sa * MIND.gzZ);   // and lean the way the flock is grazing
+      if (uk) { if (g <= min) continue; g = upScore(g, ud, uk, T.pass.up.seek); }   // (better grass: the nearer the way on, the better)
       if (g > best) { best = g; bx = x; bz = z; found = true; }
     }
   }
@@ -4148,20 +4155,23 @@ function grazeScan() {
   }
   if (n < 3) return;
   cx /= n; cz /= n; q /= n;
-  let best = -1e9, bx = 0, bz = 0;
+  let best = -1e9, bx = 0, bz = 0, raw = -1e9;
+  const up = passUp(cx, cz), uk = up.k, upx = up.x, upz = up.z;   // MOUNTAIN PASS: grazing on up the hill (raw: the best without that)
   for (let k = 0; k < 16; k++) {
-    const a = k / 16 * TAU, ux = Math.cos(a), uz = Math.sin(a); let sc = -1e9;
+    const a = k / 16 * TAU, ux = Math.cos(a), uz = Math.sin(a), ud = ux * upx + uz * upz; let sc = -1e9, sc0 = -1e9;
     for (const r of [5, 9, 14, 20, 27, 35, 44]) {
       const x = cx + ux * r, z = cz + uz * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;   // walls, water and pens end the look that way
       const g = (grassAt(x, z) + grassAt(x + uz * 2.5, z - ux * 2.5) + grassAt(x - uz * 2.5, z + ux * 2.5)) / 3;   // a patch, not one tuft
-      sc = Math.max(sc, g - r * T.grazeLookCost);
+      sc = Math.max(sc, (uk ? upScore(g, ud, uk, 0) : g) - r * T.grazeLookCost); sc0 = Math.max(sc0, g - r * T.grazeLookCost);
     }
-    sc += 0.06 * (ux * MIND.gzX + uz * MIND.gzZ);   // keep heading the way it was going
+    const on = 0.06 * (ux * MIND.gzX + uz * MIND.gzZ); sc += on; sc0 += on;   // keep heading the way it was going
+    if (sc0 > raw) raw = sc0; if (uk) sc += T.pass.up.graze * uk * ud;
     if (sc > best) { best = sc; bx = ux; bz = uz; }
   }
   // move on only once the ground round the flock is eaten out, and only if there's clearly better grass to go to
   MIND.gzOk = poorN >= n * T.grazeMoveOn && best > q + 0.1 && !(G.time - MIND.workedT < T.grazeWorkedT); MIND.gzX = bx; MIND.gzZ = bz; MIND.gzCx = cx; MIND.gzCz = cz; MIND.gzQ = q;
+  MIND.gzUp = MIND.gzOk && !(raw > q + 0.1) ? up.k : 0;   // (on up for the climb, not for better grass: at a walk)
 }
 const inGrazeFront = s => MIND.gzOk && !s.pen && (s.x - MIND.gzCx) ** 2 + (s.z - MIND.gzCz) ** 2 < 400;
 // ---- critical mass: an open pen the flock is filling pulls calm, fed sheep in
@@ -4368,7 +4378,7 @@ function flockMind(dt, play) {
   for (const p of pens) p.flock = 0;
   for (const s of S) { if (s.dead || s.grabbed) continue; total++; if (s.pen) s.pen.flock++; }
   for (const p of pens) p.frac = total ? p.flock / total : 0;
-  MIND.hubT -= dt; if (MIND.hubT <= 0) { MIND.hubT = T.knotT; flockKnots(); }   // knots, sheep gravity and the hub
+  MIND.hubT -= dt; if (MIND.hubT <= 0) { MIND.hubT = T.knotT; flockKnots(); passUpFire(); }   // knots, sheep gravity and the hub (MOUNTAIN PASS: the way on up)
   MIND.gzT -= dt; if (MIND.gzT <= 0) { MIND.gzT = 1.5; grazeScan(); }
   let n = 0, cx = 0, cz = 0, st = 0;
   for (const s of S) if (freeSheep(s)) { n++; cx += s.x; cz += s.z; st += s.stress; }
@@ -4502,21 +4512,21 @@ function grassDash(s) {
   s.dashCd = G.time + D.cd * rnd(0.7, 1.3);
   const far = D.rings[D.rings.length - 1] + D.alone, O = [];
   for (const o of G.sheep) if (o !== s && !o.dead && !o.pen && !o.grabbed && !o.air && Math.abs(o.x - s.x) < far && Math.abs(o.z - s.z) < far) O.push(o);
-  let best = here + D.better, bx = 0, bz = 0, found = false; const base = Math.random() * TAU;
+  let best = here + D.better, bx = 0, bz = 0, found = false; const min = best, base = Math.random() * TAU, up = passUp(s.x, s.z), uk = up.k, upx = up.x, upz = up.z;   // (MOUNTAIN PASS: on up the hill)
   for (let k = 0; k < D.dirs; k++) {
-    const a = base + k * TAU / D.dirs, ca = Math.cos(a), sa = Math.sin(a);
+    const a = base + k * TAU / D.dirs, ca = Math.cos(a), sa = Math.sin(a), ud = ca * upx + sa * upz, us = g => uk ? upScore(g, ud, uk, T.pass.up.seek) : g;
     for (const r of D.rings) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;   // walls, water and pens end the look that way
       if (G.dens.some(n => Math.abs(n.x - x) < D.den && Math.abs(n.z - z) < D.den) || T.bramble.on && brambleAt(x, z, 1.5)) continue;   // not by a coyote den, not into the brambles
       let g = (grassAt(x, z) + grassAt(x - sa * 2, z + ca * 2) + grassAt(x + sa * 2, z - ca * 2)) / 3 - r * 0.004, nn = 1e9;   // a patch, not one tuft; nearer is better
-      if (g <= best) continue;
+      if (g <= min || us(g) <= best) continue;
       for (const o of O) {   // room to graze there (another on it, or heading for it: worth less), and not out on its own
         const ox = o.state === 'seek' ? o.tx : o.x, oz = o.state === 'seek' ? o.tz : o.z, dd = Math.hypot(x - ox, z - oz);
         if (dd < T.grazeSpace) g -= (1 - dd / T.grazeSpace) * 0.25; if (dd < nn) nn = dd;
       }
-      if (nn > D.alone || g <= best) continue;
-      best = g; bx = x; bz = z; found = true;
+      if (nn > D.alone || g <= min || us(g) <= best) continue;
+      best = us(g); bx = x; bz = z; found = true;
     }
   }
   if (!found) return false;
@@ -4528,9 +4538,10 @@ function offBare(s) {
   const B = T.bare;
   if (s.pen || s.stress > 0.5 || (s.bareCd || 0) > G.time || grassCapAt(s.x, s.z) >= B.cap) return false;
   s.bareCd = G.time + B.cd * rnd(0.7, 1.3);
-  let best = null, bd = 1e9; const base = Math.random() * TAU;
+  let best = null, bd = 1e9; const base = Math.random() * TAU, up = passUp(s.x, s.z), upx = up.x, upz = up.z, uk = up.k;
   for (let k = 0; k < 12; k++) {
     const a = base + k * TAU / 12, ca = Math.cos(a), sa = Math.sin(a);
+    if (uk > 0.05 && ca * upx + sa * upz < -0.2) continue;   // MOUNTAIN PASS: the snow's no beach: not back down the hill for it
     for (let r = 2; r <= B.r; r += 2) {
       const x = s.x + ca * r, z = s.z + sa * r;
       if (sdfAt(x, z) < 1.2 || penAt(x, z)) break;
@@ -4615,8 +4626,10 @@ function decideCalm(s, nb, night) {
   }
   if (offBare(s)) return;   // SAND: nothing to eat out here: back onto the grass
   // nothing to do: mill about (a nervous sheep paces; one settled by a lying dog just stands), not out onto bare sand
-  if (!steady && Math.random() < 0.3 + s.stress * 0.4) {
-    const a = Math.random() * TAU, r = rnd(1.5, 4); const x = s.x + Math.cos(a) * r, z = s.z + Math.sin(a) * r;
+  const up = passUp(s.x, s.z), uw = up.k * (T.pass.up.wander + 0.5 * (s.cold || 0));   // MOUNTAIN PASS: milling on up the hill (the cold, keener: the warmth up there)
+  if (!steady && Math.random() < 0.3 + s.stress * 0.4 + uw) {
+    let a = Math.random() * TAU; const r = rnd(1.5, 4); if (uw && Math.random() < uw + 0.2) a = Math.atan2(up.z, up.x) + rnd(-0.9, 0.9);
+    const x = s.x + Math.cos(a) * r, z = s.z + Math.sin(a) * r;
     if (sdfAt(x, z) > 1.2 && (!s.pen || insidePen(s.pen, x, z, 1)) && (s.pen || grassCapAt(x, z) >= T.bare.cap || grassCapAt(s.x, s.z) < T.bare.cap)) { s.state = 'wander'; s.tx = x; s.tz = z; return; }
   }
   s.state = 'idle';
@@ -4925,6 +4938,7 @@ function updateSheep(dt, dtH) {
         const ca = Math.cos(s.boltA), sa = Math.sin(s.boltA), rx = ex * ca - ez * sa; ez = ex * sa + ez * ca; ex = rx;
       }
       dX = ex; dZ = ez;
+      { const u = passUp(s.x, s.z); if (u.k) { const w = T.pass.up.flee * u.k * clamp(1 + 1.5 * (ex * u.x + ez * u.z), 0, 1); dX += u.x * w; dZ += u.z * w; } }   // MOUNTAIN PASS: off a dog to the side: up the hill (not with it above)
       // fear tightens the flock, stress loosens it, panic breaks it
       const coh = (0.8 + 0.7 * Math.min(1, s.fear * 2) * (1 - s.stress) + (steady ? 0.5 : 0) + (MIND.flanked ? 0.3 : 0)) * (1 - 0.65 * pk);
       if (nC) { const cx = cX / nC - s.x, cz = cZ / nC - s.z, cl = Math.hypot(cx, cz) || 1, w = Math.min(0.7, cl * 0.12) * coh; dX += cx / cl * w; dZ += cz / cl * w; }
@@ -4969,6 +4983,7 @@ function updateSheep(dt, dtH) {
         if (bellPull) { const w = s.trait === 'stubborn' ? 0.5 : 1; mx += bell.vx / bellSp * 0.9 * w; mz += bell.vz / bellSp * 0.9 * w; if (bellD > 2.5) { mx += (bell.x - s.x) / bellD * 0.6 * w; mz += (bell.z - s.z) / bellD * 0.6 * w; } bs = bellSp * 0.88; }
         if (nC) { const cx = cX / nC - s.x, cz = cZ / nC - s.z, cl = Math.hypot(cx, cz) || 1, w = Math.min(0.8, cl * 0.12) * (steady ? 1.5 : 1); mx += cx / cl * w; mz += cz / cl * w; }
         if (pp) { mx += pp.dx * pp.w; mz += pp.dz * pp.w; }
+        { const u = passUp(s.x, s.z); if (u.k) { const ml = Math.hypot(mx, mz) || 1, w = T.pass.up.move * u.k * clamp(1 + 1.5 * (mx * u.x + mz * u.z) / ml, 0, 1); mx += u.x * w; mz += u.z * w; } }   // MOUNTAIN PASS: walking on, up the hill
         dX = mx; dZ = mz;
         spd = Math.max(s.alert > 0 ? T.sheepWalk * (1.15 + 0.85 * s.alert / 3.5) : 0, nMov ? Math.min(run, mov / nMov * 0.88) : 0, Math.min(run, bs));
         s.thinkT = rnd(0.2, 0.6);
@@ -5005,7 +5020,7 @@ function updateSheep(dt, dtH) {
           const spl = Math.hypot(spX, spZ);
           dX = hx + spX * 2.2; dZ = hz + spZ * 2.2;
           const better = clamp((s.gzNear - here) / 0.25, 0, 1);
-          spd = Math.max(lerp(T.grazeStep, T.grazeNibble, poorHere * better), inGrazeFront(s) ? lerp(T.grazeStep, T.grazeMove, poor * poor) : T.grazeStep, Math.min(0.7, spl * 0.9), kn && kn.gw > T.joinMin ? kn.gw * 0.9 * stay : 0); acc = 2.5;
+          spd = Math.max(lerp(T.grazeStep, T.grazeNibble, poorHere * better), inGrazeFront(s) ? lerp(T.grazeStep, T.grazeMove * lerp(1, T.pass.up.pace, MIND.gzUp || 0), poor * poor) : T.grazeStep, Math.min(0.7, spl * 0.9), kn && kn.gw > T.joinMin ? kn.gw * 0.9 * stay : 0); acc = 2.5;
           if (poor > 0.7 && inGrazeFront(s) && Math.random() < dt * 0.05) baaAt(s, 0.2);   // moving on: the odd call to the others
           break;
         }
@@ -5163,7 +5178,7 @@ function updateSheep(dt, dtH) {
       }
     }
     spd *= saltPep(s) * thirstPep(s) * sickPep(s) * coldPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER; sick ones: VET; frozen or snowed on: MOUNTAIN PASS)
-    if (spd > 0 && !s.pen && (ICES.length || CREVS.length) && passK(sAt(s.x, s.z)) > 0.2) { const v = passAvoid(s, s.state === 'flee' || straight); if (v) { dX += v.x; dZ += v.z; } }   // MOUNTAIN PASS: round the ice and the cracks, clear of a fire
+    if (spd > 0 && !s.pen && (ICES.length || CREVS.length) && passK(sAt(s.x, s.z)) > 0.2) { const run = s.state === 'flee' || straight, v = passAvoid(s, run); if (v) { if (run) { dX += v.x; dZ += v.z; } else { const vl = Math.hypot(v.x, v.z) || 1, into = -(dX * v.x + dZ * v.z) / vl, m = Math.max(1, Math.hypot(dX, dZ) / 1.5) + (into > 0 ? into * Math.min(1, vl) / vl : 0); dX += v.x * m; dZ += v.z * m; } } }   // MOUNTAIN PASS: round the ice and the cracks, clear of a fire (calm: along the edge, however keen it is to go on)
     if (PASS.blizz.k > 0.05 && !s.pen && spd > 0) { const dn = downhill(s.x, s.z), bk = PASS.blizz.k * passK(sAt(s.x, s.z)) * T.blizz.push; dX += dn.x * bk * 0.3; dZ += dn.z * bk * 0.3; }   // (a blizzard pushes them down the mountain)
     if (T.bramble.on && !s.snag && spd > 0 && !s.pen) {   // BRAMBLES: calm sheep go round them, bolting ones barely look
       const b = brambleAt(s.x, s.z, T.bramble.avoid);
@@ -10594,10 +10609,41 @@ function fireSpots(f) {
   P.spots.forEach((n, ri) => { for (let k = 0; k < n; k++) { const a = (k + ri * 0.5) / n * TAU + 0.3, x = f.x + Math.cos(a) * P.ring[ri], z = f.z + Math.sin(a) * P.ring[ri]; if (sdfAt(x, z) > 0.7) f.spots.push({ x, z, yaw: Math.atan2(f.x - x, f.z - z) }); } });   // (the inner ring first)
   return f.spots;
 }
-// decideCalm: a cold sheep near a lit fire goes for a place there (bumping a warmer one off it)
+// ---------------- UP: the flock leans on up the pass, toward the next camp ----------------
+// the flock's way on (flockMind, every T.knotT s): the next fire camp up from its middle; at one, left alone, it stays put by it
+function passUpFire() {
+  const U = T.pass.up, was = MIND.upF; MIND.upF = null;
+  if (!U.on || G.mode !== 'play') return;
+  let x = 0, z = 0, n = 0; for (const s of G.sheep) if (freeSheep(s)) { x += s.x; z += s.z; n++; }
+  if (!n) return; const fs = sAt(x / n, z / n); if (passK(fs) <= 0) return;
+  if (was && fs > was.s - U.past && fs < was.s + U.hold && G.time - MIND.workedT > T.grazeWorkedT) { MIND.upF = was; return; }   // (a dog's driven them on: the next)
+  for (const f of PASS.fires) if (f.s > fs - U.past && (!MIND.upF || f.s < MIND.upF.s)) MIND.upF = f;
+}
+// SHARED HOOK: which way's on up from (x, z) (UPV x/z: unit; along the floor, straight for the camp once near: the floor's middle
+// abreast of its fire) and how keen (k 0…1: none below the pass, within T.pass.up.stop m of the camp, above it, off the floor, near the
+// yeti's arena or the hidden side trail)
+const UPV = { x: 0, z: 0, k: 0 };
+function passUp(x, z) {
+  const U = T.pass.up, f = MIND.upF; UPV.k = 0; if (!f) return UPV;
+  const ci = trailInfo(x, z); if (ci.oW > 0 || ci.oE > 0 || ci.s > f.s + 2) return UPV;
+  const m = f.mid || (f.mid = pathPoint(f.s, 0)), pk = passK(ci.s), dx = m.x - x, dz = m.z - z, d = Math.hypot(dx, dz) || 1e-3;
+  const k = pk * smooth(U.stop, U.stop + 8, d) * (1 - smooth(T.pass.arena - U.edge - 8, T.pass.arena - U.edge, ci.s)) * (ci.s > SIDE.s0 - 24 ? smooth(SIDE.hw + 3, SIDE.hw + 12, sideD(x, z)) : 1);   // (nor by the hidden side trail's mouth)
+  if (k < 0.01) return UPV;
+  const i = ci.idx, w = 1 - smooth(U.near * 0.5, U.near, d), ux = tX[i] * (1 - w) + dx / d * w, uz = tZ[i] * (1 - w) + dz / d * w, ul = Math.hypot(ux, uz) || 1;
+  UPV.x = ux / ul; UPV.z = uz / ul; UPV.k = k; return UPV;
+}
+// grass worth g that way (ud: its · the way on up, k: how keen), to a flock on the climb: less back down (behind), more on up (lean)
+const upScore = (g, ud, k, lean) => g * (1 - T.pass.up.behind * k * Math.max(0, -ud)) + lean * k * ud;
+// decideCalm: a cold sheep near a lit fire goes for a place there (bumping a warmer one off it). UP: one up the hill first; one it's
+// left behind only while it's still by it (back m), or freezing
 function warmGo(s) {
-  const P = T.pass; if (s.pen || !(s.cold > P.want) || PASS.fires.every(f => f.fuel <= 0)) return false;
-  let f = null, fd = P.draw; for (const o of PASS.fires) { if (o.fuel <= 0) continue; const d = Math.hypot(o.x - s.x, o.z - s.z); if (d < fd) { fd = d; f = o; } }
+  const P = T.pass, U = P.up; if (s.pen || !(s.cold > P.want) || PASS.fires.every(f => f.fuel <= 0)) return false;
+  const ss = U.on ? sAt(s.x, s.z) : 0; let f = null, fd = 1e9;
+  for (const o of PASS.fires) {
+    if (o.fuel <= 0) continue; const d = Math.hypot(o.x - s.x, o.z - s.z), up = !U.on || o.s > ss - U.back;
+    if (d > (!U.on || o.top ? P.draw : up ? U.draw : s.cold > U.freeze ? P.draw : 0)) continue;   // (the yeti's: no further than ever)
+    const e = up ? d : d + 1e3; if (e < fd) { fd = e; f = o; }
+  }
   if (!f) return false;
   const sp = fireSpots(f); f.by.length = sp.length;
   for (let k = 0; k < sp.length; k++) { const o = f.by[k]; if (o && (o.dead || o.state !== 'warm' || o.fire !== f || o.fslot !== k || !G.sheep.includes(o))) f.by[k] = null; }
@@ -20135,7 +20181,7 @@ function renderOnce(dt = 1 / 60) {
   syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
-Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
+Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, passUp, passUpFire, upScore, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
