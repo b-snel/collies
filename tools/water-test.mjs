@@ -164,12 +164,14 @@ const r6 = await h.page.evaluate(() => {
   const s = G.sheep[2]; out.speed = [0, 0.7, 0.85, 1].map(v => { s.thirst = v; return H.r(thirstPep(s)); });
   for (const p of pens) p.water.w = 0;
   const c = CAMPS[1]; for (const o of G.sheep) { H.place(o, c.x + 30 + Math.random() * 6, c.z + Math.random() * 6); o.thirst = 1; o.hunger = 0; o.salt = 1; }
-  const n0 = G.sheep.length; let first = null;
-  for (let k = 0; k < 3 * 24 * 10 / 0.5 && G.clock.day < 5 && G.sheep.length; k++) {
-    for (const o of G.sheep) if (!o.dead) { o.hunger = 0; o.salt = 1; }
-    for (let i = 0; i < 20; i++) GAME.step(0.025);
+  const n0 = G.sheep.length, keep = G.sheep[0]; let first = null;   // keep: one watered, shut in the pen, so the journey goes on to the next dawn's report
+  H.place(keep, pens[1].x, pens[1].z);
+  const half = () => { keep.thirst = 0; for (const o of G.sheep) if (!o.dead) { o.hunger = 0; o.salt = 1; } for (let i = 0; i < 20; i++) GAME.step(0.025); };
+  for (let k = 0; k < 1e5 && G.clock.day < 5 && G.sheep.length > 1; k++) {   // (to day 5: ≥ 3 days, whatever an hour's length)
+    half();
     if (first === null && G.stats.thirst) first = H.r((G.clock.day - 1) * 24 + G.clock.hour - 10);
   }
+  const rep = G.dawnReport; for (let k = 0; k < 1e5 && G.dawnReport === rep; k++) half();   // on to the next dawn
   T.cougar.chance = ch;
   out.firstDeathAfterHours = first; out.deathHours = T.water.deathHours; out.died = G.stats.thirst + '/' + n0; out.other = G.lost.filter(m => m.why !== 'thirst').map(m => m.why); out.left = G.sheep.length;
   out.graves = G.graves.filter(g => g.why === 'thirst').length; out.lost = G.lost.filter(m => m.why === 'thirst').length;
@@ -180,7 +182,7 @@ const r6 = await h.page.evaluate(() => {
 });
 ok(`a few days to parched from the start (${r6.daysToParched.join('-')})`, r6.daysToParched[0] >= 3 && r6.daysToParched[1] <= 4, r6);
 ok('parched sheep slow down', r6.speed[0] === 1 && r6.speed[1] === 1 && r6.speed[2] < 1 && r6.speed[3] === 0.75, r6.speed);
-ok(`parched too long: they die of thirst (first after ${r6.firstDeathAfterHours} h)`, r6.firstDeathAfterHours >= r6.deathHours[0] && r6.firstDeathAfterHours <= r6.deathHours[1] + 1 && r6.left === 0 && +r6.died.split('/')[0] + r6.other.length === +r6.died.split('/')[1] && r6.other.every(w => w === 'eaten'), r6);
+ok(`parched too long: they die of thirst (first after ${r6.firstDeathAfterHours} h)`, r6.firstDeathAfterHours >= r6.deathHours[0] && r6.firstDeathAfterHours <= r6.deathHours[1] + 1 && r6.left === 1 && +r6.died.split('/')[0] + r6.other.length + 1 === +r6.died.split('/')[1] && r6.other.every(w => w === 'eaten'), r6);
 ok('…each with a named tombstone, a eulogy and a dawn report line', r6.graves > 0 && r6.graves === r6.lost && /trough ran dry|cool water/.test(r6.eulogy || '') && r6.dawn > 0 && r6.memorial > 0, r6);
 
 // 7. the hooks: fillWater (capped) and drinkWater; swimming sheep drink; the thirsty-flock warning

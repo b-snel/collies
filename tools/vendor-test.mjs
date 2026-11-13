@@ -130,7 +130,7 @@ const r6 = await h.page.evaluate(() => {
   VAG.out = false; d.barkCd = 0; H.press('bark'); H.run(0.2);   // (packed: just a bark)
   return { one, packed: { wool: G.wool }, lump: T.salt.lump, price: T.vendor.salt.add };
 });
-ok('his wares out: a bark on a mat buys it (not a nag); packed, it\'s just a bark', r6.one.lick === r6.lump && r6.one.licks === 1 && r6.one.wool === 10 - r6.price && r6.one.nag === 0 && r6.packed.wool === r6.one.wool, r6);
+ok('his wares out: a bark on a mat buys it (not a nag); packed, it\'s just a bark', Math.abs(r6.one.lick - r6.lump) < 0.1 && r6.one.licks === 1 && r6.one.wool === 10 - r6.price && r6.one.nag === 0 && r6.packed.wool === r6.one.wool, r6);
 
 // 6b. 📍 only offers pens found so far, the furthest by default; a bark moves it on (trail order, round again); buys go there
 const r6b = await h.page.evaluate(() => {

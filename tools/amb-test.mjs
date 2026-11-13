@@ -41,7 +41,7 @@ for (const P of todo) {
     if (P.sea) GAME.seaStart(P.sea);
     G.clock.hour = P.hour; PASS.blizz.k = P.blizz || 0;
     if (P.sea) { const S = GAME.SEA; cam.x = GAME.BOAT.x; cam.z = GAME.BOAT.z; S.heelV = 0.12; S.pitchV = 0.08; if (!S.docked) { S.aw = 9; S.u = 4; } }
-    else if (P.at === 'market') { cam.x = MARKET.x + 4; cam.z = MARKET.z + 4; }
+    else if (P.at === 'market') { const V = GAME.VAG, L = V.pitches[V.pitches.length - 1]; GAME.vagAt(L.x, L.z, L.lay[2]); GAME.vagPlaceMats(L.lay); cam.x = MARKET.x + 4; cam.z = MARKET.z + 4; }   // the vagabond (his chimes) at his last pitch, by the Trading Post
     else if (P.at === 'fire') { const f = PASS.fires.find(f => f.s > 1300) || PASS.fires[PASS.fires.length - 1]; f.fuel = 5; cam.x = f.x + 3; cam.z = f.z + 2; }
     else if (P.at === 'harbour') { const q = GAME.HARB.pts[4]; cam.x = q.x; cam.z = q.z; }
     else { const p = pathPoint(P.s, P.lat || 0); cam.x = p.x; cam.z = p.z; }
