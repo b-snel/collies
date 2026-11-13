@@ -440,8 +440,11 @@ if (want('siren')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, HAZ, SIREN_ROCKS, ROUTE, boatV, boatHB, boatU } = GAME, out = {}, d = G.dogs[0], p = d.player, rk = SIREN_ROCKS[0];
     const near = () => { H.sea(1.57, 5, { u: 0, flat: true, leg: 3 }); SEA.hoist = 0; SEA.u = 0; SEA.leg = 4; SEA.hdg = 0; SEA.e = rk.e - 40; SEA.n = rk.n; H.flock(0, -6, 6); H.place(d, 12, 0); p.bot = {}; };   // the rock 40 m off her starboard beam
-    // barking amidships breaks the song's hold: nobody goes over
-    near(); H.place(d, 0, 0); let o2 = 0, freed = 0; H.run(30, t => { p.bot = { bark: Math.round(t * 40) % 24 === 0 }; o2 = Math.max(o2, H.swimmers().length); if (H.swimmers().length && !out.how) out.how = H.swimmers().map(s => [s.air.how, s.ram, s.lamb, H.r(boatU(s.x, s.z)), H.r(s.air.t)]); freed += G.sheep.filter(s => (s.lureCd || 0) > G.time).length ? 1 : 0; }); out.barkOver = o2; out.freed = freed > 0;
+    // barking breaks the song's hold: nobody goes over. (The barks drive the flock aft; the dog goes after the lured ones, as you would:
+    // from amidships the stern's out of a bark's reach)
+    near(); H.place(d, 0, 0); let o2 = 0, freed = 0; H.run(30, t => {
+      const l = G.sheep.filter(s => s.lure && !s.dead).sort((a, b) => Math.hypot(a.x - d.x, a.z - d.z) - Math.hypot(b.x - d.x, b.z - d.z))[0];
+      p.bot = { bark: Math.round(t * 40) % 24 === 0, ...(l && Math.hypot(l.x - d.x, l.z - d.z) > 7 ? H.inp(l.x - d.x, l.z - d.z) : {}) }; o2 = Math.max(o2, H.swimmers().length); if (H.swimmers().length && !out.how) out.how = H.swimmers().map(s => [s.air.how, s.ram, s.lamb, H.r(boatU(s.x, s.z)), H.r(s.air.t)]); freed += G.sheep.filter(s => (s.lureCd || 0) > G.time).length ? 1 : 0; }); out.barkOver = o2; out.freed = freed > 0;
     // a dog standing in the way at that rail stops them there
     const walk = dog => { near(); const s = G.sheep.find(q => !q.ram && !q.lamb); H.flock(-3, 6, 10); H.place(s, 0, 2); if (dog) H.place(d, 0, 4.2); p.bot = {}; let far = 0; H.run(1.6, () => { s.lure = 1; far = Math.max(far, boatV(s.x, s.z)); }); return H.r(far); };
     out.free = walk(false); out.far = walk(true); out.blocked = out.far < 2.5 && out.free > out.far + 0.8;

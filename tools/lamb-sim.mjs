@@ -8,6 +8,8 @@ const tr = args.indexOf('--trough'), trough = tr >= 0 ? +args[tr + 1] : 0;
 const hi = args.indexOf('--hunger'), hunger0 = hi >= 0 ? +args[hi + 1] : 0.5;   // the flock's hunger at 13:00
 const sets = {}; args.forEach((a, i) => { if (a === '--set') { const [k, v] = args[i + 1].split('='); sets[k] = +v; } });
 const h = await open({ query: '?sim&debug' });
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const runs = [];
 for (let k = 0; k < trials; k++) {
   const r = await h.page.evaluate(({ trough, sets, hunger0 }) => {
     const { G, T, step, pens, setGate } = GAME; Object.assign(T, sets);
@@ -35,7 +37,16 @@ for (let k = 0; k < trials; k++) {
     out.fedLater = fedLog; out.ewesCourted = bred.size; out.lambsBorn = G.stats.born - lambs0; out.dawnHunger = +(adults().reduce((a, s) => a + s.hunger, 0) / adults().length).toFixed(2);
     return out;
   }, { trough, sets, hunger0 });
-  console.log(JSON.stringify(r));
+  console.log(JSON.stringify(r)); runs.push(r);
 }
+if (!trough && hunger0 === 0.5 && !Object.keys(sets).length) {   // checks: as tuned
+  const ewes = runs.reduce((a, r) => a + r.ewes, 0), lambs = runs.reduce((a, r) => a + r.lambsBorn, 0);
+  ok(`grazing all afternoon, all well fed by penning (${runs.map(r => r.fedAtPenning).join(', ')})`, runs.every(r => +r.fedAtPenning.split('/')[0] === r.rams + r.ewes));
+  ok(`the rams court the ewes (${runs.map(r => r.ewesCourted + '/' + r.ewes).join(', ')})`, runs.every(r => r.ewesCourted >= r.ewes * 0.7));
+  ok(`lambs at dawn every night (${runs.map(r => r.lambsBorn).join(', ')}; ${lambs} of ${ewes} ewes)`, runs.every(r => r.lambsBorn >= 2) && lambs >= ewes * 0.3);
+  ok(`no supper: hungrier by dawn, not starving (${runs.map(r => r.dawnHunger).join(', ')})`, runs.every(r => r.dawnHunger > 0.2 && r.dawnHunger < 0.6));
+}
+ok('no page errors', !h.errors.length);
 if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 3));
 await h.close();
+process.exit(fails ? 1 : 0);

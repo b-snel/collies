@@ -27,7 +27,7 @@ const r = await h.page.evaluate(() => {
       step(0.025); stuckTrack(pen, true); t += 0.025;
       for (const k of [10, 20, 30, 40]) if (!at[k] && t >= k) at[k] = live().filter(s => s.pen === pen).length;
     }
-    res[(inward ? 'in-swungIn' : 'in-swungOut')] = { penned: at, phi: +pen.phi.toFixed(2), stuckOver2s: live().filter(s => s._st > 2).length, maxStuckSecs: +Math.max(...live().map(s => s._st)).toFixed(1) };
+    res[(inward ? 'in-swungIn' : 'in-swungOut')] = { penned: at, of: live().length, phi: +pen.phi.toFixed(2), stuckOver2s: live().filter(s => s._st > 2).length, maxStuckSecs: +Math.max(...live().map(s => s._st)).toFixed(1) };
     // ---- out: everyone penned at dawn, gate opened, dog stands off well away: do they file out?
     reset(6.5); setGate(pen, false);
     live().forEach((s, i) => { const a = i / 14 * 6.28, rr = 2 + (i % 3) * 2; s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.hunger = 0.5; s._st = 0; });
@@ -41,4 +41,12 @@ const r = await h.page.evaluate(() => {
   return res;
 });
 console.log(JSON.stringify(r, null, 1)); console.log(h.errors.slice(0, 3));
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+for (const g of ['swungOut', 'swungIn']) {
+  const i = r['in-' + g], o = r['out-' + g];
+  ok(`gate ${g}: driven in, ${i.penned[10]}/${i.of} in by 10 s, all by 30 s; nobody stalls at it (${i.maxStuckSecs} s)`, i.penned[10] >= i.of - 3 && i.penned[30] === i.of && i.stuckOver2s === 0);
+  ok(`gate ${g}: out at dawn, ${o.left[10]}/${o.of} out by 10 s, all by 20 s; nobody stalls (${o.maxStuckSecs} s)`, o.left[10] >= o.of - 3 && o.left[20] === o.of && o.stuckOver2s === 0);
+}
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);
