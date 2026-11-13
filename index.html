@@ -939,7 +939,7 @@ const T = {
   // to carry it (lets go: set down), wades/swims to fill it (bucket units; reach m), tips it in within tipR. Past slowAt a sheep slows (slow at 1).
   // startFill: the first camp's trough starts this full. wade: thirst/h off a sheep swimming or with its nose in water. low: Hank/toast
   water: { perDay: 0.25, start: [0.05, 0.2], want: 0.25, full: 0.03, drinkRate: 3, cap: 12, bucket: 6, startFill: 1, deathHours: [36, 60],
-    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, shore: [3, 5], shoreWall: 1.2, tipR: 1.9, hold: 1.5, crowd: 4, slosh: 0.15,   // slosh: share spilt by a shake
+    slowAt: 0.7, slow: 0.25, wade: 2, low: 0.6, pickR: 1.3, reach: 1.2, shore: [3, 5], shoreWall: 1.2, tipR: 2.4, hold: 1.5, crowd: 4, slosh: 0.15,   // slosh: share spilt by a shake
     kick: { r: 0.75, k: 1.1, fric: 4, pounce: 14, up: 9, spill: 0.5, bounce: 0.35 } },   // kick: a dog running into a lying bucket shoves it (k× its speed), a pounce sends it flying (spills share). hold: s drinking before it can be barged off; crowd: how many jostle behind it
   // dig spots: mounds along the trail. A dog standing still(ish) on one digs it up; some hold a hat or a bit of kit for the dogs
   dig: { r: 1.3, time: 1.5, maxSpeed: 3.2, treasure: 0.34, every: 52, lat: [6, 15], bone: 0.35 },   // bone: share of the junk that's a bone (BONES)   // m; s of digging; m/s; chance of treasure (as many finds a journey on the longer trail); m of trail per spot; m off the trail
@@ -8189,18 +8189,41 @@ const kitMaxN = (p, k) => p.kit ? p.kit[k][1] : Math.max(1, Math.round(T.vendor.
 const kitBaseN = p => p.kit ? p.kit.food[0] : Math.max(1, Math.round(T.forage.troughs * p.R / 9));   // troughs a pen comes with
 // Every slot round the fence (T.forage.ring): troughs from past the latch post, water troughs, licks (the first by the hinge),
 // even gaps between them all, wide enough to walk through (no pockets to get stuck in), flush to the fence (nothing fits
-// behind). p.kitA[kind][i]: its angle. (The deck: deckKit.)
+// behind). The water troughs go in among the food troughs where the first one (the one it comes with) faces the nearest
+// water (`waterDir`: a short bucket run), with open ground outside it (a bucket's tipped over the fence).
+// p.kitA[kind][i]: its angle. (The deck: deckKit.)
 const KIT_LEN = { food: 2.7, water: 3.5, salt: 0.6 };   // m along the fence, box and all (TROUGH_GEO, WATER_GEO, the lick)
+function waterDir(p, far = 90) {   // the way to the nearest water from the pen (null: none within far m)
+  let best = null;
+  for (let k = 0; k < 72; k++) {
+    const a = k / 72 * TAU, c = Math.cos(a), s = Math.sin(a);
+    for (let d = p.R + 2; d < (best ? best.d : far); d += 2) if (wetAt(p.x + c * d, p.z + s * d)) { best = { a, d }; break; }
+  }
+  return best && best.a;
+}
 function kitRing(p) {
   if (p.kitA) return p.kitA;
   const K = T.forage.ring, r = p.R - K.in, N = { food: Math.max(kitBaseN(p), kitMaxN(p, 'food')), water: kitMaxN(p, 'water'), salt: kitMaxN(p, 'salt') };
-  const its = Object.entries(N).flatMap(([k, n]) => Array.from({ length: n }, (_, i) => [k, k === 'salt' ? n - 1 - i : i]));
-  const gap = ((TAU - 2 * p.gapHalf) * r - K.gate - K.hinge - its.reduce((t, [k]) => t + KIT_LEN[k], 0)) / (its.length - 1);
-  p.kitA = { food: [], water: [], salt: [] }; p.kitGap = gap;
-  let at = p.gateA + p.gapHalf + K.gate / r;
-  for (const [k, i] of its) { p.kitA[k][i] = at + KIT_LEN[k] / 2 / r; at += (KIT_LEN[k] + gap) / r; }
-  const W = p.kitA.water, w0 = W.findIndex(a => { const o = onRing(p, a, p.R + 0.6); return sdfAt(o.x, o.z) > 1.2; });   // the one it comes with: open ground outside (a bucket's tipped over the fence)
-  if (w0 > 0) W.unshift(...W.splice(w0, 1));
+  const n = N.food + N.water + N.salt, gap = ((TAU - 2 * p.gapHalf) * r - K.gate - K.hinge - Object.entries(N).reduce((t, [k, m]) => t + KIT_LEN[k] * m, 0)) / (n - 1);
+  const lay = f => {   // the water troughs after f food troughs
+    const seq = (k, a, b) => Array.from({ length: b - a }, (_, i) => [k, a + i]);
+    const its = [...seq('food', 0, f), ...seq('water', 0, N.water), ...seq('food', f, N.food), ...seq('salt', 0, N.salt).map(([k, i]) => [k, N.salt - 1 - i])];
+    const A = { food: [], water: [], salt: [] }; let at = p.gateA + p.gapHalf + K.gate / r;
+    for (const [k, i] of its) { A[k][i] = at + KIT_LEN[k] / 2 / r; at += (KIT_LEN[k] + gap) / r; }
+    return A;
+  };
+  const room = (a, out, sd, w) => [-w, 0, w].every(t => { const o = onRing(p, a + t * KIT_LEN.water / 2 / p.R, p.R + out); return sdfAt(o.x, o.z) > sd; });
+  const wa = waterDir(p);
+  let best = null;
+  for (const [out, sd, w] of [[1.8, 1.6, 0.9], [0.6, 1.2, 0]]) {   // room to walk up to it from outside (else a looser test)
+    for (let f = wa == null ? N.food : 0; f <= N.food; f++) {
+      const A = lay(f);
+      A.water.forEach((a, j) => { if (!room(a, out, sd, w)) return; const c = wa == null ? j : Math.abs(wrapA(a - wa)); if (!best || c < best.c) best = { A, j, c }; });
+    }
+    if (best) break;
+  }
+  p.kitA = best ? best.A : lay(N.food); p.kitGap = gap;
+  if (best && best.j) p.kitA.water.unshift(...p.kitA.water.splice(best.j, 1));
   return p.kitA;
 }
 for (const p of pens) {
@@ -8443,7 +8466,7 @@ function drawForageOverlay() {
   }
 }
 // =====================================================================
-// WATER — every pen has a water trough at the back (pen.water = { w, cap,
+// WATER — every pen has a water trough on the side facing water (kitRing; pen.water = { w, cap,
 // x, z, yaw, len, tx, tz }) and a bucket lies outside it at the start
 // (BUCKETS: b.w water in it, b.by the dog carrying it). A dog holds grab
 // on a bucket to carry it in its mouth (one each; let go: set down, water
