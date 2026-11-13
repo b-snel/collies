@@ -621,6 +621,15 @@ function buildText() {
     isNaN(d) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })].filter(Boolean).join(' · ');
 }   // headless tests: no render loop, they call GAME.step themselves
 
+// ---------------- REGISTRIES (SHARED HOOK): each section registers itself where it lives; the shared spot loops ----------------
+// onReset(fn, o): a new journey (resetGame). onSync(fn, o): every drawn frame (frame, renderOnce: fn(dt, once)). Lowest o first.
+// expose(() => ({ … })): into window.GAME, read once loading's done (after fxDef's wraps).
+const RESETS = [], SYNCS = [], EXPOSE = [];
+const byO = (a, b) => a.o - b.o;
+function onReset(fn, o = 200) { RESETS.push({ fn, o }); RESETS.sort(byO); }   // 200: a feature's, after the sea's back, before the flock and dogs
+function onSync(fn, o = 500) { SYNCS.push({ fn, o }); SYNCS.sort(byO); }   // 500: after the rest
+function expose(f) { EXPOSE.push(f); }
+
 // =====================================================================
 // TUNING — every gameplay number lives here
 // =====================================================================
@@ -1122,6 +1131,7 @@ const T = {
   },
 };
 const WATER_Y = -3;
+expose(() => ({ T }));   // TUNING
 
 // =====================================================================
 // MATH / NOISE
@@ -1410,6 +1420,7 @@ const Sound = (() => {
   };
   return api;
 })();
+expose(() => ({ Sound }));   // AUDIO
 
 // =====================================================================
 // AMBIENCE (AMB) — the world round the camera, leg by leg, all synthesized. ambMix (by the main loop) says what's here, AMB
@@ -1940,6 +1951,7 @@ const AMB = (() => {
     bus: () => beds, noise: k => BUF && BUF[k],   // (SAILING: the sea's own beds go in here, so the 🍃 volume has them too)
   };
 })();
+expose(() => ({ AMB, AMB_MIX, ambMix, ambVolume, seaAmbience, HARB }));   // AMBIENCE
 
 // =====================================================================
 // INPUT — gamepads (standard mapping) + one keyboard player (WASD or arrows)
@@ -2820,6 +2832,8 @@ function regrowGrass(dtH) {
   for (let k = 0; k < VN; k++) { const c = gCap[k], g = gAmt[k]; if (g < c) { gAmt[k] = Math.min(c, g + r * (0.35 + c)); } }
   grassDirty = true;
 }
+expose(() => ({ canyonK, CAMPS, COUGAR_CAMPS, grassAt, sAt, sdfAt, PATH_LEN, pathPoint, RIVER, terrainH, OBSTACLES, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
+  groundY, riverAcross, riverAlong, inRiver, swimSdfAt, wadeSdfAt, YARDS, yardSpot, biomeW, trailInfo }));   // WORLD GENERATION
 
 // =====================================================================
 // RENDERER, CAMERA, LIGHTS, CEL-SHADING MATERIALS
@@ -2966,6 +2980,7 @@ function instanced(geo, items, { outline = true, shadow = true, chunk = 110, gat
     if (outline) { const om = new THREE.InstancedMesh(outlineGeo(geo), OUTLINE, list.length); om.instanceMatrix = m.instanceMatrix; om.boundingSphere = m.boundingSphere; scene.add(om); }
   }
 }
+expose(() => ({ cam, renderer, scene, camera, CAM_R, CAM_F, THREE }));   // RENDERER
 
 // =====================================================================
 // TERRAIN: colours, grass capacity, mesh
@@ -4468,6 +4483,7 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
   }
 }
 buildSDF();
+expose(() => ({ CANYON, NESTS, pens, DENS, LAIRS, GROVES, updateGateGeometry, penAt }));   // FENCES
 
 // =====================================================================
 // CREATURE MODELS
@@ -5104,6 +5120,7 @@ const fireflies = (() => {
   const seeds = Array.from({ length: n }, () => ({ ox: rnd(-45, 45), oz: rnd(-45, 45), p: rnd(0, TAU), s: rnd(0.3, 0.8) }));
   return { m, pos, seeds };
 })();
+expose(() => ({ POOP, poopFx, syncPoop, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, buildDog, fitCoat, FUR_MATS, furMat, furLite, SI }));   // CREATURE MODELS
 
 // =====================================================================
 // GAME STATE
@@ -5123,6 +5140,7 @@ const living = () => G.sheep.filter(s => !s.dead);
 const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect', 'cast', 'cold', 'drowned', 'shark', 'kraken', 'siren', 'left'];
 const SEA_LOSS = ['drowned', 'shark', 'kraken', 'siren', 'left'];   // SAILING: lost at sea, or left on the mountain when the flock went down to the boat (no body to bury)
 const lostCount = () => LOSS_KINDS.reduce((a, k) => a + (G.stats[k] || 0), 0);   // every sheep lost this journey
+expose(() => ({ G, living, lostCount }));   // GAME STATE
 
 // =====================================================================
 // SHEEP — the flock's mind. Each sheep keeps the demo's motion model (a
@@ -6508,6 +6526,7 @@ function lambsAtDawn() {
   onLambsBorn(born);   // HANK + FLOCK SAVE: he coos over them; new arrivals join the saved flock
   dawnReport(babies);  // DAWN REPORT: who was born, who we lost
 }
+expose(() => ({ killSheep, makeSheep, provokeRam, MIND, KN, flockKnots, sheepNav, saltPep, describeSheep, sheepName, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord }));   // SHEEP
 
 // =====================================================================
 // DOGS
@@ -6754,6 +6773,8 @@ function knockDog(d, vx, vz, t, label = 'OOF!') {
   burst(d.x, d.y + 0.5, d.z, 8, '#fff3c0', { speed: 2.5, up: 2.5, size: 0.14 }); Sound.yelp(panOf(d.x, d.z));
   starBurst(d.x, d.y + 1, d.z, 5, undefined, { speed: 3, up: 3 }); dizzy(d, t, 1.6); shakeCam(0.3);
 }
+expose(() => ({ ROLES, TRAITS, roleOf, cleanRole, dogK, barkR, dogStats, setRole, train, trainRec, trainProg, dogTrainView, pickTitleRole, cycleTitleRole, titleRoleInput, joinPlayer,
+  dropPlayer, startJump, startPounce, updateDog, netDogRole, keyEdge }));   // ROLES & TRAINING
 // ---------------- IDLE: left alone a while (T.idle), a dog amuses itself: a poop (then kicks the grass), a pee, its tail, a nap ----------------
 // d.antic: what it's at, d.anticT: how long (synced; drawn in syncDog: dogAntic). Mostly a nap at night. Any input: back to work at once.
 const ANTICS = ['poop', 'pee', 'chase', 'sleep'];
@@ -6836,6 +6857,7 @@ function idleReset() {
 }
 // a bit of grass, dirt or pee in the air (drawing only: syncDog)
 function idleBit(x, y, z, vx, vy, vz, size, color, life, grav = -9) { if (particles.length < PART_MAX) particles.push({ x, y, z, vx, vy, vz, life, max: life, size, color, grav }); }
+expose(() => ({ dogIdle, anticEnd, spawnPoop, poopSay, idleReset, PUDDLES, POOP_SAY, anticShown, syncDog, puddleAdd }));   // IDLE
 // ---------------- health: nips, maulings, getting knocked out, healing ----------------
 function dogHealth(d, dt) {
   const H = T.dogHp;
@@ -7083,6 +7105,7 @@ function onGateOpened(pen) {
   if (G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until) startRush(pen);
   if (G.mode === 'play' && (isNight() || G.clock.hour > 17.5)) sayOnce('gate-open', 'gate_open', "That's the gate open! Bring them in!");
 }
+expose(() => ({ hurtDog, coyoteNip, knockDog, bark, teamOf, teamBark, toggleGate, onGateClosed }));   // DOGS
 
 // =====================================================================
 // DOG MOVES & PHYSICS — the pounce, grab/drag/shake/fling, things in the
@@ -8253,6 +8276,7 @@ function syncMoves(dt) {
   }
   updateStars(dt);
 }
+expose(() => ({ setGate, MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, overWater, inChute }));   // DOG MOVES & PHYSICS
 
 // =====================================================================
 // FORAGE — alfalfa and daisies along the trail, salt rocks, and each
@@ -8753,6 +8777,8 @@ function drawForageOverlay() {
     const [px, py, pz] = proj(r.x, r.y + 1.3, r.z); if (vis(px, py, pz)) forageChip(px, py, '🧂', 'rgba(27,26,40,.6)');
   }
 }
+expose(() => ({ PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, dogPackBuild, dogPackSync,
+  packHull, packR }));   // FORAGE
 // =====================================================================
 // WATER — every pen has a water trough on the side facing water (kitRing; pen.water = { w, cap,
 // x, z, yaw, len, tx, tz }) and a bucket lies outside it at the start
@@ -9006,6 +9032,8 @@ function drawWaterOverlay() {
     forageChip(px, py + 28, `💧 ${pct}%`, pct > 0 ? 'rgba(40,110,170,.85)' : dry ? 'rgba(170,70,60,.85)' : 'rgba(27,26,40,.6)');
   }
 }
+expose(() => ({ STORE, shareStores, BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt,
+  troughSpots }));   // WATER
 // =====================================================================
 // DIG SPOTS — little mounds of turned earth off the trail, with a glint
 // on top. A dog that stands (or creeps) on one digs it up: some hold a
@@ -9134,6 +9162,7 @@ function drawDigOverlay() {
     ctx.strokeStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(px, py, 11, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, sp.prog)); ctx.stroke();
   }
 }
+expose(() => ({ DIGS, updateDigs, resetDigs }));   // DIG SPOTS
 
 // =====================================================================
 // BRAMBLES — thorny patches off the trail (own rng, same on every screen).
@@ -9211,6 +9240,7 @@ function drawBrambleOverlay() {   // a thorn tag over every snagged sheep, and t
     ctx.font = '600 18px Fredoka, sans-serif'; richText('🌿', px, py + Math.sin(G.time * 6 + s.id) * 2);
   }
 }
+expose(() => ({ BRAMBLES, brambleAt, snagSheep, unsnag }));   // BRAMBLES
 
 // =====================================================================
 // BONK SPOTS — things only a pounce fixes, and apple trees to shake.
@@ -9507,6 +9537,8 @@ function drawBonkOverlay() {
     if (nudge('apple-grab', a.x, groundY(a.x, a.z) + 1.1, a.z, `${keyLabel(d.player, 'grab')} grab`, '#e8473f')) break;
   }
 }
+expose(() => ({ STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree,
+  appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt }));   // BONK SPOTS
 
 // =====================================================================
 // RATTLESNAKES — coiled behind rocks along the desert trail past the
@@ -9664,6 +9696,7 @@ function drawSnakeOverlay() {
     ctx.font = '600 18px Fredoka, sans-serif'; richText('🐍', px + Math.sin(G.time * 40) * 1.5, py);
   }
 }
+expose(() => ({ SNAKES, updateSnakes, snakeScare, resetSnakes, syncSnakes }));   // RATTLESNAKES
 
 // =====================================================================
 // ROPES — a coil of rope off the trail on every leg (own rng: the same on
@@ -10151,6 +10184,8 @@ function drawRopeOverlay() {
     }
   }
 }
+expose(() => ({ ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold,
+  coyoteDazed, readInput }));   // ROPES, grab
 
 // =====================================================================
 // BONES — dug up at a dig spot (T.dig.bone of the junk), a bone stays on
@@ -10383,6 +10418,7 @@ function loadBones() {
   boneDirty = false;
 }
 loadBones();
+expose(() => ({ BONES, spawnBone, killBone, updateBones, boneMass, puntK, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones }));   // BONES
 
 // =====================================================================
 // NAVIGATION — A* on the 1 m grid so coyotes find their way round pens,
@@ -10518,6 +10554,7 @@ function navSteer(e, gx, gz) {
   const w = P[e.pathI] || { x: gx, z: gz }, dx = w.x - e.x, dz = w.z - e.z, d = Math.hypot(dx, dz) || 1e-4;
   NAVDIR.x = dx / d; NAVDIR.z = dz / d; return NAVDIR;
 }
+expose(() => ({ findPath, navLOS }));   // NAVIGATION
 
 // =====================================================================
 // COYOTES — they hunt as packs. A pack gathers out of sight on the far
@@ -11177,6 +11214,8 @@ function drawBurrowOverlay() {
     ctx.strokeStyle = filling ? '#7ed957' : '#ff7a6b'; ctx.beginPath(); ctx.arc(px, py, 11, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, h.prog)); ctx.stroke();
   }
 }
+expose(() => ({ initDens, wakeDens, wakeDen, updateDens, hitCoyote, spawnPack, spawnCoyotes, flockCenter, grabPrey: grab, dropPrey, scareCoyote, grab }));   // COYOTES
+expose(() => ({ BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut, huntable, navSteer }));   // BURROWS
 
 // =====================================================================
 // COUGARS — loners, one to a territory: a grove of big old trees round the
@@ -11555,6 +11594,8 @@ function updateCougars(dt) {
     }
   }
 }
+expose(() => ({ startMaul, endMaul, cougarLeapDog, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, cougarBonked,
+  cougarGrab }));   // COUGARS
 
 // =====================================================================
 // FALCON — now and then by day one circles high over the flock (its shadow
@@ -11923,6 +11964,7 @@ function syncCanyon(dt) {
   }
   D.m.count = want; D.m.instanceMatrix.needsUpdate = true;
 }
+expose(() => ({ FALCON, FALCONS, BOSS, updateBoss, bossHit, eyrieShake, updateCanyon, canyonMark, canyonBird, canyonSwoop, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop }));   // FALCON
 
 // =====================================================================
 // MOUNTAIN PASS — past the Trading Post the trail climbs an icy pass (liftArr)
@@ -13527,6 +13569,13 @@ function drawPassOverlay() {
     else { ctx.font = '16px Fredoka, sans-serif'; richText('❄️', px, py); }
   }
 }
+expose(() => ({ PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, passUp, passUpFire, upScore, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold,
+  dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone, ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll,
+  updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, DOOR, WALLS, wallStruck, wallFall, updateWall, wallPounce, caveDetour, wallD, wallDraw,
+  doorStamp, rubbleD, HEAP2, DEBRIS, CAVE, caveD, inCave, yetiPick, yetiNag, yetiNagOn, yetiNagHit, YETI_NAGS, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal,
+  fireDue, hankFire, fireLit, TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow,
+  gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt, GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, gateHold, gateLead,
+  hankGate, hankBusy, gateWaitGoal, updateIceGate, torchPlanted, devJump }));   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
 
 // =====================================================================
 // REMAINS & TOMBSTONES — a sheep that dies lies where it fell (G.graves: a
@@ -13776,6 +13825,7 @@ function yardRoom(Y) {
   return true;
 }
 for (const Y of YARDS) buildYard(Y);
+expose(() => ({ yardGrow, yardRoom, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, addTombstone }));   // REMAINS & TOMBSTONES
 
 // =====================================================================
 // CLOCK, EVENTS, DAY/NIGHT LIGHTING
@@ -13870,6 +13920,7 @@ function updateLighting(dt) {
   });
   ff.m.geometry.attributes.position.needsUpdate = true;
 }
+expose(() => ({ stepClock, updateLighting }));   // CLOCK
 
 // =====================================================================
 // CAMERA — follows the dogs, zooms out to keep every player on screen
@@ -13924,6 +13975,7 @@ function leashScreen(dogs) {
     }
   }
 }
+expose(() => ({ updateCamera }));   // CAMERA
 
 // =====================================================================
 // SYNC VISUALS
@@ -14012,6 +14064,7 @@ function syncSheep(dt = 1 / 60) {
   SI.cord.m.count = SI.cord.o.count = nc; SI.nut.m.count = SI.nut.o.count = nc * 2;
   for (const k of ['cord', 'nut']) { SI[k].m.instanceMatrix.needsUpdate = true; SI[k].m.instanceColor.needsUpdate = true; }
 }
+expose(() => ({ syncSheep, sheepWoolColor, sheepHeadColor }));   // SYNC VISUALS
 // =====================================================================
 // RAM NADS — every grown ram's sack: a cord from under his tail and a pair of nuts, each a mass on springs,
 // stepped at T.nads.hz in world space from wherever his body really is (trotting, charging, punted, carried,
@@ -14170,6 +14223,7 @@ function nadsSkin(s, N, out) {
   if (N.cold > 0) out.lerp(_cAge.setRGB(0.78, 0.76, 1), 0.5 * N.cold);
   const k = oldK(s); return k > 0 ? out.lerp(_cAge.setRGB(0.84, 0.8, 0.78), 0.35 * k) : out;
 }
+expose(() => ({ nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT }));   // RAM NADS
 // =====================================================================
 // CARRY SWING — whatever's in a dog's mouth (a bucket, a sheep, a coyote, a dog)
 // hangs from its jaws on a pendulum (d.cw: p fore/aft, r sideways, rad;
@@ -14497,6 +14551,7 @@ function syncCougar(k) {
   M.body.position.y = bodyY; M.head.rotation.set(headX, headY, 0);
   M.tail[0].rotation.set(t0, 0, 0); M.tail[1].rotation.set(t1, tSway, 0); M.tail[2].rotation.set(t2, tSway * 1.4, 0);
 }
+expose(() => ({ hairStep }));   // HAIR
 
 // =====================================================================
 // HUD: DOM panels + a 2D overlay canvas for in-world markers
@@ -15166,6 +15221,7 @@ function drawOverlay(dt) {
     ctx.globalAlpha = 1;
   }
 }
+expose(() => ({ floats }));   // HUD
 
 // =====================================================================
 // MAP — a minimap bottom left (touch: under the flock panel); M / R3 / a tap on it: the whole trail, big. Old parchment where no
@@ -15437,6 +15493,7 @@ function updateMap(dt) {
 MAP.el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Sound.init(); mapToggle(); });
 function mapWarm() { mapLayout(); mapCompose(0, VZ - 1); mapDraw(); MAP.cx.getImageData(0, 0, 1, 1); }
 if (document.fonts) document.fonts.ready.then(() => { MAP.key = ''; });   // the compass's N again, in the game's font   // a canvas's first draw is slow on some GPUs: get it over with behind the loading screen
+expose(() => ({ MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame }));   // MAP
 
 // =====================================================================
 // HANK — the old shepherd. He ambles along the trail behind the dogs and
@@ -16213,6 +16270,8 @@ function syncShears() {
   }
   M.shears.belt.visible = !!hk.clippers && !hk.shearing; M.shears.hand.visible = !!hk.shearing;
 }
+expose(() => ({ hankSees, hankSpotPredators, hankNap, hank, HANK, HANK_LINES, WHISTLES, syncHank, hankVolume }));   // HANK
+expose(() => ({ giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave }));   // HANK: shearing
 
 // =====================================================================
 // VET — Hank doctors the flock. A snakebite (s.venom, RATTLESNAKES) and the
@@ -16672,6 +16731,7 @@ function drawVetOverlay() {
   const want = vetWant();
   if (want.size && onH) drawCloud(hx + 62, hy - 6, [...want].map(k => VET_ICON[k]).join(' ') + ' ?', 1, 1e9, '600 15px Fredoka, sans-serif');   // what he needs (beside him: his speech bubble's above)
 }
+expose(() => ({ snakeBite, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords, syncVet, hankRound }));   // VET
 
 // =====================================================================
 // FLOCK LOOKS — what each sheep wears: s.look = { wool, hat, hatColor,
@@ -16909,6 +16969,7 @@ function dressGrave(stone, s) {
   hat.scale.setScalar(1.2); hat.position.set(0.05, 1.19 - 0.2 * 1.2 + 0.02, 0); hat.rotation.set(0.05, 0.4, -0.18);   // on the stone's rounded top, at a slant
   stone.add(hat);
 }
+expose(() => ({ DRESS, PAINT, syncSheepDressUp, lossLine, lookOf }));   // FLOCK LOOKS
 
 // =====================================================================
 // DOG WARDROBE — each player's collie (by slot, P1–P4) has a look:
@@ -17101,6 +17162,7 @@ function titleRoleInput() {   // eats the ←/→ it uses, so they don't start t
 }
 $('tRole').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; Sound.init(); const v = b.dataset.tb; if (v === '1' || v === '-1') cycleTitleRole(+v); else pickTitleRole(v); });
 titleRoles();
+expose(() => ({ DOGS, DOGS_KEY, DOG_ITEMS, dogGear, cycleDogBreed, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog }));   // DOG WARDROBE
 
 // =====================================================================
 // HANK'S BARN — two tabs on one turntable. Sheep: pick one from the flock,
@@ -17688,6 +17750,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'Tab') { e.preventDefault(); if (!e.repeat && (G.mode === 'play' || G.mode === 'title')) { Sound.init(); openBarn(); } }
 }, true);
+expose(() => ({ BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, barnPickDog, THUMB, barnEdit, barnDogs, barnDogLook, barnSync, dogName }));   // HANK'S BARN
 
 // =====================================================================
 // DAWN REPORT — at dawn, if anyone was born or lost since the last one:
@@ -17858,6 +17921,7 @@ addEventListener('keydown', e => {
 }, true);
 addEventListener('keyup', e => dawnHoldEnd('key:' + e.code), true);
 addEventListener('blur', () => dawnHoldEnd());
+expose(() => ({ DAWN, dawnReport, openDawn, dawnOpen, closeDawn, eulogy }));   // DAWN REPORT
 
 // =====================================================================
 // FLOCK SAVE — the player's flock between journeys. Every living sheep's
@@ -17937,6 +18001,7 @@ function freshFlock() {
   FLOCK.home = []; FLOCK.memorial = []; FLOCK.journeys = 0;
   if (G.mode === 'title') spawnFlock();
 }
+expose(() => ({ FLOCK, FLOCK_KEY, saveFlock, freshFlock }));   // FLOCK SAVE
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
@@ -19144,6 +19209,11 @@ function drawWarePop(w, pen) {
   }
   ctx.restore();
 }
+expose(() => ({ FINAL, POST, MARKET, STALLS, finalPen, postPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, stockTroughs, resetVendor, syncVendor, KIT,
+  kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav }));   // VENDOR
+expose(() => ({ VAG, VSTALL, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, vagLayout, vagPlaceMats, vagRate, vagGood, vagGrief, vagAnnoy, vagLeave, vagBack, vagHide, vagAt, vagHere,
+  vagFree, vagPounced, vagBarkAt, vagGrip, vagGrabbed, vagLetGo, vagRope, vagSay, vagLine, vagGo, vagDevTo, vagDevJump, vagNeeds, vagSticks, updateVag, makeVag, vagSeaStart, vagReach,
+  vagFrame, vagSlot, vagSiteSea, vagLaunch0, vagPolar, seaDist, seaX, seaZ }));   // VAGABOND (SAILING: his Laser)
 
 // =====================================================================
 // SAILING — a boat under sail, the flock on deck (issue #74). The deck is a pen (DECK) and never moves in the world: the sea goes by
@@ -21539,6 +21609,12 @@ function seaStep(dt, dtH) {
 const seaAtRest = () => (SEA.docked || SEA.anchor === 'down' && SEA.holding && SEA.anchorT <= 0) && !seaHazardOn() && !SEA.over;
 // at dawn (stepClock): Hank fills the troughs from the hold
 function seaDawn() { if (SEA.on) seaStock(); }
+expose(() => ({ SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp,
+  seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail, HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground,
+  seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea, seaG, FORAGE, RINGS, ringStep, ringTarget, ringAim, ringsOut, seaSwimmers, seaSpd, SEAC,
+  seaCam, isleShow, seaLandDepth, landSea, scene, camera, seaCastOff, seaAshore, seaDogsAshore, seaWake, seaMoor, seaLandOff, seaWay, harbIce, harbRoad, harbK, HARB, LAND, DOCKS, ISLES,
+  inSea, QUAY, DOCK, quaySdf, onQuay, seaGround, seaAboard, simToSea, seaToSim, sailBest, sailDrive, sheetFor, boomLim, windAt, onDeck, deckSdf, boatXZ, boatU, boatV, boatHB, stationOf,
+  waterLevel, killSheep, step, startGame, resetGame, finishGame, makeSheep, spawnDog }));   // SAILING
 
 // =====================================================================
 // GAME FLOW
@@ -21644,6 +21720,7 @@ function resetGame() {
 function checkLose() {
   if (G.mode === 'play' && G.sheep.filter(s => !s.dead).length === 0) finishGame(0);
 }
+expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 
 // =====================================================================
 // ONLINE CO-OP — friends join from their own browsers, up to 4 dogs in all.
@@ -23328,6 +23405,7 @@ function ambMix(dt, indoor = false) {
   for (const key in M) AMB_MIX[key] = AMB_NOW.has(key) ? M[key] : lerp(AMB_MIX[key], M[key], k);
   return AMB_MIX;
 }
+expose(() => ({ netDogLook, MENU, menuUp, setPause, holdWorld, menuTick }));   // ONLINE CO-OP
 
 // =====================================================================
 // MAIN LOOP
@@ -23436,6 +23514,7 @@ function frame(now) {
     perfT = 0; if (DEBUG) $('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.calls} calls · ${G.sheep.length} sheep`; fpsAcc = 0; fpsN = 0; }
 }
 function regrowT(dt) { if (regrowAcc > 0.05) { regrowGrass(regrowAcc); regrowAcc = 0; } }
+expose(() => ({ frame, step }));   // MAIN LOOP
 // =====================================================================
 // DEV MENU (?debug; ` or a click on the fps line): the whole journey as one strip, land then sea. Click anywhere on it to go
 // there (devJump / devSea); the URL keeps it (?go=m, ?sea=…), so a reload comes back. Under it the cheats, each with its key.
@@ -23645,35 +23724,8 @@ if (DEBUG) {
   DEV.el.addEventListener('pointerdown', e => e.stopPropagation());
   $('fps').addEventListener('pointerdown', () => devToggle());   // (touch: no ` key)
 }
-// expose for debugging / automated tests
-window.GAME = { POOP, poopFx, syncPoop, FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
-  provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
-  // dog moves & physics
-  MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, wadeSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
-  // forage
-  PLANTS, SALT_ROCKS, FORAGE, troughEat, lickSalt, fillTroughs, troughFood, absHour, regrowPlants, regrowSalt, resetForage, updateDogForage, saltPep };
-Object.assign(window.GAME, { FINAL, POST, MARKET, STALLS, finalPen, postPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, stockTroughs, resetVendor, syncVendor,
-  KIT, kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav });   // VENDOR
-Object.assign(window.GAME, { VAG, VSTALL, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, vagLayout, vagPlaceMats, vagRate, vagGood, vagGrief, vagAnnoy, vagLeave, vagBack, vagHide, vagAt, vagHere, vagFree,
-  vagPounced, vagBarkAt, vagGrip, vagGrabbed, vagLetGo, vagRope, vagSay, vagLine, vagGo, vagDevTo, vagDevJump, vagNeeds, vagSticks, updateVag, makeVag,
-  vagSeaStart, vagReach, vagFrame, vagSlot, vagSiteSea, vagLaunch0, vagPolar, seaDist, seaX, seaZ });   // VAGABOND (SAILING: his Laser)
-Object.assign(window.GAME, { nadsNew, nadsStep, nadsHang, nadsMats, nadsK, nadsDims, NAD_AT, NAD_LEG, LIGHT });   // RAM NADS
-Object.assign(window.GAME, { AMB, AMB_MIX, ambMix, ambVolume, seaAmbience, HARB });   // AMBIENCE
-Object.assign(window.GAME, { giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP_DIG, digUp, woolFit, sheepRecord, readFlockSave });   // HANK: shearing
-Object.assign(window.GAME, { STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree, appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt });   // BONK SPOTS
-Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetSnakes, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords,
-  YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankRound, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
-Object.assign(window.GAME, { ROLES, TRAITS, roleOf, cleanRole, dogK, barkR, dogStats, setRole, train, trainRec, trainProg, dogTrainView, pickTitleRole, cycleTitleRole, titleRoleInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogRole, keyEdge });   // ROLES & TRAINING
-Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut, huntable, navSteer });   // BURROWS
-Object.assign(window.GAME, { dogIdle, anticEnd, spawnPoop, poopSay, idleReset, PUDDLES, POOP_SAY, anticShown, syncDog, puddleAdd });   // IDLE
-Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, puntK, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
-Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
-Object.assign(window.GAME, { STORE, shareStores, BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
-Object.assign(window.GAME, { SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail,
-  HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground, seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea,
-  seaG, FORAGE, RINGS, ringStep, ringTarget, ringAim, ringsOut, seaSwimmers, seaSpd, SEAC, seaCam, isleShow, seaLandDepth, landSea, scene, camera,
-  seaCastOff, seaAshore, seaDogsAshore, seaWake, seaMoor, seaLandOff, seaWay, harbIce, harbRoad, harbK, HARB, LAND, DOCKS, ISLES, inSea, QUAY, DOCK, quaySdf, onQuay, seaGround,
-  seaAboard, simToSea, seaToSim, sailBest, sailDrive, sheetFor, boomLim, windAt, onDeck, deckSdf, boatXZ, boatU, boatV, boatHB, stationOf, waterLevel, killSheep, step, startGame, resetGame, finishGame, makeSheep, spawnDog });   // SAILING
+expose(() => ({ renderOnce }));   // DEV MENU
+window.GAME = Object.assign({}, ...EXPOSE.map(f => f()));   // debugging / automated tests: every section's expose
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
@@ -23684,15 +23736,6 @@ function renderOnce(dt = 1 / 60) {
   syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); syncPoop(dt); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
-Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, passUp, passUpFire, upScore, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
-  ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble,
-  DOOR, WALLS, wallStruck, wallFall, updateWall, wallPounce, caveDetour, wallD, wallDraw, doorStamp, rubbleD, HEAP2, DEBRIS, CAVE, caveD, inCave, yetiPick, yetiNag, yetiNagOn, yetiNagHit, YETI_NAGS, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
-  TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt,
-  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, gateHold, gateLead, hankGate, hankBusy, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
-Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
-Object.assign(window.GAME, { THREE, dogPackBuild, dogPackSync, packHull, packR, Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, barnPickDog, THUMB, DOGS, DOGS_KEY, DOG_ITEMS, DOG_BREEDS, DOG_PATS, dogBreed, dogShape, dogGear, buildDog, fitCoat, cycleDogBreed, netDogLook, hairStep, FUR_MATS, furMat, furLite, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
-  barnEdit, barnDogs, barnDogLook, barnSync, dogName, MENU, menuUp, setPause, holdWorld, menuTick,   // ONLINE: every screen's own barn and menus
-  describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, dawnOpen, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
 spawnFlock();
