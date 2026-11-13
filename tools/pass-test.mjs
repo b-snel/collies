@@ -1,9 +1,10 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|burn|finish]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|cave|nag|rock|entry|side|gate|burn|finish|uphill]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
-//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
+//             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall (shut by its door
+//             till that's down); nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
 //   fire      Hank lights the fire camp the flock's at; the coldest take the places round it and warm up
-//   camp      round each fire camp nothing stands between the fire and the ground near it (no corner to get stuck in); warm a long way out;
+//   camp      round each fire camp nothing stands between the fire and the ground near it (no corner to get stuck in; the ice cave's: inside it); warm a long way out;
 //             the base camp at the foot of the climb: Hank lights it as the flock comes up
 //   torch     a dog grabs a camp's stick, dips it in the lit fire: alight; carried up into the snow it melts it: grass under it, eaten;
 //             lying lit on the ice: the ice melts, no slide; a lit one lights a cold camp's fire; it burns out; off the mountain: home again
@@ -16,11 +17,26 @@
 //             rested; a friend can grab it out
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
+//   cave      the top fire's in the ice cave by him, its mouth his way: walled but the mouth, warm places round the fire, Hank lights it and
+//             keeps in it while he's up; a snowball at a sheep in it smashes on it; his butt can't reach in (him at the end of his leash);
+//             a burning sheep punted from its mouth hits him; a burning sheep and a lit torch against its ice: it holds
+//   nag       Hank, while you're not getting it: a line in, then on a timer, snarkier each time; a pounce off him, a cold sheep at him: a
+//             line on it (not within the cooldown); tops out; a hit: a cheer, back a few tiers; not over a line that matters, nor right
+//             after another nag (the gate's); beaten: no more; a new journey: from the top
 //   rock      three sheep flung into the rock wall up the side trail: it falls on him (an arm sticks out), his cave thaws; its heap's a
 //             way over the rim: from the hidden ledge to his spot, walked over (up on its stones)
+//   entry     the door in the side trail's mouth: in the way (no way up to the ledge); a dog's pounce: a wobble, a bounce, never a fall;
+//             two sheep flung into it: down, up the road; the way's open, walked over its heap; a new journey: up again
 //   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
 //             rest left below) drives them off the floor, up it and onto the ledge
-//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
+//   gate      the ice gate past the base camp: wall to wall; a dog sprinting up it and a driven sheep thrown back down; Hank: "Grab the
+//             torch…", then nags, further and further apart; the flock up past it, no lane: Hank waits by the base camp's fire; its torch lit,
+//             carried up: a lane (his lines), Hank and a sheep up it, a blizzard doesn't shut it; a dev jump melts it; a new journey: iced
+//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed; alight it melts the snow and the gate's ice
+//   uphill    (UP, seeded, on vs off) left alone the flock goes up to a lit camp 30 m up, not onto the ice or into a crack; 30 m past
+//             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it (3 goes of 4);
+//             pressed from either side it veers up; cold, 15 m past a lit fire, it doesn't go back down to it (the ice gate melted for
+//             these); the ice gate up, no lane: it waits at its foot (was: back down), none onto the ice; a lane through: up it, on up
 //   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -57,10 +73,11 @@ if (!only || only === 'layout') {
     const free = s => { let f = 0; for (let l = -40; l <= 40; l += 0.5) { const p = pathPoint(s, l); if (sdfAt(p.x, p.z) > 0) f += 0.5; } return f; };
     const fp = PASS.fires.map(f => { let mx = 0; for (let a = 0; a < 6.3; a += 0.5) mx = Math.max(mx, Math.abs(terrainH(f.x + Math.cos(a) * 4, f.z + Math.sin(a) * 4) - terrainH(f.x, f.z))); return { lvl: +mx.toFixed(2), sdf: +sdfAt(f.x, f.z).toFixed(1) }; });
     const cave = pens.find(p => p.final), post = pens.find(p => p.camp.post), a = { x: post.exitX, z: post.exitZ };
-    const path = findPath(a.x, a.z, cave.exitX, cave.exitZ, 400000), sp = SIDE.pts[0], side = findPath(pathPoint(SIDE.s0 - 8, 0).x, pathPoint(SIDE.s0 - 8, 0).z, SIDE.ledge.x, SIDE.ledge.z, 100000);
+    const path = findPath(a.x, a.z, cave.exitX, cave.exitZ, 400000), sp = SIDE.pts[0], L = SIDE.ledge, reach = () => { const q = findPath(pathPoint(SIDE.s0 - 8, 0).x, pathPoint(SIDE.s0 - 8, 0).z, L.x, L.z, 400000); return !!(q && q.length) && Math.hypot(q.at(-1).x - L.x, q.at(-1).z - L.z) < 1.5; };
+    const shut = !reach(); GAME.DOOR.state = 'down'; GAME.doorStamp(false); const open = reach(), side = open && shut; GAME.resetPass();
     return { post: POST.s, fin: FINAL.s, len: PATH_LEN, postFinal: !!post.final, caveFinal: !!cave.final, frozen: !!cave.frozen, market: MARKET.s < POST.s && MARKET.wares.every(w => w.id !== 'cabo'),
       lift: [P.s0, 1250, 1350, P.top, FINAL.s].map(s => +liftAt(s).toFixed(1)), freeLow: free(1100), freePass: Math.max(...[1220, 1320, 1420].map(free)), fires: fp,
-      ices: ICES.length, crevs: CREVS.length, goats: GOATS.length, path: !!(path && path.length), side: !!(side && side.length), ledge: +sdfAt(SIDE.ledge.x, SIDE.ledge.z).toFixed(1),
+      ices: ICES.length, crevs: CREVS.length, goats: GOATS.length, path: !!(path && path.length), side, shut, open, ledge: +sdfAt(SIDE.ledge.x, SIDE.ledge.z).toFixed(1),
       wall: Math.max(...[8, 12, 16].map(o => { const p = pathPoint(1300, -(P.hwW + o)); return terrainH(p.x, p.z) - liftAt(1300); })),
       rock: ROCK.state, yeti: YETI.state, inPass: { dens: inP(DENS), nests: inP(NESTS), plants: inP(PLANTS), salt: inP(SALT_ROCKS), brambles: inP(BRAMBLES), digs: inP(DIGS), snakes: inP(SNAKES), apples: inP(APPLE_TREES), groves: GROVES.filter(g => passK(g.s) > 0.3).length } };
   });
@@ -70,7 +87,7 @@ if (!only || only === 'layout') {
   ok(`the pass is narrower (${r.freePass} m) than the desert below (${r.freeLow} m); walls up the west side (${r.wall.toFixed(1)} m)`, r.freePass < r.freeLow && r.freePass < 34 && r.wall > 10, r);
   ok(`${r.fires.length} fire camps (one the base camp), level and clear`, r.fires.length === 4 && r.fires.every(f => f.lvl < 0.6 && f.sdf > 2), r.fires);
   ok(`${r.ices} ice patches, ${r.crevs} cracks, ${r.goats} goats`, r.ices >= 8 && r.crevs >= 5 && r.goats >= 9, r);
-  ok('a way from the Trading Post up to the cave; the hidden side trail up to its ledge', r.path && r.side && r.ledge > 1, r);
+  ok('a way from the Trading Post up to the cave; the hidden side trail up to its ledge (once its door\'s down)', r.path && r.side && r.ledge > 1, r);
   ok('the rock wall stands, the yeti sleeps', r.rock === 'stand' && r.yeti === 'sleep', r);
   ok('nothing else up there (dens, nests, plants, salt, brambles, digs, snakes, apples, groves)', Object.values(r.inPass).every(v => v === 0), r.inPass);
 }
@@ -115,7 +132,7 @@ if (!only || only === 'camp') {
     const camps = PASS.fires.map(f => {
       let n = 0, seen = 0;
       for (let dx = -10; dx <= 10; dx++) for (let dz = -10; dz <= 10; dz++) {
-        const d = Math.hypot(dx, dz); if (d > 10 || d < 2 || sdfAt(f.x + dx, f.z + dz) < 0.5) continue; n++;
+        const d = Math.hypot(dx, dz); if (d > (f.cave ? GAME.CAVE.r : 10) || d < 2 || sdfAt(f.x + dx, f.z + dz) < 0.5) continue; n++;   // (THE ICE CAVE: inside it)
         let clear = true; for (let u = 0.1; u < 1; u += 0.05) if (sdfAt(f.x + dx * u, f.z + dz * u) < 0.3) { clear = false; break; }
         if (clear) seen++;
       }
@@ -153,7 +170,7 @@ if (!only || only === 'torch') {
     P.bot = { grab: true }; const ga = grassAt(q.x, q.z); run(10); out.eaten = +(ga - grassAt(q.x, q.z)).toFixed(2); out.hunger = +s.hunger.toFixed(2);
     // dropped lit on the ice: it melts, and a running sheep crosses it without a slide
     P.bot = {}; GAME.step(0.025); const m = ICES.slice().sort((a, c) => a.s - c.s)[0];
-    t.x = m.x; t.z = m.z; t.h = 0; t.vx = t.vz = 0; t.lit = 3; const ik0 = iceK(m.x, m.z); run(3); out.ice = [+ik0.toFixed(2), +iceK(m.x, m.z).toFixed(2)];
+    t.x = m.x - Math.sin(t.yaw) * T.torch.len * 0.3; t.z = m.z - Math.cos(t.yaw) * T.torch.len * 0.3; t.h = 0; t.vx = t.vz = 0; t.lit = 3; const ik0 = iceK(m.x, m.z); run(3); out.ice = [+ik0.toFixed(2), +iceK(m.x, m.z).toFixed(2)];   // (what it melts round: its tip end, on the patch's middle)
     const r = living()[2]; r.x = m.x - 0.6; r.z = m.z; r.vx = 4; r.vz = 0; r.state = 'flee'; r.fear = 1; r.fdx = 1; r.fdz = 0; r.slipCd = 0; let slid = false;
     for (let k = 0; k < 0.3; k += 0.025) { GAME.step(0.025); if (r.slide) slid = true; } out.slid = slid;
     // a lit one into a camp's cold fire: it's lit
@@ -227,9 +244,9 @@ if (!only || only === 'blizzard') {
     setup(1320, { blizz: true, hour: 11 });
     run(2); const on = PASS.blizz.on; let k = 0;
     run(40, () => { k = Math.max(k, PASS.blizz.k); }); const L = living(), snow = L.reduce((a, s) => a + (s.snow || 0), 0) / L.length;
-    const s = L[0]; s.snow = 1; const sn0 = s.snow;
-    for (let t = 0; t < 2; t += 0.025) { s.state = 'flee'; s.fear = 1; s.fdx = 0; s.fdz = 1; GAME.step(0.025); }
-    const shed = s.snow;
+    const s = L[0], p = pathPoint(1320, 0), { ICES, CREVS } = GAME, ice = ICES.splice(0), crev = CREVS.splice(0); s.snow = 1; s.x = p.x; s.z = p.z;   // (the flock's drifted on up: back on clear floor, no ice or cracks to stop it)
+    for (let t = 0; t < 2; t += 0.025) { s.state = 'flee'; s.fear = 1; s.fdx = p.tx; s.fdz = p.tz; GAME.step(0.025); }   // (up, away from the dog)
+    const shed = s.snow; ICES.push(...ice); CREVS.push(...crev);
     PASS.blizz.on = false; PASS.blizz.next = 1e9; const f = PASS.fires[1], q = L[1]; f.fuel = 5; q.snow = 1; q.x = f.x + 2.2; q.z = f.z; run(4); 
     return { on, k: +k.toFixed(2), snow: +snow.toFixed(2), shed: +shed.toFixed(2), melt: +q.snow.toFixed(2) };
   });
@@ -381,6 +398,101 @@ if (!only || only === 'finish') {
   ok('a new journey: iced shut again', r.iced, r);
 }
 
+if (!only || only === 'cave') {
+  const r = await ev(() => {
+    const { G, T, PASS, CAVE, YETI, SIDE, SNOWBALLS, HANK, living, snowballRoll, punt, ignite, caveD, inCave, sdfAt, fireSpots, findPath, pathPoint } = GAME, out = {};
+    const f = PASS.fires.find(o => o.top), H = SIDE.home, C = CAVE, da = a => Math.abs(Math.atan2(Math.sin(a - C.a), Math.cos(a - C.a)));
+    out.inCave = !!f.cave && caveD(f.x, f.z) < 0.01 && Math.abs(C.ax * (H.x - C.x) + C.az * (H.z - C.z) - Math.hypot(H.x - C.x, H.z - C.z)) < 0.01;
+    out.mouth = +Math.hypot(C.x + C.ax * C.r - H.x, C.z + C.az * C.r - H.z).toFixed(1);   // his spot to its mouth
+    // walled all round but its mouth; warm places round the fire; a way in from the trail through the mouth
+    let wall = 0, wn = 0, gap = 0, gn = 0; for (let a = 0; a < 6.28; a += 0.05) { const x = C.x + Math.cos(a) * (C.r + C.th * 0.55), z = C.z + Math.sin(a) * (C.r + C.th * 0.55); if (da(a) > C.mouth + 0.12) { wn++; if (sdfAt(x, z) < 0) wall++; } else if (da(a) < C.mouth - 0.3) { gn++; if (sdfAt(x, z) > 0.4) gap++; } }
+    out.walled = +(wall / wn).toFixed(2); out.open = +(gap / gn).toFixed(2); out.spots = fireSpots(f).length;
+    const walled = () => { let w = 0, n = 0; for (let a = 0; a < 6.28; a += 0.05) if (da(a) > C.mouth + 0.12) { n++; if (sdfAt(C.x + Math.cos(a) * (C.r + C.th * 0.55), C.z + Math.sin(a) * (C.r + C.th * 0.55)) < 0) w++; } return +(w / n).toFixed(2); };
+    const st = pathPoint(f.s - 14, 2), fp = findPath(st.x, st.z, f.x + C.ax * 1.5, f.z + C.az * 1.5, 100000); out.way = !!fp && Math.hypot(fp.at(-1).x - f.x, fp.at(-1).z - f.z) < 2.5;
+    const tc = GAME.TORCHES[f.i]; out.stick = inCave(tc.x, tc.z) && caveD(tc.x, tc.z) > 1.5;   // its stick: in it, by the fire
+    // the flock comes up: Hank lights it, and keeps in it while he's up; its stick dipped in it: alight
+    setup(f.s - 26, { hour: 11, hankS: f.s - 32 }); out.litT = +run(40, () => f.fuel > 0).toFixed(1); out.hankIn = inCave(HANK.x, HANK.z, 0.5);   // (lit from in it)
+    tc.x = f.x + 0.5; tc.z = f.z; tc.h = 0; GAME.step(0.025); out.torch = tc.lit > 0; GAME.torchHome(tc);
+    YETI.state = 'sleep'; YETI.beaten = false; const d = G.dogs[0], q = pathPoint(T.pass.arena + 6, 4); d.x = q.x; d.z = q.z; run(1); YETI.next = 1e9; YETI.buttCd = 1e9;
+    HANK.x = f.x - C.ax * 8; HANK.z = f.z - C.az * 8; HANK.goal = null; out.shelterT = +run(25, () => inCave(HANK.x, HANK.z, 0.5)).toFixed(1); run(1); out.shelter = YETI.on && inCave(HANK.x, HANK.z, 0.5);   // (from right behind it: round to its mouth)
+    // a snowball at a sheep in it: smashed on it, the sheep's fine
+    const L = living().filter(o => !o.ram && !o.lamb), s = L[0]; s.x = f.x + C.ax * 2.2 - C.az * 1.2; s.z = f.z + C.az * 2.2 + C.ax * 1.2; s.vx = s.vz = 0; s.state = 'idle'; s.pen = null;
+    const bx = YETI.x + C.ax * -2.6, bz = YETI.z + C.az * -2.6, bl = Math.hypot(s.x - bx, s.z - bz); SNOWBALLS.length = 0;
+    const sx = s.x, sz = s.z, b = snowballRoll(bx, bz, (s.x - bx) / bl * T.yeti.roll, (s.z - bz) / bl * T.yeti.roll); let hit = false, at = null;
+    for (let t = 0; t < 6 && SNOWBALLS.includes(b); t += 0.025) { const px = b.x, pz = b.z; if (!s.air) { s.x = sx; s.z = sz; s.vx = s.vz = 0; } GAME.step(0.025); if (!SNOWBALLS.includes(b)) at = caveD(px, pz); if (b.hit.has(s)) hit = true; }
+    out.ball = { hit, at: at && +at.toFixed(1) };
+    // his butt can't reach in: him at the end of his leash toward it, a dog just inside its mouth
+    YETI.buttCd = 0; YETI.state = 'idle'; YETI.hurtT = 0; let butted = false;
+    living().forEach((o, i) => { if (o.air || o.burn > 0) return; o.x = C.x - C.ax * 3 + (i % 4 - 1.5) * 0.9; o.z = C.z - C.az * 3 + (Math.floor(i / 4) - 1.5) * 0.9; o.vx = o.vz = 0; });   // (the flock at the back of it)
+    for (let t = 0; t < 4; t += 0.025) { YETI.x = H.x - C.ax * T.yeti.leash; YETI.z = H.z - C.az * T.yeti.leash; d.x = C.x + C.ax * (C.r - 0.6); d.z = C.z + C.az * (C.r - 0.6); d.vx = d.vz = 0; GAME.step(0.025); if ((YETI.state === 'windup' || YETI.state === 'butt') && YETI.target === d || d.air) butted = true; }
+    out.butted = butted;
+    // a burning sheep punted from its mouth (the fire's side): it hits him
+    YETI.x = H.x; YETI.z = H.z; YETI.state = 'idle'; YETI.buttCd = 1e9; YETI.next = 1e9; YETI.hurtT = 0; const hp0 = YETI.hp, k = L[1];
+    k.x = C.x + C.ax * (C.r - 1.2); k.z = C.z + C.az * (C.r - 1.2); k.vx = k.vz = 0; k.pen = null; ignite(k);
+    const ux = YETI.x - k.x, uz = YETI.z - k.z, ul = Math.hypot(ux, uz); d.x = k.x - ux / ul; d.z = k.z - uz / ul; d.pdx = ux / ul; d.pdz = uz / ul; d.pounceT = 0.2; d.air = null; punt(k, d, ux / ul, uz / ul);
+    for (let t = 0; t < 3 && k.air; t += 0.025) GAME.step(0.025);
+    out.punt = { from: +ul.toFixed(1), hp: [hp0, YETI.hp] };
+    // a burning sheep against its ice a while (and a lit torch by it): it holds (still walled, its shell up); the snow on its floor melts
+    const w = L[2], ia = C.a + Math.PI * 0.8, wx = C.x + Math.cos(ia) * (C.r - 0.7), wz = C.z + Math.sin(ia) * (C.r - 0.7); w.pen = null; ignite(w); tc.x = wx + Math.cos(ia) * 0.3; tc.z = wz + Math.sin(ia) * 0.3; tc.lit = 5;
+    for (let t = 0; t < 8; t += 0.025) { w.x = wx; w.z = wz; w.vx = w.vz = 0; w.air = null; w.burn = Math.max(w.burn, 2); GAME.step(0.025); }
+    out.holds = { walled: walled(), shell: !!C.shell && !!C.shell.parent && C.shell.visible, melt: +GAME.meltAt(wx - Math.cos(ia) * 0.8, wz - Math.sin(ia) * 0.8).toFixed(2) }; w.burn = 0; GAME.torchHome(tc);
+    // a night in it: the flock round the fire, Hank asleep by it (the night held: warm by a fire it hurries)
+    setup(f.s, { hour: 21, hankS: f.s - 6 }); f.fuel = 8; living().forEach((o, i) => { const a = C.a + Math.PI + (i % 7 - 3) * 0.35, rr = 2.6 + Math.floor(i / 7) * 1.2; o.x = C.x + Math.cos(a) * rr; o.z = C.z + Math.sin(a) * rr; o.vx = o.vz = 0; o.cold = 0.5; });
+    out.night = run(60, () => { G.clock.hour = 23; return HANK.asleep && inCave(HANK.x, HANK.z); }) >= 0;
+    return out;
+  });
+  ok(`the top fire's in the ice cave, its mouth toward him (${r.mouth} m off his spot: past his reach, in a punt's)`, r.inCave && r.mouth > 11.5 && r.mouth < 17, r);
+  ok(`walled all round (${r.walled}) but its mouth (${r.open} open); ${r.spots} warm places round the fire; a way in; its stick in it, lit in its fire`, r.walled > 0.95 && r.open > 0.9 && r.spots >= 16 && r.way && r.stick && r.torch, r);
+  ok(`Hank lights it as the flock comes up (${r.litT} s), and keeps in it while he's up (from behind it: in in ${r.shelterT} s); a night: asleep in it`, r.litT >= 0 && r.hankIn && r.shelter && r.night, r);
+  ok(`a snowball at a sheep in it smashes on it (${r.ball.at} m from its middle): the sheep's fine`, !r.ball.hit && r.ball.at !== null && r.ball.at < 9.5, r.ball);
+  ok('his butt can\'t reach in (him at the end of his leash)', !r.butted, r);
+  ok(`a burning sheep punted from its mouth (${r.punt.from} m) hits him: hp ${r.punt.hp.join(' → ')}`, r.punt.hp[1] === r.punt.hp[0] - 1, r.punt);
+  ok(`a burning sheep and a lit torch against its ice: it holds (walled ${r.holds.walled}, shell up); its floor's snow melts (${r.holds.melt})`, r.holds.walled >= r.walled && r.holds.shell && r.holds.melt > 0.5, r.holds);
+}
+
+if (!only || only === 'nag') {
+  const r = await ev(() => {
+    const { G, T, PASS, CAVE, YETI, HANK, YETI_NAGS, living, ignite, punt, yetiStruck, yetiBeaten, resetPass, pathPoint } = GAME, out = {}, K = T.yeti.nag;
+    const f = PASS.fires.find(o => o.top);
+    setup(T.pass.arena - 8, { yeti: true, hour: 11, dogS: T.pass.arena + 4 }); f.fuel = 9; const d = G.dogs[0];
+    run(1); YETI.next = 1e9; YETI.buttCd = 1e9; HANK.x = CAVE.x; HANK.z = CAVE.z;
+    const all = Object.entries(YETI_NAGS).flatMap(([k, L]) => L.map((t, i) => [t, k, i])), said = () => HANK.log.filter(l => l.said && all.some(a => a[0] === l.text)).map(l => { const a = all.find(a => a[0] === l.text); return [a[1], a[2], +l.t.toFixed(0)]; });
+    const t0 = G.time; HANK.log.length = 0;
+    run(K.first + 1); out.first = said();
+    run(K.every * Math.min(K.growMax, 1 + K.grow) + 1); out.second = said();   // (each further apart)
+    // a pounce off him (not within the cooldown, then after it)
+    const pounce = () => { d.x = YETI.x - 2; d.z = YETI.z; d.vx = d.vz = 0; d.air = null; d.stunT = 0; d.pounceCD = 0; G.players[0].bot = toward(1, 0, { pounce: true }); GAME.step(0.025); G.players[0].bot = {}; run(0.4); };
+    pounce(); out.soon = said().length;
+    run(YETI.nag.cd + 0.5); pounce(); run(4); out.pounce = said().at(-1);   // (a line that matters on the go: after it)
+    // a cold sheep thrown at him
+    run(YETI.nag.cd + 0.5); const s = living().filter(o => !o.ram)[0]; s.x = YETI.x - 7; s.z = YETI.z; s.vx = s.vz = 0; s.burn = 0; d.x = s.x - 1; d.z = s.z; d.pdx = 1; d.pdz = 0; d.pounceT = 0.2; punt(s, d, 1, 0);
+    for (let t = 0; t < 3 && s.air; t += 0.025) GAME.step(0.025); run(4); out.cold = said().at(-1);
+    // it tops out
+    G.clock.hour = 11;   // (midday again: no "night's comin'" over the rest)
+    YETI.nag.tier = 40; YETI.nag.cd = 0; YETI.nag.t = 1e3; run(12, () => YETI.nag.tier !== 40); out.top = YETI.nag.tier;   // (once he's done with the last, and whatever else he's on about)
+    // a hit: a cheer, back a few tiers
+    const k = living().filter(o => !o.ram)[1]; k.x = YETI.x - 7; k.z = YETI.z; k.vx = k.vz = 0; ignite(k); YETI.hurtT = 0; d.x = k.x - 1; d.z = k.z; d.pdx = 1; d.pdz = 0; d.pounceT = 0.2; punt(k, d, 1, 0);
+    for (let t = 0; t < 3 && k.air; t += 0.025) GAME.step(0.025); run(1.5); out.hit = { hp: YETI.hp, tier: YETI.nag.tier, cheer: HANK.log.some(l => l.said && /felt that|Roast him|That's the way/.test(l.text)) };
+    // a line that matters on (forced, long): the timer's nag waits till it's off the screen; another nag (the gate's) just said: hankNagGap after it
+    const first = () => HANK.log.find(l => l.said && all.some(a => a[0] === l.text)), long = "Steady now. This one matters, and it's a long one, so hush a wee while.";
+    run(K.cd + 0.5); HANK.log.length = 0; GAME.hank(null, long, { force: true }); let t1 = G.time; YETI.nag.cd = 0; YETI.nag.t = 1e3; run(T.hankNagGap + 5);
+    out.over = first() ? +(first().t - t1).toFixed(1) : -1; out.len = +(1.6 + long.length * 0.055).toFixed(1);
+    run(K.cd + 0.5); HANK.log.length = 0; HANK.nagAt = t1 = G.time; YETI.nag.cd = 0; YETI.nag.t = 1e3; run(T.hankNagGap + 3);
+    out.gap = first() ? +(first().t - t1).toFixed(1) : -1; out.G = T.hankNagGap;
+    // beaten: no more
+    yetiBeaten('fire'); HANK.log.length = 0; run(K.every * 1.5); out.after = said().length;
+    resetPass(); out.reset = YETI.nag.tier === 0 && YETI.nag.n === 0;
+    out.K = { tiers: K.tiers, back: K.back };
+    return out;
+  });
+  ok(`a line in (${JSON.stringify(r.first)}), then on a timer, snarkier (${JSON.stringify(r.second.at(-1))})`, r.first.length === 1 && r.first[0][0] === 'time' && r.first[0][1] === 0 && r.second.length === 2 && r.second[1][1] === 1, r);
+  ok(`a pounce off him: not within the cooldown (${r.soon}), then a line on it (${JSON.stringify(r.pounce)})`, r.soon === 2 && r.pounce && r.pounce[0] === 'pounce' && r.pounce[1] === 2, r);
+  ok(`a cold sheep at him: a line on it (${JSON.stringify(r.cold)})`, r.cold && r.cold[0] === 'cold' && r.cold[1] === 3, r);
+  ok(`it tops out at ${r.top + 1} tiers; a hit: a cheer, back to tier ${r.hit.tier}`, r.top === r.K.tiers - 1 && r.hit.hp === 2 && r.hit.cheer && r.hit.tier === r.top - r.K.back, r);
+  ok(`not over a line that matters (on ${r.len} s): after it (${r.over} s); after another nag (the gate's): ${r.G} s on (${r.gap} s)`, r.over >= r.len - 0.05 && r.over < r.len + 1 && r.gap >= r.G - 0.05 && r.gap < r.G + 1, r);
+  ok(`beaten: no more (${r.after}); a new journey: from the top`, r.after === 0 && r.reset, r);
+}
+
 if (!only || only === 'rock') {
   const r = await ev(() => {
     const { G, T, YETI, ROCK, SIDE, living, punt, finalPen, sAt } = GAME;
@@ -406,14 +518,53 @@ if (!only || only === 'rock') {
   ok(`its heap's a way over the rim: the hidden ledge to his spot ${r.way} m (${r.crow} as the crow flies), up on its stones (${r.bump} m), a dog walks it in ${r.t} s`, r.way > 0 && r.way < r.crow * 1.5 && r.bump > 0.4 && r.t >= 0, r);
 }
 
+if (!only || only === 'entry') {
+  const r = await ev(() => {
+    const { G, T, DOOR, SIDE, living, punt, findPath, pathPoint, sdfAt, groundY, terrainH, resetPass, CAM_R, CAM_F } = GAME, out = {};
+    setup(SIDE.s0 - 6, { lat: -6, hour: 10, dogS: SIDE.s0 - 2, dogLat: -8 });
+    const L = SIDE.ledge, R = DOOR, fx = Math.sin(R.yaw), fz = Math.cos(R.yaw), reach = () => { const st = pathPoint(SIDE.s0 - 8, 0), q = findPath(st.x, st.z, L.x, L.z, 400000); return !!(q && q.length) && Math.hypot(q.at(-1).x - L.x, q.at(-1).z - L.z) < 1.5; };
+    out.stand = R.state; out.shut = !reach() && sdfAt(R.x, R.z) < 0;
+    const hq = pathPoint(SIDE.s0 + 2, 2); GAME.HANK.x = hq.x; GAME.HANK.z = hq.z; GAME.HANK.goal = null; run(2); out.seen = GAME.HANK.log.some(l => l.said && /wall/.test(l.text));
+    // a dog's pounce: it wobbles, the dog bounces back; it never falls
+    const d = G.dogs[0], P = G.players[0]; let wob = 0, back = false;
+    for (let k = 0; k < 4; k++) {
+      d.x = R.x - fx * 2.2; d.z = R.z - fz * 2.2; d.vx = d.vz = 0; d.air = null; d.stunT = 0; d.pounceCD = 0; d.yaw = R.yaw;
+      P.bot = toward(fx, fz, { pounce: true }); GAME.step(0.025); P.bot = {};
+      for (let t = 0; t < 0.6; t += 0.025) { GAME.step(0.025); GAME.syncPass(0.025); wob = Math.max(wob, R.wob || 0); if ((d.x - R.x) * fx + (d.z - R.z) * fz < -2.4) back = true; }
+    }
+    out.pounce = { wob: +wob.toFixed(2), back, state: R.state, cracks: R.cracks };
+    // two sheep flung into it: down, up the road
+    const cr = [];
+    for (let k = 0; k < T.yeti.door.cracks; k++) {
+      const s = living().filter(o => !o.ram)[k]; s.x = R.x - fx * 3.4; s.z = R.z - fz * 3.4; s.vx = s.vz = 0; s.pen = null; s.air = null;
+      d.x = s.x - fx; d.z = s.z - fz; d.pdx = fx; d.pdz = fz; d.pounceT = 0.2; punt(s, d, fx, fz);
+      for (let t = 0; t < 2 && s.air; t += 0.025) GAME.step(0.025);
+      cr.push(R.cracks); run(0.7);
+    }
+    run(2.5); out.cracks = cr; out.state = R.state;
+    // the way's open: a dog walks up the road, over its heap, past where it stood
+    out.open = reach(); const mid = { x: R.x + fx * R.len * 0.4, z: R.z + fz * R.len * 0.4 }; out.bump = +(groundY(mid.x, mid.z) - terrainH(mid.x, mid.z)).toFixed(2);
+    d.x = R.x - fx * 5; d.z = R.z - fz * 5; d.vx = d.vz = 0; d.air = null; d.slide = null; const g = { x: R.x + fx * (R.len + 3), z: R.z + fz * (R.len + 3) };
+    out.t = +run(15, () => { P.bot = toward(g.x - d.x, g.z - d.z); return Math.hypot(g.x - d.x, g.z - d.z) < 2; }).toFixed(1); P.bot = {};
+    resetPass(); out.again = R.state === 'stand' && !reach() && sdfAt(R.x, R.z) < 0 && !GAME.HEAP2.on;
+    return out;
+  });
+  ok('the door stands in the side trail\'s mouth: no way up to the ledge; Hank wonders at it', r.stand === 'stand' && r.shut && r.seen, r);
+  ok(`a dog's pounce: it wobbles (${r.pounce.wob}), the dog bounces back; never falls (×4: ${r.pounce.state}, ${r.pounce.cracks} cracks)`, r.pounce.wob > 0.5 && r.pounce.back && r.pounce.state === 'stand' && r.pounce.cracks === 0, r.pounce);
+  ok(`sheep flung into it: cracks ${r.cracks.join(' → ')}, it falls (${r.state})`, r.cracks.join() === '1,2' && r.state === 'down', r);
+  ok(`the way's open: up to the ledge; a dog walks over its heap (${r.bump} m) in ${r.t} s`, r.open && r.bump > 0.3 && r.t >= 0, r);
+  ok('a new journey: it stands again, in the way', r.again, r);
+}
+
 if (!only || only === 'side') {
   const r = await ev(() => {
     const { G, SIDE, living, findPath, sdfAt, sideD, step, CAM_R, CAM_F, pathPoint, trailInfo } = GAME;
     GAME.resetPass();   // (the rock wall up again: after 'rock' its heap's a way over the rim)
+    const down = () => { GAME.wallFall(GAME.DOOR); GAME.DOOR.t = 99; GAME.updateWall(GAME.DOOR, 0.01); }; down();   // (its door down: 'entry')
     // across it every 2 m: free width (cells walkable, on it)
     let narrow = 1e9; for (let i = 6; i < SIDE.pts.length - 6; i += 4) { const a = SIDE.pts[i - 2], b = SIDE.pts[i + 2], l = Math.hypot(b.x - a.x, b.z - a.z), wx = (b.z - a.z) / l, wz = -(b.x - a.x) / l, p = SIDE.pts[i]; let f = 0; for (let o = -8; o <= 8; o += 0.25) if (sdfAt(p.x + wx * o, p.z + wz * o) > 0 && sideD(p.x + wx * o, p.z + wz * o) < SIDE.hw) f += 0.25; narrow = Math.min(narrow, f); }
     const H = SIDE.home, L = SIDE.ledge, hp = findPath(H.x, H.z, L.x, L.z, 400000); let way = 0, px = H.x, pz = H.z; for (const q of hp) { way += Math.hypot(q.x - px, q.z - pz); px = q.x; pz = q.z; }
-    setup(SIDE.s0 - 40, { lat: 4, hour: 9, dogS: SIDE.s0 - 26 });
+    setup(SIDE.s0 - 40, { lat: 4, hour: 9, dogS: SIDE.s0 - 26 }); down();
     const go = living().filter(s => !s.lamb).slice(0, 5), st = pathPoint(SIDE.s0 - 26, trailInfo(SIDE.pts[0].x, SIDE.pts[0].z).lat), fp = findPath(st.x, st.z, L.x, L.z, 200000), route = [st];
     for (const q of fp) { const a = route[route.length - 1], n = Math.max(1, Math.ceil(Math.hypot(q.x - a.x, q.z - a.z) / 0.5)); for (let k = 1; k <= n; k++) route.push({ x: a.x + (q.x - a.x) * k / n, z: a.z + (q.z - a.z) * k / n }); }
     const near = (x, z) => { let b = 0, bd = 1e9; route.forEach((q, i) => { const d = Math.hypot(q.x - x, q.z - z); if (d < bd) { bd = d; b = i; } }); return b; }, at = i => route[Math.max(0, Math.min(route.length - 1, i))];
@@ -435,9 +586,80 @@ if (!only || only === 'side') {
   ok(`a dog drives 5 sheep up it: ${r.on} on the ledge in ${r.t} s`, r.on >= 3 && r.t < 60, r);
 }
 
+if (!only || only === 'gate') {
+  const r = await ev(() => {
+    const { G, T, PASS, HANK, GATE, GATE_NAGS, TORCHES, living, pathPoint, sAt, sdfAt, iceK, findPath, devJump, resetPass } = GAME, I = T.iceGate, out = { s0: I.s0, s1: I.s1, nag: I.nag };
+    const b = PASS.fires.find(f => f.base), up = pathPoint(I.s0, 0), ux = up.tx, uz = up.tz;
+    // wall to wall: every walkable spot across the band is ice; still a way round on the map (A*: only the ice in the way); no lane
+    let walk = 0, iced = 0; for (let s = I.s0 + 2; s <= I.s1 - 2; s += 1) for (let l = -30; l <= 30; l += 0.5) { const p = pathPoint(s, l); if (sdfAt(p.x, p.z) > 0.3) { walk++; if (iceK(p.x, p.z) > 0.6) iced++; } }
+    const a = pathPoint(I.s0 - 6, 0), z = pathPoint(I.s1 + 6, 0), fp = findPath(a.x, a.z, z.x, z.z, 100000);
+    setup(I.s0 - 12, { hour: 10, dogS: I.s0 - 4, hankS: b.s - 4 }); GAME.step(0.025);
+    out.band = { walk, iced, path: !!(fp && fp.length), open: GATE.open };
+    // a dog sprints up onto it: thrown back down it, again and again; Hank: the torch, then (not before nag s) the nags
+    const d = G.dogs[0], P = G.players[0], said = () => HANK.log.filter(l => l.said).map(l => ({ t: l.t, text: l.text }));
+    let slips = 0, maxS = 0, was = false;
+    for (let t = 0; t < 34; t += 0.025) {
+      P.bot = toward(ux, uz, { sprint: t % 4 < 3 }); GAME.step(0.025); const s = sAt(d.x, d.z); maxS = Math.max(maxS, s);
+      if (d.slide && !was) slips++; was = !!d.slide;
+      if (!d.slide && s > I.s0 + 3) { maxS = 1e9; break; }
+    }
+    P.bot = {}; run(2);
+    const lines = said(), intro = lines.find(l => /Grab the torch/.test(l.text)), nags = lines.filter(l => GATE_NAGS.includes(l.text));
+    out.dog = { slips, maxS: +maxS.toFixed(1), below: sAt(d.x, d.z) < I.s0 + 0.5, intro: intro && intro.t, nags: nags.map(l => [l.t, l.text.slice(0, 18)]), said: PASS.said.gate };
+    // a driven sheep up onto it: back down it too
+    const sh = living().filter(o => !o.ram && !o.lamb)[0], q = pathPoint(I.s0 - 1.5, 2); Object.assign(sh, { x: q.x, z: q.z, vx: ux * 4, vz: uz * 4, state: 'flee', fear: 1, fdx: ux, fdz: uz, alert: 2, slipCd: 0 });
+    const lo = pathPoint(I.s0 - 16, 0); living().forEach((o, i) => { if (o !== sh) { o.x = lo.x + (i % 4) * 1.5 - 2.2; o.z = lo.z + Math.floor(i / 4) * 1.5 - 2.2; o.vx = o.vz = 0; o.slide = null; } });   // (the rest out of its way: they wait at the foot)
+    d.x = q.x - ux * 3.5; d.z = q.z - uz * 3.5; d.vx = d.vz = 0; d.slide = null; d.air = null;   // (the dog behind it: driven up, wherever the dog's sprints left it)
+    let sSlid = false, sMax = 0; for (let t = 0; t < 5; t += 0.025) { if (!sh.slide && t < 1.5) { sh.state = 'flee'; sh.fear = 1; sh.fdx = ux; sh.fdz = uz; } GAME.step(0.025); if (sh.slide && !sSlid) { const o = pathPoint(I.s0 - 14, 8); d.x = o.x; d.z = o.z; d.vx = d.vz = 0; } if (sh.slide) sSlid = true; sMax = Math.max(sMax, sAt(sh.x, sh.z)); }   // (it's on: the dog off out of its way)
+    out.sheep = { slid: sSlid, maxS: +sMax.toFixed(1), below: sAt(sh.x, sh.z) < I.s0 + 0.5 };
+    // the flock put well up past it, no lane: Hank waits at the base camp (never on the ice)
+    const top = pathPoint(PASS.fires[0].s - 12, 0); living().forEach((o, i) => { o.x = top.x + (i % 4) * 1.5; o.z = top.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });
+    const hq = pathPoint(b.s - 6, 3); HANK.x = hq.x; HANK.z = hq.z; HANK.goal = null; let hMax = 0, hSlid = false, atWait = 0;
+    for (let t = 0; t < 14; t += 0.025) { GAME.step(0.025); hMax = Math.max(hMax, sAt(HANK.x, HANK.z)); if (HANK.slide) hSlid = true; if (Math.hypot(HANK.x - GATE.wait.x, HANK.z - GATE.wait.z) < 2.5) atWait += 0.025; }
+    out.hank = { atWait: +atWait.toFixed(1), maxS: +hMax.toFixed(1), slid: hSlid, fire: +Math.hypot(HANK.x - b.x, HANK.z - b.z).toFixed(1) };
+    // the base camp's torch: lit in its fire, carried up across the ice: a lane; Hank's line; nobody slides up it
+    b.fuel = 6; const t0 = TORCHES[b.i]; d.x = t0.x - 1.2; d.z = t0.z; d.vx = d.vz = 0; d.slide = null; d.yaw = Math.PI / 2; P.bot = { grab: true }; GAME.step(0.025); run(0.2);
+    out.held = t0.by === d;
+    run(6, () => { P.bot = toward(b.x - d.x, b.z - d.z, { grab: true, creep: true }); return t0.lit > 0; });
+    out.lit = t0.lit > 0;
+    const lane = [pathPoint(I.s0 - 4, 0), pathPoint(I.s1 + 4, 0)]; let dSlid = false, at0 = false;
+    run(10, () => { at0 ||= Math.hypot(lane[0].x - d.x, lane[0].z - d.z) < 1.5; const g = at0 ? lane[1] : lane[0]; P.bot = toward(g.x - d.x, g.z - d.z, { grab: true }); if (d.slide) dSlid = true; return sAt(d.x, d.z) > I.s1 + 3; });
+    P.bot = { grab: true }; run(0.6);
+    out.lane = { open: GATE.open, n: GATE.path && GATE.path.length, dSlid, top: sAt(d.x, d.z) > I.s1 + 2, gateLit: !!PASS.said.gateLit, gateOpen: !!PASS.said.gateOpen };
+    if (!GATE.open) return out;
+    // Hank goes up it now; a driven sheep goes up it; it doesn't snow over (a blizzard)
+    const f0 = PASS.fires[0], hi = pathPoint(f0.s - 12, 0); living().forEach((o, i) => { o.x = hi.x + (i % 4) * 1.5; o.z = hi.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });   // (the flock well up: where he's going's up past it)
+    let hUp = run(40, () => sAt(HANK.x, HANK.z) > I.s1 + 1.5); out.hankUp = +hUp.toFixed(1);
+    if (hUp < 0) out.hankWas = { s: +sAt(HANK.x, HANK.z).toFixed(1), goal: HANK.goal && { x: +HANK.goal.x.toFixed(1), z: +HANK.goal.z.toFixed(1), s: +sAt(HANK.goal.x, HANK.goal.z).toFixed(1), fire: !!HANK.goal.fire, care: !!HANK.care, wait: !!HANK.goal.gateWait }, asleep: HANK.asleep, hour: GAME.G.clock.hour, fc: +sAt(GAME.flockCenter().x, GAME.flockCenter().z).toFixed(1) };
+    const L0 = GATE.path[0], L1 = GATE.path[GATE.path.length - 1], s2 = living().filter(o => !o.ram && !o.lamb)[1], dl = Math.hypot(L1.x - L0.x, L1.z - L0.z), lx = (L1.x - L0.x) / dl, lz = (L1.z - L0.z) / dl;
+    Object.assign(s2, { x: L0.x, z: L0.z, vx: 0, vz: 0, slide: null, state: 'flee', fear: 1, fdx: lx, fdz: lz, alert: 2 }); let s2Slid = false;
+    run(6, () => { if (!s2.slide && sAt(s2.x, s2.z) < I.s1) { s2.state = 'flee'; s2.fear = 1; const g = GATE.path.reduce((a, p) => Math.hypot(p.x - s2.x, p.z - s2.z) < Math.hypot(a.x - s2.x, a.z - s2.z) ? p : a), i = GATE.path.indexOf(g), n = GATE.path[Math.min(GATE.path.length - 1, i + 1)], nx = n.x - s2.x, nz = n.z - s2.z, nl = Math.hypot(nx, nz) || 1; s2.fdx = nx / nl; s2.fdz = nz / nl; } if (s2.slide) s2Slid = true; return sAt(s2.x, s2.z) > I.s1 + 1; });
+    out.sheepUp = { s: +sAt(s2.x, s2.z).toFixed(1), slid: s2Slid };
+    PASS.blizz.next = 0; run(25); PASS.blizz.on = false; PASS.blizz.next = 1e9; GAME.updateIceGate(1); out.blizzOpen = GATE.open;
+    // a dev jump onto it: melted through; back below it: iced again; a new journey: iced
+    // online: a friend's ice from the host's melt (a late friend: the lane; a new journey: none)
+    const mk = GAME.gateMask(); GAME.resetMelt(); GAME.gateScan(); out.mask = { n: mk.length, shut: !GATE.open }; GAME.gateMaskSet(mk); GAME.gateScan(); out.mask.back = GATE.open;
+    GAME.gateMaskSet('0'.repeat(mk.length)); GAME.gateScan(); out.mask.iced = !GATE.open && !/[1-9a-f]/.test(GAME.gateMask());
+    P.bot = {}; GAME.step(0.025);
+    devJump(I.s0 + 10); out.devAll = GATE.all && GATE.open && living().every(o => sAt(o.x, o.z) > I.s0 - 30);
+    devJump(b.s); out.devBack = !GATE.all && !GATE.open && iceK(pathPoint((I.s0 + I.s1) / 2, 0).x, pathPoint((I.s0 + I.s1) / 2, 0).z) > 0.9;
+    resetPass(); const m = pathPoint((I.s0 + I.s1) / 2, 0); out.reset = !GATE.open && !GATE.all && iceK(m.x, m.z) > 0.9 && !PASS.said.gate;
+    return out;
+  });
+  ok(`the ice gate: wall to wall (${r.band.iced}/${r.band.walk} spots across it iced), no lane; nothing else in the way`, r.band.iced === r.band.walk && r.band.walk > 200 && r.band.path && !r.band.open, r.band);
+  ok(`a dog sprinting up it: thrown back down ${r.dog.slips}× (got to ${r.dog.maxS}), ends below it`, r.dog.slips >= 3 && r.dog.maxS < r.s1 && r.dog.below, r.dog);
+  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /^Are ye sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
+  ok(`a driven sheep up it: back down (got to ${r.sheep.maxS})`, r.sheep.slid && r.sheep.below, r.sheep);
+  ok(`the flock well up past it, no lane: Hank waits at the base camp (${r.hank.atWait} s by its fire), never on the ice`, r.hank.atWait > 6 && r.hank.fire < 8 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
+  ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
+  ok(`up it now: Hank (${r.hankUp} s), a driven sheep (${r.sheepUp?.s}, no slide); a blizzard doesn't shut it`, r.hankUp >= 0 && r.sheepUp?.s > 0 && !r.sheepUp.slid && r.blizzOpen, r);
+  ok('a dev jump onto it: melted through; back below: iced again; a new journey: iced', r.devAll && r.devBack && r.reset, r);
+  ok(`online: a friend's ice from the host's (${r.mask?.n} hex digits): the lane, or none`, r.mask && r.mask.shut && r.mask.back && r.mask.iced, r.mask);
+}
+
 if (!only || only === 'burn') {
   const r = await ev(() => {
-    const { G, PASS, living, tryGrab } = GAME;
+    const { G, PASS, ICES, CREVS, living, tryGrab } = GAME, ice = ICES.slice(), crev = CREVS.slice(); ICES.length = CREVS.length = 0;   // (no ice or crack for it to run mad onto)
     const f = PASS.fires[1]; setup(f.s, { hour: 11 }); f.fuel = 6;
     const s = living().filter(o => !o.ram)[0], d = G.dogs[0]; s.wool = 1; const w0 = s.wool;
     s.x = f.x + 3; s.z = f.z; d.x = f.x + 4.6; d.z = f.z; d.yaw = -Math.PI / 2; d.vx = d.vz = 0;
@@ -447,10 +669,87 @@ if (!only || only === 'burn') {
     G.players[0].bot = {};
     let ran = 0, rolled = false; const x0 = s.x, z0 = s.z;
     for (let t = 0; t < 12; t += 0.025) { GAME.step(0.025); if (s.state === 'burn') ran = Math.max(ran, Math.hypot(s.x - x0, s.z - z0)); if (s.state === 'roll') rolled = true; if (rolled && !(s.burn > 0)) break; }
-    return { held, lit, dropped, ran: +ran.toFixed(1), rolled, out: !(s.burn > 0), singed: s.wool < 0.1 && w0 > 0.5, alive: !s.dead, soot: s.soot > 0.5 };
+    const res = { held, lit, dropped, ran: +ran.toFixed(1), rolled, out: !(s.burn > 0), singed: s.wool < 0.1 && w0 > 0.5, alive: !s.dead, soot: s.soot > 0.5 }; ICES.push(...ice); CREVS.push(...crev);
+    // alight, it melts the snow where it runs (well away from any fire), and the ice gate's ice
+    const { pathPoint, meltAt, sAt, ignite, resetMelt, GATE, gateIce, T } = GAME; resetMelt();
+    const q = pathPoint(1320, 3), o = living().filter(x => !x.ram)[1]; Object.assign(o, { x: q.x, z: q.z, vx: 0, vz: 0, burn: 0, state: 'idle', pen: null }); ignite(o);
+    const trail = []; for (let t = 0; t < 4; t += 0.025) { GAME.step(0.025); if (t > 0.5 && Math.round(t / 0.025) % 20 === 0 && PASS.fires.every(f => Math.hypot(f.x - o.x, f.z - o.z) > 9)) trail.push([o.x, o.z]); }
+    res.melted = trail.filter(([x, z]) => meltAt(x, z) > 0.5).length + '/' + trail.length;
+    const g = pathPoint((T.iceGate.s0 + T.iceGate.s1) / 2, 0), o2 = living().filter(x => !x.ram)[2]; Object.assign(o2, { x: g.x, z: g.z, vx: 0, vz: 0, burn: 0, state: 'idle', pen: null, slide: null });
+    const ik0 = gateIce(g.x, g.z); ignite(o2); for (let t = 0; t < 0.5; t += 0.025) GAME.step(0.025); res.gate = [+ik0.toFixed(2), +gateIce(g.x, g.z).toFixed(2)];
+    return res;
   });
   ok('a sheep carried into a fire catches; too hot to hold (dropped)', r.held && r.lit && r.dropped, r);
   ok(`it runs mad (${r.ran} m), then rolls it out: singed, alive`, r.ran > 3 && r.rolled && r.out && r.singed && r.alive && r.soot, r);
+  ok(`alight it melts the snow where it runs (${r.melted} spots) and the gate's ice (${r.gate.join(' → ')})`, +r.melted.split('/')[0] >= 3 && +r.melted.split('/')[0] >= +r.melted.split('/')[1] - 1 && r.gate[0] > 0.9 && r.gate[1] < 0.2, r);
+}
+
+if (!only || only === 'uphill') {
+  const r = await ev(() => {
+    const { G, T, PASS, ICES, CREVS, GATE, pathPoint, sAt, living, step, iceK, crevAt, gateIce, gateMelt, gateScan, meltDisc } = GAME, U = T.pass.up;
+    const fc = () => { const L = living(); let x = 0, z = 0, s = 0; for (const o of L) { x += o.x; z += o.z; s += sAt(o.x, o.z); } return { x: x / L.length, z: z / L.length, s: s / L.length }; };
+    const clearAt = (s0) => [0, 3, -3, 6, -6, 9, -9].find(l => { const p = pathPoint(s0, l); for (let i = 0; i < 16; i++) { const x = p.x + (i % 4) * 1.5 - 2.2, z = p.z + Math.floor(i / 4) * 1.5 - 2.2; if (iceK(x, z) > 0 || iceK(x + 2, z) > 0 || iceK(x - 2, z) > 0 || iceK(x, z + 2) > 0 || iceK(x, z - 2) > 0 || crevAt(x, z, 2)) return false; } return true; }) ?? 0;
+    // the flock at s0 (clear of the ice), fires lit; idle / a dog sweeping up behind it at a walk / a dog crossing it from one side;
+    // up: UP on or off (off: as it was). Δs: how far up the trail it got (low: its lowest; back: sheep that got back past the dog).
+    // Seeded (seed: Math.random; G.time fixed), so on and off see the same dice. The ice gate melted through (all of it), but with shut: it's up, no lane;
+    // lane: a lane melted up it (lat 0)
+    const rand = Math.random, seeded = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    let nT = 0;   // (each trial at its own fixed clock: G.time steers them too, and runs on from whatever ran before)
+    const trial = (up, s0, o) => {
+      Math.random = seeded(o.seed ?? 7); G.time = 1e6 + ++nT * 1e4;
+      U.on = up; const ice = ICES.slice(), crev = CREVS.slice(); if (o.clear) { ICES.length = 0; CREVS.length = 0; }
+      setup(s0, { hour: 10, lat: o.clear ? 0 : clearAt(s0), dogS: s0 - (o.sweep ? 12 : 60), hankS: s0 - 20 }); if (!o.shut && !o.lane) gateMelt(true);   // (the sweep: from just behind it)
+      if (o.lane) { const I = T.iceGate; for (let s = I.s0 - 2; s <= I.s1 + 2; s += 0.5) { const m = pathPoint(s, 0); meltDisc(m.x, m.z, 2.2, 1.5, 1); } gateScan(); }
+      for (const f of PASS.fires) f.fuel = 0; for (const i of o.lit) PASS.fires[i].fuel = 9;
+      for (const s of living()) { s.wool = 1; s.cold = o.cold || 0; }
+      const d = G.dogs[0], c0 = fc(), p0 = pathPoint(c0.s, 0), f = o.fire != null ? PASS.fires[o.fire] : null; let low = 0, back = 0, slid = 0, fell = 0, warmBehind = 0, near = 1e9, gate = 0;
+      if (o.side) { const p = pathPoint(c0.s, o.side * 13); d.x = p.x; d.z = p.z; }
+      for (let t = 0; t < o.t; t += 0.025) {
+        if (o.sweep) { const p = pathPoint(c0.s - 10 + t * 1.2, 0), l = Math.hypot(p.x - d.x, p.z - d.z); G.players[0].bot = l > 0.6 ? toward(p.x - d.x, p.z - d.z, l < 3 ? { creep: true } : {}) : {}; }
+        else if (o.side) G.players[0].bot = t < 5 ? toward(-p0.nx * o.side, -p0.nz * o.side) : { lie: true };
+        step(0.025);
+        const c = fc(), ds = sAt(d.x, d.z); low = Math.min(low, c.s - c0.s); if (f) near = Math.min(near, Math.hypot(c.x - f.x, c.z - f.z));
+        for (const s of living()) {
+          if (o.sweep && !s.wasBack && sAt(s.x, s.z) < ds - 2) { s.wasBack = true; back++; }
+          if (s.slide && s.slide.kind === 'ice' && !s.slid) { s.slid = true; slid++; } if (!s.slide) s.slid = false;
+          if (s.crev && !s.fell) { s.fell = true; fell++; }
+          if ((o.shut || o.lane) && !s.onGate && gateIce(s.x, s.z) > 0.5) { s.onGate = true; gate++; }
+          if (o.behind != null && s.state === 'warm' && s.fire === PASS.fires[o.behind] && !s.wb) { s.wb = true; warmBehind++; }
+        }
+      }
+      G.players[0].bot = {}; ICES.length = 0; ICES.push(...ice); CREVS.length = 0; CREVS.push(...crev); U.on = true; Math.random = rand;
+      for (const s of living()) s.wasBack = s.slid = s.fell = s.wb = s.onGate = false;
+      const c = fc(), rear = Math.min(...living().map(o => sAt(o.x, o.z))) - c0.s, top = Math.max(...living().map(o => sAt(o.x, o.z))), past = living().filter(o => sAt(o.x, o.z) > T.iceGate.s1 + 1).length;
+      return { ds: +(c.s - c0.s).toFixed(1), rear: +rear.toFixed(1), low: +low.toFixed(1), back, slid, fell, warm: warmBehind, near: f ? +near.toFixed(1) : null, gate, top: +top.toFixed(1), past, n: living().length, shut: o.shut ? !GATE.open : o.lane ? GATE.open : undefined };
+    };
+    const F = PASS.fires, base = F.find(f => f.base), out = { s0g: T.iceGate.s0 };
+    for (const up of [false, true]) {
+      const k = up ? 'on' : 'off';
+      out[k] = {
+        mid: trial(up, F[0].s - 30, { t: 100, lit: [0, base.i], fire: 0 }),             // a lit camp 30 m up (the base camp lit, 67 m down; ice and a crack between)
+        foot: trial(up, base.s + 30, { t: 90, lit: [base.i] }),                         // 30 m past the base camp, lit (its melted camp and the snow line below)
+        sweep: [1, 2, 3, 4].map(seed => trial(up, base.s + 30, { t: 30, lit: [base.i], sweep: true, seed })).map(o => ({ ds: o.ds, rear: o.rear, back: o.back })),   // ...a dog walking up behind it (4 goes)
+        sideE: trial(up, F[1].s - 30, { t: 12, lit: [1], side: 1, clear: true }),       // a dog crossing it from the east
+        sideW: trial(up, F[1].s - 30, { t: 12, lit: [1], side: -1, clear: true }),      // ...from the west
+        cold: trial(up, F[0].s + 15, { t: 40, lit: [0], cold: 0.5, behind: 0 }),        // cold, 15 m past a lit fire (the next one far up)
+        gate: [1, 2, 3].map(seed => trial(up, T.iceGate.s0 - 6, { t: 100, lit: [base.i], shut: true, seed })),   // the ice gate up, no lane: at its foot (3 goes)
+        lane: [1, 2].map(seed => trial(up, T.iceGate.s0 - 6, { t: 120, lit: [base.i], lane: true, seed })),   // ...a lane melted through: up it (2 goes)
+      };
+    }
+    return out;
+  });
+  const { on, off } = r, s = o => `${o.ds} m (low ${o.low})`, avg = a => a.reduce((t, o) => t + o.ds / a.length, 0);
+  const g = on.gate, gs = a => a.map(o => `${o.ds} (low ${o.low}, ${o.gate} on it)`).join(', ');
+  ok(`idle, a lit camp 30 m up: up to it (${on.mid.near} m off it), ${s(on.mid)} (was ${off.mid.near} m, ${s(off.mid)}); none onto the ice or into the crack (${on.mid.slid}, ${on.mid.fell})`, on.mid.ds > 15 && on.mid.low > -3 && on.mid.near < 10 && !on.mid.slid && !on.mid.fell, r);
+  ok(`idle past the base camp: on up ${s(on.foot)} (was ${s(off.foot)}: back down)`, on.foot.ds > 20 && on.foot.low > -3 && on.foot.ds > off.foot.ds + 20 && !on.foot.slid && !on.foot.fell, r);
+  // (the 4 goes: medians, and ≤1 back in 3 of them: a run's earlier scenarios still nudge a go now and then, seeded or not)
+  const med = (a, k) => { const v = a.map(o => o[k]).sort((x, y) => x - y); return +((v[1] + v[2]) / 2).toFixed(1); }, sw = o => `${med(o, 'ds')} m, the last one ${med(o, 'rear')} m, ${o.map(g => g.back).join('/')} back past it`;
+  ok(`a dog walking up behind it drives it faster: ${sw(on.sweep)} (was ${sw(off.sweep)})`, med(on.sweep, 'ds') > med(off.sweep, 'ds') && med(on.sweep, 'rear') > med(off.sweep, 'rear') && on.sweep.filter(g => g.back <= 1).length >= 3, r);
+  ok(`pressed from the side it veers up: from the east ${on.sideE.ds} m, the west ${on.sideW.ds} m (was ${off.sideE.ds}, ${off.sideW.ds})`, on.sideE.ds > 5 && on.sideW.ds > 5 && on.sideE.low > -2 && on.sideW.low > -2, r);
+  ok(`cold, 15 m past a lit fire: not back down to it (${s(on.cold)}, ${on.cold.warm} by it; was ${s(off.cold)}, ${off.cold.warm})`, on.cold.warm <= 2 && on.cold.low > -3, r);
+  const ln = on.lane, ls = a => a.map(o => `${o.past}/${o.n} past (${o.ds} m, ${o.slid} slips)`).join(', ');
+  ok(`a lane through it: up it, on up (${ls(ln)}; was ${ls(off.lane)})`, ln.every(o => o.shut && o.past >= o.n - 2 && o.slid <= 3 && o.low > -10) && avg(ln) > avg(off.lane) + 40, r.on.lane);
+  ok(`the ice gate up, no lane: the flock waits at its foot (${avg(g).toFixed(1)} m), none onto the ice: ${gs(g)} (was ${avg(off.gate).toFixed(1)} m: ${gs(off.gate)})`, g.every(o => o.shut && o.gate === 0 && o.low > -25 && o.top < r.s0g + 1.2) && avg(g) > -12 && avg(g) > avg(off.gate) + 15, r.on.gate);
 }
 
 console.log(h.errors.length ? `errors: ${h.errors.slice(0, 5).join(' | ')}` : 'no page errors');
