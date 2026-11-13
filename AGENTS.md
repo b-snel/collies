@@ -16,7 +16,7 @@ the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
-Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot): cold, blizzards,
+Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to the Promised Land
@@ -56,7 +56,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
-MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
+MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, ICE GATE, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
@@ -116,7 +116,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind |
+| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|gate\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; the ice gate: wall to wall, a dog / a driven sheep thrown back down it, Hank's "grab the torch" then nags ≥ `nag` s apart, he waits at the base camp, a lit torch carried up melts a lane (his lines), then Hank and a sheep up it, no blizzard shuts it, a dev jump melts it, reset, a friend's ice from the host's; burning sheep (melt the snow, the gate's ice); the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab pulls it out, pounce pops it just clear, calm sheep go round |
@@ -340,7 +340,16 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     (`freeze`). Calm ones go round the ice and the cracks along their edge, however keen. Host only (sheep).
   - **Base camp** (`T.pass.base`, `f.base`): a fire at the foot of the climb, added after world gen's draws (world gen never sees it). Its
     stick teaches the torch: `hint('torch')`, nudges (`drawTorchOverlay`), Hank's lines.
-  - **Torches** (`TORCHES`, `T.torch`, `holdKind 'torch'`): a stick by each fire (`f.torch`). ✊ carries it; its tip in a lit fire: alight
+  - **Ice gate** (`GATE`, `T.iceGate`, `gateIce0` / `gateIce`, `gateS`): a band of ice wall to wall across the climb just past the base camp (`s0`…`s1`,
+    wavy edges), switched on after world gen's draws and the scenery (`GATE.on`: before that `iceK` doesn't see it; its treads hidden: `instanced` `gate`).
+    Up onto it: a skid (`keep`), then back down (`gateBack`, `g`), even creeping, no `slipCd`. The way on: a lit torch melts a lane (`gateScan`:
+    ≥ `lane` m all the way, `GATE.open`, `GATE.path`); its melt never snows over (`gateV`). Hank waits by the base camp's fire (`gateWaitGoal`,
+    `hankGate`: `GATE.wait`), then walks up the lane; the flock's steered to it (`gateSteer` in `passAvoid`). Lines: "Grab the torch…" (`gateIntro`),
+    nags on a slip with no lane and no lit torch (`gateSlip`, `GATE_NAGS`, `nag` s apart, then further, what he sees), lit near it, the lane through (`gateOpenFx`).
+    A dev jump onto it or past: all melted (`gateMelt`, `GATE.all`). Online: what's melted of it (`NET_TYPES.pass.gate`, `gateMask`: friends only melt
+    more from it; none: iced again); guests find their own lane (`gateScanTick`).
+  - **Torches** (`TORCHES`, `T.torch`, `holdKind 'torch'`): a stick by each fire (`f.torch`), stood in a cairn, leaning, a warm glow and a twinkle
+    over it (`torchPlanted`); dropped: along the ground under it, never into it. ✊ carries it; its tip in a lit fire: alight
     `burn` h (× `blizz` in a blizzard). A lit one lights a cold fire, warms (`torchHeat`), melts. Off the mountain: home (`torchHome`).
     Online: `NET_TYPES.torch`.
   - **Melt** (`MELT`, `T.melt`, `meltTex`, own 2 m grid; `MELTV` the pass's vertices): lit torches and fires melt the snow: `gCap` goes
@@ -357,7 +366,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     windup ❗, charges, bonks it down the mountain (launched 'tumble', lands, rolls 'roll').
     A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
   - **Burning** (`s.burn`, `T.burn`): a sheep carried, flung or bolting into a lit fire catches;
-    too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`).
+    too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`). Alight, it melts the snow and ice round it (`melt`).
   - **The yeti** (`YETI`, `T.yeti`, `SNOWBALLS`): wakes when something's past `arena`; rolls snowballs
     that grow, headbutts what's close; a pounce bounces off him. A burning sheep flying into him:
     a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`). HUD 🦍 ♥♥♥.

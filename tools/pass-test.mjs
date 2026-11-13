@@ -1,4 +1,4 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|burn|finish|uphill]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|gate|burn|finish|uphill]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
@@ -20,7 +20,10 @@
 //             way over the rim: from the hidden ledge to his spot, walked over (up on its stones)
 //   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
 //             rest left below) drives them off the floor, up it and onto the ledge
-//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
+//   gate      the ice gate past the base camp: wall to wall; a dog sprinting up it and a driven sheep thrown back down; Hank: "Grab the
+//             torch…", then nags, further and further apart; the flock up past it, no lane: Hank waits by the base camp's fire; its torch lit,
+//             carried up: a lane (his lines), Hank and a sheep up it, a blizzard doesn't shut it; a dev jump melts it; a new journey: iced
+//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed; alight it melts the snow and the gate's ice
 //   uphill    (UP, seeded, on vs off) left alone the flock goes up to a lit camp 30 m up, not onto the ice or into a crack; 30 m past
 //             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it;
 //             pressed from either side it veers up; cold, 15 m past a lit fire, it doesn't go back down to it
@@ -438,6 +441,75 @@ if (!only || only === 'side') {
   ok(`a dog drives 5 sheep up it: ${r.on} on the ledge in ${r.t} s`, r.on >= 3 && r.t < 60, r);
 }
 
+if (!only || only === 'gate') {
+  const r = await ev(() => {
+    const { G, T, PASS, HANK, GATE, GATE_NAGS, TORCHES, living, pathPoint, sAt, sdfAt, iceK, findPath, devJump, resetPass } = GAME, I = T.iceGate, out = { s0: I.s0, s1: I.s1, nag: I.nag };
+    const b = PASS.fires.find(f => f.base), up = pathPoint(I.s0, 0), ux = up.tx, uz = up.tz;
+    // wall to wall: every walkable spot across the band is ice; still a way round on the map (A*: only the ice in the way); no lane
+    let walk = 0, iced = 0; for (let s = I.s0 + 2; s <= I.s1 - 2; s += 1) for (let l = -30; l <= 30; l += 0.5) { const p = pathPoint(s, l); if (sdfAt(p.x, p.z) > 0.3) { walk++; if (iceK(p.x, p.z) > 0.6) iced++; } }
+    const a = pathPoint(I.s0 - 6, 0), z = pathPoint(I.s1 + 6, 0), fp = findPath(a.x, a.z, z.x, z.z, 100000);
+    setup(I.s0 - 12, { hour: 10, dogS: I.s0 - 4, hankS: b.s - 4 }); GAME.step(0.025);
+    out.band = { walk, iced, path: !!(fp && fp.length), open: GATE.open };
+    // a dog sprints up onto it: thrown back down it, again and again; Hank: the torch, then (not before nag s) the nags
+    const d = G.dogs[0], P = G.players[0], said = () => HANK.log.filter(l => l.said).map(l => ({ t: l.t, text: l.text }));
+    let slips = 0, maxS = 0, was = false;
+    for (let t = 0; t < 34; t += 0.025) {
+      P.bot = toward(ux, uz, { sprint: t % 4 < 3 }); GAME.step(0.025); const s = sAt(d.x, d.z); maxS = Math.max(maxS, s);
+      if (d.slide && !was) slips++; was = !!d.slide;
+      if (!d.slide && s > I.s0 + 3) { maxS = 1e9; break; }
+    }
+    P.bot = {}; run(2);
+    const lines = said(), intro = lines.find(l => /Grab the torch/.test(l.text)), nags = lines.filter(l => GATE_NAGS.includes(l.text));
+    out.dog = { slips, maxS: +maxS.toFixed(1), below: sAt(d.x, d.z) < I.s0 + 0.5, intro: intro && intro.t, nags: nags.map(l => [l.t, l.text.slice(0, 18)]), said: PASS.said.gate };
+    // a driven sheep up onto it: back down it too
+    const sh = living().filter(o => !o.ram && !o.lamb)[0], q = pathPoint(I.s0 - 1.5, 2); Object.assign(sh, { x: q.x, z: q.z, vx: ux * 4, vz: uz * 4, state: 'flee', fear: 1, fdx: ux, fdz: uz, alert: 2, slipCd: 0 });
+    let sSlid = false, sMax = 0; for (let t = 0; t < 5; t += 0.025) { if (!sh.slide && t < 1.5) { sh.state = 'flee'; sh.fear = 1; sh.fdx = ux; sh.fdz = uz; } GAME.step(0.025); if (sh.slide) sSlid = true; sMax = Math.max(sMax, sAt(sh.x, sh.z)); }
+    out.sheep = { slid: sSlid, maxS: +sMax.toFixed(1), below: sAt(sh.x, sh.z) < I.s0 + 0.5 };
+    // the flock put well up past it, no lane: Hank waits at the base camp (never on the ice)
+    const top = pathPoint(PASS.fires[0].s - 12, 0); living().forEach((o, i) => { o.x = top.x + (i % 4) * 1.5; o.z = top.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });
+    const hq = pathPoint(b.s - 6, 3); HANK.x = hq.x; HANK.z = hq.z; HANK.goal = null; let hMax = 0, hSlid = false, atWait = 0;
+    for (let t = 0; t < 14; t += 0.025) { GAME.step(0.025); hMax = Math.max(hMax, sAt(HANK.x, HANK.z)); if (HANK.slide) hSlid = true; if (Math.hypot(HANK.x - GATE.wait.x, HANK.z - GATE.wait.z) < 2.5) atWait += 0.025; }
+    out.hank = { atWait: +atWait.toFixed(1), maxS: +hMax.toFixed(1), slid: hSlid, fire: +Math.hypot(HANK.x - b.x, HANK.z - b.z).toFixed(1) };
+    // the base camp's torch: lit in its fire, carried up across the ice: a lane; Hank's line; nobody slides up it
+    b.fuel = 6; const t0 = TORCHES[b.i]; d.x = t0.x - 1.2; d.z = t0.z; d.vx = d.vz = 0; d.slide = null; d.yaw = Math.PI / 2; P.bot = { grab: true }; GAME.step(0.025); run(0.2);
+    out.held = t0.by === d;
+    run(6, () => { P.bot = toward(b.x - d.x, b.z - d.z, { grab: true, creep: true }); return t0.lit > 0; });
+    out.lit = t0.lit > 0;
+    const lane = [pathPoint(I.s0 - 4, 0), pathPoint(I.s1 + 4, 0)]; let dSlid = false, at0 = false;
+    run(10, () => { at0 ||= Math.hypot(lane[0].x - d.x, lane[0].z - d.z) < 1.5; const g = at0 ? lane[1] : lane[0]; P.bot = toward(g.x - d.x, g.z - d.z, { grab: true }); if (d.slide) dSlid = true; return sAt(d.x, d.z) > I.s1 + 3; });
+    P.bot = { grab: true }; run(0.6);
+    out.lane = { open: GATE.open, n: GATE.path && GATE.path.length, dSlid, top: sAt(d.x, d.z) > I.s1 + 2, gateLit: !!PASS.said.gateLit, gateOpen: !!PASS.said.gateOpen };
+    if (!GATE.open) return out;
+    // Hank goes up it now; a driven sheep goes up it; it doesn't snow over (a blizzard)
+    const f0 = PASS.fires[0], hi = pathPoint(f0.s - 12, 0); living().forEach((o, i) => { o.x = hi.x + (i % 4) * 1.5; o.z = hi.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });   // (the flock well up: where he's going's up past it)
+    let hUp = run(40, () => sAt(HANK.x, HANK.z) > I.s1 + 1.5); out.hankUp = +hUp.toFixed(1);
+    if (hUp < 0) out.hankWas = { s: +sAt(HANK.x, HANK.z).toFixed(1), goal: HANK.goal && { x: +HANK.goal.x.toFixed(1), z: +HANK.goal.z.toFixed(1), s: +sAt(HANK.goal.x, HANK.goal.z).toFixed(1), fire: !!HANK.goal.fire, care: !!HANK.care, wait: !!HANK.goal.gateWait }, asleep: HANK.asleep, hour: GAME.G.clock.hour, fc: +sAt(GAME.flockCenter().x, GAME.flockCenter().z).toFixed(1) };
+    const L0 = GATE.path[0], L1 = GATE.path[GATE.path.length - 1], s2 = living().filter(o => !o.ram && !o.lamb)[1], dl = Math.hypot(L1.x - L0.x, L1.z - L0.z), lx = (L1.x - L0.x) / dl, lz = (L1.z - L0.z) / dl;
+    Object.assign(s2, { x: L0.x, z: L0.z, vx: 0, vz: 0, slide: null, state: 'flee', fear: 1, fdx: lx, fdz: lz, alert: 2 }); let s2Slid = false;
+    run(6, () => { if (!s2.slide && sAt(s2.x, s2.z) < I.s1) { s2.state = 'flee'; s2.fear = 1; const g = GATE.path.reduce((a, p) => Math.hypot(p.x - s2.x, p.z - s2.z) < Math.hypot(a.x - s2.x, a.z - s2.z) ? p : a), i = GATE.path.indexOf(g), n = GATE.path[Math.min(GATE.path.length - 1, i + 1)], nx = n.x - s2.x, nz = n.z - s2.z, nl = Math.hypot(nx, nz) || 1; s2.fdx = nx / nl; s2.fdz = nz / nl; } if (s2.slide) s2Slid = true; return sAt(s2.x, s2.z) > I.s1 + 1; });
+    out.sheepUp = { s: +sAt(s2.x, s2.z).toFixed(1), slid: s2Slid };
+    PASS.blizz.next = 0; run(25); PASS.blizz.on = false; PASS.blizz.next = 1e9; GAME.updateIceGate(1); out.blizzOpen = GATE.open;
+    // a dev jump onto it: melted through; back below it: iced again; a new journey: iced
+    // online: a friend's ice from the host's melt (a late friend: the lane; a new journey: none)
+    const mk = GAME.gateMask(); GAME.resetMelt(); GAME.gateScan(); out.mask = { n: mk.length, shut: !GATE.open }; GAME.gateMaskSet(mk); GAME.gateScan(); out.mask.back = GATE.open;
+    GAME.gateMaskSet('0'.repeat(mk.length)); GAME.gateScan(); out.mask.iced = !GATE.open && !/[1-9a-f]/.test(GAME.gateMask());
+    P.bot = {}; GAME.step(0.025);
+    devJump(I.s0 + 10); out.devAll = GATE.all && GATE.open && living().every(o => sAt(o.x, o.z) > I.s0 - 30);
+    devJump(b.s); out.devBack = !GATE.all && !GATE.open && iceK(pathPoint((I.s0 + I.s1) / 2, 0).x, pathPoint((I.s0 + I.s1) / 2, 0).z) > 0.9;
+    resetPass(); const m = pathPoint((I.s0 + I.s1) / 2, 0); out.reset = !GATE.open && !GATE.all && iceK(m.x, m.z) > 0.9 && !PASS.said.gate;
+    return out;
+  });
+  ok(`the ice gate: wall to wall (${r.band.iced}/${r.band.walk} spots across it iced), no lane; nothing else in the way`, r.band.iced === r.band.walk && r.band.walk > 200 && r.band.path && !r.band.open, r.band);
+  ok(`a dog sprinting up it: thrown back down ${r.dog.slips}× (got to ${r.dog.maxS}), ends below it`, r.dog.slips >= 3 && r.dog.maxS < r.s1 && r.dog.below, r.dog);
+  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Are you sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
+  ok(`a driven sheep up it: back down (got to ${r.sheep.maxS})`, r.sheep.slid && r.sheep.below, r.sheep);
+  ok(`the flock well up past it, no lane: Hank waits at the base camp (${r.hank.atWait} s by its fire), never on the ice`, r.hank.atWait > 6 && r.hank.fire < 8 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
+  ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
+  ok(`up it now: Hank (${r.hankUp} s), a driven sheep (${r.sheepUp?.s}, no slide); a blizzard doesn't shut it`, r.hankUp >= 0 && r.sheepUp?.s > 0 && !r.sheepUp.slid && r.blizzOpen, r);
+  ok('a dev jump onto it: melted through; back below: iced again; a new journey: iced', r.devAll && r.devBack && r.reset, r);
+  ok(`online: a friend's ice from the host's (${r.mask?.n} hex digits): the lane, or none`, r.mask && r.mask.shut && r.mask.back && r.mask.iced, r.mask);
+}
+
 if (!only || only === 'burn') {
   const r = await ev(() => {
     const { G, PASS, living, tryGrab } = GAME;
@@ -450,10 +522,19 @@ if (!only || only === 'burn') {
     G.players[0].bot = {};
     let ran = 0, rolled = false; const x0 = s.x, z0 = s.z;
     for (let t = 0; t < 12; t += 0.025) { GAME.step(0.025); if (s.state === 'burn') ran = Math.max(ran, Math.hypot(s.x - x0, s.z - z0)); if (s.state === 'roll') rolled = true; if (rolled && !(s.burn > 0)) break; }
-    return { held, lit, dropped, ran: +ran.toFixed(1), rolled, out: !(s.burn > 0), singed: s.wool < 0.1 && w0 > 0.5, alive: !s.dead, soot: s.soot > 0.5 };
+    const res = { held, lit, dropped, ran: +ran.toFixed(1), rolled, out: !(s.burn > 0), singed: s.wool < 0.1 && w0 > 0.5, alive: !s.dead, soot: s.soot > 0.5 };
+    // alight, it melts the snow where it runs (well away from any fire), and the ice gate's ice
+    const { pathPoint, meltAt, sAt, ignite, resetMelt, GATE, gateIce, T } = GAME; resetMelt();
+    const q = pathPoint(1320, 3), o = living().filter(x => !x.ram)[1]; Object.assign(o, { x: q.x, z: q.z, vx: 0, vz: 0, burn: 0, state: 'idle', pen: null }); ignite(o);
+    const trail = []; for (let t = 0; t < 4; t += 0.025) { GAME.step(0.025); if (t > 0.5 && Math.round(t / 0.025) % 20 === 0 && PASS.fires.every(f => Math.hypot(f.x - o.x, f.z - o.z) > 9)) trail.push([o.x, o.z]); }
+    res.melted = trail.filter(([x, z]) => meltAt(x, z) > 0.5).length + '/' + trail.length;
+    const g = pathPoint((T.iceGate.s0 + T.iceGate.s1) / 2, 0), o2 = living().filter(x => !x.ram)[2]; Object.assign(o2, { x: g.x, z: g.z, vx: 0, vz: 0, burn: 0, state: 'idle', pen: null, slide: null });
+    const ik0 = gateIce(g.x, g.z); ignite(o2); for (let t = 0; t < 0.5; t += 0.025) GAME.step(0.025); res.gate = [+ik0.toFixed(2), +gateIce(g.x, g.z).toFixed(2)];
+    return res;
   });
   ok('a sheep carried into a fire catches; too hot to hold (dropped)', r.held && r.lit && r.dropped, r);
   ok(`it runs mad (${r.ran} m), then rolls it out: singed, alive`, r.ran > 3 && r.rolled && r.out && r.singed && r.alive && r.soot, r);
+  ok(`alight it melts the snow where it runs (${r.melted} spots) and the gate's ice (${r.gate.join(' → ')})`, +r.melted.split('/')[0] >= 3 && +r.melted.split('/')[0] >= +r.melted.split('/')[1] - 1 && r.gate[0] > 0.9 && r.gate[1] < 0.2, r);
 }
 
 if (!only || only === 'uphill') {

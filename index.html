@@ -695,7 +695,7 @@ const T = {
   // TORCHES (TORCHES): a stick by each fire (lean m off it). ✊ carries it; its tip into a lit fire (within light m): alight for burn h (× blizz
   // in a blizzard). Lit: it melts the snow and the ice round it (MELT: rate/s, all of it within r0 m, none past r; lying: lieR), warms within
   // heat m (up to heatMax). A lit one into a camp's cold fire lights it. Let go: dropped (on the run: tossed, the run × mul + add, up m/s)
-  torch: { lean: 2.7, light: 1.25, burn: 3, blizz: 2.5, r: 2.8, r0: 1.4, lieR: 1.9, rate: 5, heat: 4, heatMax: 0.55, len: 1.1, toss: { add: 5, mul: 1, up: 4.5 } },
+  torch: { lean: 2.7, light: 1.25, burn: 3, blizz: 2.5, r: 2.8, r0: 1.4, lieR: 1.9, rate: 5, heat: 4, heatMax: 0.55, len: 1.3, toss: { add: 5, mul: 1, up: 4.5 } },
   // MELT (0 snow … 1 bare, on the 2 m grid): torches melt it; a lit fire too, within fire m (fireRate/h). It snows over again refreeze/h
   // (× night after dark), blizz/h × the blizzard. Under the snow: grass (cap under[0]…[1]), eaten once it's bare; under the ice: rock
   melt: { fire: 7.5, fireRate: 1.6, refreeze: 0.08, night: 1.5, blizz: 2.4, under: [0.45, 0.85], every: 0.25 },
@@ -711,6 +711,11 @@ const T = {
   // ICE (ICES): n patches, r m. On one at over minSpd m/s: it slides (steer× grip), downhill g m/s², fric/s; off it fric2/s; done under stop
   // m/s off the ice, or after max s. Calm sheep go round (avoid m)
   ice: { n: 11, r: [2.4, 4.2], steer: 0.1, g: 5.5, fric: 0.25, fric2: 3.2, stop: 0.8, max: 3.5, minSpd: 0.6, avoid: 2 },
+  // ICE GATE (GATE, T.iceGate): a band of ice wall to wall across the climb past the base camp (s0…s1 along the trail, wavy edges; world gen never sees
+  // it: added after its draws). Onto it going up: a slip (keep× the speed it came up at, on up a moment), g m/s² back down it. The way on: a lit
+  // torch melts a lane (≥ lane m wide, all the way: GATE.open); its melt never snows over. Hank waits at the base camp till then.
+  // A slip on it, no lane, no lit torch: Hank nags (nag s apart); a dog within near m of it: "grab the torch"
+  iceGate: { s0: 1171, s1: 1187, g: 9, keep: 0.4, lane: 2.4, nag: 15, near: 12 },
   // CREVASSES (CREVS): n cracks len m long, hw m across. In: sunk sink m. A sheep's grabbed out; a dog mashes Ⓑ (mash presses,
   // decay/s) out, cost stamina a press (exhausted: nothing; no breath back till rest s after one), or a friend grabs it out. Calm sheep go round (avoid m)
   crev: { n: 7, len: [5, 8.5], hw: 0.62, sink: 0.72, mash: 8, decay: 0.6, cost: 0.025, rest: 0.4, avoid: 2.2, stress: 0.05 },
@@ -728,8 +733,9 @@ const T = {
   yeti: { see: 42, every: [2.6, 4.2], first: 2.5, r0: 0.55, grow: 0.07, rMax: 2.4, roll: 8, g: 6, life: 9, kick: 12, up: 8, buttR: 5, windup: 0.7, buttHit: 3.2, buttCd: 2.5,
     hp: 3, hitR: 2.8, hurt: 2, leash: 6, bounty: 20, scale: 2.6, rock: { cracks: 3, fall: 1.7, cd: 0.5 } },
   // BURNING (s.burn s left): a sheep in a lit fire (within r m) burns `time` s: runs mad (run m/s) the first frantic s, then rolls it out.
-  // Singed: wool down to `wool`. A dog holding one: HOT!, drops it after hold s
-  burn: { r: 1.0, time: 11, frantic: 7.5, run: 6.5, wool: 0.05, hold: 0.35 },
+  // Singed: wool down to `wool`. A dog holding one: HOT!, drops it after hold s. Alight it melts the snow and ice round it (MELT, like a
+  // torch: melt.rate/s, all of it within melt.r0 m, none past melt.r)
+  burn: { r: 1.0, time: 11, frantic: 7.5, run: 6.5, wool: 0.05, hold: 0.35, melt: { r: 2.4, r0: 1.1, rate: 4 } },
   // camera
   viewMin: 25, viewMax: 46,
   // MAP: a dog uncovers the land within r m (fading over the outer edge m); the minimap is span m across; uncovering every `every` s;
@@ -1729,6 +1735,8 @@ function downhill(x, z) { const ci = trailInfo(x, z), i = ci.idx; DOWN.x = -tX[i
 const PASS = { fires: [], ledges: [], k: 0, cand: [], scanT: 0, seen: false };
 const ICES = [], CREVS = [], SIDE = { pts: [], hw: 3.2, off: 7.7, flare: 2.2, flat: 1.2, ledge: null, rock: null, s0: 1434, s1: 1512 };
 let sideDist = null, sideWas = null;   // sideWas: the side trail as it first was (narrow): world gen's rng draws still see it (sideOpen)
+// ICE GATE: off (iceK doesn't see it) till world gen's draws are done (ICE GATE, MOUNTAIN PASS)
+const GATE = { on: false, open: false, all: false, path: null };
 {
   const P = T.pass, PR = mulberry32(27182), prr = (a, b) => a + PR() * (b - a);
   for (const [fs, lat] of P.fires) { const p = pathPoint(fs, lat); PASS.fires.push({ i: PASS.fires.length, s: fs, lat, x: p.x, z: p.z, y: 0, fuel: 0, top: PASS.fires.length === P.fires.length - 1, by: [] }); }
@@ -1811,7 +1819,18 @@ function iceK(x, z) {   // 0 dry … 1 on the ice (a soft edge); melted (MELT): 
     if (Math.abs(x - m.x) > m.r + 1 || Math.abs(z - m.z) > m.r + 1) continue;
     for (const b of m.blobs) k = Math.max(k, 1 - smooth(b.r - 0.5, b.r + 0.2, Math.hypot(x - b.x, z - b.z)));
   }
+  if (GATE.on) k = Math.max(k, gateIce0(x, z));
   return k > 0 && meltOn ? k * (1 - smooth(0.25, 0.6, gridAt(MELT, x, z))) : k;
+}
+// ICE GATE: 0 … 1 on its band, melted or not (its edges wavy). gateS: where (x, z) is along the trail and across it (not trailInfo: CI's kept)
+const GS = { s: 0, lat: 0 };
+function gateS(x, z) { let i = gIdx[cellIdxAt(x, z)]; if (i < 0) i = 0; const dx = x - pX[i], dz = z - pZ[i]; GS.lat = -dx * tZ[i] + dz * tX[i]; GS.s = i * PS + dx * tX[i] + dz * tZ[i]; return GS; }
+const gateE0 = lat => T.iceGate.s0 + 0.7 * Math.sin(lat * 0.37 + 1.3) + 0.35 * Math.sin(lat * 0.91), gateE1 = lat => T.iceGate.s1 + 0.8 * Math.sin(lat * 0.29 + 4) + 0.4 * Math.sin(lat * 1.13 + 2);
+const gateUnder = (x, z) => { const g = gateS(x, z); return Math.abs(g.lat) < 30 && g.s > gateE0(g.lat) - 0.2 && g.s < gateE1(g.lat) + 0.2; };   // (drawing: the scenery's under it)
+function gateIce0(x, z) {
+  const B = GATE.box; if (!B || x < B[0] || x > B[1] || z < B[2] || z > B[3]) return 0;
+  const g = gateS(x, z), e0 = gateE0(g.lat), e1 = gateE1(g.lat);
+  return smooth(e0 - 0.35, e0 + 0.35, g.s) * (1 - smooth(e1 - 0.35, e1 + 0.35, g.s));
 }
 function crevAt(x, z, pad = 0) {   // the crevasse (x, z) is over (within pad m of)
   for (const c of CREVS) {
@@ -2257,10 +2276,11 @@ function part(parent, geo, { mat = MAT.vc, outline = true, shadow = true, pos = 
 }
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
 // static instanced props, chunked along z so off-screen chunks are culled
-function instanced(geo, items, { outline = true, shadow = true, chunk = 110 } = {}) {
+function instanced(geo, items, { outline = true, shadow = true, chunk = 110, gate = false } = {}) {
   const groups = new Map();
   for (const it of items) {
     if (harbK(it.x, it.z) > 0.03 || harbRoad(it.x, it.z).d < 3) continue;   // COLD HARBOUR: the land's cut away there since (harbourCarve)
+    if (gate && gateUnder(it.x, it.z)) continue;   // ICE GATE: under its ice (the old road's treads)
     const k = Math.floor(it.z / chunk); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
   for (const list of groups.values()) {
     const m = new THREE.InstancedMesh(geo, MAT.vc, list.length);
@@ -3678,7 +3698,7 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
   if (GLOW.length) part(scene, merge(...GLOW), { mat: MAT.basic, shadow: false });
   // all of the above that's instanced
   for (const k of ['needleA', 'needleB', 'tooth', 'cobble']) if (D[k].length) instanced(GEOS[k], D[k]);
-  for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false });
+  for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false, gate: true });   // (none under the ICE GATE's ice)
   // the mist below this side's lip: three sheets under the floor, drifting, thicker the deeper; it lies in the valley all the way up
   { const pos = [], al = [], idx = []; let v = 0;
     for (const [dy, a0] of [[-4.2, 0.36], [-7.5, 0.42], [-12, 0.5]]) {
@@ -5178,7 +5198,7 @@ function updateSheep(dt, dtH) {
       }
     }
     spd *= saltPep(s) * thirstPep(s) * sickPep(s) * coldPep(s);   // salty sheep are peppy, salt-starved ones drag (parched ones too: WATER; sick ones: VET; frozen or snowed on: MOUNTAIN PASS)
-    if (spd > 0 && !s.pen && (ICES.length || CREVS.length) && passK(sAt(s.x, s.z)) > 0.2) { const run = s.state === 'flee' || straight, v = passAvoid(s, run); if (v) { if (run) { dX += v.x; dZ += v.z; } else { const vl = Math.hypot(v.x, v.z) || 1, into = -(dX * v.x + dZ * v.z) / vl, m = Math.max(1, Math.hypot(dX, dZ) / 1.5) + (into > 0 ? into * Math.min(1, vl) / vl : 0); dX += v.x * m; dZ += v.z * m; } } }   // MOUNTAIN PASS: round the ice and the cracks, clear of a fire (calm: along the edge, however keen it is to go on)
+    if (spd > 0 && !s.pen && (ICES.length || CREVS.length) && passK(sAt(s.x, s.z)) > 0.2) { const run = s.state === 'flee' || straight, v = passAvoid(s, run, dX, dZ); if (v) { if (run) { dX += v.x; dZ += v.z; } else { const vl = Math.hypot(v.x, v.z) || 1, into = -(dX * v.x + dZ * v.z) / vl, m = Math.max(1, Math.hypot(dX, dZ) / 1.5) + (into > 0 ? into * Math.min(1, vl) / vl : 0); dX += v.x * m; dZ += v.z * m; } } }   // MOUNTAIN PASS: round the ice and the cracks, clear of a fire (calm: along the edge, however keen it is to go on); the ICE GATE: off it, up a lane
     if (PASS.blizz.k > 0.05 && !s.pen && spd > 0) { const dn = downhill(s.x, s.z), bk = PASS.blizz.k * passK(sAt(s.x, s.z)) * T.blizz.push; dX += dn.x * bk * 0.3; dZ += dn.z * bk * 0.3; }   // (a blizzard pushes them down the mountain)
     if (T.bramble.on && !s.snag && spd > 0 && !s.pen) {   // BRAMBLES: calm sheep go round them, bolting ones barely look
       const b = brambleAt(s.x, s.z, T.bramble.avoid);
@@ -10669,10 +10689,11 @@ function updateBlizz(dt, dtH) {
 // SHARED HOOK: e starts sliding: 'ice' (on the ice: downhill, no grip) or 'roll' (knocked down the mountain; o.still: rolls where it lies, on fire)
 function startSlide(e, kind, o = {}) {
   if (e.slide && e.slide.kind === kind && !o.still) return e.slide;
+  const up = kind === 'ice' ? gateBack(e) : 0;   // ICE GATE: up onto it: a skid, then back down it
   e.slide = { kind, t: 0, max: o.t ?? (kind === 'roll' ? T.tumble.roll : T.ice.max), still: !!o.still, burn: !!o.burn, spin: Math.random() < 0.5 ? -1 : 1 };
   if (!e.isDog && e !== HANK) { e.state = kind === 'roll' ? 'roll' : 'slide'; e.eating = false; if (e.fire) e.fire = null; }
   if (o.still) { e.vx *= 0.2; e.vz *= 0.2; }
-  if (kind === 'ice') { slipFx(e); if (!e.isDog && e !== HANK) hint('ice'); }
+  if (kind === 'ice') { slipFx(e, up > 0); if (!e.isDog && e !== HANK) hint('ice'); if (up > 0) gateSlip(e); }
   return e.slide;
 }
 function slideEnd(e) {
@@ -10685,7 +10706,8 @@ function slideStep(e, sl, r, dt, sx = 0, sz = 0) {
   const I = T.ice, U = T.tumble, dn = downhill(e.x, e.z), ice = iceK(e.x, e.z) > 0.5; sl.t += dt;
   if (sl.still) { const k = Math.exp(-6 * dt); e.vx *= k; e.vz *= k; }
   else {
-    const g = sl.kind === 'roll' ? U.g : ice ? I.g : 0, fr = sl.kind === 'roll' ? U.fric : ice ? I.fric : I.fric2, gk = clamp(dn.k / 0.12, 0, 1.4);
+    const gate = ice && sl.kind === 'ice' && GATE.on && gateIce(e.x, e.z) > 0.5;   // (ICE GATE: glassy and steep: down it fast)
+    const g = sl.kind === 'roll' ? U.g : gate ? T.iceGate.g : ice ? I.g : 0, fr = sl.kind === 'roll' ? U.fric : ice ? I.fric : I.fric2, gk = gate ? Math.max(1, dn.k / 0.12) : clamp(dn.k / 0.12, 0, 1.4);
     e.vx += (dn.x * g * gk + sx * I.g) * dt; e.vz += (dn.z * g * gk + sz * I.g) * dt;
     const k = Math.exp(-fr * dt); e.vx *= k; e.vz *= k;
   }
@@ -10702,13 +10724,14 @@ function slideStep(e, sl, r, dt, sx = 0, sz = 0) {
   if (done) slideEnd(e);
 }
 const slips = e => e.slide && e.slide.kind === 'ice';
-function slipFx(e) {
+function slipFx(e, gate) {   // (gate: thrown back off the ICE GATE: scrabbling, then away down it)
   if (!e) return;
   const pan = panOf(e.x, e.z); SFX.slip(pan, 0.24, e.isDog ? 1.1 : e === HANK ? 0.8 : 1);
   if (e.isDog) Sound.yelp(pan); else if (e === HANK) { if (Math.random() < 0.7) floatText(pick(['WHOA-WHOA-WHOA!', 'OOH-ER!']), e.x, (e.y || 0) + 2.8, e.z, '#cfefff', 1.2); }
   else Sound.baa(e.pitch * 1.3, 0.4, pan, true);
-  floatText(pick(['WHOOPS!', 'WHEEE!', 'SLIP!', 'WHOA!']), e.x, (e.y || 0) + 1.9, e.z, '#cfefff', 1.25);
-  burst(e.x, (e.y || 0) + 0.15, e.z, 8, '#dff3ff', { speed: 2.2, up: 1.2, size: 0.14, life: 0.5, grav: -6 });
+  floatText(pick(gate ? ['NOPE!', 'TOO SLIPPY!', 'WHEEE!', 'NOT TODAY!'] : ['WHOOPS!', 'WHEEE!', 'SLIP!', 'WHOA!']), e.x, (e.y || 0) + 1.9, e.z, '#cfefff', gate ? 1.45 : 1.25);
+  burst(e.x, (e.y || 0) + 0.15, e.z, gate ? 16 : 8, '#dff3ff', { speed: gate ? 3.2 : 2.2, up: gate ? 2 : 1.2, size: 0.14, life: 0.5, grav: -6 });
+  if (gate) { SFX.shake(pan, 0.16); starBurst(e.x, (e.y || 0) + 0.8, e.z, 3, ['#cfefff', '#ffffff'], { speed: 2, up: 2 }); }
 }
 function slideBonkFx(e) {
   if (!e) return;
@@ -10778,7 +10801,7 @@ function crevTiredFx(d) {   // mashing on empty: the bar flashes, a puff
 function crevHelpFx(d) { if (!d || G.time - (d.helpAt || -9) < 0.8) return; d.helpAt = G.time; floatText('HELP!', d.x, d.y + 1.4, d.z, d.color, 1.1); Sound.whimper(panOf(d.x, d.z), d.pitch); }
 // calm sheep give the ice, the cracks and a fire's flames a wide berth (a running one barely looks; nobody walks into a fire)
 const _pav = { x: 0, z: 0 };
-function passAvoid(s, run) {
+function passAvoid(s, run, dX = 0, dZ = 0) {
   let x = 0, z = 0;
   const I = T.ice.avoid, C = T.crev.avoid, w = run ? 0.25 : 1.3;
   for (const m of ICES) { if (Math.abs(s.x - m.x) > m.r + I + 1 || Math.abs(s.z - m.z) > m.r + I + 1) continue; for (const b of m.blobs) { const dx = s.x - b.x, dz = s.z - b.z, d = Math.hypot(dx, dz) || 1, k = (1 - Math.max(0, d - b.r) / I) * (1 - meltAt(b.x + dx / d * b.r, b.z + dz / d * b.r)); if (k > 0) { x += dx / d * k * w; z += dz / d * k * w; } } }   // (MELT: not where it's melted)
@@ -10788,6 +10811,7 @@ function passAvoid(s, run) {
     if (d < C) { const k = 1 - Math.max(0, d) / C; if (ev > eu) { const sv = Math.sign(v) || 1; x += -c.az * sv * k * w * 1.4; z += c.ax * sv * k * w * 1.4; } else { const su = Math.sign(u) || 1; x += c.ax * su * k * w; z += c.az * su * k * w; } }
   }
   for (const f of PASS.fires) { if (f.fuel <= 0) continue; const dx = s.x - f.x, dz = s.z - f.z, d = Math.hypot(dx, dz) || 1; if (d < 1.9) { const k = (1.9 - d) * 3; x += dx / d * k; z += dz / d * k; } }
+  if (GATE.on && !GATE.all) { const v = gateSteer(s, run, dX, dZ); if (v) { x += v.x; z += v.z; } }   // ICE GATE: off it; with a lane, up it
   if (!x && !z) return null;
   _pav.x = x; _pav.z = z; return _pav;
 }
@@ -10857,7 +10881,7 @@ function passSheepMove(s, sp, dt, dtH) {
   if (s.pen || G.mode !== 'play') return;
   if (s.state === 'flee' && sp > 3 ? fireCheck(s) : fireShove(s)) return;   // (only a bolting one runs into a fire; the rest are kept off it)
   if (CREVS.length) { const c = crevAt(s.x, s.z); if (c) { crevFall(s, c); return; } }
-  if (ICES.length && sp > T.ice.minSpd && !(s.slipCd > G.time) && iceK(s.x, s.z) > 0.6) startSlide(s, 'ice');
+  if (ICES.length && sp > 0.3 && iceK(s.x, s.z) > 0.6 && (gateIce(s.x, s.z) > 0.5 || (sp > T.ice.minSpd && !(s.slipCd > G.time)))) startSlide(s, 'ice');   // (ICE GATE: any step up it slips)
 }
 // SHARED HOOK (updateHeldSheep): carried into a fire; a burning one's too hot to hold
 function passHeld(s, d, dt) {
@@ -10875,7 +10899,8 @@ function passDogMove(d, dt) {
   dogCold(d, dt);
   if (G.mode !== 'play' || d.hopT > 0 || d.pounceT > 0 || d.holdKind === 'gate') return;
   if (CREVS.length) { const c = crevAt(d.x, d.z); if (c) { crevFall(d, c); return; } }
-  if (ICES.length && Math.hypot(d.vx, d.vz) > T.ice.minSpd * 2 && !(d.slipCd > G.time) && iceK(d.x, d.z) > 0.6) { if (d.holding) releaseHold(d, false); startSlide(d, 'ice'); }
+  const sp = Math.hypot(d.vx, d.vz);
+  if (ICES.length && sp > 0.35 && iceK(d.x, d.z) > 0.6 && (gateIce(d.x, d.z) > 0.5 || (sp > T.ice.minSpd * 2 && !(d.slipCd > G.time)))) { if (d.holding) releaseHold(d, false); startSlide(d, 'ice'); }   // (ICE GATE: even creeping)
 }
 // a dog sliding (it barely steers; a hop gets it out of a slip) or rolling
 function slideDogStep(d, inp, dt) {
@@ -10887,6 +10912,190 @@ function slideDogStep(d, inp, dt) {
   slideStep(d, sl, T.dogR, dt, sl.kind === 'ice' ? wx * T.ice.steer : 0, sl.kind === 'ice' ? wz * T.ice.steer : 0);
   dogCold(d, dt);
   if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
+}
+// ---------------- ICE GATE: a band of ice wall to wall across the climb, just past the base camp (T.iceGate). World gen's draws are done, -------------
+// the scenery's too: none of it saw it. Up onto it: a slip, thrown back down (gateBack). A lit torch melts a lane through (GATE.open;
+// GATE.path: up it, every 2 m), its melt never snows over (gateV). Hank waits at the base camp till there's one (hankGate); the flock's
+// steered to it (gateSteer). A dev jump onto it or past: all melted (gateMelt)
+const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f = s - i * PS; return { x: pX[i] + tX[i] * f - tZ[i] * lat, z: pZ[i] + tZ[i] * f + tX[i] * lat }; };   // (between the samples)
+{
+  const Tg = T.iceGate; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (let s = Tg.s0 - 3; s <= Tg.s1 + 3; s += 1) for (let lat = -32; lat <= 32; lat += 2) { const p = gatePt(s, lat); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  GATE.box = [x0, x1, z0, z1]; GATE.on = true;
+  // the lane finder's grid: D m cells across (lat from L0) and up (s from S0): walkable? how iced?
+  const D = 0.5, L0 = -22, nl = Math.round(44 / D) + 1, S0 = Tg.s0 - 2, ns = Math.round((Tg.s1 + 2 - S0) / D) + 1, n = nl * ns;
+  const Gd = GATE.grid = { D, L0, S0, nl, ns, x: new Float32Array(n), z: new Float32Array(n), walk: new Uint8Array(n), k: new Float32Array(n), pass: new Uint8Array(n), room: new Uint8Array(n), from: new Int32Array(n), q: new Int32Array(n) };
+  for (let j = 0; j < ns; j++) for (let c = 0; c < nl; c++) { const i = j * nl + c, p = gatePt(S0 + j * D, L0 + c * D); Gd.x[i] = p.x; Gd.z[i] = p.z; Gd.walk[i] = sdfAt(p.x, p.z) > 0.4 ? 1 : 0; Gd.k[i] = gateIce0(p.x, p.z); }
+  // where Hank waits for a lane: by the base camp's fire (on its far side from the stick: out of the way up), looking up at the ice
+  const f = PASS.fires.find(o => o.base), mid = gatePt(Tg.s0 - 1, 0); let w = null;
+  for (const [ds, dl] of [[-1.2, -3], [1, -3.2], [-2.8, -1.5], [-2.6, 2.5]]) { const q = gatePt(f.s + ds, f.lat + dl); if (sdfAt(q.x, q.z) > 1.2) { w = q; break; } }
+  GATE.wait = { ...(w || gatePt(f.s - 3, f.lat)), face: mid }; GATE.mid = mid; GATE.base = f; GATE.ctr = gatePt((Tg.s0 + Tg.s1) / 2, 0);
+  // drawn: a sheet of glassy blue ice over the floor, thicker in the middle, pale streaks down it, a glint sliding across; gone where it's
+  // melted (as the patches are). A lip of broken ice along its top edge
+  const pos = [], col = [], rel = [], idx = [], cA = new THREE.Color('#86c8f0'), cB = new THREE.Color('#d6f0ff'), cC = new THREE.Color('#5a9fd6'), cF = new THREE.Color('#f2f9ff'), cc = new THREE.Color();
+  const NL = 64, NU = 22, la0 = -21, la1 = 19;
+  for (let a = 0; a <= NL; a++) for (let u = 0; u <= NU; u++) {
+    const lat = lerp(la0, la1, a / NL), e0 = gateE0(lat) - 0.4, e1 = gateE1(lat) + 0.4, s = lerp(e0, e1, u / NU), p = gatePt(s, lat), y = terrainH(p.x, p.z);
+    const th = Math.sin(u / NU * Math.PI), up = y - liftArr[pathIdx(s)], wall = clamp((up - 0.6) / 2, 0, 1);
+    pos.push(p.x, y + 0.06 + 0.16 * th * (1 - wall), p.z); rel.push(up);
+    const streak = 0.5 + 0.5 * Math.sin(lat * 1.7 + Math.sin(s * 0.6) * 1.4), edge = 1 - th;
+    cc.copy(cA).lerp(cB, streak * 0.55 * th).lerp(cC, edge * 0.45 + (vnoise(lat * 0.4, s * 0.4) - 0.5) * 0.3).lerp(cF, smooth(0.55, 0.72, vnoise(lat * 0.35 + 7, s * 0.45)) * 0.75 * th); col.push(cc.r, cc.g, cc.b);   // (frost in patches)
+  }
+  for (let a = 0; a < NL; a++) for (let u = 0; u < NU; u++) {
+    const i = a * (NU + 1) + u, j = i + NU + 1;
+    if (![i, j, i + 1, j + 1].some(k => rel[k] > -0.8 && rel[k] < 1.4)) continue;   // (on the floor, lapping up the walls a little; nothing up them, nor down past the lip)
+    idx.push(i, j, i + 1, i + 1, j, j + 1);
+  }
+  let geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  geo = geo.toNonIndexed();
+  // the broken lip along the top: chunks of ice, tilted every which way
+  const GR = mulberry32(90210), grr = (a, b) => a + GR() * (b - a), lip = [];
+  for (let lat = la0 + 0.5; lat < la1; lat += grr(0.8, 1.5)) {
+    const s = gateE1(lat) - grr(0.2, 0.9), p = gatePt(s, lat), y = terrainH(p.x, p.z); if (y - liftArr[pathIdx(s)] > 1.2 || sdfAt(p.x, p.z) < 0.2) continue;
+    const r = grr(0.28, 0.6); lip.push(P(ICO(1, 0), GR() < 0.5 ? '#cdeafa' : '#b4dcf5', { s: [r * grr(0.8, 1.3), r * grr(0.7, 1.4), r * grr(0.8, 1.3)], r: [grr(-0.6, 0.6), grr(0, 3), grr(-0.6, 0.6)], p: [p.x, y + r * 0.45, p.z] }));
+  }
+  // cracks across it: dark zigzags just over its top
+  const top = (ss, lat) => { const e0 = gateE0(lat) - 0.4, e1 = gateE1(lat) + 0.4, u = clamp((ss - e0) / (e1 - e0), 0, 1), p = gatePt(ss, lat), y = terrainH(p.x, p.z); return { ...p, y: y + 0.075 + 0.16 * Math.sin(u * Math.PI) * (1 - clamp((y - liftArr[pathIdx(ss)] - 0.6) / 2, 0, 1)) }; };
+  for (let c = 0; c < 14; c++) {
+    let ss = grr(Tg.s0 + 1.5, Tg.s1 - 1.5), lat = grr(-12, 10), a = grr(0, TAU);
+    for (let k = 0, n = 4 + Math.floor(GR() * 5); k < n; k++) {
+      a += grr(-0.9, 0.9); const L = grr(0.5, 1.2), s2 = ss + Math.cos(a) * L, l2 = lat + Math.sin(a) * L, A = top(ss, lat), B = top(s2, l2);
+      if (sdfAt(A.x, A.z) > 0.3 && sdfAt(B.x, B.z) > 0.3) { const g = BOX(Math.hypot(B.x - A.x, B.z - A.z), 0.02, 0.06 - k * 0.005); lip.push(P(g, '#3d7db8', { r: [0, -Math.atan2(B.z - A.z, B.x - A.x), 0], p: [(A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2] })); }
+      ss = s2; lat = l2;
+    }
+  }
+  const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
+  mat.onBeforeCompile = sh => { sh.uniforms.uMelt = U.uMelt; sh.uniforms.uGrassXf = U.uGrassXf; sh.uniforms.uTime = U.uTime;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vIceXZ;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvIceXZ = position.xz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uMelt;\nuniform vec4 uGrassXf;\nuniform float uTime;\nvarying vec2 vIceXZ;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float gm = texture2D(uMelt, (vIceXZ - uGrassXf.xy) * uGrassXf.zw).r; if (gm > 0.42) discard;
+        float gl = pow(max(0.0, sin((vIceXZ.x - vIceXZ.y) * 0.21 - uTime * 1.3)), 40.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), gl * 0.55 + smoothstep(0.2, 0.42, gm) * 0.35);`); };   // (a glint sweeping across; white slush at a melting edge)
+  mat.customProgramCacheKey = () => 'gate-ice';
+  const m = new THREE.Mesh(merge(geo, ...lip), mat); m.receiveShadow = true; m.renderOrder = 1; scene.add(m); GATE.mesh = m;
+}
+const GATE_NB = [[1, 0], [1, -1], [1, 1], [0, -1], [0, 1], [-1, 0], [-1, -1], [-1, 1]];
+// is there a lane through (≥ T.iceGate.lane wide, all the way up)? GATE.open, GATE.path (bottom → top, every 2 m)
+function gateScan() {
+  const Gd = GATE.grid; if (!meltOn) { GATE.open = false; GATE.path = null; return false; }
+  const { nl, ns, walk, k, x, z, pass, room, from, q } = Gd, n = nl * ns, r = Math.max(1, Math.round(T.iceGate.lane / 2 / Gd.D)), r2 = r * r + 0.5;
+  for (let i = 0; i < n; i++) pass[i] = walk[i] && (k[i] < 0.02 || k[i] * (1 - smooth(0.25, 0.6, gridAt(MELT, x[i], z[i]))) < 0.4) ? 1 : 0;
+  for (let j = 0; j < ns; j++) for (let c = 0; c < nl; c++) {   // room for a lane round it: everything within r cells walkable and clear
+    const i = j * nl + c; let ok = pass[i];
+    for (let dj = -r; dj <= r && ok; dj++) for (let dc = -r; dc <= r; dc++) {
+      if (dj * dj + dc * dc > r2) continue; const jj = j + dj, cx = c + dc;
+      if (cx < 0 || cx >= nl) { ok = 0; break; } if (jj >= 0 && jj < ns && !pass[jj * nl + cx]) { ok = 0; break; }
+    }
+    room[i] = ok;
+  }
+  let h = 0, t = 0, end = -1; from.fill(-2);
+  for (let c = 0; c < nl; c++) if (room[c]) { from[c] = -1; q[t++] = c; }
+  while (h < t) {
+    const i = q[h++], j = (i / nl) | 0, c = i - j * nl; if (j === ns - 1) { end = i; break; }
+    for (const [dj, dc] of GATE_NB) { const jj = j + dj, cx = c + dc; if (jj < 0 || jj >= ns || cx < 0 || cx >= nl) continue; const o = jj * nl + cx; if (from[o] !== -2 || !room[o]) continue; from[o] = i; q[t++] = o; }
+  }
+  GATE.open = end >= 0;
+  if (!GATE.open) { GATE.path = null; return false; }
+  const cells = []; for (let i = end; i >= 0; i = from[i]) cells.push(i); cells.reverse();
+  GATE.path = cells.filter((c, i) => i % 4 === 0 || i === cells.length - 1).map(c => ({ x: x[c], z: z[c] }));
+  return true;
+}
+const gateIce = (x, z) => { const k = gateIce0(x, z); return k > 0 && meltOn ? k * (1 - smooth(0.25, 0.6, gridAt(MELT, x, z))) : k; };   // (melted: none)
+const gateShut = () => GATE.on && !GATE.open && !GATE.all;
+// up onto it: it skids on up a moment, legs going, then back down it (→ how fast it was going up, or 0)
+function gateBack(e) {
+  if (!GATE.on || gateIce(e.x, e.z) < 0.5) return 0;
+  const dn = downhill(e.x, e.z), up = -(e.vx * dn.x + e.vz * dn.z); if (up <= 0.2) return 0;
+  const k = up * (1 - T.iceGate.keep); e.vx += dn.x * k; e.vz += dn.z * k;
+  return up;
+}
+// the flock: calm ones keep off it (a running one hardly looks); with a lane, ones going up are led to its foot, then on up it
+function gateSteer(e, run, dX, dZ) {
+  const B = GATE.box; if (e.x < B[0] - 9 || e.x > B[1] + 9 || e.z < B[2] - 9 || e.z > B[3] + 9) return null;
+  const g = gateS(e.x, e.z), gs = g.s, e0 = gateE0(g.lat), e1 = gateE1(g.lat); if (gs < e0 - 9 || gs > e1 + 1) return null;
+  let x = 0, z = 0; const dl = Math.hypot(dX, dZ) || 1, ux = dX / dl, uz = dZ / dl, dn = downhill(e.x, e.z), upK = -(ux * dn.x + uz * dn.z);
+  const a = gateIce(e.x + ux * 1.6, e.z + uz * 1.6), w = run ? 0.3 : 1.5;   // ahead of it: ice?
+  if (a > 0.25) { x -= ux * a * w; z -= uz * a * w; }
+  const c = gateIce(e.x, e.z), gx = gateIce(e.x + 0.8, e.z) - gateIce(e.x - 0.8, e.z), gz = gateIce(e.x, e.z + 0.8) - gateIce(e.x, e.z - 0.8);   // out of the ice (in a lane: to its middle)
+  x -= gx * w * 1.2; z -= gz * w * 1.2;
+  const P = GATE.path;
+  if (P && upK > 0.15) {   // going up: to the lane
+    let bi = 0, bd = 1e9; for (let i = 0; i < P.length; i++) { const d = Math.hypot(P[i].x - e.x, P[i].z - e.z); if (d < bd) { bd = d; bi = i; } }
+    const o = gs < e0 - 0.3 && bd > 2.2 ? P[0] : P[Math.min(P.length - 1, bi + 1)], ox = o.x - e.x, oz = o.z - e.z, ol = Math.hypot(ox, oz) || 1, k = 1.3 * Math.min(1, upK * 2) * (c > 0.1 ? 0.6 : 1);
+    x += ox / ol * k; z += oz / ol * k;
+  }
+  return x || z ? { x, z } : null;
+}
+// MOUNTAIN PASS (hankGoal → updateHank): his way up past it: none yet, he waits by the base camp's fire; then up the lane
+function hankGate(g) {
+  if (!GATE.on || !g || GATE.all) return null;
+  const hk = HANK, h = gateS(hk.x, hk.z), hs = h.s; if (hs > gateE1(h.lat) + 0.6 || hs < T.iceGate.s0 - 60) return null;   // (past it already; nowhere near)
+  const t = gateS(g.x, g.z); if (t.s < gateE1(t.lat) + 0.6) return null;   // (where he's going's this side of it)
+  if (!GATE.open || !GATE.path) { const w = GATE.wait; return { x: w.x, z: w.z, stop: 1.2, face: w.face, gateWait: true }; }
+  const P = GATE.path; let bi = 0, bd = 1e9; for (let i = 0; i < P.length; i++) { const d = Math.hypot(P[i].x - hk.x, P[i].z - hk.z); if (d < bd) { bd = d; bi = i; } }
+  const o = bd > 2.2 ? P[0] : P[Math.min(P.length - 1, bi + 1)];
+  return { x: o.x, z: o.z, stop: 0.25, noShy: true };
+}
+// the flock gathered at the foot of it with no lane: he waits by the base camp's fire, watching the ice (hankGoal, by day)
+function gateWaitGoal() {
+  if (!gateShut() || G.mode !== 'play') return null;
+  const fc = flockCenter(); if (!(fc.n > 0)) return null;
+  const s = sAt(fc.x, fc.z); if (s < GATE.base.s - 25 || s > T.iceGate.s1 + 2) return null;
+  const w = GATE.wait; return { x: w.x, z: w.z, stop: 1.2, face: w.face, gateWait: true };
+}
+// melted through (a dev jump onto it or past), or iced again
+function gateMelt(on) {
+  for (const v of GATE.V) meltSet(v, on ? 1 : 0);
+  if (on) meltOn = true; GATE.all = on; gateScan();
+}
+// online: which of its vertices are melted (hex, 4 a digit), so a friend's ice is the host's (late, a dev jump; none: a new journey, all ice).
+// A friend only melts more of it from the host's (its own torches melt it too); none melted at the host: iced again
+function gateMask() { let s = '', b = 0, n = 0; for (const v of GATE.V) { b = b * 2 + (MELT[v] >= 0.5 ? 1 : 0); if (++n === 4) { s += b.toString(16); b = n = 0; } } return n ? s + (b << (4 - n)).toString(16) : s; }
+function gateMaskSet(m) {
+  if (!m || !/[1-9a-f]/.test(m)) { for (const v of GATE.V) if (MELT[v] > 0) meltSet(v, 0); return; }
+  GATE.V.forEach((v, i) => { if (((parseInt(m[i >> 2], 16) || 0) >> (3 - (i & 3))) & 1 && MELT[v] < 0.5) { meltSet(v, 1); meltOn = true; } });
+}
+// a slip on it going up, with no lane and no lit torch: Hank's on at them about the torch (more and more dry about it)
+const GATE_NAGS = ["Are you sure you don't want to use the torch to melt the ice?", "Ice doesn't care how fast ye run at it.", "The stick by the fire. Dip it in. Melt the ice.",
+  "Still slidin'? I could watch this all day. Well. I am.", "Och, I've seen goats with more sense. THE TORCH!", "Torch. Fire. Ice. In that order.", "That ice'll be there till spring. Or till ye light the torch."];
+function gateSlip(e) {
+  if (G.mode !== 'play' || !gateShut()) return;
+  PASS.gateSlips = (PASS.gateSlips || 0) + 1;
+  if (!PASS.said.gate) { gateIntro(); return; }
+  const n = (PASS.gateNag ?? -1) + 1, gap = T.iceGate.nag * Math.min(3, 1 + 0.3 * n);   // (less and less often)
+  if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < gap || HANK.asleep || hankFree() > G.time || !hankSees(e.x, e.z)) return;
+  const L = GATE_NAGS;
+  if (hank(null, L[n < L.length ? n : L.length - 3 + (n - L.length) % 3], { force: true })) { PASS.gateNag = n; PASS.gateNagT = G.time; }
+}
+const hankFree = () => Math.max(HANK.lastSay + 3.2, ...HANK.pending.map(q => q.at + 3.2));   // (when he's done saying what he's saying)
+function gateIntro() {
+  const delay = Math.max(0.4, hankFree() - G.time); if (!passSay('gate', 'Grab the torch and clear us a path!', { delay })) return;
+  PASS.gateNagT = G.time + delay; hint('torch'); hint('gate');
+}
+// each step (host): is there a lane yet (the line when there is); someone up at the ice: what the stick's for
+function gateScanTick(dt) {   // (→ true: a lane just opened)
+  if ((GATE.scanT = (GATE.scanT || 0) - dt) > 0) return false;
+  GATE.scanT = 0.25; const m = GATE.mid, near = e => Math.abs(e.x - m.x) + Math.abs(e.z - m.z) < 90;
+  if (!near(cam) && !G.dogs.some(near)) return false;
+  const was = GATE.open; gateScan(); return GATE.open && !was;
+}
+function updateIceGate(dt) {
+  if (!GATE.on || SEA_AWAY) return;
+  if (gateScanTick(dt) && !GATE.all && G.mode === 'play') gateOpened();
+  if (G.mode !== 'play' || !gateShut() || PASS.said.gate) return;
+  const at = e => { const g = gateS(e.x, e.z), e0 = gateE0(g.lat); return g.s > e0 - T.iceGate.near && g.s < gateE1(g.lat); }, fc = flockCenter();
+  if (G.dogs.some(at) || (fc.n > 0 && at(fc))) gateIntro();
+}
+function gateOpened() {
+  const P = GATE.path, a = P[0], b = P[P.length - 1];
+  gateOpenFx(a.x, a.z, b.x, b.z);
+  passSay('gateOpen', pick(["That's a way through! Bring 'em up, nice and steady.", "There's our road! Up they go, steady now."]), { delay: 0.5 });
+}
+function gateOpenFx(ax, az, bx, bz) {
+  const pan = panOf((ax + bx) / 2, (az + bz) / 2); SFX.crack(pan, 0.3); Sound.chime([0, 4, 7, 12], 523, 0.16);
+  for (let k = 0; k <= 8; k++) { const x = lerp(ax, bx, k / 8), z = lerp(az, bz, k / 8), y = groundY(x, z); burst(x, y + 0.3, z, 6, k % 2 ? '#dff3ff' : '#ffffff', { speed: 2.4, up: 2.6, size: 0.15, life: 0.8, grav: 6 }); }
+  floatText('✔', bx, groundY(bx, bz) + 2.2, bz, '#8dffb0', 1.8); shakeCam(0.12);
 }
 // ---------------- MELT: round a lit torch (or a lit fire) the snow melts, and the ice; the grass under the snow can be eaten ----------------
 // MELT (on the 2 m grid, with the grass): 0 snow … 1 bare. The vertices up here it can melt (MELTV, meltOK): gSnow: the grass that shows
@@ -10913,6 +11122,10 @@ const MELTV = [], meltOK = new Uint8Array(VN), gSnow = new Float32Array(VN), gUn
     gUnder[v] = Math.max(gSnow[v], u);
   }
 }
+// ICE GATE: its vertices (melted, they stay melted: never snowed over)
+const gateV = new Uint8Array(VN);
+GATE.V = MELTV.filter(v => { const x = GMINX + (v % VX) * VS, z = GMINZ + Math.floor(v / VX) * VS; return [[0, 0], [VS, 0], [-VS, 0], [0, VS], [0, -VS]].some(([a, b]) => gateIce0(x + a, z + b) > 0.02); });   // (and a vertex round it: its edges stay open too)
+for (const v of GATE.V) gateV[v] = 1;
 // one vertex melted to m: the grass under the snow shows (the host's), or it's buried again
 function meltSet(v, m) {
   const o = MELT[v]; if (Math.abs(m - o) < 1e-4) return;
@@ -10936,12 +11149,14 @@ const meltAt = (x, z) => meltOn ? gridAt(MELT, x, z) : 0;
 function updateMelt(dt, dtH) {
   const K = T.torch, M = T.melt;
   for (const t of TORCHES) if (t.lit > 0 && t.h < 1.5) { const tx = t.x + Math.sin(t.yaw) * K.len * 0.3, tz = t.z + Math.cos(t.yaw) * K.len * 0.3; meltDisc(tx, tz, t.by ? K.r : K.lieR, t.by ? K.r0 : K.lieR * 0.45, K.rate * dt); }
+  const B = T.burn.melt;   // a sheep alight melts as it goes (not high in the air)
+  for (const s of G.sheep) if (s.burn > 0 && !s.dead && passK(sAt(s.x, s.z)) > 0.2 && !(s.air && s.y - groundY(s.x, s.z) > 1.5)) meltDisc(s.x, s.z, B.r, B.r0, B.rate * dt);
   PASS.meltH = (PASS.meltH || 0) + dtH; if ((PASS.meltT = (PASS.meltT || 0) - dt) > 0) return;
   const h = PASS.meltH; PASS.meltT = M.every; PASS.meltH = 0;
   for (const f of PASS.fires) if (f.fuel > 0) meltDisc(f.x, f.z, M.fire, M.fire * 0.55, M.fireRate * h * Math.min(1, f.fuel / 0.3));
   if (!meltOn) return;
   const down = (M.refreeze * (isNight() ? M.night : 1) + M.blizz * (PASS.blizz.k || 0)) * h;
-  if (down > 0) for (const v of MELTV) if (MELT[v] > 0) meltSet(v, Math.max(0, MELT[v] - down));
+  if (down > 0) for (const v of MELTV) if (MELT[v] > 0 && !gateV[v]) meltSet(v, Math.max(0, MELT[v] - down));   // (ICE GATE: its lane stays open)
 }
 function resetMelt() {
   for (const v of MELTV) { MELT[v] = 0; meltData[v] = 0; gCap[v] = gSnow[v]; if (gAmt[v] > gSnow[v]) gAmt[v] = gSnow[v]; }
@@ -10964,8 +11179,9 @@ function torchGrip(d, mx, mz, best) {
   return out;
 }
 function torchPick(t, d) {
+  const pluck = torchPlanted(t);
   t.by = d; t.vx = t.vz = t.vy = 0; t.h = 0; t.spin = 0; torchHold(t, d);
-  torchFx('pick', t.x, t.z);
+  torchFx(pluck ? 'pluck' : 'pick', t.x, t.z);   // (out of its cairn: a puff of snow)
   if (!(t.lit > 0) && PASS.fires.some(fireLit)) passSay('torchPick', "Now dip it in the fire!", { delay: 0.3 });
 }
 function torchHold(t, d) { const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), a = d.yaw - Math.PI / 2; t.yaw = a; t.x = d.x + fx * 0.95 + Math.sin(a) * 0.25; t.z = d.z + fz * 0.95 + Math.cos(a) * 0.25; t.h = 0; }
@@ -11005,14 +11221,15 @@ function updateTorches(dt, dtH) {
     }
     if (t.lit > 0) { t.lit -= dtH * (1 + (K.blizz - 1) * (PASS.blizz.k || 0) * passK(sAt(t.x, t.z))); if (t.lit <= 0) { t.lit = 0; torchFx('out', tx, tz); } }
     // the first lit fire a dog comes up to: what its stick's for
-    if (!t.by && !(t.lit > 0) && fireLit(t.f) && !PASS.said.torch && G.dogs.some(o => Math.abs(o.x - t.x) + Math.abs(o.z - t.z) < 16)) {
+    if (!t.by && !(t.lit > 0) && fireLit(t.f) && !PASS.said.torch && !(t.f.base && gateShut()) && G.dogs.some(o => Math.abs(o.x - t.x) + Math.abs(o.z - t.z) < 16)) {   // (ICE GATE: the base camp's: gateIntro)
       hint('torch'); passSay('torch', "See the stick by the fire? Light it! Melt the snow: there's grass under it.", { delay: 1.2 });
     }
   }
 }
 function torchLit(t, x, z) {
   torchFx('light', x, z); hint('torch-lit');
-  passSay('torchLit', "That's it! Melt 'em some grass. The ice too!", { delay: 0.6 });
+  if (gateShut() && Math.hypot(x - GATE.mid.x, z - GATE.mid.z) < 45) passSay('gateLit', "That's the stuff! Now melt us a way through that ice!", { delay: 0.6 });   // ICE GATE
+  else passSay('torchLit', "That's it! Melt 'em some grass. The ice too!", { delay: 0.6 });
 }
 function torchFly(t, dt) {   // falling, a little bounce, sliding to a stop; walls send it back
   if (t.h > 0 || t.vy > 0) { t.vy -= T.airGrav * dt; t.h += t.vy * dt; t.yaw += t.spin * dt; }
@@ -11029,6 +11246,7 @@ function resetTorches() { for (const t of TORCHES) torchHome(t); }
 function torchFx(kind, x, z) {
   const y = groundY(x, z), pan = panOf(x, z);
   if (kind === 'pick') SFX.clack(pan, 0.14);
+  else if (kind === 'pluck') { SFX.clack(pan, 0.14); SFX.whoosh(pan, 0.1, 0.2); burst(x, y + 0.3, z, 12, '#f4f8fc', { speed: 1.6, up: 2, size: 0.16, life: 0.6, grav: 5 }); }
   else if (kind === 'toss') SFX.whoosh(pan, 0.16, 0.3);
   else if (kind === 'clack') SFX.clack(pan, 0.12);
   else if (kind === 'light') { SFX.whoosh(pan, 0.25, 0.6); burst(x, y + 0.9, z, 14, '#ffb340', { speed: 1.4, up: 2.2, size: 0.12, life: 0.6, grav: 2 }); floatText('🔥', x, y + 1.9, z, '#fff', 1.3); }
@@ -11036,11 +11254,26 @@ function torchFx(kind, x, z) {
   else if (kind === 'wave') { SFX.whoosh(pan, 0.14, 0.7); burst(x, y + 1, z, 10, '#ffd36b', { speed: 2.2, up: 2, size: 0.08, life: 0.5, grav: 3 }); }
 }
 // ---- drawing (every screen): the stick on the ground (or flying, or in a dog's jaws, its burning end out to one side and up); flames
-const TORCH_GEO = (() => { const L = T.torch.len; return merge(P(CYL(0.04, 0.05, L, 6), '#8a5a32', { r: [Math.PI / 2, 0, 0] }), P(CYL(0.075, 0.07, 0.24, 7), '#4a3428', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.1] }),
-  P(CYL(0.08, 0.08, 0.04, 7), '#2e2018', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.18] }), P(CYL(0.08, 0.08, 0.04, 7), '#2e2018', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.02] })); })();
+const TORCH_GEO = (() => { const L = T.torch.len; return merge(P(CYL(0.05, 0.06, L, 6), '#8a5a32', { r: [Math.PI / 2, 0, 0] }), P(CYL(0.095, 0.085, 0.3, 7), '#4a3428', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.13] }),
+  P(CYL(0.1, 0.1, 0.05, 7), '#d8b072', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.25] }), P(CYL(0.1, 0.1, 0.05, 7), '#d8b072', { r: [Math.PI / 2, 0, 0], p: [0, 0, L / 2 - 0.03] })); })();   // (a pitch-black head, pale rag bindings)
+// at home it stands in a little cairn in the snow, leaning (side on to the camera), a warm glow round its head (as over things worth finding)
+const TORCH_LEAN = 0.38, TORCH_GLOW = new THREE.SpriteMaterial({ map: FIND_GLOW.dig.map, color: '#ffb347', transparent: true, opacity: 0.6, depthWrite: false });   // (not additive: it shows on the snow)
+const TORCH_STAR = (() => {   // a twinkle over its head: a gold four-point star, seen through sheep
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), st = (r0, r1) => { c.beginPath(); for (let k = 0; k < 8; k++) { const a = k / 8 * TAU - Math.PI / 2, r = k % 2 ? r1 : r0; c.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); } c.closePath(); };
+  st(30, 7); c.fillStyle = 'rgba(150,70,0,.75)'; c.fill(); st(26, 5); const g = c.createRadialGradient(32, 32, 0, 32, 32, 26); g.addColorStop(0, '#fff'); g.addColorStop(0.35, '#ffe9a0'); g.addColorStop(1, '#ffa328'); c.fillStyle = g; c.fill();
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+})();
+const torchPlanted = t => !t.by && t.h < 0.01 && Math.abs(t.x - t.home.x) + Math.abs(t.z - t.home.z) < 0.05;
 for (const t of TORCHES) {
   const g = new THREE.Group(); part(g, TORCH_GEO); scene.add(g); t.mesh = g;
   t.flames = [['#ff9a2a', 0.13, 0.5], ['#ffe07a', 0.075, 0.32]].map(([c, r, h]) => { const m = new THREE.Mesh(CONE(r, h, 6).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: c })); m.visible = false; scene.add(m); return m; });
+  t.glow = new THREE.Sprite(TORCH_GLOW.clone()); t.glow.scale.setScalar(1.3); scene.add(t.glow);
+  t.star = new THREE.Sprite(TORCH_STAR.clone()); t.star.renderOrder = 6; scene.add(t.star);
+  t.lean = Math.atan2(CAM_R.x, CAM_R.z) + (t.i % 2 ? 0.3 : -0.3);
+  const h = t.home, st = new THREE.Group(); st.position.set(h.x, terrainH(h.x, h.z), h.z); st.rotation.y = t.i * 1.7; scene.add(st);   // its cairn
+  part(st, merge(P(SPH(8), '#f4f8fc', { s: [0.5, 0.17, 0.46], p: [0, 0.02, 0] }), P(ICO(1, 0), '#6c717e', { s: [0.2, 0.15, 0.18], p: [0.3, 0.09, 0.05] }),
+    P(ICO(1, 0), '#7a7f8c', { s: [0.17, 0.13, 0.19], p: [-0.2, 0.08, 0.25] }), P(ICO(1, 0), '#5c6270', { s: [0.18, 0.14, 0.16], r: [0.3, 0.5, 0], p: [-0.12, 0.09, -0.29] })));
 }
 const _tv = new THREE.Vector3();
 function syncTorches(dt) {
@@ -11048,12 +11281,33 @@ function syncTorches(dt) {
   for (const t of TORCHES) {
     const g = t.mesh, d = t.by, near = Math.abs(t.x - cam.x) + Math.abs(t.z - cam.z) < 120; g.visible = near;
     if (d && d.models) { d.models.head.updateWorldMatrix(true, false); d.models.head.localToWorld(_tv.set(0, -0.1, 0.33)); const a = d.yaw - Math.PI / 2; g.position.set(_tv.x + Math.sin(a) * 0.25, _tv.y, _tv.z + Math.cos(a) * 0.25); g.rotation.set(-0.32, a, 0, 'YXZ'); }
-    else { g.position.set(t.x, groundY(t.x, t.z) + 0.07 + t.h, t.z); g.rotation.set(t.h > 0.05 ? t0 * (t.spin || 6) : -0.12, t.yaw, 0, 'YXZ'); }
-    const lit = t.lit > 0 && near; t.flames[0].visible = t.flames[1].visible = lit; if (!lit) continue;
+    else if (torchPlanted(t)) {   // stuck in its cairn: up, leaning
+      const sl = Math.sin(TORCH_LEAN) * L / 2;
+      g.position.set(t.x + Math.sin(t.lean) * sl, groundY(t.x, t.z) - 0.2 + Math.cos(TORCH_LEAN) * L / 2, t.z + Math.cos(t.lean) * sl); g.rotation.set(TORCH_LEAN - Math.PI / 2, t.lean, 0, 'YXZ');
+    } else if (t.h > 0.05) { g.position.set(t.x, groundY(t.x, t.z) + 0.1 + t.h, t.z); g.rotation.set(t0 * (t.spin || 6), t.yaw, 0, 'YXZ'); }   // flying, end over end
+    else {   // lying: along the ground under it (tail, middle, tip), never into it
+      const ax = Math.sin(t.yaw) * L / 2, az = Math.cos(t.yaw) * L / 2, ha = groundY(t.x - ax, t.z - az), hb = groundY(t.x + ax, t.z + az), hm = groundY(t.x, t.z);
+      g.position.set(t.x, Math.max((ha + hb) / 2, hm) + 0.1 + t.h, t.z); g.rotation.set(-Math.atan2(hb - ha, L), t.yaw, 0, 'YXZ');
+    }
     g.updateMatrixWorld(true); g.localToWorld(_tv.set(0, 0, L / 2 - 0.08));
+    // the glow round its head while it's lying about (brighter alight); a gold mote now and then
+    const gl = t.glow, show = near && !d && G.mode !== 'title'; gl.visible = show; t.star.visible = show && !(t.lit > 0);
+    if (show) {
+      const tw = (t0 * 0.5 + t.i * 0.7) % 2.4, k = tw < 0.5 ? Math.sin(tw / 0.5 * Math.PI) : 0, lit = t.lit > 0;
+      gl.position.set(_tv.x, _tv.y + 0.08, _tv.z); gl.scale.setScalar((lit ? 2.4 : 1.7) + 0.3 * Math.sin(t0 * 2.6 + t.i) + k * 0.6); gl.material.opacity = (lit ? 0.6 : 0.5) + 0.15 * Math.sin(t0 * 2.6 + t.i);
+      if (k > 0 && (t.sparkT || 0) < t0 - 1 && Math.abs(t.x - cam.x) + Math.abs(t.z - cam.z) < 60) { t.sparkT = t0; burst(_tv.x, _tv.y + 0.2, _tv.z, 1, '#ffb340', { speed: 0.5, up: 1.4, size: 0.1, life: 0.9, grav: 0 }); }
+      t.star.position.set(_tv.x, _tv.y + 0.35, _tv.z); t.star.scale.setScalar(0.32 + k * 0.75); t.star.material.rotation = k * 0.8;
+    }
+    const lit = t.lit > 0 && near; t.flames[0].visible = t.flames[1].visible = lit; if (!lit) continue;
     const k = 0.75 + 0.25 * Math.min(1, t.lit / 0.5), s = k * (0.9 + 0.15 * Math.sin(t0 * 13 + t.i) + 0.1 * Math.sin(t0 * 21 + t.i * 3));
     for (const [j, m] of t.flames.entries()) { m.position.copy(_tv); m.scale.set(s, s * (1.2 + 0.15 * j), s); }
     if (Math.random() < dt * 8) burst(_tv.x + rnd(-0.1, 0.1), _tv.y + 0.4, _tv.z + rnd(-0.1, 0.1), 1, Math.random() < 0.5 ? '#ffb340' : '#ff7a2a', { speed: 0.3, up: 1.4, size: 0.06, life: 0.7, grav: 1.5 });
+    // ICE GATE: eating into it: steam, a hiss
+    const [mx, mz] = [t.x + Math.sin(t.yaw) * L * 0.3, t.z + Math.cos(t.yaw) * L * 0.3];
+    if (t.h < 1.5 && GATE.on && gateIce0(mx, mz) > 0.3) {
+      if (Math.random() < dt * 22) burst(mx + rnd(-1.2, 1.2), groundY(mx, mz) + 0.2, mz + rnd(-1.2, 1.2), 1, '#f4f8ff', { speed: 0.4, up: 2.2, size: 0.28, life: 0.9, grav: -0.5 });
+      if ((t.hissT = (t.hissT || 0) - dt) <= 0 && meltAt(mx, mz) < 0.98) { t.hissT = 0.45; SFX.sizzle(panOf(mx, mz), 0.08); }
+    }
   }
 }
 // the overlay: what to press, the first few times (the stick, the fire, what it's for)
@@ -11063,13 +11317,14 @@ function drawTorchOverlay() {
     const d = t.by;
     if (d) {
       if (!d.player || d.player.kind === 'net') continue;
-      if (t.lit > 0) nudge('torch-melt', d.x, d.y + 2.3, d.z, '🔥 ❄️ → 🌿', '#ffb340');
+      if (t.lit > 0 && gateShut() && Math.hypot(d.x - GATE.ctr.x, d.z - GATE.ctr.z) < 30) nudge('gate-melt', GATE.ctr.x, groundY(GATE.ctr.x, GATE.ctr.z) + 1.4, GATE.ctr.z, '🔥 → ❄️ ✖', '#7fd0f5');   // ICE GATE: through that
+      else if (t.lit > 0) nudge('torch-melt', d.x, d.y + 2.3, d.z, '🔥 ❄️ → 🌿', '#ffb340');
       else { const f = PASS.fires.find(o => o.fuel > 0 && Math.abs(o.x - d.x) + Math.abs(o.z - d.z) < 22); if (f) nudge('torch-dip', f.x, f.y + 2.2, f.z, '🪵 → 🔥', '#ffb340'); }
       continue;
     }
     if (t.h > 0 || t.lit > 0) continue;
     const o = G.dogs.find(o => !o.holding && o.player && o.player.kind !== 'net' && Math.abs(o.x - t.x) < 7 && Math.abs(o.z - t.z) < 7); if (!o) continue;
-    nudge('torch', t.x, groundY(t.x, t.z) + 1.1, t.z, `${keyLabel(o.player, 'grab')} 🪵`, '#ffb340');
+    nudge('torch', t.x, groundY(t.x, t.z) + (torchPlanted(t) ? 2.1 : 1.1), t.z, `${keyLabel(o.player, 'grab')} 🪵`, '#ffb340');   // (over its head)
   }
 }
 // ---------------- GOATS: on the ledges up the walls ----------------
@@ -11477,7 +11732,8 @@ function hankPassStep(dt) {
 }
 function hankPassMove() {   // (after his walk) onto the ice
   const hk = HANK;
-  if (G.mode === 'play' && ICES.length && !hk.rope && !hk.climb && Math.hypot(hk.vx, hk.vz) > 1 && !(hk.slipCd > G.time) && iceK(hk.x, hk.z) > 0.6) startSlide(hk, 'ice');
+  const sp = Math.hypot(hk.vx, hk.vz);
+  if (G.mode === 'play' && ICES.length && !hk.rope && !hk.climb && sp > 0.3 && iceK(hk.x, hk.z) > 0.6 && (gateIce(hk.x, hk.z) > 0.5 || (sp > 1 && !(hk.slipCd > G.time)))) startSlide(hk, 'ice');
 }
 // ---------------- models: goats, the yeti, snowballs, snow on the sheep, flames, flakes in the air ----------------
 function makeGoat() {
@@ -11543,6 +11799,7 @@ function updatePass(dt, dtH) {
     updateBlizz(dt, dtH);
   }
   updateTorches(dt, dtH); updateMelt(dt, dtH);   // the fire camps' sticks; the snow melting round them (and the fires), snowing over
+  updateIceGate(dt);   // ICE GATE: a lane through yet? someone up at the ice
   updateGoats(dt); updateYeti(dt); updateSnowballs(dt); updateRock(dt);
   // the yeti's pen: iced shut while he's there. Online with friends: then shut the flock in, and that's the journey (alone, it goes on
   // down the harbour road to the sea: SAILING)
@@ -11560,10 +11817,11 @@ function updatePass(dt, dtH) {
   }
 }
 function resetPass() {
-  Object.assign(PASS, { seen: false, cand: [], scanT: 0, said: {}, coldSaid: false, goatNext: T.goat.first, shutT: 0 });
+  Object.assign(PASS, { seen: false, cand: [], scanT: 0, said: {}, coldSaid: false, goatNext: T.goat.first, shutT: 0, gateNag: -1, gateNagT: -99, gateSlips: 0 });
   PASS.blizz = { on: false, k: 0, left: 0, next: T.blizz.first, wind: 0 };
   for (const f of PASS.fires) { f.fuel = 0; f.by = []; }
   PASS.fgT = -1; resetTorches(); resetMelt();
+  Object.assign(GATE, { open: false, all: false, path: null, scanT: 0 });   // ICE GATE: iced right across again
   for (const g of GOATS) Object.assign(g, { state: 'perch', x: g.home.x, y: g.home.y, z: g.home.z, yaw: g.home.yaw, look: g.home.yaw, t: 0, rest: 0, target: null, hop: null });
   SNOWBALLS.length = 0;
   Object.assign(YETI, { state: 'sleep', x: SIDE.home.x, z: SIDE.home.z, yaw: SIDE.home.yaw, t: 0, hp: 0, max: 0, on: false, beaten: false, how: '', next: 0, buttCd: 0, target: null, hurtT: 0 });
@@ -11575,7 +11833,7 @@ resetPass();
 const _pp = new THREE.Vector3(), _pq = new THREE.Quaternion(), _pax = new THREE.Vector3();
 function syncPass(dt) {
   const t = G.time, camS = sAt(cam.x, cam.z), pk = passK(camS), bz = (PASS.blizz.k || 0) * pk;
-  if (NET.role === 'guest' && !SEA_AWAY) updateMelt(dt, dt / hourLen());   // (a guest melts its own snow, from the torches and fires it's sent)
+  if (NET.role === 'guest' && !SEA_AWAY) { updateMelt(dt, dt / hourLen()); gateScanTick(dt); }   // (a guest melts its own snow, from the torches, fires and burning sheep it's sent; ICE GATE: its own lane)
   syncTorches(dt);
   // fires: flames while lit, a lick of smoke when out; embers rise
   for (const f of PASS.fires) {
@@ -12874,6 +13132,7 @@ const HINTS = {
   ice: '🧊 Ice! Running onto it, anything slides downhill. Calm sheep go round. <b>Jump</b> (Ⓨ / X) out of a slide.',
   torch: '🪵 A stick by every 🔥: <b>grab</b> it (RB / E) and dip it in the fire.',
   'torch-lit': '🔥 Carry it over the snow: it melts ❄️ (ice too). There\'s <b>grass</b> 🌿 under it. It snows over again in a 🌨️.',
+  gate: '❄️ Iced over! 🪵 → 🔥, then <b>melt a way</b> through',
   crev: 'Down a crack! <b>Grab</b> it out (RB / E).',
   'crev-solo': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R) to climb out. Each costs 💨.',
   'crev-team': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R), each costs 💨; or a friend <b>grabs</b> you out (RB / E).',
@@ -12934,7 +13193,7 @@ const TOUCH_HINTS = {
   cold: '❄️ To a 🔥, or keep moving',
   blizzard: '🌨️ Run them, or to a 🔥',
   ice: 'Ice! ⤴ out of a slide',
-  torch: '🪵 ✊ → 🔥', 'torch-lit': '🔥 ❄️ → 🌿',
+  torch: '🪵 ✊ → 🔥', 'torch-lit': '🔥 ❄️ → 🌿', gate: '❄️ ✖ → 🪵 🔥',
   crev: 'Down a crack! ✊ it out',
   'crev-solo': 'Down a crack! 💥💥💥 (💨)',
   'crev-team': 'Down a crack! 💥💥💥 (💨) or a friend ✊',
@@ -13642,6 +13901,7 @@ function hankGoal() {
     let best = null, bn = 0; for (const p of pens) { let n = 0; for (const s of live) if (s.pen === p) n++; if (n > bn) { bn = n; best = p; } }
     if (best && bn >= live.length * 0.6) { const f = best.fire, a = Math.atan2(f.z - best.z, f.x - best.x) + 0.9; return { x: f.x + Math.cos(a) * 1.9, z: f.z + Math.sin(a) * 1.9, stop: 0.6, face: f }; }
   }
+  const gw = gateWaitGoal(); if (gw) return gw;   // ICE GATE: the flock at the foot of it, no lane: by the base camp's fire, watching
   // by day: on the trail, a little behind the tail of the flock and behind the dogs
   const ss = []; for (const s of live) if (!s.pen) ss.push(sAt(s.x, s.z));
   ss.sort((a, b) => a - b);
@@ -13675,7 +13935,7 @@ function updateHank(dt) {
   if (hankPassStep(dt)) { hk.bumpCD = Math.max(0, hk.bumpCD - dt); hk.lighting = false; return; }   // MOUNTAIN PASS: knocked flying, rolling, sliding on the ice
   if (hk.rope) { hk.y = hankY(hk.x, hk.z); hk.stumble = Math.max(0, hk.stumble - dt); hk.bumpCD = Math.max(0, hk.bumpCD - dt); return; }   // ROPES: in a tug (hankTug moves him)
   if (hk.climb) { hankClimb(dt); updateCare(dt); updateShear(dt); if (G.mode === 'play') hankWatch(dt); return; }   // shearing: over a pen fence
-  const g = hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
+  const g = hankGate(hk.goal) || hankCross(hk.goal) || hankDetour(hk.goal) || hk.goal, dx = g.x - hk.x, dz = g.z - hk.z, d = Math.hypot(dx, dz) || 1e-4;   // (a goal in a pen: first the fence; VET: round a pen in the way)
   if (G.mode !== 'play') hk.asleep = false;
   if (hk.easeAt && Math.hypot(g.x - hk.easeAt.x, g.z - hk.easeAt.z) > 1.5) hk.easeAt = null;   // blocked short of his spot: he's there, till it moves on
   hk.swim = hk.trunks && hankDeep(hk.x, hk.z);   // RESCUE: in his trunks, out of his depth: swimming
@@ -18620,7 +18880,8 @@ const NET_TYPES = {
   fire: { tag: 'F', all: () => PASS.fires, id: f => f.i, static: true, fields: { fuel: .02 } },
   torch: { tag: 'Z', all: () => TORCHES, id: t => t.i, static: true, fields: { x: .05, z: .05, h: .02, yaw: 'a', spin: .1, lit: .02, by: '@dog' } },   // the fire camps' sticks: where, burning how long yet, in whose jaws
   pass: { tag: 'P', one: () => PASS, fields: { bk: { c: .02, get: o => o.blizz.k, set: (o, v) => { o.blizz.k = v; } }, wind: { c: 'a', get: o => o.blizz.wind || 0, set: (o, v) => { o.blizz.wind = v; } },
-    frozen: { c: 'b', get: () => !!finalPen.frozen, set: (o, v) => { finalPen.frozen = v; } }, ice: { c: 'b', get: () => HARB.ice, set: (o, v) => { HARB.ice = v; } } } },
+    frozen: { c: 'b', get: () => !!finalPen.frozen, set: (o, v) => { finalPen.frozen = v; } }, ice: { c: 'b', get: () => HARB.ice, set: (o, v) => { HARB.ice = v; } },
+    gate: { c: 's', get: () => gateMask(), set: (o, v) => gateMaskSet(v) } } },   // (ICE GATE: which bits of it are melted: a late friend, a dev jump, a new journey)
   rock: { tag: 'K', one: () => ROCK, fields: { cracks: 'i', state: 's', t: .02, dir: 'a', len: .05 }, animate: (R, dt) => { if (R.state === 'fall' || (R.state === 'down' && R.t < 2)) R.t += dt; } },
   snake: { tag: 'N', all: () => SNAKES, id: n => n.i, static: true, fields: { state: 's', k: .05, ft: .05, hx: .05, hz: .05, x: .05, z: .05 } },   // RATTLESNAKES: out how far, striking at what
   yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
@@ -19822,7 +20083,7 @@ fireFx = fxDef('fireFx', fireFx); slipFx = fxDef('slipFx', slipFx); slideBonkFx 
 crevHelpFx = fxDef('crevHelpFx', crevHelpFx); crevTiredFx = fxDef('crevTiredFx', crevTiredFx); igniteFx = fxDef('igniteFx', igniteFx); burnOutFx = fxDef('burnOutFx', burnOutFx); hotFx = fxDef('hotFx', hotFx); goatFx = fxDef('goatFx', goatFx);
 goatBonkFx = fxDef('goatBonkFx', goatBonkFx); goatPouncedFx = fxDef('goatPouncedFx', goatPouncedFx); snowHitFx = fxDef('snowHitFx', snowHitFx); yetiFx = fxDef('yetiFx', yetiFx); yetiButtFx = fxDef('yetiButtFx', yetiButtFx);
 yetiHitFx = fxDef('yetiHitFx', yetiHitFx); yetiBeatenFx = fxDef('yetiBeatenFx', yetiBeatenFx); rockCrackFx = fxDef('rockCrackFx', rockCrackFx); rockFallFx = fxDef('rockFallFx', rockFallFx); rockDownFx = fxDef('rockDownFx', rockDownFx);
-hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx);
+hankTumbleFx = fxDef('hankTumbleFx', hankTumbleFx); torchFx = fxDef('torchFx', torchFx); gateOpenFx = fxDef('gateOpenFx', gateOpenFx);   // (ICE GATE: a lane through)
 waterFx = fxDef('waterFx', waterFx);
 ropeFx = fxDef('ropeFx', ropeFx);
 boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won
@@ -19965,7 +20226,8 @@ function devJump(s, o = {}) {
   if (G.mode !== 'play' || NET.role === 'guest') return false;
   if (SEA.on) seaReset();   // back ashore
   s = clamp(s, 12, FINAL.s - 16);
-  const free = (x, z) => sdfAt(x, z) > 1.2 && !penAt(x, z);
+  const free = (x, z) => sdfAt(x, z) > 1.2 && !penAt(x, z) && iceK(x, z) < 0.2;   // (not on the ice)
+  if (GATE.on && (s > T.iceGate.s0 - 4) !== GATE.all) gateMelt(s > T.iceGate.s0 - 4);   // ICE GATE: onto it or past it: melted through (back below it: iced again)
   const spot = (c, r) => { for (let t = 0; t < 40; t++) { const a = rnd(0, TAU), q = Math.sqrt(Math.random()) * r, x = c.x + Math.cos(a) * q, z = c.z + Math.sin(a) * q; if (free(x, z)) return { x, z }; } return { x: c.x, z: c.z }; };
   for (const d of G.dogs) { if (d.holding) releaseHold(d, false); dropBucket(d); if (d.maul) endMaul(d.maul, 'done'); }
   for (const F of FALCONS) if (F.prey || F.dog) falconDrop(F, false);
@@ -20183,7 +20445,8 @@ function renderOnce(dt = 1 / 60) {
 }
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, passUp, passUpFire, upScore, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,
   ignite, burnOut, fireCheck, goatGo, goatPick, goatHome, goatBonk, goatBark, updateGoats, snowballRoll, updateSnowballs, yetiWake, yetiStruck, yetiBeaten, rockStruck, rockFall, updateRock, hankTumble, updatePass, resetPass, syncPass, flockInPass, passSafe, coldPep, passFireGoal, fireDue, hankFire, fireLit,
-  TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
+  TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt,
+  GATE, GATE_NAGS, gateS, gateIce, gateIce0, gateScan, gateMelt, gateMask, gateMaskSet, gateBack, gateSteer, hankGate, gateWaitGoal, updateIceGate, torchPlanted, devJump });   // MOUNTAIN PASS (ICE GATE; devJump: dev menu)
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
   describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
