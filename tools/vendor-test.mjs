@@ -5,6 +5,13 @@
 // then a discount; grabbed he screams; annoyed past bearing he's off for a day; he walks on, skips ahead, sleeps; no Cabo. At sea: his
 // Laser (Cold Harbour's quay, sailing by her, beached on the islands, asleep by it, gone after Gull Rock).
 // `node tools/vendor-test.mjs`
+// Checks: the vagabond: pitches (1–2 a leg, seeded, the last at the Trading Post, none up the pass), stalls gone; the trade press (pad
+//   bark, keyboard Space), packing up; 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a
+//   dog walks out), sheep use them, reset; too poor, full pen; nags (not herding, not from afar), bonks (worse each time), 3 warnings then
+//   prices up (capped); fetch, apple, tug: grievances off then a discount (capped); grabbed (screams, dragged, dusts off); leaves for a day,
+//   back ahead; walks on, skips ahead off screen, sleeps, woken; new journey; no Cabo, the Trading Post doesn't end it; at sea: Cold
+//   Harbour's quay (trade, 🌾 to the deck), cast off, sails by her (clear, heeled, boom to leeward, out of reach), beached ahead of her,
+//   trades on the island, asleep by his boat, Gull Rock: bye, gone
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
