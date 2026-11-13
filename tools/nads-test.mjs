@@ -104,10 +104,11 @@ const r5 = await h.page.evaluate(() => {
   });
   s.air = null; s.pose = null; s.lift = 0; s.vx = 0;
   const after = RUN(s, 8);   // (a circling swing can take a while to die)
-  return { maxCord, maxLink, ok: fly.concat(after).every(L => L.ok), end: after.at(-1), whip: Math.max(...fly.map(L => Math.hypot(L.n[0].f, L.n[0].s))) };
+  const last = after.slice(-30), moved = Math.max(...[0, 1].flatMap(j => ['f', 'd', 's'].map(k => { const v = last.map(L => L.n[j][k]); return Math.max(...v) - Math.min(...v); })));   // (still: not moving, whatever a contact leaves in o.v)
+  return { maxCord, maxLink, ok: fly.concat(after).every(L => L.ok), end: after.at(-1), moved, whip: Math.max(...fly.map(L => Math.hypot(L.n[0].f, L.n[0].s))) };
 });
 ok(`punted, somersaulting: they whip about (${r5.whip.toFixed(2)} m) but stay on (cord ≤ ${r5.maxCord.toFixed(2)}×, nut ≤ ${r5.maxLink.toFixed(2)}×)`, r5.ok && r5.whip > 0.08 && r5.maxCord <= 1.81 && r5.maxLink <= 1.71, r5);
-ok('landed: hanging still again', r5.end.n.every(n => n.d > 0.1 && n.v < 0.02 && n.gy > 0.03), r5.end);
+ok('landed: hanging still again', r5.end.n.every(n => n.d > 0.1 && n.gy > 0.03) && r5.moved < 0.004, { moved: r5.moved, end: r5.end });
 
 // 6. lying down: they rest on the ground; sat up to be shorn: still sane
 const r6 = await h.page.evaluate(() => {
