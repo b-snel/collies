@@ -180,9 +180,31 @@ await h.page.evaluate(() => {
   };
   window.SCN2 = SCN;
 });
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const avg = a => a.reduce((x, y) => x + y, 0) / a.length, j = a => a.join(', ');
+// checks, over the trials
+const CHECK = {
+  structure: R => {
+    const nn = R.map(r => r.grazerNN).filter(v => v != null);   // (null: nobody grazing when it looked)
+    ok(`grazing, they break into knots, neither one ball nor scattered (knots ${j(R.map(r => r.knots))}, alone ${j(R.map(r => r.alone))})`, avg(R.map(r => r.knots)) >= 2.5 && R.every(r => r.knots <= 14 && r.alone <= 0.45));
+    ok(`grazers keep a little apart (nearest ${j(R.map(r => r.grazerNN))} m, touching ${j(R.map(r => r.touching))})`, nn.length && nn.every(v => v > 1.3 && v < 3.2) && R.every(r => r.touching <= 0.25));
+  },
+  merge: R => ok(`sheep gravity: a loner 25 m off joins (${j(R.map(r => r.loneJoinedAt))} s), a knot of 3 too (${j(R.map(r => r.knotOf3JoinedAt))} s)`, R.every(r => r.loneJoinedAt > 0 && r.loneJoinedAt < 10 && r.knotOf3JoinedAt > 0 && r.knotOf3JoinedAt < 20 && r.allOneGroupAt > 0 && r.allOneGroupAt < 20)),
+  lost: R => ok(`lost 70 m off: anxious, heads back (${j(R.map(r => r.headedBackAt))} s), with the flock (${j(R.map(r => r.withFlockAt))} s)`, R.every(r => r.peakAnx > 0.5 && r.headedBackAt > 0 && r.headedBackAt < 12 && r.withFlockAt > 0 && r.withFlockAt < 40)),
+  shove: R => ok(`the hungry get the better grass (${avg(R.map(r => r.grassUnderHungry)).toFixed(2)} under them, ${avg(R.map(r => r.grassUnderFed)).toFixed(2)} under the fed; ${R.reduce((a, r) => a + r.shoves, 0)} shoves)`, avg(R.map(r => r.grassUnderHungry)) >= avg(R.map(r => r.grassUnderFed)) - 0.03),
+  corner: R => {
+    ok(`a rock corner: out (${j(R.map(r => r.rockWall.outAt))} s), no long stall (${j(R.map(r => r.rockWall.longestStall))} s)`, R.every(r => r.rockWall.outAt > 0 && r.rockWall.outAt < 6 && r.rockWall.longestStall <= 1.5));
+    ok(`the river bank: off it (${j(R.map(r => r.riverBank.outAt))} s), never across to the flock`, R.every(r => r.riverBank.outAt > 0 && r.riverBank.outAt < 15 && r.riverBank.longestStall <= 1.5 && r.riverBank.withFlockAt < 0));
+    ok(`the back of an open pen: out the gate (${j(R.map(r => r.penBack.outAt))} s), round to the flock (${j(R.map(r => r.penBack.withFlockAt))} s)`, R.every(r => r.penBack.flockReachable && r.penBack.outAt > 0 && r.penBack.outAt < 8 && r.penBack.withFlockAt > 0 && r.penBack.withFlockAt < 35 && r.penBack.longestStall <= 1.5));
+  },
+  cost: R => ok(`60 sheep: A* now and then, not every step (${R[0].aStarPer100Steps} per 100 steps)`, R[0].aStarPer100Steps <= 6),
+};
 for (const n of names) {
-  console.log(`\n== ${n}`);
-  for (let i = 0; i < (n === 'cost' ? 1 : trials); i++) console.log(JSON.stringify(await h.page.evaluate(n => window.SCN2[n](), n)));
+  console.log(`\n== ${n}`); const R = [];
+  for (let i = 0; i < (n === 'cost' ? 1 : trials); i++) { R.push(await h.page.evaluate(n => window.SCN2[n](), n)); console.log(JSON.stringify(R.at(-1))); }
+  CHECK[n]?.(R);
 }
 if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 5));
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);

@@ -203,7 +203,8 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 
 `node tools/test.mjs`: the tests for your change (diffed against origin/main), several at a time, a line each; report its last line.
 `--why` (what, why), `name[:arg]`, `--all`, `--list` (each test, its args, what it checks: its header comment). CI runs them all on every PR (`.github/workflows/tests.yml`): keep main green.
-Seeded (`SEED=n` / `SEED=random`: other dice), offline. `-sim`s print numbers, no checks ("ran"): read them.
+Seeded (`SEED=n` / `SEED=random`: other dice), offline. `-sim`s print numbers and `ok` checks on the default run (as tuned; none with `--set` / variants).
+Nightly (`.github/workflows/nightly.yml`): all tests on a new SEED each night (printed); again: `SEED=n node tools/test.mjs NAME`.
 New `index.html` section → its line in `SECTIONS` (`tools/test.mjs`).
 After merging main: clean, or conflicts only in docs (AGENTS.md, `docs/`, sw.js): push, CI runs them all. Code conflicts resolved: `node tools/test.mjs --merge` (only lines unlike both parents; `--merge C` for another merge).
 New test → its header comment: how to run it, what it checks.

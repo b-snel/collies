@@ -1,0 +1,55 @@
+# Every test on other dice (#160): each night a new SEED (from the run's id: one for all shards), printed. Again: SEED=n node tools/test.mjs NAME.
+name: nightly dice
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'SEED (empty: a new one)'
+        required: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.63.0-chromium
+      - name: Playwright, a PeerJS server
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0 peer@1.0.2
+          npx playwright install --with-deps chromium
+      - name: PeerJS server (the online tests)
+        run: nohup npx peerjs --port 9000 > peer.log 2>&1 &
+      - name: Seed
+        env:
+          ASKED: ${{ github.event.inputs.seed }}
+          RUN: ${{ github.run_id }}
+        run: |
+          [[ "$ASKED" =~ ^[0-9]*$ ]] || { echo "seed: a number"; exit 1; }
+          SEED=$(( ${ASKED:-$RUN} % 4294967296 ))
+          echo "SEED=$SEED" | tee -a "$GITHUB_ENV"
+          echo "SEED=$SEED: again with \`SEED=$SEED node tools/test.mjs NAME\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Tests
+        env:
+          PEERSERVER: 127.0.0.1:9000
+        run: |
+          echo "SEED=$SEED"
+          node tools/test.mjs --all --shard ${{ matrix.shard }}/4 --logs logs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: logs-${{ matrix.shard }}-seed-${{ env.SEED }}
+          path: |
+            logs/
+            peer.log

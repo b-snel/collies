@@ -11,6 +11,8 @@ const arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? +args[i + 1] 
 const n = arg('--n', 40), trials = arg('--trials', 1), bare = arg('--bare', 0), at = arg('--at', 330);
 const variants = JSON.parse(args.find(a => a.startsWith('[')) || '[{}]');
 const h = await open({ query: '?sim&debug' });
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const plain = mode === 'graze' && n === 40 && !bare && at === 330 && variants.length === 1 && !Object.keys(variants[0]).length;   // checks: the default run, as tuned
 for (const v of variants) for (let k = 0; k < trials; k++) {
   const r = await h.page.evaluate(([v, mode, n, bare, at]) => {
     const { G, T, step, pathPoint, pens } = GAME;
@@ -77,6 +79,13 @@ for (const v of variants) for (let k = 0; k < trials; k++) {
     return out;
   }, [v, mode, n, bare, at]);
   console.log(JSON.stringify(r));
+  if (plain) {
+    ok(`40 hungry sheep packed together graze it off: mean ${r['2h'].mean} → ${r['4h'].mean} → ${r['8h'].mean}, worst ${r['8h'].max} at 8 h`, r['4h'].mean <= 0.4 && r['8h'].mean <= 0.35 && r['8h'].max <= 0.7 && r['8h'].over07 === 0);
+    ok(`nobody starves (${r.starved})`, r.starved === 0 && r['8h'].starving === 0);
+    ok(`the middle eats as much as the edge (${r.eatMid} vs ${r.eatEdge})`, r.eatMid != null && r.eatEdge != null && r.eatMid >= r.eatEdge - 0.08);
+  }
 }
+ok('no page errors', !h.errors.length);
 if (h.errors.length) console.log('PAGE ERRORS', h.errors.slice(0, 5));
 await h.close();
+process.exit(fails ? 1 : 0);
