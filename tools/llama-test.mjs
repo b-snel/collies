@@ -153,12 +153,12 @@ if (want('guard')) {
     const { G, T, makeLlama, llamaJoin, LLAMA, sAt } = GAME, p = H.at(200, 0), out = {};
     H.flock(p.x, p.z); H.place(G.dogs[0], p.x - 20, p.z);
     const L = makeLlama({ x: p.x + 8, z: p.z, sex: 'f', age: 5 }); L.tame = 1; llamaJoin(L);
-    H.run(6); out.near0 = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z));
-    const q = H.at(240, 0); H.flock(q.x, q.z); H.run(14); out.near1 = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z));
-    const w = H.at(420, 0); H.flock(w.x, w.z); H.place(G.dogs[0], w.x, w.z - 4); H.run(2); out.caught = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z));
+    H.run(6); out.near0 = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z) - LLAMA.fr);
+    const q = H.at(240, 0); H.flock(q.x, q.z); H.run(16); out.near1 = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z) - LLAMA.fr); out.fr = H.r(LLAMA.fr);
+    const w = H.at(420, 0); H.flock(w.x, w.z); H.place(G.dogs[0], w.x, w.z - 4); H.run(2); out.caught = H.r(Math.hypot(L.x - LLAMA.fc.x, L.z - LLAMA.fc.z) - LLAMA.fr);
     return out;
   });
-  ok(`with the flock (${r.near0} m), keeps up as it moves (${r.near1} m), caught up from far (${r.caught} m)`, r.near0 < 9 && r.near1 < 10 && r.caught < 12, r);
+  ok(`by the flock's edge (${r.near0} m out), keeps up as it moves (${r.near1} m), caught up from far (${r.caught} m)`, r.near0 < 6 && r.near1 < 6 && r.caught < 9, r);
 }
 
 if (want('pen')) {
