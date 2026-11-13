@@ -166,6 +166,14 @@
   #netChip.warn .dot { background:#ffd36b; } #netChip.bad .dot { background:#ff7a6b; }
   body.online #joins { bottom:58px; }
   #pause, #netLost { background:rgba(10,15,40,.62); gap:12px; }
+  #pause.live { background:rgba(10,15,40,.42); }   /* MENUS: the game goes on behind */
+  #pause.live h1 { opacity:.9; }
+  #pauseWho[hidden] { display:none; }
+  #pauseWho span { font-size:17px; padding:3px 12px; border:2px solid transparent; }
+  #pauseWho span.go { border-color:#7ed957; } #pauseWho span.wait { opacity:.85; } #pauseWho span.me { font-weight:700; }
+  #menuBadge { position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:40; pointer-events:none; display:none; padding:4px 14px; border-radius:14px;
+    font:600 16px 'Fredoka', system-ui, sans-serif; color:var(--cream); background:rgba(10,15,40,.8); border:2px solid #7ed957; box-shadow:0 3px 0 rgba(0,0,0,.35); }
+  #menuBadge.held { border-color:#ffd36b; } body.inBarn #menuBadge.on, body.inDawn #menuBadge.on { display:block; }
   #pause h1, #netLost h1 { font-size:clamp(40px, 7vw, 76px); margin:0; }
   .nsub { font-size:clamp(16px, 2.2vw, 22px); opacity:.92; max-width:min(640px, 92vw); }
   /* the controls on the pause screen: a controller drawing, or the keys */
@@ -183,7 +191,7 @@
   .cdCap { display:inline-block; min-width:22px; padding:1px 6px; margin-right:3px; border-radius:5px; background:var(--c, #e8e2d0); color:#14161a;
     font:700 13px 'Fredoka', system-ui, sans-serif; text-align:center; box-shadow:0 2px 0 rgba(0,0,0,.4); }
   @media (max-height:560px) { #pauseCtrls { display:none; } }
-  body.modal #hint, body.modal #banner { opacity:0; }
+  body.modal #hint, body.modal #banner, body.modal #hankBubble { opacity:0; }
 
   /* ===== HANK + HANK'S BARN — every colour/shape the art pass may want to push lives in these variables ===== */
   :root {
@@ -455,7 +463,8 @@
   <div class="press">Ⓐ / Enter ↻</div>
 </div>
 <div id="pause" class="screen hidden net">
-  <h1>Paused</h1>
+  <h1 id="pauseT">Paused</h1>
+  <div id="pauseWho" class="nroster" hidden></div>
   <div id="pauseWhy" class="nsub"></div>
   <div class="press">Press P / Esc / Start to carry on</div>
   <div id="pauseCtrls"></div>
@@ -463,10 +472,10 @@
   <div id="pauseNet" class="npanel" hidden>
     <div class="row"><span>Online room</span><span id="pauseCode" class="ncode"></span><button id="pauseCopy" class="nbtn" type="button">Copy invite link</button></div>
     <div id="pauseLink" class="nlink"></div>
-    <div id="pauseRoster" class="nroster"></div>
   </div>
   <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button id="pauseResume" class="nbtn" type="button">Resume</button>
+    <button id="pauseBarn" class="nbtn ghost" type="button" title="Hank’s barn (Tab · View)">🏚️ Barn</button>
     <button id="pauseHost" class="nbtn ghost" type="button" hidden>Invite friends online</button>
     <button id="pauseStop" class="nbtn ghost" type="button" hidden>Stop hosting</button>
     <button id="pauseLeave" class="nbtn ghost" type="button" hidden>Leave game</button>
@@ -481,6 +490,7 @@
 <div id="hankBubble"><b>Hank</b><span></span><i class="arr">➤</i></div>
 <div id="barn" class="hidden"></div>
 <div id="dawn" class="hidden"></div>
+<div id="menuBadge"></div>
 <div id="loading">Rounding up the flock…</div>
 <div id="fps" title="Dev menu (`)"></div>
 <div id="dev" hidden></div>
@@ -3999,7 +4009,7 @@ const fireflies = (() => {
 const G = {
   mode: 'title', time: 0,
   clock: { hour: T.startHour, day: 1 },
-  ff: false,
+  ff: false, paused: false, menus: [], hold: '',   // MENUS: the world waiting, whose screens are in a menu, why it's held
   players: [], dogs: [], sheep: [], coyotes: [], packs: [], graves: [], dens: [],
   stats: { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0, left: 0 },
   nextSheepId: 1, hints: {}, visited: new Set(), lost: [],
@@ -12925,12 +12935,9 @@ function updateHints(dt) {
 let hudT = 0;
 function updateHUD(dt) {
   bannerTimer -= dt; if (bannerTimer <= 0) $('banner').classList.remove('show');
-  const playing = G.mode === 'play' && !G.paused && !BARN.open && !DAWN.open && !(NET.role === 'guest' && NET.dead);   // MOBILE: touch controls only while playing
+  const playing = G.mode === 'play' && !G.paused && !menuUp() && !(NET.role === 'guest' && NET.dead);   // MOBILE: touch controls only while playing
   document.body.classList.toggle('playing', playing);
-  if (TOUCH.on) {
-    $('tBarnBtn').style.display = NET.role === 'guest' ? 'none' : '';
-    if (playing && NET.role !== 'guest' && innerHeight > innerWidth) setPause(true, netLocalName());   // turned to portrait: wait
-  }
+  if (TOUCH.on && playing && innerHeight > innerWidth) setPause(true);   // turned to portrait: wait (MENUS: this screen)
   updateHints(dt); ctlBar(dt);
   hudT -= dt; if (hudT > 0) return; hudT = 0.12;
   const live = living(), penned = live.filter(s => s.pen && !s.grabbed).length;
@@ -13132,7 +13139,7 @@ function drawOverlay(dt) {
   for (const d of G.dogs) {
     const [px, py] = proj(d.x, d.y + 1.5, d.z);
     ctx.font = '700 12px Fredoka, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = d.color;
-    const label = breedOf(d.breed).icon + ' ' + (d.player.name || PCOL[d.player.slot].name);   // ONLINE: friends name their dogs. BREEDS: its icon first
+    const label = breedOf(d.breed).icon + ' ' + (d.player.name || PCOL[d.player.slot].name) + (G.menus.includes(d.player.slot) && !G.paused ? ' ⏸' : '');   // ONLINE: friends name their dogs. BREEDS: its icon first. MENUS: its player's in one
     ctx.strokeText(label, px, py); ctx.fillText(label, px, py);
     if (d.stamina < 0.999) {
       const sx = px + ctx.measureText(label).width / 2 + 8;
@@ -13403,7 +13410,7 @@ function mapFogIn(s) { if (typeof s !== 'string' || !s) return; MAP.fogIn = s; m
 // times a second (a sprinting dog moves about a pixel on it in that time)
 function updateMap(dt) {
   if (G.mode !== 'play') { if (MAP.big) mapToggle(false); return; }
-  if (!G.paused && !BARN.open && !DAWN.open) {
+  if (!G.paused && !menuUp()) {
     let hit = keyEdge.has('KeyM');
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (let i = 0; pads && i < pads.length; i++) if (pads[i] && padEdge(i, pads[i], 11)) hit = true;   // R3
@@ -14868,9 +14875,10 @@ const DOGS_KEY = 'collies.dogs.v1';
 const DOGS = { found: [], looks: [] };
 const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/.test(v);
 function cleanDogLook(L, slot) {
-  const C = PCOL[slot] || PCOL[0], o = { coat: C.coat, collar: C.collar, hat: 'none', acc: [], name: '', breed: cleanBreed(null, slot) };
+  const C = PCOL[slot] || PCOL[0], o = { coat: C.coat, collar: C.collar, hat: 'none', acc: [], name: '', breed: cleanBreed(null, slot), pick: [] };
   if (!L || typeof L !== 'object') return o;
   o.breed = cleanBreed(L.breed, slot);   // BREEDS: this slot's pick
+  if (Array.isArray(L.pick)) o.pick = ['coat', 'collar'].filter(k => L.pick.includes(k));   // ONLINE: picked in the barn (else a friend's dog takes its slot's colours)
   if (isHex(L.coat)) o.coat = L.coat;
   if (isHex(L.collar)) o.collar = L.collar;
   if (DOG_HATS.some(h => h.id === L.hat)) o.hat = L.hat;
@@ -14883,8 +14891,7 @@ function loadDogs() {
   DOGS.found = j && Array.isArray(j.found) ? DOG_ITEMS.map(it => it.id).filter(id => j.found.includes(id)) : [];
   DOGS.looks = [0, 1, 2, 3].map(i => cleanDogLook(j && Array.isArray(j.looks) ? j.looks[i] : null, i));
 }
-function saveDogs() {
-  if (NET.role === 'guest') return false;   // ONLINE: the host's barn and finds; a guest's own wardrobe stays as it was
+function saveDogs() {   // (ONLINE: a guest's are its own dogs, dressed in its own barn: theirs to keep)
   try { localStorage.setItem(DOGS_KEY, JSON.stringify({ v: 1, found: DOGS.found, looks: DOGS.looks })); return true; } catch (e) { return false; }
 }
 function dogLook(slot) { return DOGS.looks[slot] || (DOGS.looks[slot] = cleanDogLook(null, slot)); }
@@ -14893,7 +14900,8 @@ const liveDog = slot => G.dogs.find(d => d.player.slot === slot);
 function foundDogItem(id, d) {
   const it = DOG_ITEMS.find(x => x.id === id); if (!it) return false;
   if (!DOGS.found.includes(id)) DOGS.found.push(id);
-  if (d) { const L = dogLook(d.player.slot); if (it.kind === 'hat' && L.hat === 'none') L.hat = id; else if (it.kind === 'acc' && !L.acc.length) L.acc = [id]; restyleDog(d); }
+  if (d && d.player.kind === 'net') netFoundFor(d.player, id);   // ONLINE: a friend's dog: it goes in their wardrobe, on their screen
+  else if (d) { const L = dogLook(d.player.slot); if (it.kind === 'hat' && L.hat === 'none') L.hat = id; else if (it.kind === 'acc' && !L.acc.length) L.acc = [id]; restyleDog(d); }
   saveDogs(); return true;
 }
 // rebuild a dog's model in its current look (the barn, a find, or online the host's look for it)
@@ -14902,23 +14910,25 @@ function restyleDog(d) {
   scene.remove(old.root);
   const M = makeDog(d.player.slot, L); M.body.position.y = old.body.position.y; M.pring.scale.copy(old.pring.scale); d.models = M;
 }
-// change a dog's look (the barn's buttons and the tests); only found things go on
+// change a dog's look (the barn's buttons and the tests); only found things go on. ONLINE: on a guest `slot` is one of its own
+// dogs (0 = the first on its screen), sent to the host to dress it (netSendLook)
 function dogSet(slot, ch) {
-  const L = dogLook(slot), has = id => DOGS.found.includes(id);
-  if (ch.coat !== undefined && isHex(ch.coat)) L.coat = ch.coat;
-  if (ch.collar !== undefined && isHex(ch.collar)) L.collar = ch.collar;
+  const L = dogLook(slot), has = id => DOGS.found.includes(id), guest = NET.role === 'guest', picked = k => { const pk = L.pick || (L.pick = []); if (!pk.includes(k)) pk.push(k); };
+  if (ch.coat !== undefined && isHex(ch.coat)) { L.coat = ch.coat; picked('coat'); }
+  if (ch.collar !== undefined && isHex(ch.collar)) { L.collar = ch.collar; picked('collar'); }
   if (ch.hat !== undefined && (ch.hat === 'none' || (has(ch.hat) && DOG_HATS.some(h => h.id === ch.hat)))) L.hat = ch.hat;
   if (ch.acc !== undefined) L.acc = DOG_KIT.map(a => a.id).filter(id => ch.acc.includes(id) && has(id));
   if (ch.toggle !== undefined && has(ch.toggle)) { const i = L.acc.indexOf(ch.toggle); if (i >= 0) L.acc.splice(i, 1); else L.acc.push(ch.toggle); }
   if (ch.name !== undefined) {
     L.name = String(ch.name).replace(/\s+/g, ' ').trim().slice(0, 14);
-    const p = G.players.find(q => q.slot === slot && (q.kind === 'kb' || q.kind === 'pad' || q.kind === 'touch') && !q.netNamed); if (p) p.name = L.name || PCOL[slot].name;
+    const p = !guest && G.players.find(q => q.slot === slot && (q.kind === 'kb' || q.kind === 'pad' || q.kind === 'touch') && !q.netNamed); if (p) p.name = L.name || PCOL[slot].name;
   }
   if (ch.breed !== undefined && isBreed(ch.breed)) {   // BREEDS: the dog in that slot changes too (its training as that breed comes back)
-    L.breed = ch.breed; const p = G.players.find(q => q.slot === slot); if (p) setBreed(p, ch.breed);
+    L.breed = ch.breed; const p = !guest && G.players.find(q => q.slot === slot && q.kind !== 'net'); if (p) setBreed(p, ch.breed);
     if (slot === 0 && G.mode === 'title') titleBreeds();
   }
-  const d = liveDog(slot); if (d) restyleDog(d);
+  if (guest) netSendLook(slot);
+  else { const d = liveDog(slot); if (d && d.player.kind !== 'net') restyleDog(d); }
   if (BARN.open && BARN.tab === 'dogs' && BARN.dog === slot) { barnModel(); barnRefresh(); }
 }
 // hats and kit in the dog's head space (body space for what hangs off the collar), built the first time they're worn
@@ -15003,14 +15013,32 @@ titleBreeds();
 const BARN = { open: false, tab: 'sheep', sel: null, dog: 0, col: PAINT_SWATCH[0], erase: false, size: 0.05, rot: -0.7, drag: null, fresh: 0, outfit: 0, kit: 0, mem: false, w: 0, h: 0 };
 const ACC_OUTFITS = [[], ['scarf'], ['bowtie'], ['shades'], ['flower'], ['scarf', 'shades'], ['bowtie', 'flower'], ['scarf', 'flower'], ['bowtie', 'shades']];
 const barnFlock = () => G.sheep.filter(s => !s.dead);
-// ONLINE: a guest watches the host's barn (BARN.watch, read only); dogs' looks come from the host (BARN.wv.dl)
-const barnDogLook = slot => BARN.watch && BARN.wv && Array.isArray(BARN.wv.dl) ? cleanDogLook(BARN.wv.dl[slot], slot) : dogLook(slot);
+// ONLINE: every screen has its own barn. Whose dogs it dresses (DOGS.looks indices): offline / the host, every slot but a friend's
+// (they dress theirs in their own barn); a guest, its own: DOGS.looks[k] on its screen is its k-th dog, in the host's slot NET.locals[k].slot.
+// A guest's sheep edits go to the host as well (barnEdit → 'sh'); its snapshots bring everyone else's (barnSync).
+function barnDogs() {
+  if (NET.role === 'guest') return [...Array(Math.max(1, NET.locals.length)).keys()];
+  const net = new Set(G.players.filter(p => p.kind === 'net').map(p => p.slot));
+  return [0, 1, 2, 3].filter(i => !net.has(i));
+}
+const barnSlot = k => { const L = NET.role === 'guest' && NET.locals[k]; return L && L.slot >= 0 ? L.slot : k; };   // its place in the game (its colours)
+const barnDogLook = k => NET.role === 'guest' ? cleanDogLook(netLookOut(k), barnSlot(k)) : dogLook(k);   // as it'll look out there
 // BREEDS & TRAINING: a slot's breed (the dog's own if it's out on the trail) and its training card ({ b: breed, p: level + way to the next, per trait })
 function dogTrainView(slot) {
   const d = liveDog(slot), b = d ? d.breed : dogLook(slot).breed;
   return { b, p: trainProg(d ? d.tr : G.train[slot + '|' + b]) };
 }
-const barnTrainView = slot => { const v = BARN.watch && BARN.wv && Array.isArray(BARN.wv.tv) && BARN.wv.tv[slot]; return v && isBreed(v.b) ? v : dogTrainView(slot); };
+function barnTrainView(k) {   // a guest: its pick, and the levels the host sends (d.lv) once its dog's that breed
+  if (NET.role !== 'guest') return dogTrainView(k);
+  const b = dogLook(k).breed, L = NET.locals[k], d = L && L.slot >= 0 ? liveDog(L.slot) : null;
+  return { b, p: TRAITS.map(t => d && d.breed === b && d.lv ? d.lv[t.id] | 0 : 0) };
+}
+function barnEdit(s, ch) { if (!s) return; barnSet(s, ch); netSheepEdit(s, ch); }   // a sheep's name or look, from this screen
+function netSheepEdit(s, ch) { if (NET.role === 'guest' && s) netSend({ t: 'sh', id: s.id, ch }); }
+function dogName(k, name) {   // the barn's name box (a guest's first dog: its name online too)
+  if (NET.role === 'guest' && k === 0 && name) { NET.myName = name; $('netName').value = name; try { localStorage.setItem('collies.name', name); } catch (e) {} }
+  dogSet(k, { name });
+}
 function barnStage() {
   if (BARN.r) return BARN;
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: true }); r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -15045,6 +15073,7 @@ function barnModel() {
   const B = BARN; if (!B.r) return;
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; }
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
+  B.modelKey = barnModelKey();
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
     const M = buildDog(barnDogLook(B.dog), (par, geo, mat = MAT.vc) => barnPart(par, geo, mat)), bz = breedOf(barnTrainView(B.dog).b).size;
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2; M.body.scale.set(1.3 * bz[0], 1.3 * bz[1], 1.3 * bz[2]);   // (BREEDS)
@@ -15103,7 +15132,7 @@ function barnDown(e) {
   const B = BARN; if (!B.sel && B.tab === 'sheep') return;
   B.r.domElement.setPointerCapture(e.pointerId);
   const uv = barnUV(e);
-  if (uv && B.tab === 'sheep' && !B.watch) { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
+  if (uv && B.tab === 'sheep') { const st = { c: B.erase ? null : B.col, s: B.size, p: uv }; lookOf(B.sel).paint.push(st); B.drag = { paint: st }; barnPainted(); }
   else B.drag = { x: e.clientX };
 }
 function barnMove(e) {
@@ -15120,7 +15149,7 @@ function barnUp() {
   if (d && d.paint && B.sel) {   // keep a sheep's paint small enough to save (oldest strokes go first)
     const P2 = lookOf(B.sel).paint; let n = P2.reduce((a, st) => a + st.p.length, 0);
     while (P2.length > 1 && (P2.length > 120 || n > 3000)) { n -= P2[0].p.length; P2.shift(); }
-    barnPainted(); barnRefresh();
+    barnPainted(); barnRefresh(); netSheepEdit(B.sel, { paint: P2 });   // (ONLINE: a guest's stroke, to the host)
   }
 }
 function barnPainted() { const L = lookOf(BARN.sel); L.paintRev = (L.paintRev || 0) + 1; BARN.bodyMat.userData.paintU.uPaintSelf.value.z = 1; barnRepaint(); }
@@ -15145,18 +15174,18 @@ const barnIcons = (list, kind, locked = () => false) => list.map(it => locked(it
   : `<button type="button" class="ico" data-${kind}="${it.id}" title="${it.name}" aria-label="${it.name}">${ICONS[it.id] || '•'}</button>`).join('');
 const barnSec = (label, id, body, cls = 'swatches') => `<div class="sec"><span class="eyebrow">${label}<i id="${id}Pick"></i></span><div class="${cls}" id="${id}">${body}</div></div>`;
 function openBarn(sel) {
-  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || (NET.role === 'guest' && !BARN.watch)) return false;   // ONLINE: the barn is the host's (guests only watch)
-  const flock = barnFlock();
-  BARN.open = true; BARN.fromTitle = G.mode === 'title'; BARN.fresh = 0; BARN.mem = false; keys.clear();
+  if (BARN.open || (G.mode !== 'play' && G.mode !== 'title') || (NET.role === 'guest' && NET.dead)) return false;
+  const flock = barnFlock(), guest = NET.role === 'guest';
+  BARN.open = true; BARN.fromTitle = G.mode === 'title'; BARN.fresh = 0; BARN.mem = false; BARN.listKey = ''; keys.clear();
   BARN.sel = sel && flock.includes(sel) ? sel : flock.includes(BARN.sel) ? BARN.sel : flock[0] || null;
+  if (!barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
   if (sel) BARN.tab = 'sheep';
   if (!BARN.sel) BARN.tab = 'dogs';
   const el = document.getElementById('barn');
-  el.classList.toggle('watch', !!BARN.watch);
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Hank's barn">
     <div class="barnHead"><h2>Hank’s barn</h2>
       <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button></div>
-      ${BARN.watch ? '' : '<button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button>'}</div>
+      <button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button></div>
     <div class="barnGrid">
       <div class="barnList" id="barnList"></div>
       <div class="barnStage">
@@ -15173,23 +15202,24 @@ function openBarn(sel) {
     <div class="barnFoot">
       <button type="button" class="bbtn" id="barnMemBtn" hidden></button>
       <span class="hankVol"></span>
-      ${BARN.fromTitle ? '<button type="button" class="bbtn" id="barnFresh">Start a fresh flock</button>' : ''}
-      ${BARN.watch ? `<span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span>` : `<button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle ? 'Back' : 'Back to the trail'}</button>`}</div>
+      ${BARN.fromTitle && !guest ? '<button type="button" class="bbtn" id="barnFresh">Start a fresh flock</button>' : ''}
+      <button type="button" class="bbtn go" id="barnBack">${BARN.fromTitle || MENU.pause ? 'Back' : 'Back to the trail'}</button></div>
     <div class="barnPad" id="barnPad"></div>
   </div>`;
   barnStage(); document.getElementById('barnViewWrap').appendChild(BARN.r.domElement); BARN.w = BARN.h = 0;
   hankVolumeUI(el.querySelector('.hankVol'));
-  const nm = document.getElementById('barnName'); nm.readOnly = !!BARN.watch;
+  const nm = document.getElementById('barnName');
   nm.addEventListener('input', () => {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
-    if (BARN.tab === 'dogs') { dogSet(BARN.dog, { name: v.trim() }); barnList(); return; }
-    const s = BARN.sel; if (!s) return; if (v.trim()) { s.name = v.trim(); s.renamed = true; } barnList();
+    if (BARN.tab === 'dogs') { dogName(BARN.dog, v.trim()); barnList(); return; }
+    const s = BARN.sel; if (!s) return; if (v.trim()) { s.name = v.trim(); s.renamed = true; netSheepEdit(s, { name: s.name }); } barnList();
   });
-  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? dogLook(BARN.dog).name : BARN.sel ? BARN.sel.name : ''; barnList(); });
+  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? barnDogLook(BARN.dog).name : BARN.sel ? BARN.sel.name : ''; barnList(); });
   document.getElementById('barnSize').addEventListener('input', e => { BARN.size = e.target.value / 100; });
   el.querySelector('.barnCard').addEventListener('click', barnClick);
   barnTab(BARN.tab);
   el.classList.remove('hidden'); document.body.classList.add('inBarn');
+  menuTick();   // MENUS: this screen's in one (a guest tells the host now)
   return true;
 }
 // switch between the flock and the dogs
@@ -15214,13 +15244,13 @@ function barnTab(tab) {
       + barnSec('Kit', 'barnKit', barnIcons(DOG_KIT, 'kit', lock), 'chips')
       + `<span class="note" id="barnNote"></span>`;
   }
-  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep' || !!BARN.watch;
+  document.getElementById('barnTools').hidden = BARN.tab !== 'sheep';
   document.getElementById('barnViewWrap').classList.toggle('dogs', BARN.tab === 'dogs');
   barnModel(); barnRefresh();
   return true;
 }
 function barnClick(e) {
-  const b = e.target.closest('button'); if (!b || BARN.watch) return;
+  const b = e.target.closest('button'); if (!b) return;
   const s = BARN.sel, d = b.dataset;
   if (b.id === 'barnBack' || b.id === 'barnX') { closeBarn(); return; }
   if (d.tab) { barnTab(d.tab); return; }
@@ -15228,8 +15258,8 @@ function barnClick(e) {
   if (b.id === 'barnFresh') { if (BARN.fresh) { freshFlock(); BARN.fresh = 0; BARN.sel = barnFlock()[0] || null; barnModel(); } else BARN.fresh = 1; barnRefresh(); return; }
   if (BARN.tab === 'dogs') {
     const slot = BARN.dog;
-    if (d.dog) { BARN.dog = +d.dog; barnModel(); barnRefresh(); Sound.bark(PCOL[BARN.dog].pitch, 0); return; }
-    if (b.id === 'barnDice') { dogSet(slot, { name: pick(DOG_NAMES.filter(n => n !== dogLook(slot).name)) }); return; }
+    if (d.dog) { BARN.dog = +d.dog; barnModel(); barnRefresh(); Sound.bark(PCOL[barnSlot(BARN.dog)].pitch, 0); return; }
+    if (b.id === 'barnDice') { dogName(slot, pick(DOG_NAMES.filter(n => n !== barnDogLook(slot).name))); return; }
     if (d.breed) { dogSet(slot, { breed: d.breed }); return; }
     if (d.coat) { dogSet(slot, { coat: d.coat }); return; }
     if (d.collar) { dogSet(slot, { collar: d.collar }); return; }
@@ -15239,33 +15269,34 @@ function barnClick(e) {
   }
   if (d.sheep) { barnSelect(barnFlock().find(o => o.id === +d.sheep)); Sound.baa((BARN.sel && BARN.sel.pitch) || 1, 0.25, 0, true); return; }
   if (!s) return;
-  if (b.id === 'barnDice') { barnSet(s, { name: sheepName({ ram: s.ram && !s.lamb, not: s.name }) }); return; }
+  if (b.id === 'barnDice') { barnEdit(s, { name: sheepName({ ram: s.ram && !s.lamb, not: s.name }) }); return; }
   if (b.id === 'barnErase') { BARN.erase = !BARN.erase; barnRefresh(); return; }
-  if (b.id === 'barnUndo') { const L = lookOf(s); L.paint.pop(); barnSet(s, { paint: L.paint }); return; }
-  if (b.id === 'barnClear') { barnSet(s, { paint: [] }); return; }
+  if (b.id === 'barnUndo') { const L = lookOf(s); L.paint.pop(); barnEdit(s, { paint: L.paint }); return; }
+  if (b.id === 'barnClear') { barnEdit(s, { paint: [] }); return; }
   if (d.paint) { BARN.col = d.paint; BARN.erase = false; barnRefresh(); return; }
-  if (d.wool) { barnSet(s, { wool: d.wool === WOOL_SWATCH[0][0] ? null : d.wool }); return; }
-  if (d.hat) { barnSet(s, { hat: d.hat }); return; }
-  if (d.hatcol) { barnSet(s, { hatColor: d.hatcol }); return; }
-  if (d.acc) { barnSet(s, { toggle: d.acc }); return; }
+  if (d.wool) { barnEdit(s, { wool: d.wool === WOOL_SWATCH[0][0] ? null : d.wool }); return; }
+  if (d.hat) { barnEdit(s, { hat: d.hat }); return; }
+  if (d.hatcol) { barnEdit(s, { hatColor: d.hatcol }); return; }
+  if (d.acc) { barnEdit(s, { acc: lookOf(s).acc.includes(d.acc) ? lookOf(s).acc.filter(a => a !== d.acc) : [...lookOf(s).acc, d.acc] }); return; }
 }
 const DOG_NAMES = ['Moss', 'Fly', 'Gyp', 'Nell', 'Cap', 'Meg', 'Glen', 'Floss', 'Bess', 'Roy', 'Jess', 'Spot', 'Skye', 'Tweed', 'Bran', 'Shep'];
-const dogLabel = slot => dogLook(slot).name || (liveDog(slot) && liveDog(slot).player.name) || PCOL[slot].name;
+const dogLabel = slot => NET.role === 'guest' ? barnDogLook(slot).name || PCOL[barnSlot(slot)].name : dogLook(slot).name || (liveDog(slot) && liveDog(slot).player.name) || PCOL[slot].name;
 function barnList() {
   const el = document.getElementById('barnList'); if (!el) return;
   if (BARN.tab === 'dogs') {
-    el.innerHTML = [0, 1, 2, 3].map(i => `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${barnDogLook(i).coat};border-color:${PCOL[i].ui}"></i>${escHTML(barnDogLook(i).name || dogLabel(i))}<small>${breedOf(barnTrainView(i).b).icon} ${barnDogLook(i).name ? PCOL[i].name : ''}</small></button>`).join('');
+    el.innerHTML = barnDogs().map(i => { const L = barnDogLook(i), c = PCOL[barnSlot(i)];
+      return `<button type="button" class="barnSheep${i === BARN.dog ? ' on' : ''}" data-dog="${i}"><i style="background:${L.coat};border-color:${c.ui}"></i>${escHTML(L.name || dogLabel(i))}<small>${breedOf(barnTrainView(i).b).icon} ${L.name ? c.name : ''}</small></button>`; }).join('');
     return;
   }
   const flock = barnFlock();
   el.innerHTML = flock.map(s => { const L = lookOf(s), tag = s.lamb ? '🍼' : s.ram ? '♈' : '';
     return `<button type="button" class="barnSheep${s === BARN.sel ? ' on' : ''}" data-sheep="${s.id}"><i style="background:${L.wool || (s.black ? '#4a4440' : '#f6f1e3')}"></i>${escHTML(s.name)}<small>${tag}</small></button>`; }).join('')
-    + (FLOCK.home.length && !BARN.watch ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
+    + (FLOCK.home.length && NET.role !== 'guest' ? `<span class="home" title="Waiting at home for another journey">+${FLOCK.home.length} at home</span>` : '');
   const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
 }
 function barnInfo() {
   const el = document.getElementById('barnInfo'); if (!el) return;
-  if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[BARN.dog].name}’s dog` : 'Give your dog a name'; return; }
+  if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[barnSlot(BARN.dog)].name}’s dog` : 'Give your dog a name'; return; }
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
@@ -15313,30 +15344,35 @@ function barnRefresh() {
   const fr = document.getElementById('barnFresh'); if (fr) { fr.textContent = BARN.fresh ? 'Really? Forget this flock' : 'Start a fresh flock'; fr.classList.toggle('warn', !!BARN.fresh); }
   // the fallen: a button with the count; the list only when it's asked for
   const M = FLOCK.memorial, mem = document.getElementById('barnMem'), mb = document.getElementById('barnMemBtn');
-  if (mb) { mb.hidden = !M.length || !!BARN.watch; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
-  if (mem) { mem.hidden = !M.length || !BARN.mem || !!BARN.watch; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
+  if (mb) { mb.hidden = !M.length || NET.role === 'guest'; mb.textContent = `🕯️ Remembered (${M.length})`; mb.classList.toggle('on', BARN.mem); }
+  if (mem) { mem.hidden = !M.length || !BARN.mem || NET.role === 'guest'; mem.innerHTML = M.slice(0, 30).map(m => `<span class="mem"><b>${escHTML(m.name)}</b> ${lostHow(m.why, 'was ')}, day ${m.day}</span>`).join(''); }
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [], pad = document.getElementById('barnPad');
-  if (pad) pad.textContent = pads.length && !BARN.watch ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras' + (BARN.tab === 'dogs' ? ' · R3 breed' : '') + ' · Ⓑ back' : '';
+  if (pad) pad.textContent = pads.length ? 'LT/RT tab · D-pad pick, hat · Ⓧ Ⓨ colours · LB/RB extras' + (BARN.tab === 'dogs' ? ' · R3 breed' : '') + ' · Ⓑ back' : '';
 }
 function closeBarn() {
   if (!BARN.open) return;
-  BARN.open = false; BARN.drag = null; const watched = BARN.watch; BARN.watch = false; BARN.wv = null; BARN.wKey = '';
+  BARN.open = false; BARN.drag = null;
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   document.getElementById('barn').classList.add('hidden'); document.body.classList.remove('inBarn');
-  keys.clear(); if (watched) return;
-  saveFlock();   // the saved flock keeps the new names and outfits
+  keys.clear();
+  saveFlock();   // the saved flock keeps the new names and outfits (a guest's is the host's: not saved here)
   saveDogs();    // and the dogs theirs
+  if (DAWN.pending) { if (G.mode === 'play') dawnOpen(DAWN.pending); DAWN.pending = null; }   // DAWN REPORT: came while it was open
+  menuTick();    // MENUS: back to the trail (or to this screen's pause menu)
 }
-// ONLINE: what a guest needs to watch the host's barn (NET_TYPES.game.barn), and opening / following / closing it there
-function barnWatchView() { const dogs = BARN.tab === 'dogs'; return { tab: BARN.tab, sel: BARN.sel ? BARN.sel.id : -1, dog: BARN.dog, dl: dogs ? [0, 1, 2, 3].map(dogLook) : null, tv: dogs ? [0, 1, 2, 3].map(dogTrainView) : null }; }
-function barnWatch(v) {
-  if (!v || typeof v !== 'object') { if (BARN.open && BARN.watch) closeBarn(); return; }
-  if (NET.role !== 'guest' || (BARN.open && !BARN.watch)) return;
-  BARN.wv = v; BARN.dog = clamp(v.dog | 0, 0, 3);
-  const sel = barnFlock().find(s => s.id === v.sel) || null, tab = v.tab === 'dogs' || !sel ? 'dogs' : 'sheep';
-  if (!BARN.open) { BARN.watch = true; BARN.tab = tab; if (!openBarn(sel)) { BARN.watch = false; return; } if (BARN.tab !== tab) barnTab(tab); }
-  else { BARN.sel = sel || BARN.sel; if (BARN.tab !== tab) barnTab(tab); }
-  BARN.wKey = '';
+// what the turntable shows, and what the list shows: rebuilt when either changes (the world can go on while it's open: online,
+// sheep come and go, friends rename and dress them, levels arrive)
+function barnModelKey() {
+  if (BARN.tab === 'dogs') return 'd' + BARN.dog + JSON.stringify(barnDogLook(BARN.dog)) + barnTrainView(BARN.dog).b;
+  const s = BARN.sel; return s ? 's' + s.id + netLookJSON(s) + (s.wool ?? 1).toFixed(2) + !!s.lamb + !!s.ram : '';
+}
+function barnSync() {
+  const F = barnFlock();
+  if (BARN.sel && !F.includes(BARN.sel)) { BARN.sel = F[0] || null; if (!BARN.sel && BARN.tab === 'sheep') { barnTab('dogs'); return; } }
+  if (BARN.tab === 'dogs' && !barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
+  if (!BARN.drag && barnModelKey() !== BARN.modelKey) barnModel();
+  const key = BARN.tab === 'dogs' ? barnDogs().map(k => JSON.stringify(barnDogLook(k)) + JSON.stringify(barnTrainView(k))).join() : F.map(o => o.id + o.name).join() + (BARN.sel ? BARN.sel.id + BARN.sel.name : '');
+  if (key !== BARN.listKey) { BARN.listKey = key; barnRefresh(); }
 }
 // called first thing in frame(): opens on the pad's View button; while open, runs the barn and tells frame() to skip the world
 function barnFrame(dt) {
@@ -15346,11 +15382,7 @@ function barnFrame(dt) {
     if (!BARN.open) return false;
     endInputFrame(); return true;
   }
-  if (BARN.watch) {   // ONLINE: a guest watching: the game frame runs on (inputs, pause); only the turntable here
-    const s = BARN.sel, key = BARN.tab + '|' + BARN.dog + '|' + (BARN.tab === 'dogs' ? JSON.stringify(BARN.wv && [BARN.wv.dl, BARN.wv.tv]) : s ? s.id + s.name + netLookJSON(s) + (s.wool ?? 1).toFixed(2) : '');
-    if (key !== BARN.wKey) { BARN.wKey = key; barnModel(); barnRefresh(); }
-    barnRender(dt); return false;
-  }
+  if ((BARN.syncT = (BARN.syncT || 0) - dt) <= 0) { BARN.syncT = 0.4; barnSync(); }   // (online the world goes on meanwhile)
   for (let i = 0; pads && i < pads.length; i++) {
     const gp = pads[i]; if (!gp) continue;
     const e = b => padEdge(i, gp, b), s = BARN.sel, F = barnFlock();
@@ -15359,24 +15391,24 @@ function barnFrame(dt) {
     if (e(6) || e(7)) barnTab(BARN.tab === 'dogs' ? 'sheep' : 'dogs');
     const rx = gp.axes[2] || 0; if (Math.abs(rx) > 0.25) BARN.rot += rx * dt * 3;
     if (BARN.tab === 'dogs') {
-      const slot = BARN.dog, D = dogLook(slot), kit = [[], ...DOG_KIT.filter(k => DOGS.found.includes(k.id)).map(k => [k.id])];
-      if (e(12) || e(13)) { BARN.dog = (slot + (e(13) ? 1 : 3)) % 4; barnModel(); barnRefresh(); }
+      const slot = BARN.dog, D = dogLook(slot), kit = [[], ...DOG_KIT.filter(k => DOGS.found.includes(k.id)).map(k => [k.id])], ks = barnDogs();
+      if (e(12) || e(13)) { BARN.dog = cyc(ks, slot, e(13) ? 1 : -1); barnModel(); barnRefresh(); }
       if (e(14) || e(15)) dogSet(slot, { hat: cyc(['none', ...DOG_HATS.map(h => h.id).filter(id => DOGS.found.includes(id))], D.hat, e(15) ? 1 : -1) });
       if (e(2)) dogSet(slot, { coat: cyc(DOG_COATS.map(c => c[0]), D.coat, 1) });
       if (e(3)) dogSet(slot, { collar: cyc(DOG_COLLARS.map(c => c[0]), D.collar, 1) });
       if (e(4) || e(5)) { BARN.kit = (BARN.kit + (e(5) ? 1 : kit.length - 1)) % kit.length; dogSet(slot, { acc: kit[BARN.kit] }); }
-      if (e(0)) dogSet(slot, { name: pick(DOG_NAMES.filter(n => n !== D.name)) });
-      if (e(11)) { const i = BREEDS.findIndex(b => b.id === dogTrainView(slot).b); dogSet(slot, { breed: BREEDS[(i + 1) % BREEDS.length].id }); }   // R3: BREEDS
+      if (e(0)) dogName(slot, pick(DOG_NAMES.filter(n => n !== barnDogLook(slot).name)));
+      if (e(11)) { const i = BREEDS.findIndex(b => b.id === barnTrainView(slot).b); dogSet(slot, { breed: BREEDS[(i + 1) % BREEDS.length].id }); }   // R3: BREEDS
       continue;
     }
     if (e(12) || e(13)) barnSelect(F[(F.indexOf(s) + (e(13) ? 1 : F.length - 1)) % F.length]);
     if (!s) continue;
     const L = lookOf(s);
-    if (e(14) || e(15)) barnSet(s, { hat: cyc(SHEEP_HATS.map(h => h.id), L.hat, e(15) ? 1 : -1) });
-    if (e(2)) barnSet(s, { wool: cyc(WOOL_SWATCH.map(c => c[0]), L.wool || WOOL_SWATCH[0][0], 1) });
-    if (e(3)) barnSet(s, { hatColor: cyc(HATCOL_SWATCH.map(c => c[0]), L.hatColor, 1) });
-    if (e(4) || e(5)) { BARN.outfit = (BARN.outfit + (e(5) ? 1 : ACC_OUTFITS.length - 1)) % ACC_OUTFITS.length; barnSet(s, { acc: ACC_OUTFITS[BARN.outfit] }); }
-    if (e(0)) barnSet(s, { name: sheepName({ ram: s.ram && !s.lamb, not: s.name }) });
+    if (e(14) || e(15)) barnEdit(s, { hat: cyc(SHEEP_HATS.map(h => h.id), L.hat, e(15) ? 1 : -1) });
+    if (e(2)) { const w = cyc(WOOL_SWATCH.map(c => c[0]), L.wool || WOOL_SWATCH[0][0], 1); barnEdit(s, { wool: w === WOOL_SWATCH[0][0] ? null : w }); }
+    if (e(3)) barnEdit(s, { hatColor: cyc(HATCOL_SWATCH.map(c => c[0]), L.hatColor, 1) });
+    if (e(4) || e(5)) { BARN.outfit = (BARN.outfit + (e(5) ? 1 : ACC_OUTFITS.length - 1)) % ACC_OUTFITS.length; barnEdit(s, { acc: ACC_OUTFITS[BARN.outfit] }); }
+    if (e(0)) barnEdit(s, { name: sheepName({ ram: s.ram && !s.lamb, not: s.name }) });
   }
   if (BARN.open) barnRender(dt);
   endInputFrame();
@@ -15384,7 +15416,6 @@ function barnFrame(dt) {
 }
 // Tab opens and closes the barn; while it's open no key reaches the game (typing a name included)
 addEventListener('keydown', e => {
-  if (BARN.open && BARN.watch) return;   // watching the host's barn: keys go to the game as usual
   if (BARN.open) {
     if (e.code === 'Tab' || e.code === 'Escape') { e.preventDefault(); if (!e.repeat) closeBarn(); }
     e.stopImmediatePropagation(); return;
@@ -15448,49 +15479,50 @@ function dawnView() {
   return { day: DAWN.day, born: DAWN.born.map(s => ({ id: s.id, name: s.name, wool: wool(s), mum: s.mother ? s.mother.name : '' })),
     dead: DAWN.dead.map(m => ({ name: m.name, why: m.why, brave: m.brave, text: m.text })) };
 }
-function dawnHTML(v, edit) {
+function dawnHTML(v) {
   const { born, dead } = v;
   return `<div class="barnCard" role="dialog" aria-label="Dawn">
-    <div class="barnHead"><h2>🌅 Day ${v.day}</h2>${edit ? `<button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button>` : ''}</div>
-    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${escHTML(s.wool)}"></i>${edit ? `<input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>` : `<b>${escHTML(s.name)}</b>`}${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
+    <div class="barnHead"><h2>🌅 Day ${v.day}</h2><button type="button" class="barnX" data-go title="Go (Enter / Ⓐ)" aria-label="Go">✕</button></div>
+    ${born.length ? `<div class="dawnSec"><span class="eyebrow">🐣 ${born.length} new lamb${born.length > 1 ? 's' : ''}</span>${born.map(s => `<div class="dawnRow" data-id="${s.id}"><i title="Wool" style="background:${escHTML(s.wool)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div>` : ''}
     ${obitHTML(dead)}
-    ${edit ? `<div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>` : `<div class="barnFoot"><span title="${escHTML(NET.hostName || '')}">⏳ ${escHTML(NET.hostName || '')}</span></div>`}
+    <div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go" data-go title="Enter / Ⓐ">▶</button></div>
   </div>`;
 }
-// ONLINE: a guest shows the host's card, read only, while the host has it open
-let dawnGuestKey = '';
-function dawnGuest(v) {
-  if (v && NET.role !== 'guest') return;
-  const key = v ? JSON.stringify(v) : ''; if (key === dawnGuestKey) return; dawnGuestKey = key;
-  const el = $('dawn');
-  if (!v || typeof v !== 'object' || !Array.isArray(v.born) || !Array.isArray(v.dead)) { el.classList.add('hidden'); document.body.classList.remove('inDawn'); return; }
-  el.innerHTML = dawnHTML(v, false); el.classList.remove('hidden'); document.body.classList.add('inDawn');
-}
+// the host / offline: the card for this dawn. ONLINE: every screen gets it (dawnShare) and closes its own; a guest's names go to
+// the host. The world waits only while every screen has a menu up (MENUS)
 function openDawn(born, dead) {
-  if (BARN.open) closeBarn();
-  Object.assign(DAWN, { open: true, born, dead, day: G.clock.day }); keys.clear();
+  Object.assign(DAWN, { born, dead, day: G.clock.day });
+  const v = dawnView(); dawnShare(v); return dawnOpen(v);
+}
+function dawnShare(v) { if (NET.role === 'guest') dawnOpen(v); }   // (an effect: replayed on every guest)
+function dawnOpen(v) {
+  if (!v || typeof v !== 'object' || !Array.isArray(v.born) || !Array.isArray(v.dead)) return false;
+  if (BARN.open) { DAWN.pending = v; return true; }   // (online the world goes on in the barn: the card waits till it closes)
+  DAWN.open = true; DAWN.pending = null; keys.clear();
   const el = $('dawn');
-  el.innerHTML = dawnHTML(dawnView(), true);
-  const byId = row => born.find(s => s.id === +row.dataset.id);
+  el.innerHTML = dawnHTML(v);
+  const byId = row => G.sheep.find(s => s.id === +row.dataset.id && !s.dead);
   el.querySelectorAll('.dawnRow input').forEach(inp => {
-    inp.addEventListener('input', () => barnSet(byId(inp.closest('.dawnRow')), { name: inp.value }));
+    inp.addEventListener('input', () => barnEdit(byId(inp.closest('.dawnRow')), { name: inp.value }));
     inp.addEventListener('blur', () => { const s = byId(inp.closest('.dawnRow')); if (s) inp.value = s.name; });
   });
   el.querySelector('.barnCard').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; const row = b.closest('.dawnRow'), s = row && byId(row);
     if (b.dataset.go !== undefined) closeDawn();
-    else if (b.dataset.dice !== undefined && s) { barnSet(s, { name: sheepName({ not: s.name }) }); row.querySelector('input').value = s.name; }
+    else if (b.dataset.dice !== undefined && s) { barnEdit(s, { name: sheepName({ not: s.name }) }); row.querySelector('input').value = s.name; }
     else if (b.dataset.edit !== undefined && s) { closeDawn(); openBarn(s); }
     else if (b.dataset.flock !== undefined) { closeDawn(); openBarn(); }
   });
   el.classList.remove('hidden'); document.body.classList.add('inDawn');
+  menuTick();
   return true;
 }
 function closeDawn() {
   if (!DAWN.open) return; DAWN.open = false;
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   $('dawn').classList.add('hidden'); document.body.classList.remove('inDawn'); keys.clear();
-  saveFlock();   // new names stick
+  saveFlock();   // new names stick (a guest's: the host keeps them)
+  menuTick();
 }
 // in frame(): while open the world waits; pad Ⓐ/Ⓑ/Start closes, View opens the barn
 function dawnFrame() {
@@ -18341,7 +18373,7 @@ function resetGame() {
   G.wool = 0;   // HANK: shearing: no wool yet, the clippers buried again
   G.train = {}; for (const d of G.dogs) { d.tr = trainRec(d.player.slot, d.breed); d.lv = d.tr.lv; dogStats(d); }   // TRAINING: a new journey, a fresh start
   resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
-  G.visited = new Set([CAMPS[0].name]); mapReset(); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; closeDawn(); dawnGuest(null); if (BARN.watch) closeBarn();
+  G.visited = new Set([CAMPS[0].name]); mapReset(); G.hints = {}; ctlBarT = 0; G.lost = []; DAWN.from = 0; DAWN.pending = null; closeDawn();
   spawnFlock();
   G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.heldBy = null; d.heldWrig = 0; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; d.cold = 0; d.crev = null; d.slide = null; });
   $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
@@ -18362,13 +18394,16 @@ function checkLose() {
 //
 // Messages (plain objects with a `t`; BinaryPack on the wire, one reliable ordered DataConnection per guest):
 //   guest → host  hi {v, b (build hash), cid (stable client id), name, n (players on that screen), br (their breed)} · i {h: held
-//                 inputs, p} on change and every 400 ms · e {k, p} one-shot buttons (NET_EDGES) + 'pause' / 'again' ·
-//                 j {n} someone else on that screen picked up a controller · n {name} · b {br} a breed picked on their title · hb {ts} · bye
+//                 inputs, p} on change and every 400 ms · e {k, p} one-shot buttons (NET_EDGES) + 'again' ·
+//                 j {n} someone else on that screen picked up a controller · n {name} · b {br} a breed picked on their title ·
+//                 m {on} their screen's in a menu or out (MENUS) · dl {lk, p} their dog as they dress it in their barn ·
+//                 sh {id, ch} a sheep renamed / dressed in their barn or on their dawn card · hb {ts} · bye
 //                 (p: which of that screen's players, left out for the first)
 //   host → guest  w {slot, slots, host, code} welcome (slots: one per player there, -1 till the journey starts) ·
 //                 l {list, you: [entries]} roster · s snapshot (20 Hz) · g {h, c} grass changes
 //                 (3 Hz: hours to regrow, then [cell-index step, byte] pairs) · G {d} whole grass map, one byte a
-//                 cell (on join, and after a big change) · hb {hid} · pong {ts} · r {a, p} rumble · old / full / bye
+//                 cell (on join, and after a big change) · hb {hid} · pong {ts} · r {a, p} rumble · find {id, p} their dog dug it up ·
+//                 old / full / bye
 // HYBRID: a seat is one friend's browser; s.subs holds a {player, held, edges} for each person playing on that
 // screen (couch co-op on both ends: the host's sofa joins locally, each friend's sofa through their one link).
 // A net player's p.seat and p.sub say where its inputs come from; 4 dogs in all (netRoomFor).
@@ -18404,7 +18439,7 @@ function checkLose() {
 // own clock. Per-frame trails (single-particle bursts) aren't sent: guests make their own in `animate`.
 // The host records an effect when it's made outside drawing code (NET.vis) and not inside another effect;
 // guests replay it locally, with the pan recomputed for their own camera when it came from panOf(x, z).
-// HANK'S BARN is the host's: guests can't open it; while the host is in it mid-journey, friends watch it (read only).
+// MENUS: every screen has its own pause menu, barn and dawn card; the world waits only once every screen's in one (menuTick).
 // =====================================================================
 const NET_VER = 1;
 const NETT = { hz: 20, grassMs: 330, staleIn: 1000, dropMs: 60000, joinMs: 20000, reclaimMs: 120000, maxGuests: 3, fxCap: 250 };
@@ -18548,9 +18583,7 @@ const NET_TYPES = {
     tag: 'G', one: () => G,
     fields: {
       mode: { c: 's', get: o => o.mode, set: (o, v) => { NET.wantMode = v; } },   // applied after the effects (finishGame)
-      ff: 'b', paused: 'b', pauseWho: 's',
-      barn: { c: 'j', get: () => BARN.open && !BARN.fromTitle && G.mode === 'play' ? barnWatchView() : null, set: (o, v) => barnWatch(G.mode === 'play' ? v : null) },   // HANK'S BARN: guests watch the host in it
-      dawn: { c: 'j', get: o => DAWN.open ? dawnView() : null, set: (o, v) => dawnGuest(G.mode === 'play' ? v : null) },   // DAWN REPORT: guests see the host's card
+      ff: 'b', paused: 'b', menus: { c: 'j', set: (o, v) => { o.menus = Array.isArray(v) ? v : []; } }, hold: { c: 's', set: (o, v) => { o.hold = v || ''; } },   // MENUS: the world waiting, whose screens are in one, why it's held
       wool: 'i',   // HANK: shearing: the wool stock 🧶
       lost: { c: 's', get: o => netCachedJSON(o, 'lost'), set: (o, v) => { try { o.lost = JSON.parse(v) || []; } catch (e) {} } },   // the fallen, for the end screen
       fog: { c: 's', get: () => mapFogOut(), set: (o, v) => mapFogIn(v) },   // MAP: what the dogs have uncovered (each screen uncovers its own too; this tops up a late friend)
@@ -18824,8 +18857,8 @@ function controlsHTML(dev) {
 // it fades after T_CTLBAR s of play, and comes back for a while when someone picks up another device (or pauses)
 let ctlBarKey = '', ctlBarT = 0, ctlBarOn = null; const T_CTLBAR = 45;
 function ctlBar(dt = 0) {
-  if (G.mode === 'play' && !G.paused) ctlBarT += dt;
-  const on = ctlBarT < T_CTLBAR || !!G.paused; if (on !== ctlBarOn) { ctlBarOn = on; $('ctlBar').classList.toggle('show', on); document.body.classList.toggle('ctlOn', on); }
+  if (G.mode === 'play' && !G.paused && !menuUp()) ctlBarT += dt;
+  const on = ctlBarT < T_CTLBAR || MENU.pause; if (on !== ctlBarOn) { ctlBarOn = on; $('ctlBar').classList.toggle('show', on); document.body.classList.toggle('ctlOn', on); }
   const key = INPUT_DEV + INPUT_KB;
   if (key === ctlBarKey) return; if (ctlBarKey) ctlBarT = Math.min(ctlBarT, T_CTLBAR - 8); ctlBarKey = key;
   const cap = k => `<kbd class="cdCap">${k}</kbd>`;
@@ -18855,11 +18888,35 @@ function pauseControls() {   // redrawn only when what it would show changes
   const key = INPUT_DEV + G.players.map(p => p.kind + p.index).join();
   if (key !== pauseCtrlsKey) { pauseCtrlsKey = key; $('pauseCtrls').innerHTML = controlsHTML(INPUT_DEV); }
 }
-function setPause(on, who = '') {
-  on = !!on && G.mode === 'play';
-  if (!!G.paused === on) return;
-  G.paused = on; G.pauseWho = on ? who : '';
-  if (NET.role === 'host') netSnapTick();   // tell friends straight away (the host's frames may have stopped)
+// MENUS: each screen has its own: the pause menu (MENU.pause), Hank's barn, the dawn card. Offline any of them stops the world.
+// Online it waits only once every screen is in one (or it's held: MENU.hold, e.g. the host's tab hidden); till then a dog whose
+// screen is in a menu lies down and waits, ⏸ by its name. G.paused: the world waiting · G.menus: those dogs' slots · G.hold: why it's held.
+const MENU = { pause: false, hold: new Set(), sent: null };
+const menuUp = () => MENU.pause || BARN.open || DAWN.open;
+const menuInput = () => readInput({ kind: 'bot', bot: { lie: true } });   // a dog waiting for its player
+function setPause(on) { MENU.pause = !!on && G.mode === 'play'; menuTick(); }   // this screen's pause menu
+function holdWorld(on, why = 'test') { if (on) MENU.hold.add(why); else MENU.hold.delete(why); menuTick(); }   // the host: everyone waits
+// every frame (and on any change): host / offline work out whether the world waits and whose dogs do; a guest tells the host
+function menuTick() {
+  if (G.mode !== 'play') MENU.pause = false;
+  if (NET.role === 'guest') {
+    const on = menuUp() && G.mode === 'play';
+    if (on !== MENU.sent && NET.inRoom && !NET.dead && NET.conn && NET.conn.open) { MENU.sent = on; netSend({ t: 'm', on: on ? 1 : 0 }); }
+    return;
+  }
+  const mine = menuUp(), who = [];
+  if (mine) for (const p of G.players) if (p.kind !== 'net') who.push(p.slot);
+  let all = mine;
+  for (const s of NET.seats) {
+    const us = s.subs.filter(u => u.player); if (!s.conn || !us.length) continue;
+    if (s.menu) for (const u of us) who.push(u.player.slot); else all = false;
+  }
+  who.sort((a, b) => a - b);
+  const hold = MENU.hold.has('#hidden') ? '#hidden' : MENU.hold.size ? [...MENU.hold][0] : '';
+  const paused = G.mode === 'play' && (!!hold || all);
+  const ch = paused !== G.paused || hold !== G.hold || who.join() !== G.menus.join();
+  G.paused = paused; G.hold = hold; G.menus = who;
+  if (ch && NET.role === 'host') netSnapTick();   // tell friends straight away (the host's frames may have stopped)
 }
 function netLocalName() { const p = G.players.find(p => p.kind !== 'net'); return (p && p.name) || NET.myName || 'P1'; }
 function netStartHit() {   // Start on a controller: a joined pad on the host, any pad on a guest
@@ -18877,15 +18934,13 @@ function netAHit() { const pads = navigator.getGamepads ? navigator.getGamepads(
 function netFrameStart(now, dt) {
   NET.now = now; NET.vis = false;
   const pauseHit = keyEdge.has('KeyP') || keyEdge.has('Escape') || netStartHit();
+  if (pauseHit && G.mode === 'play' && !(NET.role === 'guest' && (!NET.inRoom || NET.dead))) setPause(!MENU.pause);   // MENUS: this screen's own
   if (NET.role !== 'guest') {
-    if (G.paused && G.mode !== 'play') setPause(false);
-    if (pauseHit && G.mode === 'play') setPause(!G.paused, netLocalName());
     if (NET.role === 'host') netHostSeats();
     return true;
   }
   netGuestInput(now);
   if (NET.inRoom && !NET.dead) {
-    if (pauseHit && G.mode === 'play') netSend({ t: 'e', k: 'pause' });
     if (G.mode === 'end' && anyConfirm()) netSend({ t: 'e', k: 'again' });
   } else if (NET.dead && netAHit()) netRejoin();
   for (const p of G.players) { const me = netLocalOf(p.slot); p.kind = me ? me.kind : 'remote'; p.index = me ? me.index : -1; }   // (hints and the pause screen show each their own buttons)
@@ -18899,11 +18954,6 @@ function netFrameStart(now, dt) {
 function netFrameEnd(now) {
   NET.vis = false;
   if (NET.role === 'host') {
-    // the host in Hank's barn mid-journey: their world waits, so friends see a pause (lifted when it closes)
-    if (BARN.open && G.mode === 'play' && !G.paused && NET.seats.some(s => s.conn)) setPause(true, '#barn');
-    else if (!BARN.open && G.paused && G.pauseWho === '#barn') setPause(false);
-    if (DAWN.open && G.mode === 'play' && !G.paused && NET.seats.some(s => s.conn)) setPause(true, '#dawn');
-    else if (!DAWN.open && G.paused && G.pauseWho === '#dawn') setPause(false);
     if (now >= NET.snapAt) { NET.snapAt = (now - NET.snapAt < 120 ? NET.snapAt : now) + 1000 / NETT.hz; netSnapTick(); }
     if (now >= NET.grassAt) { NET.grassAt = now + NETT.grassMs; for (const s of NET.seats) if (s.conn && s.conn.open && s.shadow) netGrassTick(s); }
   }
@@ -18968,7 +19018,7 @@ function netAnimCoyote(c, dt) {
 // Airborne, stunned or hopping: the host's state, smoothed.
 const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes; the host's last values wait in d._hv
 function netKindOf(h) { return !h ? '' : G.coyotes.includes(h) ? 'coyote' : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep') : pens.includes(h) ? 'gate' : G.dogs.includes(h) ? 'dog' : h.isRope ? 'rope' : h.isBone ? 'bone' : h.isApple ? 'apple' : ''; }
-function netPredOK(d) { return G.mode === 'play' && !G.paused && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide; }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding)
+function netPredOK(d) { return G.mode === 'play' && !G.paused && !menuUp() && !(FX.stop > 0) && !d.air && !d.heldBy && !(d.stunT > 0) && !(d.hopT > 0) && !d.mauled && !d.ko && !(d.holding && d.holding.isRope && d.holding.tug) && !d.crev && !d.slide; }   // (ROPES: in a tug of war the host moves it; MOUNTAIN PASS: down a crack, sliding)
 function netPredPick(d) {   // what tryGrab would bite
   if (bucketOf(d)) return null;   // (WATER: a bucket in its mouth)
   const mx = d.x + Math.sin(d.yaw) * 1.1, mz = d.z + Math.cos(d.yaw) * 1.1;
@@ -19265,7 +19315,7 @@ function netWelcome(conn, m) {
   if (!s) return refuse('full');
   if (s.conn && s.conn !== conn) { const old = s.conn; setTimeout(() => { try { old.close(); } catch (e) {} }, 200); }   // the same friend on a fresh link
   const back = s.subs.some(u => u.player) && !s.conn && G.mode !== 'title';
-  Object.assign(s, { cid, name, conn, lastMsg: now, sent: null, left: false, lostAt: 0 });
+  Object.assign(s, { cid, name, conn, lastMsg: now, sent: null, left: false, lostAt: 0, menu: false });
   for (const u of s.subs) { u.held = {}; u.inAt = 0; u.edges.length = 0; }
   s.subs[0].name = name; if (s.subs[0].player) s.subs[0].player.name = name;
   if (isBreed(m.br)) s.subs[0].breed = m.br;   // BREEDS: their own pick (for their dog when the journey starts)
@@ -19278,12 +19328,12 @@ function netWelcome(conn, m) {
 }
 function netSeatLost(s) {
   if (!s.conn) return;
-  const c = s.conn; s.conn = null; s.lostAt = performance.now(); s.sent = null; s.shadow = null;
+  const c = s.conn; s.conn = null; s.lostAt = performance.now(); s.sent = null; s.shadow = null; s.menu = false;
   for (const u of s.subs) { u.held = {}; u.edges.length = 0; }
   setTimeout(() => { try { c.close(); } catch (e) {} }, 200);
   if (!s.subs.some(u => u.player)) NET.seats.splice(NET.seats.indexOf(s), 1);   // still in the lobby: nothing to keep
   else if (G.mode !== 'title') toast(`${s.name} ${s.left ? 'left' : 'lost connection'} — their dog will wait`, 'warn');
-  netRecUpdate(); netRoster();
+  netRecUpdate(); netRoster(); menuTick();
 }
 // friends get a dog once the journey is under way (and right away when they drop in mid-journey)
 function netHostSeats() {
@@ -19301,9 +19351,33 @@ function netHostSeats() {
         s.subs.length = k; changed = true; break;   // no room for this screen's extra dogs: the welcome below tells them
       }
       p.seat = s; p.sub = u; u.player = p; changed = true;
+      netApplyLook(s, u);   // dressed as they dressed it
     }
     if (changed && s.conn) { netSendWelcome(s); netRoster(); }
   }
+}
+// a friend's own dog, as they dressed it in their own barn ('dl'): coat and collar (their slot's colours if they never picked one),
+// hat and kit, breed, name. Their dig finds go to their wardrobe ('find')
+function netApplyLook(s, u) {
+  if (!u.look) return;
+  const p = u.player, L = cleanDogLook(u.look, p ? p.slot : s.subs.indexOf(u));
+  u.breed = L.breed;
+  if (L.name) { u.name = L.name; if (u === s.subs[0]) s.name = L.name; }
+  if (p) { if (L.name) p.name = L.name; setBreed(p, L.breed); if (p.dog) { p.dog.netLook = L; restyleDog(p.dog); } }
+  netRoster();
+}
+function netFoundFor(p, id) { const s = p.seat; if (s && s.conn) netSendSeat(s, { t: 'find', id, p: Math.max(0, s.subs.indexOf(p.sub)) }); }
+// a friend's edit to a sheep (their barn, their dawn card): only what the barn itself could make
+function cleanSheepEdit(ch) {
+  if (!ch || typeof ch !== 'object') return null;
+  const L = cleanLook(ch), o = {};
+  if (typeof ch.name === 'string') o.name = netCleanName(ch.name);
+  if ('wool' in ch) o.wool = ch.wool === null ? null : L.wool;
+  if ('hat' in ch) o.hat = L.hat;
+  if ('hatColor' in ch && HEX6.test(ch.hatColor)) o.hatColor = ch.hatColor;
+  if ('acc' in ch) o.acc = L.acc;
+  if ('paint' in ch) o.paint = L.paint;
+  return o;
 }
 // one seat per friend's browser; each holds the dogs played on that screen (couch co-op online: two on one
 // keyboard or a controller each), so two sofas can share one game
@@ -19346,14 +19420,20 @@ function netFromGuest(s, m) {
     }
     case 'e': {
       const k = String(m.k);
-      if (k === 'pause') { if (G.mode === 'play') setPause(!G.paused, s.name); }
-      else if (k === 'again') { if (G.mode === 'end' && (G.endT || 0) > 1.5) resetGame(); }
+      if (k === 'again') { if (G.mode === 'end' && (G.endT || 0) > 1.5) resetGame(); }
       else if (NET_EDGES.has(k) && u && u.player && u.edges.length < 8) u.edges.push(k);
       break;
     }
     case 'j': { netSubsWant(s, m.n); netHostSeats(); netSendWelcome(s); netRoster(); break; }   // someone else on their screen picked up a controller
-    case 'b': { if (isBreed(m.br)) s.subs[0].breed = m.br; break; }   // BREEDS: they picked another on their title
+    case 'b': { if (isBreed(m.br)) { s.subs[0].breed = m.br; if (s.subs[0].player) setBreed(s.subs[0].player, m.br); } break; }   // BREEDS: they picked another on their title
     case 'n': { const nm = netCleanName(m.name); if (nm && nm !== s.name) { s.name = nm; s.subs[0].name = nm; if (s.subs[0].player) s.subs[0].player.name = nm; netRoster(); } break; }
+    case 'm': s.menu = !!m.on; menuTick(); break;   // MENUS: their screen's in one (or out)
+    case 'dl': { if (u && m.lk && typeof m.lk === 'object') { u.look = m.lk; netApplyLook(s, u); } break; }   // their dog, from their barn
+    case 'sh': {   // a sheep renamed or dressed in their barn or on their dawn card
+      const sh = G.sheep.find(o => o.id === (m.id | 0) && !o.dead), ch = cleanSheepEdit(m.ch);
+      if (sh && ch) { barnSet(sh, ch); NET.flockDirty = true; }
+      break;
+    }
     case 'hb': netSendSeat(s, { t: 'pong', ts: m.ts }); break;
     case 'bye': s.left = true; netSeatLost(s); break;
   }
@@ -19361,7 +19441,7 @@ function netFromGuest(s, m) {
 // readInput() for a friend's dog: their held inputs (zeroed if nothing's come for a second) + their button presses, once each
 function netReadInput(p, r) {
   const s = p.seat, u = p.sub;
-  if (!s || !s.conn || !u || !s.subs.includes(u)) { r.lie = true; return r; }   // dropped (or that friend's screen has fewer players now): the dog lies down and waits
+  if (!s || !s.conn || !u || !s.subs.includes(u) || s.menu) { r.lie = true; u && (u.edges.length = 0); return r; }   // dropped (or that friend's screen has fewer players now, or is in a menu): the dog lies down and waits
   if (performance.now() - u.inAt < NETT.staleIn) Object.assign(r, u.held);
   for (const k of u.edges) r[k] = true;
   u.edges.length = 0;
@@ -19370,13 +19450,18 @@ function netReadInput(p, r) {
 // heartbeats both ways (a background tab still ticks about once a second)
 function netHeartbeat() {
   const now = performance.now();
-  if (NET.role === 'host') for (const s of [...NET.seats]) { if (!s.conn) continue; netSendSeat(s, { t: 'hb', hid: document.hidden ? 1 : 0 }); if (now - s.lastMsg > NETT.dropMs) netSeatLost(s); }
+  if (NET.role === 'host') {
+    for (const s of [...NET.seats]) { if (!s.conn) continue; netSendSeat(s, { t: 'hb', hid: document.hidden ? 1 : 0 }); if (now - s.lastMsg > NETT.dropMs) netSeatLost(s); }
+    if (NET.flockDirty) { NET.flockDirty = false; saveFlock(); }   // friends' new names and outfits stick
+  }
   else if (NET.role === 'guest' && NET.conn && NET.conn.open) netSend({ t: 'hb', ts: now });
 }
 setInterval(netHeartbeat, 1000);
 document.addEventListener('visibilitychange', () => {
-  if (NET.role === 'host') { if (document.hidden && NET.seats.some(s => s.conn)) setPause(true, '#hidden'); netHeartbeat(); }
-  if (NET.role === 'guest' && document.hidden) { const h = { ...NET_HELD }; NET.locals.forEach((L, k) => { L.inKey = JSON.stringify(h); netSend(k ? { t: 'i', h, p: k } : { t: 'i', h }); }); }   // let go of everything
+  if (NET.role === 'host') { if (document.hidden && NET.seats.some(s => s.conn)) { MENU.pause = G.mode === 'play'; holdWorld(true, '#hidden'); } else holdWorld(false, '#hidden'); netHeartbeat(); }   // (back: their own pause menu's up, the world goes on)
+  if (NET.role === 'guest' && document.hidden) {
+    setPause(true);   // MENUS: away from the screen is in a menu
+    const h = { ...NET_HELD }; NET.locals.forEach((L, k) => { L.inKey = JSON.stringify(h); netSend(k ? { t: 'i', h, p: k } : { t: 'i', h }); }); }   // let go of everything
 });
 // a friend's controller buzzes on their own device
 {
@@ -19434,7 +19519,7 @@ function netGuestLost(msg) {
   if (NET.role !== 'guest' || NET.dead) return;
   if (!NET.inRoom) { netGuestFail(msg || 'Lost the connection to the game.'); return; }
   NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = '';
-  dawnGuest(null); if (BARN.watch) closeBarn();
+  closeDawn(); closeBarn();
   const p = NET.peer; NET.peer = null; NET.conn = null; if (p) try { p.destroy(); } catch (e) {}
   NET.uiKey = '';
 }
@@ -19460,7 +19545,8 @@ function netFromHost(m) {
       NET.locals.forEach((L, k) => { L.slot = slots[k] >= 0 && slots[k] < 4 ? slots[k] | 0 : -1; });
       NET.slot = NET.locals[0].slot;
       if (first) netGuestWipe();          // (a rejoin keeps what it has: the keyframe that follows sorts it out)
-      NET.dead = false; NET.lostMsg = '';
+      NET.dead = false; NET.lostMsg = ''; MENU.sent = null;   // (MENUS: tell the host again whether we're in one)
+      NET.locals.forEach((L, k) => netSendLook(k));   // our own dogs, as we dress them
       netStatus(NET.slot < 0 ? `You're in ${NET.hostName}'s game. Waiting for them to start… Someone here can join too: Ⓐ on a controller.` : '');
       break;
     }
@@ -19477,12 +19563,27 @@ function netFromHost(m) {
     case 'l': NET.roster = Array.isArray(m.list) ? m.list.slice(0, 5) : []; NET.you = Array.isArray(m.you) ? m.you.map(v => v | 0) : [m.you | 0]; NET.uiKey = ''; break;
     case 'hb': NET.hostHid = !!m.hid; break;
     case 'pong': NET.rtt = performance.now() - (+m.ts || 0); break;
+    case 'find': {   // our dog dug something up: ours to keep, and it goes straight on if it has nothing of that sort on
+      const k = m.p | 0, it = DOG_ITEMS.find(x => x.id === m.id); if (!it || !NET.locals[k]) break;
+      if (!DOGS.found.includes(it.id)) DOGS.found.push(it.id);
+      const L = dogLook(k); if (it.kind === 'hat' && L.hat === 'none') L.hat = it.id; else if (it.kind === 'acc' && !L.acc.length) L.acc = [it.id];
+      saveDogs(); netSendLook(k); if (BARN.open && BARN.tab === 'dogs') barnTab('dogs');
+      break;
+    }
     case 'r': { const L = NET.locals[m.p | 0]; if (L && L.kind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: L.index }, ...m.a.map(v => +v || 0)); break; }
     case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); checkBuild(); break;
     case 'full': netGuestFail('That game is full: there are 4 dogs already.'); break;
     case 'bye': netGuestLost('Your friend closed the game.'); break;
   }
 }
+// our k-th dog's look for the host: a coat or collar never picked takes the colours of our slot there; the first's name is ours
+function netLookOut(k) {
+  const L = { ...dogLook(k) }, pk = L.pick || [];
+  if (!pk.includes('coat')) delete L.coat; if (!pk.includes('collar')) delete L.collar;
+  if (k === 0 && NET.myName) L.name = NET.myName;
+  return L;
+}
+function netSendLook(k) { if (NET.role === 'guest' && NET.inRoom) netSend(k ? { t: 'dl', p: k, lk: netLookOut(k) } : { t: 'dl', lk: netLookOut(k) }); }
 // joined: forget our own copy of the flock; the host's keyframe brings everything
 function netGuestWipe() {
   for (const d of G.dogs) scene.remove(d.models.root);
@@ -19551,7 +19652,7 @@ function netGuestMode(v) {
   if (v === 'end') { if (G.mode !== 'end') { G.mode = 'play'; finishGame(G.sheep.filter(s => s.pen && s.pen.final).length); } endObit(); return; }   // joined at the finish line
   const was = G.mode; G.mode = v;
   if (v === 'play') {
-    if (was !== 'play') { G.visited = new Set([CAMPS[0].name]); mapReset(); hankPrefetch(); }   // a (new) journey: Hank's clips warm up
+    if (was !== 'play') { G.visited = new Set([CAMPS[0].name]); mapReset(); hankPrefetch(); DAWN.pending = null; closeDawn(); }   // a (new) journey: Hank's clips warm up
     $('title').classList.add('hidden'); $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
     updateCamera(0, true);
   }
@@ -19620,7 +19721,7 @@ function netGuestInput(now) {
   const live = NET.inRoom && !NET.dead && NET.conn && NET.conn.open;
   // someone else here picks up a controller: ask the host for one more dog (it answers with the slots it gave)
   const fresh = new Set();
-  if (live && locals[0].used && (G.mode === 'title' || G.mode === 'play') && locals.length < 4 && NET.roster.length < 4) {
+  if (live && locals[0].used && (G.mode === 'title' || G.mode === 'play') && locals.length < 4 && NET.roster.length < 4 && !menuUp()) {
     for (const dev of devs) {
       if (locals.some(L => netSameDev(L, dev))) continue;
       const hit = dev.kind === 'pad' ? padEdge(dev.index, pads[dev.index], 0) : dev.kind === 'touch' ? TOUCH.tap : KB.some(k => anyEdge(k.join));
@@ -19640,6 +19741,7 @@ function netGuestInput(now) {
       if (active && one) { L.kind = dev.kind; L.index = dev.index; L.used = true; }   // alone: whatever was touched last is theirs
     }
     if (fresh.has(L)) { for (const e of NET_EDGES) r[e] = false; }   // the join press shouldn't also bark
+    if (menuUp()) { for (const key in r) r[key] = typeof r[key] === 'number' ? 0 : false; r.lie = true; }   // MENUS: our dog waits (the host lies it down too)
     const l = Math.hypot(r.mx || 0, r.my || 0); if (l > 1) { r.mx /= l; r.my /= l; }
     if (!live) continue;
     const h = {}; for (const key in NET_HELD) { const v = r[key]; h[key] = typeof NET_HELD[key] === 'number' ? Math.round((+v || 0) * 100) / 100 : !!v; }
@@ -19657,16 +19759,16 @@ function netGuestInput(now) {
 // ---- screens: the title's online panel, the HUD chip, pause, "lost the connection" ---------------------
 function netUI(now) {
   if (now < NET.uiAt) return; NET.uiAt = now + 120;
-  if (G.paused && G.mode === 'play') pauseControls();   // follows whichever device was touched last
+  if (MENU.pause && G.mode === 'play') pauseControls();   // follows whichever device was touched last
   const host = NET.role === 'host', guest = NET.role === 'guest', title = G.mode === 'title';
   const quiet = guest && NET.inRoom && !NET.dead && performance.now() - NET.lastMsg > 3000;
   const friends = NET.seats.filter(s => s.conn).length;
-  const pausedWhy = !G.paused ? '' : G.pauseWho === '#hidden' ? (host ? 'Paused while this tab was in the background.' : `${NET.hostName}'s game is in the background — waiting for them…`)
-    : G.pauseWho === '#barn' ? `${NET.hostName} is in Hank's barn, dressing up the flock…`
-    : G.pauseWho === '#dawn' ? `🌅 ${NET.hostName}…`
-    : G.pauseWho && NET.role ? `Paused by ${G.pauseWho}` : '';
+  // MENUS: with friends, each screen pauses on its own; the world only waits once all of them have
+  const together = guest ? NET.inRoom && !NET.dead : host && friends > 0, going = G.mode === 'play' && !G.paused;
+  const pausedWhy = G.paused && G.hold === '#hidden' && guest ? `${NET.hostName}'s game is in the background — waiting for them…` : going && together ? '▶ The game waits till everyone pauses.' : '';
+  const showPause = G.mode === 'play' && !NET.dead && (MENU.pause || (G.paused && !!G.hold)) && !BARN.open && !DAWN.open;
   const key = [NET.role, NET.code, NET.status, NET.statusErr, NET.inRoom, NET.dead, NET.lostMsg, NET.locals.map(L => L.slot).join(), G.mode, G.paused, pausedWhy, friends, quiet, NET.hostHid,
-    Math.round(NET.rtt / 10), JSON.stringify(NET.roster), $('netPanel').hidden].join('|');
+    Math.round(NET.rtt / 10), JSON.stringify(NET.roster), $('netPanel').hidden, G.menus.join(), showPause, BARN.open, DAWN.open].join('|');
   if (key === NET.uiKey) return; NET.uiKey = key;
   // title panel
   const panelOpen = !$('netPanel').hidden;
@@ -19679,7 +19781,6 @@ function netUI(now) {
   $('netBack').textContent = host ? 'Stop hosting' : guest ? (NET.inRoom ? 'Leave' : 'Cancel') : 'Back';
   const roster = NET.roster.map((r, i) => `<span class="${r.on ? '' : 'off'}">${r.h ? '🏠 ' : '🐕 '}${netCleanName(r.n)}${guest && (NET.you || []).includes(i) ? ' (you)' : ''}</span>`).join('');
   $('netRoster').innerHTML = NET.role ? roster : '';
-  const tb = $('tBarn'); if (tb) tb.hidden = guest;   // Hank's barn is the host's
   const press = $('title').querySelector('.press');
   if (!press.dataset.text) press.dataset.text = press.textContent;
   press.textContent = guest && NET.inRoom ? `Waiting for ${NET.hostName} to start…` : press.dataset.text;
@@ -19690,14 +19791,20 @@ function netUI(now) {
   $('netChipT').textContent = host ? `🌐 ${NET.code || '…'} · ${friends ? friends + (friends > 1 ? ' friends' : ' friend') + ' online' : 'waiting for friends'}`
     : guest ? (NET.dead ? '🌐 disconnected' : quiet || NET.hostHid ? `🌐 waiting for ${NET.hostName}…` : `🌐 ${NET.hostName}'s game · ${Math.round(NET.rtt)} ms`) : '';
   $('netChipCopy').hidden = !(host && NET.code);
-  // pause
-  const showPause = !!G.paused && G.mode === 'play' && !NET.dead;
-  $('pause').classList.toggle('hidden', !showPause);
+  // pause: this screen's menu. Online: everyone, ⏸ in a menu or ▶ playing; "Paused" only once the world waits
+  $('pause').classList.toggle('hidden', !showPause); $('pause').classList.toggle('live', going && together);
+  $('pauseT').textContent = going && together ? 'Menu' : 'Paused';
+  const who = NET.roster.map((r, i) => ({ ...r, me: guest ? (NET.you || []).includes(i) : !!r.h })).filter(r => r.s >= 0);
+  $('pauseWho').hidden = !together;
+  $('pauseWho').innerHTML = together ? who.map(r => { const w = G.menus.includes(r.s); return `<span class="${w ? 'wait' : 'go'}${r.on ? '' : ' off'}${r.me ? ' me' : ''}">${w ? '⏸' : '▶'} ${escHTML(netCleanName(r.n))}</span>`; }).join('') : '';
   $('pauseWhy').textContent = pausedWhy;
-  $('pauseNet').hidden = !(host && NET.code);
+  $('pauseNet').hidden = !(NET.code && (host || (guest && NET.inRoom)));   // (a guest can pass the code on too)
   $('pauseCode').textContent = NET.code; $('pauseLink').textContent = NET.code ? netLink() : '';
-  $('pauseRoster').innerHTML = host ? roster : '';
   $('pauseHost').hidden = !!NET.role; $('pauseStop').hidden = !host; $('pauseLeave').hidden = !guest;
+  // in the barn or the dawn card with friends: is the game going on?
+  const badge = $('menuBadge'), playing = who.filter(r => r.on && !G.menus.includes(r.s)).map(r => escHTML(netCleanName(r.n)));
+  badge.classList.toggle('on', together && G.mode === 'play'); badge.classList.toggle('held', !going);
+  badge.innerHTML = !going ? '⏸ Paused' : '▶ ' + playing.join(' · ');
   // lost the connection
   $('netLost').classList.toggle('hidden', !(guest && NET.dead));
   document.body.classList.toggle('modal', showPause || (guest && NET.dead));
@@ -19731,7 +19838,8 @@ async function netCopyLink(btn) {
   on('netBack', () => { if (NET.role === 'host') { netStopHosting(); netRoster(); NET.roster = []; } else if (NET.role === 'guest') netLeave(); else { $('netPanel').hidden = true; netStatus(''); } });
   on('netCopy', b => netCopyLink(b)); on('netChipCopy', b => netCopyLink(b)); on('pauseCopy', b => netCopyLink(b));
   $('pauseDogs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) dropPlayer(G.players.find(p => p.kind !== 'net' && p.slot === +b.dataset.slot)); });
-  on('pauseResume', () => { if (NET.role === 'guest') netSend({ t: 'e', k: 'pause' }); else setPause(false); });
+  on('pauseResume', () => setPause(false));
+  on('pauseBarn', () => openBarn());   // (back to this menu when it closes)
   on('pauseHost', () => netHost());
   on('pauseStop', () => { netStopHosting(); NET.roster = []; });
   on('pauseLeave', () => netLeave());
@@ -19771,6 +19879,7 @@ shakeCam = fxDef('shakeCam', shakeCam);
 hitStop = fxDef('hitStop', hitStop);
 finishGame = fxDef('finishGame', finishGame);
 vendorFx = fxDef('vendorFx', vendorFx);   // VENDOR: a sale, a no
+dawnShare = fxDef('dawnShare', dawnShare);   // DAWN REPORT: every screen gets the card
 // MOUNTAIN PASS
 fireFx = fxDef('fireFx', fireFx); slipFx = fxDef('slipFx', slipFx); slideBonkFx = fxDef('slideBonkFx', slideBonkFx); crevFx = fxDef('crevFx', crevFx); crevOutFx = fxDef('crevOutFx', crevOutFx);
 crevHelpFx = fxDef('crevHelpFx', crevHelpFx); crevTiredFx = fxDef('crevTiredFx', crevTiredFx); igniteFx = fxDef('igniteFx', igniteFx); burnOutFx = fxDef('burnOutFx', burnOutFx); hotFx = fxDef('hotFx', hotFx); goatFx = fxDef('goatFx', goatFx);
@@ -19790,7 +19899,7 @@ for (const k of Object.keys(Sound)) {
 for (const k of Object.keys(SFX)) if (typeof SFX[k] === 'function') SFX[k] = fxDef('X.' + k, SFX[k], { pan: 0 });   // dog-moves synth sounds (pan first)
 { const p0 = panOf; NET.panOf0 = p0; panOf = (x, z) => { FXPOS.x = x; FXPOS.z = z; FXPOS.on = true; return p0(x, z); }; }
 window.NET = NET;
-NET.api = { host: netHost, join: netJoin, leave: netLeave, stop: netStopHosting, rejoin: netRejoin, setPause, snap: netSnapTick, link: netLink, fx, fxDef,
+NET.api = { host: netHost, join: netJoin, leave: netLeave, stop: netStopHosting, rejoin: netRejoin, setPause, hold: holdWorld, snap: netSnapTick, link: netLink, fx, fxDef,
   types: NET_TYPES, build: NET_BUILD, limits: NETT, grass: () => gAmt, eat: eatGrass };   // (for tests: tools/net-test.mjs)
 
 // =====================================================================
@@ -19839,16 +19948,19 @@ function frame(now) {
   requestAnimationFrame(frame);
   padFrame();   // this frame's gamepad presses
   let dt = clamp((now - last) / 1000, 0, 0.1); last = now;   // rAF time can predate `last` on the first frame
-  if (barnFrame(dt) || dawnFrame()) { netFrameEnd(now, dt); return; }   // HANK'S BARN: while it's open the world waits (it draws its own turntable). ONLINE: friends still hear from us
+  const inMenu = barnFrame(dt) || dawnFrame();   // HANK'S BARN, DAWN REPORT: their own buttons
+  menuTick();   // MENUS: does the world wait? (offline: whenever a menu's up; online: once everyone's in one)
+  if (inMenu && (G.paused || G.mode !== 'play')) { netFrameEnd(now, dt); return; }   // it waits: only the barn's turntable draws. ONLINE: friends still hear from us
   titleBreedInput();   // BREEDS: ←/→ on the title pick P1's breed (before anything reads them as a join)
   if (netFrameStart(now, dt)) {   // ONLINE: false on a guest, which never runs the game (the host's snapshots move everything). Body left at its old indent.
   // joining / confirming
   if (G.mode === 'title' && document.getElementById('tMenu').hidden) { const j = pollJoins(G.players); if (j.length) { Sound.init(); startGame(j[0]); } }
-  else if (G.mode === 'play' && !G.paused) { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
-  if (G.mode === 'play' && G.paused) pauseDogs();
+  else if (G.mode === 'play' && !G.paused && !menuUp()) { for (const dev of pollJoins(G.players)) if (dev.kind === 'pad' || G.players.length > 0) joinPlayer(dev); }
+  if (G.mode === 'play' && MENU.pause) pauseDogs();
   else if (G.mode === 'end') { G.endT = (G.endT || 0) + dt; if (G.endT > 1.5 && anyConfirm()) resetGame(); }
   if (DEBUG) debugKeys();
-  for (const p of G.players) { p.inp = readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = p.inp.shake = false; p.skipInput = false; } }
+  const waits = menuUp();   // MENUS: this screen's dogs lie down and wait (online the world may go on)
+  for (const p of G.players) { p.inp = waits && p.kind !== 'net' ? menuInput() : readInput(p); if (p.skipInput) { p.inp.bark = p.inp.pounce = p.inp.shake = false; p.skipInput = false; } }
   const simDt = FX.stop > 0 ? (FX.stop -= dt, dt * 0.06) : dt;   // hit-stop: a few near-frozen frames on a big hit
   const n = Math.ceil(simDt / 0.025), sdt = simDt / n;
   for (let i = 0; i < n; i++) step(sdt);
@@ -20140,7 +20252,8 @@ Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, sl
   TORCHES, torchGrip, torchPick, torchLetGo, torchHome, torchTip, torchHeat, grassCapAt, HEAP, heapH, sdfPatch, updateTorches, resetTorches, MELT, MELTV, gSnow, gUnder, meltAt, meltDisc, meltSet, updateMelt, resetMelt });   // MOUNTAIN PASS
 Object.assign(window.GAME, { MAP, mapToggle, mapReveal, mapCompose, mapReset, mapFogOut, mapFogIn, mapFogMerge, updateMap, mapDodge, mapCell, mapSeen, endInputFrame });   // MAP
 Object.assign(window.GAME, { Sound, hank, HANK, HANK_LINES, WHISTLES, BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, DOGS, DOGS_KEY, DOG_ITEMS, dogLook, dogSet, foundDogItem, saveDogs, loadDogs, restyleDog, DIGS, updateDigs, resetDigs, BRAMBLES, brambleAt, snagSheep, unsnag, trailInfo, DRESS, PAINT, SI, syncSheep, syncSheepDressUp, syncHank,
-  describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
+  barnEdit, barnDogs, barnDogLook, barnSync, dogName, MENU, menuUp, setPause, holdWorld, menuTick,   // ONLINE: every screen's own barn and menus
+  describeSheep, sheepName, lossLine, DAWN, dawnReport, openDawn, dawnOpen, closeDawn, eulogy, lookOf, FLOCK, FLOCK_KEY, saveFlock, freshFlock, grab, dropPrey, addTombstone, onGateClosed, lambsAtDawn, ageAtDawn, oldK, ageGrow, ageWord, sheepWoolColor, sheepHeadColor, hankVolume, updateLighting });   // HANK / BARN / FLOCK SAVE
 
 resize();
 spawnFlock();
