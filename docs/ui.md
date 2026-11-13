@@ -21,3 +21,15 @@
   Held to go on (`T.dawn`: Ⓐ / Start, Enter / Space / Esc, ▶; `dawnHoldStart`, timed by press and let-go, `padT`); nothing in the first `grace` s; mashing never skips it.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
+- **Journey save** (`JOURNEY`, `localStorage['collies.journey']`): a reload carries on; it never undoes. Written every `T.save.every` s
+  of play, at dawn, when the tab hides, and at once on a death (`mournSheep`): no save-scumming. No save / load button: the title shows
+  ▶ day · flock (`#tSave`; ✖ forgets it), the first dog in resumes (`startGame` → `journeyResume`). Gone on a new journey, at the end,
+  "Start a fresh flock". Host / offline only. Closed tab: the world waits (nothing runs).
+  Each section keeps its own (`onSave`): `core` (clock, `G.time`, tally, wool, hints, lost, training), `flock` (every living sheep's plain
+  fields, look, mum, spot), `dogs`, `hank` (spot, kit), `pass` (fuel, ice gate, walls, yeti), `graves`, `where` (land: `devJump` to the
+  flock's s, then every saved spot that fits; sea: `seaStart` alongside the last island reached, `SEA.saved`), `pens` (gates, bought kit,
+  `STORE`), `map` (fog, `G.visited`), `llamas` (seed, guards), `falcon`, `sea` (hold, hull, deck troughs), `coyotes` / `cougars` (still
+  hunting: back). Not kept: what's mid-air or in a mouth, the vagabond's mood (he's at his next pitch), dens, grass, melted snow, ropes.
+  New builds: each part loads alone (one that throws keeps its fresh state); `loadPlain` copies a field only onto the same type or a
+  field the code doesn't set yet; a spot that's not walkable or `T.save.lag` m off along the trail goes by the flock (`journeyPlace`).
+  A change of meaning: bump `JOURNEY_V`, add its step to `JOURNEY_UP`.
