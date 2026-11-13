@@ -1,4 +1,4 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|burn|finish]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|rock|side|gate|burn|finish]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall; nothing else up there
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
@@ -19,7 +19,10 @@
 //             way over the rim: from the hidden ledge to his spot, walked over (up on its stones)
 //   side      the side trail is a road (≥5 m across all the way, no way onto its ledge but up it); a dog walking behind 5 sheep (the
 //             rest left below) drives them off the floor, up it and onto the ledge
-//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed
+//   gate      the ice gate past the base camp: wall to wall; a dog sprinting up it and a driven sheep thrown back down; Hank: "Grab the
+//             torch…", then nags, further and further apart; the flock up past it, no lane: Hank waits by the base camp's fire; its torch lit,
+//             carried up: a lane (his lines), Hank and a sheep up it, a blizzard doesn't shut it; a dev jump melts it; a new journey: iced
+//   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed; alight it melts the snow and the gate's ice
 //   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
 import { open } from './harness.mjs';
 const only = process.argv[2];
