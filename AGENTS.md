@@ -55,6 +55,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 
 ### Layout (`index.html`, top to bottom)
 
+- registries: `onReset`, `onSync`, `expose`
 - `T` (all tuning)
 - `Sound`
 - `AMB` (ambience)
@@ -106,8 +107,13 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 
 (`HARB`, `BOAT`, `QUAY`, `inSea`: world gen; the harbour's cut after its draws. `DECK`, `deckKit`: pens. `LAND`: renderer.)
 
+A new feature registers itself in its own section: its reset `onReset`, its drawing `onSync`, its test hooks `expose`; nothing goes into `resetGame`, the main loop or a `window.GAME` list. Order numbers (see each call): resets 10 sea … 180 balker, 300–420 game flow, 430 Hank; syncs 10 dogs … 240 poop. Lists that stay shared (`EMOJI_ART`, `newStats`, Hank's `…Can` checks, `netKindOf`, CSS selector lists): add a line.
+
 `// SHARED HOOK` comments mark cross-system seams; keep them stable or update every caller:
 
+- `onReset(fn, o)`: a new journey; `resetGame` runs them, lowest `o` first (default 200: after the sea's back, before the flock and dogs)
+- `onSync(fn, o)`: every drawn frame; `frame` and `renderOnce` run them, `fn(dt, once)` (default 500: last)
+- `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
 - `knockDog`
 - `hurtDog(d, amt)` (1 = all hp)
 - `dogDrown(d)`
