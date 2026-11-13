@@ -18,8 +18,7 @@ const argv = process.argv.slice(2);
 const SHOTS = argv.includes('--shots') ? argv[argv.indexOf('--shots') + 1] : null;
 const QUICK = argv.includes('--quick');
 const PS = process.env.PEERSERVER ? `&peerserver=${process.env.PEERSERVER}` : '';
-const port = 8200 + Math.floor(Math.random() * 600);
-const srv = await serve(port);
+const srv = await serve(0), port = srv.address().port;
 // (the local-network check would block the faked-build page's fetch to a PeerJS server on 127.0.0.1)
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--autoplay-policy=no-user-gesture-required', '--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessRespectPreflightResults'] });
 const sleep = ms => new Promise(r => setTimeout(r, ms));

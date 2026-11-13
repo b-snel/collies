@@ -91,7 +91,10 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
-Run the ones touching your change; report the numbers.
+`node tools/test.mjs`: the tests for your change (diffed against origin/main), several at a time, a line each; report its last line.
+`--why` (what, why), `name[:arg]`, `--all`, `--list`. CI runs them all on every PR (`.github/workflows/tests.yml`): keep main green.
+Seeded (`SEED=n` / `SEED=random`: other dice), offline. `-sim`s print numbers, no checks ("ran"): read them.
+New `index.html` section → its line in `SECTIONS` (`tools/test.mjs`).
 
 | script | checks |
 | --- | --- |
@@ -708,7 +711,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
-- Changed `index.html`, `vendor/` or icons → bump `CACHE` in `sw.js`.
+- `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
   camp (pushed onto `PASS.fires` after them), nor the ice cave (the top fire moved in at the end of the pass scenery), nor the door
   (`doorStamp`), nor `MELT` (all 0 then). It still sees the old stalls (`STALLS`: flattened, stamped; freed by `vagStall`).

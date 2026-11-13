@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';
-const port = 8123 + Math.floor(Math.random() * 500), srv = await serve(port);
+const srv = await serve(0), port = srv.address().port;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = []; page.on('pageerror', e => errors.push(String(e)));
@@ -53,8 +53,9 @@ await open(2, 1); await sleep(60);
 let v = await view(); check(v.lv === '' && v.eulogies === 1 && v.zoom === 1, 'a short one: as it was (eulogies, no zoom)', v);
 // a resize refits it
 await open(12, 40); await sleep(60);
-const v1 = await view(); await page.setViewportSize({ width: 844, height: 390 }); await sleep(120);
-const v2 = await view(); await page.setViewportSize({ width: 1280, height: 720 }); await sleep(120);
+const v1 = await view(); await page.setViewportSize({ width: 844, height: 390 });
+let v2; for (let k = 0; k < 20; k++) { await sleep(100); v2 = await view(); if (!v2.scroll && v2.allIn && v2.bottom <= 390) break; }   // (a busy machine: the refit can lag)
+await page.setViewportSize({ width: 1280, height: 720 }); await sleep(120);
 check(!v2.scroll && v2.allIn && v2.bottom <= 390 && v2.lv !== v1.lv + 'x', 'a resize refits it', { v1: v1.lv, v2: [v2.lv, v2.zoom, v2.bottom] });
 
 const frames = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));

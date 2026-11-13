@@ -2,6 +2,7 @@
 // so the title screen can say which build you're playing, and write dist/version.json so an open page can spot a newer one.
 // Run locally with `node build.js`.
 'use strict';
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -36,6 +37,19 @@ for (const name of fs.readdirSync(ROOT)) {
   if (name.startsWith('.') || SKIP.has(name)) continue;
   fs.cpSync(path.join(ROOT, name), path.join(OUT, name), { recursive: true });
 }
+
+// sw.js: its cache is named for what's in the site, so installed copies drop the old one when anything changes. No hand bump.
+const hash = crypto.createHash('sha1');
+const walk = dir => fs.readdirSync(dir).sort().forEach(n => {
+  const f = path.join(dir, n), rel = path.relative(OUT, f);
+  if (fs.statSync(f).isDirectory()) walk(f); else if (rel !== 'sw.js') hash.update(rel + '\0').update(fs.readFileSync(f));
+});
+walk(OUT);
+const sw = path.join(OUT, 'sw.js'), CACHE = /const CACHE = '[^'\n]*';/, cache = 'collies-' + hash.digest('hex').slice(0, 12);
+const swSrc = fs.readFileSync(sw, 'utf8');
+if (!CACHE.test(swSrc)) throw new Error("build.js: no `const CACHE = '...';` line in sw.js");
+fs.writeFileSync(sw, swSrc.replace(CACHE, `const CACHE = '${cache}';`));
+console.log('build.js: sw.js cache', cache);
 
 const file = path.join(OUT, 'index.html');
 const html = fs.readFileSync(file, 'utf8');

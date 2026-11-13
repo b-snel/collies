@@ -399,14 +399,17 @@ if (want('storm')) {
     let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
     // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
-    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); let heel = 0; H.run(12, () => { H.steer(0); heel = Math.max(heel, Math.abs(SEA.heel)); }); return { over: H.swimmers().length, heel: H.deg(heel), hit: !SEA.rogue || SEA.rogue.hit }; };
+    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); const g = SEA.rogue; let heel = 0, at = -1, pre = [], post = 0;
+      H.run(12, t => { H.steer(0); const h = Math.abs(SEA.heel); heel = Math.max(heel, h); if (at < 0 && g.hit) at = t; if (at < 0) pre.push(h); else if (t - at < 2) post = Math.max(post, h); });
+      // kick: what the wave itself does, the most she heels in the 2 s after it hits over the 2 s before (a storm swell rolls her anyway)
+      return { over: H.swimmers().length, heel: H.deg(heel), kick: H.deg(post - Math.max(0, ...pre.slice(-80))), hit: !SEA.rogue || SEA.rogue.hit }; };
     out.beam = wave(Math.PI / 2); for (let k = 0; k < 2 && !out.beam.over; k++) out.beam = wave(Math.PI / 2);   // (who's swept off is chance: up to three waves)
     out.bow = wave(0.1);
     return out;
   });
   ok(`the storm: a gale (${r.wind} m/s), a big sea (state ${r.state}), rain, lightning (${r.flash})`, r.storm > 0.9 && r.wind > 16 && r.state > 0.6 && r.rain > 0.8 && r.flash >= 2, r);
   ok(`the flock's frightened (stress ${r.stress})`, r.stress > 0.3, r);
-  ok(`a great wave abeam knocks her down (${r.beam.heel}°) and sweeps sheep off (${r.beam.over})`, r.beam.over >= 1 && r.beam.heel > 18 && r.beam.heel > r.bow.heel + 4, r);
+  ok(`a great wave abeam knocks her down (${r.beam.heel}°, +${r.beam.kick}° on her; bow ${r.bow.kick}°) and sweeps sheep off (${r.beam.over})`, r.beam.over >= 1 && r.beam.heel > 18 && r.beam.kick > 6 && r.beam.kick > r.bow.kick + 6, r);
   ok(`taken on the bow, nobody's lost (${r.bow.over}; ${r.bow.heel}°)`, r.bow.over === 0 && r.bow.hit, r);
 }
 
@@ -459,11 +462,13 @@ if (want('kraken')) {
     const heel = v => { KRAKEN.phase = 'grip'; KRAKEN.t = 8; SEA.heel = 0; SEA.heelV = 0; let n = 0, s = 0; H.run(14, t => { H.flock(v); KRAKEN.t = Math.min(KRAKEN.t, 20); if (t > 8) { n++; s += SEA.heel * sd; } }); return H.deg(s / n); };
     out.low = heel(sd * 3.6); out.high = heel(-sd * 3.6); out.barks = (() => { const n0 = KRAKEN.arms.length; p.bot = { bark: true }; H.run(0.1); p.bot = {}; H.run(0.5); return KRAKEN.arms.length === n0; })();
     // pounce each arm off the rail; then its eye comes up
-    H.flock(-sd * 2, -8, -4); let bonks = 0;
+    H.flock(-sd * 2, -8, -4); let bonks = 0; for (const s of G.sheep) s.krakCd = 1e9;   // (no ram butting one: the dog's pounces)
+    out.left0 = KRAKEN.arms.filter(q => q.kind === 'grip' && q.st !== 'hurt').length;   // (a ram may have butted one off already)
     for (let k = 0; k < 8 && KRAKEN.phase === 'grip'; k++) {
       const arm = KRAKEN.arms.find(q => q.kind === 'grip' && q.st === 'grip'); if (!arm) { H.run(0.5); continue; }
       const q = boatXZ(arm.u, sd * (boatHB(arm.u) - 3.4)); d.x = q.x; d.z = q.z; d.vx = d.vz = 0; d.air = null; d.stunT = 0; d.pounceT = 0; d.pounceCD = 0; p.bot = {}; H.run(0.8);
-      p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = H.stick(0, sd); H.run(0.6); p.bot = {}; if (arm.st === 'hurt') bonks++;
+      const on = () => KRAKEN.arms.filter(q => q.kind === 'grip' && q.st !== 'hurt').length, n0 = on();   // (the pounce may hit the arm beside it)
+      p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = H.stick(0, sd); H.run(0.6); p.bot = {}; bonks += n0 - on();
     }
     out.bonks = bonks; H.run(1.2); out.eye = KRAKEN.phase; out.righted = H.deg(Math.abs(SEA.heel));
     // a sheep punted over the rail into its eye: a hit; it bounces back aboard
@@ -478,7 +483,7 @@ if (want('kraken')) {
   ok(`the wind dies (${r.wind} m/s), ink wells up, the kraken has her: ${r.arms} arms on a rail, ${r.hp} ♥`, r.on && r.calm > 0.7 && r.wind < 3 && r.arms >= 3 && r.hp === 3, r);
   ok(`it hauls that rail down: ${r.low}° with the flock on the low side, ${r.high}° with them herded to the high side`, r.low > 30 && r.high < r.low - 8, r);
   ok('barks do nothing to it', r.barks, r);
-  ok(`a pounce bonks each arm off the rail (${r.bonks}); she rights; its eye comes up`, r.bonks >= 3 && r.eye === 'eye', r);
+  ok(`a pounce bonks each arm off the rail (${r.bonks}/${r.left0}); she rights; its eye comes up`, r.left0 > 0 && r.bonks >= r.left0 && r.eye === 'eye', r);
   ok('a sheep bonked into its eye: a ♥ off, and the sheep bounces back aboard', r.hit === 1 && r.back, r);
   ok(`beaten: +${r.bounty} 🧶, she's free, the wind fills in again (${r.windBack} m/s)`, r.beaten && r.bounty === 30 && r.hold === null && r.windBack > 5 && r.inkGone < 0.1, r);
 }

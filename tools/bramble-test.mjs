@@ -12,7 +12,8 @@ const r1 = await h.page.evaluate(() => {
     onTrail: BRAMBLES.filter(b => Math.abs(trailInfo(b.x, b.z).lat) < 5).length, nearCamp: BRAMBLES.filter(b => CAMPS.some(c => Math.hypot(b.x - c.x, b.z - c.z) < c.R + 16)).length };
 });
 ok(`${r1.n} bramble bushes`, r1.n >= 40, r1);
-ok('spread down the trail to the foot of the pass (none in the snow)', r1.first < 150 && r1.last > r1.pass - 250 && r1.last < r1.pass, r1);
+// (the last trail spot: passK ≤ 0.05, ~6 m up; bushes ±8 m round it: ≤ pass + 14)
+ok('spread down the trail to the foot of the pass (none up it)', r1.first < 150 && r1.last > r1.pass - 250 && r1.last < r1.pass + 15, r1);
 ok('none on the trail, in rock or in a camp', r1.onTrail === 0 && r1.minSdf > 2 && r1.nearCamp === 0, r1);
 
 // 2. snag, held, grab pulls it out, pounce pops it just clear
@@ -31,11 +32,11 @@ const r2 = await h.page.evaluate(() => {
   const x0 = s.x, z0 = s.z; run(10); out.drift = +Math.hypot(s.x - x0, s.z - z0).toFixed(2); out.still = !!s.snag; out.stress = +s.stress.toFixed(2);
   // a grab pulls it out
   place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; p.bot = inp(0, 0, { grab: true }); run(0.5); out.held = d.holding === s; out.grabFreed = !s.snag; p.bot = {}; run(0.3);
-  // snagged again, a pounce pops it just clear of the bush
+  // snagged again, a pounce pops it just clear of the bush (where it lands: after, a lone sheep may trot off to its flock)
   place(s, x0, z0); s.snag = b; s.snagX = x0; s.snagZ = z0; s.stress = 0.5; run(0.5);
   place(d, s.x - 2.2, s.z); d.yaw = Math.PI / 2; d.pounceCD = 0;
   p.bot = inp(1, 0, { pounce: true }); step(0.025); p.bot = {};
-  out.freed = !s.snag; run(4); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.clear = Math.hypot(s.x - b.x, s.z - b.z) - b.r; out.alive = !s.dead; out.calm = s.stress < 0.5;
+  out.freed = !s.snag; run(4, () => !s.air); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.clear = Math.hypot(s.x - b.x, s.z - b.z) - b.r; out.alive = !s.dead; out.calm = s.stress < 0.5;
   out.stats = { snags: G.stats.snags, unsnags: G.stats.unsnags };
   return out;
 });
