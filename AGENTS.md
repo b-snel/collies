@@ -455,8 +455,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   + 1/m), Δv = J/m (`boneMass`: × size³ for sheep, × build for dogs), the bone gets J back. `boneHit`: dog knocked, sheep
   pushed or (light) bowled, ram provoked, coyote scared, cougar spooked / drops its catch, Hank staggers. Never its own
   thrower at first; a pounce kicks a lying one; caught in the air. Online: `NET_TYPES.bone` (made and killed on guests).
-- **Punts by weight** (`punt`, `puntK`, `T.punt`): speed × bonk trait × the dog's momentum shared (`boneMass`): a ewe ~10 m, a ram
-  less, a lamb or a dog more (`kMin`…`kMax`).
+- **Punts by weight** (`punt`, `puntK`, `T.punt`): speed × bonk trait × the dog's momentum shared (`boneMass`): a ewe ~20 m, a ram
+  less, a lamb or a dog more (`kMin`…`kMax`). Brambles: a low pop (`rescueUp`).
 - **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
   `T.punt`); not one under a cougar (that pounce frees it).
 - **Dogs fly as sheep do.** `launchDog(d, vx, vz, vy, kind, by)`: same kinds, spin (`airSpin`),
