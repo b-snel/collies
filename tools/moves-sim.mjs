@@ -45,7 +45,7 @@ await h.page.evaluate(() => {
 });
 
 const tests = {
-  // 1. pounce into a sheep: it's punted ~20+ m and lands safely
+  // 1. pounce into a sheep: it's punted ~10 m and lands safely
   async punt() {
     return h.page.evaluate(() => {
       const { G, pathPoint } = GAME, out = [];
@@ -114,7 +114,7 @@ const tests = {
       for (let i = 0; i < 10 && o.heldBy; i++) { p2.bot = { pounce: true }; GAME.step(0.025); presses++; p2.bot = {}; GAME.step(0.025); }
       r.wriggle = { held2, presses, free: !o.heldBy && !d.holding, lunged: o.pounceT > 0 };
       H.p.bot = {}; H.run(0.5);
-      // same flight as a sheep: punt one of each from the same spot
+      // same flight as a sheep (by weight): punt one of each from the same spot
       const fl = [];
       for (const k of ['sheep', 'dog']) {
         H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); const e = k === 'dog' ? o : G.sheep[0];
@@ -124,6 +124,7 @@ const tests = {
         fl.push(H.track(e, 4));
       }
       r.sameFlight = { sheep: fl[0], dog: fl[1] };
+      const { puntK, boneMass } = GAME; r.massRatio = H.r((puntK(d, boneMass(o, 'dog')) / puntK(d, boneMass(G.sheep[0], 'sheep'))) ** 1.5);   // by weight: flight ∝ k^1.5
       // a flung dog bowls a sheep over
       H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3);
       H.grab(); H.p.bot = H.to(P.tx, P.tz, { sprint: true, grab: true }); H.run(0.65);
@@ -133,7 +134,7 @@ const tests = {
       const a = r.sameFlight.sheep, b = r.sameFlight.dog;
       r.ok = r.grabbed && r.stillHeld && r.atMouth < 0.3 && r.lifted > 0.2 && r.flungKind === 'fling' && r.free && r.flings === 1 && !r.flight.stillFlying && r.flight.landedAt > 4
         && r.wriggle.held2 && r.wriggle.free && r.wriggle.presses <= GAME.T.dogHeld.mash + 1 && !r.wriggle.lunged
-        && a.bounces === b.bounces && Math.abs(a.firstTouch - b.firstTouch) < 1.5 && Math.abs(a.peak - b.peak) < 0.3 && r.caroms >= 1;
+        && a.bounces === b.bounces && Math.abs(a.firstTouch * r.massRatio / b.firstTouch - 1) < 0.25 && b.firstTouch > a.firstTouch && r.caroms >= 1;
       H.solo(); return r;
     });
   },
