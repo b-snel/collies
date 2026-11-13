@@ -46,7 +46,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   labels). `?touch` forces it.
 - Hybrid co-op: both screens can have a sofa. On a guest, a second person
   joins with Ⓐ on another controller and gets their own dog. 4 dogs in all.
-- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space jump, E grab, F bark, R pounce; mouse on the game (`#gl`): click bark, right click pounce (`Mouse0` / `Mouse2` in `KB`).
+- One keyboard player: WASD and arrows drive the same dog. Left hand: Shift sprint, Q creep, C lie, Space bark, E grab, F jump, R pounce; mouse on the game (`#gl`): hold click grab, right click pounce / shake (`Mouse0` / `Mouse2` in `KB`). Controls bar always up (`ctlBar`).
 - Drop a dog: pause → ✕ on its chip (or ←/→ + Ⓧ / Delete; `dropPlayer`).
 - Map: minimap bottom left (over the controls bar while it's up; touch: under the flock
   panel); `M` / R3 / tap it → the whole trail, big. At a trader: 📍 its pen.
@@ -132,6 +132,8 @@ Run the ones touching your change; report the numbers.
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `role-test.mjs` | barn opens on the Dogs (cards, portraits, pick); roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
+| `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
+| `path-test.mjs [hank\|coyote\|den]` | round a shut pen: Hank to the fire / a patient from every side (no hops, no wiggling); a coyote after a sheep inside waits by the fence; coyotes home to their dens |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -268,8 +270,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     it (`bossHit`): drops what it has. `hp` (+`perDog`) hits: gone for the journey, +`bounty` 🧶, the gorge quiet
     (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
     (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
-- **Hank never leans on a wall.** Blocked short of his spot he stands easy
-  (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Hank never leans on a wall.** A pen in his way: round it, one side, kept (`hankRound`, `hk.round`); a goal in it: over
+  the fence (`hankCross`). Blocked short of his spot he stands easy (`hk.easeAt`); far off, a hop and a sidestep (`hk.sideT`).
+- **Coyotes never shove at a fence.** A goal behind a shut pen's fence: the nearest spot this side (`navPenSide`); none
+  reachable: as near as it gets, standing (`NAVDIR.stop`). Pulls that cancel (walls, packmates) slow it, not spin it.
+  A sheep behind a shut fence isn't prey, whatever `s.pen` says (`shutIn`).
 - **Hank calls out only what he sees** (`hankSees`). Night at the campfire he
   sleeps on a mat (`hankNap`, silent); a predator within `T.hankNap.wakeR` wakes
   him shouting.
@@ -285,7 +290,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Barn**: Dogs (first; opens on it unless a sheep's asked for) and Sheep tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
-  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere.
+  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).
+  Held to go on (`T.dawn`: Ⓐ / Start, Enter / Space / Esc, ▶; `dawnHoldStart`, timed by press and let-go, `padT`); nothing in the first `grace` s; mashing never skips it.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
