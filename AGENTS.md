@@ -226,7 +226,7 @@ turns the stick into its own (`netReadInput`).
   licks start stocked (`campStock`); sheep lick rocks in passing; lumps go to
   the pen's lick.
 - **Water** (`s.thirst` 0…1, `T.water`): rises daily; parched too long =
-  death. Each pen: a water trough (`pen.water`) and a bucket (`BUCKETS`). Hold
+  death. Each pen: a water trough (`pen.water`, on the side facing the nearest water: `waterDir`, `kitRing`) and a bucket (`BUCKETS`). Hold
   grab to carry a bucket (one per dog, mouth full); let go: set down
   (`dropBucket`); Ⓑ sloshes some out (`bucketSlosh`). A lying one gets shoved by dogs running into it, flies (spilling)
   when pounced (`bucketPhysics`, `T.water.kick`). Wade/swim to fill, walk up to any water trough to tip in.
