@@ -5,7 +5,7 @@
 //   cold      in the pass a shorn sheep gets colder than a full fleece, snow on it colder still; out of the pass it thaws; frozen too long: dead
 //   fire      Hank lights the fire camp the flock's at; the coldest take the places round it and warm up
 //   camp      round each fire camp nothing stands between the fire and the ground near it (no corner to get stuck in; the ice cave's: inside it); warm a long way out;
-//             the base camp at the foot of the climb: Hank lights it as the flock comes up
+//             the base camp at the foot of the climb: Hank lights it as the flock comes up, and with the flock up past the shut ice gate
 //   torch     a dog grabs a camp's stick, dips it in the lit fire: alight; carried up into the snow it melts it: grass under it, eaten;
 //             lying lit on the ice: the ice melts, no slide; a lit one lights a cold camp's fire; it burns out; off the mountain: home again
 //   melt      a lit fire melts its camp; melted snow snows over slowly, in a blizzard fast (the grass buried again); a new journey: all snow
@@ -140,13 +140,17 @@ if (!only || only === 'camp') {
       return { s: f.s, base: !!f.base, seen: +(seen / n).toFixed(3), heat };
     });
     // the base camp: the flock coming up the last of the desert, Hank goes and lights it
-    const b = PASS.fires.find(f => f.base); setup(b.s - 24, { hour: 10, hankS: b.s - 34 });
-    const t = run(40, () => b.fuel > 0);
-    return { camps, base: { s: b.s, snow: GAME.T.pass.snow, lit: b.fuel > 0, t: +t.toFixed(1) } };
+    // the flock up on the ice gate (shut), Hank waiting below it by the base camp: he lights that one, not one up past it he can't get to
+    const b = PASS.fires.find(f => f.base); setup(GAME.T.iceGate.s1 + 10, { hour: 10, hankS: b.s + 2 });
+    const tg = run(40, () => b.fuel > 0);
+    setup(b.s - 24, { hour: 10, hankS: b.s - 34 });
+    const t = run(40, () => b.fuel > 0), lit = b.fuel > 0;
+    return { camps, base: { s: b.s, snow: GAME.T.pass.snow, lit, t: +t.toFixed(1), gate: +tg.toFixed(1) } };
   });
   ok(`round every camp nothing in the way of the fire: ${r.camps.map(c => c.seen).join(', ')} of the ground near it sees it`, r.camps.every(c => c.seen > 0.96), r.camps);
   ok(`warm a long way out (8 m: ${r.camps.map(c => c.heat).join(', ')})`, r.camps.every(c => c.heat > 0.3), r.camps);
   ok(`the base camp at the foot of the climb (${r.base.s}): Hank lights it as the flock comes up (${r.base.t} s)`, r.base.lit && r.base.s < r.base.snow, r.base);
+  ok(`the flock up past the shut ice gate, Hank below it: he lights the base camp (${r.base.gate} s)`, r.base.gate >= 0, r.base);
 }
 
 if (!only || only === 'torch') {
@@ -171,8 +175,8 @@ if (!only || only === 'torch') {
     // dropped lit on the ice: it melts, and a running sheep crosses it without a slide
     P.bot = {}; GAME.step(0.025); const m = ICES.slice().sort((a, c) => a.s - c.s)[0];
     t.x = m.x - Math.sin(t.yaw) * T.torch.len * 0.3; t.z = m.z - Math.cos(t.yaw) * T.torch.len * 0.3; t.h = 0; t.vx = t.vz = 0; t.lit = 3; const ik0 = iceK(m.x, m.z); run(3); out.ice = [+ik0.toFixed(2), +iceK(m.x, m.z).toFixed(2)];   // (what it melts round: its tip end, on the patch's middle)
-    const r = living()[2]; r.x = m.x - 0.6; r.z = m.z; r.vx = 4; r.vz = 0; r.state = 'flee'; r.fear = 1; r.fdx = 1; r.fdz = 0; r.slipCd = 0; let slid = false;
-    for (let k = 0; k < 0.3; k += 0.025) { GAME.step(0.025); if (r.slide) slid = true; } out.slid = slid;
+    const r = living()[2]; r.x = m.x - 0.6; r.z = m.z; r.vx = 4; r.vz = 0; r.slide = r.air = r.crev = null; r.pen = null; r.state = 'flee'; r.fear = 1; r.fdx = 1; r.fdz = 0; r.slipCd = 0; let slid = false;
+    for (let k = 0; k < 0.3; k += 0.025) { r.vz = 0; r.z = m.z; GAME.step(0.025); if (r.slide) slid = true; } out.slid = slid;   // (straight across it, not off its edge)
     // a lit one into a camp's cold fire: it's lit
     const f0 = PASS.fires[0]; f0.fuel = 0; t.x = f0.x + 0.4; t.z = f0.z; t.lit = 2; GAME.step(0.025); out.lights = f0.fuel > 0;
     // it burns out
@@ -427,11 +431,12 @@ if (!only || only === 'cave') {
     for (let t = 0; t < 4; t += 0.025) { YETI.x = H.x - C.ax * T.yeti.leash; YETI.z = H.z - C.az * T.yeti.leash; d.x = C.x + C.ax * (C.r - 0.6); d.z = C.z + C.az * (C.r - 0.6); d.vx = d.vz = 0; GAME.step(0.025); if ((YETI.state === 'windup' || YETI.state === 'butt') && YETI.target === d || d.air) butted = true; }
     out.butted = butted;
     // a burning sheep punted from its mouth (the fire's side): it hits him
-    YETI.x = H.x; YETI.z = H.z; YETI.state = 'idle'; YETI.buttCd = 1e9; YETI.next = 1e9; YETI.hurtT = 0; const hp0 = YETI.hp, k = L[1];
+    YETI.x = H.x; YETI.z = H.z; YETI.state = 'idle'; YETI.buttCd = 1e9; YETI.next = 1e9; YETI.hurtT = 0; const hp0 = YETI.hp, k = L[1], sc = k.scale;
+    k.scale = 1;   // (a ewe of the usual weight: how far a punt sends it goes by it)
     k.x = C.x + C.ax * (C.r - 1.2); k.z = C.z + C.az * (C.r - 1.2); k.vx = k.vz = 0; k.pen = null; ignite(k);
     const ux = YETI.x - k.x, uz = YETI.z - k.z, ul = Math.hypot(ux, uz); d.x = k.x - ux / ul; d.z = k.z - uz / ul; d.pdx = ux / ul; d.pdz = uz / ul; d.pounceT = 0.2; d.air = null; punt(k, d, ux / ul, uz / ul);
     for (let t = 0; t < 3 && k.air; t += 0.025) GAME.step(0.025);
-    out.punt = { from: +ul.toFixed(1), hp: [hp0, YETI.hp] };
+    out.punt = { from: +ul.toFixed(1), hp: [hp0, YETI.hp], sc: +sc.toFixed(2) }; k.scale = sc;
     // a burning sheep against its ice a while (and a lit torch by it): it holds (still walled, its shell up); the snow on its floor melts
     const w = L[2], ia = C.a + Math.PI * 0.8, wx = C.x + Math.cos(ia) * (C.r - 0.7), wz = C.z + Math.sin(ia) * (C.r - 0.7); w.pen = null; ignite(w); tc.x = wx + Math.cos(ia) * 0.3; tc.z = wz + Math.sin(ia) * 0.3; tc.lit = 5;
     for (let t = 0; t < 8; t += 0.025) { w.x = wx; w.z = wz; w.vx = w.vz = 0; w.air = null; w.burn = Math.max(w.burn, 2); GAME.step(0.025); }
