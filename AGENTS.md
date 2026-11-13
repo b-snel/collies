@@ -128,6 +128,7 @@ Run the ones touching your change; report the numbers.
 | `sail-test.mjs [polar\|irons\|tack\|gybe\|heel\|stations\|hank\|over\|dog\|anchor\|isle\|ring\|cam\|orca\|reef\|shark\|storm\|spout\|siren\|kraken\|arrive\|start\|dock\|land]` | sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef), stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns), dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore: flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked), kraken (arms, ballast, bonks, eye, beaten), Cabo, the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey |
 | `swim-test.mjs [layout\|dog\|tire\|drown\|ko\|asleep\|alone\|sheep\|coyote\|lake\|sand]` | open water (sea, lake open; river shut to sheep), a dog into the sea, swimming tires slowly, drowning → Hank: trunks, swim, tow, CPR, dressed; KO on land waits for Hank (not a partner), wakes him at night, comes round alone after `giveUp`; sheep and coyotes into the sea and out; the lake; the beach bare, sheep off it |
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
+| `sea-net-test.mjs` | online at sea (`PEERSERVER=host:port`): alongside, the guest's stick hauls her lines in (%), cast off (land carried off, chase camera), pose and waves match, the guest's stick by its own camera, a ring thrown, a sheep overboard on it, orcas, the kraken's arms, fx relayed, no anchor drop just after |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `breed-test.mjs` | breeds: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, breed swap keeps it, reset; barn card; net `brd` |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
@@ -144,6 +145,8 @@ fxDef('name', name)` at the end of ONLINE CO-OP. A seat is one guest browser;
 
 Bots: players with `kind: 'bot'`, `player.bot` merged into input. Inputs are
 screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
+At sea each screen's camera turns on its own: a guest's input carries its camera's heading (`cy`), the host
+turns the stick into its own (`netReadInput`).
 
 ### Keep these true
 
@@ -369,9 +372,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     Keep `blk`, `gCap` and the global rng as they are below the snow line (else the whole world moves):
     new decor → its own rng, in that block. The world-gen draws run over the pass first, so they still see
     the side trail as it first was (`sideWas`, `hWas`); the road opens up after (`sideOpen`).
-  - **His cave** (`FINAL`, `finalPen`): iced shut (`p.frozen`) till he's beaten; then a pen. Alone / offline the way on is the gap
-    (`HARB.gap`, `harbIce`, its ice gone when he's beaten: `seaWay`) and the road down to Cold Harbour. Online with friends (they can't
-    see the sea yet): the flock shut in the cave (all, or some for `finish` s) ends it (`finishGame(n)`).
+  - **His cave** (`FINAL`, `finalPen`): iced shut (`p.frozen`) till he's beaten; then a pen. The way on is the gap
+    (`HARB.gap`, `harbIce`, its ice gone when he's beaten: `seaWay`, always true now) and the road down to Cold Harbour.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
   stuck and bleating; a pounce pops it just clear of the bush (`punt` → `unsnag`, `T.punt.clear`), or a grab pulls it out.
@@ -498,7 +500,9 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 
 ### Sailing (issue #74)
 
-Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with friends online the journey still ends at the cave.
+Online: the host sails, guests draw it (`NET_TYPES` `sea`, `wind`, `wave`, `ring`, `station`, `orca`, `shark`, `kraken`; sheep `sw`
+`sh` `lure`; `seaFx` / `ringFx` relayed). A guest keeps her clock, the waves' phases, her wake, the gusts and a great wave going between
+snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an island's things itself (`netSeaAfter`, `seaLandAway`, `isleShow`).
 
 - **Cold Harbour** (`HARB`, `harbRoad`, `harbK`): real land. A gap in the summit's east rim, a road down the mountainside (`HARB.pts`),
   a mole, then the jetty. Cut into the terrain after world gen's draws (heights, `blk`, colours; the bay sunk); `HARB.mask`: its cells
@@ -534,13 +538,15 @@ Guests don't see the sea yet (no `NET_TYPES`): host / offline only, so with frie
 - **Stations** (`STATIONS`, `holdKind 'station'`, `T.sea.station`): ✊ bites one (kept without
   holding Ⓧ: `updateDog`), the stick works it, ✊ again lets go.
   Tiller: stick steers; let go of the stick, she holds that heading (`SEA.course`); a shake (Ⓑ) lashes it (`SEA.lash`).
-  Sheet: aft hauls, forward eases; a shake lets it fly. Halyard: up / down, settles on a reef. Anchor: down drops, up
-  weighs (alongside: casts off). Nobody on the tiller: it swings amidships and she rounds up.
+  Sheet: aft hauls, forward eases; a shake lets it fly. Halyard: up / down, settles on a reef. Anchor: down (held `dropHold` s)
+  drops, up weighs (alongside: casts off); hauling paused, it holds a moment (`slip`). Just weighed or cast off: no drop for `lock` s
+  (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller: it swings amidships and she rounds up.
 - **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
   pressed; lets fly at anchor or with a dog overboard. Calls what he sees (`seaHank`).
 - **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
   alongside if she's slow; a dog at the rail ✊ hauls it in (`seaHaul`), a swimming dog tows it (`d.tow`). Left: drowned.
-  Dogs: over the rail only by a jump; swim, climb the nets against the hull (`seaSwimDog`).
+  Dogs: over the rail only by a jump; swim, climb the nets against the hull (`seaSwimDog`). Under way she outsails a dog:
+  one falling astern (or past `dogFar`) gets Hank's line (`a.line`), hauled in alongside and up.
 - **Life rings** (`RINGS`, `T.sea.ring`, `holdKind 'ring'` / `'ringRope'`): one on each rail. ✊ takes it; let go: thrown to the sheep
   in the water it faces (`ringAim`, led for her drift: `ringTarget`). On the water it tows on its line. A sheep near makes for it and
   takes hold (`a.ring`: tires no more). ✊ at its post: the line comes in; Ⓑ heaves (`ringHeave`). In under the rail: `seaHaul`. Cues:
