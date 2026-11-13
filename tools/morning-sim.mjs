@@ -8,7 +8,7 @@ const r = await h.page.evaluate(N => {
   const P = () => G.players[0], D = () => G.dogs[0];
   if (!G.players.length) GAME.startGame({ kind: 'bot', index: 0 });
   const live = () => G.sheep.filter(s => !s.dead && !s.grabbed);
-  const res = {};
+  const res = {}, num = {};
   for (const [fed, dogNear] of [[false, false], [true, false], [true, true]]) {
     const acc = {};
     for (let k = 0; k < N; k++) {
@@ -29,10 +29,19 @@ const r = await h.page.evaluate(N => {
         }
       }
     }
+    const key = (fed ? 'troughs' : 'bare') + (dogNear ? '+dog' : '');
+    num[key] = JSON.parse(JSON.stringify(acc));
     for (const c in acc) acc[c] = `${acc[c].out}/${acc[c].of} out, ${acc[c].dist.toFixed(1)} m`;
-    res[(fed ? 'troughs' : 'bare') + (dogNear ? '+dog' : '')] = acc;
+    res[key] = acc;
   }
-  return res;
+  return { res, num };
 }, trials);
-console.log(JSON.stringify(r, null, 1)); console.log(h.errors.slice(0, 3));
+console.log(JSON.stringify(r.res, null, 1)); console.log(h.errors.slice(0, 3));
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+for (const [k, o] of Object.entries(r.num)) {
+  const a = o[15], b = o[80], dog = k.includes('dog');
+  ok(`${k}: gate opened, out they go (${a.out}/${a.of} by ~8:00), out till ~13:00 (${b.out}/${b.of}: one may stop to lick, eat or drink), off the gate (${b.dist.toFixed(1)} m)`, a.out >= a.of * (dog ? 0.4 : 0.8) && b.out >= b.of - 2 && b.dist > 8);
+}
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);

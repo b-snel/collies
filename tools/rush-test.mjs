@@ -42,4 +42,12 @@ const r = await h.page.evaluate(() => {
   return res;
 });
 console.log(JSON.stringify(r, null, 1)); console.log(h.errors.slice(0, 3));
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const M = r.morning, E = r.evening, C = r.carry;
+ok(`morning rush: gate opened, out they pour (${M.left[10]} by 10 s, ${M.left[20]}/${M.of} by 20 s)`, M.left[10] >= 3 && M.left[20] >= M.of - 2);
+ok(`not of an evening (${E.left[20]} out)`, E.left[20] <= 1);
+ok(`carried in through the open gate (${C.inT} s) and back out`, C.held && C.carriedIn && C.inT < 4 && C.carriedOut);
+ok('not through a shut one', !C.throughShutGate && C.stillHeld);
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);

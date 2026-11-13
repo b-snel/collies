@@ -49,7 +49,7 @@ const FILES = [[/^tools\/(harness|serve)\.mjs$/, '*'], [/^vendor\//, '*'], [/^au
 const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26, 'bramble-test': 20, 'breed-sim': 50, 'burrow-test': 22, 'canyon-test': 37,
   'cluster-sim': 39, 'cougar-sim': 43, 'crowd-sim': 28, 'dawn-test': 96, 'den-defend-test': 18, 'den-test': 16, 'dig-test': 26, 'falcon-test': 62,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
-  'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 44, 'pass-test': 37, 'path-test': 36,
+  'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
   'pen-trap-test': 32, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
   'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90 };
 

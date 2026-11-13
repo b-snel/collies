@@ -37,4 +37,12 @@ const r = await h.page.evaluate(REPS => {
   return res;
 }, reps);
 console.log(JSON.stringify(r)); console.log(h.errors.slice(0, 3));
+let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
+const n = k => +r[k].penned.split('/')[0], of = k => +r[k].penned.split('/')[1];
+for (const g of ['swungOut', 'swungIn']) {
+  ok(`gate ${g}, left alone: stragglers round the back find the way in (${r['alone-' + g].penned}; ${r['alone-' + g].at15s} by 15 s)`, n('alone-' + g) >= of('alone-' + g) - 1 && r['alone-' + g].at15s >= of('alone-' + g) - 3);
+  ok(`gate ${g}, a dog walking round behind them: in (${r['dog-' + g].penned})`, n('dog-' + g) >= of('dog-' + g) - 2);
+}
+ok('no page errors', !h.errors.length);
 await h.close();
+process.exit(fails ? 1 : 0);
