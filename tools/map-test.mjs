@@ -55,16 +55,18 @@ ok('over the controls bar while it\'s up', r4.withBar.left && r4.withBar.clear &
 ok('touch: under the flock panel (the stick\'s bottom left)', r4.touch.left && r4.touch.underFlock, r4);
 ok('and is drawn', r4.mid === 255 && r4.op === '1', r4);
 
-// 4b. at a trader: its pen pinned on the minimap (📍; the Trading Post's stall: no 🏪 of its own on the map)
+// 4b. at the vagabond's wares (laid out): the pen they go to pinned on the minimap (📍)
 const r4b = await h.page.evaluate(() => {
-  const { G, MAP, MARKET: st, pens, postPen, renderOnce } = GAME, d = G.dogs[0], x0 = st.x, z0 = st.z;
+  const { G, MAP, MARKET: st, VAG, pens, postPen, renderOnce } = GAME, d = G.dogs[0], x0 = st.x, z0 = st.z, s0 = VAG.st;
+  VAG.st = 'pitch'; VAG.out = true;   // (his wares out: he's off in ?sim)
   const cx = MAP.el.getContext('2d'), orig = cx.drawImage; let n = 0;
   cx.drawImage = function (...a) { n++; return orig.apply(this, a); };
   const draws = () => { n = 0; MAP.redraw = true; renderOnce(1 / 60); return n; };
   const away = draws(); st.x = d.x; st.z = d.z; const at = draws(); st.x = x0; st.z = z0; const after = draws(); cx.drawImage = orig;
+  VAG.out = false; VAG.st = s0;
   return { away, at, after, pen: !!(pens[st.sel] || postPen) };
 });
-ok('at a trader, its pen gets a 📍 on the minimap', r4b.pen && r4b.at === r4b.away + 1 && r4b.after === r4b.away, r4b);
+ok('at the vagabond\'s wares, the pen they go to gets a 📍 on the minimap', r4b.pen && r4b.at === r4b.away + 1 && r4b.after === r4b.away, r4b);
 
 // 5. M, a click and the big map
 const big = () => h.page.evaluate(() => { const r = GAME.MAP.el.getBoundingClientRect(); return { big: GAME.MAP.big, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
