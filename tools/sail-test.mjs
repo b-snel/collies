@@ -139,8 +139,11 @@ if (want('stations')) {
     p.bot = {}; const s0 = SEA.sheet; H.run(3); out.mine = Math.abs(SEA.sheet - s0) < 1e-6; H.tap(p); H.run(0.5);
     // the halyard: stick down reefs, let go: it settles on a reef; up: full sail
     at(hal); H.tap(p); p.bot = H.stick(-1, 0); H.run(0.8); p.bot = {}; H.run(3); out.reefed = H.r(SEA.hoist); p.bot = H.stick(-1, 0); H.run(2.5); out.down = H.r(SEA.hoist); p.bot = H.stick(1, 0); H.run(3); out.up = H.r(SEA.hoist); p.bot = {}; H.tap(p); H.run(0.5);
-    // the anchor: stick down lets it go; stick up, held, weighs it
-    at(anc); H.tap(p); p.bot = H.stick(-1, 0); H.run(0.3); out.dropped = SEA.anchor; p.bot = H.stick(1, 0); H.run(1); out.weighing = H.r(SEA.weigh); H.run(3); out.weighed = SEA.anchor;
+    // the anchor: stick down (held a moment) lets it go; stick up, held, weighs it. Just weighed, the stick swung down doesn't drop it again,
+    // nor a flick: only once it's been let go, the lock's out, and it's held down
+    at(anc); H.tap(p); p.bot = H.stick(-1, 0); H.run(0.15); out.flick = SEA.anchor; H.run(0.4); out.dropped = SEA.anchor; p.bot = H.stick(1, 0); H.run(1); out.weighing = H.r(SEA.weigh);
+    p.bot = {}; H.run(0.4); out.kept = H.r(SEA.weigh); p.bot = H.stick(1, 0); H.run(3); out.weighed = SEA.anchor;
+    p.bot = H.stick(-1, 0); H.run(2.5); out.swung = SEA.anchor; p.bot = {}; H.run(0.1); p.bot = H.stick(-1, 0); H.run(0.6); out.again = SEA.anchor;
     return out;
   });
   ok('a tap bites the tiller; the dog stands to it', r.bit && r.still < 0.3, r);
@@ -149,7 +152,8 @@ if (want('stations')) {
   ok('a shake (Ⓑ) lashes the tiller; a bite unlashes it', r.lashed && r.lashHolds && r.unlash, r);
   ok(`the sheet: stick aft hauls in (0.6 → ${r.hauled}), forward eases (→ ${r.eased}); Hank leaves it to the dog`, r.sheetBit && r.hauled < 0.45 && r.eased > r.hauled + 0.3 && r.mine, r);
   ok(`the halyard: reefed ${r.reefed}, down ${r.down}, up ${r.up}`, r.reefed === 0.55 && r.down === 0 && r.up === 1, r);
-  ok(`the anchor: let go (${r.dropped}), weighed (${r.weighed})`, r.dropped === 'down' && r.weighing > 0.2 && r.weighed === 'up', r);
+  ok(`the anchor: a flick doesn't (${r.flick}), held down let go (${r.dropped}), weighed (${r.weighing} → ${r.kept} let go a moment → ${r.weighed})`, r.flick === 'up' && r.dropped === 'down' && r.weighing > 0.2 && r.kept >= r.weighing && r.weighed === 'up', r);
+  ok(`just weighed: the stick swung on down doesn't drop it (${r.swung}); let go, then down: it does (${r.again})`, r.swung === 'up' && r.again === 'down', r);
 }
 
 if (want('hank')) {
@@ -201,8 +205,13 @@ if (want('dog')) {
     H.run(8, () => { p.bot = H.inp(s.x - d.x, s.z - d.z); return Math.hypot(s.x - d.x, s.z - d.z) < 1.5; }); p.bot = { ...p.bot, grab: true }; H.run(0.1); out.tow = d.tow === s;   // (Ⓧ held: by the scruff)
     out.t = H.r(H.run(14, () => { p.bot = H.stick(0, -1, { grab: true }); return !d.air && onDeck(d.x, d.z); })); H.run(2.5); p.bot = {};
     out.dogBack = !d.air && onDeck(d.x, d.z); out.sheepBack = !s.air && onDeck(s.x, s.z); out.dbg = { air: d.air && (d.air.kind || 'swim'), u: H.r(boatU(d.x, d.z)), v: H.r(boatV(d.x, d.z)), hold: d.holdKind };
+    // under way, faster than a dog swims: one over the side falls astern, paddling after her; Hank's line hauls it in
+    SEA.hoist = 1; SEA.u = 5; H.place(d, BOAT.stern + 1, 0); seaOverRail(d, 1, 3, 4, 'test'); H.run(1.5);
+    let far = 0; out.lineT = H.r(H.run(30, () => { p.bot = H.stick(1, 0); far = Math.max(far, Math.hypot(boatU(d.x, d.z) - BOAT.stern, boatV(d.x, d.z))); return !d.air && onDeck(d.x, d.z); }), 1); p.bot = {};
+    out.far = H.r(far, 1); out.lineBack = !d.air && onDeck(d.x, d.z); out.spd = H.r(SEA.u * T.sea.pace);
     return out;
   });
+  ok(`she sails away from a dog over the side (${r.spd} m/s): Hank's line hauls it in (${r.lineT} s, ${r.far} m off at most)`, r.lineBack && r.lineT < 15 && r.far < 30, r);
   ok('the rail holds a dog pushing at it; a running jump clears it', r.stays && r.swims && r.out > 0, r);
   ok('it swims to the sheep, bites it, tows it back', r.tow, r);
   ok(`against the hull they scramble up the nets (${r.t} s): both aboard`, r.dogBack && r.sheepBack, r);
