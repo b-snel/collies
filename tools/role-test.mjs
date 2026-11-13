@@ -1,64 +1,66 @@
-// Headless checks for dog breeds and training: `node tools/breed-test.mjs`.
-//   breeds   five, ★ adding up the same; ?sim slots default to Headers
+// Headless checks for dog roles and training, and breeds (looks only): `node tools/role-test.mjs`.
+//   roles    five, ★ adding up the same; ?sim slots default to Headers
 //   title    picking on the title (chips, ←/→ eaten so they don't start), saved, P1's dog gets it; a friend's own pick
-//   traits   each breed's strengths do something: bark reach, punt, jump, speed, stamina, grit, grip
+//   traits   each role's strengths do something: bark reach, punt, jump, speed, stamina, grit, grip
 //   train    doing it levels it (barking at nothing / hopping on the spot doesn't), a level makes it better, cap,
-//            a Header learns faster, swapping breed and back keeps it, a new journey starts over
-//   barn     breed chips + the ★ / ● card; a chip changes the live dog
-//   net      "breed:levels" sets a guest's copy
+//            a Header learns faster, swapping role and back keeps it, a new journey starts over
+//   barn     role chips + the ★ / ● card; a chip changes the live dog
+//   net      "role:levels" sets a guest's copy
+//   looks    breeds (the herding dogs + the ten most popular): every one builds in every hat and bit of kit, feet on the ground, near the
+//            collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`) come back right; the barn's ‹ ›
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
 const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}${cond ? '' : '  ' + JSON.stringify(info)}`); if (!cond) fails++; };
 
-// 1. the breeds
+// 1. the roles
 const r1 = await h.page.evaluate(() => {
-  const { BREEDS, TRAITS, T } = GAME;
-  return { n: BREEDS.length, icons: new Set(BREEDS.map(b => b.icon)).size, sums: BREEDS.map(b => TRAITS.reduce((a, t) => a + b[t.id], 0)),
-    strong: BREEDS.map(b => TRAITS.filter(t => b[t.id] === 3).length), learn: BREEDS.filter(b => b.learn > 1).map(b => b.id), def: T.breedDef };
+  const { ROLES, TRAITS, T } = GAME;
+  return { n: ROLES.length, icons: new Set(ROLES.map(b => b.icon)).size, sums: ROLES.map(b => TRAITS.reduce((a, t) => a + b[t.id], 0)),
+    strong: ROLES.map(b => TRAITS.filter(t => b[t.id] === 3).length), learn: ROLES.filter(b => b.learn > 1).map(b => b.id), def: T.roleDef };
 });
-ok('five breeds, an icon each', r1.n === 5 && r1.icons === 5, r1);
-ok('every breed has the same ★ in all (14)', r1.sums.every(n => n === 14), r1.sums);
-ok('every breed but the Header is great at two things', r1.strong.filter(n => n === 2).length === 4 && r1.strong[0] === 0, r1.strong);
+ok('five roles, an icon each', r1.n === 5 && r1.icons === 5, r1);
+ok('every role has the same ★ in all (14)', r1.sums.every(n => n === 14), r1.sums);
+ok('every role but the Header is great at two things', r1.strong.filter(n => n === 2).length === 4 && r1.strong[0] === 0, r1.strong);
 ok('the Header learns faster', r1.learn.length === 1 && r1.learn[0] === 'header', r1.learn);
 ok('?sim: every slot a Header', r1.def.every(b => b === 'header'), r1.def);
 
 // 2. the title pick
 const r2 = await h.page.evaluate(() => {
   localStorage.clear(); GAME.loadDogs();
-  const { G, dogLook, pickTitleBreed, titleBreedInput, keyEdge, startGame, DOGS_KEY } = GAME, out = {};
-  out.before = dogLook(0).breed;
-  keyEdge.add('ArrowRight'); titleBreedInput(); out.right = dogLook(0).breed; out.eaten = !keyEdge.has('ArrowRight');
-  keyEdge.add('KeyA'); titleBreedInput(); out.left = dogLook(0).breed;
-  keyEdge.add('ArrowLeft'); titleBreedInput(); out.wrap = dogLook(0).breed;
-  pickTitleBreed('outrunner');
-  out.chips = [...document.querySelectorAll('#tBreed [data-tb]')].filter(b => !/^-?1$/.test(b.dataset.tb)).length;
-  out.on = (document.querySelector('#tBreed button.on') || {}).dataset?.tb;
-  out.stats = document.querySelectorAll('#tBreed .stats > span').length;
-  out.saved = (JSON.parse(localStorage.getItem(DOGS_KEY) || 'null') || { looks: [] }).looks[0]?.breed;
+  const { G, dogLook, pickTitleRole, titleRoleInput, keyEdge, startGame, DOGS_KEY } = GAME, out = {};
+  out.before = dogLook(0).role;
+  keyEdge.add('ArrowRight'); titleRoleInput(); out.right = dogLook(0).role; out.eaten = !keyEdge.has('ArrowRight');
+  keyEdge.add('KeyA'); titleRoleInput(); out.left = dogLook(0).role;
+  keyEdge.add('ArrowLeft'); titleRoleInput(); out.wrap = dogLook(0).role;
+  pickTitleRole('outrunner');
+  out.chips = [...document.querySelectorAll('#tRole [data-tb]')].filter(b => !/^-?1$/.test(b.dataset.tb)).length;
+  out.on = (document.querySelector('#tRole button.on') || {}).dataset?.tb;
+  out.stats = document.querySelectorAll('#tRole .stats > span').length;
+  out.saved = (JSON.parse(localStorage.getItem(DOGS_KEY) || 'null') || { looks: [] }).looks[0]?.role;
   out.mode = G.mode;
-  GAME.loadDogs(); out.reloaded = dogLook(0).breed;
+  GAME.loadDogs(); out.reloaded = dogLook(0).role;
   startGame({ kind: 'bot', index: 0 });
-  out.dog = G.dogs[0].breed;
-  const p = GAME.joinPlayer({ kind: 'bot', index: 1, breed: 'backer' }); out.friend = p.dog.breed;
-  const q = GAME.joinPlayer({ kind: 'bot', index: 2 }); out.slotDef = q.dog.breed;
+  out.dog = G.dogs[0].role;
+  const p = GAME.joinPlayer({ kind: 'bot', index: 1, role: 'backer' }); out.friend = p.dog.role;
+  const q = GAME.joinPlayer({ kind: 'bot', index: 2 }); out.slotDef = q.dog.role;
   GAME.dropPlayer(p); GAME.dropPlayer(q);
   return out;
 });
-ok('→ picks the next breed and is eaten (no start)', r2.before === 'header' && r2.right === 'huntaway' && r2.eaten && r2.mode === 'title', r2);
+ok('→ picks the next role and is eaten (no start)', r2.before === 'header' && r2.right === 'huntaway' && r2.eaten && r2.mode === 'title', r2);
 ok('A / ← go back, and wrap round', r2.left === 'header' && r2.wrap === 'backer', r2);
 ok('the title shows 5 chips, the picked one lit, 7 traits + learn', r2.chips === 5 && r2.on === 'outrunner' && r2.stats === 7, r2);
 ok('the pick is saved', r2.saved === 'outrunner' && r2.reloaded === 'outrunner', r2);
-ok('P1\'s dog is that breed', r2.dog === 'outrunner', r2);
+ok('P1\'s dog is that role', r2.dog === 'outrunner', r2);
 ok('a friend joining with their own pick gets it; without, the slot\'s', r2.friend === 'backer' && r2.slotDef === 'header', r2);
 
 // 3. the traits do something (training off)
 const r3 = await h.page.evaluate(() => {
-  const { G, T, step, living, setBreed, bark, punt, startJump, hurtDog, dogK, CAM_R, CAM_F } = GAME;
+  const { G, T, step, living, setRole, bark, punt, startJump, hurtDog, dogK, CAM_R, CAM_F } = GAME;
   const p = G.players[0], d = p.dog; p.kind = 'bot'; p.bot = {};
   const live = living(); for (const s of live) { s.pen = null; s.x = d.x + 200; s.z = d.z; }
   G.clock.hour = 10;
-  const as = b => { setBreed(p, b); d.vx = d.vz = 0; d.stamina = 1; d.exhausted = false; d.hp = 1; d.ko = false; d.stunT = 0; d.hopT = d.jumpCd = 0; d.pounceT = 0; d.holding = null; d.holdKind = null; };
+  const as = b => { setRole(p, b); d.vx = d.vz = 0; d.stamina = 1; d.exhausted = false; d.hp = 1; d.ko = false; d.stunT = 0; d.hopT = d.jumpCd = 0; d.pounceT = 0; d.holding = null; d.holdKind = null; };
   const out = {};
   // bark reach: a sheep 12 m off
   const s = live[0], reach = b => { as(b); s.x = d.x + 12; s.z = d.z; s.vx = s.vz = 0; s.panic = 0; s.fear = 0; s.air = null; d.barkCd = 0; bark(d); return +s.panic.toFixed(2); };
@@ -104,13 +106,13 @@ ok(`grip: holding a ram, an Outrunner tires less and drags faster than a Backer 
 
 // 4. training
 const r4 = await h.page.evaluate(() => {
-  const { G, T, step, living, setBreed, bark, startJump, hurtDog, dogK, train, resetGame, dogSet, floats, CAM_R, CAM_F } = GAME;
+  const { G, T, step, living, setRole, bark, startJump, hurtDog, dogK, train, resetGame, dogSet, floats, CAM_R, CAM_F } = GAME;
   T.train.on = true;
   resetGame();
   const p = G.players[0], d = p.dog; p.kind = 'bot'; p.bot = {};
   const live = living(); for (const s of live) { s.pen = null; s.x = d.x + 300; s.z = d.z; }
   const out = {};
-  const as = b => { setBreed(p, b); d.vx = d.vz = 0; d.stamina = 1; d.hopT = d.jumpCd = 0; };
+  const as = b => { setRole(p, b); d.vx = d.vz = 0; d.stamina = 1; d.hopT = d.jumpCd = 0; };
   as('huntaway');
   // barking at nothing
   for (let i = 0; i < 30; i++) { d.barkCd = 0; bark(d); }
@@ -126,8 +128,8 @@ const r4 = await h.page.evaluate(() => {
   out.headerBarks = m;
   // swapping back: the Huntaway's level is still there; the barn's chip does it too
   as('huntaway'); out.back = d.tr.lv.bark;
-  dogSet(0, { breed: 'heeler' }); out.barnSwap = [d.breed, d.tr.lv.bark];
-  dogSet(0, { breed: 'huntaway' }); out.barnBack = [d.breed, d.tr.lv.bark];
+  dogSet(0, { role: 'heeler' }); out.barnSwap = [d.role, d.tr.lv.bark];
+  dogSet(0, { role: 'huntaway' }); out.barnBack = [d.role, d.tr.lv.bark];
   // jumps: on the spot teach nothing; on the move, at most one per jumpGap
   const j0 = d.tr.xp.jump;
   for (let i = 0; i < 10; i++) { d.hopT = d.jumpCd = 0; d.vx = d.vz = 0; startJump(d); G.time += 2; }
@@ -146,14 +148,14 @@ const r4 = await h.page.evaluate(() => {
   train(d, 'speed', 1e6); out.cap = [d.tr.lv.speed, +dogK(d, 'speed').toFixed(4), +((1 + T.traits.speed.spread * 0) * (1 + T.traits.speed.per * T.train.lv.length)).toFixed(4)];
   // a new journey starts over
   resetGame(); const d2 = G.players[0].dog;
-  out.reset = [d2.breed, d2.tr.lv.bark, d2.tr.lv.speed, +dogK(d2, 'bark').toFixed(3)];
+  out.reset = [d2.role, d2.tr.lv.bark, d2.tr.lv.speed, +dogK(d2, 'bark').toFixed(3)];
   T.train.on = false;
   return out;
 });
 ok('barking at nothing teaches nothing', r4.nothing === 0, r4);
 ok(`barking at sheep: a level after ${r4.barks} barks, the bark reaches further, ⬆ over the dog`, r4.lv === 1 && r4.barks >= 18 && r4.barks <= 22 && r4.k[1] > r4.k[0] && r4.float, r4);
 ok(`a Header gets there in ${r4.headerBarks} (1.5× faster)`, r4.headerBarks < r4.barks * 0.75, r4);
-ok('swapping breed and back keeps each one\'s training (and the barn\'s chip does it)', r4.back === 1 && r4.barnSwap[0] === 'heeler' && r4.barnSwap[1] === 0 && r4.barnBack[0] === 'huntaway' && r4.barnBack[1] === 1, r4);
+ok('swapping role and back keeps each one\'s training (and the barn\'s chip does it)', r4.back === 1 && r4.barnSwap[0] === 'heeler' && r4.barnSwap[1] === 0 && r4.barnBack[0] === 'huntaway' && r4.barnBack[1] === 1, r4);
 ok('jumping on the spot teaches nothing; on the move only so often', r4.spotJumps === 0 && r4.runJumps > 0 && r4.runJumps <= r4.jumpMax, r4);
 ok(`sprinting ${r4.sprint.m} m trains speed and stamina`, r4.sprint.speed > 0.5 && r4.sprint.wind > 0.5, r4.sprint);
 ok('getting hurt trains grit', r4.grit > 4, r4);
@@ -164,23 +166,69 @@ ok('a new journey starts training over', r4.reset[1] === 0 && r4.reset[2] === 0 
 const r5 = await h.page.evaluate(() => {
   const { G, openBarn, closeBarn, barnTab, dogLook } = GAME, d = G.players[0].dog;
   openBarn(); barnTab('dogs');
-  const out = { chips: document.querySelectorAll('#barnBreed button').length, rows: document.querySelectorAll('#barnTrain .pips').length,
-    pips: document.querySelectorAll('#barnTrain .pips i').length, on: (document.querySelector('#barnBreed button.on') || {}).dataset?.breed };
-  document.querySelector('#barnBreed button[data-breed="backer"]').click();
-  out.after = [d.breed, dogLook(0).breed, (document.querySelector('#barnBreed button.on') || {}).dataset?.breed];
+  const out = { chips: document.querySelectorAll('#barnRole button').length, rows: document.querySelectorAll('#barnTrain .pips').length,
+    pips: document.querySelectorAll('#barnTrain .pips i').length, on: (document.querySelector('#barnRole button.on') || {}).dataset?.role };
+  document.querySelector('#barnRole button[data-role="backer"]').click();
+  out.after = [d.role, dogLook(0).role, (document.querySelector('#barnRole button.on') || {}).dataset?.role];
   closeBarn();
   return out;
 });
-ok('the barn\'s Dogs tab: 5 breed chips, the dog\'s lit, 7 traits × 5 pips', r5.chips === 5 && r5.rows === 7 && r5.pips === 35 && r5.on === 'huntaway', r5);
+ok('the barn\'s Dogs tab: 5 role chips, the dog\'s lit, 7 traits × 5 pips', r5.chips === 5 && r5.rows === 7 && r5.pips === 35 && r5.on === 'huntaway', r5);
 ok('a chip changes the dog out on the trail', r5.after.every(b => b === 'backer'), r5.after);
 
 // 6. online: a guest's copy
 const r6 = await h.page.evaluate(() => {
-  const { G, netDogBreed, dogK, T } = GAME, d = G.players[0].dog;
-  netDogBreed(d, 'heeler:0300002');
-  return { breed: d.breed, bonk: d.lv.bonk, grip: d.lv.grip, k: +dogK(d, 'bonk').toFixed(3), want: +((1 + T.traits.bonk.spread) * (1 + 3 * T.traits.bonk.per)).toFixed(3) };
+  const { G, netDogRole, dogK, T } = GAME, d = G.players[0].dog;
+  netDogRole(d, 'heeler:0300002');
+  return { role: d.role, bonk: d.lv.bonk, grip: d.lv.grip, k: +dogK(d, 'bonk').toFixed(3), want: +((1 + T.traits.bonk.spread) * (1 + 3 * T.traits.bonk.per)).toFixed(3) };
 });
-ok('"breed:levels" from the host sets a guest\'s dog', r6.breed === 'heeler' && r6.bonk === 3 && r6.grip === 2 && r6.k === r6.want, r6);
+ok('"role:levels" from the host sets a guest\'s dog', r6.role === 'heeler' && r6.bonk === 3 && r6.grip === 2 && r6.k === r6.want, r6);
+
+// 7. breeds: looks only
+const r7 = await h.page.evaluate(() => {
+  const { G, DOG_BREEDS, DOG_ITEMS, dogShape, dogGear, buildDog, dogLook, dogSet, dogK, boneMass, DOGS, DOGS_KEY, T } = GAME, out = {};
+  out.n = DOG_BREEDS.length; out.herd = DOG_BREEDS.filter(b => b.herd).length; out.top = DOG_BREEDS.filter(b => b.top).map(b => b.id);
+  out.first = DOG_BREEDS[0].id;
+  out.dupCoat = DOG_BREEDS.filter(b => new Set(b.coats.map(c => c.b)).size !== b.coats.length).map(b => b.id);
+  out.bad = []; out.feet = []; out.size = [];
+  const add = () => {};
+  for (const B of DOG_BREEDS) {
+    const S = dogShape(B);
+    if (Math.abs(S.hipY - S.lg - 0.01) > 1e-6) out.feet.push(B.id);   // legs hang from the hips to the ground
+    const h = (S.head[1] + 0.2 * S.hk) * 1.3, len = (S.torso.s[2] * 2) * 1.3;
+    const hc = (0.82 + 0.2) * 1.3, lc = 0.55 * 2 * 1.3;   // the collie's
+    if (h < 0.6 * hc || h > 1.12 * hc || len < 0.85 * lc || len > 1.3 * lc || S.mouthZ * S.hk < 0.15 || S.mouthZ * S.hk > 0.5) out.size.push([B.id, +h.toFixed(2), +len.toFixed(2)]);
+    for (const c of B.coats) for (const it of [{ id: 'none' }, ...DOG_ITEMS]) {
+      try { buildDog({ breed: B.id, coat: c.b, collar: '#e8473f', hat: it.kind === 'hat' ? it.id : 'none', acc: it.kind === 'acc' ? [it.id] : [] }, add); if (it.id !== 'none' && !dogGear(it.id, B)) out.bad.push(B.id + ':' + it.id); }
+      catch (e) { out.bad.push(B.id + ':' + c.n + ':' + it.id + ' ' + e.message); }
+    }
+  }
+  localStorage.clear(); GAME.loadDogs(); GAME.resetGame && GAME.resetGame();
+  const p = G.players[0], d = p.dog, k0 = ['bark', 'bonk', 'jump', 'speed', 'wind', 'grit', 'grip'].map(t => dogK(d, t)).join(), m0 = boneMass(d, 'dog');
+  dogSet(0, { breed: 'dachshund' }); out.look = [dogLook(0).breed, d.models.breed, dogLook(0).coat];
+  out.same = ['bark', 'bonk', 'jump', 'speed', 'wind', 'grit', 'grip'].map(t => dogK(d, t)).join() === k0 && boneMass(d, 'dog') === m0 && d.role === p.role;
+  dogSet(0, { coat: '#123456' }); out.coatKept = dogLook(0).coat === out.look[2];   // not one of its coats: stays
+  dogSet(0, { breed: 'border' }); out.coatBack = DOG_BREEDS[0].coats.some(c => c.b === dogLook(0).coat);
+  GAME.saveDogs(); localStorage.setItem(DOGS_KEY, JSON.stringify({ v: 1, found: [], looks: [{ coat: '#6b3a22', collar: '#3d8ef0', breed: 'heeler' }] })); GAME.loadDogs();
+  out.old = [dogLook(0).role, dogLook(0).breed, dogLook(0).coat];
+  GAME.openBarn(); GAME.barnTab('dogs');
+  const nm = () => document.getElementById('barnBreedName').textContent;
+  out.barn0 = nm(); document.querySelector('#barnBreed [data-dbr="1"]').click(); out.barn1 = [nm(), dogLook(0).breed, document.querySelectorAll('#barnCoat .swatch').length];
+  document.querySelector('#barnBreed [data-dbr="-1"]').click(); document.querySelector('#barnBreed [data-dbr="-1"]').click(); out.barnWrap = dogLook(0).breed;
+  GAME.closeBarn();
+  const lk = JSON.stringify({ ...dogLook(0), breed: 'poodle', coat: '#232226' }); GAME.netDogLook(d, lk); out.net = [d.models.breed, d.netLook && d.netLook.coat];   // ONLINE: the host's look for it
+  return out;
+});
+ok(`${r7.n} breeds: ${r7.herd} herding (the Border Collie first) and the ten most popular`, r7.n >= 45 && r7.herd >= 36 && r7.first === 'border'
+  && ['frenchie', 'lab', 'golden', 'gsd', 'dachshund', 'poodle', 'beagle', 'rottweiler', 'gsp', 'bulldog'].every(id => r7.top.includes(id)) && r7.top.length === 10, r7);
+ok('every breed builds in every coat, hat and bit of kit', r7.bad.length === 0, r7.bad.slice(0, 8));
+ok('feet on the ground, near the collie\'s size, a mouth where its head is', r7.feet.length === 0 && r7.size.length === 0, { feet: r7.feet, size: r7.size });
+ok('each coat its own in a breed', r7.dupCoat.length === 0, r7.dupCoat);
+ok('a breed is only looks: the dog\'s model changes, nothing it does (stats, weight, role)', r7.look[0] === 'dachshund' && r7.look[1] === 'dachshund' && r7.same, r7);
+ok('a coat it can\'t have isn\'t put on; a breed change keeps a coat it can have', r7.coatKept && r7.coatBack, r7);
+ok('an old save (role saved as `breed`): that role, a Border Collie, its coat', r7.old[0] === 'heeler' && r7.old[1] === 'border' && r7.old[2] === '#6b3a22', r7.old);
+ok('online: the host\'s look (a breed and coat) rebuilds a guest\'s dog', r7.net[0] === 'poodle' && r7.net[1] === '#232226', r7.net);
+ok('the barn: ‹ › steps the breed, the coats are that breed\'s, it wraps', r7.barn0 === 'Border Collie' && r7.barn1[0] === 'Rough Collie' && r7.barn1[1] === 'rough' && r7.barn1[2] === 3 && r7.barnWrap === 'bulldog', r7);
 
 ok('no page errors', h.errors.length === 0, h.errors);
 await h.close();
