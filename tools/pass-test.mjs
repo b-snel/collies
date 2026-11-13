@@ -648,7 +648,7 @@ if (!only || only === 'gate') {
   });
   ok(`the ice gate: wall to wall (${r.band.iced}/${r.band.walk} spots across it iced), no lane; nothing else in the way`, r.band.iced === r.band.walk && r.band.walk > 200 && r.band.path && !r.band.open, r.band);
   ok(`a dog sprinting up it: thrown back down ${r.dog.slips}× (got to ${r.dog.maxS}), ends below it`, r.dog.slips >= 3 && r.dog.maxS < r.s1 && r.dog.below, r.dog);
-  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Sure ye/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
+  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /^Are ye sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
   ok(`a driven sheep up it: back down (got to ${r.sheep.maxS})`, r.sheep.slid && r.sheep.below, r.sheep);
   ok(`the flock well up past it, no lane: Hank waits at the base camp (${r.hank.atWait} s by its fire), never on the ice`, r.hank.atWait > 6 && r.hank.fire < 8 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
   ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
