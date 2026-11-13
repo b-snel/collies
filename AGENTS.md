@@ -17,7 +17,7 @@ fight off coyotes (they dig under fences: fill the hole), cougars and falcons ti
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk.
 Traders on every leg sell troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
-fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top. Beat him: the ice goes from a gap
+fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to the Promised Land
 (wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
@@ -56,7 +56,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 `T` (all tuning) → `Sound` → input → world gen → renderer/terrain/water/grass
 → scenery → fences/pens → models → particles → `G` → SHEEP → DOGS (BREEDS & TRAINING) →
 DOG MOVES & PHYSICS → FORAGE → WATER → DIG SPOTS → BRAMBLES → BONK SPOTS → RATTLESNAKES → ROPES (+ TUG OF WAR) → BONES → NAVIGATION → COYOTES (+ BURROWS) → COUGARS → FALCON (+ FALCON CANYON) →
-MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, ICE GATE, MELT, TORCHES, GOATS, SNOWBALLS, YETI, the rock wall) →
+MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, ICE GATE, MELT, TORCHES, GOATS, SNOWBALLS, THE ICE CAVE, YETI, HANK'S NAGS, THE RICKETY WALLS) →
 REMAINS & TOMBSTONES (YARDS) → clock/lighting → camera → visual sync (RAM NADS, CARRY SWING) → HUD (ART icons) → MAP → HANK, VET, RESCUE, FLOCK LOOKS,
 DOG WARDROBE, BARN, DAWN REPORT, saved flock → VENDOR → SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea,
 HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow) → game flow → main loop → DEV MENU → `window.GAME`.
@@ -76,7 +76,7 @@ them), `HANK.clippers`, `s.wool` (0…1), `G.wool` (🧶, whole number),
 `downhill(x, z)` (unit + slope), `passUp(x, z)` (the way on up: unit + k 0…1), `heatAt(x, z)` (0…1), `startSlide(e, 'ice'|'roll', o)`, `crevOut(e, hop)`,
 `s.cold`/`d.cold`/`s.snow` (0…1), `s.burn` (s left), `hankTumble(vx, vz, vy)`; `passSheepStep`, `passSheepMove`,
 `passHeld`, `passAir`, `passDogMove` (where the pass takes over),
-`MELT` / `meltAt(x, z)` / `meltDisc(x, z, r, r0, amt)` (snow melted, 0…1; `meltSet(v, m)` moves `gCap`), `torchHeat(x, z)`, `HEAP` / `heapH(x, z)` (in `groundY`), `sdfPatch(i0, i1, j0, j1)`,
+`MELT` / `meltAt(x, z)` / `meltDisc(x, z, r, r0, amt)` (snow melted, 0…1; `meltSet(v, m)` moves `gCap`), `torchHeat(x, z)`, `HEAP` / `HEAP2` / `heapH(x, z)` (in `groundY`), `sdfPatch(i0, i1, j0, j1)`, `inCave(x, z, pad)`,
 `waterLevel(x, z)` (the water's top there: flat ashore, the waves at sea), `pen.deck` / `pen.lock` (the boat's deck),
 `seaShove({ heel, yaw, surge, sway, ju, jv })`, `seaOverRail(e, side, out, up, how)`, `seaStress(s)` / `seaSheepDeck(s, dt)`,
 `s.seaHold`, `s.lure`, `seaBark(d, k, team)`, `seaPounce(d)`, `seaFx(kind, k, x, z, a)`, `seaCheckpoint(w)` → `SEA.checkpoint`,
@@ -116,7 +116,7 @@ Run the ones touching your change; report the numbers.
 | `hank-test.mjs` | Hank, barn, saved flock |
 | `dig-test.mjs` | dig spots, dog wardrobe |
 | `vendor-test.mjs` | traders on every leg (none up the pass), 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a dog walks out), sheep use them, reset; too poor, full pen, no Cabo, the Trading Post doesn't end it |
-| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|gate\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; the ice gate: wall to wall, a dog / a driven sheep thrown back down it, Hank's "grab the torch" then nags ≥ `nag` s apart, he waits at the base camp, a lit torch carried up melts a lane (his lines), then Hank and a sheep up it, no blizzard shuts it, a dev jump melts it, reset, a friend's ice from the host's; burning sheep (melt the snow, the gate's ice); the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind |
+| `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|cave\|nag\|rock\|entry\|side\|gate\|burn\|finish\|uphill]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog mashes out alone or not, stamina a press, none: stuck till rested; a friend grabs it out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the ice cave (walled but its mouth, Hank lights it and keeps in it, snowballs smash on it, his butt can't reach in, a burning sheep punted from its mouth hits him); nags (a line in, on a timer, on a pounce / a cold sheep, cooldown, tops out, a hit: back, beaten: none, reset); the rock wall falls on him; the door (in the way, a pounce wobbles it, 2 sheep: down, the way open, up again); side trail ≥5 m wide, ledge only up it, 5 sheep driven up; the ice gate: wall to wall, a dog / a driven sheep thrown back down it, Hank's "grab the torch" then nags ≥ `nag` s apart, he waits at the base camp, a lit torch carried up melts a lane (his lines), then Hank and a sheep up it, no blizzard shuts it, a dev jump melts it, reset, a friend's ice from the host's; burning sheep (melt the snow, the gate's ice); the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge; uphill (seeded, UP on vs off): left alone up to a lit camp 30 m up and past the base camp up (was: back down), none onto the ice or into a crack, a dog walking behind drives it faster (≤1 back past it), from the side it veers up, the cold not back to a fire behind |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
 | `bramble-test.mjs` | brambles: placement, snag, held, grab pulls it out, pounce pops it just clear, calm sheep go round |
@@ -328,10 +328,11 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     night, blizzard, lamb; huddled less; `heatAt` warms; below thaws. At 1 for `dieHours`: dead ('cold').
     Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
   - **Fires** (`PASS.fires`, camps without pens): Hank lights the flock's (`passFireGoal`: the next one up within
-    `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it.
+    `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it
+    (his side of it kept while the flock's all round it, `f.hankA`; blocked short of it, he stokes it and sleeps from as near as he gets).
     Out or under `low` h: his first job after a dog down (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
     (two rings) round it, the coldest first (`warmGo`, state 'warm'; one up the hill first: Up); nobody's jostled into it (`fireShove`). Warm out to `r1`.
-    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it.
+    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it. The top one's in the ice cave.
   - **Up** (`T.pass.up`, `passUpFire` → `MIND.upF`, `passUp`, `upScore`): the flock's way on is the next camp up (its middle `past` m
     beyond one: the next; at one, left alone, that one till `hold` m past). Toward it: the grazing front leans `graze` (a climb at `pace`),
     a look for grass `seek`, grass back down counts `behind` less; flight off a dog to the side bends up `flee` (not with the dog above);
@@ -367,20 +368,34 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
   - **Burning** (`s.burn`, `T.burn`): a sheep carried, flung or bolting into a lit fire catches;
     too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`). Alight, it melts the snow and ice round it (`melt`).
+  - **The ice cave** (`CAVE`, `T.pass.cave`, `caveD`, `inCave`): the top fire (`f.cave`) moved into it after world gen's draws, west of
+    his spot, its mouth (±`mouth`) toward him: past his reach (leash + butt), in a punt's (~15 m). Walls `block`ed (a ring), a dome of
+    glassy ice (fresnel), the doorway arched, icicles, the fire's glow (`C.glow`), a beacon on top. Snowballs smash on it (`caveFx`);
+    he throws at what's out in the open first (`yetiPick`). While he's up Hank keeps in it (`passFireFind`); round to its mouth
+    (`caveDetour`).
   - **The yeti** (`YETI`, `T.yeti`, `SNOWBALLS`): wakes when something's past `arena`; rolls snowballs
     that grow, headbutts what's close; a pounce bounces off him. A burning sheep flying into him:
     a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`). HUD 🦍 ♥♥♥.
+  - **Hank's nags** (`YETI.nag`, `T.yeti.nag`, `YETI_NAGS`, `yetiNag`, `yetiNagOn(kind)`): no hit yet: a line `first` s in, then every
+    `every` s; on a pounce off him, a cold sheep at him, a snowball bowling one (`kind`); `cd` s apart, only what he sees, subtitles only.
+    `tiers` lines a kind, snarkier (SIGH… / TSK!: `yetiNagFx`); a hit: a cheer, back `back` tiers (`yetiNagHit`). Beaten: none.
   - **The rock wall** (`SIDE`, `ROCK`, `wallD`): the hidden side trail (`sideD`: a level road `hw`×2 wide, its mouth
     `flare` wider, `flat` m level past its edges) up behind the west rim to a ledge (only up it: a narrow cut to the
     rock); `cracks` sheep flying into the wall: it falls on him ('crushed', an arm out). A fin of
-    split rock: its blocks one instanced mesh (`R.stones`, `rockDraw`: standing, leaning, toppling, heaped).
+    split rock: its blocks one instanced mesh (`R.stones`, `wallDraw`: standing, leaning, toppling, heaped).
     Down, its heap's a way over the rim from the ledge: walkable (`rubbleStamp`, `sdfPatch`), a bump underfoot (`HEAP`, `heapH` in
     `groundY`; its stones drawn on `terrainH`) till `resetPass`. Stamped after `yetiBeaten` (the gap's ice stamp comes off first).
+  - **The door** (`SIDE.door`, `DOOR`, `T.yeti.door`): the same, lower, across the side trail's road `at` m up it, between its gate
+    stones: in the way (`doorStamp`, after world gen; online: `NET_TYPES.door`) till `cracks` sheep knock it down up the road (open; its
+    heap a bump: `HEAP2`). Hank wonders at it the first time he sees it.
+  - **Rickety, both** (`WALLS`, `wallStruck`, `wallFall`, `updateWall`): cracked, leaning, gaps (`lean0`, `gone0`), grit trickling,
+    loose stones rocking and a creak with a dog by. A dog's pounce (`wallPounce`, `T.yeti.wob`): a wobble, the dog bounced back, never a
+    fall (Hank says so once). Hits: cracks, chunks off (`DEBRIS`, drawing only); down: rumble, dust, shake, hit-stop, blocks tumbling.
   - **Scenery** (block before `buildSDF`; own rngs): crags (`passWall`, `passRim`), goat ledges
     (`PASS.ledges`), the Shepherd Kings at the snow line, the old road (flags, treads), a watchtower at
     each fire camp, its beacon lit with the fire (`f.beacon`), frozen falls, needles, ice crystals, the
-    hidden stair (flagstone courses, kerbs, walls, arches, gate stones, rune stone; nothing on the road), the yeti's
-    hall behind his pen, mist in the valley.
+    hidden stair (flagstone courses, kerbs, walls, arches, gate stones, rune stone; nothing on the road), its door, the yeti's
+    hall behind his pen, the ice cave (and its old camp below, cold), mist in the valley.
     Keep `blk`, `gCap` and the global rng as they are below the snow line (else the whole world moves):
     new decor → its own rng, in that block. The world-gen draws run over the pass first, so they still see
     the side trail as it first was (`sideWas`, `hWas`); the road opens up after (`sideOpen`).
@@ -602,7 +617,8 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - Changed `index.html`, `vendor/` or icons → bump `CACHE` in `sw.js`.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
-  camp (pushed onto `PASS.fires` after them), nor `MELT` (all 0 then).
+  camp (pushed onto `PASS.fires` after them), nor the ice cave (the top fire moved in at the end of the pass scenery), nor the door
+  (`doorStamp`), nor `MELT` (all 0 then).
 - Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`) or lies aboard.
 
 ## Demo slices
