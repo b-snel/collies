@@ -291,7 +291,8 @@ turns the stick into its own (`netReadInput`).
   and quay lapping, campfires crackle; birds by day (each leg its own, a dawn chorus), crickets, frogs, owls, a poorwill by night; cicadas,
   bees, gulls, chimes at the Trading Post, ravens and ice up the pass, stones and a far falcon in the canyon, rigging, creaks and a bell at
   Cold Harbour, the hull at sea (`seaAmbience` beds go through `AMB.bus()`). No hum: nothing steady (a tone, or under ~130 Hz); beds
-  breathe. 🍃 volume (`ambVolume`). New place: an `ambMix` field + its part of `AMB`'s `step`; check with `amb-test.mjs`.
+  breathe. Birds: few (`every('bird')`, one at a time), far and quiet (`LOUD`), notes as swells with a burr or vibrato (`tweet`), not beeps.
+  🍃 volume (`ambVolume`). New place: an `ambMix` field + its part of `AMB`'s `step`; check with `amb-test.mjs`.
 - **Map** (`MAP`, `T.map`, drawing only): parchment till a dog's been within `r` m (`MAP.rv`, 2 m grid,
   `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps, traders,
   salt, graves once uncovered; flock, Hank, dogs always; predators only while a dog sees them. Each screen
