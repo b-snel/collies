@@ -3089,6 +3089,7 @@ const vNormal = new Float32Array(VN * 3);
 const grassTex = new THREE.DataTexture(gTexData, VX, VZ, THREE.RedFormat, THREE.UnsignedByteType);
 grassTex.minFilter = grassTex.magFilter = THREE.LinearFilter; grassTex.unpackAlignment = 1; grassTex.generateMipmaps = false;
 function uploadGrass() { for (let k = 0; k < VN; k++) gTexData[k] = Math.round(clamp(gAmt[k], 0, 1) * 255); grassTex.needsUpdate = true; grassDirty = false; }
+onReset(() => { for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass(); }, 80);   // the grass grown back
 uploadGrass();
 const meltTex = new THREE.DataTexture(meltData, VX, VZ, THREE.RedFormat, THREE.UnsignedByteType);
 meltTex.minFilter = meltTex.magFilter = THREE.LinearFilter; meltTex.unpackAlignment = 1; meltTex.generateMipmaps = false; meltTex.needsUpdate = true;
@@ -5060,6 +5061,7 @@ function updateParticles(dt) {
   }
   partMesh.count = n; partMesh.instanceMatrix.needsUpdate = true; if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
 }
+onSync(updateParticles, 220);
 const rings = [];
 function spawnRing(x, y, z, radius, color, dur = 0.38) {
   let r = rings.find(r => r.t >= r.dur);
@@ -5076,6 +5078,7 @@ function updateRings(dt) {
     r.m.scale.setScalar(0.5 + e * r.radius); r.m.material.opacity = (1 - k) * 0.85;
   }
 }
+onSync(updateRings, 230);
 // ---------------- POOP: a scared sheep drops pellets; they bounce, lie a while, shrink away (drawing only, each screen its own) ----------------
 const POOP = [];
 const poopMesh = (() => {
@@ -5093,6 +5096,7 @@ function poopFx(x, y, z, yaw, n, k = 1, vx = 0, vz = 0) {   // from a sheep's re
   const d = Math.hypot(x - cam.x, z - cam.z); if (d < 30) Sound.prrt(panOf(x, z), 0.22 * (1 - d / 32));
 }
 function poopClear(keep = () => false) { for (let i = POOP.length - 1; i >= 0; i--) if (!keep(POOP[i])) POOP.splice(i, 1); }
+onReset(() => poopClear(), 20);   // POOP
 function syncPoop(dt) {
   const life = T.poop.life;
   for (let i = POOP.length - 1; i >= 0; i--) {
@@ -5110,6 +5114,7 @@ function syncPoop(dt) {
   }
   poopMesh.count = n; poopMesh.instanceMatrix.needsUpdate = true;
 }
+onSync(syncPoop, 240);   // POOP
 
 // fireflies at night
 const fireflies = (() => {
@@ -5226,6 +5231,7 @@ function spawnFlock() {
   applySavedFlock();   // FLOCK SAVE: last journey's named, dressed sheep take their places (call once the flock is built)
   G.stats.start = G.sheep.length;
 }
+onReset(spawnFlock, 400);   // a fresh flock
 function killSheep(s, why) {
   if (s.dead) return; s.dead = true;
   if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
@@ -6548,6 +6554,7 @@ function dogStats(d) {
   const B = roleOf(d.role), lv = d.lv || {}; d.kk = {};
   for (const t of TRAITS) { const P = T.traits[t.id]; d.kk[t.id] = (1 + P.spread * (B[t.id] - 2)) * (1 + P.per * (lv[t.id] || 0)); }
 }
+onReset(() => { G.train = {}; for (const d of G.dogs) { d.tr = trainRec(d.player.slot, d.role); d.lv = d.tr.lv; dogStats(d); } }, 320);   // TRAINING: a new journey, a fresh start
 const dogK = (d, t) => (d && d.kk && d.kk[t]) || 1;
 const barkR = d => T.barkR * dogK(d, 'bark');
 // a player's dog takes another role (the barn; a friend's pick online): its training in that role comes back
@@ -6706,6 +6713,7 @@ function updateDog(d, inp, dt) {
   passDogMove(d, dt);   // MOUNTAIN PASS: cold; onto the ice, into a crack
   if (d.holdKind === 'dog' && d.holding) updateHeldDog(d.holding, dt);   // the dog in its jaws rides at its mouth
 }
+onReset(() => G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.heldBy = null; d.heldWrig = 0; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; d.cold = 0; d.crev = null; d.slide = null; }), 410);   // the dogs by the first pen
 // held by the scruff: barks still go; its stick tugs the holder; mash pounce to wriggle free (T.dogHeld)
 function heldDogInput(d, inp, dt) {
   const h = d.heldBy;
@@ -6855,6 +6863,7 @@ function idleReset() {
   for (const p of PUDDLES) p.m.removeFromParent(); PUDDLES.length = 0;
   for (const d of G.dogs) { anticEnd(d); d.idleNext = T.idle.after; }
 }
+onReset(idleReset, 150);   // IDLE: no poops, no puddles, every dog awake
 // a bit of grass, dirt or pee in the air (drawing only: syncDog)
 function idleBit(x, y, z, vx, vy, vz, size, color, life, grav = -9) { if (particles.length < PART_MAX) particles.push({ x, y, z, vx, vy, vz, life, max: life, size, color, grav }); }
 expose(() => ({ dogIdle, anticEnd, spawnPoop, poopSay, idleReset, PUDDLES, POOP_SAY, anticShown, syncDog, puddleAdd }));   // IDLE
@@ -7948,6 +7957,7 @@ function initGates() {
 // tests/dev: snap a gate open (swung out or in) or shut and latched
 function setGate(p, open, inward = false) { p.phi = open ? (inward ? -T.gate.maxIn * 0.73 : T.gate.maxOut * 0.95) : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; updateGateGeometry(p); }
 function resetGate(p) { p.rushUntil = 0; p.phi = 0; p.w = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = false; updateGateGeometry(p); }
+onReset(() => { for (const p of pens) resetGate(p); }, 90);   // gates
 function gatePsi(p, x, z) { return p.outSign * wrapA(Math.atan2(z - p.hinge.z, x - p.hinge.x) - p.angClosed); }   // a point's angle round the hinge, in phi terms
 function gateNormal(p, phi = p.phi) { const a = p.angClosed + p.outSign * phi; return { x: -Math.sin(a) * p.outSign, z: Math.cos(a) * p.outSign }; }   // toward the leaf's +phi side
 function vaultFx(d) { floatText('HUP!', d.x, d.y + 1.8, d.z, d.color, 1); SFX.whoosh(panOf(d.x, d.z), 0.14, 0.22); }
@@ -8213,6 +8223,7 @@ function fireLauncher(S, trig) {
   } else floatText('THUNK!', S.x - S.ux * S.L * 0.6, S.y + 2.2, S.z - S.uz * S.L * 0.6, '#ffffff', 1.1);
   return true;
 }
+onReset(() => { for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; } }, 100);   // the launcher
 function inChute(e) { for (const S of LAUNCHERS) { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; if (p > -0.4 && p < S.L + 0.9 && Math.abs(q) < S.hw + 0.3) return S; } return null; }
 function onHighEnd(S, e, extra) { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; return p > -S.L - 0.4 && p < -S.L * 0.1 && Math.abs(q) < S.W / 2 + extra; }
 function launcherPounce(d) { for (const S of LAUNCHERS) if (onHighEnd(S, d, 0.95) && fireLauncher(S, d)) return true; return false; }
@@ -8276,6 +8287,7 @@ function syncMoves(dt) {
   }
   updateStars(dt);
 }
+onSync(syncMoves, 80);
 expose(() => ({ setGate, MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, overWater, inChute }));   // DOG MOVES & PHYSICS
 
 // =====================================================================
@@ -8548,6 +8560,7 @@ function resetForage() {
   resetPlants(); Object.assign(FORAGE, { picked: 0, tipped: 0, tips: 0, salted: 0, saltPicked: 0, saltWarnDay: 0 });
   storeReset('food', 'salt');
 }
+onReset(resetForage, 110);   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
 // ---------------- the dogs gather as they go ----------------
 function pickPlant(p, d) {
   const cap = T.forage.carryCap; p.picked = true; p.regrowAt = absHour() + 24 * rnd(T.forage.regrowDays[0], T.forage.regrowDays[1]); setPlantMatrix(p, 0);
@@ -8738,6 +8751,7 @@ function syncForage(dt) {
     if (d.models.pack) dogPackSync(d.models.pack, k, !!d.salt, dt);
   }
 }
+onSync(syncForage, 110);   // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
 // the overlay: the troughs and salt licks, nearby salt rocks, and an arrow home with a load (what a dog carries: drawDogCarry, HUD)
 function forageChip(x, y, txt, bg, fg = '#fff', w0 = 0) {
   ctx.font = '600 13px Fredoka, sans-serif'; const w = Math.max(w0, richW(txt) + 16);
@@ -8854,6 +8868,7 @@ function resetWater() {
   Object.assign(WATER, { picks: 0, fills: 0, tips: 0, tipped: 0, warnDay: 0, hankSaid: false, avg: 0, parched: 0 });
   storeReset('water');
 }
+onReset(resetWater, 120);   // WATER: buckets back by their troughs, the first camp's trough full
 resetWater();
 const bucketOf = d => { for (const b of BUCKETS) if (b.by === d) return b; return null; };
 // a dog in the water (swimming), or with water within T.water.reach of it (wading in at the bank)
@@ -9006,6 +9021,7 @@ function syncWater(dt) {
     if (w && w.hit > 3 && b.w > 0.01) { pl.water.getWorldPosition(_fv); burst(_fv.x, _fv.y + 0.1, _fv.z, Math.min(6, Math.round(w.hit)), '#9fe3ff', { speed: 1.6, up: 2, size: 0.08, life: 0.45, grav: -12 }); }   // slops over (looks only)
   }
 }
+onSync(syncWater, 120);   // WATER: water troughs, buckets
 // the flock panel's water row: how quenched the flock is on average
 function updateWaterHUD() {
   const el = $('hWater'), bar = $('hWaterBar'); if (!el || !bar) return;
@@ -9088,6 +9104,7 @@ const DIG_JUNK = ['AN OLD BOOT!', 'A RUSTY HORSESHOE!', 'A TURNIP!', 'A BENT SPO
 const CLIP_DIG = DIGS.find(sp => sp.clip) || null;   // HANK: shearing: where his clippers are buried
 const clippersOut = () => HANK.clippers;
 function resetDigs() { for (const d of DIGS) { d.dug = false; d.prog = 0; } }
+onReset(resetDigs, 130);   // DIG SPOTS: every mound back for the new journey
 // in step(): who's digging where
 function updateDigs(dt) {
   for (const d of G.dogs) d.digK = Math.max(0, (d.digK || 0) - dt * 4);
@@ -9148,6 +9165,7 @@ function syncDigs(dt) {
     sp.mound.scale.set(1 + sp.prog * 0.15, 1 - sp.prog * 0.45, 1 + sp.prog * 0.15);
   }
 }
+onSync(syncDigs, 130);   // DIG SPOTS: mounds, holes and glints
 function drawDigOverlay() {
   if (G.mode !== 'play') return;
   // HANK: shearing: ✂️ over the clippers' mound
@@ -9318,6 +9336,7 @@ function balkCheck(s) {   // the lead ewe nearing an open pen of an evening: onc
     return;
   }
 }
+onReset(() => { for (const p of pens) { p.balker = null; p.balkDay = 0; p.leadT = 0; } }, 180);   // BALKER
 function startBalk(s, p) {
   s.balk = { pen: p, t: 0, stampT: 0.3 }; p.balker = s; s.state = 'balk'; s.apple = null;
   baaAt(s, 0.6, 0.85, true); floatText('😤', s.x, s.y + 1.7 * s.scale, s.z, '#ffd36b', 1.4);
@@ -9400,6 +9419,7 @@ function updateApples() {   // host: hanging ones grow back, ones lying about ro
   if (G.mode === 'play' && !G.hints.apple) for (const tr of APPLE_TREES) if (G.dogs.some(d => Math.hypot(d.x - tr.x, d.z - tr.z) < 8) && APPLES.some(a => a.tree === tr && a.st === 0)) { hint('apple'); break; }
 }
 function resetApples() { for (const a of APPLES) { a.st = 0; a.by = a.dog = a.gift = null; a.fallT = -9; a.h = a.vx = a.vz = a.vy = 0; } for (const tr of APPLE_TREES) tr.shakeT = -9; }
+onReset(resetApples, 170);   // APPLES: every tree laden again
 // ---- carried (✊): picked up, held out to a sheep, dropped or lobbed
 function appleGrip(d, mx, mz, best) {   // tryGrab: the nearest apple on the ground in reach (one being munched: snatched); { a, dd } or null
   let out = null;
@@ -9504,6 +9524,7 @@ function syncBonk(dt) {
     if (m) { const b = pick(m.blobs), a = Math.random() * TAU, r = Math.sqrt(Math.random()) * b.r * 0.8, x = b.x + Math.cos(a) * r, z = b.z + Math.sin(a) * r; spawnRing(x, terrainH(x, z) + 0.09, z, 0.35 + Math.random() * 0.3, '#2e2014', 0.7); }
   }
 }
+onSync((dt, once) => syncBonk(once ? 0 : dt), 180);   // BONK SPOTS: apples, shaken trees, splashes and bog bubbles
 // overlay: a bouncing "!" over a cast sheep, a tag over a bogged or balking one, and the first time, what to press
 function drawBonkOverlay() {
   if (G.mode !== 'play') return;
@@ -9662,6 +9683,7 @@ function updateSnakes(dt) {
   }
 }
 function resetSnakes() { for (const n of SNAKES) Object.assign(n, { state: 'hide', t: 0, at: 0, k: 0, ft: 0, tgt: null, seen: false, x: n.x0, z: n.z0, y: terrainH(n.x0, n.z0) }); }
+onReset(resetSnakes, 330);   // RATTLESNAKES back behind their rocks
 // every frame (host and guests, from n.state, n.k, n.ft, hx/hz): the coil, the rattle shaking, the neck reaching for its mark
 const _sn = { a: new THREE.Vector3(), b: new THREE.Vector3(), d: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) };
 function syncSnakes() {
@@ -9685,6 +9707,7 @@ function syncSnakes() {
     const flick = k > 0.4 && (t * 3.3) % 1 < 0.35; M.tongue.visible = flick; M.tongue.scale.z = flick ? 0.6 + 0.4 * Math.sin(t * 40) : 1;
   }
 }
+onSync(() => syncSnakes(), 190);   // RATTLESNAKES
 // a 🐍 over a rattling snake you can see, so you know where the sound's from
 function drawSnakeOverlay() {
   if (G.mode !== 'play') return;
@@ -9753,6 +9776,7 @@ function resetRope(R) {
   R.tug = null; R.tugCd = 0; R.live = 0; R.ver++; R.found = false; R.holders.length = 0; ropeBounds(R);
 }
 function resetRopes() { for (const R of ROPES) resetRope(R); }
+onReset(resetRopes, 140);   // ROPES: coiled where they were
 function ropeBounds(R) {
   let x = 0, z = 0; for (let k = 0; k < R.n; k++) { x += R.x[k]; z += R.z[k]; } x /= R.n; z /= R.n;
   let m = 0; for (let k = 0; k < R.n; k++) m = Math.max(m, (R.x[k] - x) ** 2 + (R.z[k] - z) ** 2);
@@ -10158,6 +10182,7 @@ function syncRopes(dt) {
     });
   }
 }
+onSync(syncRopes, 150);   // ROPES: the tube through its nodes, the tug's rag and lines
 // the overlay: near a rope, the grab key on it; in a tug, the heave key over the knot, jumping on the beat
 function drawRopeOverlay() {
   if (G.mode !== 'play') return;
@@ -10395,6 +10420,7 @@ function syncBones(dt = 1 / 60) {
     g.position.set(b.x, boneBase(b.x, b.z) + 0.08 + b.h, b.z); g.rotation.set(0, b.rot, b.roll, 'YXZ');
   }
 }
+onSync(syncBones, 160);   // BONES: lying, flying, in a dog's jaws
 // the overlay: what to press, the first few times
 function drawBoneOverlay() {
   if (G.mode !== 'play') return;
@@ -10605,6 +10631,7 @@ function initDens() {
   });
   G.packs = G.packs.filter(p => !p.den).concat(G.dens.map(D => D.pack));
 }
+onReset(() => { for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens(); }, 30);   // COYOTES
 function denFill(D) {   // make sure the den has its whole pack (asleep at the mouth unless told otherwise)
   while (D.coyotes.length < D.count) {
     const i = D.coyotes.length, sl = D.slots[i % D.slots.length];
@@ -11124,12 +11151,14 @@ function killBurrow(h) {
   for (const p of G.packs) if (p.hole === h) p.hole = null;
 }
 function resetBurrows() { for (const h of BURROWS.slice()) killBurrow(h); }
+onReset(resetBurrows, 31);   // BURROWS: filled
 // in frame(): the hole and its heap grow as it's dug and shrink as it's filled; the inside end once it's through
 function syncBurrow(h) {
   const k = clamp(h.prog, 0, 1), s = 0.3 + 0.7 * k;
   h.outM.scale.set(s, 1, s); h.heapM.visible = k > 0.03; h.heapM.scale.setScalar(Math.max(0.05, k));
   h.inM.visible = h.open; h.inM.scale.set(s, 1, s);
 }
+onSync(() => { for (const h of BURROWS) syncBurrow(h); }, 140);   // BURROWS: dug, filled
 // the digger at the outer mouth: scrabbling, earth flying out behind it
 function burrowDig(c, h, dt) {
   if (h.prog <= 0 && (onScreen(h.x, h.y, h.z) || G.dogs.some(d => Math.hypot(d.x - h.x, d.z - h.z) < 30))) hint('burrow');
@@ -11438,6 +11467,7 @@ function cougarsAtDawn() {
   }
 }
 function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.dazeT = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+onReset(resetCougars, 50);   // COUGARS
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -11720,6 +11750,7 @@ function resetFalcon() {
   G.falconIn = T.falcon.first; G.falconGone = false; Object.assign(CANYON, { next: T.canyon.first, seen: false, hankSaid: false, cand: [], scanT: 0 });
   Object.assign(CANYON.boss, { hp: 0, max: 0, on: false, beaten: false, met: false, next: T.canyon.boss.first });
 }
+onReset(resetFalcon, 60);   // FALCON
 function updateFalcon(dt, dtH) {
   if (!G.falconGone) { const fc = flockCenter(); if (fc.n && !falconLand(fc)) G.falconGone = true; }   // the flock's through FALCON CANYON
   updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH);
@@ -11936,6 +11967,7 @@ function syncFalcon(F) {
   const gy = groundY(F.x, F.z), h = F.y - gy;
   M.shadow.position.set(F.x, gy + 0.08, F.z); M.shadow.scale.setScalar((1.2 + h * 0.04) * (F.boss ? T.canyon.boss.scale * 0.8 : 1)); M.shadow.material.opacity = clamp(0.45 - h * 0.008, 0.15, 0.45);
 }
+onSync(() => { for (const F of FALCONS) syncFalcon(F); }, 40);
 // FALCON CANYON, every frame on every screen: the watchers on the cliffs turn their heads to the flock, feathers drift down
 const _cf = { m: new THREE.Matrix4() };
 function syncCanyon(dt) {
@@ -11964,6 +11996,7 @@ function syncCanyon(dt) {
   }
   D.m.count = want; D.m.instanceMatrix.needsUpdate = true;
 }
+onSync(syncCanyon, 50);   // FALCON CANYON: watchers on the cliffs, feathers in the air
 expose(() => ({ FALCON, FALCONS, BOSS, updateBoss, bossHit, eyrieShake, updateCanyon, canyonMark, canyonBird, canyonSwoop, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop }));   // FALCON
 
 // =====================================================================
@@ -13432,6 +13465,7 @@ function resetPass() {
   YETI.nag = { t: 0, tier: 0, cd: 0, n: 0 }; DEBRIS.length = 0;
   finalPen.frozen = true; harbIce(true);
 }
+onReset(resetPass, 70);   // MOUNTAIN PASS: fires out, goats on their ledges, the yeti asleep, the rock wall up, his gate iced
 resetPass();
 // ---------------- drawing (every screen) ----------------
 const _pp = new THREE.Vector3(), _pq = new THREE.Quaternion(), _pax = new THREE.Vector3();
@@ -13545,6 +13579,7 @@ function syncPass(dt) {
   if (HARB.iceM.visible !== HARB.ice) HARB.iceM.visible = HARB.ice;
   BLIZZ_EL.style.opacity = (bz * 0.6).toFixed(3);
 }
+onSync(syncPass, 60);   // MOUNTAIN PASS: fires, goats, the yeti, snowballs, the rock wall, snow on the sheep, flames, flakes
 const BLIZZ_EL = document.getElementById('blizz');
 // the overlay: ❄ over the coldest, the way out of a crack, the yeti's spot
 function drawPassOverlay() {
@@ -13720,6 +13755,7 @@ function syncRemains(dt) {
     B.flies.forEach((f, i) => { f.visible = buzz; if (!buzz) return; const a = G.time * (3.2 + i * 0.9) + i * 2.1; f.position.set(Math.cos(a) * (0.5 + 0.15 * i), 0.7 + 0.25 * Math.sin(G.time * 5 + i * 2), Math.sin(a * 1.3) * (0.45 + 0.1 * i)); });
   }
 }
+onSync(syncRemains, 200);   // REMAINS: bodies rotting, carried, stones coming up
 function collideGraves(e, r) {
   for (const g of G.graves) {
     if (g.by) continue;   // (on Hank's shoulder)
@@ -13811,6 +13847,8 @@ function yardGrow(Y, rows) {
   for (let r = Y.rows0; r < rows; r++) for (let k = 0; k < Y.cols; k++) Y.slots.push(yardSpot(Y, r, k));
   buildYard(Y);
 }
+onReset(() => { for (const g of G.graves) scene.remove(g.root); G.graves = []; }, 40);   // REMAINS: the fallen gone
+onReset(() => { for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); } }, 340);   // REMAINS: no cemeteries again
 // room for one more row behind? Open ground, clear of pens, the campfire, buckets and anything put down along the trail
 function yardRoom(Y) {
   if (Y.rows >= T.remains.rows) return false;
@@ -14064,6 +14102,7 @@ function syncSheep(dt = 1 / 60) {
   SI.cord.m.count = SI.cord.o.count = nc; SI.nut.m.count = SI.nut.o.count = nc * 2;
   for (const k of ['cord', 'nut']) { SI[k].m.instanceMatrix.needsUpdate = true; SI[k].m.instanceColor.needsUpdate = true; }
 }
+onSync(syncSheep, 70);
 expose(() => ({ syncSheep, sheepWoolColor, sheepHeadColor }));   // SYNC VISUALS
 // =====================================================================
 // RAM NADS — every grown ram's sack: a cord from under his tail and a pair of nuts, each a mass on springs,
@@ -14390,6 +14429,7 @@ function syncDog(d, dt = 1 / 60) {
   dogPose(d, M, t);
   hairStep(M, dt, d.air || d.heldBy ? -1e9 : d.y);   // HAIR
 }
+onSync(dt => { for (const d of G.dogs) syncDog(d, dt); }, 10);
 // IDLE (dogIdle): what it's at, as drawn: not while it's being thrown about, nor once it's off (a guest's own dog: at once)
 function anticShown(d) {
   return d.antic && !d.air && !d.heldBy && !(d.stunT > 0) && !d.ko && !d.mauled && !d.crev && !d.slide && !d.holding && Math.hypot(d.vx, d.vz) < 1.5 && !(d._pp && d._pmag > 0.05) ? d.antic : null;
@@ -14500,6 +14540,7 @@ function syncCoyote(c) {
   M.head.rotation.x = stalk * 0.3 + (c.prey ? 0.35 : 0);
   M.tail.rotation.x = c.state === 'flee' || c.state === 'leave' ? 1.0 : 0.5;
 }
+onSync(() => { for (const c of G.coyotes) syncCoyote(c); }, 20);
 // COUGARS: on the limb, creeping, leaping, running and climbing (host and guests alike, from k.state)
 function syncCougar(k) {
   const M = k.models, st = k.state; M.root.visible = st !== 'away'; if (!M.root.visible) return;
@@ -14551,6 +14592,7 @@ function syncCougar(k) {
   M.body.position.y = bodyY; M.head.rotation.set(headX, headY, 0);
   M.tail[0].rotation.set(t0, 0, 0); M.tail[1].rotation.set(t1, tSway, 0); M.tail[2].rotation.set(t2, tSway * 1.4, 0);
 }
+onSync(() => { for (const k of COUGARS) syncCougar(k); }, 30);
 expose(() => ({ hairStep }));   // HAIR
 
 // =====================================================================
@@ -15449,6 +15491,7 @@ function mapReset() {   // a new journey: all parchment (a friend: as much as th
   MAP.rv.fill(0); MAP.full = true; MAP.fogS = ''; MAP.fogAt = -1e9; mapToggle(false);
   if (NET.role === 'guest' && MAP.fogIn) mapFogMerge(MAP.fogIn);
 }
+onReset(mapReset, 360);   // MAP
 // ONLINE: what's uncovered (over half) on a 4 m grid, run lengths in base 36; the host's, refreshed every T.map.fogEvery s
 function mapFogOut() {
   if (MAP.fogS && G.time - MAP.fogAt < T.map.fogEvery) return MAP.fogS;
@@ -15946,6 +15989,7 @@ function syncHank(dt) {
   if (off) { const a = Math.atan2(py - (y - bh / 2), px - x); b.lastChild.style.transform = `translate(${(Math.cos(a) * (bw / 2 + 12)).toFixed(1)}px, ${(Math.sin(a) * (bh / 2 + 12)).toFixed(1)}px) rotate(${a.toFixed(3)}rad)`; }
   b.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
 }
+onSync(syncHank, 100);   // HANK: his model, lantern and speech bubble
 
 // ---------------- what he comments on ----------------
 function hankGameStart() {
@@ -15953,6 +15997,7 @@ function hankGameStart() {
   hankPrefetch();
   hank('over_here', null, { force: true, delay: 2 });   // calling the dog over to the corral gate
 }
+onReset(() => { resetHank(); hankGameStart(); }, 430);   // HANK
 function hankDogJoined(p) {
   if (G.mode !== 'play' || G.players.length < 2) return;
   hankPrefetch();
@@ -16156,6 +16201,7 @@ function giveHankClippers(d = null) {
   hank(null, "Grand! I'll shear them in a shut pen.", { force: true });
   return true;
 }
+onReset(() => { G.wool = 0; }, 310);   // shearing: no wool yet, the clippers buried again
 const shearSize = s => (s.scale * ageGrow(s)) ** 2 / 1.21;   // fleece by size: ~1 a ewe, ~1.4 a ram, under half a lamb
 const shearCan = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && !HANK.care && !HANK.ropeWant && !HANK.rope && !HANK.rescue && !HANK.trunks && G.time - HANK.upT > T.shear.calm && !fireDue();   // (VET: patients first, ROPES: a tug too; a burial gives way: buryCan; RESCUE first)
 const shearWant = () => HANK.clippers && G.mode === 'play' && !HANK.asleep && G.time - HANK.upT > T.shear.calm && !!(HANK.job || shearPick());   // shearing to do (beats a burial)
@@ -16938,6 +16984,7 @@ function syncSheepDressUp(dt = 0) {
   // tiles of sheep that are gone (or wiped clean) go back on the shelf
   for (let t = 0; t < PAINT.owner.length; t++) { const o = PAINT.owner[t]; if (o && PAINT.seen[t] !== PAINT.frame) { o._tile = -1; PAINT.owner[t] = null; PAINT.free.push(t); } }
 }
+onSync(syncSheepDressUp, 90);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
 
 // ---------------- a sheep being dragged off: a bouncing "!", its name in red and a wail (overlay canvas) ----------------
 const CRIES = ['Baaa!', 'Baaaaa!', 'Help!', 'Baa-hoo!', 'Maaa!'];
@@ -17874,6 +17921,7 @@ function closeDawn() {
   saveFlock();   // new names stick (a guest's: the host keeps them)
   menuTick();
 }
+onReset(() => { DAWN.from = 0; DAWN.pending = null; closeDawn(); }, 380);   // DAWN REPORT
 // HOLD TO GO ON: a fresh press (after grace s) of Ⓐ / Start, Enter / Space / Esc or ▶, held T.dawn.hold s. Let go early: it drains and shakes.
 const dawnReady = () => DAWN.open && performance.now() - (DAWN.t0 || 0) >= T.dawn.grace * 1000;
 // Timed from the press to the let-go (pads: when padPoll saw them), so slow frames neither cut a hold short nor stretch a tap.
@@ -18174,6 +18222,7 @@ function resetVendor() {
   for (const w of ALL_WARES) Object.assign(w, { shakeAt: -9, armT: -9, bT: 9, popT: 0, popOff: 9, popOn: false, k: 0 });
   vagReset();   // VAGABOND: a new seed, at his first pitch, in a good mood
 }
+onReset(resetVendor, 160);   // VENDOR
 
 // ---------------- VAG: him ----------------
 const VAG = {
@@ -19068,6 +19117,7 @@ function syncVendor(dt) {
   const bw = bb.offsetWidth, bh = bb.offsetHeight, x = clamp(px, bw / 2 + 10, W - bw / 2 - 10), y = clamp(py - 12, bh + 90, H - 70);
   bb.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
 }
+onSync(syncVendor, 170);   // VENDOR: mats and the vendor
 // SAILING: his Laser where it is on the sea (seaG): afloat, heeled, the boom out, the sail shaking in the wind's eye; pulled up: sail rolled
 function syncLaser(dt) {
   const v = VAG, sv = v.sea, L = v.laser, b = sv && sv.b, on = !!b && b.on && v.mode === 'sea' && SEA.on && vagHere();
@@ -21164,6 +21214,7 @@ function syncSea(dt) {
   // spray off the bow when she's moving
   if (S.u > 3.5 && Math.random() < dt * (4 + S.u * 2.2) * (0.4 + S.state)) { const sd = Math.random() < 0.5 ? 1 : -1, p = boatXZ(BOAT.bow - rnd(0.3, 3.5), sd * 1.2); burst(p.x, WATER_Y + 0.5 + S.pitch * 12, p.z, 1, '#eaf8ff', { speed: 1.6 + S.u * 0.2, up: 2 + S.u * 0.25, size: 0.2, life: 0.7, grav: -9 }); }
 }
+onSync(syncSea, 210);   // SAILING: the sea round the boat, her rig, what's out there
 
 // ---------------- drawing the hazards: orcas and sharks (sea coords), the waterspout, the sirens on their rocks; the kraken's arms and head (the boat's frame) ----------------
 const HAZM = (() => {
@@ -21518,6 +21569,7 @@ function seaReset() {
   for (const d of G.dogs) { if (d.holdKind === 'station') { d.holding = null; d.holdKind = null; } d.tow = null; }
   resetRings(); resetHazards(); seaCamReset();
 }
+onReset(seaReset, 10);   // SAILING: back ashore (first)
 // The voyage begins. As the game's played: the flock comes down the harbour road and she wakes (seaWake → { dock }): nobody's moved, she lies
 // alongside at Cold Harbour, her gangway open. Dev / tests (?sea, GAME.seaStart): o.dock + o.place: the flock and the dogs put at the top of
 // the road; o.leg: everyone aboard, alongside at that island's jetty (0: Cold Harbour, the gangway lashed); o.under: already sailing from it
@@ -21686,37 +21738,11 @@ function finishGame(n) {
   G.endT = 0;
   onJourneyEnd(n);   // HANK + FLOCK SAVE: "That'll do", fondly remembered, the flock saved for next time
 }
-function resetGame() {
-  seaReset();   // SAILING: back ashore
-  poopClear();   // POOP
-  for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens(); resetBurrows();   // (BURROWS: filled)
-  for (const g of G.graves) scene.remove(g.root); G.graves = [];
-  resetCougars();
-  resetFalcon();
-  resetPass();   // MOUNTAIN PASS: fires out, goats on their ledges, the yeti asleep, the rock wall up, his gate iced
-  for (let k = 0; k < VN; k++) gAmt[k] = gInit[k]; uploadGrass();
-  for (const p of pens) resetGate(p);
-  for (const S of LAUNCHERS) { S.k = S.kT = 1; S.cd = S.back = S.snap = 0; }
-  resetForage();   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
-  resetWater();    // WATER: buckets back by their troughs, the first camp's trough full
-  resetDigs();     // DIG SPOTS: every mound back for the new journey
-  resetRopes();    // ROPES: coiled where they were
-  idleReset();     // IDLE: no poops, no puddles, every dog awake
-  resetVendor();   // VENDOR
-  resetApples();   // APPLES: every tree laden again
-  for (const p of pens) { p.balker = null; p.balkDay = 0; p.leadT = 0; }   // BALKER
-  G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false;
-  G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0, left: 0 };
-  G.wool = 0;   // HANK: shearing: no wool yet, the clippers buried again
-  G.train = {}; for (const d of G.dogs) { d.tr = trainRec(d.player.slot, d.role); d.lv = d.tr.lv; dogStats(d); }   // TRAINING: a new journey, a fresh start
-  resetSnakes(); for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); }   // RATTLESNAKES back behind their rocks; REMAINS: no cemeteries again
-  G.visited = new Set([CAMPS[0].name]); mapReset(); G.hints = {}; G.lost = []; DAWN.from = 0; DAWN.pending = null; closeDawn();
-  spawnFlock();
-  G.dogs.forEach((d, i) => { const a = i * 1.6; d.x = pens[0].exitX + 3 + Math.cos(a) * 2; d.z = pens[0].exitZ + 2 + Math.sin(a) * 2; d.vx = d.vz = 0; d.stamina = 1; d.holding = null; d.holdKind = null; d.heldBy = null; d.heldWrig = 0; d.air = null; d.pounceT = d.stunT = d.hopT = 0; d.hp = d.hpShow = 1; d.maul = null; d.mauled = d.ko = false; d.maulEsc = 0; d.cold = 0; d.crev = null; d.slide = null; });
-  $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
-  G.mode = 'play'; banner(CAMPS[0].name, 'Day 1 — the journey begins'); updateCamera(0, true);
-  resetHank(); hankGameStart();   // HANK
-}
+function resetGame() { for (const r of RESETS) r.fn(); }   // a new journey: every section's onReset, lowest o first
+onReset(() => { G.clock.hour = T.startHour; G.clock.day = 1; G.ff = false; G.stats = { start: 0, born: 0, eaten: 0, starved: 0, old: 0, salt: 0, thirst: 0, saved: 0, cougar: 0, falcon: 0, snake: 0, bled: 0, infect: 0, cured: 0, buried: 0, cast: 0, cold: 0, drowned: 0, shark: 0, kraken: 0, siren: 0, left: 0 }; }, 300);   // the clock, the stats
+onReset(() => { G.visited = new Set([CAMPS[0].name]); }, 350);
+onReset(() => { G.hints = {}; G.lost = []; }, 370);
+onReset(() => { $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden'); G.mode = 'play'; banner(CAMPS[0].name, 'Day 1 — the journey begins'); updateCamera(0, true); }, 420);   // day 1
 function checkLose() {
   if (G.mode === 'play' && G.sheep.filter(s => !s.dead).length === 0) finishGame(0);
 }
@@ -23474,28 +23500,7 @@ function frame(now) {
   NET.vis = true;
   updateCamera(dt);
   updateLighting(dt);
-  for (const d of G.dogs) syncDog(d, dt);
-  for (const c of G.coyotes) syncCoyote(c);
-  for (const k of COUGARS) syncCougar(k);
-  for (const F of FALCONS) syncFalcon(F);
-  syncCanyon(dt);         // FALCON CANYON: watchers on the cliffs, feathers in the air
-  syncPass(dt);           // MOUNTAIN PASS: fires, goats, the yeti, snowballs, the rock wall, snow on the sheep, flames, flakes
-  syncSheep(dt);
-  syncMoves(dt);
-  syncSheepDressUp(dt);   // FLOCK LOOKS: hats, scarves, wool and paint on the instanced flock
-  syncHank(dt);           // HANK: his model, lantern and speech bubble
-  syncForage(dt);         // FORAGE: plants and salt regrowing, troughs, salt licks, what the dogs carry
-  syncWater(dt);          // WATER: water troughs, buckets
-  syncDigs(dt);           // DIG SPOTS: mounds, holes and glints
-  for (const h of BURROWS) syncBurrow(h);   // BURROWS: dug, filled
-  syncRopes(dt);          // ROPES: the tube through its nodes, the tug's rag and lines
-  syncBones(dt);          // BONES: lying, flying, in a dog's jaws
-  syncVendor(dt);         // VENDOR: mats and the vendor
-  syncBonk(dt);           // BONK SPOTS: apples, shaken trees, splashes and bog bubbles
-  syncSnakes();           // RATTLESNAKES
-  syncRemains(dt);        // REMAINS: bodies rotting, carried, stones coming up
-  syncSea(dt);            // SAILING: the sea round the boat, her rig, what's out there
-  updateParticles(dt); updateRings(dt); syncPoop(dt);
+  for (const s of SYNCS) s.fn(dt);   // every section's onSync, lowest o first
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   if (meltDirty) { meltUpT -= dt; if (meltUpT <= 0) { meltTex.needsUpdate = true; meltDirty = false; meltUpT = 0.2; } }   // MOUNTAIN PASS: MELT
   renderer.render(scene, camera);
@@ -23729,11 +23734,7 @@ window.GAME = Object.assign({}, ...EXPOSE.map(f => f()));   // debugging / autom
 // tests: draw one frame without stepping the sim (screenshots under ?sim)
 function renderOnce(dt = 1 / 60) {
   updateCamera(dt); updateLighting(dt);
-  for (const d of G.dogs) syncDog(d, dt);
-  for (const c of G.coyotes) syncCoyote(c);
-  for (const k of COUGARS) syncCougar(k);
-  for (const F of FALCONS) syncFalcon(F);
-  syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(dt); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); syncPoop(dt); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
+  for (const s of SYNCS) s.fn(dt, true); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
 
