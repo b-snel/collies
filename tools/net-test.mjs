@@ -311,15 +311,15 @@ try {
 
   // ---------------------------------------------------------------- forage: picked plants, salt, what a dog carries, the troughs and lick reach the guest
   await A.page.evaluate(() => {
-    const { PLANTS, SALT_ROCKS, pens, G } = GAME;
+    const { PLANTS, SALT_ROCKS, pens, G, T } = GAME;
     for (const p of PLANTS.slice(0, 5)) { p.picked = true; p.regrowAt = 1e9; }
     SALT_ROCKS[0].taken = true; SALT_ROCKS[0].regrowAt = 1e9;
-    G.dogs[0].greens = 2.5; G.dogs[0].salt = 1;
+    G.dogs[0].greens = T.forage.carryCap; G.dogs[0].salt = 1;   // (a full load: running over a plant meanwhile picks nothing more)
     pens[1].troughs[0].food = 3.2; pens[1].troughs[2].food = 1.5; pens[1].lick.salt = 7;
   });
   await sleep(1200);
   const fg = await B.page.evaluate(() => { const { PLANTS, SALT_ROCKS, pens, G } = GAME, d = G.dogs.find(o => o.player.slot === 0); return { picked: PLANTS.slice(0, 5).filter(p => p.picked).length, salt: SALT_ROCKS[0].taken, greens: d && d.greens, carriesSalt: d && d.salt, troughs: pens[1].troughs.map(t => t.food), lick: pens[1].lick.salt }; });
-  check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 2.5) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
+  check('forage reaches the guest: picked plants, a salt rock, what the dog carries, the troughs and the salt lick', fg.picked === 5 && fg.salt && Math.abs(fg.greens - 4) < 0.05 && fg.carriesSalt === 1 && Math.abs(fg.troughs[0] - 3.2) < 0.05 && Math.abs(fg.troughs[2] - 1.5) < 0.05 && Math.abs(fg.lick - 7) < 0.05, fg);
 
   // ---------------------------------------------------------------- water: a bucket on a dog, a pen's water trough, the flock's thirst reach the guest
   // (a bucket stays in its mouth while grab's held)
