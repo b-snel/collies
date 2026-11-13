@@ -3,6 +3,9 @@
 // pushing a gate open and shut (latch → gateT 0 → onGateClosed), slamming a gate by sprinting, grab-dragging a gate shut,
 // the river launcher (pounce-fired, and loaded by driving sheep into its chute), splash-and-swim, shaking a coyote,
 // a flung sheep bowling a coyote, lying down, and the Trading Post's pen (shutting it doesn't end the game: the yeti's cave does, pass-test).
+// Checks: punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep, by weight (`dogGrab`), jump/vault (`jump`),
+//   pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops
+//   its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish)
 import { open } from './harness.mjs';
 const only = process.argv.slice(2);
 const h = await open({ query: '?sim' });

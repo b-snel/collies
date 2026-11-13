@@ -3,6 +3,8 @@
 // festers); the trader's 💉 🩹 💊 🪏 go straight to Hank; Hank treats the sick (over a
 // pen fence too); a body lies with its name, rots into a tombstone, or Hank (with a shovel) buries it in the cemetery
 // with a few words (none there yet: he builds one first; a full one gets another row). node tools/vet-test.mjs
+// Checks: snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in
+//   a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;

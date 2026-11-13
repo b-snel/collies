@@ -61,7 +61,7 @@ const commit = c => c && !c.startsWith('-') && sh('rev-parse', '--verify', '-q',
 const MERGE = flag('--merge') && (commit(opt('--merge')) ? names.splice(names.indexOf(opt('--merge')), 1)[0] : 'HEAD');   // (--merge then a test's name: a test)
 const words = s => s.split(/\s+/).filter(Boolean);
 
-if (flag('--list')) { for (const t of TESTS) console.log(`${t.padEnd(16)} ${head(t).slice(0, 140)}`); process.exit(0); }
+if (flag('--list')) { for (const t of TESTS) console.log(`${t.padEnd(16)} ${head(t)}` + src[t].match(/^(?:\/\/.*\n)*/)[0].split('\n').slice(1, -1).map(l => '\n' + ' '.repeat(17) + l.replace(/^\/\/ ?/, '')).join('')); process.exit(0); }   // its whole header
 
 // ---- what to run: name → { args, why: Set }
 const pick = new Map(), add = (t, why, args = []) => { if (!src[t]) return; const p = pick.get(t) || { args, why: new Set() }; p.why.add(why); pick.set(t, p); };

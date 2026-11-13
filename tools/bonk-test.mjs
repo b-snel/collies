@@ -1,5 +1,7 @@
 // Headless checks for BONK SPOTS: streams (walkable, wet, lush banks), mud bogs, cast sheep, the balking lead ewe,
 // apple trees, carrying apples. node tools/bonk-test.mjs [world|cast|mud|balk|apple|carry]
+// Checks: streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held
+//   out and taken, into a pen, snatched, eaten with a dog by the tree
 import { open } from './harness.mjs';
 const only = process.argv[2];
 const h = await open();

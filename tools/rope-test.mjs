@@ -7,6 +7,11 @@
 // gets its breath back, never gains; broken by heaves on the beat. GIVE: stepping in as the other heaves: it stumbles (Hank
 // too), the next heave's on the beat. ROW: a flick of the stick back is a heave; a right-stick swing too.
 // node tools/rope-test.mjs [layout|drag|hold|sheep|tug|even|tired|team|hank|reset|beat|teamheave|dig|give|row]
+// Checks: ropes: one a leg, drag (links hold, no stamina), grab held (let go: drop, Ⓑ shakes, bites on reaching it, no re-bite after a
+//   slip till let go), tug of war (Ⓑ heaves, won over the line, even holds, out of stamina loses), teams (3rd/4th dog, 2 beat 1, 2 v 2
+//   holds), Hank (takes the far end, beats a planted dog, 2 dogs beat him), reset; the beat (pulses, on it big and cheap, mashing weak:
+//   beats mashing and off-beat), team heave, dig in (holds, breath back, never gains, broken on the beat), give slack (stumbles, Hank too),
+//   row and right-stick heaves
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [];

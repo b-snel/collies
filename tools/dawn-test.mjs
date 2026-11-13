@@ -1,5 +1,7 @@
 // Dawn report: never scrolls (any count, any screen: denser, then zoomed), everyone on it shows;
 // held to go on (Ⓐ / Start, Enter / Space / Esc, ▶): taps and mashing never skip it, nor a press from before it opened.
+// Checks: dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first
+//   moment don't
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';

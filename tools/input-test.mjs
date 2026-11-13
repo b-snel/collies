@@ -1,5 +1,8 @@
 // Gamepad Ⓐ on slow frames: quick taps between frames still bark, a held press barks once, an early press waits out the cooldown.
 // RB grabs (Ⓧ too), RT sprints, RB doesn't; right-stick swings shake what's held: one a swing, a quick one between frames too, held over: one.
+// Checks: pad on slow frames: quick taps between frames, held = one bark, early Ⓐ / Ⓑ waits out the cooldown (`padPoll`, `T.barkBuf`,
+//   `T.pounceBuf`), Ⓐ / Ⓑ pressed mid-frame not lost (`padFrame`); RB grabs, RT sprints; right-stick swings shake (one a swing, between
+//   frames too, held over: one)
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 import { serve } from './serve.mjs';

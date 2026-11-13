@@ -3,6 +3,9 @@
 // it sleeps on). Night: mostly naps. Any input wakes it at once; nothing starts while it's busy. Poops are bones: grabbed, carried,
 // thrown (SPLAT!), and Hank moans ("Drop it!" / "What's in your mouth?" / "You're disgusting!"). They go after a while, and on a new journey.
 // node tools/idle-test.mjs [kinds|odds|wake|sleep|poop|hank|reset]
+// Checks: idle dogs: poop (behind it, then the grass kicked), pee (a puddle), tail, nap (lying; by day up again, at night on); odds
+//   (night: naps); any input wakes it, busy: nothing; poops grabbed, thrown, SPLAT, gone, max, unsaved; Hank's moans (sees, awake); reset;
+//   off in `?sim`
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [], fails = 0;
