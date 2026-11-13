@@ -1,5 +1,5 @@
-// Headless checks for BRAMBLES: where the patches are, a bolting sheep snagged, held fast, a grab can't pull
-// it out, a pounce bonks it free; calm sheep walk round. node tools/bramble-test.mjs
+// Headless checks for BRAMBLES: where the patches are, a bolting sheep snagged, held fast, a grab pulls
+// it out, a pounce bonks it just clear; calm sheep walk round. node tools/bramble-test.mjs
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -15,7 +15,7 @@ ok(`${r1.n} bramble bushes`, r1.n >= 40, r1);
 ok('spread down the trail to the foot of the pass (none in the snow)', r1.first < 150 && r1.last > r1.pass - 250 && r1.last < r1.pass, r1);
 ok('none on the trail, in rock or in a camp', r1.onTrail === 0 && r1.minSdf > 2 && r1.nearCamp === 0, r1);
 
-// 2. snag, held, grab fails, pounce frees
+// 2. snag, held, grab pulls it out, pounce pops it just clear
 const r2 = await h.page.evaluate(() => {
   const { G, T, BRAMBLES, step, startGame, groundY, CAM_R, CAM_F } = GAME; const out = {};
   startGame({ kind: 'bot', index: 0 }); T.bramble.on = true; G.clock.hour = 10;
@@ -29,20 +29,21 @@ const r2 = await h.page.evaluate(() => {
   T.bramble.snagRun = 60;
   const t = run(2, () => !!s.snag); out.snagged = !!s.snag; out.secs = +t.toFixed(2); T.bramble.snagRun = 2.2;
   const x0 = s.x, z0 = s.z; run(10); out.drift = +Math.hypot(s.x - x0, s.z - z0).toFixed(2); out.still = !!s.snag; out.stress = +s.stress.toFixed(2);
-  // a grab can't pull it out
-  place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; p.bot = inp(1, 0, { grab: true }); run(0.5); out.held = d.holding === s; p.bot = {}; run(0.3);
-  // a pounce does
+  // a grab pulls it out
+  place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; p.bot = inp(0, 0, { grab: true }); run(0.5); out.held = d.holding === s; out.grabFreed = !s.snag; p.bot = {}; run(0.3);
+  // snagged again, a pounce pops it just clear of the bush
+  place(s, x0, z0); s.snag = b; s.snagX = x0; s.snagZ = z0; s.stress = 0.5; run(0.5);
   place(d, s.x - 2.2, s.z); d.yaw = Math.PI / 2; d.pounceCD = 0;
   p.bot = inp(1, 0, { pounce: true }); step(0.025); p.bot = {};
-  out.freed = !s.snag; run(4); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.alive = !s.dead;
+  out.freed = !s.snag; run(4); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.clear = Math.hypot(s.x - b.x, s.z - b.z) - b.r; out.alive = !s.dead; out.calm = s.stress < 0.5;
   out.stats = { snags: G.stats.snags, unsnags: G.stats.unsnags };
   return out;
 });
 ok(`a bolting sheep is snagged (${r2.secs}s)`, r2.snagged, r2);
 ok('held fast for 10 s', r2.still && r2.drift < 0.5, r2);
 ok('it gets stressed', r2.stress > 0.3, r2);
-ok('a grab can\'t pull it out', !r2.held, r2);
-ok(`a pounce bonks it free (${r2.flew} m)`, r2.freed && r2.flew > 4 && r2.alive, r2);
+ok('a grab pulls it out', r2.held && r2.grabFreed, r2);
+ok(`a pounce pops it just clear (${r2.flew} m)`, r2.freed && r2.clear > 0 && r2.flew < 7 && r2.alive && r2.calm, r2);
 
 // 3. calm walkers go round: a dog creeps a few sheep past a patch; few snag
 const r3 = await h.page.evaluate(() => {

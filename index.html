@@ -734,7 +734,8 @@ const T = {
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceBuf: 0.2,   // pounceBuf: Ⓑ pressed up to this many s before it can (cooldown, a hop) still goes off
   pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
   airGrav: 28,                 // everything that flies falls at this (m/s²)
-  punt: { speed: 22, radial: 3, up: 11, lambUp: 9.5, bounces: 2 },   // (a pounced dog flies the same)
+  punt: { speed: 13, radial: 2, up: 8, lambUp: 7, bounces: 1, ref: 70, kMin: 0.55, kMax: 1.5, clear: 1.6 },   // (a pounced dog flies the same)
+  //   by mass (puntK): × (m_dog/(m_dog+m)) / (22/(22+ref)): a ewe 1, a ram ~0.6, a lamb or a dog more (kMin…kMax); rescue (brambles): just clear m past the bush
   bounceUp: 0.46, bounceSide: 0.8, landKeep: 0.55,
   carom: { min: 7, r: 1.45, keep: 0.6, share: 0.4, up: 6 },   // up 6 m/s peaks under fence height, so caroms never jump a pen
   fling: { mul: 1.35, add: 4, up: 8, minSpeed: 2 },
@@ -6077,13 +6078,28 @@ function pounceHits(d) {
   }
 }
 function endLunge(d, k = 0.15) { d.pounceT = 0; d.vx *= k; d.vz *= k; landDog(d, 0.28); }   // the dog stops dead: all the energy goes into what it hit
+// how hard a bonk lands on something of mass m (kg): the dog's momentum shared, J/m (as BONES), 1 for a ewe
+function puntK(d, m) {
+  const P = T.punt, M = T.bone.mass, md = boneMass(d, 'dog');
+  return clamp(md / (md + m) / (M.dog / (M.dog + P.ref)), P.kMin, P.kMax);
+}
 function punt(s, d, rx, rz) {
-  const P = T.punt, kb = dogK(d, 'bonk');   // BREEDS: a harder bonk sends it further (a rescue bonk lands where it would)
+  const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(s, 'sheep'));   // BREEDS: a harder bonk sends it further; lighter flies further
   train(d, 'bonk', T.train.bonk);
   if (s.state === 'cast') { castFlip(s, d); return; }   // CAST: rolled back onto its feet
-  const bog = s.bog, rescue = !!(s.snag || s.bog);
+  const bog = s.bog, snag = s.snag, rescue = !!(s.snag || s.bog);
   if (s.snag) unsnag(s, d);   // BRAMBLES: bonked free
   let vx = d.pdx * P.speed * kb + rx * P.radial, vz = d.pdz * P.speed * kb + rz * P.radial;
+  if (snag) {   // BRAMBLES: popped just clear of the bush, the way the dog came at it (a harder bonk: a bit further)
+    const up = (s.lamb ? P.lambUp : P.up) * 0.7, tf = 2 * up / T.airGrav, ex = s.x - snag.x, ez = s.z - snag.z;
+    const along = ex * d.pdx + ez * d.pdz, edge = Math.max(0, along + Math.sqrt(Math.max(0, snag.r * snag.r - (ex * ex + ez * ez - along * along))));
+    const sp = (edge + P.clear) * (0.85 + 0.15 * kb) / tf;
+    vx = d.pdx * sp; vz = d.pdz * sp;
+    launchSheep(s, vx, vz, up, 'punt', d); s.air.bounces = 0; s.air.rescue = true;
+    endLunge(d); MV.punts++; SFX.boing(panOf(s.x, s.z), 0.2); Sound.baa(s.pitch * 1.15, 0.4, panOf(s.x, s.z), true);
+    starBurst(s.x, s.y + 0.8, s.z, 5, undefined, { speed: 3, up: 2.5 }); rumble(d.player, 0.4, 0.4, 110);
+    return;
+  }
   if (bog) {   // MUD: popped out, over the nearest edge (whichever way the dog came at it), just far enough to clear it
     const v = mudSteer(s, 0.01) || { x: d.pdx, z: d.pdz }, ox = v.x + d.pdx * 0.4, oz = v.z + d.pdz * 0.4, ol = Math.hypot(ox, oz) || 1, U = T.mud.pop;
     let edge = 0; while (edge < 12 && mudAt(s.x + ox / ol * edge, s.z + oz / ol * edge)) edge += 0.5;
@@ -6100,7 +6116,7 @@ function punt(s, d, rx, rz) {
   shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140);
 }
 function puntDog(o, d, rx, rz) {
-  const P = T.punt, kb = dogK(d, 'bonk');   // as punt(): flies like a sheep (BREEDS: a harder bonk, further)
+  const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(o, 'dog'));   // as punt(): flies like a sheep (BREEDS: a harder bonk, further; by weight)
   launchDog(o, d.pdx * P.speed * kb + rx * P.radial, d.pdz * P.speed * kb + rz * P.radial, P.up * Math.sqrt(kb), 'punt', d).bounces = P.bounces;
   train(d, 'bonk', T.train.bonk);
   endLunge(d); MV.dogPunts++;
@@ -6428,7 +6444,7 @@ function tryGrab(d) {
     if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
   }
   for (const s of G.sheep) {
-    if (s.dead || s.heldBy || s.grabbed || s.snag || s.bog || s.balk || s.seaHold || s.state === 'cast') continue;   // (a snagged, bogged, cast or balking sheep only moves for a bonk)
+    if (s.dead || s.heldBy || s.grabbed || s.bog || s.balk || s.seaHold || s.state === 'cast') continue;   // (a bogged, cast or balking sheep only moves for a bonk; BRAMBLES: a snagged one is pulled out)
     if (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8)) continue;
     const dd = Math.hypot(s.x - mx, s.z - mz) - (s.air ? 0.5 : 0);   // easier to snatch one flying at you
     if (dd < bd && !fenceBetween(d.x, d.z, s.x, s.z)) { bd = dd; best = s; kind = s.ram ? 'ram' : s.lamb ? 'lamb' : 'sheep'; }
@@ -6478,6 +6494,7 @@ function tryGrab(d) {
   } else {
     const s = best;
     if (s.crev) crevOut(s, false); s.slide = null; if (s.fire) s.fire = null;   // MOUNTAIN PASS: hauled out of its crack
+    if (s.snag) { unsnag(s, d); s.stress = Math.min(s.stress, 0.3); }   // BRAMBLES: pulled out
     if (s.air) { s.air = null; floatText('NICE CATCH!', s.x, s.y + 2, s.z, '#ffd36b', 1.5); starBurst(s.x, s.y + 1, s.z, 8); sayOnce('catch', 'catch', 'What a catch!'); Sound.chime([0, 7, 12], 784, 0.16); }
     else floatText('GOTCHA!', s.x, s.y + 1.6, s.z, '#ffffff', 1.1);
     s.state = 'flee'; s.eating = false; Sound.baa(s.pitch * 1.1, 0.4, pan, true); Sound.growl(pan, 0.08);
@@ -7795,7 +7812,7 @@ function snagSheep(s, b) {
   s.snag = b; s.snagX = s.x; s.snagZ = s.z; s.snagT = rnd(0.6, 1.2); s.vx *= 0.1; s.vz *= 0.1; s.breakT = 0; s.corner = 0;
   baaAt(s, 0.55, 1.3, true); floatText('🌿!', s.x, s.y + 1.5 * s.scale, s.z, '#c8e07a', 1.2); leaves(s.x, s.y + 0.5, s.z, 8);
   G.stats.snags = (G.stats.snags || 0) + 1; hint('bramble');
-  if (hankSees(s.x, s.z)) sayOnce('bramble', null, "One's caught in the brambles! Bonk it out.");
+  if (hankSees(s.x, s.z)) sayOnce('bramble', null, "One's caught in the brambles! Bonk it or grab it out.");
 }
 function unsnag(s, d = null) {
   if (!s.snag) return; s.snag = null;
@@ -7815,7 +7832,7 @@ function drawBrambleOverlay() {   // a thorn tag over every snagged sheep, and t
     if (s.dead || !s.snag) continue;   // (host only: not synced)
     const [px, py, pz] = proj(s.x, s.y + 1.7 * s.scale, s.z); if (pz > 1 || px < -30 || px > W + 30 || py < -30 || py > H + 30) continue;
     const d = G.dogs.find(d => Math.hypot(d.x - s.x, d.z - s.z) < 10);
-    if (d && nudge('bramble', s.x, s.y + 2.2 * s.scale, s.z, `🌿 Pounce: ${keyLabel(d.player, 'pounce')}`, '#7ed957')) continue;
+    if (d && nudge('bramble', s.x, s.y + 2.2 * s.scale, s.z, `🌿 ${keyLabel(d.player, 'pounce')} / ${keyLabel(d.player, 'grab')}`, '#7ed957')) continue;
     ctx.font = '600 18px Fredoka, sans-serif'; richText('🌿', px, py + Math.sin(G.time * 6 + s.id) * 2);
   }
 }
@@ -12760,7 +12777,7 @@ const HINTS = {
   trough: 'In the trough! Penned sheep eat from the <b>troughs</b> from late afternoon and through the night. Fill all of them so more can feed at once.',
   'salt-found': 'A lump of <b>salt</b>! Take it to a pen\'s <b>salt lick</b> (the post on the far side from the troughs).',
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
-  bramble: '🌿 Stuck in the brambles! <b>Pounce</b> into it to bonk it free.',
+  bramble: '🌿 Stuck in the brambles! <b>Pounce</b> or <b>grab</b> it free.',
   cast: '🙃 A sheep is <b>cast</b>: on its back and can\'t get up! <b>Pounce</b> into it to flip it over, quick.',
   mud: '🟤 Stuck in the bog! <b>Pounce</b> into it to pop it out.',
   balk: '😤 The lead ewe won\'t go in, and the flock won\'t go without her. <b>Pounce</b> her through the gate!',
@@ -12822,7 +12839,7 @@ const TOUCH_HINTS = {
   trough: 'In the trough! Penned sheep eat at night',
   'salt-found': '🧂 Salt! To a pen\'s <b>salt lick</b>',
   'salt-lick': 'Salt in the lick! Peppy sheep',
-  bramble: '🌿 Stuck! 💥 it free',
+  bramble: '🌿 Stuck! 💥 or ✊ it free',
   cast: '🙃 Cast! 💥 to flip it',
   mud: '🟤 Bogged! 💥 it out',
   balk: '😤 💥 her in!',
@@ -20073,7 +20090,7 @@ Object.assign(window.GAME, { SNAKES, updateSnakes, snakeBite, snakeScare, resetS
   YARDS, yardGrow, yardRoom, yardSpot, yardAt, yardLine, yardStep, syncYard, buildYard, addRemains, makeRemains, graveStone, updateRemains, syncRemains, syncSnakes, syncVet, hankDetour, lostCount, biomeW });   // RATTLESNAKES, VET, REMAINS
 Object.assign(window.GAME, { BREEDS, TRAITS, breedOf, cleanBreed, dogK, barkR, dogStats, setBreed, train, trainRec, trainProg, dogTrainView, pickTitleBreed, cycleTitleBreed, titleBreedInput, joinPlayer, dropPlayer, startJump, startPounce, updateDog, netDogBreed, keyEdge });   // BREEDS & TRAINING
 Object.assign(window.GAME, { BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBurrows, updateBurrows, holeOf, burrowOK, burrowGo, devBurrow, setPhase, penShut });   // BURROWS
-Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
+Object.assign(window.GAME, { BONES, spawnBone, killBone, updateBones, boneMass, puntK, boneGrip, boneHit, digBone, saveBones, loadBones, BONE_KEY, syncBones });   // BONES
 Object.assign(window.GAME, { ROPES, updateRopes, ropeSim, resetRopes, resetRope, ropeGrip, ropeMouth, tugStart, tugEnd, tugTap, tugSide, tugBeatOff, syncRopes, tryGrab, releaseHold, shakeHold, coyoteDazed, readInput });   // ROPES, grab
 Object.assign(window.GAME, { STORE, shareStores, BUCKETS, WATER, fillWater, drinkWater, dropBucket, waterHas, resetWater, updateWater, updateDogWater, dogAtWater, bucketOf, sheepThirst, thirstPep, wetAt, troughSpots });   // WATER
 Object.assign(window.GAME, { SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail,

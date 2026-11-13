@@ -91,7 +91,7 @@ Run the ones touching your change; report the numbers.
 | script | checks |
 | --- | --- |
 | `flock-sim.mjs [scenario] [--trials N]` | driving, scatter, gate bot, critical mass, rams, calming |
-| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish) |
+| `moves-sim.mjs [name]` | punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep, by weight (`dogGrab`), jump/vault (`jump`), pounce/grab/fling, carrying through a gate, gates, launcher, chute funnel (`launcherFunnel`), river (`river`), a shaken coyote (drops its prey, dazed longer the longer it's shaken: `shakeCoyote`), final pen (no finish) |
 | `forage-sim.mjs` | plants, salt, carrying, troughs, licks, regrowth |
 | `water-test.mjs` | buckets: pick up, fill, tip, set down, slosh; drinking, shoving, thirst deaths, `fillWater` |
 | `bone-test.mjs` | bones: dug up (kept on a new journey), carried free, thrown (running: further), at rest; hits: Δv = J/m (lighter flies, bounces back off heavy), reactions; not its thrower, pounce kick, caught, saved |
@@ -119,7 +119,7 @@ Run the ones touching your change; report the numbers.
 | `pass-test.mjs [layout\|cold\|fire\|camp\|torch\|melt\|hank\|blizzard\|ice\|crev\|goat\|yeti\|rock\|side\|burn\|finish]` | the pass: climb, walls, camps, ice, cracks, side trail, nothing else up there; cold by fleece and snow, thaw, frozen death; Hank lights a fire, the coldest warm by it; no corner by any fire, warm far out, the base camp lit as the flock comes up; a torch lit in a fire melts the snow (grass, eaten) and the ice (no slide), lights a cold fire, burns out, goes home; a fire melts its camp, snow back slowly / in a blizzard; the fire before a patient, no burials up there, the next fire not the last, up at night to stoke it; blizzard snow, shaken off, melted; ice slides (sheep, dog, Hank), calm ones go round; cracks (sheep grabbed out, a dog alone mashes out, with a friend grabbed out); goats bonk (sheep, Hank), bark, pounce; yeti wakes, snowballs grow, headbutt, 3 burning sheep; the rock wall falls on him; side trail ≥5 m wide, ledge only up it, 5 sheep driven up; burning sheep; the yeti beaten: the gap's ice gone, his cave a pen, through the gap Cold Harbour wakes (nobody moved), iced again; the fallen rock's heap a way from the ledge |
 | `vet-test.mjs` | snakes (placement, rattle, strike, bark/pounce), venom and wounds (slowing, death times), 💉 🩹 💊 🪏 straight to Hank, treating (in a pen too), bodies rotting to stones, cemeteries built on the first burial, burial + last words, shearing first, reset |
 | `shear-test.mjs` | clippers spot, dug up → Hank's, shearing (shut gate; not open, not asleep), 🧶, regrowth, looks, save |
-| `bramble-test.mjs` | brambles: placement, snag, held, grab fails, pounce frees, calm sheep go round |
+| `bramble-test.mjs` | brambles: placement, snag, held, grab pulls it out, pounce pops it just clear, calm sheep go round |
 | `bonk-test.mjs [world\|cast\|mud\|balk\|apple\|carry]` | streams (walkable, wet, lush banks), cast sheep, bogs, the balking lead ewe, apple trees; apples carried, dropped, lobbed, held out and taken, into a pen, snatched, eaten with a dog by the tree |
 | `pen-trap-test.mjs` | coyote shut in a pen mauls sheep after sheep, dog saves; open gate → dragged out; ram bravery, lambs inherit |
 | `burrow-test.mjs [dig\|fill\|raid\|trap\|dismay\|leave\|mid\|guard\|rules]` | burrows: a pack digs under a shut pen's fence (off the gateway, no fast-forward), goes under, drags one out, gate shut; a dog standing on either end fills it (not a few m off, not running); filled with one inside: shut in, mauls; fills: heart lost, gives up; out the same way at dawn, or when the pack gives up mid-tunnel; dug away from a dog; not night one, not off, gone on a new journey |
@@ -372,7 +372,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     see the sea yet): the flock shut in the cave (all, or some for `finish` s) ends it (`finishGame(n)`).
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
-  stuck and bleating; only a pounce frees it (`punt` → `unsnag`), not a grab.
+  stuck and bleating; a pounce pops it just clear of the bush (`punt` → `unsnag`, `T.punt.clear`), or a grab pulls it out.
   Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
 - **Bonk spots** (BONK SPOTS): a pounce is the fix. A rescue bonk (cast, bog,
   brambles) lands calm (`a.rescue`), no scatter.
@@ -455,6 +455,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
   + 1/m), Δv = J/m (`boneMass`: × size³ for sheep, × build for dogs), the bone gets J back. `boneHit`: dog knocked, sheep
   pushed or (light) bowled, ram provoked, coyote scared, cougar spooked / drops its catch, Hank staggers. Never its own
   thrower at first; a pounce kicks a lying one; caught in the air. Online: `NET_TYPES.bone` (made and killed on guests).
+- **Punts by weight** (`punt`, `puntK`, `T.punt`): speed × bonk trait × the dog's momentum shared (`boneMass`): a ewe ~10 m, a ram
+  less, a lamb or a dog more (`kMin`…`kMax`).
 - **Dog punts.** A pounce into another dog launches it like a sheep (`puntDog`,
   `T.punt`); not one under a cougar (that pounce frees it).
 - **Dogs fly as sheep do.** `launchDog(d, vx, vz, vy, kind, by)`: same kinds, spin (`airSpin`),
