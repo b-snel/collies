@@ -543,7 +543,7 @@ try {
   await sleep(300);
   const hb3 = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.G.paused, GAME.BARN.open, GAME.G.menus.join()].join())));
   check('both screens in the barn: the world waits ("⏸ Paused" over both barns; the host lists only its own dogs); one leaves: it goes on (the guest keeps its dog on its device)',
-    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,rough,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
+    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,sheltie,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
 
   // ---------------------------------------------------------------- stale input: nothing arrives for a second → zeroed
   await B.page.keyboard.down('KeyW');

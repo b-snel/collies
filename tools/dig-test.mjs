@@ -55,7 +55,7 @@ const r3 = await h.page.evaluate(() => {
   out.found = DOGS.found.length; out.unique = new Set(DOGS.found).size; out.all = DOG_ITEMS.length;
   return out;
 });
-ok(`everything found in ${r3.journeys} journeys' digging`, r3.found === r3.all && r3.unique === r3.all && r3.journeys >= 2, r3);
+ok(`everything found in ${r3.journeys} journeys' digging`, r3.found === r3.all && r3.unique === r3.all && r3.journeys <= 4, r3);   // (T.dig.treasure: about a journey's worth; some dice, one)
 
 // 4. the barn's Dogs tab: found things to put on, the dog in the world wears them, closing saves
 const r4 = await h.page.evaluate(() => {
@@ -64,7 +64,7 @@ const r4 = await h.page.evaluate(() => {
   out.opened = openBarn(); out.tab = barnTab('dogs');
   out.locks = document.querySelectorAll('#barnWard .ico.lock').length;
   out.paintHidden = document.getElementById('barnTools').hidden;
-  dogSet(0, { coat: '#d8c7a2', collar: '#8e44ad', hat: 'tophat', acc: ['bell', 'shades'], name: 'Moss' });
+  dogSet(0, { coat: '#6b3a22', collar: '#8e44ad', hat: 'tophat', acc: ['bell', 'shades'], name: 'Moss' });   // (red and white)
   out.list = document.getElementById('barnList').textContent;
   out.hatOn = document.querySelector('#barnDogHat button.on').dataset.dhat;
   out.model = BARN.model && BARN.model.children.length > 0;
@@ -76,7 +76,7 @@ const r4 = await h.page.evaluate(() => {
 ok('barn opens on the Dogs tab', r4.opened && r4.tab && r4.paintHidden, r4);
 ok('nothing locked once everything is found', r4.locks === 0, r4);
 ok('the Dogs tab shows the choice', r4.hatOn === 'tophat' && r4.list.includes('Moss') && r4.model, r4);
-ok('the dog in the world wears it', r4.key.hat === 'tophat' && r4.key.coat === '#d8c7a2' && r4.key.acc.join() === 'shades,bell' && r4.name === 'Moss', r4.key);
+ok('the dog in the world wears it', r4.key.hat === 'tophat' && r4.key.coat === '#6b3a22' && r4.key.acc.join() === 'shades,bell' && r4.name === 'Moss', r4.key);
 ok('closing the barn saves the dogs', r4.saved.hat === 'tophat' && r4.saved.name === 'Moss', r4.saved);
 if (shots) {
   await h.page.evaluate(() => { const { G, DIGS, cam, updateCamera, renderOnce } = GAME, d = G.dogs[0], sp = GAME.DIGS[3]; d.x = sp.x + 2.5; d.z = sp.z + 1; GAME.resetDigs(); updateCamera(0, true); renderOnce(); });
