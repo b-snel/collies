@@ -709,7 +709,7 @@ const T = {
   // it: added after its draws). Onto it going up: a slip (keep× the speed it came up at, on up a moment), g m/s² back down it. The way on: a lit
   // torch melts a lane (≥ lane m wide, all the way: GATE.open); its melt never snows over. Hank waits at the base camp till then.
   // A slip on it, no lane, no lit torch: Hank nags (nag s apart); a dog within near m of it: "grab the torch"
-  iceGate: { s0: 1173, s1: 1190, g: 9, keep: 0.4, lane: 2.4, nag: 15, near: 12 },
+  iceGate: { s0: 1171, s1: 1187, g: 9, keep: 0.4, lane: 2.4, nag: 15, near: 12 },
   // CREVASSES (CREVS): n cracks len m long, hw m across. In: sunk sink m. A sheep's grabbed out; a dog on its own mashes Ⓑ (mash presses,
   // decay/s) out, with friends one of them grabs it out. Calm sheep go round (avoid m)
   crev: { n: 7, len: [5, 8.5], hw: 0.62, sink: 0.72, mash: 8, decay: 0.6, avoid: 2.2, stress: 0.05 },
@@ -10858,7 +10858,7 @@ function slideDogStep(d, inp, dt) {
   dogCold(d, dt);
   if (d.barkBuf > 0 && d.barkCd <= 0) { d.barkBuf = 0; bark(d); }
 }
-// ---------------- ICE GATE: a band of ice wall to wall across the climb, just past the base camp (T.gate). World gen's draws are done, ----------------
+// ---------------- ICE GATE: a band of ice wall to wall across the climb, just past the base camp (T.iceGate). World gen's draws are done, -------------
 // the scenery's too: none of it saw it. Up onto it: a slip, thrown back down (gateBack). A lit torch melts a lane through (GATE.open;
 // GATE.path: up it, every 2 m), its melt never snows over (gateV). Hank waits at the base camp till there's one (hankGate); the flock's
 // steered to it (gateSteer). A dev jump onto it or past: all melted (gateMelt)
@@ -10911,7 +10911,7 @@ const gatePt = (s, lat) => { const i = clamp(Math.floor(s / PS), 0, PN - 1), f =
   }
   const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
   mat.onBeforeCompile = sh => { sh.uniforms.uMelt = U.uMelt; sh.uniforms.uGrassXf = U.uGrassXf; sh.uniforms.uTime = U.uTime;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vIceXZ;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvIceXZ = (modelMatrix * vec4(position, 1.0)).xz;');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vIceXZ;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvIceXZ = position.xz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uMelt;\nuniform vec4 uGrassXf;\nuniform float uTime;\nvarying vec2 vIceXZ;')
       .replace('#include <color_fragment>', `#include <color_fragment>
         float gm = texture2D(uMelt, (vIceXZ - uGrassXf.xy) * uGrassXf.zw).r; if (gm > 0.42) discard;
@@ -11001,13 +11001,15 @@ function gateSlip(e) {
   if (G.mode !== 'play' || !gateShut()) return;
   PASS.gateSlips = (PASS.gateSlips || 0) + 1;
   if (!PASS.said.gate) { gateIntro(); return; }
-  if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < T.iceGate.nag || HANK.asleep || !hankSees(e.x, e.z)) return;
-  const L = GATE_NAGS, i = PASS.gateNag = (PASS.gateNag ?? -1) + 1;
-  if (hank(null, L[i < L.length ? i : L.length - 3 + (i - L.length) % 3], { force: true })) PASS.gateNagT = G.time;
+  const n = (PASS.gateNag ?? -1) + 1, gap = T.iceGate.nag * Math.min(3, 1 + 0.3 * n);   // (less and less often)
+  if (TORCHES.some(t => t.lit > 0) || G.time - (PASS.gateNagT ?? -99) < gap || HANK.asleep || hankFree() > G.time || !hankSees(e.x, e.z)) return;
+  const L = GATE_NAGS;
+  if (hank(null, L[n < L.length ? n : L.length - 3 + (n - L.length) % 3], { force: true })) { PASS.gateNag = n; PASS.gateNagT = G.time; }
 }
+const hankFree = () => Math.max(HANK.lastSay + 3.2, ...HANK.pending.map(q => q.at + 3.2));   // (when he's done saying what he's saying)
 function gateIntro() {
-  if (!passSay('gate', 'Grab the torch and clear us a path!', { delay: Math.max(0.4, HANK.lastSay + 3.2 - G.time) })) return;
-  PASS.gateNagT = G.time; hint('torch'); hint('gate');
+  const delay = Math.max(0.4, hankFree() - G.time); if (!passSay('gate', 'Grab the torch and clear us a path!', { delay })) return;
+  PASS.gateNagT = G.time + delay; hint('torch'); hint('gate');
 }
 // each step (host): is there a lane yet (the line when there is); someone up at the ice: what the stick's for
 function gateScanTick(dt) {   // (→ true: a lane just opened)
@@ -11060,7 +11062,7 @@ const MELTV = [], meltOK = new Uint8Array(VN), gSnow = new Float32Array(VN), gUn
 }
 // ICE GATE: its vertices (melted, they stay melted: never snowed over)
 const gateV = new Uint8Array(VN);
-GATE.V = MELTV.filter(v => gateIce0(GMINX + (v % VX) * VS, GMINZ + Math.floor(v / VX) * VS) > 0.02);
+GATE.V = MELTV.filter(v => { const x = GMINX + (v % VX) * VS, z = GMINZ + Math.floor(v / VX) * VS; return [[0, 0], [VS, 0], [-VS, 0], [0, VS], [0, -VS]].some(([a, b]) => gateIce0(x + a, z + b) > 0.02); });   // (and a vertex round it: its edges stay open too)
 for (const v of GATE.V) gateV[v] = 1;
 // one vertex melted to m: the grass under the snow shows (the host's), or it's buried again
 function meltSet(v, m) {

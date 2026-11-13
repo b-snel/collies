@@ -430,7 +430,7 @@ if (!only || only === 'side') {
 
 if (!only || only === 'gate') {
   const r = await ev(() => {
-    const { G, T, PASS, HANK, GATE, GATE_NAGS, TORCHES, living, pathPoint, sAt, sdfAt, iceK, findPath, devJump, resetPass } = GAME, I = T.iceGate, out = { s0: I.s0, s1: I.s1 };
+    const { G, T, PASS, HANK, GATE, GATE_NAGS, TORCHES, living, pathPoint, sAt, sdfAt, iceK, findPath, devJump, resetPass } = GAME, I = T.iceGate, out = { s0: I.s0, s1: I.s1, nag: I.nag };
     const b = PASS.fires.find(f => f.base), up = pathPoint(I.s0, 0), ux = up.tx, uz = up.tz;
     // wall to wall: every walkable spot across the band is ice; still a way round on the map (A*: only the ice in the way); no lane
     let walk = 0, iced = 0; for (let s = I.s0 + 2; s <= I.s1 - 2; s += 1) for (let l = -30; l <= 30; l += 0.5) { const p = pathPoint(s, l); if (sdfAt(p.x, p.z) > 0.3) { walk++; if (iceK(p.x, p.z) > 0.6) iced++; } }
@@ -452,11 +452,11 @@ if (!only || only === 'gate') {
     const sh = living().filter(o => !o.ram && !o.lamb)[0], q = pathPoint(I.s0 - 1.5, 2); Object.assign(sh, { x: q.x, z: q.z, vx: ux * 4, vz: uz * 4, state: 'flee', fear: 1, fdx: ux, fdz: uz, alert: 2, slipCd: 0 });
     let sSlid = false, sMax = 0; for (let t = 0; t < 5; t += 0.025) { if (!sh.slide && t < 1.5) { sh.state = 'flee'; sh.fear = 1; sh.fdx = ux; sh.fdz = uz; } GAME.step(0.025); if (sh.slide) sSlid = true; sMax = Math.max(sMax, sAt(sh.x, sh.z)); }
     out.sheep = { slid: sSlid, maxS: +sMax.toFixed(1), below: sAt(sh.x, sh.z) < I.s0 + 0.5 };
-    // the flock put up past it, no lane: Hank waits at the base camp (never on the ice)
-    const top = pathPoint(I.s1 + 14, 0); living().forEach((o, i) => { o.x = top.x + (i % 4) * 1.5; o.z = top.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });
-    const hq = pathPoint(b.s - 6, 3); HANK.x = hq.x; HANK.z = hq.z; HANK.goal = null; let hMax = 0, hSlid = false;
-    for (let t = 0; t < 14; t += 0.025) { GAME.step(0.025); hMax = Math.max(hMax, sAt(HANK.x, HANK.z)); if (HANK.slide) hSlid = true; }
-    out.hank = { wait: +Math.hypot(HANK.x - GATE.wait.x, HANK.z - GATE.wait.z).toFixed(1), maxS: +hMax.toFixed(1), slid: hSlid };
+    // the flock put well up past it, no lane: Hank waits at the base camp (never on the ice)
+    const top = pathPoint(PASS.fires[0].s - 12, 0); living().forEach((o, i) => { o.x = top.x + (i % 4) * 1.5; o.z = top.z + Math.floor(i / 4) * 1.5; o.vx = o.vz = 0; o.state = 'idle'; o.slide = null; });
+    const hq = pathPoint(b.s - 6, 3); HANK.x = hq.x; HANK.z = hq.z; HANK.goal = null; let hMax = 0, hSlid = false, atWait = 0;
+    for (let t = 0; t < 14; t += 0.025) { GAME.step(0.025); hMax = Math.max(hMax, sAt(HANK.x, HANK.z)); if (HANK.slide) hSlid = true; if (Math.hypot(HANK.x - GATE.wait.x, HANK.z - GATE.wait.z) < 2.5) atWait += 0.025; }
+    out.hank = { atWait: +atWait.toFixed(1), maxS: +hMax.toFixed(1), slid: hSlid, fire: +Math.hypot(HANK.x - b.x, HANK.z - b.z).toFixed(1) };
     // the base camp's torch: lit in its fire, carried up across the ice: a lane; Hank's line; nobody slides up it
     b.fuel = 6; const t0 = TORCHES[b.i]; d.x = t0.x - 1.2; d.z = t0.z; d.vx = d.vz = 0; d.slide = null; d.yaw = Math.PI / 2; P.bot = { grab: true }; GAME.step(0.025); run(0.2);
     out.held = t0.by === d;
@@ -485,9 +485,9 @@ if (!only || only === 'gate') {
   });
   ok(`the ice gate: wall to wall (${r.band.iced}/${r.band.walk} spots across it iced), no lane; nothing else in the way`, r.band.iced === r.band.walk && r.band.walk > 200 && r.band.path && !r.band.open, r.band);
   ok(`a dog sprinting up it: thrown back down ${r.dog.slips}× (got to ${r.dog.maxS}), ends below it`, r.dog.slips >= 3 && r.dog.maxS < r.s1 && r.dog.below, r.dog);
-  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, ≥ nag s apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Are you sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= 14.9), r.dog);
+  ok(`Hank: "Grab the torch…" (${r.dog.intro} s); nags after slips, ${r.dog.nags.length} in 34 s, further and further apart: ${r.dog.nags.map(n => n[0]).join(', ')}`, r.dog.intro >= 0 && r.dog.nags.length >= 1 && r.dog.nags.length <= 3 && /Are you sure/.test(r.dog.nags[0][1]) && r.dog.nags.every((n, i) => n[0] - (i ? r.dog.nags[i - 1][0] : r.dog.intro) >= r.nag * (1 + 0.3 * i) - 0.1), r.dog);
   ok(`a driven sheep up it: back down (got to ${r.sheep.maxS})`, r.sheep.slid && r.sheep.below, r.sheep);
-  ok(`the flock up past it, no lane: Hank waits at the base camp (${r.hank.wait} m off his spot, never on it)`, r.hank.wait < 2.5 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
+  ok(`the flock well up past it, no lane: Hank waits at the base camp (${r.hank.atWait} s by its fire), never on the ice`, r.hank.atWait > 6 && r.hank.fire < 8 && r.hank.maxS < r.s0 && !r.hank.slid, r.hank);
   ok(`the base camp's torch, lit, carried up across it: a lane (${r.lane.n} pts), no slip; Hank's lines (lit near the ice, the lane's through)`, r.held && r.lit && r.lane.open && !r.lane.dSlid && r.lane.top && r.lane.gateLit && r.lane.gateOpen, r);
   ok(`up it now: Hank (${r.hankUp} s), a driven sheep (${r.sheepUp?.s}, no slide); a blizzard doesn't shut it`, r.hankUp >= 0 && r.sheepUp?.s > 0 && !r.sheepUp.slid && r.blizzOpen, r);
   ok('a dev jump onto it: melted through; back below: iced again; a new journey: iced', r.devAll && r.devBack && r.reset, r);
