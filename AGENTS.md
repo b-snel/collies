@@ -197,6 +197,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 `--why` (what, why), `name[:arg]`, `--all`, `--list` (each test, its args, what it checks: its header comment). CI runs them all on every PR (`.github/workflows/tests.yml`): keep main green.
 Seeded (`SEED=n` / `SEED=random`: other dice), offline. `-sim`s print numbers, no checks ("ran"): read them.
 New `index.html` section → its line in `SECTIONS` (`tools/test.mjs`).
+After merging main: clean, or conflicts only in docs (AGENTS.md, `docs/`, sw.js): push, CI runs them all. Code conflicts resolved: `node tools/test.mjs --merge` (only lines unlike both parents; `--merge C` for another merge).
 New test → its header comment: how to run it, what it checks.
 All are `node tools/<script>`.
 
