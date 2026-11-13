@@ -658,7 +658,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
-- Changed `index.html`, `vendor/` or icons → bump `CACHE` in `sw.js`.
+- `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
   camp (pushed onto `PASS.fires` after them), nor `MELT` (all 0 then). It still sees the old stalls (`STALLS`: flattened, stamped; freed by `vagStall`).
 - Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`: the vagabond, his bed and mats are) or lies aboard.

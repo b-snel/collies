@@ -177,4 +177,4 @@ Then open http://localhost:8000. Add `?debug` for an FPS readout and cheat keys.
 
 **Cloudflare Workers** (production, `collies.app`): `wrangler.jsonc` serves `dist/` (built by `node build.js`), with headers from `_headers`. `collies.app` is a Workers custom domain (its `routes` entry), so Cloudflare makes the DNS record and certificate itself. Pushes to `main` deploy; branches get preview URLs: `<branch>-collies.thebrypod.workers.dev` (`/` in a branch name becomes `-`). A branch that needs its own subdomain gets its own Worker: on that branch, rename the Worker in `wrangler.jsonc` and give it its own custom domain, then import the repo as a new Worker with that branch as production (see `original-fever-dream`). Its first build runs `main`, whose config claims `collies.app`: set the production branch before the first build, or move `collies.app` back to `collies` after.
 
-When `index.html`, anything in `vendor/` or the icons change, bump `CACHE` in `sw.js` so installed copies pick up the new files.
+`build.js` names the service worker's `CACHE` from a hash of the site, so installed copies pick up new files on their own: never bump it by hand.
