@@ -132,6 +132,7 @@ Run the ones touching your change; report the numbers.
 | `net-test.mjs` | online co-op (`PEERSERVER=host:port`) |
 | `hybrid-test.mjs` | 2 players on the host's screen + 2 on a guest's |
 | `role-test.mjs` | roles: ★ totals, title pick (←/→ eaten, saved), a friend's pick, every trait's effect; training: xp sources, levels, cap, Header 1.5×, role swap keeps it, reset; barn card; net `rol`; breeds: all build in every coat + item, size, looks only, old saves, barn ‹ ›, net look; hair: keeps its shape, swings and settles, falls upside down; fur: shells on every coat part, none on eyes/collar, 2 programs, lite |
+| `dawn-test.mjs` | dawn report: fits every screen, any count (no scroll); held to go on (keys, pad, ▶), mashing / a press from before / the first moment don't |
 | `map-test.mjs` | map: dogs uncover, parchment elsewhere, minimap place, 📍 at a trader, M / click → big, arrows dodge it, fog for late friends, reset, cost |
 
 All are `node tools/<script>`.
@@ -285,7 +286,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Barn**: Sheep and Dogs tabs; icon chips, no paragraphs. Host only; guests watch it read only (`BARN.watch`, `NET_TYPES.game.barn`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Host only (guests: read only, `NET_TYPES.game.dawn`), world waits; `?sim` only
-  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere.
+  fills `G.dawnReport`. Eulogies are seeded (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).
+  Held to go on (`T.dawn`: Ⓐ / Start, Enter / Space / Esc, ▶; `dawnHoldStart`, timed by press and let-go, `padT`); nothing in the first `grace` s; mashing never skips it.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).
 - **Dig spots** (own rng, synced): finds go on the dog, saved in
