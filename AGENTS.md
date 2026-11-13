@@ -370,7 +370,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
     new decor → its own rng, in that block. The world-gen draws run over the pass first, so they still see
     the side trail as it first was (`sideWas`, `hWas`); the road opens up after (`sideOpen`).
   - **His cave** (`FINAL`, `finalPen`): iced shut (`p.frozen`) till he's beaten; then a pen. Alone / offline the way on is the gap
-    (`HARB.gap`, `harbIce`, its ice gone when he's beaten: `seaWay`) and the road down to Cold Harbour. Online with friends (they can't
+    (`HARB.gap`, `harbIce`, its ice gone when he's beaten: `seaWay`) and the road down to Cold Harbour. Online with friends connected (they can't
     see the sea yet): the flock shut in the cave (all, or some for `finish` s) ends it (`finishGame(n)`).
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
