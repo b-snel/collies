@@ -8,7 +8,8 @@
 //   net      "role:levels" sets a guest's copy
 //   looks    breeds (the herding dogs + the ten most popular): every one, in each coat length, builds in every hat and bit of kit, feet on the
 //            ground, near the collie's size, a coat each its own; a breed changes nothing a dog does; old saves (role as `breed`; a breed now
-//            a coat length) come back right; the barn's ‹ ›; the Border Collie: rough or smooth, black and white, tricolour, red and white
+//            a coat length) come back right; the barn's ‹ ›; the Border Collie: rough or smooth, black and white, tricolour, red and white;
+//            barks: a voice a breed by its size and ways (the collie's as recorded)
 //   barn     opens on the Dogs: cards with portraits; the breed picker (a grid, filters)
 //   fur      shells over every long coat part (one mesh each; short coats sleek), none on eyes, nose or collar; outline out in the fur; a slow machine drops them
 //   hair     long hair, cords and floppy ears swing (none on a smooth coat): still, it keeps its shape; shaken, it swings and settles; upside down, it falls
@@ -238,6 +239,14 @@ const r7 = await h.page.evaluate(() => {
   GAME.closeBarn();
   const lk = JSON.stringify({ ...dogLook(0), breed: 'poodle', coat: '#232226' }); GAME.netDogLook(d, lk); out.net = [d.models.breed, d.netLook && d.netLook.coat];   // ONLINE: the host's look for it
   GAME.netDogLook(d, JSON.stringify({ ...dogLook(0), breed: 'belgian', hair: 'long', coat: '#232226' })); out.net2 = d.models.form;
+  // barks: a voice a breed, by its size and how it is (the Border Collie's as recorded); its dog's model carries it, and every one plays
+  const { DOG_VOICES, Sound } = GAME, size = { s: [], m: [], l: [] }, sz = id => ['sheltie', 'miniaussie', 'cardigan', 'pembroke', 'lancashire', 'vallhund', 'frenchie', 'dachshund', 'beagle', 'pumi', 'mudi', 'pyrenean'].includes(id) ? 's' : ['gsd', 'belgian', 'dutch', 'beauceron', 'briard', 'bouvier', 'picard', 'nzhuntaway', 'bergamasco', 'oes', 'lab', 'golden', 'poodle', 'rottweiler', 'gsp'].includes(id) ? 'l' : 'm';
+  for (const B of DOG_BREEDS) if (B.voice) size[sz(B.id)].push(B.voice.p);
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  out.voice = { collie: DOG_BREEDS[0].voice, none: DOG_BREEDS.filter(B => B.id !== 'border' && !B.voice).map(B => B.id), s: +avg(size.s).toFixed(2), m: +avg(size.m).toFixed(2), l: +avg(size.l).toFixed(2),
+    deep: ['nzhuntaway', 'rottweiler', 'gsd'].every(id => DOG_VOICES[id].p < 0.85 && DOG_VOICES[id].chest >= 5), bay: !!DOG_VOICES.beagle.bay, snort: ['frenchie', 'bulldog'].every(id => DOG_VOICES[id].snort), yappy: ['sheltie', 'pumi', 'mudi'].every(id => DOG_VOICES[id].n >= 3 && DOG_VOICES[id].p > 1.2),
+    model: d.models.voice === DOG_VOICES.belgian };
+  Sound.init(); let threw = null; try { Sound.bark(1, 0, null); for (const B of DOG_BREEDS) Sound.bark(0.9, 0.3, B.voice); } catch (e) { threw = e.message; } out.voice.threw = threw;
   dogLook(1).pick = []; dogLook(1).hair = 'smooth'; out.out0 = 'hair' in GAME.netLookOut(1); dogSet(1, { hair: 'smooth' }); out.out1 = GAME.netLookOut(1).hair;   // (a guest's: what it never picked takes the host's slot's)
   return out;
 });
@@ -254,6 +263,8 @@ ok('a breed is only looks: the dog\'s model changes, nothing it does (stats, wei
 ok('a coat it can\'t have isn\'t put on; a breed change keeps a coat it can have', r7.coatKept && r7.coatBack, r7);
 ok('an old save (role saved as `breed`): that role, a Border Collie, its coat', r7.old[0] === 'heeler' && r7.old[1] === 'border' && r7.old[2] === '#6b3a22', r7.old);
 ok('online: the host\'s look (a breed, coat length and colour) rebuilds a guest\'s dog; a guest\'s coat length goes once picked', r7.net[0] === 'poodle' && r7.net[1] === '#232226' && r7.net2 === 'belgian:long' && !r7.out0 && r7.out1 === 'smooth', r7);
+ok('barks: a voice a breed (the Border Collie\'s as recorded), small ones higher, big ones deeper; the deep, the yappy, a bay, a snort; its dog carries it; all play', !r7.voice.collie && r7.voice.none.length === 0 && r7.voice.s > r7.voice.m && r7.voice.m > r7.voice.l
+  && r7.voice.deep && r7.voice.bay && r7.voice.snort && r7.voice.yappy && r7.voice.model && !r7.voice.threw, r7.voice);
 ok('the barn: Coat (rough / smooth), ‹ › steps the breed, the colours are that breed\'s, one coat length: no row, it wraps', r7.barn0 === 'Border Collie' && r7.chips0 === 'Rough*,Smooth' && r7.chips1.join() === 'Rough,Smooth*,smooth'
   && r7.barn1.join() === 'Shetland Sheepdog,sheltie,3, hidden' && r7.barnWrap === 'bulldog', r7);
 
