@@ -237,6 +237,8 @@
     border-radius:16px; border:2px solid rgba(255,248,232,.6); }
   #tHome[hidden] { display:none; }
   #titleExtras .tbtn { font-size:17px; background:var(--barn-accent); color:#1b1a22; border-color:#1b1a22; }
+  #tSave { margin-top:10px; display:inline-flex; gap:10px; align-items:center; background:var(--panel); padding:6px 12px; border-radius:12px; font-size:18px; font-weight:600; }
+  #tSave button { font-size:14px; cursor:pointer; }
   #titleExtras .tbtn small { font-weight:500; opacity:.75; margin-left:4px; }
   #eMem { width:min(620px, 92vw); max-height:36vh; overflow-y:auto; margin:0 0 16px; padding:10px 16px; text-align:left; text-shadow:none;
     background:var(--barn-card); border:2px solid var(--barn-edge); border-radius:16px; }
@@ -544,6 +546,7 @@
   <h2>Protect your herd through the wild unknowns</h2>
   <div id="tRole"></div>
   <div class="press">Press Ⓐ on a controller — or Space / Enter</div>
+  <div id="tSave" hidden title="Carry on (✖: a new journey)"><span></span><button type="button" class="tX" aria-label="New journey">✖</button></div>
   <div id="titleExtras"><button id="tBarn" class="tbtn" type="button">🏚️ Hank’s barn<small>Tab · View</small></button><button id="tCtlBtn" class="tbtn" type="button" data-menu="tCtl">🎮 Controls</button><button id="tVolBtn" class="tbtn" type="button" data-menu="tVol">🔊 Sound</button><button id="tHome" class="tbtn" type="button" hidden>📲</button></div>
   <div id="tMenu" hidden>
     <section id="tCtl" class="tcard" hidden><h3>🎮 Controls<button class="tX" type="button" aria-label="Close">✕</button></h3>
@@ -649,6 +652,9 @@ const byO = (a, b) => a.o - b.o;
 function onReset(fn, o = 200) { RESETS.push({ fn, o }); RESETS.sort(byO); }   // 200: a feature's, after the sea's back, before the flock and dogs
 function onSync(fn, o = 500) { SYNCS.push({ fn, o }); SYNCS.sort(byO); }   // 500: after the rest
 function expose(f) { EXPOSE.push(f); }
+// onSave(key, save, load, o): JOURNEY SAVE. save() → plain JSON (undefined: nothing); load(data) on a resumed journey, lowest o first
+const SAVES = [];
+function onSave(key, save, load, o = 200) { SAVES.push({ key, save, load, o }); SAVES.sort(byO); }
 
 // =====================================================================
 // TUNING — every gameplay number lives here
@@ -660,6 +666,7 @@ const T = {
   hourSec: 18,           // real seconds per in-game hour at night
   dayHourSec: 13,        // ... and by day (dawn → nightfall): a leg to the next camp ends around twilight
   startHour: 7.0,
+  save: { every: 10, lag: 25 },   // JOURNEY SAVE: written every s of play; a saved spot more than lag m along the trail from where it was: put back by the flock
   nightStart: 20.5, nightEnd: 5.5,
   duskWarn: 17.5,
   ffMul: 7,              // clock speed while the whole flock is safely penned at night
@@ -8800,6 +8807,19 @@ function resetForage() {
   storeReset('food', 'salt');
 }
 onReset(resetForage, 110);   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
+// JOURNEY SAVE: each camp's gate and bought kit (by name), the shared stores ashore; the deck's in 'sea'
+onSave('pens', () => ({ store: { ...STORE }, pens: pens.filter(p => !p.deck).map(p => ({ name: p.camp.name, open: !p.latched, kit: Object.fromEntries(Object.keys(KIT).map(k => [k, kitN(p, k)])) })) }), v => {
+  for (const r of Array.isArray(v.pens) ? v.pens : []) {
+    const p = pens.find(q => !q.deck && r && q.camp.name === r.name); if (!p) continue;
+    if (r.kit) for (const k in KIT) if (Number.isFinite(r.kit[k])) kitSet(p, k, r.kit[k]);
+    if (p !== finalPen || !p.frozen) { setGate(p, !!r.open); p.wasOpen = !!r.open; }
+  }
+  for (const k in STORE_K) {
+    if (!Number.isFinite(v.store?.[k])) continue;
+    const [get, cap, set] = STORE_K[k]; STORE[k] = Math.max(0, v.store[k]);
+    for (const p of storePens()) { set(p, Math.min(STORE[k], cap(p))); (p.store = p.store || {})[k] = get(p); }
+  }
+}, 40);
 // ---------------- the dogs gather as they go ----------------
 function pickPlant(p, d) {
   const cap = T.forage.carryCap; p.picked = true; p.regrowAt = absHour() + 24 * rnd(T.forage.regrowDays[0], T.forage.regrowDays[1]); setPlantMatrix(p, 0);
@@ -11116,6 +11136,9 @@ function initDens() {
   G.packs = G.packs.filter(p => !p.den).concat(G.dens.map(D => D.pack));
 }
 onReset(() => { for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens(); }, 30);   // COYOTES
+// JOURNEY SAVE: coyotes on the hunt come back (a reload's no escape from them)
+const coyoteHunting = c => !c.gone && !['sleep', 'leave', 'dead', 'burrow'].includes(c.state);
+onSave('coyotes', () => ({ n: G.coyotes.filter(coyoteHunting).length }), v => { const n = clamp(v.n | 0, 0, 12); if (n && !SEA.on) spawnCoyotes(n); }, 90);
 function denFill(D) {   // make sure the den has its whole pack (asleep at the mouth unless told otherwise)
   while (D.coyotes.length < D.count) {
     const i = D.coyotes.length, sl = D.slots[i % D.slots.length];
@@ -11952,6 +11975,11 @@ function cougarsAtDawn() {
 }
 function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.dazeT = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 onReset(resetCougars, 50);   // COUGARS
+// JOURNEY SAVE: a cougar out hunting still is
+onSave('cougars', () => ({ on: COUGARS.map((k, i) => k.hunts || cougarAbroad(k) && k.state !== 'retreat' ? i : -1).filter(i => i >= 0) }), v => {
+  if (SEA.on) return;
+  for (const i of Array.isArray(v.on) ? v.on : []) { const k = COUGARS[i]; if (k && perchGrove(k.grove).length) cougarHunt(k, 0.2); }
+}, 91);
 // standing in a pen: go to the fence on the tree side and jump it (then back to `after`). False when it's not in a pen.
 function cougarOut(k, after, spd, dt, tx = k.lair.x, tz = k.lair.z) {
   const pen = cougarPen(k); if (!pen) return false;
@@ -12235,6 +12263,7 @@ function resetFalcon() {
   Object.assign(CANYON.boss, { hp: 0, max: 0, on: false, beaten: false, met: false, next: T.canyon.boss.first });
 }
 onReset(resetFalcon, 60);   // FALCON
+onSave('falcon', () => ({ gone: !!G.falconGone, boss: !!CANYON.boss.beaten }), v => { G.falconGone = !!v.gone; if (v.boss) Object.assign(CANYON.boss, { beaten: true, on: false, hp: 0 }); }, 80);   // JOURNEY SAVE
 function updateFalcon(dt, dtH) {
   if (!G.falconGone) { const fc = flockCenter(); if (fc.n && !falconLand(fc)) G.falconGone = true; }   // the flock's through FALCON CANYON
   updateCanyon(dt); for (const F of FALCONS) falconStep(F, dt, dtH);
@@ -13954,6 +13983,14 @@ function resetPass() {
   finalPen.frozen = true; harbIce(true);
 }
 onReset(resetPass, 70);   // MOUNTAIN PASS: fires out, goats on their ledges, the yeti asleep, the rock wall up, his gate iced
+// JOURNEY SAVE: the fires' fuel, the ice gate, the rickety walls, the yeti (before 'where': it melts the gate as it goes)
+onSave('pass', () => ({ fuel: PASS.fires.map(f => Math.round(f.fuel * 100) / 100), gate: !!GATE.all, yeti: YETI.beaten ? YETI.how || 'fire' : '', walls: WALLS.map(R => R.state === 'down' || R.state === 'fall' ? [+R.dir.toFixed(3), +R.len.toFixed(2)] : 0) }), v => {
+  if (Array.isArray(v.fuel)) PASS.fires.forEach((f, i) => { if (Number.isFinite(v.fuel[i])) f.fuel = Math.max(0, v.fuel[i]); });
+  if (v.gate && GATE.on && !GATE.all) gateMelt(true);
+  if (Array.isArray(v.walls)) WALLS.forEach((R, i) => { const w = v.walls[i]; if (!Array.isArray(w) || !Number.isFinite(w[0]) || !Number.isFinite(w[1])) return;
+    Object.assign(R, { state: 'down', t: 99, dir: w[0], len: w[1], cracks: R.K.cracks }); if (R === ROCK) rubbleStamp(true); else doorStamp(false); wallDraw(R); });
+  if (v.yeti && !YETI.beaten) { Object.assign(YETI, { beaten: true, on: false, how: v.yeti, state: v.yeti === 'rock' ? 'crushed' : 'dead', t: 99, target: null }); finalPen.frozen = false; if (seaWay()) harbIce(false); }
+}, 26);
 resetPass();
 // ---------------- drawing (every screen) ----------------
 const _pp = new THREE.Vector3(), _pq = new THREE.Quaternion(), _pax = new THREE.Vector3();
@@ -14336,6 +14373,11 @@ function yardGrow(Y, rows) {
   buildYard(Y);
 }
 onReset(() => { for (const g of G.graves) scene.remove(g.root); G.graves = []; }, 40);   // REMAINS: the fallen gone
+// JOURNEY SAVE: the fallen where they lie (or their stones); before 'where', so they're the land's when she's cast off
+onSave('graves', () => G.graves.map(g => ({ x: +g.x.toFixed(2), z: +g.z.toFixed(2), name: g.name, why: g.why, day: g.day, looks: g.looks, look: g.look, yaw: +g.yaw.toFixed(2), rot: +(g.rot || 0).toFixed(3), stone: !!g.stone, neat: !!g.neat })), list => {
+  if (!Array.isArray(list)) return;
+  for (const f of list.slice(0, 200)) if (f && Number.isFinite(f.x) && Number.isFinite(f.z)) G.graves.push(makeRemains({ ...f, name: String(f.name || 'Sheep').slice(0, 20), look: f.look && typeof f.look === 'object' ? f.look : {} }));
+}, 28);
 onReset(() => { for (const Y of YARDS) { Y.n = 0; Y.built = 0; yardGrow(Y, Y.rows0); syncYard(Y, false); } }, 340);   // REMAINS: no cemeteries again
 // room for one more row behind? Open ground, clear of pens, the campfire, buckets and anything put down along the trail
 function yardRoom(Y) {
@@ -14363,7 +14405,7 @@ function stepClock(dt) {
   const prev = G.clock.hour; let now = prev + dtH;
   if (now >= 24) { now -= 24; G.clock.day++; }
   G.clock.hour = now;
-  if (crossed(prev, now, 6)) { for (const p of pens) if (p.gateT > 0.6) startRush(p); lambsAtDawn(); seaDawn(); banner(`Day ${G.clock.day}`, SEA.on ? '⛵' : 'A new morning'); if (G.clock.day > 1 && !SEA.on) hint('dawn'); }
+  if (crossed(prev, now, 6)) { for (const p of pens) if (p.gateT > 0.6) startRush(p); lambsAtDawn(); seaDawn(); setTimeout(journeySave, 0); banner(`Day ${G.clock.day}`, SEA.on ? '⛵' : 'A new morning'); if (G.clock.day > 1 && !SEA.on) hint('dawn'); }
   if (crossed(prev, now, T.duskWarn) && !SEA.on) { toast('The sun is getting low…', 'warn'); if (!flockInPass()) hint('dusk'); }
   if (crossed(prev, now, 19.6)) { if (SEA.on) hint('sea-night'); else toast(flockInPass() ? '🌙 🐑 → 🔥' : 'Night is coming — pen the flock!', 'warn'); }   // (MOUNTAIN PASS: no pens up there: the fire. SAILING: an anchorage)
   if (crossed(prev, now, T.nightStart) && !SEA.on) {
@@ -18707,16 +18749,157 @@ function mournSheep(s, why) {
   if (FLOCK.memorial.length > 60) FLOCK.memorial.length = 60;
   HANK.lostTonight++;
   if (G.mode !== 'play') return;
-  saveFlock();
+  saveFlock(); journeySave();   // JOURNEY SAVE: at once, so a reload can't undo it
   if (why === 'old') hank(null, pick([`Rest easy, ${s.name}. Ye had a grand long life.`, `Auld ${s.name}… went in ${s.ram ? 'his' : 'her'} sleep. A good innings.`, `Ah, ${s.name}. Many a mile ye walked wi' us.`]), { force: true, delay: 1.4 });
   else if (living().length > 0) hank('one_more', null, { force: true, delay: 1.4 });
 }
 function freshFlock() {
   try { localStorage.removeItem(FLOCK_KEY); } catch (e) {}
+  journeyClear();   // JOURNEY SAVE: and the journey it was on
   FLOCK.home = []; FLOCK.memorial = []; FLOCK.journeys = 0;
   if (G.mode === 'title') spawnFlock();
 }
 expose(() => ({ FLOCK, FLOCK_KEY, saveFlock, freshFlock }));   // FLOCK SAVE
+
+// =====================================================================
+// JOURNEY SAVE — a reload carries on where you were. Each section that has something worth keeping registers onSave(key, save, load, o)
+// (REGISTRIES); localStorage[JOURNEY_KEY] holds them all, written every T.save.every s of play, when the tab's hidden, and at dawn.
+// The title shows it (▶ day, flock; ✖ forgets it); the first dog in carries on from it (startGame → journeyResume). A new journey, the
+// end, "Start a fresh flock": forgotten. Host / offline only (a guest draws the host's).
+// New builds: each key loads on its own (one that throws keeps its fresh state); plain fields copy only onto ones the code still has with
+// the same type, or onto ones it doesn't set yet (savePlain / loadPlain); a spot is kept only if it's still walkable and as far along the
+// trail (journeyPlace), else it's put back by the flock. JOURNEY_V: bump (with its step in JOURNEY_UP) only when old data means something else.
+// =====================================================================
+const JOURNEY_KEY = 'collies.journey', JOURNEY_V = 1;
+const JOURNEY_UP = {};   // v: j => j one version on
+const JOURNEY = { t: 0, saved: null, pos: new Map(), resumed: false, off: SIM };   // (off under ?sim: tests turn it on)
+const plainV = v => typeof v === 'string' || typeof v === 'boolean' || typeof v === 'number' && Number.isFinite(v);
+// an object's plain fields (numbers, strings, booleans; not skip's)
+function savePlain(o, skip) {
+  const r = {}; for (const k in o) { const v = o[k]; if (!plainV(v) || skip && skip.includes(k)) continue; r[k] = typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e4) / 1e4 : v; } return r;
+}
+// ...back onto o: only where o has that field with the same type, or hasn't got it at all
+function loadPlain(o, r, skip) {
+  if (!r || typeof r !== 'object') return o;
+  for (const k in r) { const v = r[k], was = o[k]; if (!plainV(v) || skip && skip.includes(k)) continue; if (was === undefined || was === null || typeof was === typeof v) o[k] = v; }
+  return o;
+}
+const journeyCan = () => G.mode === 'play' && NET.role !== 'guest' && !JOURNEY.off;
+function journeyRead() {
+  try {
+    let j = JSON.parse(localStorage.getItem(JOURNEY_KEY) || 'null');
+    while (j && typeof j === 'object' && j.v < JOURNEY_V && JOURNEY_UP[j.v]) j = JOURNEY_UP[j.v](j);
+    return j && j.v === JOURNEY_V && j.parts && typeof j.parts === 'object' ? j : null;
+  } catch (e) { return null; }
+}
+function journeySave() {
+  if (!journeyCan()) return false;
+  const parts = {};
+  for (const S of SAVES) try { const v = S.save(); if (v !== undefined) parts[S.key] = v; } catch (e) { console.warn('save', S.key, e); }
+  const j = { v: JOURNEY_V, build: BUILD.sha || 'dev', at: Date.now(), day: G.clock.day, sheep: living().length, sea: SEA.on, parts };
+  try { localStorage.setItem(JOURNEY_KEY, JSON.stringify(j)); JOURNEY.saved = j; JOURNEY.t = 0; return true; } catch (e) { return false; }
+}
+function journeyClear() { try { localStorage.removeItem(JOURNEY_KEY); } catch (e) {} JOURNEY.saved = null; JOURNEY.resumed = false; journeyTitle(); }
+// startGame: carry on from the save (true), or it's a new journey (false). Every section's load, lowest o first
+function journeyResume() {
+  const j = JOURNEY.saved; if (!j || NET.role === 'guest' || G.mode !== 'play') return false;
+  JOURNEY.pos.clear();
+  for (const S of SAVES) if (S.key in j.parts) try { S.load(j.parts[S.key]); } catch (e) { console.warn('load', S.key, e); }
+  JOURNEY.pos.clear(); JOURNEY.resumed = true; JOURNEY.t = 0;
+  banner(SEA.on ? `⛵ ${ROUTE[clamp(SEA.leg - 1, 0, ROUTE.length - 1)].name}` : `☀️ ${G.clock.day}`, `🐑 ${living().length}`);
+  updateCamera(0, true);
+  return true;
+}
+// a saved spot, as [x, z, s along the trail] (journeyAt); kept on load if it's still open ground that far along, else by the flock (journeyPlace)
+const journeyAt = e => [Math.round(e.x * 100) / 100, Math.round(e.z * 100) / 100, Math.round(sAt(e.x, e.z))];
+function journeyOK(p) {
+  if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return false;
+  const [x, z, s] = p; if (x < GMINX || z < GMINZ || x > GMINX + GX - 1 || z > GMINZ + GZ - 1) return false;
+  return sdfAt(x, z) > 0.3 && (!Number.isFinite(s) || Math.abs(sAt(x, z) - s) < T.save.lag);
+}
+function journeyPlace(e, p) { if (!journeyOK(p)) return false; e.x = p[0]; e.z = p[1]; e.y = groundY(e.x, e.z); e.vx = e.vz = 0; return true; }
+// the title: ▶ the saved day and flock (✖ forgets it)
+function journeyTitle() {
+  const el = $('tSave'); if (!el) return; const j = JOURNEY.saved;
+  el.hidden = !j;
+  if (j) el.querySelector('span').textContent = `▶ ${j.sea ? '⛵ ' : ''}☀️ ${j.day | 0} · 🐑 ${j.sheep | 0}`;
+}
+if (!SIM && !/[?&](sea|go|join)\b/.test(location.search)) JOURNEY.saved = journeyRead();   // (dev jumps and invites start where they say)
+{ const x = $('tSave') && $('tSave').querySelector('button'); if (x) x.addEventListener('click', e => { e.stopPropagation(); journeyClear(); }); }
+journeyTitle();
+if (!SIM) {
+  setInterval(() => { if (journeyCan() && !G.paused && (JOURNEY.t += 1) >= T.save.every) journeySave(); }, 1000);
+  addEventListener('pagehide', () => journeySave());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) journeySave(); });
+}
+onReset(() => journeyClear(), 5);   // a new journey: the old one's gone
+
+// ---------------- what's kept (the rest register in their own sections) ----------------
+// the clock (G.time too: timers are G.time stamps), the tally, wool, hints, the lost, training
+onSave('core', () => ({ time: G.time, day: G.clock.day, hour: G.clock.hour, stats: G.stats, wool: G.wool, hints: G.hints, lost: G.lost.slice(-200), train: G.train, nextId: G.nextSheepId }), v => {
+  if (Number.isFinite(v.time)) G.time = Math.max(G.time, v.time);
+  if (Number.isFinite(v.day)) G.clock.day = Math.max(1, v.day | 0);
+  if (Number.isFinite(v.hour)) G.clock.hour = clamp(v.hour, 0, 23.99);
+  G.stats = loadPlain(newStats(), v.stats);
+  if (Number.isFinite(v.wool)) G.wool = Math.max(0, Math.round(v.wool));
+  if (v.hints && typeof v.hints === 'object') G.hints = loadPlain({}, v.hints);
+  if (Array.isArray(v.lost)) G.lost = v.lost.filter(r => r && typeof r === 'object' && typeof r.name === 'string');
+  if (v.train && typeof v.train === 'object') for (const k in v.train) { const r = v.train[k]; if (!r || typeof r !== 'object') continue; const tr = { xp: {}, lv: {} }; for (const t of TRAITS) { tr.xp[t.id] = +r.xp?.[t.id] || 0; tr.lv[t.id] = clamp(r.lv?.[t.id] | 0, 0, T.train.lv.length); } G.train[k] = tr; }
+  if (Number.isFinite(v.nextId)) G.nextSheepId = Math.max(G.nextSheepId, v.nextId | 0);
+}, 10);
+// the flock: every living sheep's plain fields, its look, its mother; where it stood (placed once the world's where it was: 'where')
+onSave('flock', () => living().map(s => { const r = savePlain(s); r.look = s.look || null; r.mum = s.mother && !s.mother.dead ? s.mother.id : 0; r.at = journeyAt(s); return r; }), list => {
+  if (!Array.isArray(list) || !list.length) return;
+  const out = [], byId = new Map();
+  for (const r of list) {
+    if (!r || typeof r !== 'object' || !Number.isFinite(r.x) || !Number.isFinite(r.z)) continue;
+    const s = makeSheep(r.x, r.z, { lamb: !!r.lamb, ram: !!r.ram, bell: !!r.bell, black: !!r.black });
+    loadPlain(s, r, ['dead', 'x', 'z', 'y']); s.dead = false;
+    if (r.look) s.look = cleanLook(r.look);
+    seaLoose(s); Object.assign(s, { goal: null, pen: null, wasPen: null, tx: s.x, tz: s.z, seaHold: null });
+    out.push(s); byId.set(s.id, s); JOURNEY.pos.set(s, r.at);
+    G.nextSheepId = Math.max(G.nextSheepId, s.id + 1);
+  }
+  if (!out.length) return;
+  for (const r of list) { const s = r && byId.get(r.id); if (s && r.mum) s.mother = byId.get(r.mum) || null; }
+  G.sheep = out;
+  const names = new Set(out.map(s => s.name)); FLOCK.home = FLOCK.home.filter(r => !names.has(r.name));   // FLOCK SAVE: the ones out here aren't waiting at home too
+}, 20);
+// each dog (by slot): where, how it is (training's in 'core')
+onSave('dogs', () => G.dogs.filter(d => d.player && d.player.kind !== 'net').map(d => ({ slot: d.player.slot, at: journeyAt(d), yaw: +d.yaw.toFixed(2), hp: +d.hp.toFixed(3), stamina: +d.stamina.toFixed(3), mud: +(d.mud || 0).toFixed(3), wet: +(d.wet || 0).toFixed(3), cold: +(d.cold || 0).toFixed(3) })), list => {
+  if (!Array.isArray(list)) return;
+  for (const d of G.dogs) {
+    d.tr = trainRec(d.player.slot, d.role); d.lv = d.tr.lv; dogStats(d);
+    const r = list.find(q => q && q.slot === d.player.slot) || list[0]; if (!r) continue;
+    JOURNEY.pos.set(d, r.at); if (Number.isFinite(r.yaw)) d.yaw = r.yaw;
+    for (const k of ['hp', 'stamina', 'mud', 'wet', 'cold']) if (Number.isFinite(r[k])) d[k] = clamp(r[k], k === 'hp' ? 0.05 : 0, 1);
+    d.hpShow = d.hp;
+  }
+}, 22);
+// Hank: where, his kit
+onSave('hank', () => ({ at: journeyAt(HANK), clippers: !!HANK.clippers, shovel: !!HANK.shovel, meds: HANK.meds }), v => {
+  JOURNEY.pos.set(HANK, v.at);
+  HANK.clippers = !!v.clippers; HANK.shovel = !!v.shovel;
+  if (v.meds && typeof v.meds === 'object') for (const k in HANK.meds) HANK.meds[k] = Math.max(0, +v.meds[k] | 0);
+}, 24);
+// where in the world: s m along the trail (the world put there: devJump), or at sea (alongside the last island reached). Then every saved spot that still fits
+onSave('where', () => {
+  if (SEA.on) return { sea: Math.max(0, SEA.saved) };
+  const fc = flockCenter(), e = fc.n ? fc : G.dogs[0] || HANK; return { s: Math.round(sAt(e.x, e.z)) };
+}, v => {
+  if (Number.isFinite(v.sea)) { seaStart({ leg: clamp(v.sea | 0, 0, ROUTE.length - 2) }); return; }
+  if (!Number.isFinite(v.s)) return;
+  devJump(v.s, { url: false, quiet: true });
+  for (const [e, p] of JOURNEY.pos) if (journeyPlace(e, p) && e.isDog) collideDog(e);
+  for (const s of living()) { s.tx = s.x; s.tz = s.z; s.pen = penAt(s.x, s.z); s.wasPen = s.pen; }
+  HANK.lastX = HANK.x; HANK.lastZ = HANK.z;
+}, 30);
+// the map: what's been uncovered (as online sends it); the camps reached
+onSave('map', () => { MAP.fogAt = -1e9; return { fog: mapFogOut(), visited: [...G.visited] }; }, v => {
+  if (typeof v.fog === 'string' && v.fog) { MAP.rv.fill(0); mapFogMerge(v.fog); }
+  if (Array.isArray(v.visited)) { const names = new Set(CAMPS.map(c => c.name).concat(DECK.camp.name)); G.visited = new Set([CAMPS[0].name, ...v.visited.filter(n => names.has(n))]); }
+}, 50);
+expose(() => ({ JOURNEY, JOURNEY_KEY, journeySave, journeyRead, journeyResume, journeyClear, savePlain, loadPlain }));   // JOURNEY SAVE
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
@@ -20806,6 +20989,18 @@ function devLlama() {
 }
 resetLlamas();
 onReset(() => resetLlamas(), 175);   // LLAMAS: new herds, no guards
+// JOURNEY SAVE: the same herds (their seed); the guards, by the flock (aboard at sea)
+onSave('llamas', () => ({ seed: LLAMA.seed, guards: LLAMAS.filter(L => L.tame === 2).map(L => ({ sex: L.sex, age: +L.age.toFixed(2), coat: L.coat, look: L.look, wool: +L.wool.toFixed(3), at: journeyAt(L) })) }), v => {
+  if (!T.llama.on) return;
+  if (Number.isFinite(v.seed)) resetLlamas(v.seed >>> 0);
+  const fc = flockCenter();
+  for (const r of Array.isArray(v.guards) ? v.guards.slice(0, 12) : []) {
+    if (!r || (r.sex !== 'm' && r.sex !== 'f')) continue;
+    const L = makeLlama({ x: fc.x, z: fc.z, sex: r.sex, age: +r.age || T.llama.adultDays, coat: r.coat | 0, look: r.look | 0, wool: clamp(+r.wool || 0, 0, 1), tame: 2 });
+    if (!SEA.on && !journeyPlace(L, r.at)) llamaPlace(L, fc.x, fc.z);
+  }
+  if (SEA.on) llamasAboard();
+}, 60);
 onSync(syncLlamas, 55);   // LLAMAS: and their spit
 expose(() => ({ LLAMAS, LLAMA, LLAMA_COATS, makeLlama, llamaRemove, resetLlamas, llamaPlan, llamaSpotOK, updateLlamas, llamaStep, llamaMateFor, llamaBirth, llamaCatch, llamaRope,
   llamaUnrope, llamaTugEnd, llamaJoin, llamaFoe, llamaSpitAt, llamaSpitHit, llamaBark, llamaPounce, launchLlama, llamaGrabbed, llamaLetGo, llamaGrabbable, llamaShearPick, llamaShearNext,
@@ -23117,6 +23312,16 @@ function seaReset() {
   resetRings(); resetHazards(); seaCamReset();
 }
 onReset(seaReset, 10);   // SAILING: back ashore (first)
+// JOURNEY SAVE: what's in the hold, her hull, the deck's troughs (where she is: 'where', alongside the last island reached)
+onSave('sea', () => SEA.on ? { stores: SEA.stores, hull: SEA.hull, assist: SEA.assist, food: DECK.troughs.map(tr => +tr.food.toFixed(3)), water: +DECK.water.w.toFixed(3), salt: +DECK.lick.salt.toFixed(3) } : undefined, v => {
+  if (!SEA.on) return;
+  if (v.stores && typeof v.stores === 'object') for (const k in SEA.stores) if (Number.isFinite(v.stores[k])) SEA.stores[k] = Math.max(0, v.stores[k]);
+  if (Number.isFinite(v.hull)) SEA.hull = clamp(v.hull, 0.5, T.sea.hull.hp);
+  if (typeof v.assist === 'boolean') SEA.assist = v.assist;
+  if (Array.isArray(v.food)) DECK.troughs.forEach((tr, i) => { if (Number.isFinite(v.food[i])) tr.food = tr.shown = clamp(v.food[i], 0, tr.cap); });
+  if (Number.isFinite(v.water)) DECK.water.w = clamp(v.water, 0, DECK.water.cap);
+  if (Number.isFinite(v.salt)) DECK.lick.salt = clamp(v.salt, 0, DECK.lick.cap);
+}, 85);
 // The voyage begins. As the game's played: the flock comes down the harbour road and she wakes (seaWake → { dock }): nobody's moved, she lies
 // alongside at Cold Harbour, her gangway open. Dev / tests (?sea, GAME.seaStart): o.dock + o.place: the flock and the dogs put at the top of
 // the road; o.leg: everyone aboard, alongside at that island's jetty (0: Cold Harbour, the gangway lashed); o.under: already sailing from it
@@ -23262,10 +23467,11 @@ function startGame(dev) {
   if (!G.dens.length) initDens();   // every den's pack, asleep
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden');
   joinPlayer(dev);
-  G.visited.add(CAMPS[0].name); banner(CAMPS[0].name, `Day ${G.clock.day} — the journey begins`);
+  G.visited.add(CAMPS[0].name);
   mapReset();   // MAP: all parchment
-  setTimeout(() => hint('start'), 2500);
   hankGameStart();   // HANK: "Over here now!" (and his clips start loading)
+  if (journeyResume()) return;   // JOURNEY SAVE: carry on where we were
+  banner(CAMPS[0].name, `Day ${G.clock.day} — the journey begins`); setTimeout(() => hint('start'), 2500);
   const sea = /[?&]sea(?:=(\d|dock)(u)?)?\b/.exec(location.search); if (sea) seaStart(sea[1] === 'dock' ? { dock: true, place: true } : { leg: +(sea[1] || 0), under: !!sea[2] });   // SAILING (dev): ?sea alongside at Cold Harbour, all aboard; ?sea=2 alongside the third island (2u: under way from it); ?sea=dock the top of the harbour road
   const go = DEBUG && !sea && /[?&]go=(\d+)/.exec(location.search); if (go) devJump(+go[1], { url: false });   // DEV MENU: ?debug&go=812 starts 812 m along the trail
 }
@@ -23284,6 +23490,7 @@ function finishGame(n) {
   if (n > 0) { Sound.chime([0, 4, 7, 12, 16, 19, 24], 523, 0.25, 0.11); for (let i = 0; i < 6; i++) setTimeout(() => { const p = finalPen; burst(p.x + rnd(-6, 6), p.y + 3, p.z + rnd(-6, 6), 25, pick(['#ff5a5a', '#ffe14d', '#6fe06a', '#4dc3ff', '#ff8fb8']), { speed: 4, up: 6, size: 0.14, life: 1.6, grav: -5 }); }, i * 250); }
   else Sound.sad();
   G.endT = 0;
+  journeyClear();   // JOURNEY SAVE: that one's over
   onJourneyEnd(n);   // HANK + FLOCK SAVE: "That'll do", fondly remembered, the flock saved for next time
 }
 function resetGame() { for (const r of RESETS) r.fn(); }   // a new journey: every section's onReset, lowest o first
@@ -25143,7 +25350,7 @@ function devJump(s, o = {}) {
   const hp = spot(pathPoint(Math.max(2, s - 14), -3), 2);
   Object.assign(HANK, { x: hp.x, z: hp.z, y: groundY(hp.x, hp.z), vx: 0, vz: 0, lastX: hp.x, lastZ: hp.z, air: null, slide: null, climb: null, cross: null, rope: null, ropeI: -1, goal: null, asleep: false, stuckT: 0, farT: 0 });
   G.visited = new Set(CAMPS.filter((c, i) => !i || c.s < s - 1).map(c => c.name));   // (the camp you land at: its banner as you get there)
-  const st = DEV_STOPS.find(t => Math.abs(t.s - s) < 1), lg = devLegOf(s); banner(st ? `${st.icon} ${st.name}` : `${CAMPS[lg].icon} → ${CAMPS[lg + 1].icon}`, `${Math.round(s)} m`);
+  const st = DEV_STOPS.find(t => Math.abs(t.s - s) < 1), lg = devLegOf(s); if (!o.quiet) banner(st ? `${st.icon} ${st.name}` : `${CAMPS[lg].icon} → ${CAMPS[lg + 1].icon}`, `${Math.round(s)} m`);
   if (s < T.canyon.s1) G.falconGone = false;   // (back before the canyon: the falcon's back; past it, it goes as it would)
   vagDevJump(s);   // VAGABOND: at the next pitch on from there
   { const R = T.map.r, rc = Math.ceil(R / VS), rv = MAP.rv;   // the map: uncovered all the way there
