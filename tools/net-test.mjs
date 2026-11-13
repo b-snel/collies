@@ -114,7 +114,7 @@ try {
 
   // ---------------------------------------------------------------- guest joins from the invite link (lobby)
   const B = await openPage(`?debug&join=${code}${PS}`);
-  await B.page.evaluate(() => GAME.pickTitleBreed('backer'));   // BREEDS: their pick goes with the hello
+  await B.page.evaluate(() => GAME.pickTitleRole('backer'));   // ROLES: their pick goes with the hello
   const prefilled = await B.page.evaluate(() => document.getElementById('netCode').value);
   const t0 = Date.now();
   await joinAs(B, 'Moss');
@@ -124,10 +124,10 @@ try {
   await sleep(300);
   const lobby = await B.page.evaluate(() => ({ roster: NET.roster.map(r => r.n), mode: GAME.G.mode, sheep: GAME.G.sheep.length, press: document.querySelector('#title .press').textContent }));
   check('guest joins from the invite link; lobby shows both and the host\'s flock', prefilled === code && lobby.roster.join() === 'Hostie,Moss' && /Waiting for Hostie/.test(lobby.press), { joinMs: report.numbers.joinMs, ...lobby });
-  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].breed);
-  await B.page.evaluate(() => GAME.pickTitleBreed('heeler'));   // a change of mind in the lobby
-  await until(A, () => NET.seats[0].subs[0].breed === 'heeler', null, 5000).catch(() => {});
-  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].breed);
+  const hiBreed = await A.page.evaluate(() => NET.seats[0] && NET.seats[0].subs[0].role);
+  await B.page.evaluate(() => GAME.pickTitleRole('heeler'));   // a change of mind in the lobby
+  await until(A, () => NET.seats[0].subs[0].role === 'heeler', null, 5000).catch(() => {});
+  const lobbyBreed = await A.page.evaluate(() => NET.seats[0].subs[0].role);
 
   // ---------------------------------------------------------------- host starts; the guest gets a dog
   await A.page.evaluate(() => { GAME.startGame({ kind: 'bot', index: 0 }); GAME.G.players[0].bot = {}; GAME.T.falcon.on = GAME.T.bramble.on = false; });   // (no falcon carrying a dog off, no snags, mid-check: as in ?sim)
@@ -135,12 +135,12 @@ try {
   await sleep(300);
   const st = await B.page.evaluate(() => ({ slot: NET.slot, dogs: GAME.G.dogs.map(d => d.player.name), titleHidden: document.getElementById('title').classList.contains('hidden'), hud: !document.getElementById('hud').classList.contains('hidden'), chip: document.getElementById('netChipT').textContent }));
   check('journey starts on both; the guest has its own named dog', st.slot === 1 && st.dogs.includes('Moss') && st.dogs.includes('Hostie') && st.titleHidden && st.hud, st);
-  // BREEDS & TRAINING: the guest's own pick, and its levels as the host trains it
+  // ROLES & TRAINING: the guest's own pick, and its levels as the host trains it
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); GAME.T.train.on = true; GAME.train(d, 'bark', 25); });
   await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.lv && d.lv.bark === 1; }, null, 5000).catch(() => {});
-  const br = { hi: hiBreed, lobby: lobbyBreed, host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').breed),
-    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.breed, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
-  check('the guest\'s breed: picked before joining, changed in the lobby, its dog\'s on both screens; levels reach the guest', br.hi === 'backer' && br.lobby === 'heeler' && br.host === 'heeler' && br.guest[0] === 'heeler' && br.guest[1] === 1 && br.guest[2] > 1, br);
+  const br = { hi: hiBreed, lobby: lobbyBreed, host: await A.page.evaluate(() => GAME.G.dogs.find(d => d.player.kind === 'net').role),
+    guest: await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return [d.role, d.lv.bark, +GAME.dogK(d, 'bark').toFixed(3)]; }) };
+  check('the guest\'s role: picked before joining, changed in the lobby, its dog\'s on both screens; levels reach the guest', br.hi === 'backer' && br.lobby === 'heeler' && br.host === 'heeler' && br.guest[0] === 'heeler' && br.guest[1] === 1 && br.guest[2] > 1, br);
   report.numbers.fps = { host: await fpsOf(A), guest: await fpsOf(B) };
 
   // ---------------------------------------------------------------- guest input moves its dog (on the host)
@@ -508,18 +508,20 @@ try {
   const gb2 = await A.page.evaluate(id => { const s = GAME.G.sheep.find(s => s.id === id); return s && { name: s.name, hat: s.look && s.look.hat, wool: s.look && s.look.wool }; }, bSheep);
   check("Hank's barn on the guest: its own, opened mid-game (the game goes on, its dog waits); a sheep renamed and dressed there is on the host",
     gb1.open && gb1.back && !gb1.tools && !gb1.fresh && /▶/.test(gb1.badge) && !gb1A.paused && gb1A.menus === '1' && gb1A.dog === 'lie' && gb2 && gb2.name === 'Clover' && gb2.hat === 'tophat' && gb2.wool === '#4a4440', { gb1, gb1A, gb2 });
-  // …its own dog: only its own in the list; a new breed, coat and name reach the host (and come back as its dog's look)
+  // …its own dog: only its own in the list; a new role, breed, coat and name reach the host (and come back as its dog's look)
   await B.page.evaluate(() => GAME.barnTab('dogs'));
   const gDogs = await B.page.evaluate(() => GAME.barnDogs().length + ':' + document.querySelectorAll('#barnList [data-dog]').length);
-  await tap(B, '#barnBreed [data-breed="huntaway"]');
-  await tap(B, '#barnCoat [data-coat="#d8c7a2"]');
+  await tap(B, '#barnRole [data-role="huntaway"]');
+  await tap(B, '#barnBreed [data-dbr="1"]');   // DOG BREEDS: the next one (Rough Collie)
+  await tap(B, '#barnCoat [data-coat="#8d929c"]');   // (blue merle: one of its coats)
   await B.page.fill('#barnName', 'Mossy');
-  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.breed === 'huntaway' && d.netLook && d.netLook.coat === '#d8c7a2' && d.player.name === 'Mossy'; }, null, 5000).catch(() => {});
-  const gd2 = await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { breed: d.breed, coat: d.netLook && d.netLook.coat, collar: d.netLook && d.netLook.collar, name: d.player.name, roster: NET.roster.map(r => r.n).join() }; });
-  await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.netLook && d.netLook.coat === '#d8c7a2' && d.breed === 'huntaway'; }, null, 5000).catch(() => {});
-  const gd2B = await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { coat: d.netLook && d.netLook.coat, breed: d.breed }; });
-  check("…its own dog: just its own listed; breed, coat and name picked there reach the host (collar: its slot's) and come back on its screen",
-    gDogs === '1:1' && gd2.breed === 'huntaway' && gd2.coat === '#d8c7a2' && gd2.collar === '#3d8ef0' && gd2.name === 'Mossy' && /Mossy/.test(gd2.roster) && gd2B.coat === '#d8c7a2' && gd2B.breed === 'huntaway', { gDogs, host: gd2, guest: gd2B });
+  await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.role === 'huntaway' && d.netLook && d.netLook.breed === 'rough' && d.netLook.coat === '#8d929c' && d.player.name === 'Mossy'; }, null, 5000).catch(() => {});
+  const gd2 = await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return { role: d.role, breed: d.netLook && d.netLook.breed, coat: d.netLook && d.netLook.coat, collar: d.netLook && d.netLook.collar, name: d.player.name, roster: NET.roster.map(r => r.n).join() }; });
+  await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.netLook && d.netLook.coat === '#8d929c' && d.role === 'huntaway'; }, null, 5000).catch(() => {});
+  const gd2B = await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { coat: d.netLook && d.netLook.coat, breed: d.netLook && d.netLook.breed, role: d.role }; });
+  check("…its own dog: just its own listed; role, breed, coat and name picked there reach the host (collar: its slot's) and come back on its screen",
+    gDogs === '1:1' && gd2.role === 'huntaway' && gd2.breed === 'rough' && gd2.coat === '#8d929c' && gd2.collar === '#3d8ef0' && gd2.name === 'Mossy' && /Mossy/.test(gd2.roster)
+    && gd2B.coat === '#8d929c' && gd2B.breed === 'rough' && gd2B.role === 'huntaway', { gDogs, host: gd2, guest: gd2B });
   // …a find by its dog goes in its wardrobe and straight on
   await A.page.evaluate(() => GAME.foundDogItem('crown', GAME.G.dogs.find(d => d.player.kind === 'net')));
   await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return d.netLook && d.netLook.hat === 'crown'; }, null, 5000).catch(() => {});
@@ -533,12 +535,12 @@ try {
   const hbB = await B.page.evaluate(() => ({ paused: GAME.G.paused, badge: document.getElementById('menuBadge').textContent }));
   await B.page.keyboard.press('Escape'); await sleep(300);
   const hb2 = await A.page.evaluate(() => GAME.G.paused);
-  const kept = await B.page.evaluate(() => { const L = (JSON.parse(localStorage.getItem(GAME.DOGS_KEY) || '{}').looks || [])[0] || {}; return [L.breed, L.coat, L.hat].join(); });
+  const kept = await B.page.evaluate(() => { const L = (JSON.parse(localStorage.getItem(GAME.DOGS_KEY) || '{}').looks || [])[0] || {}; return [L.role, L.breed, L.coat, L.hat].join(); });
   await A.page.evaluate(() => GAME.closeBarn());
   await sleep(300);
   const hb3 = await Promise.all([A, B].map(P => P.page.evaluate(() => [GAME.G.paused, GAME.BARN.open, GAME.G.menus.join()].join())));
   check('both screens in the barn: the world waits ("⏸ Paused" over both barns; the host lists only its own dogs); one leaves: it goes on (the guest keeps its dog on its device)',
-    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,#d8c7a2,crown', { hb, hbB, hb2, hb3, kept });
+    hb.paused && hb.dogs === '0,2,3' && /Paused/.test(hb.badge) && hbB.paused && /Paused/.test(hbB.badge) && !hb2 && hb3.join() === 'false,false,,false,false,' && kept === 'huntaway,rough,#8d929c,crown', { hb, hbB, hb2, hb3, kept });
 
   // ---------------------------------------------------------------- stale input: nothing arrives for a second → zeroed
   await B.page.keyboard.down('KeyW');
