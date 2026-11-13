@@ -543,6 +543,7 @@ const T = {
   stressSpd: 1.5, stressInner: 0.3, stressBark: 0.9, stressPounce: 1.6, stressCoyote: 2.2,   // stress gained per second
   stressHold: 0.15, stressLeak: 0.09, stressLeakCalm: 0.3,   // recovery per second, blocked as input approaches stressHold
   stressUp: 0.4, stressDown: 0.15, panicAt: 0.75,             // contagion rates (panic spreads fast, calm slowly)
+  poop: { at: 0.6, rate: 0.05, cd: 30, n: [4, 9], life: 90, max: 400 },   // POOP: scared past `at` (stress or panic), a chance a s (× how scared) to drop n pellets; then cd s; they lie life s (pool of max)
   lieCalmR: 22, pounceR: 12, pounceK: 1.8,
   goalHold: 1.5, goalHyst: 0.08,
   grazeSpace: 2.8,       // grazing sheep keep about this far apart (centre to centre)
@@ -1191,6 +1192,18 @@ const Sound = (() => {
         const og = ac.createGain(); og.gain.value = amp; o.connect(og); og.connect(f); o.start(t); v.start(t); o.stop(t + dur + 0.05); v.stop(t + dur + 0.05);
       }
       const n = ac.createBufferSource(); n.buffer = noiseBuf; const ng = ac.createGain(); ng.gain.value = 0.35; n.connect(ng); ng.connect(f); n.start(t, Math.random()); n.stop(t + dur);
+    },
+    prrt(pan = 0, vol = 0.2) {   // POOP: a scared sheep's "prrt", then the pellets pattering down
+      if (!ac) return; const t = ac.currentTime, dur = 0.16 + Math.random() * 0.08, d = out(vol, pan);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420; f.connect(d);
+      const g = ac.createGain(); env(g, t, 0.01, 0.9, dur); g.connect(f);
+      const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(95 + Math.random() * 25, t); o.frequency.linearRampToValueAtTime(70, t + dur);
+      const am = ac.createGain(); am.gain.value = 0.5; const lfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 28 + Math.random() * 8; const lg = ac.createGain(); lg.gain.value = 0.5;
+      lfo.connect(lg); lg.connect(am.gain); o.connect(am); am.connect(g); o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+      for (let i = 0, a = t + dur + 0.05; i < 4 + Math.floor(Math.random() * 3); i++, a += 0.035 + Math.random() * 0.05) {   // pit pit pit
+        const k = ac.createOscillator(); k.type = 'sine'; k.frequency.setValueAtTime(900 + Math.random() * 500, a); k.frequency.exponentialRampToValueAtTime(300, a + 0.03);
+        const kg = ac.createGain(); env(kg, a, 0.002, 0.35, 0.03); k.connect(kg); kg.connect(d); k.start(a); k.stop(a + 0.05);
+      }
     },
     yowl(pan = 0, vol = 0.22) {   // a bonked cougar: a hurt cat's "MRRAOW!"
       if (!ac) return; const t = ac.currentTime, dur = 0.55 + Math.random() * 0.15, b = 520 + Math.random() * 80, d = out(vol, pan);
@@ -3985,6 +3998,41 @@ function updateRings(dt) {
     r.m.scale.setScalar(0.5 + e * r.radius); r.m.material.opacity = (1 - k) * 0.85;
   }
 }
+// ---------------- POOP: a scared sheep drops pellets; they bounce, lie a while, shrink away (drawing only, each screen its own) ----------------
+const POOP = [];
+const poopMesh = (() => {
+  const m = new THREE.InstancedMesh(P(SPH(6), '#4a301c', { s: [1, 0.8, 1] }), MAT.vc, T.poop.max);
+  m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0; scene.add(m); seaKeep(m); return m;
+})();
+function poopFx(x, y, z, yaw, n, k = 1, vx = 0, vz = 0) {   // from a sheep's rear (x, y, z), facing yaw; k: its size
+  const bx = -Math.sin(yaw), bz = -Math.cos(yaw);
+  for (let i = 0; i < n; i++) {
+    if (POOP.length >= T.poop.max) POOP.shift();
+    const sp = 0.4 + Math.random() * 0.8, a = (Math.random() - 0.5) * 1.2, ca = Math.cos(a), sa = Math.sin(a);
+    POOP.push({ x: x + (Math.random() - 0.5) * 0.06, y: y - i * 0.03, z: z + (Math.random() - 0.5) * 0.06, vx: vx * 0.4 + (bx * ca - bz * sa) * sp, vz: vz * 0.4 + (bz * ca + bx * sa) * sp, vy: 0.3 + Math.random() * 0.6,
+      t: 0, wait: i * 0.05, sz: k * (0.07 + Math.random() * 0.03), ry: Math.random() * TAU, rest: false });
+  }
+  const d = Math.hypot(x - cam.x, z - cam.z); if (d < 30) Sound.prrt(panOf(x, z), 0.22 * (1 - d / 32));
+}
+function poopClear(keep = () => false) { for (let i = POOP.length - 1; i >= 0; i--) if (!keep(POOP[i])) POOP.splice(i, 1); }
+function syncPoop(dt) {
+  const life = T.poop.life;
+  for (let i = POOP.length - 1; i >= 0; i--) {
+    const p = POOP[i]; p.t += dt; if (p.t > life) { POOP.splice(i, 1); continue; }
+    if (p.rest || p.t < p.wait) continue;
+    p.vy -= 14 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    const gy = groundY(p.x, p.z) + p.sz * 0.8;
+    if (p.y < gy) { p.y = gy; if (p.vy < -1.2) { p.vy *= -0.3; p.vx *= 0.5; p.vz *= 0.5; } else { p.vy = 0; p.vx *= 1 - Math.min(1, dt * 12); p.vz *= 1 - Math.min(1, dt * 12); if (Math.abs(p.vx) + Math.abs(p.vz) < 0.05) p.rest = true; } }
+  }
+  let n = 0;
+  for (const p of POOP) {
+    if (p.t < p.wait) continue;
+    const s = p.sz * Math.min(1, (life - p.t) / 4);
+    _m4.compose(_v.set(p.x, p.y, p.z), _q.setFromEuler(_e.set(0, p.ry, 0)), _s.set(s, s, s)); poopMesh.setMatrixAt(n++, _m4);
+  }
+  poopMesh.count = n; poopMesh.instanceMatrix.needsUpdate = true;
+}
+
 // fireflies at night
 const fireflies = (() => {
   const n = 60, g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3);
@@ -5290,6 +5338,11 @@ function updateSheep(dt, dtH) {
     }
     if (s.bell && sp > 1.2) { s.bellT -= dt * sp; if (s.bellT <= 0) { s.bellT = 1.7; bellDing(s); } }
     sickTrail(s, dt);   // VET: drips, flies, green sweat
+    { const PO = T.poop, fr = Math.max(s.stress, s.panic); s.poopT = (s.poopT || 0) - dt;   // POOP: scared, now and then
+      if (fr > PO.at && s.poopT <= 0 && !sleeping && !s.air && !s.heldBy && Math.random() < dt * PO.rate * (fr - PO.at) / (1 - PO.at)) {
+        s.poopT = PO.cd * rnd(0.7, 1.3); const hs = s.scale * s.grow;
+        poopFx(s.x - Math.sin(s.yaw) * 0.6 * hs, s.y + 0.55 * hs, s.z - Math.cos(s.yaw) * 0.6 * hs, s.yaw, Math.round(rnd(...PO.n) * (s.lamb ? 0.6 : 1)), hs, s.vx, s.vz);
+      } }
     // ---- ambient baa
     s.baaT -= dt; if (s.baaT <= 0) { s.baaT = rnd(20, 60); if (!sleeping) baaAt(s, 0.18); }
     // ---- entering a pen
@@ -16591,6 +16644,7 @@ function seaCastOff(force = false) {
 // Cold Harbour's astern: the land goes with the sea from here on (LAND under seaG, where it lay); whatever of it isn't the boat's goes with it.
 // Sheep not brought down are left on the mountain; all that's alive is aboard
 function seaLandOff() {
+  poopClear(p => onDeck(p.x, p.z));   // POOP: the land's stays with it
   for (const s of living()) if (!onDeck(s.x, s.z, -0.6) && !(s.air && s.air.kind === 'swim')) killSheep(s, 'left');
   seaLandAway(); HANK.asleep = false; HANK.goal = null;
 }
@@ -18338,6 +18392,7 @@ function finishGame(n) {
 }
 function resetGame() {
   seaReset();   // SAILING: back ashore
+  poopClear();   // POOP
   for (const c of G.coyotes) scene.remove(c.models.root); G.coyotes = []; G.packs = []; G.dens = []; initDens(); resetBurrows();   // (BURROWS: filled)
   for (const g of G.graves) scene.remove(g.root); G.graves = [];
   resetCougars();
@@ -18761,7 +18816,7 @@ function netScreens() {
 // ---- effects: one hook for every sound and bit of feedback ----------------------------------------------
 const FXR = {};                                // name -> local function (wrapped)
 const FXPOS = { x: 0, z: 0, on: false };      // where the last panOf() pointed (so guests can pan for their own camera)
-const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0, yowl: 0, screech: 0 };   // which argument of Sound.x is the pan
+const SND_PAN = { bark: 1, baa: 2, howl: 0, yelp: 0, whimper: 0, gate: 1, yips: 0, growl: 0, scream: 0, hiss: 0, yowl: 0, screech: 0, prrt: 0 };   // which argument of Sound.x is the pan
 let fxDepth = 0;
 function fx(name, ...a) { const f = FXR[name]; return f ? f(...a) : undefined; }
 // opt: keep(args) = send it at all · pan = which argument is the stereo pan · after(result) = send only if the call
@@ -19616,7 +19671,7 @@ function netGuestWipe() {
   for (const g of G.graves) scene.remove(g.root);
   for (const b of [...BONES]) killBone(b);   // (BONES: the host's come next; this screen's own are kept on this device)
   G.dogs = []; G.players = []; G.sheep = []; G.coyotes = []; G.packs = []; G.graves = []; resetBurrows();   // (BURROWS: the host's come next)
-  particles.length = 0; floats.length = 0;
+  particles.length = 0; floats.length = 0; poopClear();
   for (const T of NET_LIST) if (T.make) NET.ids[T.tag] = new Map();
 }
 function netApplySnap(m) {
@@ -19909,6 +19964,7 @@ ropeFx = fxDef('ropeFx', ropeFx);
 boneFx = fxDef('boneFx', boneFx);                                    // BONES: picked up, caught, tossed, clattering, bonking                                    // ROPES: biting, shaking, a tug starting, won
 treeFx = fxDef('treeFx', treeFx);                                    // APPLES: a tree shaken                                 // WATER: picking up, filling, tipping a bucket
 appleFx = fxDef('appleFx', appleFx);   // APPLES: picked up, lobbed, taken from a dog's mouth
+poopFx = fxDef('poopFx', poopFx);   // POOP
 seaFx = fxDef('seaFx', seaFx); ringFx = fxDef('ringFx', ringFx);   // SAILING: everything you see and hear of the voyage (its own synth: SEAS), the life rings
 for (const k of Object.keys(Sound)) {
   const d = Object.getOwnPropertyDescriptor(Sound, k);
@@ -20005,7 +20061,7 @@ function frame(now) {
   syncSnakes();           // RATTLESNAKES
   syncRemains(dt);        // REMAINS: bodies rotting, carried, stones coming up
   syncSea(dt);            // SAILING: the sea round the boat, her rig, what's out there
-  updateParticles(dt); updateRings(dt);
+  updateParticles(dt); updateRings(dt); syncPoop(dt);
   if (grassDirty) { grassT -= dt; if (grassT <= 0) { uploadGrass(); grassT = 0.2; } }
   if (meltDirty) { meltUpT -= dt; if (meltUpT <= 0) { meltTex.needsUpdate = true; meltDirty = false; meltUpT = 0.2; } }   // MOUNTAIN PASS: MELT
   renderer.render(scene, camera);
@@ -20230,7 +20286,7 @@ if (DEBUG) {
   $('fps').addEventListener('pointerdown', () => devToggle());   // (touch: no ` key)
 }
 // expose for debugging / automated tests
-window.GAME = { FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
+window.GAME = { POOP, poopFx, syncPoop, FALCON, FALCONS, CANYON, BOSS, updateBoss, bossHit, eyrieShake, canyonK, updateCanyon, canyonMark, canyonBird, canyonSwoop, NESTS, falconCome, falconPick, updateFalcon, resetFalcon, falconDrop, hurtDog, startMaul, endMaul, cougarLeapDog, coyoteNip, G, T, pens, CAMPS, cam, DENS, LAIRS, hankSees, hankSpotPredators, hankNap, COUGARS, cougarHunt, cougarTarget, updateCougars, resetCougars, GROVES, perchGrove, nearGrove, cougarsAtNightfall, cougarsNear, COUGAR_CAMPS, cougarBonked, initDens, wakeDens, wakeDen, updateDens, hitCoyote, knockDog, spawnPack, cougarGrab, findPath, navLOS, killSheep, makeSheep, bark, teamOf, teamBark, frame, startGame, resetGame, finishGame, spawnCoyotes, toggleGate, stepClock, grassAt, sAt, sdfAt, PATH_LEN, renderer, scene, camera, step, updateCamera, pathPoint, RIVER, terrainH, joinPlayer, flockCenter, living,
   provokeRam, updateGateGeometry, setGate, MIND, OBSTACLES, KN, flockKnots, sheepNav, grass: { gAmt, gCap, gInit, VX, VZ, VS, GMINX, GMINZ, uploadGrass },
   // dog moves & physics
   MV, FX, LAUNCHERS, launchSheep, launchCoyote, fireLauncher, gatePsi, groundY, penAt, riverAcross, riverAlong, overWater, inRiver, inChute, swimSdfAt, wadeSdfAt, grabPrey: grab, dropPrey, scareCoyote, renderOnce, CAM_R, CAM_F, floats,
@@ -20260,7 +20316,7 @@ function renderOnce(dt = 1 / 60) {
   for (const c of G.coyotes) syncCoyote(c);
   for (const k of COUGARS) syncCougar(k);
   for (const F of FALCONS) syncFalcon(F);
-  syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
+  syncCanyon(dt); syncPass(dt); syncSheep(dt); syncMoves(dt); syncSheepDressUp(dt); syncHank(dt); syncForage(dt); syncWater(dt); syncDigs(dt); for (const h of BURROWS) syncBurrow(h); syncRopes(dt); syncBones(); syncVendor(dt); syncSnakes(); syncRemains(dt); syncBonk(0); syncSea(dt); updateParticles(dt); updateRings(dt); syncPoop(dt); if (grassDirty) uploadGrass(); if (meltDirty) { meltTex.needsUpdate = true; meltDirty = false; }
   renderer.render(scene, camera); drawOverlay(dt); updateHUD(dt); updateMap(dt);
 }
 Object.assign(window.GAME, { PASS, ICES, CREVS, SIDE, passK, liftAt, liftArr, slopeArr, downhill, iceK, crevAt, sideD, POST, GOATS, YETI, ROCK, SNOWBALLS, heatAt, sheepCold, dogCold, warmGo, fireSpots, startSlide, slideStep, crevFall, crevOut, crevAlone,

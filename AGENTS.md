@@ -107,6 +107,7 @@ Run the ones touching your change; report the numbers.
 | `graze-sim.mjs [--moveon\|--trough N]` | fill rate, spacing, moving on |
 | `crowd-sim.mjs [graze\|trough\|day] [--n N] [--at S] [--bare R]` | big flocks: middle vs edge grazing, a crowded trough night, a day at camp |
 | `lamb-sim.mjs [--hunger H]` | evening penning → lambs at dawn |
+| `poop-test.mjs` | scared sheep poop, calm ones don't; pellets settle, then go |
 | `gateway-sim.mjs` | stalls at gates |
 | `straggler-sim.mjs [--trials N]` | stragglers behind the pen / the open leaf get in |
 | `morning-sim.mjs [--trials N]` | penned flock leaves at dawn and stays out |
@@ -205,6 +206,8 @@ turns the stick into its own (`netReadInput`).
   best green patch near a flockmate, not by a den or brambles, shouldering
   through (`grassDash`, `heft`). Hungry on good grass: less flock pull (`stay`),
   lets a calm drift go by (`tuck`), food beats flock (`want`).
+- **Scared sheep poop** (`T.poop`, `poopFx`, `POOP`, drawing only): past `at` stress or panic, now and then a few pellets out the back
+  (`Sound.prrt`); they bounce, lie `life` s, shrink away. Each screen its own; `poopFx` is an fx (guests get it).
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
