@@ -422,7 +422,9 @@ try {
   await A.page.evaluate(() => GAME.closeDawn());
   await until(B, () => !GAME.G.paused, null, 5000).catch(() => {});
   const dawnStill = await B.page.evaluate(() => !document.getElementById('dawn').classList.contains('hidden') && !GAME.G.paused && document.getElementById('menuBadge').textContent);
-  await B.page.click('#dawn .bbtn.go');
+  const [holdS, graceS] = await B.page.evaluate(() => { document.activeElement && document.activeElement.blur(); return [GAME.T.dawn.hold, GAME.T.dawn.grace]; });   // (held to go on; not in its first moment)
+  await sleep(graceS * 1000 + 150);
+  await B.page.keyboard.down('Enter'); await sleep(holdS * 1000 + 500); await B.page.keyboard.up('Enter');
   await sleep(300);
   const dawnGone = await B.page.evaluate(() => document.getElementById('dawn').classList.contains('hidden') && !GAME.DAWN.open);
   const dawnMenus = await A.page.evaluate(() => GAME.G.menus.join());
