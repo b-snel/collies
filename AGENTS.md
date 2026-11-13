@@ -169,6 +169,8 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
   leaf's free end; pressed ones slide along, not into it. Lambs follow a
   penned mum in.
+- **Ajar gates.** Unlatched and a crack open (`penAjar`): pens pull as if open; a sheep wanting in (`s.ppPen`) or driven at
+  it shoulders it wider (`sheepNudgesGate`, `T.gate.sheep`).
 - **Carrying.** A held sheep passes an open gateway (`mouthOf`), not a shut
   gate or a fence.
 - **Cornered sheep break out** past the dog after a warning bleat.
