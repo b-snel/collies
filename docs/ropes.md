@@ -24,5 +24,6 @@
   The vagabond plays the same (`vagRope`, `T.vag.tug`; `e.npc`, `ropeNpc(R)`); never both on one rope.
 - **A llama on it** (`R.llama`: LLAMAS): roped by a dog dragging it up to a wild one, a tug as Hank's (`T.llama.tug`); broken: led on it
   (`ropeHold`: it barely pulls back). No dog-on-dog tug, nor Hank or the vagabond, on a rope with a llama on it.
+- **A wild ram on it** (`R.wild`: WILD RAMS, docs/kin.md): the same, round his horns (`wildNeck`, `T.wild.tug`, `wildTugEnd`).
 - **The trial rope** (`R.trial`, TRIALS, docs/trials.md): the llama lead's (the host's llama on it: `R.llama`) and the tug of war's (the local
   champion on its far end: `R.champ`, a dog on a rope as Hank is, `T.trial.tug`). Hank and the vagabond keep off it during an event.

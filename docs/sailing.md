@@ -74,7 +74,8 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   spills her wind), or her anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
 - **Islands** (`ISLES`, `ISLE`, `T.sea.isle`): ground in deck coords while she's alongside (`sdf`, `h`): beach, meadow, a crag (rock),
   a spring (`fresh`: the bucket fills). Drawn from the same shape. On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
-  a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard.
+  a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard. On one, a castaway ram who
+  follows a dog aboard (WILD RAMS, docs/kin.md).
 - **Hazards, worse each leg** (`HAZ`, `seaHazards`): 🐋 orcas bonk the hull (sheep by that rail go over; a bark
   turns one; they pick the rail the sheep are by). 🪨 reefs (a ♥ off the hull; at 0 she wallows till mended), gusts,
   and from here on 🦈 a shark for each sheep in the water (bark: off a while). ⛈️ storm: gale, breaking seas,

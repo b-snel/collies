@@ -16,6 +16,7 @@ the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly.
 The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), each once, against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
+Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
@@ -32,7 +33,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, 🤒 button: the pox, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
-  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale). `window.GAME` exposes
+  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
@@ -101,11 +102,13 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - BARN
 - DAWN REPORT
 - saved flock
+- LINEAGE (KIN, THE TREE)
 - JOURNEY SAVE
 - TRIALS
 - DUCKS (+ HERD: the small-herd mover)
 - VAGABOND (the VENDOR's wares)
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
+- WILD RAMS (the castaway)
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
 - game flow
 - `ambMix`
@@ -198,7 +201,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `ringSheep(s, a, dt)`
 - `p.off` / `r.off` / `sp.off` (an island's things while she's not there)
 - `sp.chest`
-- `e.npc` (HANK, VAG: a man on a rope; `ropeNpc(R)`, `hankTug(R, dt, beat, hk)`, `hankTugEnd(R, won, ax, az, hk)`)
+- `e.npc` (HANK, VAG: a man on a rope; `ropeNpc(R)`, `hankTug(R, dt, beat, hk)`, `hankTugEnd(R, won, ax, az, hk)`; LLAMAS `R.llama`, WILD RAMS `R.wild`)
 - `VAG.mode` ('land' | 'sea' | 'away'; 'sea': `VAG.seaStep(dt, dtH)` runs him)
 - `vagAt(x, z, yaw)`
 - `vagHide()`
@@ -212,6 +215,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `vagSeaStart()` (from `seaStart`)
 - `vagBarkAt(d, busy)` (busy: loose sheep / foes the bark reached: not a nag)
 - `e.isLlama` (LLAMAS: on a rope it's an `e.npc`; `R.llama`, `ropeNpc(R)`), `llamaNeck(L, out)` (its halter), `launchLlama(L, vx, vz, vy, kind, by)` / `L.air` / `L.heldBy` (as a sheep's), `llamasAboard()`
+- `s.lid` / `s.inF` (LINEAGE: its record in `KIN`, how inbred), `kinFounder(s, src)` (new blood: no known parents; `src` a `KIN_SRC` key), `kinPair(a, b)`
 - `L.wear` (`{ hat, tint, acc }`, `llamaHas(L, id)`), `llamaSet(L, ch)` (LLAMA WARDROBE: a guest's goes to the host as `ll`), `L.greens` / `L.salt` (its pack), `L.cold` (0…1)
 - `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
 - `trialClear(x, z, pad)` (keep off the trials' ring), `trialY(x, z)` (in `groundY` via `TRIAL_Y`), `trialHerdFault(kind, e, d)`, `R.champ` (a dog on a rope: `ropeNpc`), `b.trial` (not kept)
@@ -304,6 +308,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/ducks.md`: duck bunches, HERD (the small-herd mover: ducks, the trials' sheep), flying up, drawing.
 - `docs/llamas.md`: wild herds, population, capture (rope, tug), guards and their spit, bonk and grab, shearing, gear (wardrobe, barn), cold, packs.
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
+- `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
 
 ### Icons
