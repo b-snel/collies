@@ -55,7 +55,7 @@ if (want('polar')) {
     const { SEA } = GAME, out = {};
     for (const [name, twa] of [['irons', 0.35], ['close', 0.87], ['reach', 1.57], ['broad', 2.36], ['run', 3.05]]) {
       H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0;
-      H.run(45, t => { H.steer(0); if (t > 30) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); } });
+      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); } });   // (30 s: the seas make 15 s of it a lottery)
       out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(SEA.trim), boom: H.deg(Math.abs(SEA.boom)) };
     }
     return out;
