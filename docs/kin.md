@@ -5,7 +5,7 @@ Issue #176. Sections: LINEAGE (after FLOCK SAVE), WILD RAMS (after LLAMAS). Test
 ## Lineage (`KIN`)
 
 - **Records** (`KIN.recs`, `kinRec(id)`): one per sheep ever, `{ i, n, r, m, f, j, d, w, s, x, e }`: name, ram, mum, sire, journey and
-  day born, wool, new blood (`KIN_SRC`: 🏆 trial, 🎒 vag, 🌿 wild, 🏖 isle), how it died (`x`, '' alive), day it died. `s.lid` on a sheep.
+  day born, wool, new blood (`KIN_SRC`: 🏆 trial, 🎒 vag, 🌿 wild, 🏖 isle), how it died (`x`, '' alive; `'sold'`: to the vagabond, `kinGone`), day it went. `s.lid` on a sheep.
   Ids only go up: a lamb's is always above its parents' (no loops; `kinIn` drops any that aren't).
 - **Founders** (`kinFounder`): no known parents. A new journey's new arrivals (`kinStart`, after `applySavedFlock`); the first lambs get
   their mum and a ram in turn (no dice). New blood is a founder with a source; it's on the next dawn card (`kinNewcomers`).

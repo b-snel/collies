@@ -15,7 +15,11 @@
     lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9 (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width
     apart, flush to it, no pockets), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
     (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. 🧪: `T.vendor.vaccine.n` doses (`docs/pox.md`). ♈ a ram, on a mat of its own out front (row 2), one a pitch, on land
-    (`vagRamStock`, `vagRamSell`: he's on the mat, then off to the flock; new blood, docs/kin.md); called when the flock needs one (`kinNeedRam`). Too poor or no room: ✖,
+    (`vagRamStock`, `vagRamSell`: he's on the mat, then off to the flock; new blood, docs/kin.md); called when the flock needs one (`kinNeedRam`).
+    🐑 SELLING, on the same row: a sheep stood (or carried) on the mat (`sellSheepOn`; in the barking dog's jaws first); the tag: what he'd
+    pay, ★ (`sheepStars`). A bark: his price (✔?, `VSTALL.sellAsk`); again within `T.vendor.sell.confirm` s: sold (`sellWare`, `sellSheep`:
+    🧶 in, gone, not a death: no eulogy, no remains; its record `'sold'`; saved at once). What it's worth (`sheepWorth`, `T.vendor.sell`):
+    age (lamb, yearling, old), fleece, size, a ram (his bravery), the champion, the bell ewe, sick, hungry, inbred; ÷ his mood (`sheepPrice`). Too poor or no room: ✖,
     nothing spent (`vendorFx`); none delivers to the yeti's cave (`penFound`).
   - **Mood**: a bonk (`vagPounced`; a flying sheep: `vagAirHit`), a nag (`barkN` barks within `barkR` in `barkWin` s that bought nothing
     and reached no loose sheep or foe: `vagBarkAt`; herding by him isn't one), a grab (`vagGrip`, `holdKind 'vag'`: dragged, flailing, screaming; let go: dusts off) are grievances (`VAG.griev`,
