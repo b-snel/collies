@@ -2,6 +2,7 @@
 
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
   lamb at dawn (`T.lambChance`). A ram over `T.readyLose` eats before he courts.
+  Each lamb's mum and sire are kept; close kin breed weak lambs, fewer of them (docs/kin.md).
 - **Age** (`s.age` days, `ageAtDawn`, `oldK(s)` from `T.oldDays`); dies of age
   at dawn past `s.life`.
 - **Forage.** Run over plants to carry (`T.forage.carryCap`), walk to a trough

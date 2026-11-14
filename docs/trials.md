@@ -34,7 +34,7 @@
   all there: by the judge (`trialHankIdle`, after his jobs). Steps over the ring's hurdles (`trialHankHop`).
 - **The prizes** (`trialAwards`): all eight run, or by `to` with some run and a dog by. Totals, placings (a tie's yours). 🥇 the champion ram
   (`trialChampRam`: `s.champ`, brave, big; joins the flock; his rosette drawn on `s.bodyM`; saved with the flock; the next dawn report:
-  `trialNewcomers`) and the keg; 🥈 the keg and `wool[1]` 🧶; 🥉 `wool[2]`. An event won: a rosette for the dogs (`trialRosette`, once).
+  `trialNewcomers`; new blood: `kinFounder(s, 'trial')`, docs/kin.md) and the keg; 🥈 the keg and `wool[1]` 🧶; 🥉 `wool[2]`. An event won: a rosette for the dogs (`trialRosette`, once).
 - **Co-op**: one team against the rivals: one score an event, one row on the board; any dog's bark on a mat starts it; every dog takes part
   (agility: a run each); anyone's fault is the team's; every dog there gets the xp; the prizes go to every dog (the ram to the one flock).
 - **The keg** (DOG WARDROBE `keg`, a prize: never dug up; on every dog of ours, a friend's online too: `netFoundFor(p, id, wear)`): a dog wearing it (`d.keg`, `trialKeg`) is a little fire up the pass (`kegHeat` in
