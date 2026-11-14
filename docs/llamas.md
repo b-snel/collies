@@ -15,7 +15,7 @@
   Carried home: gone (`preyKill` → `llamaKilled`, `G.stats.criasLost`; no grave). Online: `grabbed`; a coyote's `prey` is a sheep or a cria.
 - **Capture** (ROPES): a dog dragging a rope within `catchR` of a grown wild one (not `L.waryH`): the rope's on its halter (`llamaRope`,
   `R.llama`, `L.ropeI` a little past the dog's grip) and it's a tug of war, the llama as a man on a rope (`e.npc`, `ropeNpc(R)`,
-  `hankTug` with `T.llama.tug` × `L.str`; it pulls facing away, spits at the dog now and then: just goo). Heaves on the beat break it;
+  `hankTug` with `T.llama.tug` × `L.str`; it pulls facing away, spits at the dog now and then: just goo, even landing after it). Heaves on the beat break it;
   mashing or just walking back loses. Lost (or let go): it bolts (`boltSpd`, `bolt` s), wary `waryH` h (`llamaTugEnd`). Won: broken
   (`L.tame` 1), led on the rope (`llamaLed`, `lead`: barely pulls back); within `joinR` of 2 sheep, or in a pen: a guard (`llamaJoin`,
   `L.tame` 2), off the rope (still in the dog's mouth), her cria too. Hank and the vagabond keep off a rope with a llama on it.
@@ -36,7 +36,8 @@
   size² 🧶; fleece regrows over `regrowDays`.
 - **Drawing** (`llamaModel`, `llamaGeo` per coat, `syncLlamas`, every screen): a woolly barrel and neck (FUR shells), banana ears, a
   topknot, big lashy eyes, a split-lip smile, two-toed feet; coats (`LLAMA_COATS`): white … black, paint, appaloosa, two-tone. Pacing
-  walk, grazing, kushed, chewing, ears back when cross, cheeks puffed to spit. Tame: a halter; guards: tassels on the ears. Fleece by
+  walk, grazing, kushed, chewing, ears back when cross (tame: nagged once, `L.nag`: the warning), cheeks puffed to spit. Tame: a halter;
+  guards: tassels on the ears, a collar and a bell (`llamaBellGeo`, `M.bell`: it swings, `LSND.bell` clinks a step, each its own note). Fleece by
   `L.wool`. Spit: `spitFx` (a glob, a splat). Sounds: `LSND` (hum, alarm, gurgle, spit). `llamaFx`: what the sim's events look and sound like.
 - **Gear** (LLAMA WARDROBE: `LLAMA_ITEMS`, `LWARD`, `localStorage['collies.llamas.v1']`, found for good): a saddle blanket, a pack, a chullo,
   a bell, a garland. Dug up only once there's a guard (`llamaDig` in `digUp`): the first find then is the blanket, the next the pack, then any
