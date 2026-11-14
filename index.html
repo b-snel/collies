@@ -59,7 +59,7 @@
   #hint.show { opacity:1; animation:hintIn .5s cubic-bezier(.3,1.6,.5,1); }
   @keyframes hintIn { from { transform:translateX(-50%) translateY(14px) scale(.85); } to { transform:translateX(-50%); } }
   #hint b { color:#c0392b; }
-  #hint .hintBar { position:absolute; left:0; bottom:0; height:4px; width:100%; background:#ffd36b; transform-origin:left; transform:scaleX(var(--left, 1)); }
+  #hint .hintBar { position:absolute; left:0; bottom:0; height:4px; width:100%; background:#ffd36b; transform-origin:left; transform:scaleX(var(--left, 1)); will-change:transform; }
   #toasts { position:absolute; top:84px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:6px; }
   #bossBar { top:84px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:10px; padding:4px 16px; font-size:24px; }
   #bossBar b { color:#ff5a5a; letter-spacing:3px; text-shadow:0 2px 0 rgba(0,0,0,.35); }
@@ -1140,8 +1140,14 @@ const T = {
   //   (stalls past rudStall); yawD: turning damps; weather: she rounds up when pressed; leeJib / back: the jib pulls her head off (backed, in irons)
   // roll / pitch / heaveK: w rad/s and damping z; heelK: the sail's lean; ballast: per kg·m of flock off the centreline (a ewe: 1); follow: of the sea's slope
   // wave: sea state = (wind - from) / span (min…max), up in build s, down in ease s; swell / chop: m at calm + per sea state; surf / shove / yaw:
-  //   how the slopes push her; slamV: bow coming down that fast slams (slamLoss of her way); rogue: a great wave, m
-  // wind: veer rad and breathe (share) of its slow wander; gusts: born gustFar m to windward gustRate a s (× the leg's gustiness), gustR m across, +gustAmp
+  //   how the slopes push her; slamV: bow coming down that fast slams (slamLoss of her way); rogue: a great wave, m; turn: s the wind sea takes to
+  //   come round to a new wind, swellTurn: the swell's (it runs from the weather that raised it)
+  // wind: veer rad and breathe (share) of its quick wander; gusts: born gustFar m to windward gustRate a s (× the leg's gustiness), gustR m across, +gustAmp,
+  //   veered up to gustVeer rad (lulls back); prevail: s to come round to a new leg's own wind. Shifts that hold: every shiftGap s it settles
+  //   shiftStep rad further round (more often back), over shiftTurn s, never past shiftMax off the leg's own (× √ its veer; light airs, a calm: light× more)
+  // front: a line of new wind `veer`° round, sweeping down at spd m/s (at least her way + 4) from far m to windward (to be on her in eta s); a lull
+  //   (-lull) pre m ahead of it, a squall (+k, rain) w m deep behind it; Hank calls it warn s off; the new wind holds `hold` s. A leg's (ROUTE[i].front)
+  //   reaches her `at` along
   // anchor: rode m, holds in under depth m (else it only drags: a drogue); dropT / weighT s; just weighed (or cast off): no drop for lock s, nor
   //   till the stick's been let go, then held down dropHold s; hauling paused, it slips back after slip s. station: reach m; dead: stick dead zone; holdP/holdD: the
   //   helm holding a course; ease/haul: sheet /s (÷ load); hoist /s; hank…: Hank on the sheet (slack rad off the best, haul /s, eases past hankEase rad of heel)
@@ -1159,8 +1165,10 @@ const T = {
     hull: { hp: 5, mend: 2, c1: 0.035, c2: 0.021, hump: [9.5, 6], keelL: 1.3, keelC: 0.3, rud: 0.016, rudMax: 0.61, rudStall: 0.4, rudRate: 2.4, rudSoft: 8, rudLow: 1.2, rudDrag: 0.05, turnDrag: 0.9,
       yawD: [0.3, 0.11, 0.6], weather: [0.01, 0.06], leeJib: 0.0009, back: 0.0016, awash: 4 },
     roll: { w: 1.75, z: 0.3, heelK: 0.46, ballast: 0.0105, follow: 0.8, max: 1.12, stiff: 3, soft: 0.85 }, pitch: { w: 2.5, z: 0.45, squat: 0.012 }, heaveK: { w: 2.8, z: 0.5 },
-    wave: { from: 2.5, span: 19, min: 0.03, max: 1.15, build: 14, ease: 25, turn: 30, swell: [0.12, 2.5], chop: [0.04, 0.95], surf: 0.35, shove: 0.3, yaw: 0.02, pitchDrag: 0.6, slamV: 0.5, slamLoss: 0.06, rogue: 3.4 },
-    wind: { veer: [0.14, 0.09], breathe: [0.1, 0.06], turn: 5, rise: 5, gustDrift: 0.85, gustFar: 230, gustMax: 6, gustRate: 0.13, gustR: [28, 55], gustAmp: [0.25, 0.55], gustVeer: 0.22, lull: 0.25 },
+    wave: { from: 2.5, span: 19, min: 0.03, max: 1.15, build: 14, ease: 25, turn: 30, swellTurn: 150, swell: [0.12, 2.5], chop: [0.04, 0.95], surf: 0.35, shove: 0.3, yaw: 0.02, pitchDrag: 0.6, slamV: 0.5, slamLoss: 0.06, rogue: 3.4 },
+    wind: { veer: [0.14, 0.09], breathe: [0.1, 0.06], turn: 5, rise: 5, gustDrift: 0.85, gustFar: 230, gustMax: 6, gustRate: 0.13, gustR: [28, 55], gustAmp: [0.25, 0.55], gustVeer: 0.22, lull: 0.25,
+      prevail: 22, shiftGap: [25, 55], shiftStep: [0.15, 0.4], shiftTurn: [5, 10], shiftMax: 0.45, light: 1,
+      front: { eta: 24, far: [120, 330], spd: 13, w: 60, k: 0.75, pre: 120, lull: 0.45, rain: 0.85, warn: 16, at: [0.3, 0.65], veer: [55, 85], hold: [70, 100] } },
     anchor: { rode: 14, k: 1.6, damp: 0.5, drag: 9, creep: 1.2, drogue: 0.12, lever: 0.3, vane: 0.0012, depth: 30, dropT: 1.4, weighT: 2.4, lock: 1.5, dropHold: 0.35, slip: 0.8 },
     station: { reach: 0.7, dead: 0.2, lead: 0.5, holdP: 2.2, holdD: 2.4, ease: 0.6, haul: 0.5, load: 0.25, hoist: 0.45, run: 0.9, hankSlack: 0.05, hankHaul: 0.22, hankEase: 0.42, hankSpill: 1.6 },
     deck: { grip: 0.36, dogGrip: 0.5, slide: 5.5, wash: 3, washOver: 0.45, washR: 1.6, washRate: 1.4, stress: 0.9, stormStress: 0.9, uneasy: 0.5, jolt: 0.25, slideStress: 0.25 },
@@ -15729,7 +15737,7 @@ function nudge(key, x, y, z, txt, col = '#ffd36b') {
   ctx.fillStyle = '#1b1a22'; richText(txt, 0, 1); ctx.restore();
   return true;
 }
-const hintQ = []; let hintT = 0, hintAge = 0;
+const hintQ = []; let hintT = 0, hintAge = 0, hintLeft = '';
 const hintLen = h => clamp(5 + h.replace(/<[^>]+>/g, '').length * 0.075, 9, 16);   // s on screen: longer to read, longer up
 function hint(key) {
   if (key === 'gate-opened') { if (!G.hints.herd) { hint('herd'); [['modes', 9], ['bark', 18], ['pounce', 27], ['grab', 36], ['travel', 45], ['lie', 54]].forEach(([k, s]) => setTimeout(() => hint(k), s * 1000)); } return; }
@@ -15742,10 +15750,10 @@ function updateHints(dt) {
   if (hintT > 0) {
     if (held) return;
     hintT -= dt; hintAge += dt; if (hintQ.length) hintT = Math.min(hintT, 8 - hintAge);   // more waiting: this one still gets 8 s
-    el.style.setProperty('--left', Math.max(0, hintT / (hintT + hintAge)).toFixed(3));
+    const lf = Math.max(0, hintT / (hintT + hintAge)).toFixed(2); if (lf !== hintLeft) { hintLeft = lf; el.style.setProperty('--left', lf); }   // (only when it moves: a restyle every frame starves the game)
     if (hintT <= 0) el.classList.remove('show'); return;
   }
-  if (hintQ.length && !held) { const k = hintQ.shift(), h = (TOUCH.on && TOUCH_HINTS[k]) || HINTS[k]; el.innerHTML = h + '<span class="hintBar"></span>'; el.style.setProperty('--left', 1); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); hintT = hintLen(h); hintAge = 0; }
+  if (hintQ.length && !held) { const k = hintQ.shift(), h = (TOUCH.on && TOUCH_HINTS[k]) || HINTS[k]; el.innerHTML = h + '<span class="hintBar"></span>'; el.style.setProperty('--left', 1); hintLeft = ''; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); hintT = hintLen(h); hintAge = 0; }
 }
 let hudT = 0;
 function updateHUD(dt) {
@@ -21476,7 +21484,7 @@ const SEA = {
   docked: true, berth: 0, warp: null, moorOff: 0, pilot: null,   // alongside a jetty (berth: which island's; 0: Cold Harbour) … seaCastOff; warp: being hauled in to one; pilot: the course Hank holds her on till a dog takes the tiller
   anchor: 'up', anchorT: 0, ae: 0, an: 0, weigh: 0, holding: false, aweighT: 0,   // 'up' | 'down' (ae/an: where it lies; holding: it's bitten the bottom; aweighT: s till it can be dropped again)
   aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
-  state: 0.2, run: 0, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0,   // sea state, where the sea runs to, lee of an island, how wild the ride, water over a rail (±), ballast moment
+  state: 0.2, run: 0, swell: 0, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0,   // sea state, where the wind sea / the swell runs to, lee of an island, how wild the ride, water over a rail (±), ballast moment
   jolt: { u: 0, v: 0 }, hull: 5, leg: 0, legK: 0, saved: -1, wake: [], wakeT: 0, slamT: 0, gybeT: -9, overT: -9, flash: 0, rogue: null,
   storm: 0, rain: 0, fog: 0, calm: 0, ink: 0, hold: null,       // weather over her; hold: something has her (the kraken)
 };
@@ -21500,10 +21508,11 @@ const SGRP = { k: SWAVES[0].k / 7, ph: 0 };   // the swell comes in sets: its he
 function seaWavesStep(dt) {
   const S = SEA, K = T.sea.wave, tgt = clamp((WIND.spd - K.from) / K.span, K.min, K.max) * S.shelter * (1 - 0.85 * S.calm);
   S.state += (tgt - S.state) * Math.min(1, dt / (tgt > S.state ? K.build : K.ease));
-  S.run = lerpA(S.run, WIND.dir + Math.PI, Math.min(1, dt / K.turn));
+  S.run = lerpA(S.run, WIND.dir + Math.PI, Math.min(1, dt / K.turn));   // the wind sea runs with the wind
+  S.swell = lerpA(S.swell, WIND.base + WIND.shift + Math.PI, Math.min(1, dt / K.swellTurn));   // the swell runs from the weather that raised it: slow to come round (a cross sea after a shift)
   let steep = 0;
   for (const w of SWAVES) {
-    const a = S.run + w.off;
+    const a = (w.sw ? S.swell : S.run) + w.off;
     if (w.ang === null) w.ang = a;
     if (a !== w.ang) {   // the train swings round the boat, not round the far-off origin (its crests keep their place here)
       const de = Math.sin(a), dn = Math.cos(a);
@@ -21550,20 +21559,33 @@ function seaRogue(fromDir, amp = T.sea.wave.rogue, dist = 170) {   // a great wa
 }
 
 // ---------------- WIND ----------------
-const WIND = { dir: 4.7, spd: 7, base: 4.7, baseSpd: 7, gustK: 0.4, veerK: 1, gusts: [], here: { spd: 7, dir: 4.7, k: 0 }, seed: 1 };
+// dir, spd: the wind where she is (gusts aside: WIND.here). It never sits still: base, the leg's own (seaWeather: a new leg's comes round to it
+// over a while); shift, how far round from that it's settled (a shift that holds: shiftTo, swung to at shiftK /s; windWeather); a quick wobble
+// on top (veer × veerK); gusts veer, lulls back. front: a line of new wind sweeping down on her (windFront)
+const WIND = { dir: 4.7, spd: 7, base: 4.7, baseSpd: 7, gustK: 0.4, veerK: 1, gusts: [], here: { spd: 7, dir: 4.7, k: 0 }, seed: 1,
+  shift: 0, shiftTo: 0, shiftK: 0.15, shiftT: 40, front: null, frontLeg: -1, frontAt: null, frontVeer: 0 };
 const _wh = { spd: 0, dir: 0, k: 0 };
+// SHARED HOOK: the wind at (e, n): hers and the gusts there; across a front's line, the other wind; a squall just behind the line, a lull just ahead
 function windAt(e, n, out = _wh) {
   let k = 0, veer = 0;
   for (const g of WIND.gusts) { const d = Math.hypot(e - g.e, n - g.n); if (d < g.r) { const f = (1 - smooth(0.5, 1, d / g.r)) * Math.min(1, g.age / 4); k += g.k * f; veer += g.veer * f; } }
+  const F = WIND.front;
+  if (F) {
+    const x = F.de * e + F.dn * n - F.pos;   // (m; +: it's still to come there)
+    if (!F.hit && x < 0) veer += F.dv; else if (F.hit && x > 0) veer -= F.dv;   // (WIND.dir is hers: the old wind till the line's reached her)
+    if (x < 0) k += F.k * (1 - smooth(F.w * 0.4, F.w, -x)) * Math.min(1, (SEA.t - F.t0) / 3); else k -= F.lull * (1 - smooth(10, F.pre, x));
+  }
   out.k = k; out.spd = Math.max(0, WIND.spd * (1 + k)); out.dir = WIND.dir + veer; return out;
 }
+const windSquall = (e = SEA.e, n = SEA.n) => { const F = WIND.front; if (!F) return 0; const x = F.de * e + F.dn * n - F.pos; return x < 0 ? 1 - smooth(F.w * 0.6, F.w * 1.5, -x) : 0; };   // (0…1: in a front's squall)
 function windStep(dt) {
   const S = SEA, K = T.sea.wind, t = S.t;
   const wob = (K.veer[0] * Math.sin(t * 0.045 + 1.3) + K.veer[1] * Math.sin(t * 0.113 + 4)) * WIND.veerK;
-  WIND.dir = lerpA(WIND.dir, WIND.base + wob, Math.min(1, dt / K.turn));
+  WIND.dir = lerpA(WIND.dir, WIND.base + WIND.shift + wob, Math.min(1, dt / K.turn));
   const breathe = 1 + K.breathe[0] * Math.sin(t * 0.09 + 2) + K.breathe[1] * Math.sin(t * 0.23);
   WIND.spd += (WIND.baseSpd * breathe * (1 - S.calm) - WIND.spd) * Math.min(1, dt / K.rise);
-  // gust patches: born to windward, they drift down on her; dark on the water, so you see them coming
+  // gust patches: born to windward, they drift down on her; dark on the water, so you see them coming. A gust veers (it's the wind from higher up
+  // brought down), a lull backs
   const fe = Math.sin(WIND.dir), fn = Math.cos(WIND.dir), sp = WIND.spd * K.gustDrift;
   for (let i = WIND.gusts.length - 1; i >= 0; i--) {
     const g = WIND.gusts[i]; g.e -= fe * sp * dt; g.n -= fn * sp * dt; g.age += dt;
@@ -21571,9 +21593,49 @@ function windStep(dt) {
   }
   if (WIND.gusts.length < K.gustMax && WIND.spd > 2 && Math.random() < dt * K.gustRate * WIND.gustK) {
     const up = rnd(K.gustFar * 0.6, K.gustFar), lat = rnd(-1, 1) * K.gustFar * 0.6, lull = Math.random() < K.lull;
-    WIND.gusts.push({ e: S.e + fe * up - fn * lat, n: S.n + fn * up + fe * lat, r: rnd(K.gustR[0], K.gustR[1]), k: lull ? -rnd(0.25, 0.4) : rnd(K.gustAmp[0], K.gustAmp[1]) * (0.6 + 0.4 * WIND.gustK), veer: rnd(-1, 1) * K.gustVeer, age: 0 });
+    WIND.gusts.push({ e: S.e + fe * up - fn * lat, n: S.n + fn * up + fe * lat, r: rnd(K.gustR[0], K.gustR[1]), k: lull ? -rnd(0.25, 0.4) : rnd(K.gustAmp[0], K.gustAmp[1]) * (0.6 + 0.4 * WIND.gustK), veer: (lull ? -1 : 1) * rnd(0.25, 1) * K.gustVeer, age: 0 });
   }
+  const F = WIND.front; if (F) F.pos = F.p0 + F.c * (S.t - F.t0);
   windAt(S.e, S.n, WIND.here);
+}
+// the weather going round (seaWeather, host): b, the leg's island; k, how far along it she is
+function windWeather(dt, b, k) {
+  const W = WIND, K = T.sea.wind, S = SEA, light = Math.max(S.calm, 1 - smooth(2.5, 5.5, W.baseSpd)) * K.light, rv = Math.sqrt(W.veerK), F = W.front;
+  // a shift: now and then it settles a step further round and holds there (more often back toward the leg's own; past shiftMax, always back).
+  // Light airs and a calm: further, and sooner. Not while a front's coming
+  const max = K.shiftMax * rv * (1 + light);
+  if ((!F || F.hit) && (W.shiftT -= dt * (1 + light)) <= 0) {
+    const back = -Math.sign(W.shiftTo) || (Math.random() < 0.5 ? 1 : -1), far = Math.abs(W.shiftTo) / max, step = rnd(K.shiftStep[0], K.shiftStep[1]) * rv * (1 + light);
+    W.shiftTo = far >= 1 ? W.shiftTo + back * Math.min(step, Math.abs(W.shiftTo)) : clamp(W.shiftTo + (Math.random() < 0.5 + 0.45 * far ? back : -back) * step, -max, max);
+    W.shiftT = rnd(K.shiftGap[0], K.shiftGap[1]); W.shiftK = 1 / rnd(K.shiftTurn[0], K.shiftTurn[1]);
+  }
+  W.shift += (W.shiftTo - W.shift) * Math.min(1, dt * W.shiftK);
+  // a front: a leg that has one (ROUTE[i].front: [chance, at, veer°]) has it come down on her once she's that far along
+  if (W.frontLeg !== S.leg) {
+    W.frontLeg = S.leg; const f = b.front;
+    W.frontAt = f && Math.random() < f[0] ? f[1] || rnd(K.front.at[0], K.front.at[1]) : null;
+    if (W.frontAt !== null) W.frontVeer = (f[2] || rnd(K.front.veer[0], K.front.veer[1]) * (Math.random() < 0.5 ? 1 : -1)) * D2R;
+  }
+  const sh = Math.sin(S.hdg), ch = Math.cos(S.hdg), ve = (S.u * sh + S.v * ch) * T.sea.pace, vn = (S.u * ch - S.v * sh) * T.sea.pace;   // (her way over the sea)
+  if (W.frontAt !== null && !F && !S.docked && !S.warp && S.calm < 0.3) {   // (it sets off eta s before she's there, by the way she's making along the leg)
+    const a = ROUTE[b.i - 1], lx = b.e - a.e, ln = b.n - a.n, len = Math.hypot(lx, ln) || 1;
+    if (k > W.frontAt - Math.max(0, (ve * lx + vn * ln) / len) * K.front.eta / len - 0.02) { W.frontAt = null; windFront(W.frontVeer); }
+  }
+  if (!F) return;
+  const x = F.de * S.e + F.dn * S.n - F.pos, close = F.c - (ve * F.de + vn * F.dn);   // (how far off the line is: + still to come; how fast it's closing on her)
+  if (!F.warned && x < Math.max(0, close) * K.front.warn) {
+    F.warned = true; seaFx('front', 0, 0, 0, F.dir1); hank(null, pick(["Squall comin'! The wind's goin' round!", "Dark water to windward: here comes a squall!"]), { force: true });
+  }
+  if (!F.hit && x < 0) { F.hit = true; F.rec = null; W.shift = W.shiftTo = F.to; W.shiftT = rnd(K.front.hold[0], K.front.hold[1]); seaFx('squall', 0, 0, 0, F.dv); }   // it's here: the new wind, and it holds
+  if (x < -(F.w * 3 + 80) || S.t - F.t0 > 160) W.front = null;   // (gone by)
+}
+// SHARED HOOK (windWeather; dev, tests): a front on its way: a line of new wind `veer` rad round from hers (+: veered), sweeping down on her faster
+// than she can sail, from the new wind's windward: far m off (else as far as it'll come in eta s)
+function windFront(veer, far) {
+  const W = WIND, K = T.sea.wind.front, S = SEA, to = W.shiftTo + veer, dir1 = W.base + to, de = -Math.sin(dir1), dn = -Math.cos(dir1), c = Math.max(K.spd, seaSpd() + 4);
+  if (far === undefined) { const sh = Math.sin(S.hdg), ch = Math.cos(S.hdg); far = clamp((c - ((S.u * sh + S.v * ch) * de + (S.u * ch - S.v * sh) * dn) * T.sea.pace) * K.eta, K.far[0], K.far[1]); }
+  const p0 = de * S.e + dn * S.n - far;
+  return W.front = { de, dn, p0, t0: S.t, pos: p0, c, dir1, from: W.shiftTo, to, dv: veer, k: K.k * (1 - 0.6 * S.storm), lull: K.lull, w: K.w, pre: K.pre, hit: false, warned: false, rec: null };
 }
 
 // ---------------- the sail: lift and drag off the apparent wind ----------------
@@ -22043,6 +22105,14 @@ function stationShake(st, d) {   // a shake (Ⓑ) on it
   if (st.id === 'tiller') { SEA.lash = !SEA.lash; seaFx(SEA.lash ? 'lash' : 'unlash', 0, st.x, st.z); if (SEA.lash) { releaseHoldQuiet(d); } }
   else if (st.id === 'sheet') { SEA.sheet = 1; seaFx('dump', 0, st.x, st.z); }
 }
+// the course Hank steers her on while he has the helm (S.pilot): for the next island's jetty (whatever the wind's set her to), never so close to the
+// wind she stops; close-hauled instead, on the tack nearer it
+function seaPilotCrs() {
+  const S = SEA, nx = seaNext(), aim = nx ? seaBear(nx.e, nx.n) : S.pilot, ng = T.sea.sail.noGo + 0.12, w = WIND.here.dir, off = wrapA(aim - w);
+  if (Math.abs(off) >= ng) { S.pilotTack = Math.sign(off); return aim; }
+  if (!S.pilotTack || Math.sign(off) !== S.pilotTack && Math.abs(off) > 0.3) S.pilotTack = Math.sign(off) || 1;   // (a wobble across it: no tacking to and fro)
+  return w + S.pilotTack * ng;
+}
 function releaseHoldQuiet(d) { const st = stationOf(d); d.holding = null; d.holdKind = null; d.grabLock = true; if (st) st.by = null; }
 function seaStations(dt) {
   const S = SEA, K = T.sea.station;
@@ -22074,7 +22144,7 @@ function seaStations(dt) {
     }
   }
   const til = STATIONS[0];
-  if (!til.by && S.pilot != null) S.helm = clamp(wrapA(S.pilot - S.hdg) * K.holdP - S.r * K.holdD, -1, 1);   // Hank minds the helm out of the harbour
+  if (!til.by && S.pilot != null) S.helm = clamp(wrapA(seaPilotCrs() - S.hdg) * K.holdP - S.r * K.holdD, -1, 1);   // Hank minds the helm out of the harbour
   else if (!til.by && !S.lash) S.helm += (0 - S.helm) * Math.min(1, dt * 2.5);   // nobody on it: it swings amidships (and she rounds up)
   if (S.reefAim != null) S.hoist += clamp(S.reefAim - S.hoist, -dt * 0.3, dt * 0.3);   // let go between reefs: it settles to the nearest
   // Hank on the sheet while no dog has it: he trims to the wind (a beat late, never quite spot on), eases her when she's pressed, lets it fly when he must
@@ -22113,7 +22183,7 @@ const seaAshore = () => G.sheep.filter(s => !s.dead && !onDeck(s.x, s.z, 0.25) &
 const seaDogsAshore = () => G.dogs.filter(d => !(d.air && d.air.swim) && !onDeck(d.x, d.z, -0.4)).length;
 // coming in to an island's jetty: near it and slow enough (or her anchor down close by), Hank takes her lines and she's warped alongside
 function seaMoorStep(dt) {
-  const S = SEA, K = T.sea.isle, w = seaNext();
+  const S = SEA, K = T.sea.isle;
   if (S.warp) {   // hauled in on her lines: from where she was to where she'll lie
     const W = S.warp, D = DOCKS[W.i], k = smooth(0, 1, (W.t += dt / K.warp));
     S.e = lerp(W.e, D.e, k); S.n = lerp(W.n, D.n, k); S.hdg = wrapA(W.hdg + wrapA(D.hdg - W.hdg) * k); S.u = S.v = S.r = 0; S.helm = 0; S.sheet = 1;
@@ -22121,9 +22191,11 @@ function seaMoorStep(dt) {
     if (W.t >= 1) { S.warp = null; seaMoor(W.i); }
     return;
   }
-  if (S.docked || !w) return;
+  if (S.docked) return;
   if (S.moorOff) { if (seaDist(DOCKS[S.moorOff].e, DOCKS[S.moorOff].n) > K.moorR * 2.4) S.moorOff = 0; else return; }
-  const D = DOCKS[w.i], d = seaDist(D.e, D.n), sp = seaSpd(), down = S.anchor === 'down' && S.anchorT <= 0;
+  // the jetty she's coming up to: any island's (she needn't stop at each, nor in order)
+  let w = null, d = 1e9; for (let i = 1; i < ROUTE.length; i++) { const dd = seaDist(DOCKS[i].e, DOCKS[i].n); if (dd < d) { d = dd; w = ROUTE[i]; } }
+  const D = DOCKS[w.i], sp = seaSpd(), down = S.anchor === 'down' && S.anchorT <= 0;
   if (d < K.moorR * 2.2 && sp > K.moorSpd) { S.u *= Math.exp(-dt * 1.5); S.sheet = Math.min(1, S.sheet + dt * 1.5); }   // Hank spills the wind as she comes up to it
   if (d < K.moorR && sp < K.moorSpd * 1.7 || down && d < K.moorR * 2.2) {
     S.warp = { i: w.i, t: 0, e: S.e, n: S.n, hdg: S.hdg }; S.anchor = 'up'; S.holding = false; S.weigh = 0; S.pilot = null; S.course = null; S.lash = false;
@@ -22133,7 +22205,7 @@ function seaMoorStep(dt) {
 }
 // SHARED HOOK: made fast alongside island i's jetty: its ground is there to walk on (ISLE), the gangway open; saved, mended, restocked
 function seaMoor(i) {
-  const S = SEA, w = ROUTE[i]; S.docked = true; S.berth = i; S.near = true; SEA_AWAY = true; QUAY.on = true; ISLE = ISLES[i] || null; seaMoored();
+  const S = SEA, w = ROUTE[i]; S.docked = true; S.berth = i; S.near = true; S.nearI = i; SEA_AWAY = true; QUAY.on = true; ISLE = ISLES[i] || null; seaMoored();
   if (w.final) { seaArrive(); return; }
   DECK.lock = false; setGate(DECK, true); DECK.wasOpen = true; isleShow(i, true);
   HAZ.orcaOn = false; HAZ.orcas.length = 0; HAZ.sharks.length = 0;   // (whatever was after her: gone)
@@ -22186,13 +22258,14 @@ function seaLandAway() {   // (ONLINE: a guest does this much when she casts off
 function seaLandOn() { if (LAND.parent !== scene) { scene.add(LAND); LAND.matrix.identity(); LAND.matrixWorldNeedsUpdate = true; } LAND.visible = true; }
 
 // ---------------- the way across: legs from island to island (sea m), each with its own wind and its own trouble ----------------
-// brg: compass course (deg) and len (m) from the last; wind: from (deg), m/s; gust: how gusty; veer: how shifty; hazard: what's out there
+// brg: compass course (deg) and len (m) from the last; wind: from (deg), m/s; gust: how gusty; veer: how shifty; hazard: what's out there;
+// front: [chance, at (how far along; 0: anywhere in T.sea.wind.front.at), veer° (+: veers; 0: either way)] of a front on the way (windWeather)
 const ROUTE = [
   { name: 'Cold Harbour', icon: '⚓', wind: [270, 7.5], kind: 'pine' },
   { name: 'Seal Skerry', icon: '🐋', brg: 20, len: 800, wind: [270, 7.5], gust: 0.35, hazard: 'orca', kind: 'pine' },
-  { name: 'Gull Rock', icon: '🪨', brg: 320, len: 720, wind: [292, 8.5], gust: 1, veer: 1.5, hazard: 'reef', kind: 'rock' },
-  { name: 'Storm Key', icon: '⛈️', brg: 70, len: 1150, wind: [255, 9], gust: 0.8, hazard: 'storm', kind: 'rock' },
-  { name: "Siren's Rest", icon: '🧜', brg: 0, len: 760, wind: [95, 6.5], gust: 0.3, hazard: 'siren', kind: 'palm' },
+  { name: 'Gull Rock', icon: '🪨', brg: 320, len: 720, wind: [292, 8.5], gust: 1, veer: 1.5, hazard: 'reef', kind: 'rock', front: [0.5, 0, 0] },
+  { name: 'Storm Key', icon: '⛈️', brg: 70, len: 1150, wind: [255, 9], gust: 0.8, hazard: 'storm', kind: 'rock', front: [1, 0.56, 70] },
+  { name: "Siren's Rest", icon: '🧜', brg: 0, len: 760, wind: [95, 6.5], gust: 0.3, hazard: 'siren', kind: 'palm', front: [0.5, 0, 0] },
   { name: 'The Promised Land', icon: '🌈', brg: 40, len: 1000, wind: [135, 8.5], gust: 0.4, hazard: 'kraken', kind: 'palm', final: true },
 ];
 // Sea coords: east and north of where she lies at Cold Harbour. The land's in them too (LAND: carried off with the sea once she's away):
@@ -22271,29 +22344,45 @@ function seaWeather(dt) {
   const mix = smooth(0.02, 0.16, k); let dir = lerpA(a.wd, b.wd, mix), spd = lerp(a.ws, b.ws, mix), gust = lerp(a.gust || 0.3, b.gust || 0.3, mix), veer = lerp(a.veer || 1, b.veer || 1, mix);
   // the storm on the Storm Key leg: it builds, blows a gale, and blows itself out before the island
   const st = b.hazard === 'storm' ? smooth(K.storm.from, K.storm.full, k) * (1 - smooth(K.storm.ease, K.storm.to, k)) : 0;
-  S.storm += (st - S.storm) * Math.min(1, dt / 4); S.rain += (smooth(0.25, 0.7, st) - S.rain) * Math.min(1, dt / 3);
+  S.storm += (st - S.storm) * Math.min(1, dt / (st > S.storm ? 7 : 4)); S.rain += (Math.max(smooth(0.25, 0.7, st), windSquall() * K.wind.front.rain) - S.rain) * Math.min(1, dt / 3);   // (a front's squall: a burst of rain)
   if (st > 0) { spd = lerp(spd, K.storm.wind, st); gust = lerp(gust, 1.5, st); dir = dir - 0.3 * st; }
   const fog = b.hazard === 'siren' ? smooth(0.06, 0.2, k) * (1 - smooth(0.86, 0.97, k)) : 0; S.fog += (fog * K.siren.fog - S.fog) * Math.min(1, dt / 5);
   S.calm += ((KRAKEN.calm ? 1 : 0) - S.calm) * Math.min(1, dt / (KRAKEN.calm ? 6 : 3));   // the kraken's water: dead calm
-  WIND.base = dir; WIND.baseSpd = spd; WIND.gustK = gust; WIND.veerK = veer;
+  // the leg's own wind: a new leg's comes round to it over a while (a long way round: light and fitful as it goes); then the weather on top
+  const round = Math.abs(wrapA(dir - WIND.base));
+  WIND.base = lerpA(WIND.base, dir, Math.min(1, dt / K.wind.prevail)); WIND.baseSpd = spd * (1 - 0.45 * smooth(0.6, 2.2, round)); WIND.gustK = gust; WIND.veerK = veer;
+  windWeather(dt, b, k);
   let sh = 1; for (const w of ROUTE) { const d = Math.hypot(S.e - w.e, S.n - w.n); sh = Math.min(sh, 1 - K.isle.lee * (1 - smooth(K.isle.anchorR, K.isle.anchorR * 4.5, d))); }
   S.shelter += (sh - S.shelter) * Math.min(1, dt / 5);
 }
-// coming up to an island (alongside it: seaMoorStep), passing it by; rain in the trough
+// coming up to an island (any of them; alongside it: seaMoorStep), the way on (seaLegStep); rain in the trough
 function seaRouteStep(dt, dtH) {
-  const S = SEA, K = T.sea, w = seaNext(); if (!w) return;
-  const d = seaDist(w.e, w.n), spd = Math.hypot(S.u, S.v), fast = S.anchor === 'down' && S.anchorT <= 0 && S.holding && spd < 1.2;
-  if (d < K.isle.anchorR * 1.7 && !S.near) { S.near = true; seaFx('land', 0, 0, 0, w.i); }
-  if (w.final) return;   // (the Promised Land: alongside its jetty, that's the journey: seaMoor)
-  if (S.near && !S.docked && !S.warp && d > K.isle.anchorR * 4 && S.legPast) { S.leg++; S.near = false; S.legPast = false; seaFx('leg', 0, 0, 0, S.leg); }   // sailed on by without stopping
-  if (S.near) { const n2 = ROUTE[S.leg + 1]; S.legPast = !!n2 && seaDist(n2.e, n2.n) < Math.hypot(n2.e - w.e, n2.n - w.n) - K.isle.anchorR; }
+  const S = SEA, K = T.sea, I = K.isle;
   // the night's weather passes at anchor; rain tops up the water trough; at dawn Hank fills the troughs from the hold
   if (S.rain > 0.3) fillWater(DECK, S.rain * K.rainFill * dtH);
+  for (let i = 1; i < ROUTE.length; i++) {   // close by an island: its name (S.near: it's the next one)
+    const d = seaDist(ROUTE[i].e, ROUTE[i].n);
+    if (d < I.anchorR * 1.7 && S.nearI !== i) { S.nearI = i; seaFx('land', 0, 0, 0, i); } else if (S.nearI === i && d > I.anchorR * 4) S.nearI = 0;
+  }
+  S.near = S.nearI === S.leg;
+  seaLegStep();
+}
+// SHARED HOOK: the way on. She needn't stop at an island, nor keep to the way: the leg she's on (S.leg: the island it's to; its hazard, its
+// weather) is the nearest of those still to come, never one back; she's passed every island before it once she's well clear of it
+function seaLegStep() {
+  const S = SEA, I = T.sea.isle; if (S.docked || S.warp || S.leg >= ROUTE.length - 1) return;
+  let best = S.leg, bd = 1e9;
+  for (let L = S.leg; L < ROUTE.length; L++) {
+    const a = ROUTE[L - 1], b = ROUTE[L], lx = b.e - a.e, ln = b.n - a.n, t = clamp(((S.e - a.e) * lx + (S.n - a.n) * ln) / (lx * lx + ln * ln), 0, 1), d = Math.hypot(S.e - a.e - lx * t, S.n - a.n - ln * t);
+    if (d < bd - (L > S.leg ? 25 : 0)) { bd = d; best = L; }
+  }
+  let L = S.leg; while (L < best && seaDist(ROUTE[L].e, ROUTE[L].n) > I.anchorR * 4) L++;   // (one she's still close by: she may yet stop there)
+  if (L !== S.leg) { S.leg = L; S.near = false; seaFx('leg', 0, 0, 0, L); }
 }
 // SHARED HOOK (the save system to come): she's alongside an island's jetty. SEA.saved: the last island reached; SEA.onSave(w, snapshot) if set
 function seaCheckpoint(w) {
   const S = SEA; if (S.saved >= w.i) return;
-  S.saved = w.i; S.leg = Math.min(ROUTE.length - 1, w.i + 1); S.near = false; S.legPast = false;
+  S.saved = w.i; S.leg = Math.min(ROUTE.length - 1, w.i + 1); S.near = false;
   S.hull = Math.min(T.sea.hull.hp, S.hull + T.sea.hull.mend); seaStock();
   const snap = { isle: w.i, name: w.name, day: G.clock.day, hour: G.clock.hour, sheep: living().length, hull: S.hull, stores: Object.assign({}, S.stores) };
   S.checkpoint = snap; if (typeof S.onSave === 'function') S.onSave(w, snap);
@@ -22651,7 +22740,7 @@ function sirenStep(dt) {
 // (or yourself) into its eye. hp hits: it sinks, the wind fills in. Barks do nothing ----------------
 function krakenStep(dt) {
   const S = SEA, K = T.sea.kraken, Q = KRAKEN;
-  if (!Q.on && !Q.beaten && hazLeg() === 'kraken' && S.legK > K.at - 0.06 && S.legK < K.at + 0.2 && !Q.calm) { Q.calm = true; Q.t = 0; seaFx('calm'); hank(null, "The wind's died. I dinnae like this water…", { force: true }); }
+  if (!Q.on && !Q.beaten && hazLeg() === 'kraken' && S.legK > K.at - 0.06 && !S.docked && !S.warp && !Q.calm) { Q.calm = true; Q.t = 0; seaFx('calm'); hank(null, "The wind's died. I dinnae like this water…", { force: true }); }
   S.ink += ((Q.calm ? 1 : 0) - S.ink) * Math.min(1, dt / 4);
   if (!Q.calm) return;
   Q.t += dt;
@@ -22843,12 +22932,12 @@ function seaLight(dt) {
 // where they are: something still to steer by) ----------------
 const SKY_DOME = (() => {
   const u = { uHor: { value: new THREE.Color('#a8dcf5') }, uZen: { value: new THREE.Color('#4f9fe6') }, uSun: { value: new THREE.Vector3(0.4, 0.8, 0.4) }, uSunC: { value: new THREE.Color('#fff3d6') },
-    uT: { value: 0 }, uStorm: { value: 0 }, uNight: { value: 0 }, uFlash: { value: 0 } };
+    uT: { value: 0 }, uStorm: { value: 0 }, uNight: { value: 0 }, uFlash: { value: 0 }, uFront: { value: new THREE.Vector4(1, 0, 1, 0) } };
   const mat = new THREE.ShaderMaterial({ uniforms: u, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     vertexShader: `varying vec3 vD; void main() { vD = position; gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
       precision highp float;
-      uniform vec3 uHor, uZen, uSun, uSunC; uniform float uT, uStorm, uNight, uFlash; varying vec3 vD;
+      uniform vec3 uHor, uZen, uSun, uSunC; uniform float uT, uStorm, uNight, uFlash; uniform vec4 uFront; varying vec3 vD;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
       float fbm(vec2 p) { return vnoise(p) * 0.55 + vnoise(p * 2.1 + 7.3) * 0.3 + vnoise(p * 4.3 - 2.9) * 0.15; }
@@ -22866,6 +22955,13 @@ const SKY_DOME = (() => {
           float fade = smoothstep(0.015, 0.1, el) * (1.0 - smoothstep(0.55, 0.95, el) * (1.0 - uStorm));
           vec3 cc = mix(mix(uHor, vec3(1.0), 0.55), vec3(1.0), c2) * mix(1.0, 0.42, uStorm) * mix(1.0, 0.35, uNight);
           col = mix(col, cc, c1 * fade * 0.92);
+        }
+        // a front: a dark bank of cloud low over the water it's coming from, the higher the nearer; gone by, low the way it went
+        if (uFront.w > 0.0 && el > -0.02) {
+          float hl = max(length(d.xz), 1e-3); vec2 hd = d.xz / hl; float x = uFront.z, fa = dot(hd, uFront.xy) * sign(x + 1e-3), te = max(el, 0.0) / hl;
+          float rag = fbm(vec2(atan(hd.y, hd.x) * 4.0, uT * 0.03)) - 0.5, top = (70.0 + rag * 60.0) * fa;
+          float bank = smoothstep(0.0, 0.3, fa) * (1.0 - smoothstep(-5.0, 5.0, te * max(abs(x), 6.0) - top));
+          col = mix(col, mix(uHor, vec3(0.17, 0.2, 0.26), 0.75) * mix(1.0, 0.4, uNight), bank * uFront.w * 0.9);
         }
         gl_FragColor = vec4(col + uFlash * 0.4, 1.0);
         #include <colorspace_fragment>
@@ -22885,6 +22981,7 @@ const SEAW = (() => {
     uSun: { value: new THREE.Vector3(0.4, 0.8, 0.4) }, uLight: U.uWaterLight, uState: { value: 0.2 }, uWindTo: { value: new THREE.Vector2(0, 1) }, uWindSpd: { value: 7 },
     uGust: { value: Array.from({ length: N }, () => new THREE.Vector4()) }, uShoal: { value: Array.from({ length: NS }, () => new THREE.Vector4(0, 0, -1, 0)) }, uWake: { value: Array.from({ length: NW }, () => new THREE.Vector4()) },
     uBoat: { value: new THREE.Vector4() }, uBoatF: { value: new THREE.Vector2(0, 1) }, uHeel: { value: 0 }, uStorm: { value: 0 }, uRain: { value: 0 }, uFlash: { value: 0 }, uInk: { value: 0 }, uShadow: { value: new THREE.Vector2() },
+    uFront: { value: new THREE.Vector4(1, 0, 1e5, 0) }, uFrontW: { value: 60 },
     uHor: SKY_DOME.u.uHor, uZen: SKY_DOME.u.uZen, uSunC: SKY_DOME.u.uSunC, uHaze: { value: new THREE.Vector2(1, 1) },
     uDeep: { value: new THREE.Color('#0f4a86') }, uMid: { value: new THREE.Color('#1a6fb0') }, uLite: { value: new THREE.Color('#2f9bd0') }, uCrest: { value: new THREE.Color('#7fd6e6') },
     uFoam: { value: new THREE.Color('#f4fbff') }, uShal: { value: new THREE.Color('#45cfd6') }, uSand: { value: new THREE.Color('#9fe0c8') }, uSlate: { value: new THREE.Color('#33506a') },
@@ -22909,8 +23006,8 @@ const SEAW = (() => {
       }`,
     fragmentShader: `
       precision highp float;
-      uniform float uT, uState, uWindSpd, uStorm, uRain, uFlash, uInk, uHeel, uRogW;
-      uniform vec4 uW[5]; uniform float uPh[5]; uniform float uQ[5]; uniform vec4 uGrp; uniform vec4 uRogue;
+      uniform float uT, uState, uWindSpd, uStorm, uRain, uFlash, uInk, uHeel, uRogW, uFrontW;
+      uniform vec4 uW[5]; uniform float uPh[5]; uniform float uQ[5]; uniform vec4 uGrp; uniform vec4 uRogue; uniform vec4 uFront;
       uniform vec2 uOrg, uWindTo, uBoatF, uShadow, uHaze; uniform vec3 uCam, uSun, uLight, uDeep, uMid, uLite, uCrest, uFoam, uShal, uSand, uSlate, uHor, uZen, uSunC;
       uniform vec4 uGust[${N}]; uniform vec4 uShoal[${NS}]; uniform vec4 uWake[${NW}]; uniform vec4 uBoat;
       varying vec3 vP; varying vec2 vX;
@@ -22957,6 +23054,14 @@ const SEAW = (() => {
           float f = (1.0 - smoothstep(0.45, 1.0, d + (vnoise(q * 0.09 + float(i) * 7.0) - 0.5) * 0.35)) * min(1.0, abs(gu.w) * 2.5);
           col = gu.w > 0.0 ? mix(col, col * 0.66, f * (0.75 + 0.25 * vnoise(q * 0.6))) : mix(col, uLite * 1.05, f * 0.4);
         }
+        // a front: its line sweeping down on her, ragged; just behind it the squall (dark, breaking), then the new wind (darker); ahead of it, a glassy lull
+        float sqK = 0.0;
+        if (uFront.w > 0.0) {
+          float fx = dot(vP.xz, uFront.xy) - uFront.z + (vnoise(q * 0.011) - 0.5) * 46.0 + (vnoise(q * 0.06) - 0.5) * 9.0;
+          sqK = smoothstep(3.0, -6.0, fx) * (1.0 - smoothstep(uFrontW * 0.5, uFrontW * 1.4, -fx)) * uFront.w;
+          col = mix(col, col * 0.55, sqK * (0.8 + 0.2 * vnoise(q * 0.7)) + 0.32 * smoothstep(3.0, -40.0, fx) * uFront.w);
+          col = mix(col, uLite * 1.05, smoothstep(0.0, 8.0, fx) * (1.0 - smoothstep(25.0, 130.0, fx)) * 0.28 * uFront.w);
+        }
         // shallows round the islands (sand showing through, a line of surf) and reefs (awash, breaking)
         float foam = 0.0, shal = 0.0;
         for (int i = 0; i < ${NS}; i++) {
@@ -22991,6 +23096,7 @@ const SEAW = (() => {
         foam = max(foam, smoothstep(0.9, 0.99, swell + (n1 - 0.5) * 0.2) * smoothstep(0.35, 0.6, n2) * smoothstep(0.55, 0.85, uState) * nfS);   // the big seas' crests breaking
         // spindrift: streaks of foam blown down the wind in a gale
         foam = max(foam, smoothstep(0.7, 0.86, vnoise(vec2(a2 * 0.8, a1 * 0.05 - uT * 0.4))) * 0.55 * smoothstep(0.6, 0.95, uState) * nfC);
+        foam = max(foam, smoothstep(0.6, 0.8, n2 * 0.6 + n1 * 0.5) * sqK * 0.8 * nfC);   // the squall: every crest breaking
         // her wake, and the water along her side
         vec2 bd = vP.xz - uBoat.xy, br2 = vec2(-uBoatF.y, uBoatF.x);
         float bu = dot(bd, uBoatF), bv = dot(bd, br2), spd = uBoat.z;
@@ -23048,6 +23154,9 @@ function syncSeaWater(dt) {
   u.uHaze.value.set(T.sea.cam.haze[1] * 0.62 * (1 - 0.55 * Math.max(S.storm, S.fog)), sk);
   const wte = -Math.sin(WIND.dir), wtn = -Math.cos(WIND.dir); u.uWindTo.value.set(seaX(wte, wtn), seaZ(wte, wtn));
   for (let i = 0; i < W.N; i++) { const g = WIND.gusts[i]; if (g) u.uGust.value[i].set(seaX(g.e, g.n) - ox, seaZ(g.e, g.n) - oz, g.r, g.k * Math.min(1, g.age / 4)); else u.uGust.value[i].set(0, 0, -1, 0); }
+  { const F = WIND.front, x = F ? F.de * S.e + F.dn * S.n - F.pos : 0, f = F ? Math.min(1, (S.t - F.t0) / 4) * (1 - smooth(F.w * 1.5, F.w * 3 + 80, -x)) : 0;   // a front: on the water, in the sky
+    if (f > 0) { const dx = seaX(F.de, F.dn), dz = seaZ(F.de, F.dn); u.uFront.value.set(dx, dz, F.pos - (dx * ox + dz * oz), f); u.uFrontW.value = F.w; SKY_DOME.u.uFront.value.set(-dx, -dz, x, f); }
+    else { u.uFront.value.w = 0; SKY_DOME.u.uFront.value.w = 0; } }
   const near = SEA_SHOALS.filter(s => Math.hypot(s.e - S.e, s.n - S.n) < s.r + 900).sort((a, b) => Math.hypot(a.e - S.e, a.n - S.n) - Math.hypot(b.e - S.e, b.n - S.n));
   for (let i = 0; i < W.NS; i++) { const s = near[i]; if (s) u.uShoal.value[i].set(seaX(s.e, s.n) - ox, seaZ(s.e, s.n) - oz, s.r, s.kind); else u.uShoal.value[i].set(0, 0, -1, 0); }
   for (let i = 0; i < W.NW; i++) { const w = S.wake[i]; if (w) { const age = S.t - w.t; u.uWake.value[i].set(seaX(w.e, w.n) - ox, seaZ(w.e, w.n) - oz, 2.6 + age * 1.5, w.k * Math.exp(-age / 3.2) * Math.min(1, age * 2 + 0.3)); } else u.uWake.value[i].set(0, 0, 1, 0); }
@@ -23483,14 +23592,15 @@ Object.assign(HINTS, {
   'sea-ring': 'Face the sheep in the water and <b>let go</b>: the ring flies to her. Then <b>grab</b> its line 🪢 at the rail.',
   'sea-haul': 'She has the ring! <b>Grab</b> its line 🪢 at the rail and hold on: it comes in. <b>Pounce</b> heaves.',
   'sea-isle': 'Alongside! Go ashore down the gangway: flowers 🌼 and salt 🧂 for the troughs, a spring 💧 for the bucket, and something buried 💎. Back aboard, then ⚓ at the bow.',
-  'sea-anchor': 'An island: sail in <b>close by its jetty</b>, slowly (let the sheet fly, or drop ⚓): Hank takes her lines. Alongside she\'s mended and restocked, and you can go ashore.',
+  'sea-anchor': 'An island: sail in <b>close by its jetty</b>, slowly (let the sheet fly, or drop ⚓): Hank takes her lines. Alongside she\'s mended and restocked, and you can go ashore. Or sail on by.',
+  'sea-front': 'A squall 💨: the wind swings round to the dashed arrow. Trim, or turn with it. Mind the boom.',
   'sea-night': 'Night at sea. Lie alongside an island till dawn, or sail on in the dark.',
   'sea-gybe': 'Wind right astern: the boom will crash across. <b>Lie down</b> and it goes over your head.',
   'sea-lash': 'A <b>pounce</b> press on the tiller lashes it: she holds her helm while you see to the flock. <b>Grab</b> again lets go of a station.',
 });
 Object.assign(TOUCH_HINTS, {
   'sea-start': '✊ at the bow ⚓, stick up. Then ✊ the tiller 🧭.', 'sea-dock': '🐑 down the road ➜ ⛵, and you. Then ✊ ⚓ at the bow, stick up.', 'sea-away': '✊ the tiller 🧭 to steer.', 'sea-irons': 'Not into the wind (red). Bear away.', 'sea-heel': 'Flock to the <b>high side</b>, or reef 🪢.',
-  'sea-over': '✊ a 🛟, face her, let go. Then ✊ its line 🪢.', 'sea-ring': 'Face her, let go ✊: thrown. Then ✊ the line 🪢.', 'sea-haul': '✊ the line 🪢, hold. 💥 heaves.', 'sea-isle': 'Ashore: 🌼 🧂 💧 💎. Then ⚓ at the bow.', 'sea-anchor': 'Close by its jetty, slowly: alongside.', 'sea-night': 'Alongside an island till dawn, or sail on.', 'sea-gybe': 'Boom coming over: 💤 to duck.', 'sea-lash': '💥 on the tiller lashes it. ✊ again lets go.',
+  'sea-over': '✊ a 🛟, face her, let go. Then ✊ its line 🪢.', 'sea-ring': 'Face her, let go ✊: thrown. Then ✊ the line 🪢.', 'sea-haul': '✊ the line 🪢, hold. 💥 heaves.', 'sea-isle': 'Ashore: 🌼 🧂 💧 💎. Then ⚓ at the bow.', 'sea-anchor': 'Close by its jetty, slowly: alongside. Or sail on.', 'sea-front': '💨: the wind swings to the dashed arrow.', 'sea-night': 'Alongside an island till dawn, or sail on.', 'sea-gybe': 'Boom coming over: 💤 to duck.', 'sea-lash': '💥 on the tiller lashes it. ✊ again lets go.',
 });
 function seaHUD() {   // SHARED HOOK (updateHUD): the compass points at the next island (the bow's up the screen)
   const S = SEA, w = seaNext(); if (!w) return;
@@ -23514,6 +23624,13 @@ function drawSeaDial() {
   { const k = clamp(S.tw / 20, 0.12, 1), [x0, y0] = at(tw, R - 4), [x1, y1] = at(tw, R - 6 - (R * 0.42) * (0.45 + 0.55 * k)), gust = WIND.here.k > 0.12;
     ctx.strokeStyle = gust ? '#ffffff' : '#9fe3ff'; ctx.lineWidth = gust ? 5 : 4; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     const a = Math.atan2(y1 - y0, x1 - x0); ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.moveTo(x1 + Math.cos(a) * 7, y1 + Math.sin(a) * 7); ctx.lineTo(x1 + Math.cos(a + 2.4) * 7, y1 + Math.sin(a + 2.4) * 7); ctx.lineTo(x1 + Math.cos(a - 2.4) * 7, y1 + Math.sin(a - 2.4) * 7); ctx.closePath(); ctx.fill(); }
+  // a front on its way: where the new wind will blow from (dashed, blinking)
+  { const F = WIND.front; if (F && !F.hit) {
+    const fa = wrapA(F.dir1 - S.hdg), [x0, y0] = at(fa, R + 3), [x1, y1] = at(fa, R - 6 - R * 0.36), a = Math.atan2(y1 - y0, x1 - x0);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 260)); ctx.strokeStyle = ctx.fillStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1 + Math.cos(a) * 6, y1 + Math.sin(a) * 6); ctx.lineTo(x1 + Math.cos(a + 2.4) * 6, y1 + Math.sin(a + 2.4) * 6); ctx.lineTo(x1 + Math.cos(a - 2.4) * 6, y1 + Math.sin(a - 2.4) * 6); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+  } }
   // her hull, from above
   const hl = R * 0.52, hw = R * 0.19;
   ctx.fillStyle = '#e9dcbd'; ctx.strokeStyle = '#2a1d14'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy - hl); ctx.quadraticCurveTo(cx + hw * 1.5, cy - hl * 0.2, cx + hw * 0.8, cy + hl * 0.85); ctx.lineTo(cx - hw * 0.8, cy + hl * 0.85); ctx.quadraticCurveTo(cx - hw * 1.5, cy - hl * 0.2, cx, cy - hl); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -23640,6 +23757,12 @@ function seaChart() {
     mark(1, 0.5, '🐋'); mark(2, 0.5, '🪨'); mark(3, 0.55, '⛈️'); mark(4, 0.5, '🧜'); mark(5, T.sea.kraken.at, KRAKEN.beaten ? '✔' : '🐙');
   }
   drawHazardChart(c, pt, k, big);
+  { const F = WIND.front; if (F) {   // a front: its line across the sheet, teeth the way it's going
+    const off = F.pos - (F.de * S.e + F.dn * S.n), ce0 = S.e + F.de * off, cn0 = S.n + F.dn * off, L = big ? 1500 : 500, st = (big ? 90 : 45), tz = (big ? 7 : 5) / k;
+    c.strokeStyle = c.fillStyle = '#2f5f8f'; c.lineWidth = big ? 2.5 : 2; c.beginPath();
+    for (let t = -L; t <= L; t += st) { const [x, y] = pt(ce0 - F.dn * t, cn0 + F.de * t); if (t > -L) c.lineTo(x, y); else c.moveTo(x, y); } c.stroke();
+    for (let t = -L + st / 2; t < L; t += st) { const e = ce0 - F.dn * t, n = cn0 + F.de * t, [x0, y0] = pt(e - F.dn * tz, n + F.de * tz), [x1, y1] = pt(e + F.dn * tz, n - F.de * tz), [x2, y2] = pt(e + F.de * tz * 1.4, n + F.dn * tz * 1.4); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x2, y2); c.lineTo(x1, y1); c.closePath(); c.fill(); }
+  } }
   // her wake, and her: an arrow the way she heads
   c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 1.5; c.beginPath(); S.wake.forEach((q, i) => { const [x, y] = pt(q.e, q.n); if (i) c.lineTo(x, y); else c.moveTo(x, y); }); c.stroke();
   { const [x, y] = pt(S.e, S.n), a = S.hdg - rot, sz = big ? 9 : 7; c.save(); c.translate(x, y); c.rotate(a); c.fillStyle = '#e04a3f'; c.strokeStyle = '#2a1d14'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, -sz * 1.3); c.lineTo(sz * 0.75, sz); c.lineTo(0, sz * 0.5); c.lineTo(-sz * 0.75, sz); c.closePath(); c.fill(); c.stroke(); c.restore(); }
@@ -23722,6 +23845,8 @@ function seaFx(kind, k = 0, x = 0, z = 0, a = null) {
     case 'beach': SFX.thud(pan, 0.3); shakeCam(0.2); break;
     case 'thunder': SEAS.thunder(k * 2 - 1, 0.4 + 0.3 * Math.random()); break;
     case 'rogue': toast('🌊 ❗', 'warn'); Sound.omen(0.2); break;
+    case 'front': toast('💨 ❗', 'warn'); Sound.omen(0.12); hint('sea-front'); break;   // a front on its way (a: the new wind's from)
+    case 'squall': SEAS.flap(0, 0.4); SFX.whoosh(0, 0.4); shakeCam(0.15); break;   // ...and it's on her
     case 'bell': SEAS.bell(pan, 0.1); break;
     case 'ashore': floatText(`🐑 ${k} ✖`, x, y + 2.2, z, '#ff8a6b', 1.4); SFX.clack(pan, 0.25); break;
     case 'castoff': floatText('CAST OFF!', x, y + 2.4, z, '#ffd36b', 1.5); Sound.chime([0, 5, 12], 660, 0.14, 0.07); SFX.creak(pan, 0.25, 0.8); break;
@@ -23745,13 +23870,14 @@ function seaReset() {
   const S = SEA, K = T.sea, D = DOCKS[0];
   Object.assign(S, { on: false, t: 0, e: D.e, n: D.n, hdg: D.hdg, u: 0, v: 0, r: 0, heel: 0, heelV: 0, pitch: 0, pitchV: 0, heave: 0, heaveV: 0, kick: 0, hoist: 1, sheet: 1, boom: 0, boomV: 0, helm: 0, rud: 0, course: null, lash: false,
     anchor: 'up', anchorT: 0, anchorN: 0, weigh: 0, weighAt: 0, aweighT: 0, holding: false, state: 0.2, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0, over: 0, hull: K.hull.hp, leg: 1, legK: 0, saved: -1, wake: [], wakeT: 0, storm: 0, rain: 0, fog: 0, calm: 0, ink: 0,
-    hold: null, rogue: null, said: {}, docked: true, berth: 0, warp: null, moorOff: 0, pilot: null, aboardT: 0, near: false, legPast: false, arrived: false, dogOver: false, checkpoint: null, irons: 0, fear: 0, flash: 0, reefAim: null, lockWx: false, stores: Object.assign({}, K.stores), heelT: 0, slamT: 0, gybeT: -9, overT: -9, luff: 0, stall: 0 });
+    hold: null, rogue: null, said: {}, docked: true, berth: 0, warp: null, moorOff: 0, pilot: null, pilotTack: 0, aboardT: 0, near: false, nearI: 0, arrived: false, dogOver: false, checkpoint: null, irons: 0, fear: 0, flash: 0, reefAim: null, lockWx: false, stores: Object.assign({}, K.stores), heelT: 0, slamT: 0, gybeT: -9, overT: -9, luff: 0, stall: 0 });
   S.jolt.u = S.jolt.v = 0; SEA_AWAY = false; QUAY.on = true; ISLE = null; seaLandOn(); DECK.lock = true; resetGate(DECK);
   harbIce(!YETI.beaten || !seaWay());   // (the gap: shut again unless he's beaten)
   for (let i = 1; i < ROUTE.length; i++) isleShow(i, false);
   for (const st of STATIONS) st.by = null;
   WIND.gusts.length = 0; for (const w of SWAVES) w.ang = null;
-  WIND.base = WIND.dir = ROUTE[1].wd; WIND.baseSpd = WIND.spd = ROUTE[1].ws; WIND.here.spd = WIND.spd; WIND.here.dir = WIND.dir; S.run = WIND.dir + Math.PI;
+  WIND.base = WIND.dir = ROUTE[1].wd; WIND.baseSpd = WIND.spd = ROUTE[1].ws; WIND.here.spd = WIND.spd; WIND.here.dir = WIND.dir; S.run = S.swell = WIND.dir + Math.PI;
+  Object.assign(WIND, { shift: 0, shiftTo: 0, shiftK: 0.15, shiftT: T.sea.wind.shiftGap[0], front: null, frontLeg: -1, frontAt: null, frontVeer: 0 });
   for (const d of G.dogs) { if (d.holdKind === 'station') { d.holding = null; d.holdKind = null; } d.tow = null; }
   resetRings(); resetHazards(); seaCamReset();
 }
@@ -23774,7 +23900,7 @@ function seaStart(o = {}) {
   const S = SEA, K = T.sea, B = BOAT; seaReset();
   const dock = !!o.dock, from = dock ? 0 : clamp(o.leg | 0, 0, ROUTE.length - 2), w = ROUTE[from], nx = ROUTE[from + 1], D = DOCKS[from];
   S.on = true; S.leg = from + 1; S.saved = from; S.berth = from; S.e = D.e; S.n = D.n; S.hdg = D.hdg;
-  WIND.base = WIND.dir = nx.wd; WIND.baseSpd = WIND.spd = nx.ws; WIND.here.spd = WIND.spd; WIND.here.dir = WIND.dir; S.run = WIND.dir + Math.PI;
+  WIND.base = WIND.dir = nx.wd; WIND.baseSpd = WIND.spd = nx.ws; WIND.here.spd = WIND.spd; WIND.here.dir = WIND.dir; S.run = S.swell = WIND.dir + Math.PI;
   S.state = clamp((WIND.spd - K.wave.from) / K.wave.span, K.wave.min, K.wave.max) * 0.5;
   { const b = wrapA(WIND.dir - S.hdg); S.boom = -Math.sign(b || 1) * Math.min(boomLim(), Math.abs(b)); S.boomV = 0; }   // (her boom: out where this wind has it)
   for (const tr of DECK.troughs) { tr.food = 0; tr.shown = 0; } DECK.water.w = 0; DECK.lick.salt = 0; seaStock();
@@ -23858,7 +23984,7 @@ function seaStep(dt, dtH) {
 const seaAtRest = () => (SEA.docked || SEA.anchor === 'down' && SEA.holding && SEA.anchorT <= 0) && !seaHazardOn() && !SEA.over;
 // at dawn (stepClock): Hank fills the troughs from the hold
 function seaDawn() { if (SEA.on) seaStock(); }
-expose(() => ({ SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp,
+expose(() => ({ SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KRAKEN, seaStart, seaReset, seaStep, seaEta, seaSurf, seaDepth, seaShove, seaRogue, seaAnchorDrop, seaAnchorUp, windAt, windFront, windSquall, seaLegStep, seaPilotCrs,
   seaCheckpoint, seaStock, seaAtRest, seaHaul, seaGrab, seaOverRail, HAZ, SIREN_ROCKS, orcasCome, orcaBonk, seaBark, seaPounce, krakenGrip, krakenArmHit, krakenHurt, krakenEyeAt, seaAground,
   seaHazards, seaLure, seaFx, seaSwimSheep, seaSheepIn, seaNext, seaArrive, seaChart, syncSea, seaG, FORAGE, RINGS, ringStep, ringTarget, ringAim, ringsOut, seaSwimmers, seaSpd, SEAC,
   seaCam, isleShow, seaLandDepth, landSea, scene, camera, seaCastOff, seaAshore, seaDogsAshore, seaWake, seaMoor, seaLandOff, seaWay, harbIce, harbRoad, harbK, HARB, LAND, DOCKS, ISLES,
@@ -24235,7 +24361,8 @@ const NET_TYPES = {
   },
   wind: { tag: 'i', one: () => WIND,
     fields: { dir: { c: .001, ease: 'a' }, spd: { c: .02, ease: 1 },
-      gusts: { c: 'j', get: W => W.gusts.map(g => g.rec || (g.rec = [g.nid = ++NET.nid, Math.round(g.e), Math.round(g.n), Math.round(g.r), Math.round(g.k * 100) / 100, Math.round(g.veer * 100) / 100, Math.round(g.age * 10) / 10])), set: (W, v) => netGusts(v) } },   // (each as it was first seen: guests drift them)
+      gusts: { c: 'j', get: W => W.gusts.map(g => g.rec || (g.rec = [g.nid = ++NET.nid, Math.round(g.e), Math.round(g.n), Math.round(g.r), Math.round(g.k * 100) / 100, Math.round(g.veer * 100) / 100, Math.round(g.age * 10) / 10])), set: (W, v) => netGusts(v) },   // (each as it was first seen: guests drift them)
+      front: { c: 'j', get: W => { const F = W.front, r = (v, k) => Math.round(v * k) / k; return F ? F.rec || (F.rec = [r(F.de, 1e4), r(F.dn, 1e4), r(F.p0, 10), r(F.t0, 100), r(F.c, 100), r(F.dir1, 1e4), r(F.dv, 1e4), r(F.k, 100), F.w, F.pre, r(F.lull, 100), F.hit ? 1 : 0]) : null; }, set: (W, v) => netFront(v) } },   // (a front: guests sweep it on themselves)
     animate: (W, dt) => netWindAnim(W, dt) },
   wave: { tag: 'q', all: () => SWAVES, id: w => SWAVES.indexOf(w), static: true,   // the wave trains (their phase: dead-reckoned)
     fields: { amp: .002, qq: .002, ang: { c: .0005, set: (w, v) => { w.ang = v; w.de = Math.sin(v); w.dn = Math.cos(v); } }, ph: { c: .0005, set: (w, v) => { w._ph = v; w._pt = G.time; } } },
@@ -24683,8 +24810,14 @@ function netGusts(v) {
   const by = new Map(WIND.gusts.map(g => [g.nid, g]));
   WIND.gusts = (Array.isArray(v) ? v : []).map(r => by.get(r[0]) || { nid: r[0], e: +r[1], n: +r[2], r: +r[3], k: +r[4], veer: +r[5], age: +r[6] || 0 });
 }
+function netFront(v) {
+  if (!Array.isArray(v)) { WIND.front = null; return; }
+  const [de, dn, p0, t0, c, dir1, dv, k, w, pre, lull, hit] = v.map(Number);
+  WIND.front = Object.assign(WIND.front || {}, { de, dn, p0, t0, c, dir1, dv, k, w, pre, lull, hit: !!hit, pos: p0 + c * (SEA.t - t0) });
+}
 function netWindAnim(W, dt) {
   if (!SEA.on) return;
+  if (W.front) W.front.pos = W.front.p0 + W.front.c * (SEA.t - W.front.t0);
   const fe = Math.sin(W.dir), fn = Math.cos(W.dir), sp = W.spd * T.sea.wind.gustDrift;   // (as windStep drifts them)
   for (const g of W.gusts) { g.e -= fe * sp * dt; g.n -= fn * sp * dt; g.age += dt; }
   windAt(SEA.e, SEA.n, W.here);
@@ -25852,10 +25985,11 @@ const DEV_CHEATS = [
   { code: 'KeyL', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🐍').s, { hour: [8, 14] }) },   // RATTLESNAKES
   { code: 'KeyT', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '❄').s, { hour: [8, 12] }) },   // MOUNTAIN PASS: its foot
   { code: 'KeyY', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🦍').s, { hour: [8, 12] }) },   // its top: the yeti
-  // SAILING: I to sea (again: on to the next island); 1…5 under way on that leg; 0 Hank trims / full manual; 9 a gale
+  // SAILING: I to sea (again: on to the next island); 1…5 under way on that leg; 0 Hank trims / full manual; 8 a front; 9 a gale
   { code: 'KeyI', hide: true, fn: () => { const i = SEA.on ? Math.min(ROUTE.length - 2, SEA.leg) : 0; if (seaStart({ leg: i })) devUrl(null, i); } },
   ...[1, 2, 3, 4, 5].map(k => ({ code: 'Digit' + k, hide: true, fn: () => devSea(k - 1, true) })),
   { code: 'Digit0', key: '0', icon: '🧓', tip: 'Hank trims / full manual', sea: true, fn: () => { SEA.assist = !SEA.assist; toast(SEA.assist ? '🧓 ⛵ ✔' : '🧓 ⛵ ✖', ''); } },
+  { code: 'Digit8', key: '8', icon: '💨', tip: 'A front: the wind goes round', sea: true, fn: () => { windFront((Math.random() < 0.5 ? 1 : -1) * rnd(T.sea.wind.front.veer[0], T.sea.wind.front.veer[1]) * D2R); toast('💨', ''); } },
   { code: 'Digit9', key: '9', icon: '⛈', tip: 'A gale', sea: true, fn: () => { SEA.lockWx = !SEA.lockWx; if (SEA.lockWx) { WIND.baseSpd = 20; WIND.gustK = 1.4; SEA.storm = 1; SEA.rain = 1; } toast(SEA.lockWx ? '⛈️' : '⛈️ ✖', ''); } },
 ];
 const devCan = c => !(c.sea && !SEA.on) && !(c.land && SEA.on);
