@@ -47,22 +47,22 @@ ok('the find is saved', r2.saved && r2.saved.found.includes(r2.found[0]), r2.sav
 
 // 3. dig them all: treasure until everything's found, junk after; nothing found twice
 const r3 = await h.page.evaluate(() => {
-  const { G, DIGS, DOGS, DOG_ITEMS, step, resetDigs } = GAME, d = G.dogs[0]; const out = { journeys: 0 };
+  const { G, DIGS, DOGS, step, resetDigs } = GAME, DOG_ITEMS = GAME.DOG_ITEMS.filter(it => !it.prize), d = G.dogs[0]; const out = { journeys: 0 };   // (TRIALS: the prizes are won, never dug up)
   while (DOGS.found.length < DOG_ITEMS.length && out.journeys < 8) {
     resetDigs(); out.journeys++;
     for (const sp of DIGS) { d.x = sp.x; d.z = sp.z; d.vx = d.vz = 0; let t = 0; while (!sp.dug && t < 4) { step(0.025); t += 0.025; } }
   }
-  out.found = DOGS.found.length; out.unique = new Set(DOGS.found).size; out.all = DOG_ITEMS.length;
+  out.found = DOGS.found.length; out.unique = new Set(DOGS.found).size; out.all = DOG_ITEMS.length; out.prize = DOGS.found.filter(id => GAME.DOG_ITEMS.find(it => it.id === id).prize);
   return out;
 });
-ok(`everything found in ${r3.journeys} journeys' digging`, r3.found === r3.all && r3.unique === r3.all && r3.journeys <= 4, r3);   // (T.dig.treasure: about a journey's worth; some dice, one)
+ok(`everything found in ${r3.journeys} journeys' digging (no prize dug up)`, r3.found === r3.all && r3.unique === r3.all && r3.journeys <= 4 && !r3.prize.length, r3);   // (T.dig.treasure: about a journey's worth; some dice, one)
 
 // 4. the barn's Dogs tab: found things to put on, the dog in the world wears them, closing saves
 const r4 = await h.page.evaluate(() => {
   const { G, BARN, openBarn, closeBarn, barnTab, dogSet, dogLook, DOGS_KEY } = GAME; const out = {};
   G.players[0].kind = 'kb'; G.players[0].bot = null;
   out.opened = openBarn(); out.tab = barnTab('dogs');
-  out.locks = document.querySelectorAll('#barnWard .ico.lock').length;
+  out.locks = document.querySelectorAll('#barnWard .ico.lock').length; out.prizes = GAME.DOG_ITEMS.filter(it => it.prize).length;   // (TRIALS: the prizes still locked till won)
   out.paintHidden = document.getElementById('barnTools').hidden;
   dogSet(0, { coat: '#6b3a22', collar: '#8e44ad', hat: 'tophat', acc: ['bell', 'shades'], name: 'Moss' });   // (red and white)
   out.list = document.getElementById('barnList').textContent;
@@ -74,7 +74,7 @@ const r4 = await h.page.evaluate(() => {
   return out;
 });
 ok('barn opens on the Dogs tab', r4.opened && r4.tab && r4.paintHidden, r4);
-ok('nothing locked once everything is found', r4.locks === 0, r4);
+ok('nothing locked once everything is dug up but the trials\' prizes', r4.locks === r4.prizes, r4);
 ok('the Dogs tab shows the choice', r4.hatOn === 'tophat' && r4.list.includes('Moss') && r4.model, r4);
 ok('the dog in the world wears it', r4.key.hat === 'tophat' && r4.key.coat === '#6b3a22' && r4.key.acc.join() === 'shades,bell' && r4.name === 'Moss', r4.key);
 ok('closing the barn saves the dogs', r4.saved.hat === 'tophat' && r4.saved.name === 'Moss', r4.saved);

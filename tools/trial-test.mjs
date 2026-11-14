@@ -94,12 +94,12 @@ if (want('course')) {
     const L = TRIAL.grp.list; out.n = L.length; out.mark = L.filter(e => e.mark).length;
     const herdTo = (u, v) => L.forEach((e, i) => H.place(e, u + (i % 3 - 1) * 0.8, v + Math.floor(i / 3) * 0.8));
     const d = H.d();
-    H.place(d, TL.letout.u + 4.6, 0); H.run(0.2); out.outrun = ev.pts.outrun;
+    H.place(d, TL.letout.u + 4.9, 2.5); H.run(0.2); out.outrun = ev.pts.outrun;
     // the lift, the fetch through the gates, the post: the herd walked down step by step
     const walk = (u0, v0, u1, v1, s = 2.5) => { for (let k = 0; k <= 20; k++) { herdTo(u0 + (u1 - u0) * k / 20, v0 + (v1 - v0) * k / 20); H.run(s / 20); } };
     walk(TL.letout.u, 0, TL.letout.u - 4, 0); out.lift = ev.pts.lift;
     walk(TL.letout.u - 4, 0, TL.post.u + 4, 0); out.gF = ev.gF; out.fetch = ev.pts.fetch;
-    H.place(d, 0, 0); H.run(0.5); out.hankPost = Math.hypot(fu(HANK.x, HANK.z) - TL.post.u, fv(HANK.x, HANK.z) - TL.post.v) < 4 || true;
+    H.place(d, 0, 0); H.place(HANK, TL.post.u - 8, TL.post.v - 3); H.run(8, () => { herdTo(TL.post.u + 3, 0); return null; }); out.hankPost = H.r(Math.hypot(fu(HANK.x, HANK.z) - TL.post.u, fv(HANK.x, HANK.z) - TL.post.v));
     // the drive: up through D1, across through D2, back to the ring
     walk(TL.post.u + 3, TL.d1.v, TL.d1.u + 3, TL.d1.v); out.g1 = ev.g1;
     walk(TL.d2.u, TL.d1.v + 2, TL.d2.u, TL.d2.v + 3); out.g2 = ev.g2;
@@ -114,6 +114,7 @@ if (want('course')) {
     return out;
   });
   ok('course: five of the host\'s sheep, one with a ribbon', r.n === 5 && r.mark === 1, r);
+  ok('course: Hank at the handler\'s post', r.hankPost < 3, r);
   ok('course: the outrun (round behind them)', r.outrun >= 15, r);
   ok('course: the lift, the fetch through its gates', r.lift > 0 && r.gF === 1 && r.fetch > 10, r);
   ok('course: the drive through D1 and D2 to the ring', r.g1 === 1 && r.g2 === 1 && r.drive > 15, r);
