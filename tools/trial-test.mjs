@@ -6,14 +6,16 @@
 //   ducks    five ducks; through G1, G2, all into the house: points; one put up (a sprint at it): a fault
 //   brace    ten sheep; fetched; five in each pen: full marks for the pens
 //   llama    the host's llama on the trial rope, led through the poles in and out: none down, all on the right side: full marks; a pole brushed: down
-//   agility  hurdles, tunnel, see-saw (its plank tips), weave, table (lie on it), hurdle, finish: a clear round; one skipped: a fault
+//   agility  hurdles, tunnel, see-saw (its plank tips), weave, table (lie on it), hurdle, finish: a clear round; one skipped: a fault;
+//            two dogs: a run each (the starter first), the team's score their average
 //   tug      the local champion on the far end of the trial rope; heaving on the beat beats him
 //   throw    three throws of the trial bone from behind the line: the best counts; over the line: no throw; the bone isn't kept
 //   shear    sheep carried to Hank's board: he shears each (🧶); the rival shearer does his own
 //   fault    a grip or a bonk on the host's sheep: a fault (points off)
 //   awards   all eight run: placings; 🥇 the champion ram joins the flock (s.champ, saved with it, the dawn report) and the keg on every dog;
 //            🥈 the keg and wool; 🥉 wool; no prize below that
-//   keg      THE KEG: up the pass a dog wearing it warms the sheep round it (heatAt); its bark's a nip (cold down, then a wait)
+//   keg      THE KEG: up the pass a dog wearing it warms the sheep round it (heatAt); its bark's a nip (cold down, then a wait);
+//            online a friend's dog gets it on too (with what it had on)
 //   rosette  an event won: a rosette for the dogs (once); never dug up
 //   save     a reload (JOURNEY SAVE): the scores and the rivals as they were
 //   reset    a new journey: nothing run, the rivals rolled afresh
@@ -192,16 +194,17 @@ if (want('agility')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { TL, TRIAL, fu, fv, trialY, groundY, fp } = GAME, ev = H.start('agility'), out = {}; let tipped = 0;
-    H.run(110, () => {
-      if (!TRIAL.ev) return true;
-      const d = H.d(), o = TL.agi[ev.next]; if (!o) return null;
+    H.agility = (ev, d0) => { const was = H.d; H.d = () => ev.d; const b = H.agilityBot(ev); H.d = was; for (const o of GAME.G.dogs) o.player.bot = o === ev.d ? b || { mx: 0, my: 0 } : { mx: 0, my: 0 }; };
+    H.agilityBot = ev => {
+      const d = H.d(), o = TL.agi[ev.next]; if (!o || (ev.rt || 0) < 0) return null;
       if (o.k === 'hurdle' || o.k === 'finish') return H.go(o.u + o.dir * 2.5, o.v);
       if (o.k === 'tunnel') return H.near(o.u0 - 0.8, o.v, 1.2) || fu(d.x, d.z) > o.u0 - 1 ? H.go(o.u1 + 1.5, o.v) : H.go(o.u0 - 1, o.v);
       if (o.k === 'seesaw') { if (TRIAL.saw) tipped = Math.max(tipped, TRIAL.saw.ang < 0 ? 1 : 0); return fv(d.x, d.z) < o.v0 - 0.5 && !H.near(o.u, o.v0 - 0.8, 0.6) ? H.go(o.u, o.v0 - 0.8) : H.go(o.u, o.v1 + 1.2, { creep: true }); }
       if (o.k === 'weave') { const W = ev.weave, gap = (o.v1 - o.v0) / (o.n - 1), i = W ? W.i : 0; if (!W && !H.near(o.u - 0.5, o.v0 - 1.2, 0.8)) return H.go(o.u - 0.5, o.v0 - 1.2); return H.go(o.u + (i % 2 ? 0.5 : -0.5), o.v0 + i * gap + 0.4, { creep: true }); }
       if (o.k === 'table') { if (H.near(o.u, o.v, 0.5)) { out.up = H.r(H.d().y - GAME.terrainH(H.d().x, H.d().z)); return { mx: 0, my: 0, lie: true }; } return H.go(o.u, o.v); }
       return null;
-    });
+    };
+    for (let t = 0; t < 110 && TRIAL.ev; t += 0.025) { H.agility(ev); GAME.step(0.025); }
     out.score = TRIAL.res.agility; out.faults = TRIAL.last && TRIAL.last.pts; out.tipped = tipped;
     // a hurdle skipped (straight to the tunnel): a fault
     GAME.resetTrial(); const ev2 = H.start('agility'); const T0 = TL.agi[1]; H.place(H.d(), T0.u0 - 1.5, T0.v);
@@ -210,6 +213,16 @@ if (want('agility')) {
   });
   ok('agility: a clear round (the see-saw tipped, up on the table)', r.score >= 90 && r.tipped && r.up > 0.5, r);
   ok('agility: a hurdle skipped: a fault', r.skip >= 5, r);
+  // two dogs: a run each (the one that barked first), the team's score the runs' average
+  const r2 = await h.page.evaluate(() => {
+    const { TRIAL, G } = GAME; GAME.resetTrial(); const d2 = GAME.joinPlayer({ kind: 'bot', index: 1 }).dog; for (const o of G.dogs) o.player.bot = {};
+    const ev = H.start('agility'), order = [], out = {};
+    for (let t = 0; t < 240 && TRIAL.ev; t += 0.025) { if (order[order.length - 1] !== ev.d.player.slot) order.push(ev.d.player.slot); H.agility(ev); GAME.step(0.025); }
+    const R = ev.runs; out.order = order; out.runs = R.map(r => r.run + r.time); out.score = TRIAL.res.agility; out.avg = Math.round(R.reduce((t, r) => t + r.run, 0) / R.length) + Math.round(R.reduce((t, r) => t + r.time, 0) / R.length);
+    return out;
+  });
+  ok('agility, two dogs: a run each, the starter first', r2.order.join() === '0,1' && r2.runs.length === 2 && r2.runs.every(v => v >= 80), r2);
+  ok('agility, two dogs: the team scores the runs\' average', r2.score === r2.avg, r2);
 }
 
 if (want('tug')) {
@@ -326,6 +339,14 @@ if (want('keg')) {
   ok('keg: no keg, no warmth', r.cold0 === 0, r);
   ok('keg: up the pass the dog wearing it warms what\'s by it', r.warm > 0.5 && r.far === 0, r);
   ok('keg: a bark\'s a nip for the cold one by it (not one far off), then a wait', r.nip < 0.5 && r.farNip > 0.7 && r.cd > 0.7, r);
+  const r2 = await h.page.evaluate(() => {   // ONLINE: what a friend's screen does with the host's 'find': a dig find only on a bare dog; the keg on, with the rest
+    const { NET, DOGS, dogLook, netFromHost } = GAME, was = NET.locals; NET.locals = [{ kind: 'pad', index: 0 }];
+    DOGS.found = DOGS.found.filter(id => id !== 'keg' && id !== 'rosette'); const L = dogLook(0); L.acc = ['bandana'];
+    netFromHost({ t: 'find', id: 'rosette', p: 0 }); const dig = L.acc.slice();
+    netFromHost({ t: 'find', id: 'keg', p: 0, w: 1 }); const keg = L.acc.slice(), found = DOGS.found.includes('keg');
+    NET.locals = was; return { dig, keg, found };
+  });
+  ok('keg online: a friend\'s dog gets it on (with what it had on), found for good', r2.found && r2.keg.includes('keg') && r2.keg.includes('bandana') && !r2.dig.includes('rosette'), r2);
 }
 
 if (want('rosette')) {

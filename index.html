@@ -19402,7 +19402,7 @@ function trialStep(ev, dt) {
   const far = ev.dogs.every(d => !G.dogs.includes(d) || !inRing(d.x, d.z, 26));
   if (far || G.mode !== 'play') { trialEnd(); return; }
   TRIAL_STEP[ev.id](ev, dt, k);
-  if (TRIAL.ev === ev && ev.t > k.time) { trialFx('time', TF.x, TF.z, 0); trialEnd(); }
+  if (TRIAL.ev === ev && ev.t > (ev.limit || k.time)) { trialFx('time', TF.x, TF.z, 0); trialEnd(); }
 }
 // a phase done: its points (max − what it lost), on to the next
 function trialPhase(ev, pts) {
@@ -19430,6 +19430,7 @@ function trialEnd() {
   if (ev.id === 'brace' && ev.pts.penA === undefined) { const n = trialBraceN(); ev.pts.penA = Math.round(35 * Math.min(n.a, 5) / 5); ev.pts.penB = Math.round(35 * Math.min(n.b, 5) / 5); }
   if (ev.id === 'shear' && ev.pts.fleece === undefined) ev.pts.fleece = trialShearPts(ev);
   if (ev.id === 'tug' && ev.pts.tug === undefined) ev.pts.tug = trialTugPts(ev, false);
+  if (ev.id === 'agility' && ev.pts.time === undefined && ev.runs) { if (ev.d && ev.runs.length < ev.queue.length && (ev.rt || 0) >= 0) ev.runs.push({ run: Math.round(clamp(70 - ev.loss - ev.left * T.trial.agility.fault, 0, 70)), time: 0, slot: ev.d.player.slot }); trialAgilityTally(ev); }
   if ((ev.id === 'llama' || ev.id === 'agility') && ev.pts.time === undefined) { if (ev.pts.poles === undefined && ev.pts.run === undefined) ev.pts[ph[0][0]] = Math.max(0, ph[0][2] - ev.loss - 10 * ev.left); ev.pts.time = 0; }
   if (ev.id === 'ducks' && ev.pts.time === undefined) ev.pts.time = ev.pts.house ? Math.round(clamp(20 - Math.max(0, ev.t - 60) / 3, 0, 20)) : 0;
   const sum = ph.reduce((t, p) => t + (p[2] ? ev.pts[p[0]] || 0 : 0), 0), score = Math.round(clamp(sum - trialFaultPts(ev), 0, 100));
@@ -19483,7 +19484,7 @@ function trialSpawn(ev) {
   else if (id === 'llama') trialLlamaOn(ev);
   else if (id === 'tug') trialTugOn(ev);
   else if (id === 'throw') { trialBoneOn(); ev.throws = []; ev.fly = null; }
-  else if (id === 'agility') { ev.next = 0; ev.left = TL.agi.length; ev.tab = 0; ev.tun = null; ev.saw = null; ev.weave = null; for (const b of TRIAL.bars) b.down = 0; }
+  else if (id === 'agility') { ev.queue = [ev.d, ...G.dogs.filter(o => o !== ev.d).sort((a, b) => a.player.slot - b.player.slot)]; ev.runs = []; ev.limit = (K.agility.time + 2) * ev.queue.length; trialAgilityReset(ev, 0); }
   if (TRIAL.grp) { const L = TRIAL.grp.list; ev.cu = L.reduce((t, e) => t + fu(e.x, e.z), 0) / L.length; ev.cv = L.reduce((t, e) => t + fv(e.x, e.z), 0) / L.length; ev.u0 = ev.cu; }
 }
 // the trial herd's middle (field coords), how far its furthest one is from it, the most stressed
@@ -19613,8 +19614,33 @@ function trialLlamaStep(ev, dt, k) {
 }
 // ---------------- AGILITY: hurdles (jumped: a fence there hops it), the tunnel (in one end, out the other), the see-saw (along the plank, end
 // to end), the weave poles (in and out), the table (up on it, lie down: table s), a hurdle, the finish. Each missed or done wrong: a fault ----------------
+// a run each (the dog that started it first): the course set up again, the runner at the start, the rest aside
+function trialAgilityReset(ev, rt) {
+  Object.assign(ev, { next: 0, left: TL.agi.length, tab: 0, tun: null, saw: null, weave: null, loss: 0, rt, du: undefined, dv: undefined });
+  for (const b of TRIAL.bars) b.down = 0;
+  const S = TL.astart;
+  ev.queue.forEach((o, i) => { if (!G.dogs.includes(o)) return; const run = o === ev.d, p = fp(S.u - (run ? 0 : 3), S.v + (run ? 0 : 2 + i * 1.4));
+    if (run || Math.hypot(fu(o.x, o.z) - S.u, fv(o.x, o.z) - S.v) < 6) { if (o.holding) releaseHold(o, false); Object.assign(o, { x: p.x, z: p.z, y: groundY(p.x, p.z), vx: 0, vz: 0, yaw: fyaw(1, 0), pounceT: 0, hopT: 0, stamina: 1, exhausted: false }); } });
+}
+// a run over (finished, or its time out): its points; on to the next dog's run, or the team's score: the runs' average
+function trialAgilityRun(ev, k, finished) {
+  const run = Math.round(clamp(70 - ev.loss - (finished ? 0 : ev.left * k.fault), 0, 70)), time = finished ? Math.round(clamp(30 - Math.max(0, ev.rt - k.par), 0, 30)) : 0;
+  ev.runs.push({ run, time, slot: ev.d.player.slot });
+  floatText(`${run + time}`, ev.d.x, ev.d.y + 2.4, ev.d.z, ev.d.color, 1.6); trialFx('phase', ev.d.x, ev.d.z, run + time >= 70 ? 1 : 0);
+  const nx = ev.queue.slice(ev.runs.length).find(o => G.dogs.includes(o));
+  if (nx) { ev.d = nx; trialAgilityReset(ev, -T.trial.count * 0.6); trialFx('count', fp(TL.astart.u, TL.astart.v).x, fp(TL.astart.u, TL.astart.v).z, 1); return; }
+  trialAgilityTally(ev);
+  trialEnd();
+}
+function trialAgilityTally(ev) {
+  const R = ev.runs || []; if (!R.length) return;
+  ev.pts.run = Math.round(R.reduce((t, r) => t + r.run, 0) / R.length); ev.pts.time = Math.round(R.reduce((t, r) => t + r.time, 0) / R.length); ev.ph = TRIAL_PH.agility.length;
+}
 function trialAgilityStep(ev, dt, k) {
-  const d = ev.d; if (!d || !G.dogs.includes(d)) { trialEnd(); return; }
+  let d = ev.d;
+  if (!d || !G.dogs.includes(d)) { if (ev.runs && ev.queue.slice(ev.runs.length).some(o => G.dogs.includes(o))) { ev.runs.push({ run: 0, time: 0, slot: -1 }); const nx = ev.queue.slice(ev.runs.length).find(o => G.dogs.includes(o)); if (nx) { ev.d = nx; trialAgilityReset(ev, 0); } return; } trialEnd(); return; }   // (its player gone: the next)
+  if ((ev.rt = (ev.rt || 0) + dt) < 0) return;   // (the next one's count)
+  if (ev.rt > k.time) { trialFx('time', d.x, d.z, 0); trialAgilityRun(ev, k, false); return; }
   const u = fu(d.x, d.z), v = fv(d.x, d.z), pu = ev.du ?? u, pv = ev.dv ?? v; ev.du = u; ev.dv = v;
   const A = TL.agi, fault = (o, why) => { ev.loss += k.fault; const p = o.u !== undefined ? fp(o.u, o.v ?? (o.v0 + o.v1) / 2) : fp((o.u0 + o.u1) / 2, o.v); trialFx('miss', p.x, p.z, 0); };
   const done = i => { for (let j = ev.next; j < i; j++) fault(A[j], 'skip'); ev.next = i + 1; ev.left = A.length - ev.next; const o = A[i], p = o.u !== undefined ? fp(o.u, o.v ?? (o.v0 + o.v1) / 2) : fp((o.u0 + o.u1) / 2, o.v); trialFx('gate', p.x, p.z, 0); };
@@ -19622,7 +19648,7 @@ function trialAgilityStep(ev, dt, k) {
     const o = A[i];
     if (o.k === 'hurdle' || o.k === 'finish') {
       const g = gateCross({ ...o, w: o.w || 2.4 }, pu, pv, u, v);
-      if (g > 0) { if (o.k === 'hurdle' && !(d.hopT > 0)) { const b = TRIAL.bars.find(b => b.o === o); if (b) b.down = G.time; fault(o, 'bar'); } done(i); if (o.k === 'finish') { trialPhase(ev, 70 - ev.loss); trialPhase(ev, clamp(30 - Math.max(0, ev.t - k.par), 0, 30)); return; } break; }
+      if (g > 0) { if (o.k === 'hurdle' && !(d.hopT > 0)) { const b = TRIAL.bars.find(b => b.o === o); if (b) b.down = G.time; fault(o, 'bar'); } done(i); if (o.k === 'finish') { trialAgilityRun(ev, k, true); return; } break; }
     } else if (o.k === 'tunnel') {
       const inT = Math.abs(v - o.v) < 0.7 && u > o.u0 - 0.3 && u < o.u1 + 0.3;
       if (inT && !ev.tun) ev.tun = { from: u < (o.u0 + o.u1) / 2 ? 0 : 1 };
@@ -20091,7 +20117,7 @@ function trialChampRam() {
 // the keg on every dog of ours (found for good: DOG WARDROBE)
 function trialGiveKeg() {
   for (const d of G.dogs) {
-    if (d.player.kind === 'net') { netFoundFor(d.player, 'keg'); continue; }
+    if (d.player.kind === 'net') { netFoundFor(d.player, 'keg', true); continue; }   // (a friend's: on it goes there too, and their look comes back with it on)
     if (!DOGS.found.includes('keg')) DOGS.found.push('keg');
     const L = dogLook(d.player.slot); if (!L.acc.includes('keg')) { L.acc.push('keg'); restyleDog(d); }
   }
@@ -20189,13 +20215,15 @@ function drawTrialOverlay() {
   }
   // the judge's card (an event on): its icon, the clock, each phase's points, faults
   if (ev) {
-    const E = trialEv(ev.id), ph = TRIAL_PH[ev.id], k = T.trial[ev.id] || {}, left = Math.max(0, (k.time || 0) - Math.max(0, ev.t));
-    const cells = ph.map((p, i) => ({ ic: p[1], txt: ev.pts[p[0]] !== undefined ? String(ev.pts[p[0]]) : i === ev.ph ? '…' : '', on: i === ev.ph, done: ev.pts[p[0]] !== undefined }));
+    const E = trialEv(ev.id), ph = TRIAL_PH[ev.id], k = T.trial[ev.id] || {}, left = Math.max(0, (k.time || 0) - Math.max(0, ev.rt ?? ev.t));   // (AGILITY: this run's)
+    const runs = ev.q > 1 || (ev.queue && ev.queue.length > 1) ? `${Math.min((ev.runs ? ev.runs.length : ev.nr || 0) + 1, ev.q || ev.queue.length)}/${ev.q || ev.queue.length}` : '';   // (AGILITY: whose run)
+    const cells = ph.map((p, i) => ({ ic: p[1], txt: ev.pts[p[0]] !== undefined ? String(ev.pts[p[0]]) : i === ev.ph ? runs || '…' : '', on: i === ev.ph, done: ev.pts[p[0]] !== undefined }));
     const cw = 46, w = 96 + cells.length * cw + (ev.faults.length ? 52 : 0), x0 = W / 2 - w / 2, y0 = H < 520 ? 56 : 92;   // (under the clock)
     ctx.save(); ctx.fillStyle = 'rgba(255,248,232,.95)'; rr(x0, y0, w, 52, 12); ctx.fill(); ctx.strokeStyle = '#2f6aa3'; ctx.lineWidth = 3; ctx.stroke();
     ctx.font = '700 22px Fredoka, sans-serif'; ctx.fillStyle = '#1b1a22'; ctx.fillText(E.icon, x0 + 22, y0 + 27);
     ctx.font = '700 16px Fredoka, sans-serif'; ctx.fillStyle = left < 15 && ev.t > 0 ? '#e8473f' : '#1b1a22';
-    ctx.fillText(ev.t < 0 ? String(Math.ceil(-ev.t)) : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`, x0 + 64, y0 + 27);
+    const tt = ev.rt ?? ev.t; ctx.fillText(tt < 0 ? String(Math.ceil(-tt)) : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`, x0 + 64, y0 + 27);
+    const rd = ev.id === 'agility' && G.dogs.find(o => o.player.slot === (ev.rs ?? (ev.d && ev.d.player.slot))); if (rd) { ctx.fillStyle = rd.color; ctx.beginPath(); ctx.arc(x0 + 22, y0 + 44, 4.5, 0, TAU); ctx.fill(); }   // (whose run: its colour)
     cells.forEach((c, i) => { const cx = x0 + 96 + i * cw + cw / 2; ctx.globalAlpha = c.on || c.done ? 1 : 0.45; ctx.font = '700 15px Fredoka, sans-serif'; ctx.fillStyle = '#1b1a22'; ctx.fillText(c.ic, cx, y0 + 17);
       ctx.font = '700 13px Fredoka, sans-serif'; ctx.fillStyle = c.done ? '#2f8a3a' : '#7a6a5a'; ctx.fillText(c.txt, cx, y0 + 38); ctx.globalAlpha = 1; });
     if (ev.faults.length) { ctx.font = '700 14px Fredoka, sans-serif'; ctx.fillStyle = '#e8473f'; ctx.fillText(`✖${ev.faults.length}`, x0 + w - 26, y0 + 27); }
@@ -20241,11 +20269,12 @@ function trialTarget(ev) {
 // LONG THROW: a peg where each throw came down (a fx with the distance)
 function trialThrowMark(i, x, z, dist, foul) { const m = TRIAL.marks && TRIAL.marks[i]; if (m) { m.root.position.set(x, groundY(x, z), z); m.root.visible = !foul; m.d = dist; } trialFx('mark', x, z, foul ? 0 : dist); }
 // ONLINE: what a guest needs of the event on (for the card, the target)
-function netTrialEv() { const ev = TRIAL.ev; if (!ev) return null; return { id: ev.id, t: +ev.t.toFixed(1), ph: ev.ph, pts: ev.pts, f: ev.faults.length, gF: ev.gF, g1: ev.g1, g2: ev.g2, pole: ev.pole, next: ev.next, nA: ev.nA }; }
+function netTrialEv() { const ev = TRIAL.ev; if (!ev) return null; return { id: ev.id, t: +ev.t.toFixed(1), ph: ev.ph, pts: ev.pts, f: ev.faults.length, gF: ev.gF, g1: ev.g1, g2: ev.g2, pole: ev.pole, next: ev.next, nA: ev.nA,
+  rt: ev.rt !== undefined ? +ev.rt.toFixed(1) : undefined, nr: ev.runs ? ev.runs.length : 0, q: ev.queue ? ev.queue.length : 0, rs: ev.d ? ev.d.player.slot : -1 }; }   // (AGILITY: this run's clock, runs done, of how many, whose)
 function netTrialEvSet(v) {
   if (!v || typeof v !== 'object' || !trialEv(v.id)) { TRIAL.ev = null; return; }
   const ev = TRIAL.ev && TRIAL.ev.id === v.id ? TRIAL.ev : (TRIAL.ev = { id: v.id, faults: [], pts: {} });
-  Object.assign(ev, { t: +v.t || 0, ph: v.ph | 0, pts: v.pts && typeof v.pts === 'object' ? v.pts : {}, gF: v.gF, g1: v.g1, g2: v.g2, pole: v.pole | 0, next: v.next | 0, nA: v.nA | 0 });
+  Object.assign(ev, { t: +v.t || 0, ph: v.ph | 0, pts: v.pts && typeof v.pts === 'object' ? v.pts : {}, gF: v.gF, g1: v.g1, g2: v.g2, pole: v.pole | 0, next: v.next | 0, nA: v.nA | 0, rt: Number.isFinite(+v.rt) ? +v.rt : undefined, nr: v.nr | 0, q: v.q | 0, rs: v.rs | 0 });
   ev.faults.length = Math.max(0, v.f | 0);
 }
 // ONLINE: the poles and bars down (a guest's from the host's)
@@ -20265,7 +20294,7 @@ onSave('trial', () => ({ seed: TRIAL.seed, res: TRIAL.res, done: TRIAL.done, pla
 }, 178);
 resetTrial();
 expose(() => ({ TRIAL, TF, TL, TRIAL_EVENTS, TRIAL_PH, fp, fu, fv, inRing, trialClear, trialBuild, trialStart, trialEnd, trialStop, trialPress, trialMatAt, trialProps, trialAwards, trialChampRam,
-  trialGiveKeg, trialRosette, trialPlace, trialPlaceAll, trialTotal, trialRoll, resetTrial, trialHankGoal, trialHankIdle, staticFences, kegHeat, trialKegNip, trialY, trialSawOn, trialSawStep, gateCross, devTrial, devTrialAll, champTugEnd, trialHerdFault, updateTrial, dogWears, trialNewcomers }));   // TRIALS
+  trialGiveKeg, trialRosette, trialPlace, trialPlaceAll, trialTotal, trialRoll, resetTrial, trialHankGoal, trialHankIdle, staticFences, kegHeat, trialKegNip, trialY, trialSawOn, trialSawStep, gateCross, devTrial, devTrialAll, champTugEnd, trialHerdFault, updateTrial, dogWears, trialNewcomers, netFromHost, netFoundFor, NET }));   // TRIALS (netFromHost, NET: the guest's 'find', in the tests)
 // =====================================================================
 // DUCKS — runner ducks on every leg before Falcon Canyon (T.duck; on: off in ?sim): a few small bunches a journey (own rng, a new seed a
 // journey: HERD.seed), by water where there's some (a stream, the river, the lake, the sea's edge). They waddle about in a tight bunch,
@@ -26963,7 +26992,7 @@ function netApplyLook(s, u) {
   if (p) { if (L.name) p.name = L.name; setRole(p, L.role); if (p.dog) { p.dog.netLook = L; restyleDog(p.dog); } }
   netRoster();
 }
-function netFoundFor(p, id) { const s = p.seat; if (s && s.conn) netSendSeat(s, { t: 'find', id, p: Math.max(0, s.subs.indexOf(p.sub)) }); }
+function netFoundFor(p, id, wear = false) { const s = p.seat; if (s && s.conn) netSendSeat(s, { t: 'find', id, p: Math.max(0, s.subs.indexOf(p.sub)), w: wear ? 1 : 0 }); }   // (wear: on it goes, whatever else it has on: TRIALS' keg)
 // a friend's edit to a sheep (their barn, their dawn card): only what the barn itself could make
 function cleanSheepEdit(ch) {
   if (!ch || typeof ch !== 'object') return null;
@@ -27172,7 +27201,7 @@ function netFromHost(m) {
     case 'find': {   // our dog dug something up: ours to keep, and it goes straight on if it has nothing of that sort on
       const k = m.p | 0, it = DOG_ITEMS.find(x => x.id === m.id); if (!it || !NET.locals[k]) break;
       if (!DOGS.found.includes(it.id)) DOGS.found.push(it.id);
-      const L = dogLook(k); if (it.kind === 'hat' && L.hat === 'none') L.hat = it.id; else if (it.kind === 'acc' && !L.acc.length) L.acc = [it.id];
+      const L = dogLook(k); if (it.kind === 'hat' && L.hat === 'none') L.hat = it.id; else if (it.kind === 'acc' && m.w && !L.acc.includes(it.id)) L.acc.push(it.id); else if (it.kind === 'acc' && !L.acc.length) L.acc = [it.id];   // (m.w: TRIALS' keg: on, with the rest)
       saveDogs(); netSendLook(k); if (BARN.open && BARN.tab === 'dogs') barnTab('dogs');
       break;
     }

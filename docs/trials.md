@@ -21,7 +21,8 @@
     one brushed (it or a dog): down; a sprinting dog: it balks. Under `par` s: points.
   - ⤴ **Agility**: hurdles (a fence: the dog hops it; on the ground: the bar down), tunnel (in one end, out the other), see-saw (end to end;
     its plank tips with the dog on it: `trialSawStep`, `trialY` in `groundY` via `TRIAL_Y`), weave poles, the table (up on it: `trialY`,
-    lie down `table.t` s), a hurdle, the finish. One skipped or wrong: a fault. Under `par`.
+    lie down `table.t` s), a hurdle, the finish. One skipped or wrong: a fault. Under `par`. A run each (the dog that barked first, then by slot:
+    `ev.queue`, `trialAgilityRun`; the rest wait aside), `time` s each; the team's score is the runs' average (`trialAgilityTally`).
   - 🪢 **Tug of war**: the local champion (`TRIAL.champ`, a dog on a rope as Hank is: `R.champ`, `ropeNpc`, `hankTug` with `T.trial.tug`,
     `str` × (1 + `per` a dog more of ours), `champTugEnd`). Won: 100; lost: by how near.
   - 🦴 **Long throw**: the trial bone (`b.trial`: not kept), 3 throws from behind the line; let go over it: no throw. Where it first comes
@@ -34,7 +35,9 @@
 - **The prizes** (`trialAwards`): all eight run, or by `to` with some run and a dog by. Totals, placings (a tie's yours). 🥇 the champion ram
   (`trialChampRam`: `s.champ`, brave, big; joins the flock; his rosette drawn on `s.bodyM`; saved with the flock; the next dawn report:
   `trialNewcomers`) and the keg; 🥈 the keg and `wool[1]` 🧶; 🥉 `wool[2]`. An event won: a rosette for the dogs (`trialRosette`, once).
-- **The keg** (DOG WARDROBE `keg`, a prize: never dug up): a dog wearing it (`d.keg`, `trialKeg`) is a little fire up the pass (`kegHeat` in
+- **Co-op**: one team against the rivals: one score an event, one row on the board; any dog's bark on a mat starts it; every dog takes part
+  (agility: a run each); anyone's fault is the team's; every dog there gets the xp; the prizes go to every dog (the ram to the one flock).
+- **The keg** (DOG WARDROBE `keg`, a prize: never dug up; on every dog of ours, a friend's online too: `netFoundFor(p, id, wear)`): a dog wearing it (`d.keg`, `trialKeg`) is a little fire up the pass (`kegHeat` in
   `heatAt`): sheep, llamas, the dog itself; its bark (`trialKegNip`): cold −`nipK` for each within `nip` m, then `cd` s.
 - **HUD** (`drawTrialOverlay`): over each mat its icon and your score (or the best rival's); the board (totals, medals once done); an event
   on: the judge's card (icon, the clock, each phase's points, faults ✖) under the clock, an arrow at the next thing; after: its score and
