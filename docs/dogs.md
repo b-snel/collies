@@ -30,6 +30,7 @@
   while dragging) leaps on the dog: a swipe/bite every `maul.every` s up to
   `maul.max`; mash pounce to throw it off, or a partner pounces it. Coyotes nip
   (`T.nip`) when bold, screening or striking.
+- **Ducks and the trials' sheep** (HERD, docs/ducks.md): grabbed as `duck` / `tsheep` (`T.grabKinds`), carried, flung.
 - **Grab: hold RB** (or Ⓧ; E / , / ✊, `inp.grab`; RB leaves the thumb free): held, it bites what comes in reach and keeps hold; let go: dropped
   (running: a fling). Lost while held (slip, buck, knocked): no bite again till it's let go (`d.grabLock`). Ⓑ or a
   right-stick swing (`inp.shake`: out from rest or across, counted in `padPoll` like presses, `T.shake`; not a station) with
