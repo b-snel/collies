@@ -5,9 +5,10 @@
 // salt, a chest, the spring; away again), the chase camera (astern, level, lagging her turns), anchoring, and the hazards: orcas (bonk:
 // sheep by that rail go over; a bark turns one), reefs, sharks, the storm (gale, a great wave abeam / on the bow), the waterspout, sirens
 // (lured to the rail and over; a bark, a dog in the way), the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep
-// into its eye; beaten), and the Promised Land (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away.
+// into its eye; beaten), and the Promised Land (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away;
+// alongside the gangway stays wide open (no sprint, pounce or grab swings it into the way; a dog walks aboard from anywhere on the pier).
 // The wind (shifts that hold, gusts veer, the swell lags the wind sea; a front: lull, squall, the new wind holds) and the way (islands passed by).
-// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|grab|hungry|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|wind|front|skip|start|dock|land]
+// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|grab|hungry|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|wind|front|skip|start|dock|gang|land]
 // Checks: sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef),
 //   stations (Ⓧ held; tiller: steer / hold / let go: lashed; sheet, halyard, anchor), what Ⓧ takes (gear before a sheep in the way; a sheep in the
 //   water first), hungry sheep at the deck's troughs (a bark, a frightening ride: they eat on), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns),
@@ -669,6 +670,28 @@ if (want('start')) {
   ok(`she lies alongside at Cold Harbour, everyone aboard (${r.aboard} sheep), the gangway lashed, the troughs stocked (🌾 ${r.food}, 💧 ${r.water}), the sheet let fly`, r.docked && r.aboard >= 12 && r.dogs && r.food > 10 && r.water > 5 && r.lying < 0.01 && r.sheet0 > 0.9 && r.land0, r);
   ok('one dog hauls her lines in at the bow (the land\'s left behind: all the world is sea), runs aft and takes the tiller from Hank', r.onAnchor && r.cast && r.landOff && r.onTiller, r);
   ok(`Hank sheets in and she's away: ${r.made} m made good toward the island in 60 s (${r.u} m/s over the sea), hull whole, nobody lost`, r.made > 380 && r.u > 6 && r.aboard2 === r.aboard && r.hull === 5, r);
+}
+
+if (want('gang')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, BOAT, DECK, seaStart, boatXZ, onDeck } = GAME, out = { moved: [], stuck: [] }, d = G.dogs[0], p = d.player;
+    seaStart({ dock: true, place: true });
+    const at = (u, v, to, x = {}) => { const q = boatXZ(u, v), g = boatXZ(...to); H.place(d, u, v); d.yaw = Math.atan2(g.x - q.x, g.z - q.z); d.holding = null; return () => H.inp(g.x - d.x, g.z - d.z, x); };
+    // a sprint across it, a pounce at it, a grab by it, a pounce along the pier: it stays open
+    for (const [name, u, v, to, x, t] of [['sprint', 1.5, -16, [-4, -8], { sprint: true }, 2], ['pounce', -2.2, -11, [-4, -11], { pounce: true }, 0.2], ['grab', -2.6, -10, [2, -14], { grab: true }, 1.6], ['pier', -2.6, -14, [-2.6, -4], { pounce: true }, 0.2]]) {
+      const go = at(u, v, to, x); H.run(t, () => { p.bot = go(); }); p.bot = {}; H.run(1.5);
+      if (DECK.gateT < 0.99) out.moved.push([name, H.r(DECK.gateT)]);
+    }
+    // aboard from anywhere on the pier and the quay
+    for (const [u, v] of [[-3.2, -9], [1.2, -9], [-1, -8.2], [-3.2, -16], [1.3, -16], [6, -10], [12, -9], [-1, -30]]) {
+      const go = at(u, v, [-1, 0]), t = H.run(8, () => { p.bot = go(); return onDeck(d.x, d.z, 0.8); }); p.bot = {};
+      if (t >= 8) out.stuck.push([u, v]);
+    }
+    out.open = !DECK.lock && DECK.gateT > 0.99;
+    return out;
+  });
+  ok('alongside the gangway stays wide open: no sprint, pounce or grab swings it into the way; a dog walks aboard from anywhere on the pier and quay', !r.moved.length && !r.stuck.length && r.open, r);
 }
 
 if (want('dock')) {
