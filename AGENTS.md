@@ -11,10 +11,11 @@ file, comments, commits and PRs: short.
 3D border-collie herding, one file `index.html` (three.js r160 from
 `vendor/three.module.js`, plain JS, no build). Up to 4 dogs (each a role and a breed,
 better with practice), local or online, drive a flock along one trail
-(desert → mountains → ocean → Sweetgrass Meadow → Falcon Canyon → desert →
+(desert → mountains → ocean → Sweetgrass Meadow (the sheepdog trials) → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
+desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly.
+The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), each once, against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
@@ -30,7 +31,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `X` coyotes dig into a pen, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, 🤒 button: the pox, `L` to the snakes, `U` to Falcon Canyon,
-  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `I` to sea / on to the next island,
+  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
@@ -101,6 +102,8 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - DAWN REPORT
 - saved flock
 - JOURNEY SAVE
+- TRIALS
+- DUCKS (+ HERD: the small-herd mover)
 - VAGABOND (the VENDOR's wares)
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
@@ -210,6 +213,9 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `vagBarkAt(d, busy)` (busy: loose sheep / foes the bark reached: not a nag)
 - `e.isLlama` (LLAMAS: on a rope it's an `e.npc`; `R.llama`, `ropeNpc(R)`), `llamaNeck(L, out)` (its halter), `launchLlama(L, vx, vz, vy, kind, by)` / `L.air` / `L.heldBy` (as a sheep's), `llamasAboard()`
 - `L.wear` (`{ hat, tint, acc }`, `llamaHas(L, id)`), `llamaSet(L, ch)` (LLAMA WARDROBE: a guest's goes to the host as `ll`), `L.greens` / `L.salt` (its pack), `L.cold` (0…1)
+- `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
+- `trialClear(x, z, pad)` (keep off the trials' ring), `trialY(x, z)` (in `groundY` via `TRIAL_Y`), `trialHerdFault(kind, e, d)`, `R.champ` (a dog on a rope: `ropeNpc`), `b.trial` (not kept)
+- `kegHeat(x, z)` (in `heatAt`), `d.keg`
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -294,6 +300,8 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/ui.md`: map, menus, barn, dawn report, end screen.
 - `docs/ambience.md`: the sound of each leg (`AMB`, `ambMix`).
 - `docs/vagabond.md`: the vagabond (trading, mood, at sea), the Trading Post.
+- `docs/trials.md`: the sheepdog trials: the ring, the events, faults, rivals, Hank, the prizes, the keg, HUD.
+- `docs/ducks.md`: duck bunches, HERD (the small-herd mover: ducks, the trials' sheep), flying up, drawing.
 - `docs/llamas.md`: wild herds, population, capture (rope, tug), guards and their spit, bonk and grab, shearing, gear (wardrobe, barn), cold, packs.
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.

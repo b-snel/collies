@@ -19,7 +19,7 @@
   Llamas (LLAMA WARDROBE): a row each (coat, name, ♂ / ♀ / 🍼; `barnPickLlama`), Coat, Colour, Hat, Kit (locked till dug up); on the turntable
   in its gear, its pack showing what's in it; info: age, fleece, 🎒, ❄️. Pad: D-pad pick / hat, Ⓧ coat, Ⓨ colour, LB/RB kit (`LLAMA_OUTFITS`), Ⓐ name.
   A guest dresses the host's (`llamaSet` → `ll`; what's found: `LWARD.net`).
-- **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
+- **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn; TRIALS: the champion ram, 🏆) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Every screen gets it (`dawnShare`, an effect) and goes on from its own;
   a guest's names go to the host. Waits while the barn's open (`DAWN.pending`). `?sim` only fills `G.dawnReport`. Eulogies are seeded
   (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).

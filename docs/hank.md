@@ -29,3 +29,5 @@
   `syncYard`, `T.remains.build`); stopped, it stays half up till he's back.
   Full: he adds a row at the back (`yardGrow`, if `yardRoom`; up to
   `T.remains.rows`); else the next cemetery; none: it rots where it lies.
+- **At the trials** (docs/trials.md): an event on, the handler's post (the pen's gate for the pen), his shearing board (he shears what's
+  brought: `trialShearStep`), the line; between events by the judge (after his jobs). He steps over the ring's hurdles.
