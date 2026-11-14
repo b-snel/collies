@@ -149,7 +149,7 @@ try {
   const tk = Date.now();
   await until(A, d0 => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return Math.hypot(d.x - d0.x, d.z - d0.z) > 0.2; }, d0, 5000);
   const firstMoveMs = Date.now() - tk;
-  await sleep(1000);
+  await until(A, t0 => GAME.G.time - t0 >= 1.2, d0.t, 5000).catch(() => {});   // held 1.2 s of the host's game (a busy runner's clock runs slow: not wall time)
   await B.page.keyboard.up('KeyD');
   await until(A, () => { const d = GAME.G.dogs.find(d => d.player.kind === 'net'); return Math.hypot(d.vx, d.vz) < 0.3; }, null, 8000); await sleep(500);   // stopped, and the guest has caught up
   const d1 = await hostDog();
