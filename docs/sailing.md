@@ -13,7 +13,8 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
   The gap still shut: anything knocked onto the road hops back up (`seaWake`).
 - **What's sea** (`inSea`): past the pier's shore end (`SEAM_V`), and everywhere once she's cast off (`SEA_AWAY`).
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway gate lashed at sea:
-  `pen.lock`). `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords) is set to her pose undone. Cast off
+  `pen.lock`). 43.5 m stern to bow, 15 m across (`BOAT`; `boatHB`; the water shader's hull mask is built from it). Room to work: the tiller
+  at the stern, the sheet aft, the halyard at the mast, the anchor at the bow; troughs along the rails (`deckKit`), the rings aft of them. `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords) is set to her pose undone. Cast off
   from Cold Harbour, the land goes with the sea (`seaLandOff`: `LAND` under `seaG`, and everything in `scene` that isn't the boat's:
   `seaKeep`); a new journey puts it back (`seaLandOn`). Things in the water drift astern (`seaDrift`).
 - **Camera** (`seaCam`, `SEAC`, `T.sea.cam`): under way, a perspective chase camera astern and above, on the sea (not on her): the
@@ -35,20 +36,22 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
   (`SEA.bal`, `seaMass`): to windward they hold her up. Past `T.sea.deck.grip` feet slide to the low side
   (`seaDeckPush`); green water over the low rail washes sheep off (`SEA.awash`). The ride frightens them
   (`seaUnease`: a floor under stress; on deck they can panic, penned or not).
-- **Stations** (`STATIONS`, `holdKind 'station'`, `T.sea.station`): ✊ bites one (kept without
-  holding Ⓧ: `updateDog`), the stick works it, ✊ again lets go.
-  Tiller: stick steers; let go of the stick, she holds that heading (`SEA.course`); a shake (Ⓑ) lashes it (`SEA.lash`).
+- **Stations** (`STATIONS`, `holdKind 'station'`, `T.sea.station`): ✊ held bites one, the stick works it; let go of ✊: off it
+  at once, free to run.
+  Tiller: stick steers; let go of the stick, she holds that heading (`SEA.course`); let go of ✊: lashed (`SEA.lash`, 🔒), she
+  holds it still (`stationLetGo`); taken again: unlashed.
   Sheet: aft hauls, forward eases; a shake lets it fly. Halyard: up / down, settles on a reef. Anchor: down (held `dropHold` s)
   drops, up weighs (alongside: casts off); hauling paused, it holds a moment (`slip`). Just weighed or cast off: no drop for `lock` s
-  (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller: it swings amidships and she rounds up.
+  (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller, nor lashed (nor Hank's `pilot`): it swings amidships and she rounds up.
 - **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
   pressed; lets fly at anchor or with a dog overboard. Calls what he sees (`seaHank`).
 - **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
-  alongside if she's slow; a dog at the rail ✊ hauls it in (`seaHaul`), a swimming dog tows it (`d.tow`). Left: drowned.
+  alongside if she's slow; a dog on deck within `reach` ✊ hauls it in (`seaHaul`; before any other grab: `seaGrabPick`), a
+  swimming dog tows it (`d.tow`). Left: drowned.
   Dogs: over the rail only by a jump; swim, climb the nets against the hull (`seaSwimDog`). Under way she outsails a dog:
   one falling astern (or past `dogFar`) gets Hank's line (`a.line`), hauled in alongside and up.
 - **Life rings** (`RINGS`, `T.sea.ring`, `holdKind 'ring'` / `'ringRope'`): one on each rail. ✊ takes it; let go: thrown to the sheep
-  in the water it faces (`ringAim`, led for her drift: `ringTarget`). On the water it tows on its line. A sheep near makes for it and
+  in the water it faces, else the nearest in reach (`ringAim`, led for her drift: `ringTarget`). On the water it tows on its line. A sheep near makes for it and
   takes hold (`a.ring`: tires no more). ✊ at its post: the line comes in; Ⓑ heaves (`ringHeave`). In under the rail: `seaHaul`. Cues:
   hooks glow and 🛟 ✊ while one's in the water, the flight dotted, a ring where it'll land, 🛟 ✔, HEAVE!, a bar, SAVED! (`drawRingOverlay`, `ringFx`).
 - **Anchor** (`T.sea.anchor`): holds in under `depth` m, she swings head to wind; deeper, it only drags. The night
@@ -80,6 +83,9 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
   bed by it). Ashore where she lies (`vagReach`): as on land (trade, deliveries to the deck: `penFound`, sleep, bonk, grab, fetch, tug);
   else drawn on the sea, waiting (by night asleep). She casts off: after her (`vagLaunch0`); his last island: `bye`, home over the horizon
   (`vagPart`), gone (`st 'off'`). Put out: off in his Laser for a day, back by sea. Under way out of reach; hails (`vagSeaCalls`).
+- **What ✊ takes** (`drawGrabMarks`, `grabPick`): a ring in the dog's colour round it; the boat's gear and a sheep in the water get
+  a chip with the button. Free stations: a faint icon. Chips, marks and arrows at sea are `T.sea.ui`× (`seaUI`: less on a compact screen; `forageChip`).
+- **Hungry sheep** eat through barks and the ride (`troughSet`, docs/sheep.md): the deck's troughs aren't left for fright.
 - **HUD**: the dial (`drawSeaDial`): wind arrow, no-go wedge, boom (green drawing, amber luffing / stalled, dashed:
   best), rudder, heel + where the flock's weight is, knots, reefs, hull ♥. The sail's cloth tints the same. Compass:
   the next island (the boat, alongside; from the yeti's end: Cold Harbour). Map: a chart with the coast on it (`seaChart`; minimap
