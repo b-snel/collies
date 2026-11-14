@@ -1024,7 +1024,7 @@ const T = {
   // 🧂 salt), refused if it has under `room` of a batch free
   vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, room: 0.25, before: 55, clippers: { price: 0 },
     water: { price: 3, amt: 8, add: 6 }, food: { price: 4, amt: 8, add: 6 }, salt: { price: 2, amt: 10, add: 4 }, max: { food: 5, water: 3, salt: 3 },
-    row2: 3.2, venom: { price: 3 }, bandage: { price: 1 }, pills: { price: 2 }, shovel: { price: 4 } },   // VET: a second row of mats (row2 m further out): 💉 🩹 💊 🪏, into the dog's bag
+    row2: 3.2, venom: { price: 3 }, bandage: { price: 1 }, pills: { price: 2 }, vaccine: { price: 4, n: 5 }, shovel: { price: 4 } },   // VET: a second row of mats (row2 m further out): 💉 🩹 💊 🧪 (n doses) 🪏, straight to Hank
   // VAGABOND (VAG): the one trader, on foot along the trail (selling T.vendor's wares). walk/run m/s. Pitches: 1–2 a land leg (own rng, a new seed
   // each journey), the last at the Trading Post; past: m the flock's past his before he packs and walks on. callR m, callGap s: his cues. tradeR: a
   // dog this near can press to trade; wares stay out while a dog's within stayR, packed packT s after (layT s between mats). barkR/barkN/barkWin: that
@@ -1055,6 +1055,10 @@ const T = {
   // VET: what a dog buys goes straight to Hank; he treats one patient in `time` s (reach m away;
   // can't get to it for giveUp s: it waits skip s). venomSlow: speed lost at worst
   vet: { time: 2.4, reach: 0.55, giveUp: 25, skip: 20, venomSlow: 0.72, say: 75 },
+  // SHEEP POX: the flock at the same place (a camp, a pass fire, a sea leg: poxPlace) at more than `nights` nightfalls running: one falls
+  // ill (s.pox 0…1, dead in dieHours h), one more each night it stays. From `shed` on it passes to a sheep within r m (same side of a
+  // fence), catch /h each. Hank's 🧪 cures it (s.vax: never again). slow: speed lost at worst. tick: s between looks
+  pox: { nights: 4, dieHours: [40, 56], shed: 0.1, r: 2.4, catch: 0.02, slow: 0.45, tick: 0.5 },
   // REMAINS: a sheep that dies lies where it fell (its name over it) and rots into a tombstone over rotDays in-game days. With a
   // shovel Hank carries one (within reach m of him, from…to o'clock, nothing prowling) to the nearest camp's cemetery (YARDS),
   // at walk m/s, digs `dig` s and says a few words. A full cemetery gets another row, up to `rows`.
@@ -1204,6 +1208,8 @@ const rnd = (a = 0, b = 1) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
 function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+// fn on its own dice (seed): what it makes (three's uuids take Math.random) leaves the seeded tests' dice where they were
+function ownDice(seed, fn) { const r = Math.random; Math.random = mulberry32(seed); try { return fn(); } finally { Math.random = r; } }
 const wr = mulberry32(20261109);            // world-gen rng (deterministic)
 const wrr = (a = 0, b = 1) => a + wr() * (b - a);
 function hash(i, j) { let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
@@ -5348,6 +5354,8 @@ function newStats() {
     snake: 0,
     bled: 0,
     infect: 0,
+    pox: 0,   // SHEEP POX: died of it
+    poxed: 0,   // ...caught it
     cured: 0,
     buried: 0,
     cast: 0,
@@ -5376,7 +5384,7 @@ const G = {
 };
 const isNight = (h = G.clock.hour) => h >= T.nightStart || h < T.nightEnd;
 const living = () => G.sheep.filter(s => !s.dead);
-const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect', 'cast', 'cold', 'drowned', 'shark', 'kraken', 'siren', 'left'];
+const LOSS_KINDS = ['eaten', 'starved', 'old', 'salt', 'thirst', 'cougar', 'falcon', 'snake', 'bled', 'infect', 'pox', 'cast', 'cold', 'drowned', 'shark', 'kraken', 'siren', 'left'];
 const SEA_LOSS = ['drowned', 'shark', 'kraken', 'siren', 'left'];   // SAILING: lost at sea, or left on the mountain when the flock went down to the boat (no body to bury)
 const lostCount = () => LOSS_KINDS.reduce((a, k) => a + (G.stats[k] || 0), 0);   // every sheep lost this journey
 expose(() => ({ G, living, lostCount }));   // GAME STATE
@@ -5478,7 +5486,7 @@ function killSheep(s, why) {
   else if (why === 'cast') { G.stats.cast = (G.stats.cast || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, '#f3eee6', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }   // CAST: never got back up
   else if (why === 'starved') { G.stats.starved++; burst(s.x, s.y + 0.6, s.z, 12, '#d8d0c0', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   else if (SEA_LOSS.includes(why)) { G.stats[why] = (G.stats[why] || 0) + 1; toast(lossLine(s, why), 'bad'); Sound.sad(); }   // SAILING
-  else if (why === 'snake' || why === 'bled' || why === 'infect') { G.stats[why] = (G.stats[why] || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, why === 'bled' ? '#c0392b' : '#a8b878', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }   // VET
+  else if (why === 'snake' || why === 'bled' || why === 'infect' || why === 'pox') { G.stats[why] = (G.stats[why] || 0) + 1; burst(s.x, s.y + 0.6, s.z, 12, why === 'bled' ? '#c0392b' : '#a8b878', { speed: 1, up: 2.5, grav: 1 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }   // VET (SHEEP POX)
   else { G.stats.eaten++; burst(s.x, s.y + 0.6, s.z, 22, '#f7f3e8', { speed: 3, up: 3 }); toast(lossLine(s, why), 'bad'); Sound.sad(); }
   if (!SEA_LOSS.includes(why)) addRemains(s, why);   // REMAINS: it lies where it fell till it rots to a tombstone (or Hank buries it). (Not at sea)
   G.lost.push({ name: s.name, why, day: G.clock.day, looks: describeSheep(s), brave: s.brave ?? 0.5, ram: !!s.ram, lamb: !!s.lamb, age: s.age | 0, words: lookWords(s) });
@@ -14450,6 +14458,7 @@ function stepClock(dt) {
     if (!allIn) hint('night');
     cougarsAtNightfall();   // COUGARS: up on their limbs; the one nearest the flock may hunt tonight
   }
+  if (crossed(prev, now, T.nightStart)) poxNight();   // SHEEP POX: another night at the same place?
   if (crossed(prev, now, 23)) for (const s of G.sheep) s.breedOK = !!(s.pen && s.pen.gateT < 0.1 && s.hunger < T.breedHunger && !s.lamb);
   if (crossed(prev, now, 0.5) && !flockInPass() && !SEA.on) wakeDens(Math.min(T.denMax, Math.max(T.denStart, Math.ceil((T.coyoteBase + (G.clock.day - 2) * T.coyotePerDay) / 2) + 1)), 2);
   if (crossed(prev, now, T.nightEnd)) {
@@ -14592,7 +14601,7 @@ function sheepWoolColor(s, out) {
   else { const tint = s.lamb ? 1.0 : 0.97; out.setRGB(tint * st, tint * st, tint * st); }
   const k = oldK(s);   // AGE: old fleece goes a dingy grey (and a black one grizzles)
   if (k > 0) out.lerp(_cAge.setRGB(0.66 * st, 0.64 * st, 0.6 * st), 0.75 * k);
-  const sk = Math.max(s.venom || 0, s.infect || 0);   // VET: a bitten or festering sheep goes a sickly green-grey; a bleeding one, pinkish
+  const sk = Math.max(s.venom || 0, s.infect || 0, s.pox || 0);   // VET: a bitten, festering or poxy (SHEEP POX) sheep goes a sickly green-grey; a bleeding one, pinkish
   if (sk > 0.02) out.lerp(_cAge.setRGB(0.62 * st, 0.7 * st, 0.48 * st), 0.6 * Math.min(1, sk * 1.3));
   if ((s.bleed || 0) > 0.02) out.lerp(_cAge.setRGB(0.86 * st, 0.55 * st, 0.52 * st), 0.45 * Math.min(1, s.bleed * 1.5));
   const w = clamp((1 - (s.wool ?? 1)) / 0.8, 0, 1);   // HANK: shearing: shorn, the skin shows through, pinker the less fleece
@@ -15235,6 +15244,14 @@ const ART = (({ C, E, R, band, leaf, W }) => {
     blood: { L: [['M16 4C16 4 7.5 14.5 7.5 20a8.5 8.5 0 0 0 17 0C24.5 14.5 16 4 16 4Z', '#d8283a'], ['M12 20c0-2.5 1-5 3-7', null, W, 2]] },
     germ: { L: (() => { let st = '', tips = ''; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.3, c = Math.cos(a), s = Math.sin(a); st += `M${(16 + c * 7).toFixed(2)} ${(16 + s * 7).toFixed(2)}L${(16 + c * 10.5).toFixed(2)} ${(16 + s * 10.5).toFixed(2)}`; tips += C(+(16 + c * 11.5).toFixed(2), +(16 + s * 11.5).toFixed(2), 1.9); }
       return [[st, null, '#6fb84a', 1.8, 'o'], [tips, '#8fd16a'], [C(16, 16, 8), '#8fd16a'], [C(13, 14, 1.7) + C(19.2, 18.2, 1.3) + C(17.6, 12, 1), '#5a9e3a', 0, 0, 'n']]; })() },
+    // SHEEP POX: a spotty, feverish sheep with a thermometer; the vaccine vial; a moon (nights at one place)
+    pox: { L: [[C(10, 10.5, 5) + C(16, 8.5, 5.5) + C(22, 10.5, 5), '#f6f1e3'], [E(6.2, 16, 4, 1.9) + E(25.8, 16, 4, 1.9), '#55604a'], [E(16, 18.5, 7, 9), '#6b7a58'],
+      [E(13.2, 16.6, 1.8, 0.8) + E(18.8, 16.6, 1.8, 0.8), '#f6f1e3', 0, 0, 'n'], ['M11.4 15.4l3.6.6M20.6 15.4l-3.6.6', null, '#2b2622', 1.1],
+      [C(11.2, 21.2, 1.1) + C(20.6, 21.8, 1) + C(14.4, 24.8, 0.9) + C(18.6, 12.6, 0.8), '#e04848', 0, 0, 'n'],
+      ['M17 25.2L26.6 29', null, '#eef1f5', 2.6, 'o'], ['M21.6 27L26 28.8', null, '#e04848', 1.1], [C(27.2, 29.2, 1.9), '#e04848']] },
+    vaccine: { rot: 0.55, L: [[R(11, 2.5, 10, 4.6, 1.3), '#3a5a9a'], ['M12.4 7.1h7.2V25a3.6 3.6 0 0 1-7.2 0Z', '#e6f2f6'], ['M12.4 14.5h7.2V25a3.6 3.6 0 0 1-7.2 0Z', '#9a6ae0', 0, 0, 'n'],
+      ['M14.6 9.2v12.6', null, W, 1.4], [C(17.4, 19.2, 0.9) + C(15.8, 23, 0.7), '#cdb6ff', 0, 0, 'n']] },
+    moon: { L: [['M19.5 3.5a12.5 12.5 0 1 0 9 21.2A10.5 10.5 0 0 1 19.5 3.5Z', '#ffe08a'], [C(12, 19, 1.6) + C(16.5, 24.5, 1.1), '#f0c860', 0, 0, 'n']] },
     greens: { L: [['M7 28.5C11 21 16 13.5 24.5 5.5', null, '#4f8f3a', 2, 'o'], [leaf(10.5, 22.5, 7, -2.6) + leaf(13.5, 17.5, 7.5, -0.5) + leaf(16, 14.5, 7, -2.5) + leaf(19.5, 10.5, 6.5, -0.4), '#7cc455'],
       [C(24.8, 5.2, 2.3), '#b48ae6']] },
     bucket: { L: [['M7.5 11.5C7.5 2 24.5 2 24.5 11.5', null, '#6c7782', 1.6, 'o'], ['M7 11h18l-2.2 16.5a2 2 0 0 1-2 1.5H11.2a2 2 0 0 1-2-1.5Z', '#9aa7b4'],
@@ -15397,6 +15414,9 @@ const EMOJI_ART = {   // one a line
   '🐍': 'snake',
   '🩸': 'blood',
   '🦠': 'germ',
+  '🤒': 'pox',   // SHEEP POX
+  '🧪': 'vaccine',
+  '🌙': 'moon',
   '🌿': 'greens',
   '🪣': 'bucket',
   '🧓': 'hank',
@@ -15619,6 +15639,8 @@ const HINTS = {
   apple: '🍎 <b>Pounce</b> into an apple tree to shake apples down. Hungry sheep go for them first. <b>Grab</b> one and stand still by a sheep: it comes for it.',
   snake: '🐍 <b>Rattlesnake!</b> Steer the flock wide of the rocks, or <b>bark</b> / <b>pounce</b> it back. A bitten sheep needs 💉: buy it from the vagabond, bring it to 🧓 Hank.',
   wound: 'Hurt! 🩸 needs 🩹, 🦠 needs 💊. Buy them from the vagabond and bring them to 🧓 Hank.',
+  stay: '🌙 Too long in one place: one more night here and the flock catches the <b>pox</b> 🤒. Move on!',   // SHEEP POX
+  pox: '🤒 <b>Pox!</b> It spreads. 🧪 from the vagabond ➜ 🧓 Hank. Move on!',
   salt: 'Sheep need <b>salt</b>. Without it they slow down, and in the end they die of it. Look for white <b>salt rocks</b> 🧂 off the trail.',
   bucket: 'A <b>bucket</b> 🪣! Keep holding <b>grab</b> to carry it. Wade into a river, lake or the sea to fill it.',
   rope: 'A <b>rope</b>! Drag it about. Another dog grabs it too, or bring it to 🧓 Hank: <b>tug of war</b>!',
@@ -15690,6 +15712,7 @@ const TOUCH_HINTS = {
   apple: '🍎 💥 the tree · ✊ one to a 🐑',
   snake: '🐍 Steer wide, 📣 / 💥 it. Bitten: 💉 ➜ 🧓',
   wound: '🩸 → 🩹 · 🦠 → 💊 · ➜ 🧓',
+  stay: '🌙 ➜ 🤒 · move on!', pox: '🤒 → 🧪 ➜ 🧓 · move on!',   // SHEEP POX
   salt: 'Sheep need 🧂. Find white <b>salt rocks</b>',
   bucket: '🪣! Hold ✊ to carry · wade in to fill',
   rope: 'Rope! 2+ dogs or 🧓: <b>tug of war</b>',
@@ -15780,7 +15803,8 @@ function updateHUD(dt) {
   const starving = live.filter(s => s.hunger >= 1).length, noSalt = live.filter(s => s.salt <= 0).length, parched = WATER.parched;
   const sick = AIL.map(A => [A.icon, live.filter(s => ailOf(s) & A.bit).length]).filter(([, n]) => n).map(([ic, n]) => `${ic}${n}`).join(' ');   // VET
   const frozen = live.filter(s => s.cold > 0.75).length;   // MOUNTAIN PASS
-  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : '', frozen ? `⚠ ${frozen} ❄️!` : '', sick ? `⚠ ${sick}` : ''].filter(Boolean).join(' ');
+  const stay = poxStay();   // SHEEP POX: one more night here and they catch it
+  $('hStarving').textContent = [starving ? `⚠ ${starving} starving!` : '', noSalt ? `⚠ ${noSalt} out of salt!` : '', parched ? `⚠ ${parched} 💧!` : '', frozen ? `⚠ ${frozen} ❄️!` : '', sick ? `⚠ ${sick}` : '', stay ? `⚠ 🌙${stay} ➜ 🤒` : ''].filter(Boolean).join(' ');
   updateSaltHUD(live); updateWaterHUD();
   if (starving) hint('hungry');
   // compass to the next camp
@@ -16311,7 +16335,7 @@ const HANK = {
   // shearing: his clippers (SHARED HOOK HANK.clippers), the sheep he's after or clipping, climbing a fence (lift: how high)
   clippers: false, job: null, shearing: false, climb: null, cross: null, round: null, lift: 0,
   // VET: what the dogs brought him (HANK.meds: doses of each; HANK.shovel), the job in hand (care), bent over a patient or digging
-  meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, care: null, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false,   // (REMAINS: building a cemetery)
+  meds: { venom: 0, bandage: 0, pills: 0, vaccine: 0 }, shovel: false, care: null, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false,   // (REMAINS: building a cemetery)
   // ROPES: the rope he's tugging (ropeI: his grip), the one he's walking to (ropeEnd), when he'll play again; his tug colour
   rope: null, ropeI: -1, ropeWant: null, ropeEnd: -1, ropeAgain: 0, tugS: 0, tugSide: 0, tugK: 0, color: '#d23a2e', npc: true,   // (npc: a man on a rope, not a dog: VAGABOND too)
 };
@@ -16437,7 +16461,7 @@ function hankGoal() {
 }
 function resetHank() {
   const hk = HANK; shearStop(); careStop(); Object.assign(hk, { clippers: false, climb: null, cross: null, round: null, lift: 0, rope: null, ropeI: -1, ropeWant: null, ropeAgain: 0, air: null, slide: null, lighting: false, lightAt: 0 });   // (ROPES; MOUNTAIN PASS)   // shearing: the clippers are buried again
-  Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
+  Object.assign(hk, { meds: { venom: 0, bandage: 0, pills: 0, vaccine: 0 }, shovel: false, tending: false, digging: false, building: false, vetSaid: {}, shovelSaid: false });   // VET: a new journey, an empty bag
   Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
@@ -17064,18 +17088,19 @@ expose(() => ({ giveHankClippers, shearPick, shearStop, shearSize, crossAt, CLIP
 // s.venomRate / bleedRate / infectRate > 0: getting worse (0: treated, mending).
 // HANK.care: the job in hand { kind: 'treat', s, A } | { kind: 'bury', g, Y, slot, phase }.
 // =====================================================================
-const VET_KINDS = ['venom', 'bandage', 'pills', 'shovel'];
-const VET_ICON = { venom: '💉', bandage: '🩹', pills: '💊', shovel: '🪏' };
+const VET_KINDS = ['venom', 'bandage', 'pills', 'vaccine', 'shovel'];   // (one a line elsewhere: WARE_KINDS, T.vendor, HANK.meds)
+const VET_ICON = { venom: '💉', bandage: '🩹', pills: '💊', vaccine: '🧪', shovel: '🪏' };
 const AIL = [   // what's wrong: its progress field, its rate, its tell, its cure, how it kills
   { key: 'venom', rate: 'venomRate', icon: '🐍', cure: 'venom', bit: 1, why: 'snake' },
   { key: 'bleed', rate: 'bleedRate', icon: '🩸', cure: 'bandage', bit: 2, why: 'bled' },
   { key: 'infect', rate: 'infectRate', icon: '🦠', cure: 'pills', bit: 4, why: 'infect' },
+  { key: 'pox', rate: 'poxRate', icon: '🤒', cure: 'vaccine', bit: 8, why: 'pox' },   // SHEEP POX
 ];
-const ailBits = s => (s.venomRate > 0 ? 1 : 0) | (s.bleedRate > 0 ? 2 : 0) | (s.infectRate > 0 ? 4 : 0);
+const ailBits = s => (s.venomRate > 0 ? 1 : 0) | (s.bleedRate > 0 ? 2 : 0) | (s.infectRate > 0 ? 4 : 0) | (s.poxRate > 0 ? 8 : 0);
 const ailOf = s => s.ail ?? ailBits(s);   // (host: kept up in sheepAilments; guests: synced)
-const sickK = s => Math.max(s.venom || 0, (s.infect || 0) * 0.9, (s.bleed || 0) * 0.7);   // how ill it looks
+const sickK = s => Math.max(s.venom || 0, (s.infect || 0) * 0.9, (s.bleed || 0) * 0.7, (s.pox || 0) * 0.9);   // how ill it looks
 // how fast it can go: worse and worse as the venom or the wound takes hold (and back as it mends)
-const sickPep = s => clamp(1 - T.vet.venomSlow * (s.venom || 0) - T.wound.slow * Math.max(s.bleed || 0, s.infect || 0), 0.22, 1);
+const sickPep = s => clamp(1 - T.vet.venomSlow * (s.venom || 0) - T.wound.slow * Math.max(s.bleed || 0, s.infect || 0) - T.pox.slow * (s.pox || 0), 0.22, 1);
 // SHARED HOOK (RATTLESNAKES): a snake bit sheep s (n: the snake)
 function snakeBite(s, n = null) {
   const S = T.snake, hours = rnd(S.dieHours[0], S.dieHours[1]) * (s.lamb ? S.lamb : 1);
@@ -17109,7 +17134,7 @@ function woundSheep(s) {
 }
 // in updateSheep (host), every sheep: worse while untreated, mending once treated; dead at 1. True if it died.
 function sheepAilments(s, dtH) {
-  if (!(s.venom || s.bleed || s.infect)) { if (s.ail) s.ail = 0; return false; }
+  if (!(s.venom || s.bleed || s.infect || s.pox)) { if (s.ail) s.ail = 0; return false; }
   const heal = dtH / T.wound.healHours;
   for (const A of AIL) { const v = s[A.key]; if (!v) continue; s[A.key] = s[A.rate] > 0 ? Math.min(1, v + s[A.rate] * dtH) : Math.max(0, v - heal); }
   s.ail = ailBits(s);
@@ -17118,7 +17143,7 @@ function sheepAilments(s, dtH) {
   return false;
 }
 // Hank's cure: it stops getting worse and mends (SHARED HOOK)
-function cureSheep(s, cure) { for (const A of AIL) if (A.cure === cure) s[A.rate] = 0; s.ail = ailBits(s); }
+function cureSheep(s, cure) { for (const A of AIL) if (A.cure === cure) s[A.rate] = 0; if (cure === 'vaccine') s.vax = true; s.ail = ailBits(s); }   // (SHEEP POX: jabbed, it never catches it again)
 // a sick sheep's tells (host and guests): a bleeder drips, a festering one draws flies, a bitten one sweats green
 function sickTrail(s, dt) {
   const b = ailOf(s); if (!b || s.state === 'sleep') return;
@@ -17126,10 +17151,11 @@ function sickTrail(s, dt) {
   if ((b & 2) && Math.random() < dt * 4) burst(s.x + rnd(-0.2, 0.2), s.y + 0.5 * hs, s.z + rnd(-0.2, 0.2), 1, '#b3262a', { speed: 0.3, up: 0.2, size: 0.08, life: 0.6, grav: -9 });
   if ((b & 4) && Math.random() < dt * 2.5) { const a = Math.random() * TAU; burst(s.x + Math.cos(a) * 0.5, s.y + 1.1 * hs, s.z + Math.sin(a) * 0.5, 1, '#1c1a18', { speed: 1.2, up: 0.4, size: 0.05, life: 0.7, grav: 0 }); }
   if ((b & 1) && Math.random() < dt * 2) burst(s.x + Math.sin(s.yaw) * 0.5 * hs, s.y + 1.0 * hs, s.z + Math.cos(s.yaw) * 0.5 * hs, 1, '#a8c070', { speed: 0.5, up: 1.2, size: 0.08, life: 0.5, grav: -6 });
+  if ((b & 8) && Math.random() < dt * 0.6) burst(s.x + Math.sin(s.yaw) * 0.75 * hs, s.y + 0.85 * hs, s.z + Math.cos(s.yaw) * 0.75 * hs, 4, '#d8dcc0', { speed: 1.4, up: 0.6, size: 0.1, life: 0.55, grav: 0 });   // SHEEP POX: a cough
 }
 // what the flock needs that Hank hasn't got: a Set of 'venom' | 'bandage' | 'pills'
 function vetWant() {
-  const need = { venom: 0, bandage: 0, pills: 0 }, want = new Set(), meds = HANK.meds || {};
+  const need = {}, want = new Set(), meds = HANK.meds || {}; for (const A of AIL) need[A.cure] = 0;
   for (const s of G.sheep) { if (s.dead) continue; const b = ailOf(s); if (b) for (const A of AIL) if (b & A.bit) need[A.cure]++; }
   for (const k in need) if (need[k] && (meds[k] || 0) < need[k]) want.add(k);
   return want;
@@ -17139,7 +17165,7 @@ function vetNotice(s, kind) {
   const hk = HANK, said = hk.vetSaid;
   if (G.mode !== 'play' || (hk.meds[kind] || 0) > 0 || G.time - (said[kind] ?? -1e9) < T.vet.say || !hankSees(s.x, s.z)) return false;
   said[kind] = G.time;
-  return hank(null, kind === 'venom' ? `Snakebite! ${s.name} needs anti-venom 💉! The vagabond has it.` : kind === 'bandage' ? `${s.name}'s bleedin' bad! Bandages 🩹, quick!` : `${s.name}'s cut is festerin'. Antibiotics 💊!`, { force: true, delay: 0.8 });
+  return hank(null, kind === 'venom' ? `Snakebite! ${s.name} needs anti-venom 💉! The vagabond has it.` : kind === 'bandage' ? `${s.name}'s bleedin' bad! Bandages 🩹, quick!` : kind === 'vaccine' ? `${s.name}'s got the pox 🤒! Vaccine 🧪, from the vagabond!` : `${s.name}'s cut is festerin'. Antibiotics 💊!`, { force: true, delay: 0.8 });
 }
 // in hankWatch (a few times a second): the worst off he can see and can't help; a body he could bury with a shovel
 function vetWatch() {
@@ -17151,11 +17177,11 @@ function vetWatch() {
   }
 }
 // ---------------- into Hank's kit ----------------
-// SHARED HOOK: Hank gets wares b ({ venom, bandage, pills, shovel }: counts): meds into his stock, a shovel on his back; false if none
+// SHARED HOOK: Hank gets wares b ({ venom, bandage, pills, vaccine, shovel }: counts, doses): meds into his stock, a shovel on his back; false if none
 function giveHank(b, d = null) {
   const hk = HANK; if (!b || !VET_KINDS.some(k => b[k] > 0)) return false;
   const icons = VET_KINDS.filter(k => b[k] > 0).map(k => VET_ICON[k]).join(''), onlyShovel = VET_KINDS.every(k => k === 'shovel' || !(b[k] > 0));
-  for (const k of ['venom', 'bandage', 'pills']) hk.meds[k] = (hk.meds[k] || 0) + (b[k] || 0);
+  for (const k of VET_KINDS) if (k !== 'shovel') hk.meds[k] = (hk.meds[k] || 0) + (b[k] || 0);
   if (b.shovel > 0) hk.shovel = true;
   if (hk.asleep) { hk.asleep = false; hk.upT = G.time; }
   starBurst(hk.x, hk.y + 2.3, hk.z, 10); floatText(`${icons} ✔`, hk.x, hk.y + 2.9, hk.z, '#7ed957', 1.4);
@@ -17465,7 +17491,7 @@ function lastWords(g) {
     : b >= 0.55 ? pk([`First to the front, always. We'll miss ye, ${n}.`, `Bold as brass, ${n}. Bold as brass.`])
     : b >= 0.4 ? pk([`Steady ${n}. Ye kept the rest o' them right.`, `Never first, never last, ${n}. Always there.`])
     : pk([`Timid wee ${n}. Ye were braver than ye knew.`, `${n} jumped at every twig, an' still walked every mile.`]);
-  const coda = g.why === 'snake' ? pk([' Curse that snake.', '']) : g.why === 'bled' || g.why === 'infect' ? pk([' I was too late.', '']) : g.why === 'old' ? '' : pk(['', ' Rest easy.']);
+  const coda = g.why === 'snake' ? pk([' Curse that snake.', '']) : g.why === 'bled' || g.why === 'infect' || g.why === 'pox' ? pk([' I was too late.', '']) : g.why === 'old' ? '' : pk(['', ' Rest easy.']);
   return line + coda;
 }
 // ---------------- what they look like: on Hank, his bag at his hip, the shovel on his back or in his hands ----------------
@@ -17487,7 +17513,7 @@ function syncVet(dt) {
     M.vet = { back, hand, bag, mallet };
   }
   const meds = hk.meds || {};
-  M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.mallet.visible = !!hk.building; M.vet.bag.visible = (meds.venom || 0) + (meds.bandage || 0) + (meds.pills || 0) > 0;
+  M.vet.back.visible = !!hk.shovel && !hk.digging; M.vet.hand.visible = !!hk.digging; M.vet.mallet.visible = !!hk.building; M.vet.bag.visible = VET_KINDS.some(k => (meds[k] || 0) > 0);
   // the grave he's digging (in front of him: guests see it too)
   HOLE.t = hk.digging ? HOLE.t + dt : 0; HOLE.g.visible = !!hk.digging;
   if (hk.digging) { const fx = Math.sin(hk.yaw), fz = Math.cos(hk.yaw), x = hk.x + fx * 0.95, z = hk.z + fz * 0.95; HOLE.g.position.set(x, terrainH(x, z), z); HOLE.g.rotation.y = hk.yaw; HOLE.g.scale.setScalar(clamp(0.3 + HOLE.t / T.remains.dig, 0.3, 1)); }
@@ -17528,6 +17554,73 @@ function drawVetOverlay() {
 expose(() => ({ snakeBite, woundSheep, sheepAilments, cureSheep, sickPep, sickK, ailBits, AIL, VET_KINDS, vetWant, giveHank, careNext, careStop, updateCare, lastWords, syncVet, hankRound }));   // VET
 
 // =====================================================================
+// SHEEP POX — kept at one place (poxPlace: the camp or pass fire nearest the flock, or the sea leg) more than T.pox.nights
+// nightfalls running (POX.n, counted at nightfall: poxNight), the flock catches the pox: one falls ill, one more each night it
+// stays. It spreads (updatePox): a sick one (s.pox ≥ shed) to a sheep near it, on its side of a fence. A VET ailment (AIL: s.pox,
+// s.poxRate, why 'pox'): Hank's 🧪 (the vagabond's: T.vendor.vaccine.n doses) cures it, and a jabbed sheep never catches it
+// again (s.vax). The dawn before, Hank warns (POX.warned) and the HUD shows it (poxStay).
+// =====================================================================
+const POX = { at: null, n: 0, t: 0, acc: 0, warned: false, news: null };   // at: the place (n nightfalls there running); news: who fell ill (Hank's word at dawn)
+// where the flock is: the nearest camp ('c' + i) or pass fire ('f' + i) along the trail; at sea, the leg ('s' + leg). null: no flock
+function poxPlace() {
+  if (SEA.on) return 's' + SEA.leg;
+  const fc = flockCenter(); if (!fc.n) return null;
+  const fs = sAt(fc.x, fc.z); let k = null, bd = 1e9;
+  CAMPS.forEach((c, i) => { const d = Math.abs(c.s - fs); if (d < bd) { bd = d; k = 'c' + i; } });
+  for (const f of PASS.fires) { const d = Math.abs(f.s - fs); if (d < bd) { bd = d; k = 'f' + f.i; } }
+  return k;
+}
+// the HUD's warning: nights here, once one more here brings it on (else 0). Guests: POX synced
+const poxStay = () => G.mode === 'play' && POX.n >= T.pox.nights && POX.at === poxPlace() ? POX.n : 0;
+// s falls ill (host)
+function poxCatch(s) {
+  s.poxRate = 1 / rnd(T.pox.dieHours[0], T.pox.dieHours[1]); s.pox = Math.max(s.pox || 0, 0.02); s.ail = ailBits(s);
+  G.stats.poxed = (G.stats.poxed || 0) + 1;
+  floatText('🤒', s.x, s.y + 1.6 * s.scale, s.z, '#c8e07a', 1.2);
+  vetNotice(s, 'vaccine');
+}
+// CLOCK (stepClock), at nightfall: the same place again, one night more; past T.pox.nights, one falls ill
+function poxNight() {
+  if (G.mode !== 'play') return;
+  const k = poxPlace(); if (!k) return;
+  if (k !== POX.at) Object.assign(POX, { at: k, n: 0, warned: false });
+  if (++POX.n <= T.pox.nights) return;
+  const L = living().filter(s => !s.vax && !(s.poxRate > 0) && !s.grabbed && !s.air);
+  if (!L.length) return;
+  const s = L[Math.floor(Math.random() * L.length)];
+  poxCatch(s); POX.news = s.name;
+  toast(`🤒 ${s.name}`, 'bad'); hint('pox');
+}
+// host, every step: Hank's word the dawn before (and the morning after it's come); the sick pass it on
+function updatePox(dt, dtH) {
+  if (G.mode !== 'play') return;
+  POX.acc += dtH;
+  if ((POX.t -= dt) > 0) return;
+  POX.t = T.pox.tick;
+  const P = T.pox, h = G.clock.hour, morn = h >= 6.3 && h < 12 && !HANK.asleep, ac = POX.acc; POX.acc = 0;
+  if (POX.news && (morn ? hank(null, `We stayed too long! ${POX.news}'s got the pox 🤒. Move on!`, { force: true }) : h >= 12)) POX.news = null;
+  if (morn && !POX.warned && POX.n >= P.nights && poxPlace() === POX.at
+    && hank(null, pick([`${POX.n} nights in one spot. Move them on today, or they'll take sick 🤒.`, `We've lingered here too long. Move on, or it's the pox 🤒.`]), { force: true })) { POX.warned = true; hint('stay'); }
+  let sick = null;
+  for (const s of G.sheep) if (!s.dead && s.poxRate > 0 && s.pox >= P.shed) (sick || (sick = [])).push(s);
+  if (!sick) return;
+  const pr = 1 - Math.exp(-P.catch * ac), r2 = P.r * P.r;
+  for (const o of G.sheep) {
+    if (o.dead || o.vax || o.poxRate > 0 || o.pox > 0 || o.air || o.heldBy) continue;
+    for (const c of sick) {
+      if ((o.pen || null) !== (c.pen || null)) continue;   // (not through a fence)
+      const dx = o.x - c.x, dz = o.z - c.z;
+      if (dx * dx + dz * dz < r2 && Math.random() < pr) { poxCatch(o); break; }
+    }
+  }
+}
+// dev (?debug): one more night here than it takes
+function devPox() { POX.at = poxPlace(); POX.n = T.pox.nights; poxNight(); }
+onReset(() => Object.assign(POX, { at: null, n: 0, t: 0, acc: 0, warned: false, news: null }));
+onSave('pox', () => ({ at: POX.at, n: POX.n, warned: POX.warned }), v => { POX.at = typeof v.at === 'string' ? v.at : null; POX.n = Math.max(0, v.n | 0); POX.warned = !!v.warned; });
+expose(() => ({ POX, poxPlace, poxStay, poxNight, poxCatch, updatePox, devPox }));   // SHEEP POX
+
+// =====================================================================
 // FLOCK LOOKS — what each sheep wears: s.look = { wool, hat, hatColor,
 // acc: [], paint: [] } (plain JSON; it's saved). Hats and accessories are
 // drawn on the instanced flock: one InstancedMesh per piece (a fixed-colour
@@ -17562,13 +17655,13 @@ function lookWords(s) {
 const andList = w => w.length > 1 ? w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1] : (w[0] || '');
 // the loss toast: "The coyotes got Dolly — in her straw hat and red scarf"
 function lossLine(s, why) {
-  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cold' ? `${s.name} froze` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : why === 'snake' ? `🐍 ${s.name} died of a snakebite` : why === 'bled' ? `🩸 ${s.name} bled to death` : why === 'infect' ? `🦠 ${s.name}'s wounds went bad` : why === 'cast' ? `🙃 ${s.name} died cast on ${s.ram ? 'his' : 'her'} back` : why === 'drowned' ? `🌊 ${s.name} was lost overboard` : why === 'shark' ? `🦈 A shark took ${s.name}` : why === 'kraken' ? `🐙 The kraken took ${s.name}` : why === 'siren' ? `🧜 ${s.name} swam off after the singing` : why === 'left' ? `🏔️ ${s.name} was left on the mountain` : `The coyotes got ${s.name}`;
+  const w = lookWords(s), base = why === 'old' ? `${s.name} died peacefully in ${s.ram ? 'his' : 'her'} sleep, ${s.age | 0} days old` : why === 'starved' ? `${s.name} starved` : why === 'salt' ? `${s.name} wasted away for want of salt` : why === 'thirst' ? `${s.name} died of thirst` : why === 'cold' ? `${s.name} froze` : why === 'cougar' ? `A cougar took ${s.name} up its tree` : why === 'falcon' ? `A falcon took ${s.name} to its nest` : why === 'snake' ? `🐍 ${s.name} died of a snakebite` : why === 'bled' ? `🩸 ${s.name} bled to death` : why === 'infect' ? `🦠 ${s.name}'s wounds went bad` : why === 'pox' ? `🤒 ${s.name} died of the pox` : why === 'cast' ? `🙃 ${s.name} died cast on ${s.ram ? 'his' : 'her'} back` : why === 'drowned' ? `🌊 ${s.name} was lost overboard` : why === 'shark' ? `🦈 A shark took ${s.name}` : why === 'kraken' ? `🐙 The kraken took ${s.name}` : why === 'siren' ? `🧜 ${s.name} swam off after the singing` : why === 'left' ? `🏔️ ${s.name} was left on the mountain` : `The coyotes got ${s.name}`;
   if (w.length) return `${base} — in ${s.ram ? 'his' : 'her'} ${andList(w)}`;
-  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : why === 'cold' ? `${base}… ❄️ → 🔥` : why === 'snake' ? `${base}… 💉 ➜ 🧓` : why === 'bled' ? `${base}… 🩹 ➜ 🧓` : why === 'infect' ? `${base}… 💊 ➜ 🧓` : why === 'cast' ? `${base}… 💥 a cast sheep back onto its feet!` : why === 'drowned' ? `${base}… ✊ ➜ 🐑 🌊` : why === 'siren' ? `${base}… 📣` : `${base}…`;
+  return why === 'old' ? `${base}. A long life on the trail.` : why === 'starved' ? `${base}… find better grass!` : why === 'salt' ? `${base}… bring salt to the pen's salt lick!` : why === 'thirst' ? `${base}… bring water 🪣 to the pen's trough!` : why === 'cold' ? `${base}… ❄️ → 🔥` : why === 'snake' ? `${base}… 💉 ➜ 🧓` : why === 'bled' ? `${base}… 🩹 ➜ 🧓` : why === 'infect' ? `${base}… 💊 ➜ 🧓` : why === 'pox' ? `${base}… 🧪 ➜ 🧓` : why === 'cast' ? `${base}… 💥 a cast sheep back onto its feet!` : why === 'drowned' ? `${base}… ✊ ➜ 🐑 🌊` : why === 'siren' ? `${base}… 📣` : `${base}…`;
 }
 // how a sheep we lost went, for the "Fondly remembered" lists: why is one of LOSS_KINDS
 const cleanWhy = w => LOSS_KINDS.includes(w) ? w : 'eaten';
-const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cold' ? 'froze on the pass' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : why === 'snake' ? 'died of a snakebite' : why === 'bled' ? 'bled to death' : why === 'infect' ? 'died of a festering wound' : why === 'cast' ? 'died cast on its back' : why === 'drowned' ? `${was}lost overboard` : why === 'shark' ? `${was}taken by a shark` : why === 'kraken' ? `${was}taken by the kraken` : why === 'siren' ? `${was}sung away by the sirens` : why === 'left' ? `${was}left on the mountain` : `${was}taken by coyotes`;
+const lostHow = (why, was = '') => why === 'old' ? 'died of old age' : why === 'starved' ? 'starved' : why === 'salt' ? 'wasted away for want of salt' : why === 'thirst' ? 'died of thirst' : why === 'cold' ? 'froze on the pass' : why === 'cougar' ? `${was}taken up a tree by a cougar` : why === 'falcon' ? `${was}carried off by a falcon` : why === 'snake' ? 'died of a snakebite' : why === 'bled' ? 'bled to death' : why === 'infect' ? 'died of a festering wound' : why === 'pox' ? 'died of the pox' : why === 'cast' ? 'died cast on its back' : why === 'drowned' ? `${was}lost overboard` : why === 'shark' ? `${was}taken by a shark` : why === 'kraken' ? `${was}taken by the kraken` : why === 'siren' ? `${was}sung away by the sirens` : why === 'left' ? `${was}left on the mountain` : `${was}taken by coyotes`;
 
 // ---------------- hat and accessory shapes, built in the sheep's head space (body space for the scarf) ----------------
 const WHITE_TINT = '#ffffff';   // parts in the hat colour are white: the instance (or material) colour shows through
@@ -18672,6 +18765,7 @@ function eulogy(m) {
     : m.why === 'snake' ? pick([`One bite from under a rock.`, `The desert's sting found ${her}.`])
     : m.why === 'bled' ? pick([`Fought to the last drop.`, `The wounds were too deep.`])
     : m.why === 'infect' ? pick([`A wee cut, and the fever came.`, `Fought the fever to the end.`])
+    : m.why === 'pox' ? pick([`We stayed too long, and the pox found ${her === 'his' ? 'him' : 'her'}.`, `Coughed to the last.`])
     : m.why === 'drowned' ? pick([`The sea took ${her === 'his' ? 'him' : 'her'}. We came about too late.`, `Over the rail, and gone astern.`, `Lost to the grey water.`])
     : m.why === 'left' ? pick([`We shut the cave and went down without ${her === 'his' ? 'him' : 'her'}.`, `Still up on the pass, for all we know.`])
     : m.why === 'shark' ? pick([`A fin, and then nothing.`, `The sharks were quicker than we were.`])
@@ -18681,7 +18775,7 @@ function eulogy(m) {
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜', left: '🏔️' };
+const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', pox: '🤒', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜', left: '🏔️' };
 // 🕯️ Obituaries: icon, name, bravery (and the day, on the end screen), eulogy
 function obitHTML(dead, day = false) {
   if (!dead.length) return '';
@@ -19077,6 +19171,7 @@ const WARE_KINDS = {   // name: what pops up over it when a dog steps on (more: 
   venom: { icon: '💉', col: '#4fb28a', row: 1, name: 'Antivenom', sub: 'for 🐍 bites' },
   bandage: { icon: '🩹', col: '#d9a46c', row: 1, name: 'Bandage', sub: 'for 🩸 cuts' },
   pills: { icon: '💊', col: '#d86a6a', row: 1, name: 'Pills', sub: 'for 🦠 infection' },
+  vaccine: { icon: '🧪', col: '#9a6ae0', row: 1, name: 'Vaccine', sub: 'for 🤒 pox' },   // SHEEP POX (T.vendor.vaccine.n doses)
   shovel: { icon: '🪏', col: '#9a7a5a', row: 1, name: 'Shovel', sub: 'for 🪦 burials', show: () => !HANK.shovel },   // (one's enough)
 };
 // his one "stall": where his mats are laid (x, z: his spot behind them; f: toward the camera; r: its right), the pen picked on 📍
@@ -19125,15 +19220,23 @@ const vagMatR = () => T.vendor.matR * T.vag.mat / 2.5;   // a dog this near a ma
     pills: merge(P(CYL(0.16, 0.16, 0.34, 12), '#e9eef2', { p: [0, 0.17, back] }), P(CYL(0.17, 0.17, 0.08, 12), '#d86a6a', { p: [0, 0.38, back] }), P(SPH(6), '#d86a6a', { s: [0.05, 0.03, 0.03], p: [0.28, 0.03, back + 0.1] }), P(SPH(6), '#f6f0e4', { s: [0.05, 0.03, 0.03], p: [0.33, 0.03, back + 0.04] })),
     shovel: merge(P(SPH(9), '#8a6440', { s: [0.45, 0.16, 0.35], p: [0, 0.03, back] }), SHOVEL_GEO.clone().rotateZ(-0.25).translate(0.05, 0.42, back)),
   };
+  // wares added since: made on their own dice (ownDice), so the seeded tests' runs stay as they were
+  const LATE = {
+    vaccine: () => merge(P(BOX(0.66, 0.12, 0.3), '#8a5a32', { p: [0, 0.06, back] }), ...[-0.22, 0, 0.22].flatMap(x => [P(CYL(0.06, 0.06, 0.34, 8), '#e6f2f6', { p: [x, 0.29, back] }),   // SHEEP POX: a rack of vials
+      P(CYL(0.065, 0.065, 0.2, 8), '#9a6ae0', { p: [x, 0.22, back] }), P(CYL(0.07, 0.07, 0.07, 8), '#3a5a9a', { p: [x, 0.49, back] })])),
+  };
   for (const k in GEOS) GEOS[k].translate(0, 0, -back);   // each on its own pivot (w.ware: it bounces when a dog steps on)
-  for (const w of ALL_WARES) {
-    Object.assign(w, { x: 0, z: 0, y: 0, k: 0, shakeAt: -9, armT: -9, bT: 9, popT: 0, popOff: 9, popOn: false });
+  const make = w => {
     const g = new THREE.Group(); g.visible = false; scene.add(g); w.g = g;
     w.inner = new THREE.Group(); g.add(w.inner);   // (pops in and out: w.k)
     part(w.inner, merge(P(BOX(M, 0.04, M), '#5a4030', { p: [0, 0.02, 0] }), P(BOX(M - 0.3, 0.05, M - 0.3), w.col, { p: [0, 0.04, 0] }),
       ...[-0.27, 0.27].map(z => P(BOX(M - 0.3, 0.055, 0.14), '#f4ead2', { p: [0, 0.045, z * M] }))), { outline: false, shadow: false });
     const big = new THREE.Group(); big.position.z = -M * 0.24; big.scale.setScalar(T.vag.ware); w.inner.add(big);   // VAGABOND: big, told apart at a glance
-    w.ware = new THREE.Group(); big.add(w.ware); part(w.ware, GEOS[w.id]);
+    w.ware = new THREE.Group(); big.add(w.ware); part(w.ware, GEOS[w.id] || LATE[w.id]().translate(0, 0, -back));
+  };
+  for (const w of ALL_WARES) {
+    Object.assign(w, { x: 0, z: 0, y: 0, k: 0, shakeAt: -9, armT: -9, bT: 9, popT: 0, popOff: 9, popOn: false });
+    if (GEOS[w.id]) make(w); else ownDice(7919 + w.gi, () => make(w));
   }
 }
 // SHARED HOOK (pen food): tip a batch into a pen's troughs, emptiest first, each up to its cap; returns what went in
@@ -19168,7 +19271,7 @@ function buyWare(w, d = null) {
     else if (w.id === 'food') stockTroughs(pen, V.food.amt); else if (w.id === 'water') fillWater(pen, V.water.amt); else lickAdd(pen, V.salt.amt);
   }
   else if (w.id === 'clippers') giveHankClippers();
-  else if (vet) giveHank({ [w.id]: 1 }, d);
+  else if (vet) giveHank({ [w.id]: V[w.id].n || 1 }, d);   // (🧪: n doses)
   if (kind === 'buy' || kind === 'add') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
   vendorFx(w.gi, kind, price, st.sel, KIT[w.id] ? kitN(pens[st.sel] || postPen, w.id) : 0);
   if (kind === 'poor' && Math.random() < 0.5) vagLine('poor');   // VAGABOND
@@ -19312,6 +19415,7 @@ const VAG_LINES = {
   venom: ['Snakebite? Anti-venom 💉 here!', "Bitten? I've got 💉 for that!"],
   bandage: ["Bleedin'? Bandages 🩹, cheap!", "That one's cut! 🩹 here!"],
   pills: ["Infection? I've got pills 💊 for that!", "Festerin'? Pills 💊!"],
+  vaccine: ['Pox 🤒? Vaccine 🧪 here!', 'Coughin\' flock? 🧪!'],   // SHEEP POX
   shovel: ['Need a shovel 🪏? Got one!', 'Somebody to bury? Shovel 🪏 here!'],
   clippers: ['No shears ✂️? Free to you!', 'Shears ✂️! Wool for the taking!'],
   food: ['Grass thin? Feed troughs 🌾!', 'Hungry flock? 🌾 here!'],
@@ -24072,7 +24176,7 @@ const NET_TYPES = {
       wool: .02,   // HANK: shearing: its fleece (state 'shear': on its rump being shorn)
       sink: .02, mud: .05, balk: { c: 'b', get: s => !!s.balk, set: (s, v) => { s.balk = v ? (s.balk || {}) : null; } },   // BONK SPOTS: sunk in a bog, muddy, balking (state 'cast': on its back)
       brave: .02,  // RAM NADS: their size
-      venom: .01, bleed: .01, infect: .01, ail: 'i',   // VET: how bad (and which are getting worse: AIL bits)
+      venom: .01, bleed: .01, infect: .01, pox: .01, ail: 'i',   // VET: how bad (and which are getting worse: AIL bits)
       snow: .05, cold: .02, burn: .1, soot: .05,   // MOUNTAIN PASS: snowed on, frozen, on fire (s left), singed (state 'slide' 'roll' 'crev' 'burn' 'warm')
       lure: 'i', teeter: .1, sh: { c: 'b', get: s => !!s.seaHold, set: (s, v) => { s.seaHold = v ? s.seaHold || true : null; } },   // SAILING: a siren's song has it; an arm has it
       ...NET_AIR,
@@ -24183,7 +24287,7 @@ const NET_TYPES = {
     fields: { st: { c: 'i', get: a => a.st, set: (a, v) => { if (v === 1 && a.st !== 1) a.fallT = G.time; a.st = v; } }, x: .05, z: .05, h: .02, tum: 'a', dog: '@dog' },
   },
   clock: { tag: 'k', one: () => G.clock, fields: { hour: .001, day: 'i' } },
-  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i', drowned: 'i', shark: 'i', kraken: 'i', siren: 'i', left: 'i' } },
+  stats: { tag: 'S', one: () => G.stats, fields: { start: 'i', born: 'i', eaten: 'i', starved: 'i', old: 'i', salt: 'i', saved: 'i', cougar: 'i', falcon: 'i', thirst: 'i', snake: 'i', bled: 'i', infect: 'i', pox: 'i', poxed: 'i', cured: 'i', buried: 'i', cast: 'i', cold: 'i', drowned: 'i', shark: 'i', kraken: 'i', siren: 'i', left: 'i' } },
   boss: { tag: 'E', one: () => CANYON.boss, fields: { hp: 'i', max: 'i', on: 'b', beaten: 'b' } },   // FALCON CANYON: THE GREAT FALCON's fight (the HUD's hearts)
   // MOUNTAIN PASS: goats (built the same on every screen), the yeti, his snowballs, the fire camps, the blizzard, the cracked rock wall
   goat: { tag: 'T', all: () => GOATS, id: g => g.i, static: true, fields: { x: 'p', z: 'p', y: .02, yaw: 'a', state: 's' } },
@@ -24202,6 +24306,7 @@ const NET_TYPES = {
   yard: { tag: 'Y', all: () => YARDS, id: Y => Y.i, static: true, fields: { rows: { c: 'i', get: Y => Y.rows, set: (Y, v) => yardGrow(Y, v) }, built: .002 } },   // REMAINS: a cemetery: how much of it Hank's built, rows he's added
   mind: { tag: 'M', one: () => MIND, fields: { mood: .02, flanked: 'b' } },   // the HUD's mood bar
   water: { tag: 'W', one: () => WATER, fields: { avg: .01, parched: 'i' } },   // WATER: the HUD's thirst (a flock summary, not a sheep field)
+  pox: { tag: 'x', one: () => POX, fields: { n: 'i', at: { c: 's', get: o => o.at || '', set: (o, v) => { o.at = v || null; } } } },   // SHEEP POX: nights at the place (the HUD's warning)
   hank: {   // Hank walks in the sim; his lines arrive as effects (hank) and drive his bubble and pointing on each screen
     tag: 'H', one: () => HANK,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', stumble: .05, celebrate: 'b', asleep: 'b',
@@ -25692,6 +25797,7 @@ function step(dt) {
     for (const a of G.dogs) for (const b of G.dogs) { if (a === b || a.heldBy === b || b.heldBy === a) continue; const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz); if (d < 0.9 && d > 1e-4) { const k = (0.9 - d) / 2; a.x += dx / d * k; a.z += dz / d * k; } }
     if (SEA.on) seaStep(dt, dtH); else seaWake();   // SAILING: wind, waves, the boat, her stations, what's out there (till then: has the flock come down to her?)
     updateSheep(dt, dtH);
+    updatePox(dt, dtH);   // SHEEP POX: the sick pass it on; Hank's warning
     updateLlamas(dt, dtH);   // LLAMAS: herds, courting, crias; ropes brought up; guards and their spit
     if (!SEA.on) {   // (nothing of the land's comes to sea, or down to the harbour)
     updateCoyotes(dt);
@@ -25845,6 +25951,7 @@ const DEV_CHEATS = [
     giveHank({ venom: 1, bandage: 1, pills: 1, shovel: 1 }); G.wool = Math.max(G.wool || 0, 30); dayHour(8, 15);
   } },
   { code: null, key: '', icon: '🧶', tip: '+100 wool', fn: () => { G.wool = (G.wool || 0) + 100; } },
+  { code: null, key: '', icon: '🤒', tip: 'The pox (a night too many here)', fn: () => devPox() },   // SHEEP POX
   { code: 'KeyF', key: 'F', icon: '🏪', tip: 'Into the Trading Post, ≥120 wool', fn: () => { const d = G.dogs[0]; if (d) { if (SEA.on) devJump(POST.s, { url: false }); const p = postPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); vagDevTo(VAG.pitches.length - 1); updateCamera(0, true); devUrl(POST.s, null); } } },   // VENDOR (VAGABOND: at his Trading Post pitch)
   { code: null, key: '', icon: '🎒', tip: 'To the vagabond, ≥60 wool', fn: () => vagGo() },   // VAGABOND
   // the old jumps (the strip does the same)

@@ -17,8 +17,8 @@
 - **Wounds** (`T.wound`): a sheep a predator lets go of is cut (`woundSheep`):
   deep bleeds (`bleedHours`), shallow festers (`infectHours`). No night
   fast-forward while one bleeds.
-- **Vet** (`VET`, `T.vet`): the vagabond's second row 💉 🩹 💊 🪏 goes straight
-  to Hank (`giveHank`). Stocked, he walks (over fences) to the worst-off he can cure
+- **Vet** (`VET`, `T.vet`): the vagabond's second row 💉 🩹 💊 🧪 🪏 goes straight
+  to Hank (`giveHank`; 🧪: doses for the pox, `docs/pox.md`). Stocked, he walks (over fences) to the worst-off he can cure
   (`HANK.care`, `s.state 'treat'`), before shearing (even the one he is shearing). His jobs: a dog down (RESCUE, above all), fire, patients, a tug, shearing, burials, then sleep (`hankWorkDue`: work keeps him up, or gets him up). Over sick sheep: icon +
   life ring; over Hank: what he's short of. Lines only for what he sees.
 - **Burial** (`YARDS`, `T.remains`): his last job (`buryCan`): with a shovel, by day, nothing prowling, no

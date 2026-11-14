@@ -14,7 +14,7 @@
     with `G.wool`. 📍 picks the pen (found ones, `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough / water trough /
     lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9 (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width
     apart, flush to it, no pockets), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
-    (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. Too poor or no room: ✖,
+    (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. 🧪: `T.vendor.vaccine.n` doses (`docs/pox.md`). Too poor or no room: ✖,
     nothing spent (`vendorFx`); none delivers to the yeti's cave (`penFound`).
   - **Mood**: a bonk (`vagPounced`; a flying sheep: `vagAirHit`), a nag (`barkN` barks within `barkR` in `barkWin` s that bought nothing
     and reached no loose sheep or foe: `vagBarkAt`; herding by him isn't one), a grab (`vagGrip`, `holdKind 'vag'`: dragged, flailing, screaming; let go: dusts off) are grievances (`VAG.griev`,
