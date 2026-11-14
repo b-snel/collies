@@ -1,6 +1,6 @@
 // Journey save: a reload carries on where you were; it never undoes anything. node tools/save-test.mjs
 // Checks: land (day, hour, wool, Hank's kit, training, the map, a pen's gate and kit, every sheep: name, look, ailments, spot), a death
-//   saved at once (a reload can't bring it back), coyotes on the hunt come back, at sea (alongside the last island, the hold),
+//   saved at once (a reload can't bring it back), coyotes on the hunt come back, a cemetery (built, rows, graves), at sea (alongside the last island, the hold),
 //   an old / mangled save (unknown fields, a broken part, a spot in a rock) still loads, a new journey and the end forget it
 import { open } from './harness.mjs';
 const h = await open();
@@ -51,6 +51,19 @@ await page.evaluate(() => { const L = GAME.living(); GAME.killSheep(L[L.length -
 const nDead = (await state()).n;
 await reload();
 ok('a sheep lost: still lost after a reload', (await state()).n === nDead, nDead);
+
+// 2b. a cemetery: as far as Hank built it, its rows, who lies there
+const yards = () => page.evaluate(() => ({ Y: GAME.YARDS.slice(0, 3).map(Y => [+Y.built.toFixed(3), Y.rows, Y.n, Y.g.visible]), neat: GAME.G.graves.filter(g => g.neat).length }));
+await page.evaluate(() => {
+  const { YARDS, yardGrow, syncYard, G } = GAME, Y = YARDS[1], sl = Y.slots[0];
+  Y.built = 1; yardGrow(Y, Y.rows0 + 1); Y.n = 1; syncYard(Y, false); YARDS[2].built = 0.4; syncYard(YARDS[2], false);
+  const g = GAME.makeRemains({ x: sl.x, z: sl.z, name: 'Restful', stone: true, neat: true }); G.graves.push(g);
+  GAME.journeySave();
+});
+const y0 = await yards();
+await reload();
+const y1 = await yards();
+ok('a cemetery: still built, its rows, its graves', JSON.stringify(y0) === JSON.stringify(y1) && y1.Y[1][3] && y1.neat >= 1, { y0, y1 });
 
 // 3. coyotes on the hunt: still coming
 await page.evaluate(() => { GAME.G.clock.hour = 22; GAME.spawnCoyotes(3); GAME.journeySave(); });

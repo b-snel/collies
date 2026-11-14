@@ -503,8 +503,10 @@ try {
   await sleep(1800); await until(B, () => !!NET.fxIn.spitFx, null, 4000).catch(() => {});
   const llH = await A.page.evaluate(() => window.__ll.map(L => ({ id: NET.api.types.llama.id(L), x: L.x, z: L.z, tame: L.tame })));
   await until(B, id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L && L.models.key.endsWith('blanket.pack'); }, llH[0].id, 4000).catch(() => {});
+  const llGr0 = await A.page.evaluate(() => Math.round(window.__ll[0].greens));   // (its pack: it may pick more up on the way)
   const llG = await B.page.evaluate(ids => ids.map(id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L ? { x: L.x, z: L.z, tame: L.tame, tassels: L.models.tassels[0].visible, n: GAME.LLAMAS.length,
     name: L.name, wear: GAME.llamaWearStr(L), greens: Math.round(L.greens), pack: !!L.models.pack, found: GAME.llamaFound().length } : null; }), llH.map(o => o.id));
+  const llGr1 = await A.page.evaluate(() => Math.round(window.__ll[0].greens));
   const llN = await A.page.evaluate(() => GAME.LLAMAS.length), spitIn = await B.page.evaluate(() => !!NET.fxIn.spitFx);
   check('llamas: a guard and a wild one on the host show on the guest (where, whose, tassels on the guard); its spit reaches the guest',
     llG.every(Boolean) && llG.every((o, i) => Math.hypot(o.x - llH[i].x, o.z - llH[i].z) < 1 && o.tame === llH[i].tame) && llG[0].tassels && !llG[1].tassels && llG[0].n === llN && spitIn, { llH, llG, llN, spitIn });
@@ -513,7 +515,7 @@ try {
   await until(A, () => window.__ll[0].name === 'Inti' && window.__ll[0].wear.hat === 'chullo', null, 4000).catch(() => {});
   const llE = await A.page.evaluate(() => GAME.llamaWearStr(window.__ll[0]) + ' ' + window.__ll[0].name);
   check(`llamas: a guard's name and gear on the guest (${llG[0] && llG[0].name}, ${llG[0] && llG[0].wear}); dressed there, it's on the host (${llE})`,
-    llG[0] && llG[0].name === 'Pacha' && llG[0].wear === 'none|#3d8ef0|blanket.pack' && llG[0].greens === 6 && llG[0].pack && llG[0].found === 5 && llE === 'chullo|#3d8ef0|blanket.pack Inti', { llG, llE });
+    llG[0] && llG[0].name === 'Pacha' && llG[0].wear === 'none|#3d8ef0|blanket.pack' && llG[0].greens >= 6 && llG[0].greens >= Math.min(llGr0, llGr1) - 1 && llG[0].greens <= Math.max(llGr0, llGr1) + 1 && llG[0].pack && llG[0].found === 5 && llE === 'chullo|#3d8ef0|blanket.pack Inti', { llG, llE, llGr0, llGr1 });
   await A.page.evaluate(() => { for (const L of window.__ll) GAME.llamaRemove(L); });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);
