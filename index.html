@@ -1095,7 +1095,11 @@ const T = {
   vendor: { matR: 1.3, ring: 5.5, gap: 3.25, near: 22, room: 0.25, before: 55, clippers: { price: 0 },
     water: { price: 3, amt: 8, add: 6 }, food: { price: 4, amt: 8, add: 6 }, salt: { price: 2, amt: 10, add: 4 }, max: { food: 5, water: 3, salt: 3 },
     row2: 3.2, venom: { price: 3 }, bandage: { price: 1 }, pills: { price: 2 }, vaccine: { price: 4, n: 5 }, shovel: { price: 4 },   // VET: a second row of mats (row2 m further out): 💉 🩹 💊 🧪 (n doses) 🪏, straight to Hank
-    ram: { price: 24, age: [6, 14] } },   // LINEAGE: a ram (new blood) on a mat of its own out front, one a pitch, on land
+    ram: { price: 24, age: [6, 14] },   // LINEAGE: a ram (new blood) on a mat of its own out front, one a pitch, on land
+    // SELLING: what he pays for a sheep on the 🐑 mat: base 🧶 × its worth (sheepWorth): a lamb, a yearling (× lamb, year; old: down to old at the
+    // end), its fleece (wool: bare…full), its size, a ram (× ram, his bravery: brave), the champion, the bell ewe, sick, hungry (at most × 1 −
+    // hungry), inbred (× 1 − kin·F, at least kinMin); ÷ his mood (vagRate). confirm: s to bark again and it's sold. stars: worth per ★
+    sell: { base: 9, lamb: 0.45, year: 0.8, old: 0.45, wool: [0.6, 1.2], ram: 1.35, brave: 0.4, champ: 3, bell: 1.2, sick: 0.35, hungry: 0.5, kin: 1.6, kinMin: 0.3, confirm: 4, stars: 0.4 } },
   // VAGABOND (VAG): the one trader, on foot along the trail (selling T.vendor's wares). walk/run m/s. Pitches: 1–2 a land leg (own rng, a new seed
   // each journey), the last at the Trading Post; past: m the flock's past his before he packs and walks on. callR m, callGap s: his cues. tradeR: a
   // dog this near can press to trade; wares stay out while a dog's within stayR, packed packT s after (layT s between mats). barkR/barkN/barkWin: that
@@ -5457,6 +5461,7 @@ function newStats() {
   return {
     start: 0,
     newRams: 0,   // LINEAGE: new blood (WILD RAMS, the castaway)
+    sold: 0,   // SELLING: sheep sold to the vagabond
     born: 0,
     eaten: 0,
     starved: 0,
@@ -19011,7 +19016,7 @@ function eulogy(m) {
   const garb = m.words && m.words.length ? ` Rest easy in ${her} ${andList(m.words)}.` : '';
   return `${trait} ${how}${garb}`;
 }
-const DAWN_ICON = { eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', pox: '🤒', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜', left: '🏔️' };
+const DAWN_ICON = { sold: '🧶', eaten: '🐺', cougar: '🐆', falcon: '🦅', starved: '🌾', salt: '🧂', thirst: '💧', old: '🕯️', snake: '🐍', bled: '🩸', infect: '🦠', pox: '🤒', cast: '🙃', cold: '❄️', drowned: '🌊', shark: '🦈', kraken: '🐙', siren: '🧜', left: '🏔️' };
 // 🕯️ Obituaries: icon, name, bravery (and the day, on the end screen), eulogy
 function obitHTML(dead, day = false) {
   if (!dead.length) return '';
@@ -19323,7 +19328,8 @@ function kinBorn(l, mum, sire, j) {
   return F;
 }
 const kinFert = e => 1 - T.kin.fert * (e.lid && e.sireLid ? kinship(e.lid, e.sireLid) : 0);   // courted by close kin: fewer lambs
-function kinDie(s, why) { const r = kinSync(s); if (r && !r.x) { r.x = cleanWhy(why) || 'old'; r.e = G.clock.day | 0; KIN.rev++; } }
+function kinDie(s, why) { kinGone(s, cleanWhy(why) || 'old'); }
+function kinGone(s, how) { const r = kinSync(s); if (r && !r.x) { r.x = how; r.e = G.clock.day | 0; KIN.rev++; } }   // (gone: how it died, or 'sold')
 // courtStep: a ram starting on a ewe of his own kin (lambs this inbred: T.kin.warn): 🧬 over them, Hank's word (once a journey)
 function kinCourt(ram, ewe) {
   const k = ram.courtKin = kinPair(ram, ewe); if (k < T.kin.warn) return k;
@@ -19401,7 +19407,7 @@ function kinPic(v) {
 // a medallion: the sheep, its name; badges: new blood, gone (how) or at home, ♈, how inbred (if at all)
 function kinNodeHTML(v, cls, x, y, dup) {
   if (!v) return `<span class="kinNode unk ${cls}" style="left:${x}%;top:${y}%" title="Not known"><span class="kinPic">?</span></span>`;
-  const icon = v.dead ? (DAWN_ICON[v.why] || '🕯️') : v.home ? '🏠' : '', tip = [v.n, v.ram ? 'ram' : v.lamb ? 'lamb' : 'ewe', v.src ? KIN_SRC_NAME[v.src] : '', v.dead ? 'gone' : v.home ? 'at home' : '', v.F > 0 ? `inbred ${kinPct(v.F)}` : '', dup ? 'comes up more than once' : ''].filter(Boolean).join(' · ');
+  const icon = v.dead ? (DAWN_ICON[v.why] || '🕯️') : v.home ? '🏠' : '', tip = [v.n, v.ram ? 'ram' : v.lamb ? 'lamb' : 'ewe', v.src ? KIN_SRC_NAME[v.src] : '', v.why === 'sold' ? 'sold' : v.dead ? 'gone' : v.home ? 'at home' : '', v.F > 0 ? `inbred ${kinPct(v.F)}` : '', dup ? 'comes up more than once' : ''].filter(Boolean).join(' · ');
   return `<button type="button" class="kinNode ${cls}${v.dead ? ' dead' : ''}${v.home ? ' home' : ''}${dup ? ' dup' : ''}" data-kin="${v.id}" style="left:${x}%;top:${y}%${dup ? `;--dup:${dup}` : ''}" title="${escHTML(tip)}">`
     + `<span class="kinPic">${kinPic(v)}${v.src ? `<i class="kinB src">${KIN_SRC[v.src]}</i>` : ''}${icon ? `<i class="kinB st">${icon}</i>` : ''}${v.F >= T.kin.warn ? `<i class="kinB f" style="--k:${kinCol(v.F)}">🧬</i>` : ''}</span>`
     + `<b>${escHTML(v.n)}</b></button>`;
@@ -21154,12 +21160,13 @@ const WARE_KINDS = {   // name: what pops up over it when a dog steps on (more: 
   vaccine: { icon: '🧪', col: '#9a6ae0', row: 1, name: 'Vaccine', sub: 'for 🤒 pox' },   // SHEEP POX (T.vendor.vaccine.n doses)
   shovel: { icon: '🪏', col: '#9a7a5a', row: 1, name: 'Shovel', sub: 'for 🪦 burials', show: () => !HANK.shovel },   // (one's enough)
   ram: { icon: '♈', col: '#c99550', row: 2, name: 'Ram', sub: '🧬 new blood', show: () => vagRamStock() },   // LINEAGE: one a pitch, on land
+  sell: { icon: '🐑', col: '#e0a83a', row: 2, name: 'Sell', sub: '🐑 → 🧶' },   // SELLING: a sheep brought onto it
 };
 // his one "stall": where his mats are laid (x, z: his spot behind them; f: toward the camera; r: its right), the pen picked on 📍
 const VSTALL = { i: 0, market: true, x: 0, z: 0, s: 0, fx: Math.SQRT1_2, fz: Math.SQRT1_2, rx: Math.SQRT1_2, rz: -Math.SQRT1_2, yaw: Math.PI / 4, sel: 0, pick: -1, waveAt: -9, noAt: -9, wares: [] };
 const MARKET = VSTALL;   // (the old name)
 const ALL_WARES = VSTALL.wares;   // w.i / w.gi: its place
-['pen', 'clippers', 'water', 'food', 'salt', ...VET_KINDS, 'ram'].forEach((id, i) => { const w = { id, row: 0, ...WARE_KINDS[id], stall: VSTALL, i, gi: i }; w.art = EMOJI_ART[w.icon.replace('️', '')]; ALL_WARES.push(w); });
+['pen', 'clippers', 'water', 'food', 'salt', ...VET_KINDS, 'ram', 'sell'].forEach((id, i) => { const w = { id, row: 0, ...WARE_KINDS[id], stall: VSTALL, i, gi: i }; w.art = EMOJI_ART[w.icon.replace('️', '')]; ALL_WARES.push(w); });
 for (const w of ALL_WARES) { const row = ALL_WARES.filter(o => o.row === w.row); w.ri = row.indexOf(w); w.rn = row.length; }   // its place in its row
 const WARES = ALL_WARES;
 const VENDOR = { hello: false, met: false, bought: {} };
@@ -21175,6 +21182,7 @@ function kitRoom(p, k) { return k === 'food' ? p.troughs.reduce((a, tr) => a + M
 function lickAdd(p, amt) { const L = p.lick, got = Math.min(amt, Math.max(0, L.cap - L.salt)); L.salt += got; return got; }
 // what a bark on w buys now, for pen p: { kind: 'add' (one more, stocked) | 'fill' (a batch) | its id, price } (× his mood: vagRate)
 function wareDeal(w, p = pens[w.stall.sel] || postPen) {
+  if (w.id === 'sell') { const s = sellSheepOn(w); return { kind: 'sell', price: s ? sheepPrice(s) : 0, s }; }   // SELLING: what he'd pay
   const V = T.vendor, k = vagRate(), cost = b => b > 0 ? Math.max(1, k > 1 ? Math.ceil(b * k - 1e-9) : Math.floor(b * k + 1e-9)) : 0;   // (any change shows: up rounds up, down rounds down)
   if (!KIT[w.id]) return { kind: w.id, price: cost((V[w.id] && V[w.id].price) || 0) };
   const add = kitN(p, w.id) < kitMax(p, w.id);
@@ -21203,6 +21211,8 @@ const vagMatR = () => T.vendor.matR * T.vag.mat / 2.5;   // a dog this near a ma
   };
   // wares added since: made on their own dice (ownDice), so the seeded tests' runs stay as they were
   const LATE = {
+    sell: () => merge(...[-0.34, 0.34].map(x => P(BOX(0.06, 0.62, 0.06), '#7a5230', { p: [x, 0.31, back] })), ...[0.2, 0.44].map(y => P(BOX(0.74, 0.07, 0.04), '#a8784a', { p: [0, y, back] })),   // SELLING: a hurdle and a skein
+      P(SPH(10), '#ec7a52', { s: [0.17, 0.17, 0.17], p: [0.1, 0.17, back + 0.4] }), P(new THREE.TorusGeometry(0.15, 0.025, 5, 14), '#b5492c', { r: [0.4, 0, 0.3], p: [0.1, 0.17, back + 0.4] })),
     ram: () => merge(SHEEP_GEO.body.clone().translate(0, 0.66, 0), SHEEP_GEO.head.clone().translate(0, 0.8, 0.5), SHEEP_GEO.horn.clone().translate(0, 0.8, 0.5),   // LINEAGE: a wee ram, the real one's shapes
       ...HIP.map(h => SHEEP_GEO.leg.clone().translate(h[0], h[1], h[2]))).scale(0.62, 0.62, 0.62).rotateY(0.5).translate(0, 0, back),
     vaccine: () => merge(P(BOX(0.66, 0.12, 0.3), '#8a5a32', { p: [0, 0.06, back] }), ...[-0.22, 0, 0.22].flatMap(x => [P(CYL(0.06, 0.06, 0.34, 8), '#e6f2f6', { p: [x, 0.29, back] }),   // SHEEP POX: a rack of vials
@@ -21240,6 +21250,7 @@ function vendorBark(d) {
 }
 // -> 'add' (one more, stocked) | 'buy' (a batch, ✂️) | 'pen' (📍: the next pen) | 'poor' (not enough 🧶) | 'full' (no room in the pen)
 function buyWare(w, d = null) {
+  if (w.id === 'sell') return sellWare(w, d);   // SELLING
   const V = T.vendor, wool = G.wool || 0, st = w.stall, pen = pens[st.sel] || postPen, deal = wareDeal(w, pen), price = deal.price;
   let kind = 'buy';
   const vet = VET_KINDS.includes(w.id);   // VET: straight to Hank
@@ -21270,10 +21281,56 @@ function vagRamSell(w) {
   if (hankSees(s.x, s.z)) hank(null, 'A new ram! Fresh blood for the flock.', { force: true, delay: 1 });
   return true;
 }
+// SELLING: what a sheep's worth to him (× T.vendor.sell.base 🧶): its age, fleece, size; a ram (his bravery), the champion, the bell ewe; sick,
+// hungry, inbred (LINEAGE). sheepPrice: ÷ his mood; sheepStars: 1–5
+function sheepWorth(s) {
+  const K = T.vendor.sell, ok = oldK(s);
+  let k = (s.lamb ? K.lamb : s.age < T.adultDays ? K.year : 1) * (1 - (1 - K.old) * ok);
+  k *= lerp(K.wool[0], K.wool[1], clamp(s.wool ?? 1, 0, 1)) * clamp((s.scale || 1) * ageGrow(s), 0.5, 1.6);
+  if (s.ram && !s.lamb) k *= K.ram * (1 - K.brave / 2 + K.brave * (s.brave ?? 0.5));
+  if (s.champ) k *= K.champ; if (s.bell) k *= K.bell;
+  if (sickK(s) > 0.02) k *= K.sick;
+  k *= 1 - K.hungry * clamp(s.hunger || 0, 0, 1);
+  return k * Math.max(K.kinMin, 1 - K.kin * (s.inF || 0));
+}
+const sheepPrice = s => Math.max(1, Math.round(T.vendor.sell.base * sheepWorth(s) / vagRate()));
+const sheepStars = s => clamp(Math.ceil(sheepWorth(s) / T.vendor.sell.stars), 1, 5);
+// the sheep on the 🐑 mat: in the barking dog's jaws, else the nearest stood (or carried) on it
+function sellSheepOn(w, d = null) {
+  const h = d && d.holding; if (h && G.sheep.includes(h) && !h.dead && Math.hypot(d.x - w.x, d.z - w.z) < vagMatR() + 0.5) return h;
+  let best = null, bd = vagMatR() + 0.4;
+  for (const s of G.sheep) { if (s.dead || s.grabbed || (s.air && !s.heldBy)) continue; const k = Math.hypot(s.x - w.x, s.z - w.z); if (k < bd) { bd = k; best = s; } }
+  return best;
+}
+// a bark on the 🐑 mat: the first, his price (✔?); again within confirm s, the same sheep: sold. -> 'none' | 'ask' | 'sold'
+function sellWare(w, d = null) {
+  const s = sellSheepOn(w, d), A = VSTALL.sellAsk;
+  if (!s) { vendorFx(w.gi, 'none'); return 'none'; }
+  const price = sheepPrice(s);
+  if (!A || A.id !== s.id || G.time - A.t > T.vendor.sell.confirm) { VSTALL.sellAsk = { id: s.id, t: G.time }; vendorFx(w.gi, 'ask', price); return 'ask'; }
+  VSTALL.sellAsk = null; sellSheep(s, price); vendorFx(w.gi, 'sold', price);
+  return 'sold';
+}
+// sold: off with him (not a death: no remains, no eulogy; LINEAGE: its record says so); the 🧶 is ours; kept at once
+function sellSheep(s, price) {
+  if (s.heldBy) releaseHold(s.heldBy, false);
+  if (s.grabbed) { s.grabbed.prey = null; s.grabbed = null; }
+  G.wool = (G.wool || 0) + price; G.stats.sold = (G.stats.sold || 0) + 1; VENDOR.bought.sold = (VENDOR.bought.sold || 0) + 1;
+  kinGone(s, 'sold');
+  s.dead = true; s.sold = true; s.pen = null; s.court = null;
+  for (const o of G.sheep) if (o.court === s) o.court = null;
+  vagLine('sold');
+  if (!VENDOR.soldSaid && hankSees(s.x, s.z)) { VENDOR.soldSaid = true; hank(null, `Cheerio, ${s.name}. Mind he feeds ye well.`, { force: true, delay: 1.2 }); }
+  if (G.mode === 'play') { saveFlock(); journeySave(); }
+  return true;
+}
 // what a sale (or a no) looks and sounds like, on every screen. pi: the pen it went to; n: how many of it the pen has now
 function vendorFx(i, kind, price = 0, pi = -1, n = 0) {
   const w = ALL_WARES[i]; if (!w) return;
   const st = w.stall, y = w.y + 1.6, p = pens[pi] || pens[st.sel] || postPen;
+  if (kind === 'ask') { floatText(`${price}🧶 ✔?`, w.x, y + 0.6, w.z, '#ffd36b', 1.4); Sound.chime([0, 5], 523, 0.12, 0.06); w.shakeAt = VAG.clk; return; }   // SELLING: his price (again: sold)
+  if (kind === 'sold') { st.waveAt = VAG.clk; floatText(`+${price}🧶`, w.x, y + 0.6, w.z, '#7ed957', 1.6); Sound.chime([0, 4, 7, 12, 16], 659, 0.2, 0.08); starBurst(w.x, y, w.z, 10); burst(w.x, w.y + 0.6, w.z, 14, '#f6f1e3', { speed: 2.4, up: 3, size: 0.16, life: 0.9 }); return; }
+  if (kind === 'none') { floatText('🐑 ?', w.x, y + 0.6, w.z, '#ffffff', 1.2); w.shakeAt = VAG.clk; return; }
   if (kind === 'pen') { st.sel = pens.indexOf(p); floatText(`📍 ${p.camp.icon}`, w.x, y + 0.6, w.z, '#ffffff', 1.4); Sound.chime([0, 5], 587, 0.12, 0.06); burst(w.x, w.y + 0.6, w.z, 6, w.col, { speed: 1.6, up: 2.4, size: 0.12, life: 0.6 }); return; }
   if (kind === 'buy' || kind === 'add') {
     st.waveAt = VAG.clk;
@@ -21415,6 +21472,7 @@ const VAG_LINES = {
   water: ['Thirsty flock? Water 💧 here!', 'Troughs dry? 💧!'],
   salt: ['Salt 🧂! Licks for the lot!', 'Short of salt? 🧂 here!'],
   ram: ['A fine ram ♈! New blood!', 'Inbred lot? A ram ♈ here!'],   // LINEAGE
+  sold: ["A fine beast! I'll take good care of it.", 'Pleasure doing business! 🧶', 'Sold! No refunds.'],   // SELLING
   open: ['Take your time!', 'Everything must go!', 'Look, but no slobber.'],
   trade: ['Feast your eyes!', "Let's see what I've got…", 'Best prices this side of the pass!'],
   woken: ["Wha—? We're closed! …Fine.", 'Mmph. Middle of the night…', "Can't a man sleep?"],
@@ -22281,6 +22339,12 @@ function drawVendorOverlay() {
     if (!wareOn(w) || w.k < 0.5) continue;
     const half = T.vag.mat / 2, [px, py, pz] = proj(w.x + st.fx * half, w.y + 0.1, w.z + st.fz * half); if (pz > 1 || px < -60 || px > W + 60 || py < -40 || py > H + 80) continue;   // standing on the mat's front edge
     const deal = wareDeal(w, pen), price = deal.price, kit = !!KIT[w.id], on = G.dogs.some(d => Math.hypot(d.x - w.x, d.z - w.z) < vagMatR());
+    if (w.id === 'sell') {   // SELLING: a sheep on it: what he'd pay, its stars; none: 🐑?
+      const sc = (on ? 1.12 : 1) * Math.min(1, w.k) * (H < 520 ? 0.78 : 1), ask = VSTALL.sellAsk && deal.s && VSTALL.sellAsk.id === deal.s.id;
+      ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
+      vagTag(ask ? '✔?' : w.icon, deal.s ? `+${price}🧶` : '?', deal.s ? '★'.repeat(sheepStars(deal.s)) : '', deal.s ? 'rgba(60,140,60,.93)' : 'rgba(150,110,40,.9)', deal.s && rate > 1.001 ? '↓' : '', on);
+      ctx.restore(); continue;
+    }
     const room = !kit || deal.kind === 'add' || kitRoom(pen, w.id) >= V[w.id].amt * V.room;
     const ok = w.id === 'pen' || (wool >= price && room);
     const top = w.id === 'pen' ? '📍' : w.icon, low = w.id === 'pen' ? pen.camp.icon : room ? price + '🧶' : '100%', n = kit ? `${deal.kind === 'add' ? '+' : ''}${kitN(pen, w.id)}/${kitMax(pen, w.id)}` : '';
@@ -22363,7 +22427,7 @@ function drawWarePop(w, pen) {
 }
 expose(() => ({ FINAL, POST, MARKET, STALLS, finalPen, postPen, VENDOR, WARES, ALL_WARES, warePrice, wareDeal, buyWare, vendorBark, vendorFx, stockTroughs, resetVendor, syncVendor, KIT,
   kitN, kitMax, kitSet, kitRoom, pickPen, stallPen, penFound, troughSpots, collideFences, navFence, stampNav }));   // VENDOR
-expose(() => ({ VAG, VSTALL, vagRamStock, vagRamSell, WARE_KINDS, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, vagLayout, vagPlaceMats, vagRate, vagGood, vagGrief, vagAnnoy, vagLeave, vagBack, vagHide, vagAt, vagHere,
+expose(() => ({ VAG, VSTALL, vagRamStock, vagRamSell, WARE_KINDS, sheepWorth, sheepPrice, sheepStars, sellWare, sellSheep, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, vagLayout, vagPlaceMats, vagRate, vagGood, vagGrief, vagAnnoy, vagLeave, vagBack, vagHide, vagAt, vagHere,
   vagFree, vagPounced, vagBarkAt, vagGrip, vagGrabbed, vagLetGo, vagRope, vagSay, vagLine, vagGo, vagDevTo, vagDevJump, vagNeeds, vagSticks, updateVag, makeVag, vagSeaStart, vagReach,
   vagFrame, vagSlot, vagSiteSea, vagLaunch0, vagPolar, seaDist, seaX, seaZ }));   // VAGABOND (SAILING: his Laser)
 
