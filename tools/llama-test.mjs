@@ -1,4 +1,4 @@
-// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|find|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|prey|save|sea|reset]`.
+// Headless checks for LLAMAS: `node tools/llama-test.mjs [layout|find|mate|shy|lose|win|lead|guard|pen|spit|shear|punt|grab|prey|ward|barn|cold|pack|save|sea|reset]`.
 //   layout  rare: two herds a journey (a lone male maybe), each on its own land leg, never the first; tucked away off the trail;
 //           not Falcon Canyon, the pass, the sea; males and females; off in ?sim
 //   find    a dog comes on a herd: found (the first: a banner), once
@@ -15,7 +15,12 @@
 //   grab    grabbed by the scruff, carried, flung; a grown wild one bucks free
 //   prey    a cria's taken as a lamb is: a coyote pack goes for it, drags it off, it's gone; a dog's pounce on the coyote drops it (it runs);
 //           a cougar goes for it before the sheep, up its tree with it
-//   save    a reload (JOURNEY SAVE): the same herds, the ones found still found, the guards back by the flock
+//   ward    LLAMA WARDROBE: no guard, no llama gear dug up; with one: the first find's a saddle blanket, on the nearest guard, then the
+//           pack, then any; found for good (saved); only found gear goes on; dressed: a new model, its pack shows what's in it
+//   barn    the 🦙 tab only once one's ours; its list, locks; dressed, renamed, a 🎲 name, picked; the one out there wears it
+//   cold    on the pass by night: cold bare, warm in a blanket, colder shorn, slowed; to a lit fire, warmed; frozen hours on: gone
+//   pack    a dog with greens and salt by its pack: in they go (full: the rest stays); no pack: nothing; penned: to the troughs, the lick
+//   save    a reload (JOURNEY SAVE): the same herds, the ones found still found, the guards back by the flock, dressed, packs full
 //   sea     guards aboard, kushed, at sea
 //   reset   a new journey: new herds, no guards
 import { open } from './harness.mjs';
@@ -334,6 +339,124 @@ if (want('prey')) {
   ok('a cougar goes for the cria first, up its tree with it', r.cougarPicks && r.cougar.up && r.cougar.gone && r.cougar.sheep === 0, r);
 }
 
+if (want('ward')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, LWARD, LWARD_KEY, LLAMA_ITEMS, DIGS, digUp, makeLlama, llamaJoin, llamaSet, loadLlamaWard, step, DOGS, DOG_ITEMS } = GAME, d = G.dogs[0], p = H.at(200, 0), out = {};
+    localStorage.removeItem(LWARD_KEY); loadLlamaWard(); DOGS.found = DOG_ITEMS.map(it => it.id);   // (no dog finds in the way)
+    const dig = () => { const sp = DIGS.find(o => !o.dug && !o.isle); H.place(d, sp.x, sp.z); digUp(sp, d); return sp; };
+    dig(); out.noGuard = LWARD.found.length === 0;
+    H.flock(p.x, p.z); H.place(d, p.x + 2, p.z);
+    const a = makeLlama({ x: p.x + 4, z: p.z, sex: 'f', age: 5 }); a.tame = 1; llamaJoin(a);
+    const b = makeLlama({ x: p.x + 40, z: p.z, sex: 'm', age: 5 }); b.tame = 1; llamaJoin(b);
+    out.named = a.name !== '🦙' && b.name !== '🦙' && a.name !== b.name;
+    H.place(d, p.x + 2, p.z); GAME.llamaDig({ x: d.x, y: d.y, z: d.z }, d);
+    out.first = LWARD.found.join(); out.onNearest = a.wear.acc.includes('blanket') && !b.wear.acc.includes('blanket');
+    GAME.llamaDig({ x: d.x, y: d.y, z: d.z }, d, 1); out.second = LWARD.found[1];
+    out.saved = (JSON.parse(localStorage.getItem(LWARD_KEY) || 'null') || {}).found;
+    llamaSet(b, { hat: 'chullo', acc: ['blanket', 'garland'] }); out.locked = b.wear.hat === 'none' && b.wear.acc.join() === 'blanket';
+    for (let i = 0; i < 9; i++) GAME.llamaDig({ x: d.x, y: d.y, z: d.z }, d, 1);
+    out.all = LWARD.found.length === LLAMA_ITEMS.length && new Set(LWARD.found).size === LLAMA_ITEMS.length;
+    llamaSet(b, { hat: 'chullo', toggle: 'garland', tint: '#3d8ef0', coat: 7, name: '  Big   Paco  ' });
+    out.dressed = b.wear.hat === 'chullo' && b.wear.acc.join('.') === 'blanket.garland' && b.wear.tint === '#3d8ef0' && b.coat === 7 && b.name === 'Big Paco';
+    llamaSet(b, { acc: ['pack', 'blanket', 'bell', 'nope'] }); out.order = b.wear.acc.join();
+    const k0 = b.models.key; GAME.syncLlamas(0.02); out.restyled = b.models.key !== k0 && b.models.key === GAME.llamaLookKey(b);
+    out.pack = !!b.models.pack && b.models.pack.slots.length === 4 && b.models.pack.salt.length === 3;
+    b.greens = 6; b.salt = 2; GAME.llamaPackSync(b.models, b, 0.5, true); out.shows = [b.models.pack.slots.filter(s => s.g.visible).length, b.models.pack.salt.filter(g => g.visible).length];
+    const wild = makeLlama({ x: p.x + 60, z: p.z + 10, sex: 'f', age: 5 }); llamaSet(wild, { hat: 'chullo' }); out.wildBare = wild.wear.hat === 'none';
+    LWARD.found = []; loadLlamaWard(); out.reloaded = LWARD.found.length === LLAMA_ITEMS.length;
+    return out;
+  });
+  ok('no guard yet: no llama gear dug up', r.noGuard, r);
+  ok(`with a guard: the first find's a saddle blanket, on the nearest guard; then the pack (${r.second})`, r.named && r.first === 'blanket' && r.onNearest && r.second === 'pack', r);
+  ok('found for good (saved); only found gear goes on', r.saved && r.saved.join() === 'blanket,pack' && r.locked, r);
+  ok('all of it found; dressed (hat, kit, colour, coat, name), a new model, its pack shows its greens and salt', r.all && r.dressed && r.order === 'blanket,pack,bell' && r.restyled && r.pack && r.shows[0] === 2 && r.shows[1] === 2 && r.wildBare && r.reloaded, r);
+}
+
+if (want('barn')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, BARN, LWARD, LLAMA_ITEMS, openBarn, closeBarn, barnTab, barnRender, makeLlama, llamaJoin } = GAME, p = H.at(200, 0), out = {};
+    const tabs = () => [...document.querySelectorAll('.barnTabs button')].filter(b => !b.hidden).map(b => b.dataset.tab).join();
+    LWARD.found = ['blanket', 'pack'];
+    openBarn(); out.none = tabs(); out.noTab = barnTab('llamas') === false; closeBarn();
+    H.flock(p.x, p.z);
+    const a = makeLlama({ x: p.x + 4, z: p.z, sex: 'f', age: 5 }); a.tame = 1; llamaJoin(a);
+    const c = makeLlama({ x: p.x + 5, z: p.z, sex: 'm', age: 0.5, mum: a }); c.tame = 2; c.name = 'Wee';
+    openBarn(); out.tabs = tabs(); out.tab = barnTab('llamas');
+    out.list = [...document.querySelectorAll('#barnList [data-llama]')].map(b => b.textContent).join('|');
+    out.locks = document.querySelectorAll('#barnWard .ico.lock').length; out.coats = document.querySelectorAll('#barnLCoat .swatch').length;
+    const click = sel => document.querySelector(sel).click();
+    click('#barnLKit [data-lkit="blanket"]'); click('#barnLKit [data-lkit="pack"]'); click('#barnLTint [data-ltint="#3fbf5a"]'); click('#barnLCoat [data-lcoat="4"]');
+    out.wear = GAME.llamaWearStr(BARN.ll); out.coat = BARN.ll.coat;
+    out.on = [...document.querySelectorAll('#barnLKit .on')].map(b => b.dataset.lkit).join();
+    out.info = document.getElementById('barnInfo').textContent;
+    for (let i = 0; i < 30; i++) barnRender(1 / 60);
+    out.model = !!BARN.llamaM && !!BARN.llamaM.pack && BARN.model.parent === BARN.stand;
+    const nm = document.getElementById('barnName'); nm.value = 'Duchess'; nm.dispatchEvent(new Event('input'));
+    out.name = BARN.ll.name;
+    click(`#barnList [data-llama="${c.id}"]`); out.picked = BARN.ll === c;
+    click('#barnDice'); out.dice = c.name !== 'Wee' && c.name.length > 1;
+    closeBarn();
+    GAME.syncLlamas(0.02); out.world = a.models.key === GAME.llamaLookKey(a) && a.models.key.endsWith(out.wear) && !!a.models.pack;
+    openBarn(a); out.opensOn = BARN.tab === 'llamas' && BARN.ll === a; closeBarn();
+    return out;
+  });
+  ok(`no llama of ours: no 🦙 tab (${r.none})`, r.none === 'dogs,sheep' && r.noTab, r);
+  ok(`one broken: the 🦙 tab (${r.list}), coats, locks on what's not dug up`, r.tabs === 'dogs,sheep,llamas' && r.tab && r.list.includes('♀') && r.list.includes('Wee🍼') && r.coats === 10 && r.locks === 3, r);
+  ok(`dressed in the barn (${r.wear}, coat ${r.coat}), on the turntable; info: ${r.info}`, r.wear === 'none|#3fbf5a|blanket.pack' && r.coat === 4 && r.on === 'blanket,pack' && r.info.includes('🎒') && r.model, r);
+  ok(`renamed (${r.name}), another picked, a 🎲 name; the one out there wears it; opens on a llama asked for`, r.name === 'Duchess' && r.picked && r.dice && r.world === true && r.opensOn, r);
+}
+
+if (want('cold')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, PASS, makeLlama, llamaJoin, llamaCold, llamaGuardGoal, LLAMAS, pathPoint, llamaSet, LWARD, step } = GAME, out = {};
+    const f = PASS.fires.find(o => !o.base && !o.cave && !o.top && GAME.passK(o.s) > 0.8), top = pathPoint(f.s - 20, 0); PASS.blizz.k = 0; G.clock.hour = 22; for (const o of PASS.fires) o.fuel = 0;
+    LWARD.found = ['blanket'];
+    const bare = makeLlama({ x: top.x, z: top.z, sex: 'f', age: 5, wool: 1 }); bare.tame = 1; llamaJoin(bare);
+    const warm = makeLlama({ x: top.x + 2, z: top.z, sex: 'f', age: 5, wool: 1 }); warm.tame = 1; llamaJoin(warm); llamaSet(warm, { acc: ['blanket'] });
+    const shorn = makeLlama({ x: top.x - 2, z: top.z, sex: 'm', age: 5, wool: 0.1 }); shorn.tame = 1; llamaJoin(shorn);
+    const hrs = h => { for (let t = 0; t < h; t += 0.05) for (const L of [bare, warm, shorn]) if (LLAMAS.includes(L)) llamaCold(L, 0.05); };
+    hrs(4); out.c4 = [bare, warm, shorn].map(L => +L.cold.toFixed(2));
+    out.slow = +GAME.llamaPep(bare).toFixed(2);
+    f.fuel = T.pass.burn; GAME.LLAMA.fc = { x: top.x, z: top.z, n: 10 };
+    const g = llamaGuardGoal(bare); out.toFire = g ? +Math.hypot(g.x - f.x, g.z - f.z).toFixed(1) : null; out.fireFar = +Math.hypot(f.x - top.x, f.z - top.z).toFixed(1);
+    bare.x = g.x; bare.z = g.z; hrs(1); out.warmed = +bare.cold.toFixed(2); f.fuel = 0;
+    shorn.cold = 1; hrs(6); out.froze = !LLAMAS.includes(shorn) && G.stats.llamasLost === 1;
+    bare.cold = 0.95; let errs = 0; try { H.run(2); } catch (e) { errs++; } out.ran = errs === 0;   // (out there, shivering)
+    return out;
+  });
+  ok(`on the pass by night (4 h): bare ${r.c4[0]}, in a blanket ${r.c4[1]}, shorn ${r.c4[2]}; cold: slow (${r.slow}×)`, r.c4[0] > 0.3 && r.c4[1] < 0.1 && r.c4[2] > r.c4[0] && r.slow < 1, r);
+  ok(`cold: to the lit fire (${r.toFire} m from it; it was ${r.fireFar} m off), warmed (${r.warmed})`, r.toFire !== null && r.toFire < 3.5 && r.warmed < 0.1, r);
+  ok('frozen hours on end: gone (llamasLost)', r.froze && r.ran, r);
+}
+
+if (want('pack')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, pens, makeLlama, llamaJoin, llamaSet, LWARD, step, FORAGE } = GAME, d = G.dogs[0], out = {};
+    let p = null; for (let s = 200; !p && s < 1100; s += 20) { const q = H.at(s, 0); if (pens.every(P => Math.hypot(P.x - q.x, P.z - q.z) > P.R + 30)) p = q; }
+    LWARD.found = ['pack'];
+    H.flock(p.x, p.z);
+    const L = makeLlama({ x: p.x + 6, z: p.z, sex: 'f', age: 5 }); L.tame = 1; llamaJoin(L); llamaSet(L, { acc: ['pack'] });
+    H.place(d, L.x - 1.2, L.z); d.greens = 4; d.salt = 1; d.player.bot = {}; step(0.025); step(0.025);
+    out.loaded = [L.greens, L.salt, d.greens, d.salt];
+    d.greens = 4; H.place(d, L.x + 30, L.z); step(0.025); out.farKept = d.greens === 4;
+    L.greens = 11; H.place(d, L.x - 1, L.z); step(0.025); out.full = [+L.greens.toFixed(2), +d.greens.toFixed(2)];
+    const bare = makeLlama({ x: p.x - 6, z: p.z, sex: 'm', age: 5 }); bare.tame = 1; llamaJoin(bare); H.place(d, bare.x - 1, bare.z); d.greens = 3; step(0.025); out.noPack = bare.greens === 0 && d.greens === 3;
+    // penned: to the troughs with it
+    const P = pens.find(q => !q.deck && q.troughs.length && q.lick && q.lick.at.length); for (const tr of P.troughs) tr.food = 0; P.lick.salt = 0;
+    L.greens = 10; L.salt = 1; H.place(L, P.x, P.z); L.state = 'guard'; H.place(d, P.x + 60, P.z + 60); d.greens = 0;
+    const t0 = FORAGE.tipped; let t = H.run(25, () => L.greens < 0.01 && L.salt === 0);
+    out.secs = H.r(t); out.tipped = +(FORAGE.tipped - t0).toFixed(2); out.left = [+L.greens.toFixed(2), L.salt]; out.lick = +P.lick.salt.toFixed(2);
+    return out;
+  });
+  ok(`a dog with a load by its pack: in it goes (${r.loaded.join(' ')})`, r.loaded[0] === 4 && r.loaded[1] === 1 && r.loaded[2] === 0 && r.loaded[3] === 0 && r.farKept, r);
+  ok(`full: the rest stays with the dog (${r.full.join(' ')}); no pack: nothing`, r.full[0] === 12 && Math.abs(r.full[1] - 3) < 0.01 && r.noPack, r);
+  ok(`penned: it tips its greens in the troughs (+${r.tipped}) and its salt on the lick (${r.secs} s)`, r.left[0] === 0 && r.left[1] === 0 && r.tipped >= 9.9 && r.lick > 0, r);
+}
+
 if (want('save')) {
   await setup();
   const before = await h.page.evaluate(() => {
@@ -341,6 +464,7 @@ if (want('save')) {
     JOURNEY.off = false; resetLlamas(4242); LLAMA.herds[0].found = true; LLAMA.seen = true; LLAMA.found = 1;
     const p = H.at(200, 0); H.flock(p.x, p.z);
     const g = makeLlama({ x: p.x + 5, z: p.z, sex: 'f', age: 5, coat: 3, wool: 0.4 }); g.tame = 1; llamaJoin(g);
+    GAME.LWARD.found = ['blanket', 'pack']; GAME.llamaSet(g, { name: 'Pacha', tint: '#3d8ef0', acc: ['blanket', 'pack'] }); g.greens = 5; g.salt = 2;
     return { saved: journeySave(), seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join() };
   });
   await h.page.reload(); await h.page.waitForFunction(() => window.GAME, null, { timeout: 60000 });
@@ -349,11 +473,12 @@ if (want('save')) {
     T.llama.on = true; JOURNEY.off = false; JOURNEY.saved = journeyRead(); startGame({ kind: 'bot', index: 0 });
     const g = LLAMAS.find(L => L.tame === 2), fc = flockCenter();
     return { resumed: JOURNEY.resumed, seed: LLAMA.seed, wild: LLAMAS.filter(L => !L.tame).length, found: LLAMA.herds.map(H => !!H.found).join(), seen: LLAMA.seen,
-      guard: g ? { coat: g.coat, wool: g.wool, near: +Math.hypot(g.x - fc.x, g.z - fc.z).toFixed(1) } : null };
+      guard: g ? { coat: g.coat, wool: g.wool, near: +Math.hypot(g.x - fc.x, g.z - fc.z).toFixed(1), name: g.name, wear: GAME.llamaWearStr(g), pack: [g.greens, g.salt], model: g.models.key } : null };
   });
-  ok(`a reload: the same herds (${after.wild}), found still found, the guard back by the flock (${after.guard && after.guard.near} m)`,
+  ok(`a reload: the same herds (${after.wild}), found still found, the guard back by the flock (${after.guard && after.guard.near} m), dressed (${after.guard && after.guard.wear}), its pack still full`,
     before.saved && after.resumed && after.seed === before.seed && after.wild === before.wild && after.found === before.found && after.seen
-    && after.guard && after.guard.coat === 3 && Math.abs(after.guard.wool - 0.4) < 0.01 && after.guard.near < 20, { before, after });
+    && after.guard && after.guard.coat === 3 && Math.abs(after.guard.wool - 0.4) < 0.01 && after.guard.near < 20
+    && after.guard.name === 'Pacha' && after.guard.wear === 'none|#3d8ef0|blanket.pack' && after.guard.pack.join() === '5,2' && after.guard.model.endsWith(after.guard.wear), { before, after });
 }
 
 if (want('sea')) {

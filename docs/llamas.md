@@ -36,8 +36,22 @@
   topknot, big lashy eyes, a split-lip smile, two-toed feet; coats (`LLAMA_COATS`): white … black, paint, appaloosa, two-tone. Pacing
   walk, grazing, kushed, chewing, ears back when cross, cheeks puffed to spit. Tame: a halter; guards: tassels on the ears. Fleece by
   `L.wool`. Spit: `spitFx` (a glob, a splat). Sounds: `LSND` (hum, alarm, gurgle, spit). `llamaFx`: what the sim's events look and sound like.
-- **Journey save** (`onSave('llamas')`): the seed (the same herds), which were found, the guards (by the flock; aboard at sea). Wild
-  herds come back as they started.
-- **Online**: `NET_TYPES.llama` (`rp`: its rope, `ropeI`, held, flying), `llamaFx` / `spitFx` relayed; a guest wipes its own (`llamaWipe`).
+- **Gear** (LLAMA WARDROBE: `LLAMA_ITEMS`, `LWARD`, `localStorage['collies.llamas.v1']`, found for good): a saddle blanket, a pack, a chullo,
+  a bell, a garland. Dug up only once there's a guard (`llamaDig` in `digUp`): the first find then is the blanket, the next the pack, then any
+  (`T.llama.ward.dig`; a chest: `chest`); it goes straight on the guard nearest the dog without one. Ours (broken or a guard) get a name
+  (`LLAMA_NAMES`). Each has its look: `L.coat` (free), `L.wear` (`hat`, `tint`: the gear's colour, `acc`); `llamaSet` (only found gear goes on).
+  Dressed in the barn (docs/ui.md). Drawn by `buildLlama` (the world's and the barn's), `llamaDress`; gear fitted to the coat's fleece
+  (`llamaFleeceR`, `llamaDrape`, `llamaGear`, `llamaPackGeo`; made on first wear); a new look: a new model (`llamaLookKey`, `llamaRestyle`).
+- **Cold** (MOUNTAIN PASS, `llamaCold`, `T.llama.cold`): as a sheep's, its fleece keeping out `wool` × as much (shorn: colder); a saddle
+  blanket × `blanket`. Cold: slower (`llamaPep`), shivering, its breath; over 0.35 it goes to a lit fire within `warmR` (`llamaGuardGoal`);
+  over `numb`: no spit. At 1 for `dieHours` h: gone (`llamaKilled` 'cold', `G.stats.llamasLost`). Hank says so, the hint.
+- **Pack** (`T.llama.pack`): a guard wearing one carries `greens` and `salt` lumps. A dog with a load within `r` m of it tips it in
+  (`llamaPackLoad`; not by a pen with room: that's where it's going). Penned with something in it, it walks to a trough with room and tips
+  it in, then its salt on the lick (`llamaPacking`, `llamaPackGoal`, `llamaUnpack`; can't get there in 20 s: later). Drawn: the greens in
+  the panniers' tops, a lump on the pad for each salt (`llamaPackSync`).
+- **Journey save** (`onSave('llamas')`): the seed (the same herds), which were found, the guards (by the flock; aboard at sea; name, look,
+  pack, cold). Wild herds come back as they started.
+- **Online**: `NET_TYPES.llama` (`rp`: its rope, `ropeI`, held, flying; name, `wear`, pack, cold), `NET_TYPES.lward` (what's found),
+  `llamaFx` / `spitFx` relayed; a guest wipes its own (`llamaWipe`); a guest's barn edit: `ll` (the host's `llamaSet`).
 - **HUD / map**: 🦙 guards in the flock panel; the map: guards always, wild ones where a dog's been (`mapLlamas`). Dev: `\` a herd by
   the first dog, again: one a guard (`devLlama`).

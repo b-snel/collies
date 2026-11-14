@@ -11,11 +11,14 @@
   The pause screen: "Menu" + ⏸ / ▶ chips while it goes on (`#pause.live`), "Paused" once it waits; over a barn / dawn card `#menuBadge`.
 - **Hints** (`HINTS`, `hint`, `updateHints`): one at a time, queued; up `hintLen` s (9–16, by length), the clock waits while
   paused / a menu's up; a bar runs down; more waiting → 8 s. `TOUCH_HINTS` on touch.
-- **Barn**: Dogs (first; opens on it unless a sheep's asked for) and Sheep tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
+- **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep and Llamas (only once one's ours: `barnLlamas`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
   Every screen its own (Tab / View / 🏚️ / pause). A guest dresses its own dogs (`barnDogs`: DOGS.looks[k] → its k-th dog, colours `barnSlot`;
   saved on its device; sent as `dl`, `netLookOut`: a coat or collar never picked (`pick`) takes its slot's colours there) and renames /
   dresses any sheep (`barnEdit` → `sh`, checked: `cleanSheepEdit`); the host lists only its own dogs. Open while the world goes on:
   `barnSync`. A friend's dig find goes to their wardrobe (`find`).
+  Llamas (LLAMA WARDROBE): a row each (coat, name, ♂ / ♀ / 🍼; `barnPickLlama`), Coat, Colour, Hat, Kit (locked till dug up); on the turntable
+  in its gear, its pack showing what's in it; info: age, fleece, 🎒, ❄️. Pad: D-pad pick / hat, Ⓧ coat, Ⓨ colour, LB/RB kit (`LLAMA_OUTFITS`), Ⓐ name.
+  A guest dresses the host's (`llamaSet` → `ll`; what's found: `LWARD.net`).
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Every screen gets it (`dawnShare`, an effect) and goes on from its own;
   a guest's names go to the host. Waits while the barn's open (`DAWN.pending`). `?sim` only fills `G.dawnReport`. Eulogies are seeded
@@ -30,7 +33,7 @@
   Each section keeps its own (`onSave`): `core` (clock, `G.time`, tally, wool, hints, lost, training), `flock` (every living sheep's plain
   fields, look, mum, spot), `dogs`, `hank` (spot, kit), `pass` (fuel, ice gate, walls, yeti), `graves`, `where` (land: `devJump` to the
   flock's s, then every saved spot that fits; sea: `seaStart` alongside the last island reached, `SEA.saved`), `pens` (gates, bought kit,
-  `STORE`), `map` (fog, `G.visited`), `llamas` (seed, herds found, guards), `falcon`, `sea` (hold, hull, deck troughs), `coyotes` / `cougars` (still
+  `STORE`), `map` (fog, `G.visited`), `llamas` (seed, herds found, guards: name, look, pack, cold), `falcon`, `sea` (hold, hull, deck troughs), `coyotes` / `cougars` (still
   hunting: back). Not kept: what's mid-air or in a mouth, the vagabond's mood (he's at his next pitch), dens, grass, melted snow, ropes.
   New builds: each part loads alone (one that throws keeps its fresh state); `loadPlain` copies a field only onto the same type or a
   field the code doesn't set yet; a spot that's not walkable or `T.save.lag` m off along the trail goes by the flock (`journeyPlace`).

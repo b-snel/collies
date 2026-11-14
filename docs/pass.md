@@ -6,7 +6,7 @@
   No coyotes while the flock's up there; at night by a fire is safe (`passSafe`: the night hurries).
   - **Cold** (`T.cold`, `sheepCold`, `dogCold`): builds in the snow × (1 − `wool`·`s.wool`) × snow on it,
     night, blizzard, lamb; huddled less; `heatAt` warms; below thaws. At 1 for `dieHours`: dead ('cold').
-    Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow.
+    Slower (`coldPep`, `dogColdK`), blue, shivering. Dogs never worse than slow. Llamas: `llamaCold` (docs/llamas.md; a saddle blanket).
   - **Fires** (`PASS.fires`, camps without pens): Hank lights the flock's (`passFireGoal`: the next one up within
     `reach`, or one it's under `left` m past; never back down; from `base` − 30 m; `hankFire`, `light` s), `burn` h of fuel; by night he sits by it
     (his side of it kept while the flock's all round it, `f.hankA`; blocked short of it, he stokes it and sleeps from as near as he gets).
