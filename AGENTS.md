@@ -19,8 +19,8 @@ A vagabond trader walks the trail (every land leg; then the first half of the se
 Hank treats the sick and buries the dead. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
-The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island to the Promised Land
-(wind, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
+The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
+(a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
 A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
 
 ### Run
@@ -31,7 +31,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `I` to sea / on to the next island,
-  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `9` a gale). `window.GAME` exposes
+  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
@@ -180,6 +180,8 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `seaCheckpoint(w)` → `SEA.checkpoint`
 - `SEA.onSave(w, snap)` (for the save system to come)
 - `seaWay()` (is the sea the way on?)
+- `seaLegStep()` (the leg she's on: the nearest still to come; islands passed by)
+- `windAt(e, n)` (the wind there: gusts, a front's line) / `windFront(veer, far)`
 - `harbIce(on)`
 - `seaWake()` (the flock's through the gap)
 - `seaMoor(i)`
@@ -306,6 +308,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Read buttons once per frame, not per substep. Pad presses: `padEdge` (sampled at the frame's start, `padFrame`); never re-read the pad at the frame's end to mark presses seen.
 - Gamepad presses don't unlock audio.
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
+- DOM styles that move: write them only when they change (`will-change` them): a restyle every frame starves the game loop.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies).

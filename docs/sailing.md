@@ -1,8 +1,8 @@
 # Sailing (issue #74)
 
 Online: the host sails, guests draw it (`NET_TYPES` `sea`, `wind`, `wave`, `ring`, `station`, `orca`, `shark`, `kraken`; sheep `sw`
-`sh` `lure`; `seaFx` / `ringFx` relayed). A guest keeps her clock, the waves' phases, her wake, the gusts and a great wave going between
-snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an island's things itself (`netSeaAfter`, `seaLandAway`, `isleShow`).
+`sh` `lure`; `seaFx` / `ringFx` relayed). A guest keeps her clock, the waves' phases, her wake, the gusts, a front and a great wave going between
+snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carrying off / an island's things itself (`netSeaAfter`, `seaLandAway`, `isleShow`).
 
 - **Cold Harbour** (`HARB`, `harbRoad`, `harbK`): real land. A gap in the summit's east rim, a road down the mountainside (`HARB.pts`),
   a mole, then the jetty. Cut into the terrain after world gen's draws (heights, `blk`, colours; the bay sunk); `HARB.mask`: its cells
@@ -23,10 +23,19 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
 - **Sky, haze** (`SKY_DOME`, `scene.fog`, `seaLight`): a dome on the sea, clouds that stay put; haze to the horizon (outlines too).
 - **Pace** (`T.sea.pace`): she covers the sea that much faster than her hull feels it (`seaSpd`).
 - **Waves** (`SWAVES`, `seaEta`, `T.sea.wave`): five trochoid trains (two of swell, in sets; three of wind sea) that
-  grow with the wind (`SEA.state`); the water shader (`SEAW`: rings out to the horizon, per-pixel slope, Fresnel sky, glitter, haze)
+  grow with the wind (`SEA.state`). The wind sea runs with the wind (`SEA.run`); the swell runs from the weather that raised it, slow to come
+  round (`SEA.swell`, `swellTurn`): after a shift, a cross sea; the water shader (`SEAW`: rings out to the horizon, per-pixel slope, Fresnel sky, glitter, haze)
   draws the same sum, so she floats on what you see. Nothing crawls on it. `seaRogue`: a lone great wave. `waterLevel` is a swimmer's y.
-- **Wind** (`WIND`, `T.sea.wind`): from, m/s; veers and breathes; gusts drift down it as dark patches on the water
-  (lulls: glassy), drawn where they are. Each leg has its own (`ROUTE[i].wind`, `seaWeather`).
+- **Wind** (`WIND`, `T.sea.wind`, `windWeather`): from, m/s. Each leg has its own (`ROUTE[i].wind`, `seaWeather`); a new leg's comes round
+  to it over a while (`prevail`; a long way round: light airs as it goes). It never sits still: shifts that hold (now and then it settles
+  `shiftStep` further round and stays, more often back toward the leg's own, never past `shiftMax`: `WIND.shift`), a quick wobble on top; light
+  airs and calms wander more. Gusts drift down it as dark patches on the water (lulls: glassy), drawn where they are; a gust veers, a lull backs.
+  `windAt(e, n)`: the wind there.
+- **Fronts** (`windFront`, `WIND.front`, `T.sea.wind.front`, `ROUTE[i].front`): a line of new wind 55–85° round sweeps down from its windward,
+  faster than she sails (set off to reach her in `eta` s): dark water and breaking crests behind it, a glassy lull ahead, a cloud bank over it;
+  a dashed arrow on the dial where the new wind's from, a cold front's teeth on the chart, 💨 ❗, Hank calls it. The wind falls light, then a
+  squall (+`k`) and a burst of rain (`windSquall`), and the new wind holds. Gull Rock's and Siren's Rest's legs: maybe one; Storm Key's: at the
+  storm's height, it veers (she'll gybe). The Laser feels it where it is.
 - **Sail** (`seaBoatStep`, `sailCoef`, `T.sea.sail`): lift and drag off the apparent wind and the boom's angle. The
   boom swings to leeward as far as the sheet lets it. From that alone: no-go zone, irons (she drifts astern; helm
   over, her head pays off), luffing, stalling, heel, leeway (more when slow), weather helm, tack, gybe (the boom
@@ -44,7 +53,8 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
   drops, up weighs (alongside: casts off); hauling paused, it holds a moment (`slip`). Just weighed or cast off: no drop for `lock` s
   (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller, nor lashed (nor Hank's `pilot`): it swings amidships and she rounds up.
 - **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
-  pressed; lets fly at anchor or with a dog overboard. Calls what he sees (`seaHank`).
+  pressed; lets fly at anchor or with a dog overboard. On the helm out of harbour (`SEA.pilot`) till a dog takes it: for the next island's
+  jetty, never closer to the wind than close-hauled (`seaPilotCrs`). Calls what he sees (`seaHank`).
 - **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
   alongside if she's slow; a dog on deck within `reach` ✊ hauls it in (`seaHaul`; before any other grab: `seaGrabPick`), a
   swimming dog tows it (`d.tow`). Left: drowned.
@@ -57,9 +67,11 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
 - **Anchor** (`T.sea.anchor`): holds in under `depth` m, she swings head to wind; deeper, it only drags. The night
   fast-forwards at rest (`seaAtRest`: alongside, or holding).
 - **Route** (`ROUTE`, `DOCKS`, `REEFS`, `BUOYS`): Cold Harbour → Seal Skerry → Gull Rock → Storm Key → Siren's Rest → the Promised Land. Each island
-  to port of the way in, a jetty on that side.
-- **Alongside an island** (`seaMoorStep`, `seaMoor`, `SEA.berth`, `SEA.warp`): in by its jetty and slow (Hank spills her wind), or her
-  anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
+  to port of the way in, a jetty on that side. No island's a stop she must make, nor need she keep to the way: the leg she's on (`SEA.leg`: its
+  weather, its trouble, the compass's island) is the nearest of those still to come, never one back; the islands before it are passed by once
+  she's well clear of them (`seaLegStep`). Straight for the Promised Land, the legs come by in turn.
+- **Alongside an island** (`seaMoorStep`, `seaMoor`, `SEA.berth`, `SEA.warp`): any island's, in or out of turn. In by its jetty and slow (Hank
+  spills her wind), or her anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
 - **Islands** (`ISLES`, `ISLE`, `T.sea.isle`): ground in deck coords while she's alongside (`sdf`, `h`): beach, meadow, a crag (rock),
   a spring (`fresh`: the bucket fills). Drawn from the same shape. On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
   a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard.
@@ -86,7 +98,7 @@ snapshots (`netSeaAnim`, `netWindAnim`), and does the land's carrying off / an i
 - **What ✊ takes** (`drawGrabMarks`, `grabPick`): a ring in the dog's colour round it; the boat's gear and a sheep in the water get
   a chip with the button. Free stations: a faint icon. Chips, marks and arrows at sea are `T.sea.ui`× (`seaUI`: less on a compact screen; `forageChip`).
 - **Hungry sheep** eat through barks and the ride (`troughSet`, docs/sheep.md): the deck's troughs aren't left for fright.
-- **HUD**: the dial (`drawSeaDial`): wind arrow, no-go wedge, boom (green drawing, amber luffing / stalled, dashed:
-  best), rudder, heel + where the flock's weight is, knots, reefs, hull ♥. The sail's cloth tints the same. Compass:
+- **HUD**: the dial (`drawSeaDial`): wind arrow (a front coming: a dashed one, blinking, where the new wind's from), no-go wedge, boom (green
+  drawing, amber luffing / stalled, dashed: best), rudder, heel + where the flock's weight is, knots, reefs, hull ♥. The sail's cloth tints the same. Compass:
   the next island (the boat, alongside; from the yeti's end: Cold Harbour). Map: a chart with the coast on it (`seaChart`; minimap
-  camera-up, big north-up); ashore at Cold Harbour: the land's map.
+  camera-up, big north-up; a front: its line); ashore at Cold Harbour: the land's map.

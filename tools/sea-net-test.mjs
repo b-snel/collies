@@ -2,7 +2,7 @@
 //   node tools/sea-net-test.mjs [--shots DIR]      PEERSERVER=host:port: your own PeerJS server (e.g. `npx peer --port 9000 --host 127.0.0.1`)
 // Checks: Cold Harbour alongside (the boat, the gangway lashed, the guest's dog at the bow), the guest hauls her lines in with its own stick
 // (the % on its screen), cast off (the land carried off, the chase camera), her pose and the waves the same on both, the guest's stick by its
-// own camera, a life ring thrown and on the water, a sheep overboard (breath, on the ring), orcas, the kraken's arms, effects relayed,
+// own camera, a life ring thrown and on the water, a sheep overboard (breath, on the ring), orcas, a front's line, the kraken's arms, effects relayed,
 // the anchor not dropped again just after it's weighed. WebGL drawing off while checking (as net-test), on for the screenshots. Exits 1 on a failure.
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -117,8 +117,9 @@ try {
   await sleep(1200);
   const over = await B.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.dead && s.air && s.air.sea); return s ? { sea: s.air.sea, lung: s.air.lung, y: s.y } : null; });
   check('a sheep overboard: the guest has it in the sea, its breath running', over && over.sea && over.lung > 0 && over.lung <= 1, over);
-  await A.page.evaluate(() => {   // the host's dog takes the starboard ring and throws it to her
-    const { G, RINGS } = GAME, d = G.dogs[0], r = RINGS[1], s = window.__s;
+  await A.page.evaluate(() => {   // the host's dog takes the starboard ring and throws it to her (she's set 8 m out from it: back alongside, the dog's grab would haul her in instead)
+    const { G, RINGS, BOAT } = GAME, d = G.dogs[0], r = RINGS[1], s = window.__s;
+    if (s.air) { s.x = r.hx + BOAT.rx * 8; s.z = r.hz + BOAT.rz * 8; s.vx = s.vz = 0; s.air.cling = false; }
     d.x = r.sx; d.z = r.sz; d.vx = d.vz = 0; d.yaw = Math.atan2(r.hx - d.x, r.hz - d.z); G.players[0].bot = { grab: true };
     window.__aim = setInterval(() => { if (r.st === 'held') d.yaw = Math.atan2(s.x - d.x, s.z - d.z); }, 20);
   });
@@ -150,6 +151,12 @@ try {
   const [ho, go] = await Promise.all([A.page.evaluate(() => GAME.HAZ.orcas.map(o => [o.e, o.n])), B.page.evaluate(() => GAME.HAZ.orcas.map(o => [o.e, o.n]))]);
   const oErr = go.length ? Math.max(...go.map(([e, n]) => Math.min(...ho.map(([e2, n2]) => Math.hypot(e - e2, n - n2))))) : 99;
   check('orcas: the guest has them where the host does', go.length === ho.length && ho.length === 2 && oErr < 6, { host: ho.length, guest: go.length, err: r2(oErr) });
+  // ---------------------------------------------------------------- a front: its line where the host has it, sweeping on (and the new wind's quarter on the dial)
+  await A.page.evaluate(() => { GAME.windFront(1.2, 200); });
+  await sleep(1500);
+  const fr = p => p.page.evaluate(() => { const { WIND, SEA } = GAME, F = WIND.front; return F ? { x: F.de * SEA.e + F.dn * SEA.n - F.pos, dir1: F.dir1, t: SEA.t } : null; });
+  const [hf, gf] = await Promise.all([fr(A), fr(B)]);
+  check('a front: the guest has its line where the host does, and where the new wind will blow from', !!hf && !!gf && Math.abs(hf.x - gf.x) < 8 && Math.abs(hf.dir1 - gf.dir1) < 0.01 && hf.x < 200, { host: hf && r2(hf.x), guest: gf && r2(gf.x) });
   await A.page.evaluate(() => { const { SEA, KRAKEN, krakenGrip } = GAME; KRAKEN.on = true; KRAKEN.calm = true; KRAKEN.max = KRAKEN.hp = 3; SEA.hold = { heel: 0 }; krakenGrip(1); });
   await until(A, () => GAME.KRAKEN.arms.filter(a => a.st === 'grip').length > 1, null, 10000).catch(() => {}); await sleep(800);
   const kr = await B.page.evaluate(() => { const Q = GAME.KRAKEN; return { on: Q.on, hp: Q.hp, arms: Q.arms.length, grip: Q.arms.filter(a => a.st === 'grip').length, fx: NET.fxIn.seaFx || 0 }; });

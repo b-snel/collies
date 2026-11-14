@@ -6,14 +6,18 @@
 // sheep by that rail go over; a bark turns one), reefs, sharks, the storm (gale, a great wave abeam / on the bow), the waterspout, sirens
 // (lured to the rail and over; a bark, a dog in the way), the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep
 // into its eye; beaten), and the Promised Land (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away.
-// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|grab|hungry|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|start|dock|land]
+// The wind (shifts that hold, gusts veer, the swell lags the wind sea; a front: lull, squall, the new wind holds) and the way (islands passed by).
+// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|grab|hungry|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|wind|front|skip|start|dock|land]
 // Checks: sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef),
 //   stations (Ⓧ held; tiller: steer / hold / let go: lashed; sheet, halyard, anchor), what Ⓧ takes (gear before a sheep in the way; a sheep in the
 //   water first), hungry sheep at the deck's troughs (a bark, a frightening ride: they eat on), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns),
 //   dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore:
 //   flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags
 //   a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked),
-//   kraken (arms, ballast, bonks, eye, beaten), Cabo, the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the
+//   kraken (arms, ballast, bonks, eye, beaten), Cabo, the wind (goes round in shifts that hold, gusts veer and lulls back, a cross sea:
+//   the swell lags), a front (from the new wind's quarter, called, a lull, a squall and rain, the new wind holds; the Storm Key leg's veers it),
+//   the way (straight for the Promised Land: the legs come by in turn, no stops, it ends there; alongside out of turn; Hank's helm full and by),
+//   the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the
 //   mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -559,6 +563,91 @@ if (want('arrive')) {
     return out;
   });
   ok(`into the Promised Land: the journey ends with the sheep still aboard (${r.line}; one was in the water)`, r.mode === 'end' && r.line.includes(String(r.n0 - 1)), r);
+}
+
+if (want('wind')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { T, SEA, WIND, SWAVES, seaStart } = GAME, out = {};
+    // out on the open sea, the weather left to itself: the wind goes round in shifts that hold; gusts veer, lulls back
+    seaStart({ under: true, leg: 0 }); T.sea.orca.from = 2; SEA.e = 0; SEA.n = -4000; SEA.hdg = 0; SEA.hoist = 0;
+    const rel = [], tos = new Set(), seen = new Set(), up = [], down = []; let held = 0, n = 0;
+    H.run(420, () => {
+      H.steer(0); rel.push(H.wrap(WIND.dir - WIND.base)); tos.add(WIND.shiftTo.toFixed(4)); n++; if (Math.abs(WIND.shift - WIND.shiftTo) < 0.05) held++;
+      for (const g of WIND.gusts) if (!seen.has(g)) { seen.add(g); (g.k > 0 ? up : down).push(g.veer); }
+    });
+    const avg = a => a.reduce((m, v) => m + v, 0) / Math.max(1, a.length);
+    Object.assign(out, { lo: H.deg(Math.min(...rel)), hi: H.deg(Math.max(...rel)), shifts: tos.size - 1, held: H.r(held / n), gust: H.deg(avg(up)), lull: H.deg(avg(down)), gusts: up.length, lulls: down.length,
+      veers: up.every(v => v > 0) && down.every(v => v < 0) });
+    // a big shift (60°): the wind sea comes round with it; the swell, from the weather that raised it, lags (a cross sea), then follows
+    T.sea.wind.shiftGap = [1e4, 1e4]; WIND.shiftT = 1e4; T.sea.wind.veer = [0, 0];
+    const a0 = SWAVES[0].ang, c0 = SWAVES[2].ang; WIND.shiftTo = WIND.shift + 1.05;
+    H.run(45, () => H.steer(0)); out.chop = H.deg(Math.abs(H.wrap(SWAVES[2].ang - c0))); out.swell = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
+    H.run(400, () => H.steer(0)); out.swellLate = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
+    return out;
+  });
+  ok(`left to itself the wind goes round: ${r.shifts} shifts that hold (settled ${Math.round(r.held * 100)}% of the time), ${r.lo}°…${r.hi}° off the leg's own`, r.shifts >= 5 && r.held > 0.5 && r.hi - r.lo > 30 && r.lo < -8 && r.hi > 8 && r.hi - r.lo < 110, r);
+  ok(`gusts veer (${r.gust}°, ${r.gusts} of them), lulls back (${r.lull}°, ${r.lulls})`, r.gusts > 3 && r.lulls > 0 && r.veers, r);
+  ok(`60° round: the wind sea comes with it (${r.chop}° in 45 s), the swell lags (${r.swell}°): a cross sea; later it follows (${r.swellLate}°)`, r.chop > 30 && r.swell < r.chop / 2 && r.swellLate > 45, r);
+}
+
+if (want('front')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { T, SEA, WIND, ROUTE, seaStart, windFront } = GAME, out = {};
+    // a front, the new wind 70° round (no other shifts, no gusts: just it). Its line comes down on her from the new wind's quarter; just ahead
+    // of it the wind falls light; it reaches her with a squall and a burst of rain, the wind goes round; the new wind holds
+    seaStart({ under: true, leg: 0 }); T.sea.orca.from = 2; T.sea.wind.gustRate = 0; T.sea.wind.veer = [0, 0]; T.sea.wind.shiftGap = [1e4, 1e4]; WIND.shiftT = 1e4;
+    SEA.e = 0; SEA.n = -4000; SEA.hdg = 0; H.run(5, () => H.steer(0));
+    const d0 = WIND.dir, F = windFront(70 / 57.2958, 260);
+    out.from = H.deg(Math.abs(H.wrap(Math.atan2(-F.de, -F.dn) - d0 - 70 / 57.2958)));
+    let lull = 0, warned = -1, hitT = -1, k = 0, rain = 0;
+    out.t = H.r(H.run(90, t => {
+      H.steer(0); const x = F.de * SEA.e + F.dn * SEA.n - F.pos;
+      if (x > 0 && x < 12) lull = Math.min(lull, WIND.here.k); if (F.warned && warned < 0) warned = x;
+      if (F.hit && hitT < 0) hitT = t; if (hitT >= 0) { k = Math.max(k, WIND.here.k); rain = Math.max(rain, SEA.rain); }
+      return hitT >= 0 && t - hitT > 12;
+    }), 0);
+    Object.assign(out, { lull: H.r(lull), warned: Math.round(warned), k: H.r(k), rain: H.r(rain), turned: H.deg(H.wrap(WIND.dir - d0)) });
+    H.run(40, () => H.steer(0)); out.held = H.deg(H.wrap(WIND.dir - d0)); out.gone = WIND.front === null;
+    // a leg's own: the Storm Key leg's reaches her at the storm's height, and veers the wind
+    seaStart({ under: true, leg: 2 }); T.sea.wind.shiftGap = [1e4, 1e4]; WIND.shiftT = 1e4;
+    const a = ROUTE[2], b = ROUTE[3]; SEA.e = a.e + (b.e - a.e) * 0.3; SEA.n = a.n + (b.n - a.n) * 0.3; SEA.hdg = b.crs; SEA.hoist = 0.55;
+    let d1 = 0; H.run(120, () => { H.steer(b.crs); d1 = WIND.dir; return !!WIND.front && WIND.front.hit; });
+    out.storm = { at: H.r(SEA.legK), storm: H.r(SEA.storm) }; H.run(12, () => H.steer(b.crs)); out.storm.veer = H.deg(H.wrap(WIND.dir - d1));
+    return out;
+  });
+  ok(`a front: its line comes from the new wind's quarter (${r.from}° off it), Hank calls it ${r.warned} m off; just ahead of it the wind falls light (${r.lull})`, r.from < 2 && r.warned > 60 && r.lull < -0.25, r);
+  ok(`it reaches her (${r.t} s): a squall (+${r.k}), rain (${r.rain}); the wind ${r.turned}° round 12 s on`, r.k > 0.5 && r.rain > 0.2 && r.turned > 55 && r.turned < 85, r);
+  ok(`the new wind holds (${r.held}° round 40 s later), the line's gone by`, Math.abs(r.held - 70) < 10 && r.gone, r);
+  ok(`the Storm Key leg's front reaches her at the storm's height (${r.storm.at} along, storm ${r.storm.storm}) and veers the wind ${r.storm.veer}°`, r.storm.at > 0.45 && r.storm.at < 0.68 && r.storm.veer > 50 && r.storm.storm > 0.8, r);
+}
+
+if (want('skip')) {
+  await setup({ calm: true });
+  const r = await h.page.evaluate(() => {
+    const { G, T, SEA, WIND, ROUTE, DOCKS, KRAKEN, STATIONS, seaStart, seaCastOff, seaLegStep } = GAME, out = {};
+    // no island's a stop she must make. Straight from Cold Harbour for the Promised Land: the legs come by as she goes (their weather, their
+    // trouble), never one back; she's stopped nowhere
+    seaStart({ under: true, leg: 0 }); T.sea.orca.from = 2; KRAKEN.beaten = true; SEA.lockWx = true;
+    const A = { e: SEA.e, n: SEA.n }, B = ROUTE[ROUTE.length - 1], legs = [SEA.leg];
+    for (let i = 1; i <= 200; i++) { const k = i / 200 * 0.97; SEA.e = A.e + (B.e - A.e) * k; SEA.n = A.n + (B.n - A.n) * k; seaLegStep(); if (SEA.leg !== legs[legs.length - 1]) legs.push(SEA.leg); }
+    out.legs = legs.join(); out.up = legs.every((l, i) => !i || l > legs[i - 1]); out.saved = SEA.saved;
+    // ...and in by its jetty, slowly: alongside, and that's the journey
+    const D = DOCKS[ROUTE.length - 1]; SEA.e = D.e - Math.sin(D.hdg) * 14; SEA.n = D.n - Math.cos(D.hdg) * 14; SEA.hdg = D.hdg; SEA.u = 1; SEA.v = 0; SEA.hoist = 0;
+    H.run(20, () => G.mode !== 'play'); out.end = G.mode;
+    // alongside an island out of turn: from Seal Skerry, Gull Rock passed by, in by Storm Key's jetty: saved there, on for Siren's Rest
+    G.mode = 'play'; seaStart({ leg: 1 }); SEA.lockWx = true; out.cast = seaCastOff(true); out.leg0 = SEA.leg;
+    const D3 = DOCKS[3]; SEA.e = D3.e - Math.sin(D3.hdg) * 14; SEA.n = D3.n - Math.cos(D3.hdg) * 14; SEA.hdg = D3.hdg; SEA.u = 1; SEA.v = 0; SEA.hoist = 0;
+    H.run(20, () => SEA.docked); Object.assign(out, { docked: SEA.docked, berth: SEA.berth, saved2: SEA.saved, leg: SEA.leg });
+    // Hank on the helm out of harbour, the way dead to windward: he sails her full and by, not into irons
+    H.sea(0, 8); STATIONS[0].by = null; SEA.pilot = SEA.hdg; SEA.u = 2; H.run(30); out.pilot = { u: H.r(SEA.u), twa: H.deg(Math.abs(SEA.twa)) };
+    return out;
+  });
+  ok(`straight from Cold Harbour for the Promised Land: legs ${r.legs} come by in turn, never one back; no stop made (${r.saved})`, r.up && r.legs.startsWith('1,') && r.legs.endsWith(',3,4,5') && r.saved === 0, r);
+  ok(`in by the Promised Land's jetty: the journey's done (${r.end})`, r.end === 'end', r);
+  ok(`from Seal Skerry (on for leg ${r.leg0}) in by Storm Key's jetty: alongside (${r.berth}), saved there (${r.saved2}), on for leg ${r.leg}`, r.cast && r.leg0 === 2 && r.docked && r.berth === 3 && r.saved2 === 3 && r.leg === 4, r);
+  ok(`Hank on the helm, the way dead to windward: close-hauled (${r.pilot.twa}° off the wind), sailing (${r.pilot.u} m/s), not in irons`, r.pilot.twa > 35 && r.pilot.twa < 60 && r.pilot.u > 1.5, r);
 }
 
 if (want('start')) {
