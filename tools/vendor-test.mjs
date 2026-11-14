@@ -3,15 +3,15 @@
 // a pen found on the way, 🌾 💧 🧂 add a stocked trough / water trough / lick there up to what the pen holds (by its size), then batches;
 // his mood: bonks, nags (barks), grabs are grievances (the first three warn, then prices go up), fetch / a tug / an apple work them off,
 // then a discount; grabbed he screams; annoyed past bearing he's off for a day; he walks on, skips ahead, sleeps; no Cabo. At sea: his
-// Laser (Cold Harbour's quay, sailing by her, beached on the islands, asleep by it, gone after Gull Rock).
+// Laser (out in Cold Harbour's bay, sailing by her, beached on the islands, asleep by it, gone after Gull Rock).
 // `node tools/vendor-test.mjs`
 // Checks: the vagabond: pitches (1–2 a leg, seeded, the last at the Trading Post, none up the pass), stalls gone; the trade press (pad
 //   bark, keyboard Space), packing up; 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a
 //   dog walks out), sheep use them, reset; too poor, full pen; nags (not herding, not from afar), bonks (worse each time), 3 warnings then
 //   prices up (capped); fetch, apple, tug: grievances off then a discount (capped); grabbed (screams, dragged, dusts off); leaves for a day,
 //   back ahead; walks on, skips ahead off screen, sleeps, woken; new journey; no Cabo, the Trading Post doesn't end it; at sea: Cold
-//   Harbour's quay (trade, 🌾 to the deck), cast off, sails by her (clear, heeled, boom to leeward, out of reach), beached ahead of her,
-//   trades on the island, asleep by his boat, Gull Rock: bye, gone
+//   Harbour: out in the bay (nothing on the quay, out of reach), cast off, sails by her (clear, heeled, boom to leeward, out of reach),
+//   beached ahead of her, trades on the island (🌾 to the deck), asleep by his boat, Gull Rock: bye, gone
 import { open } from './harness.mjs';
 const h = await open();
 let fails = 0;
@@ -389,18 +389,19 @@ const r14 = await h.page.evaluate(() => {
 });
 ok('a new journey: a new seed, at his first pitch, packed, no grudges; sticks by his pitches', r14.mode === 'play' && !r14.hello && r14.seed && r14.pi === 0 && r14.st === 'pitch' && !r14.out && !r14.griev && !r14.annoy && r14.sticks > 0 && r14.sticks <= r14.want, r14);
 
-// 15. SAILING: Cold Harbour: on the quay by his Laser, he trades (mats on the quay; 🌾 to the deck). Cast off: he launches and sails by her
-// (out of reach, clear of her, heeled and the boom out to leeward); near the next island he makes for its beach ahead of her and pulls up;
-// alongside, ashore he trades (mats on the island); by night asleep by his boat, a trade press wakes him. His last island (Gull Rock): cast
+// 15. SAILING: Cold Harbour: out in the bay in his Laser, round and round clear of her, out of reach (nothing on the quay). Cast off: he
+// sails by her (out of reach, clear of her, heeled and the boom out to leeward); near the next island he makes for its beach ahead of her
+// and pulls up; alongside, ashore he trades (mats on the island; 🌾 to the deck); by night asleep by his boat, a trade press wakes him. His last island (Gull Rock): cast
 // off, a parting word, over the horizon, gone; gone the rest of the voyage; a new journey: back on the land
 const r15 = await h.page.evaluate(() => {
   const { G, VAG, T, SEA, seaStart, seaCastOff, vagPress, vagFrame, vagReach, boatXZ, boatU, boatV, BOAT, DECK, kitN, ALL_WARES, vendorBark, seaDist, ROUTE, ISLES, onQuay } = GAME;
   const out = {}, d = G.dogs[0], run = H.run, aboard = () => { const p = boatXZ(-6, 0); H.place(d, p.x, p.z); run(0.3); }, press = () => vagPress(d, { bark: true });
-  H.reset(); G.wool = 200; seaStart({ leg: 0 }); run(0.2);
-  out.harb = { mode: VAG.mode, ph: VAG.sea.ph, i: VAG.sea.i, reach: vagReach(), laser: VAG.sea.b.on && VAG.sea.b.beach === 1, quay: onQuay(VAG.x, VAG.z) };
-  H.by(2.2); out.trade = press(); run(1.5); out.mats = VAG.out && ALL_WARES.every(w => onQuay(w.x, w.z, 1));
-  const w = ALL_WARES.find(w => w.id === 'food'), n0 = kitN(DECK, 'food'); H.place(d, w.x, w.z); out.buy = [vendorBark(d), kitN(DECK, 'food') - n0];
-  aboard(); seaCastOff(true); run(0.2); out.cast = { ph: VAG.sea.ph, out: VAG.out, line: VAG.line };
+  H.reset(); G.wool = 200; seaStart({ leg: 0 }); run(0.2); GAME.renderOnce();
+  const hb = VAG.sea.b; out.harb = { mode: VAG.mode, ph: VAG.sea.ph, frame: vagFrame(), reach: vagReach(), sail: hb.on && hb.beach === 0, quay: onQuay(VAG.x, VAG.z) };
+  let bMin = 1e9, bMax = 0, moved = 0, e0 = hb.e, n0b = hb.n; for (let i = 0; i < 60; i++) { run(0.5); const dd = seaDist(hb.e, hb.n); bMin = Math.min(bMin, dd); bMax = Math.max(bMax, dd); moved = Math.max(moved, Math.hypot(hb.e - e0, hb.n - n0b)); }
+  out.bay = { ph: VAG.sea.ph, min: Math.round(bMin), max: Math.round(bMax), moved: Math.round(moved) };
+  aboard(); out.trade = press(); out.mats = VAG.out;
+  seaCastOff(true); run(0.2); out.cast = { ph: VAG.sea.ph, out: VAG.out, line: VAG.line };
   run(8); const b = VAG.sea.b; out.sail = { ph: VAG.sea.ph, frame: vagFrame(), reach: vagReach(), press: press() };
   let minD = 1e9, n = 0, lee = 0;
   for (let i = 0; i < 40; i++) { run(0.5); minD = Math.min(minD, seaDist(b.e, b.n)); if (VAG.sea.ph === 'sail' && Math.abs(b.heel) > 0.1) { n++; if (Math.sign(b.heel) === -b.ws && Math.sign(b.boom) === -b.ws) lee++; } }
@@ -409,20 +410,21 @@ const r15 = await h.page.evaluate(() => {
   let first = null; for (let i = 0; i < 90 && !(SEA.docked && VAG.sea.ph === 'ashore'); i++) { run(1); if (!first && VAG.sea.ph === 'ashore') first = { docked: SEA.docked, i: VAG.sea.i }; }
   out.isle = { first, docked: SEA.docked, berth: SEA.berth, ph: VAG.sea.ph, i: VAG.sea.i, reach: vagReach(), beach: VAG.sea.b.beach, sand: ISLES[1].sdf(boatU(VAG.x, VAG.z), boatV(VAG.x, VAG.z)) };
   H.by(2.2); out.isleTrade = press(); run(1.5); out.isleMats = VAG.out && ALL_WARES.every(w => ISLES[1].sdf(boatU(w.x, w.z), boatV(w.x, w.z)) > 1);
+  const w = ALL_WARES.find(w => w.id === 'food'), n0 = kitN(DECK, 'food'); H.place(d, w.x, w.z); out.buy = [vendorBark(d), kitN(DECK, 'food') - n0];
   H.place(d, BOAT.x, BOAT.z); run(T.vag.packT + 2); G.clock.hour = 22; run(20);
   out.night = { st: VAG.st, byBoat: Math.hypot(VAG.x - VAG.sea.sites[1].lx, VAG.z - VAG.sea.sites[1].lz) < 4 }; H.by(2.2); out.woken = press() && VAG.st === 'pitch' && VAG.out;
   G.clock.hour = 10; seaStart({ leg: 2 }); run(0.5); out.last = { ph: VAG.sea.ph, i: VAG.sea.i, reach: vagReach() };
   aboard(); seaCastOff(true); run(0.3); out.bye = VAG.line;
   for (let i = 0; i < 150 && VAG.st !== 'off'; i++) run(1);
   out.gone = VAG.st;
-  for (const [leg, under] of [[2, true], [3, false], [3, true], [4, true]]) { seaStart({ leg, under }); run(0.3); out['g' + leg + (under ? 'u' : '')] = VAG.st; }
+  for (const [leg, under] of [[2, true], [3, false], [3, true], [4, true]]) { seaStart({ leg, under }); run(0.3); GAME.renderOnce(); out['g' + leg + (under ? 'u' : '')] = VAG.st; }   // (drawn too: gone, no site to stand on)
   GAME.resetGame(); run(0.1); out.reset = { mode: VAG.mode, sea: VAG.sea, st: VAG.st };
   return out;
 });
-ok('Cold Harbour: on the quay, his Laser pulled up by him; Ⓐ lays his wares on the quay; 🌾 goes to the deck', r15.harb.mode === 'sea' && r15.harb.i === 0 && r15.harb.reach && r15.harb.laser && r15.harb.quay && r15.trade && r15.mats && r15.buy[0] === 'add' && r15.buy[1] === 1, r15);
-ok('cast off: he launches, packed, and sails by her, out of reach', r15.cast.ph === 'launch' && !r15.cast.out && r15.cast.line && r15.sail.ph === 'sail' && r15.sail.frame === 'boat' && !r15.sail.reach && !r15.sail.press, r15);
+ok(`Cold Harbour: out in the bay in his Laser (${r15.bay.min}–${r15.bay.max} m off her, ${r15.bay.moved} m about), not on the quay, out of reach: no trade`, r15.harb.mode === 'sea' && r15.harb.ph === 'bay' && r15.harb.frame === 'boat' && !r15.harb.reach && r15.harb.sail && !r15.harb.quay && r15.bay.ph === 'bay' && r15.bay.min > 12 && r15.bay.max < 40 && r15.bay.moved > 8 && !r15.trade && !r15.mats, r15);
+ok('cast off: he sails by her, out of reach', r15.cast.ph === 'sail' && !r15.cast.out && r15.cast.line && r15.sail.ph === 'sail' && r15.sail.frame === 'boat' && !r15.sail.reach && !r15.sail.press, r15);
 ok('under way: clear of her, in sight; heeled and the boom out to leeward', r15.by.minD > 15 && r15.by.far < 120 && r15.by.n > 10 && r15.by.lee === r15.by.n, r15.by);
-ok('the next island: his Laser pulled up its beach before she\'s alongside; ashore with the dogs, he trades on the island', r15.isle.first && !r15.isle.first.docked && r15.isle.first.i === 1 && r15.isle.docked && r15.isle.berth === 1 && r15.isle.ph === 'ashore' && r15.isle.reach && r15.isle.beach === 1 && r15.isle.sand > 0 && r15.isleTrade && r15.isleMats, r15.isle);
+ok('the next island: his Laser pulled up its beach before she\'s alongside; ashore with the dogs, he trades on the island; 🌾 goes to the deck', r15.isle.first && !r15.isle.first.docked && r15.isle.first.i === 1 && r15.isle.docked && r15.isle.berth === 1 && r15.isle.ph === 'ashore' && r15.isle.reach && r15.isle.beach === 1 && r15.isle.sand > 0 && r15.isleTrade && r15.isleMats && r15.buy[0] === 'add' && r15.buy[1] === 1, { ...r15.isle, buy: r15.buy });
 ok('by night: asleep by his boat; a trade press wakes him and he trades', r15.night.st === 'sleep' && r15.night.byBoat && r15.woken, r15.night);
 ok('his last island: cast off, a parting word, over the horizon, gone; gone the rest of the voyage; a new journey: on the land', r15.last.i === 2 && r15.last.reach && /back|home|out there/i.test(r15.bye) && r15.gone === 'off' && r15.g2u === 'off' && r15.g3 === 'off' && r15.g3u === 'off' && r15.g4u === 'off' && r15.reset.mode === 'land' && r15.reset.sea === null && r15.reset.st === 'pitch', r15);
 

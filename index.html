@@ -1037,10 +1037,10 @@ const T = {
     annoy: { bonk: 3, nag: 2.5, grab: 3, held: 0.8, shake: 0.6, wake: 1, air: 3 }, leave: 15, decay: 1, awayH: 24,
     mood: { free: 3, up: 0.15, upMax: 1, down: 0.06, downMax: 0.3, gap: 5, fetchR: 2.2, catchR: 0.9 },
     mat: 2.7, gap: 3.4, ring: 2.4, row2: 5.4, ware: 1.7, sticks: 2,   // (row2: room for row 0's price tags between the rows)
-    // SAILING: his Laser. legs: he sails ROUTE legs 1…legs with her (their islands his stops; then he turns back). spd: × the wind (polar), boost:
+    // SAILING: his Laser. legs: he sails ROUTE legs 1…legs with her (their islands his stops; then he turns back). bay: Cold Harbour, round and round off her starboard side (u, v, r, keep m). spd: × the wind (polar), boost:
     // × that catching up; noGo rad off the wind; turn rad/s; keep m off her; slot: where he keeps (m ahead min…max, m to port min…max); landR: m off
     // the next island he makes for its beach; far: m off and out of sight, he's caught up; part: m off, gone; walk m/s; grid: cols, gap, row, ring (mats, tighter)
-    sea: { legs: 2, spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5, grid: [3, 2.95, 3.2, 1.6] },
+    sea: { legs: 2, bay: [-2, 24, 6, 14], spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5, grid: [3, 2.95, 3.2, 1.6] },
     tug:{ r: 3, take: 1.1, want: 8, base: 4, back: 1.4, heave: 2, beats: 1, heaveT: 0.4, yank: 2.3, walk: 0.85, tire: 7, tireR: 0.05, tireMin: 0.5, again: 8 } },
   // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), latMin…lat m either side.
   // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
@@ -8017,7 +8017,7 @@ function grabPick(d) {
     if (dd < bd && !fenceBetween(d.x, d.z, o.x, o.z)) { bd = dd; best = o; kind = 'dog'; }
   }
   for (const p of pens) {
-    if (p.lock || p.frozen || Math.abs(p.hinge.x - d.x) > 9 || Math.abs(p.hinge.z - d.z) > 9) continue;   // (MOUNTAIN PASS: the yeti's gate's iced shut; SAILING: the gangway's lashed)
+    if (p.lock || p.deck || p.frozen || Math.abs(p.hinge.x - d.x) > 9 || Math.abs(p.hinge.z - d.z) > 9) continue;   // (MOUNTAIN PASS: the yeti's gate's iced shut; SAILING: the gangway's lashed, or held open: Hank's)
     const q = distSeg(mx, mz, p.gateSeg), r = q.t * p.gateLen;
     if (r < 0.8 || q.d > 1.3) continue;
     if (q.d - 0.2 < bd) { bd = q.d - 0.2; best = p; kind = 'gate'; grip = r; }
@@ -8250,6 +8250,7 @@ function gateNormal(p, phi = p.phi) { const a = p.angClosed + p.outSign * phi; r
 function vaultFx(d) { floatText('HUP!', d.x, d.y + 1.8, d.z, d.color, 1); SFX.whoosh(panOf(d.x, d.z), 0.14, 0.22); }
 function updateGate(p, dt) {
   if (p.lock) return;   // SAILING: the gangway, lashed shut at sea
+  if (p.deck && p.auto === undefined) { gangHeld(p); return; }   // SAILING: alongside, held wide open (Hank swings it: p.auto)
   if (p.frozen) { p.phi = 0; p.w = 0; updateGateGeometry(p); for (const d of G.dogs) if (d.isDog) collideSeg(d, T.dogR, p.gateSeg); return; }   // MOUNTAIN PASS: the yeti's gate, iced shut
   const K = T.gate, prev = p.phi, L = p.gateLen, hx = p.hinge.x, hz = p.hinge.z;
   let touch = false, want = null, rate = K.rate;
@@ -8266,7 +8267,7 @@ function updateGate(p, dt) {
   }
   if (want === null && p.auto !== undefined) {   // swung by script (toggleGate)
     touch = true; rate = 3; if (p.auto !== 0) p.latched = false;
-    want = p.auto; if (Math.abs(p.phi - p.auto) < 0.01) p.auto = undefined;
+    want = p.auto; if (Math.abs(p.phi - p.auto) < 0.01 && !(p.deck && !p.auto)) p.auto = undefined;   // (SAILING: swung to, it stays to till Hank lashes it)
   }
   // 2) dogs walking into it push it away from them
   const nP = gateNormal(p);
@@ -8319,6 +8320,13 @@ function updateGate(p, dt) {
     d.leaning = true; d.leanT += dt;
     if (d.leanT > K.lean && d.mode !== 'sprint') { startHop(d, HIT.nx, HIT.nz, Math.max(6.5, T.dogWalk * 0.8)); vaultFx(d); }
   }
+}
+// SAILING: alongside, the gangway's leaf is held wide open, back along the quay's edge: no dog swings, slams or grabs it into the way
+// (and none could vault it: over the rail is a jump). The leaf still stops them
+function gangHeld(p) {
+  const o = T.gate.maxOut * 0.95; p.latched = false; p.w = 0;
+  if (p.phi !== o) { p.phi = o; updateGateGeometry(p); }
+  for (const d of G.dogs) if (!d.air && !d.heldBy && d.hopT <= 0) collideSeg(d, T.dogR + 0.05, p.gateSeg);
 }
 function sheepNudgesGate(p, s) {
   if (s.dead || s.air || s.heldBy || s.grabbed || s.pen || s.snag || s.bog || insidePen(p, s.x, s.z, 0)) return false;
@@ -8375,6 +8383,7 @@ function latchGate(p, speed) {
 }
 // a sprint into the leaf slams it away from the dog: open, or shut (it latches as it swings through)
 function sprintGateSlam(p, d, side, r) {
+  if (p.deck) return;   // SAILING: the gangway's held open
   p.w = -side * Math.min(T.gate.slam, T.dogSprint * 0.8 / Math.max(r, 0.9)); p.latched = false; p.auto = undefined; p.pushedBy = d; p.slamT = G.time + 0.5;
   floatText('SLAM!', p.gx, p.y + 2.2, p.gz, '#ffd36b', 1.4); SFX.bonk(panOf(p.gx, p.gz), 0.3); SFX.creak(panOf(p.gx, p.gz), 0.25, 1.2);
   shakeCam(0.2); rumble(d.player, 0.5, 0.4, 120);
@@ -8382,7 +8391,7 @@ function sprintGateSlam(p, d, side, r) {
 // a pounce is too quick to push a gate: it slams it
 function pounceGateSlam(d, ox, oz) {
   for (const p of pens) {
-    if (Math.abs(d.x - p.hinge.x) > 8 || Math.abs(d.z - p.hinge.z) > 8) continue;
+    if (p.deck || Math.abs(d.x - p.hinge.x) > 8 || Math.abs(d.z - p.hinge.z) > 8) continue;   // (SAILING: the gangway's held open)
     const g = p.gateSeg;
     if (!segX(ox, oz, d.x, d.z, g.ax, g.az, g.bx, g.bz) && distSeg(d.x, d.z, g).d > T.dogR + 0.15) continue;
     const side = Math.sign(wrapA(gatePsi(p, ox, oz) - p.phi)) || 1, r = clamp(Math.hypot(ox - p.hinge.x, oz - p.hinge.z), 0.8, p.gateLen);
@@ -19779,7 +19788,7 @@ function vagPost(dt, near, spd) {
 // ---- SAILING: him and his Laser. Cold Harbour: he waits on the quay, his Laser pulled up by him. Cast off: for the first legs (T.vag.sea.legs)
 // he sails along with her (sea coords: a slot off her port bow; beating up in tacks when he must, heeled, the boom out to leeward), makes for
 // the next island's beach ahead of her (by night too: asleep by his boat) and pulls up there. Alongside, ashore: he trades as on land.
-// His last stop: a parting word, and off home over the horizon. Sites (VAG.sea.sites: 0 Cold Harbour, then each island), in deck coords at
+// His last stop: a parting word, and off home over the horizon. Cold Harbour: out in the bay, out of reach (vagBay). Sites (VAG.sea.sites: each island), in deck coords at
 // that berth (ISLE's frame): his spot (hu, hv, ht; x, z, lay: the world's while she's alongside), his Laser pulled up (bu, bv, bt: deck angle,
 // 0 her bow, + to starboard), off the beach (wu, wv), where he steps out (su, sv). His Laser (VAG.sea.b): sea coords (e, n; h: compass)
 const vagSiteSea = (st, u, v, out = {}) => { const D = DOCKS[st.i], s = Math.sin(D.hdg), c = Math.cos(D.hdg); out.e = D.e + u * s + v * c; out.n = D.n + u * c - v * s; return out; };
@@ -19787,7 +19796,7 @@ const vagSiteH = (st, u, v) => st.i ? ISLES[st.i].h(u, v) : 0;   // the ground o
 const vagYawDeck = a => Math.atan2(Math.sin(a) * BOAT.rx + Math.cos(a) * BOAT.rz, Math.sin(a) * BOAT.fx + Math.cos(a) * BOAT.fz);   // world yaw → deck angle
 const vagDeckYaw = t => Math.atan2(BOAT.fx * Math.cos(t) + BOAT.rx * Math.sin(t), BOAT.fz * Math.cos(t) + BOAT.rz * Math.sin(t));   // ...and back
 const vagYawL = h => Math.atan2(seaX(Math.sin(h), Math.cos(h)), seaZ(Math.sin(h), Math.cos(h)));   // compass → seaG's yaw
-const vagFrame = () => VAG.mode !== 'sea' || !VAG.sea ? 'world' : VAG.sea.inBoat ? 'boat' : vagReach() ? 'world' : 'sea';   // what he's drawn in
+const vagFrame = () => VAG.mode !== 'sea' || !VAG.sea ? 'world' : VAG.sea.inBoat ? 'boat' : vagReach() || !VAG.sea.sites[VAG.sea.i] ? 'world' : 'sea';   // what he's drawn in (no site: Cold Harbour, gone)
 const VAG_POLAR = [[0, 0], [0.55, 0.05], [0.8, 0.55], [1.3, 0.85], [1.8, 1], [2.4, 0.9], [Math.PI, 0.7]];   // a Laser's speed by the wind's angle off the bow (× the wind)
 function vagPolar(twa) { const P = VAG_POLAR; for (let i = 1; i < P.length; i++) if (twa <= P[i][0]) return lerp(P[i - 1][1], P[i][1], (twa - P[i - 1][0]) / (P[i][0] - P[i - 1][0])); return P[P.length - 1][1]; }
 const _vw2 = { spd: 0, dir: 0, k: 0 }, _vb = {}, _vb2 = {}, _vb3 = {}, _vs = { e: 0, n: 0 };
@@ -19795,15 +19804,14 @@ function vagWith(i, fn) {   // fn with island i's ground (0: Cold Harbour's quay
   const keep = [ISLE, QUAY.on, SEA_AWAY]; ISLE = ISLES[i] || null; QUAY.on = true; if (i) SEA_AWAY = true;
   try { return fn(); } finally { ISLE = keep[0]; QUAY.on = keep[1]; SEA_AWAY = keep[2]; }
 }
-// a site: Cold Harbour's quay (its far end: he, his mats toward the gangway; his Laser along its shore side); an island: along the beach from
-// the pier (own rng: which way, how far), his Laser pulled up the sand, his spot up the beach behind it, room for the mats
+// a site: along an island's beach from the pier (own rng: which way, how far), his Laser pulled up the sand, his spot up the beach behind
+// it, room for the mats
 function vagSite(i, R) {
   const mk = (hu, hv, a0, bu, bv, bt, wu, wv, su, sv, zu, zv) => {
     const st = { i, bu, bv, bt, wu, wv, su, sv, zu, zv }, b = boatXZ(bu, bv), h = boatXZ(hu, hv), z = boatXZ(zu, zv); VAG.laserAt = { x: b.x, z: b.z }; st.zx = z.x; st.zz = z.z;   // (z: where he beds down, by his boat)
     const lay = vagWith(i, () => vagLayout(h.x, h.z, a0, true)); VAG.laserAt = null;
     return Object.assign(st, { lay: lay.L, ok: lay.ok, x: lay.L[0], z: lay.L[1], hu: boatU(lay.L[0], lay.L[1]), hv: boatV(lay.L[0], lay.L[1]), ht: vagYawDeck(lay.L[2]), lx: b.x, lz: b.z });
   };
-  if (!i) return mk(12, -13.1, vagDeckYaw(Math.PI), 10.7, -19.45, 0, 18.5, -19.45, 10.4, -18.1, 10.6, -17.6);
   const I = ISLES[i], a0 = Math.atan2(QUAY.shore - I.cv, QUAY.pu - I.cu), sides = R() < 0.5 ? [1, -1] : [-1, 1];
   let first = null;
   for (const al of [22 + R() * 6, 17, 30, 36, 42]) for (const sd of sides) {
@@ -19816,17 +19824,32 @@ function vagSite(i, R) {
   }
   return first;
 }
-// seaStart: the voyage begins (or a dev start somewhere along it): he's at Cold Harbour, ashore where she lies, or out sailing by her; past his half: gone
+// seaStart: the voyage begins (or a dev start somewhere along it): he's out in Cold Harbour's bay, ashore where she lies, or out sailing by her; past his half: gone
 function vagSeaStart() {
   const v = VAG, S = SEA, K = T.vag.sea; if (!T.vag.on || NET.role === 'guest') return;
   vagUnhold(); v.out = false;
   const R = mulberry32((v.seed ^ 0x2545f491) >>> 0), sites = [];
-  for (let i = 0; i <= K.legs; i++) sites.push(vagSite(i, R));
+  for (let i = 0; i <= K.legs; i++) sites.push(i ? vagSite(i, R) : null);   // (Cold Harbour: none, he's out in the bay)
   v.sea = { ph: 'ashore', i: 0, sites, t: 0, mu: 0, mv: 0, mt: 0, inBoat: false, k: 0, then: '', away: false, walk: false, wave: false, dk: S.docked ? S.berth : -1, hank: false, last: false, bye: false, from: null, part: null,
     b: { on: true, e: 0, n: 0, h: 0, y: 0, spd: 0, heel: 0, pitch: 0, roll: 0, boom: 0, tack: 0, tackT: 0, luff: 0, ws: 1, sail: 0, beach: 1, ref: S.hdg } };
   Object.assign(v, { mode: 'sea', st: 'pitch', annoy: 0, bonks: 0, nags: 0, barks: [], greet: false, goTo: null, vx: 0, vz: 0, stumble: 0 });
-  if (S.docked) { if (S.berth <= K.legs) vagAshoreAt(S.berth); else vagGone(); }
+  if (S.docked) { if (!S.berth) vagBayAt(); else if (S.berth <= K.legs) vagAshoreAt(S.berth); else vagGone(); }
   else if (S.leg <= K.legs) vagSailAt(); else vagGone();
+}
+// Cold Harbour: out in the bay in his Laser, round and round off her starboard side, out of reach (by night hove to). She casts off: after her
+const vagBayC = (a = 0) => { const D = DOCKS[0], [u, v, r] = T.vag.sea.bay, s = Math.sin(D.hdg), c = Math.cos(D.hdg), cu = u + Math.cos(a) * r, cv = v + Math.sin(a) * r; _vs.e = D.e + cu * s + cv * c; _vs.n = D.n + cu * c - cv * s; return _vs; };
+function vagBayAt() {
+  const v = VAG, sv = v.sea, b = sv.b, a = Math.random() * TAU, p = vagBayC(a), q = vagBayC(a + 0.3);
+  Object.assign(sv, { ph: 'bay', i: 0, inBoat: true, k: 0, ba: a }); v.laserAt = null; v.out = false; if (v.st === 'sleep') v.st = 'pitch';
+  Object.assign(b, { on: true, beach: 0, sail: 1, e: p.e, n: p.n, h: Math.atan2(q.e - p.e, q.n - p.n), spd: 2, tackT: 0, ref: SEA.hdg });
+  vagFloat(b);
+}
+function vagBay(dt) {
+  const sv = VAG.sea, b = sv.b, S = SEA, D = DOCKS[0], [u0, v0] = T.vag.sea.bay, de = b.e - D.e, dn = b.n - D.n, s = Math.sin(D.hdg), c = Math.cos(D.hdg);
+  if (!S.docked || S.berth) { sv.ph = 'sail'; sv.slotSd = 1; b.ref = S.hdg; if (!isNight()) vagLine('launch'); return; }
+  sv.ba = Math.atan2(de * c - dn * s - v0, de * s + dn * c - u0);   // (his angle round the circle, in deck coords)
+  const p = vagBayC(sv.ba + (isNight() ? 0 : 0.7));
+  vagSail(b, p.e, p.n, isNight() ? 0 : 2.4, dt, T.vag.sea.bay[3]);
 }
 function vagSeaEnd() { const v = VAG; v.mode = 'land'; v.sea = null; v.laserAt = null; vagDevTo(v.pi); }   // (dev: back on the land)
 function vagGone() { const v = VAG; vagHide(); v.laserAt = null; if (v.sea) Object.assign(v.sea, { ph: 'gone', inBoat: false }), v.sea.b.on = false; }   // (his half's done: home)
@@ -19841,9 +19864,9 @@ function vagToWorld() {   // ashore where she lies: in the world with the dogs (
   const v = VAG, sv = v.sea, st = sv.sites[sv.i], p = boatXZ(sv.mu, sv.mv), was = v.st;
   vagAt(p.x, p.z, vagDeckYaw(sv.mt)); v.st = was === 'sleep' ? 'sleep' : 'pitch'; v.goTo = { x: st.x, z: st.z }; vagPlaceMats(st.lay); v.laserAt = { x: st.lx, z: st.lz };
 }
-function vagSlot() {   // where he keeps by her: off her port bow (or beam), drifting slowly about; by her heading a long beat behind (b.ref)
+function vagSlot() {   // where he keeps by her: off her port bow (or beam; out of Cold Harbour's bay: starboard, sv.slotSd), drifting slowly about; by her heading a long beat behind (b.ref)
   const K = T.vag.sea, S = SEA, sv = VAG.sea, a = sv.b.ref, t = sv.t;
-  const su = lerp(K.slot[0], K.slot[1], 0.5 + 0.5 * Math.sin(t * 0.031)), sd = -lerp(K.slot[2], K.slot[3], 0.5 + 0.5 * Math.sin(t * 0.047 + 1));
+  const su = lerp(K.slot[0], K.slot[1], 0.5 + 0.5 * Math.sin(t * 0.031)), sd = (sv.slotSd || -1) * lerp(K.slot[2], K.slot[3], 0.5 + 0.5 * Math.sin(t * 0.047 + 1));
   _vs.e = S.e + Math.sin(a) * su + Math.cos(a) * sd; _vs.n = S.n + Math.cos(a) * su - Math.sin(a) * sd; return _vs;
 }
 function vagSailAt(back = 0) {   // (out of sight) in his Laser at his slot by her (back: that far astern of it)
@@ -19922,7 +19945,7 @@ function vagLand(dt) {
   }
   sv.k = Math.min(1, sv.k + dt / 1.4); vagBeachPose(b, st, smooth(0, 1, sv.k), sv.from);
   if (sv.k >= 1) {   // pulled up: out he hops
-    Object.assign(sv, { ph: 'ashore', inBoat: false, k: 0, mu: st.su, mv: st.sv, mt: st.bt }); v.laserAt = { x: st.lx, z: st.lz };
+    Object.assign(sv, { ph: 'ashore', inBoat: false, k: 0, mu: st.su, mv: st.sv, mt: st.bt, slotSd: -1 }); v.laserAt = { x: st.lx, z: st.lz };
     if (vagReach()) vagToWorld();   // alongside: on the island with the dogs
   }
 }
@@ -19963,7 +19986,7 @@ function vagSeaBack() {   // back from a day off: by sea, from out of sight; pas
   const v = VAG, sv = v.sea, S = SEA, nx = S.docked ? S.berth : S.leg;
   if (nx > T.vag.sea.legs) { vagGone(); return; }
   Object.assign(v, { st: 'pitch', annoy: 0, bonks: 0, nags: 0, barks: [], greet: true }); sv.away = false;
-  if (S.docked) vagArrive(nx); else vagSailAt(170);
+  if (S.docked) { if (nx) vagArrive(nx); else vagBayAt(); } else vagSailAt(170);
 }
 // ashore, she's not alongside here: to his spot by his boat, asleep by night; she's gone on past: after her (or, his half done, home)
 function vagIdle(dt) {
@@ -19995,9 +20018,8 @@ function vagSeaAshore(dt) {
     else if (Math.hypot(g.x - hx, g.z - hz) > 1) v.goTo = { x: hx, z: hz };   // (traded somewhere else, or bedtime: back to his spot)
     else if (isNight() && G.time > v.wakeT && near > V.tradeR && m < 0.6) v.st = 'sleep';
   }
-  if (near < T.vendor.near && !sv.hank && !sv.i) { sv.hank = true; hank(null, "That old vagabond! He's got himself a boat!", { force: true, delay: 1 }); }   // HANK
+  if (near < T.vendor.near && !sv.hank) { sv.hank = true; hank(null, "That old vagabond! He's got himself a boat!", { force: true, delay: 1 }); }   // HANK
   if (near < V.callR && sv.i === K.legs && !sv.last && v.sayT <= 0 && vagFree()) { sv.last = true; vagLine('last'); v.callAt = G.time + 6; }   // his last stop
-  else if (near < V.callR && !sv.i && !sv.hi && v.sayT <= 0 && vagFree()) { sv.hi = true; vagLine('harbour'); v.callAt = G.time + 6; }
   vagPost(dt, near, 0);
   sv.mu = boatU(v.x, v.z); sv.mv = boatV(v.x, v.z); sv.mt = vagYawDeck(v.yaw);
 }
@@ -20007,6 +20029,7 @@ function vagSeaBerth(from, to) {
   if (v.st === 'off' || v.st === 'away') return;
   if (to >= 0) {
     if (to > K.legs) { if (sv.ph !== 'part') vagGone(); return; }
+    if (!to) { vagBayAt(); return; }   // (Cold Harbour: out in the bay)
     if (sv.ph === 'ashore' && sv.i === to) { vagToWorld(); return; }
     if (sv.ph === 'land' || sv.ph === 'sail') { const st = sv.sites[to], w = vagSiteSea(st, st.wu, st.wv, {}); if (Math.hypot(w.e - sv.b.e, w.n - sv.b.n) < 200) { if (sv.ph === 'sail' || sv.i !== to) Object.assign(sv, { ph: 'land', i: to, k: 0, from: null }); return; } }
     if (sv.ph === 'part' || sv.ph === 'launch') return;
@@ -20021,6 +20044,7 @@ function vagSeaCalls() {   // in his Laser, now and then, while you can see him:
   const v = VAG, V = T.vag; if (G.time < v.callAt || v.sayT > 0 || !onScreen(v.x, v.y + 2, v.z, 0)) return;
   v.callAt = G.time + rnd(V.callGap[0] * 1.5, V.callGap[1] * 1.5);
   if (v.greet) { v.greet = false; vagLine('back'); return; }
+  if (VAG.sea.ph === 'bay' && !VAG.sea.hi) { VAG.sea.hi = true; vagLine('harbour'); return; }   // (Cold Harbour: a hail from the bay)
   const need = vagNeeds().filter(k => !VAG_LINES[k].includes(v.lastLine)), r = Math.random();
   vagLine(need.length && r < 0.4 ? need[0] : r < 0.7 ? 'isle' : 'ahoy');
 }
@@ -20034,8 +20058,8 @@ function vagSeaStep(dt, dtH) {
   if (v.st === 'off') return;
   if (v.st === 'away') { if (absHour() >= v.backAt) vagSeaBack(); return; }
   const ph = sv.ph;
-  if (ph === 'ashore') vagSeaAshore(dt); else if (ph === 'launch') vagLaunchStep(dt); else if (ph === 'sail') vagSeaSail(dt); else if (ph === 'land') vagLand(dt); else if (ph === 'part') vagPart(dt);
-  if (sv.inBoat && (sv.ph === 'sail' || sv.ph === 'part')) vagSeaCalls();
+  if (ph === 'bay') vagBay(dt); else if (ph === 'ashore') vagSeaAshore(dt); else if (ph === 'launch') vagLaunchStep(dt); else if (ph === 'sail') vagSeaSail(dt); else if (ph === 'land') vagLand(dt); else if (ph === 'part') vagPart(dt);
+  if (sv.inBoat && (sv.ph === 'sail' || sv.ph === 'part' || sv.ph === 'bay')) vagSeaCalls();
   if (vagFrame() !== 'world') {   // where he is in the world (his bubble, what floats over him; the sync puts it right)
     const p = sv.inBoat ? sv.b : vagSiteSea(sv.sites[sv.i], sv.mu, sv.mv, _vb3), w = seaToSim(p.e, p.n); v.x = w.x; v.z = w.z; v.y = WATER_Y + (sv.inBoat ? 0.3 : 1.5);
   }
@@ -25118,7 +25142,7 @@ function netPredPost(dt) {
   for (const d of mine) { d.x -= d._pp.ex; d.z -= d._pp.ez; }   // (the predicted spot, not the eased one)
   for (const p of pens) {
     let near = false;
-    if (!p.lock && !p.frozen) for (const d of mine) if (d._hold === p || Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1.5) near = true;   // (SAILING: the gangway lashed; the yeti's gate iced: the host's, untouched)
+    if (!p.lock && !p.deck && !p.frozen) for (const d of mine) if (d._hold === p || Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1.5) near = true;   // (SAILING: the gangway, Hank's; the yeti's gate iced: the host's, untouched)
     if (near) { if (!p._lp) p._lp = { w: 0, latched: p.latched, fresh: p.fresh, noTouch: 1 }; p._lp.until = now + 600 + NET.rtt; }
     else if (p._lp && now > p._lp.until) p._lp = null;
     if (p._lp && !G.paused) { netPredGate(p, p._lp, mine, dt); updateGateGeometry(p); }

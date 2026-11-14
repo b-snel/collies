@@ -9,7 +9,7 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   count as below the pass (`trailInfo`). World gen sees no sea (`SEA_LIVE`), so nothing else moves. She lies alongside from the start.
   Something through the gap: `seaWake` → `seaStart({ dock })`: nobody's moved, the gangway opens (stocked troughs draw the hungry); Hank
   walks down (`seaHankGoal`). Once aboard a sheep doesn't walk back off (`pen.mouthSeg`). Every sheep and dog aboard: Hank lashes it
-  (`seaGangway`). Bow station, stick up: `seaCastOff` (not with sheep or dogs ashore: 🐑 / 🐕 n ✖). Sheep never brought down: `'left'`.
+  (`seaGangway`). Alongside, its leaf's held wide open (`gangHeld`): no dog swings, slams or grabs it into the way; only Hank (`p.auto`). Bow station, stick up: `seaCastOff` (not with sheep or dogs ashore: 🐑 / 🐕 n ✖). Sheep never brought down: `'left'`.
   The gap still shut: anything knocked onto the road hops back up (`seaWake`).
 - **What's sea** (`inSea`): past the pier's shore end (`SEAM_V`), and everywhere once she's cast off (`SEA_AWAY`).
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway gate lashed at sea:
@@ -88,8 +88,9 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   (or a dog) flying into its eye is a hit and bounces back aboard (`krakenEyeHits`). `hp` (+`perDog`) hits: beaten,
   +`bounty` 🧶, the wind fills in. Barks: 😾. HUD: 🐙 ♥♥♥ (`#bossBar`).
 - **The vagabond's Laser** (`VAG.sea`, `T.vag.sea`, `vagSeaStep`; `seaStart` → `vagSeaStart`): white single-hander, a red star up its sail
-  (`makeLaser`, in `seaG`; `syncLaser`). Cold Harbour: on the quay's far end, his Laser pulled up by him. For legs 1…`legs` (to Gull Rock) he
-  sails by her (sea coords: a slot off her port bow, `vagSlot`; `vagSail`: polar × wind, no-go zone, tacks, heel and boom to leeward, clear of
+  (`makeLaser`, in `seaG`; `syncLaser`). Cold Harbour: out in the bay, round and round off her starboard side, out of reach (`vagBay`, `bay`;
+  by night hove to); nothing on the quay. For legs 1…`legs` (to Gull Rock) he sails by her (sea coords: a slot off her port bow, `vagSlot`;
+  out of the bay to starboard till his first beach, `slotSd`; `vagSail`: polar × wind, no-go zone, tacks, heel and boom to leeward, clear of
   her by `keep` and the reefs; far behind out of sight: caught up). Near the next island (`landR`), or by night, he makes for its beach ahead
   of her and pulls up (`vagLand`). Sites (`vagSite`: deck coords at that berth, own rng: his spot, the mats' layout (tight grid), his boat, his
   bed by it). Ashore where she lies (`vagReach`): as on land (trade, deliveries to the deck: `penFound`, sleep, bonk, grab, fetch, tug);

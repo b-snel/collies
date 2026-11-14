@@ -23,5 +23,5 @@
     a tug (`vagRope`, as Hank's), an apple held out or dropped by him: good deeds (`vagGood`, `gap` s apart): a grievance off, else
     `VAG.good` (a discount, capped). Each act also `VAG.annoy` (decays /h): at `leave` a spiteful line, off out of sight (`vagLeave`),
     gone `awayH` h, back at a pitch ahead of the flock (`vagBack`). Online: `NET_TYPES.vag`, `vagSay`, `vagFx`.
-  - **At sea**: his Laser (`docs/sailing.md`).
+  - **At sea**: his Laser (`docs/sailing.md`): out in Cold Harbour's bay, first met at the first island.
 - **Trading Post** (`POST`, `postPen`): desert, no water, the foot of the pass; the vagabond's last pitch is by it.
