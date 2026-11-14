@@ -61,7 +61,7 @@ try {
   await shot('dock', A, B);
 
   // ---------------------------------------------------------------- the guest takes the anchor station and hauls her lines in
-  await B.page.keyboard.down('KeyE'); await sleep(600); await B.page.keyboard.up('KeyE');
+  await B.page.keyboard.down('KeyE');   // (held: the station's kept while it is)
   await until(B, () => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return d && d.holding === GAME.STATIONS[3]; }, null, 5000).catch(() => {});
   const bit = await B.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { st: GAME.STATIONS[3].by === d, holding: !!(d.holding && d.holding.isStation) }; });
   check('the guest\'s dog bites the anchor station (on both screens)', bit.st && bit.holding, bit);
@@ -81,7 +81,7 @@ try {
   const noDrop = await A.page.evaluate(() => GAME.SEA.anchor);
   await B.page.keyboard.up('KeyS');
   check('just cast off, the stick swung down doesn\'t drop the anchor', noDrop === 'up', { anchor: noDrop });
-  await B.page.keyboard.down('KeyE'); await sleep(600); await B.page.keyboard.up('KeyE');   // (lets go of the station)
+  await B.page.keyboard.up('KeyE');   // (lets go of the station)
   await until(A, () => !GAME.STATIONS[3].by, null, 5000).catch(() => {});
 
   // ---------------------------------------------------------------- under way: her place, heading, heel and the waves the same on both
@@ -110,7 +110,7 @@ try {
   for (let k = 0; k < 3; k++) {   // (one over the starboard rail; again if it didn't make it)
     await A.page.evaluate(() => {
       const { G, SEA, boatXZ, seaOverRail, onDeck } = GAME; SEA.u = 0.3; SEA.hoist = 0; SEA.pilot = null;
-      const s = G.sheep.find(s => !s.dead && !s.air && !s.lamb && !s.heldBy && !s.grabbed && onDeck(s.x, s.z)); const q = boatXZ(-5.4, 3); s.x = q.x; s.z = q.z; s.vx = s.vz = 0; seaOverRail(s, 1, 5, 4, 'test'); window.__s = s;
+      const s = G.sheep.find(s => !s.dead && !s.air && !s.lamb && !s.heldBy && !s.grabbed && onDeck(s.x, s.z)); const q = boatXZ(-17, 4.6); s.x = q.x; s.z = q.z; s.vx = s.vz = 0; seaOverRail(s, 1, 5, 4, 'test'); window.__s = s;
     });
     if (await until(A, () => { const s = window.__s; return s.air && s.air.sea; }, null, 4000).then(() => true, () => false)) break;
   }

@@ -12,6 +12,10 @@
   still on its way (`beatsTo`). All hungry ones crowd in behind, hungriest
   shoulder to the front (`heft`); non-feeders keep off the feeding line; feeders
   stand shoulder to shoulder (`side`). Night fast-forward waits for supper.
+- **Hungry ones eat through barks.** Food in its pen's troughs (penned, or making for it) and hungry past
+  `T.hungry.from` (water and thirsty: the same): set on it (`troughSet` 0…1, full at `full`). Barks don't shift it
+  (`bark`: one flicks an ear, 🌾), a dog's pressure barely once penned (up to `resolve`); at sea the ride never panics it off it
+  (`seaSheepDeck`, `T.sea.deck.hungry`).
 - **Hungry shove on grass.** A hungry grazer barges a fuller one off better
   grass next to it, harder the hungrier (`grassShove`, `T.grassShove`).
 - **Grass dash.** Hungry and boxed in on stubble (`T.grassDash`) → runs to the

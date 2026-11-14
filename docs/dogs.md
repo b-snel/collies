@@ -36,6 +36,8 @@
   something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: Ⓑ lets go,
   pounces. A coyote: each shake dazes it longer once let go (`c.shook` → `c.dazeT`, `coyoteDazed`: it sways, seeing stars,
   then runs); `toss` shakes: shaken loose. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
+  What it'd take: `grabPick(d)` (no side effects; `tryGrab` bites it). At sea a sheep in the water within `T.sea.over.reach`
+  comes first, the boat's gear before a sheep in the way (`T.sea.station.bias`); the overlay rings it (`drawGrabMarks`).
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
   let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,

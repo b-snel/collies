@@ -121,6 +121,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
 - `onSave(key, save, load, o)`: JOURNEY SAVE; `save()` → plain JSON, `load(v)` on a resumed journey, lowest `o` first (`savePlain` / `loadPlain`, `journeyAt` / `journeyPlace`)
 - `knockDog`
+- `grabPick(d)` (what Ⓧ would take, no side effects; `tryGrab` bites it, the sea overlay marks it)
 - `d.mud`/`d.wet` (0…1), `tubStep` (in a water trough: updateDog hands over)
 - `hurtDog(d, amt)` (1 = all hp)
 - `dogDrown(d)`
@@ -137,6 +138,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `s.air`/`s.heldBy`/`c.heldBy`/`d.heldBy`
 - `p.gateT` (0 shut…1 open)
 - `troughEat(tr, amt)` (1 = 1.0 hunger)
+- `troughSet(s)` (0…1: hungry / thirsty with food / water in its pen's troughs; barks don't shift it)
 - `lickSalt(pen, amt)`
 - `stockTroughs(pen, amt)`
 - `fillWater(pen, amt)` / `drinkWater(pen, amt)` (1 = one sheep parched → quenched; return what went in / out)
@@ -253,7 +255,7 @@ turns the stick into its own (`netReadInput`).
   then till 13:00 no pen pull, nobody goes back in (`morningOut`). Trough food
   and water beat both: hungry/thirsty penned sheep eat or drink first, ones
   outside come in for it any time of day (`T.troughDraw`), barely while a dog
-  works them (`pushed`).
+  works them (`pushed`). Hungry ones set on a trough eat through barks (`troughSet`, `T.hungry`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
   leaf's free end; pressed ones slide along, not into it. Lambs follow a
   penned mum in.

@@ -1,5 +1,5 @@
 // Headless checks for SAILING: points of sail (reach fastest, no-go zone, irons and out of it), tack and gybe (the boom's crash, sheeted in:
-// none), heel (the flock as ballast, reefing), stations (tiller: steer / hold a course / lash; sheet, halyard, anchor), Hank's trim, sheep
+// none), heel (the flock as ballast, reefing), stations (Ⓧ held; tiller: steer / hold a course / let go: lashed; sheet, halyard, anchor), what Ⓧ takes, hungry sheep at the troughs, Hank's trim, sheep
 // overboard (swims, clings, hauled in from the rail, towed by a swimming dog, drowns), a dog overboard (swims, climbs back), life rings
 // (taken, aimed, thrown, the sheep takes hold, hauled in on its line), an island (taken alongside its jetty, its ground, ashore: flowers,
 // salt, a chest, the spring; away again), the chase camera (astern, level, lagging her turns), anchoring, and the hazards: orcas (bonk:
@@ -7,9 +7,10 @@
 // (lured to the rail and over; a bark, a dog in the way), the kraken (arms heel her, the flock's weight holds her up, bonk the arms, a sheep
 // into its eye; beaten), and the Promised Land (finishes). Cold Harbour: the flock herded down the harbour road and up the gangway, lines in, away.
 // The wind (shifts that hold, gusts veer, the swell lags the wind sea; a front: lull, squall, the new wind holds) and the way (islands passed by).
-// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|wind|front|skip|start|dock|land]
+// node tools/sail-test.mjs [polar|irons|tack|gybe|heel|stations|grab|hungry|hank|over|dog|anchor|isle|ring|cam|orca|reef|shark|storm|spout|siren|kraken|arrive|wind|front|skip|start|dock|land]
 // Checks: sailing: points of sail, no-go zone, irons and out, tack, gybe (crash, duck, sheeted in), heel (flock as ballast, reef),
-//   stations (tiller: steer / hold / lash; sheet, halyard, anchor), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns),
+//   stations (Ⓧ held; tiller: steer / hold / let go: lashed; sheet, halyard, anchor), what Ⓧ takes (gear before a sheep in the way; a sheep in the
+//   water first), hungry sheep at the deck's troughs (a bark, a frightening ride: they eat on), Hank's trim, sheep overboard (swims, clings, hauled in, towed, drowns),
 //   dog overboard and back, anchor off a jetty (warped in: saved, mended; deep: drags), an island (sailed in to, its ground, ashore:
 //   flowers, salt, chest, spring; away), life rings (taken, aimed, thrown, taken hold of, hauled in), the chase camera (astern, level, lags
 //   a turn), orcas (bonk, bark), reefs, sharks, storm (gale, great wave abeam / on the bow), waterspout, sirens (lured, bark, blocked),
@@ -31,7 +32,8 @@ const setup = async (opt = {}) => { errors.push(...h.errors); await h.close(); h
   H.inp = (dx, dz, x = {}) => { const l = Math.hypot(dx, dz) || 1; return { mx: (dx * CAM_R.x + dz * CAM_R.z) / l, my: -(dx * CAM_F.x + dz * CAM_F.z) / l, ...x }; };
   H.stick = (fwd, stb, x = {}) => fwd || stb ? H.inp(BOAT.fx * fwd + BOAT.rx * stb, BOAT.fz * fwd + BOAT.rz * stb, x) : { ...x };   // toward the bow, to starboard
   H.run = (sec, fn) => { for (let t = 0; t < sec - 1e-9; t += 0.025) { if (fn && fn(t) === true) return t; step(0.025); } return sec; };
-  H.tap = (p, extra = {}) => { p.bot = { ...extra, grab: true }; step(0.025); p.bot = { ...extra }; step(0.025); };   // Ⓧ pressed and let go (a station's kept; the next press lets go of it)
+  H.hold = (p, extra = {}) => { p.bot = { ...extra, grab: true }; step(0.025); step(0.025); };   // Ⓧ held (a station's kept while it is; let go: off it)
+  H.g = (x = {}) => ({ ...x, grab: true });
   H.shake = (p, extra = {}) => { p.bot = { ...extra, pounce: true }; step(0.025); p.bot = { ...extra }; };   // Ⓑ with something held
   H.place = (e, u, v) => { const q = boatXZ(u, v); e.x = q.x; e.z = q.z; e.vx = e.vz = 0; e.y = BOAT.y; e.air = null; };
   H.wrap = a => { a = (a + Math.PI) % (2 * Math.PI); if (a < 0) a += 2 * Math.PI; return a - Math.PI; };
@@ -43,6 +45,8 @@ const setup = async (opt = {}) => { errors.push(...h.errors); await h.close(); h
   };
   H.steer = hdg => { SEA.helm = Math.max(-1, Math.min(1, H.wrap(hdg - SEA.hdg) * 2.2 - SEA.r * 2.4)); };   // (a hand on the helm, no dog)
   H.flock = (v, u0 = -6, u1 = 6) => G.sheep.filter(s => !s.dead).forEach((s, i, a) => H.place(s, u0 + (u1 - u0) * i / Math.max(1, a.length - 1), v + (i % 2 ? 0.5 : -0.5)));
+  H.rail = (u, off, sd = 1) => sd * (boatHB(u) - off);   // v that far in from the rail (sd: starboard 1, port -1)
+  H.flockRail = (off, u0 = -6, u1 = 6, sd = 1) => G.sheep.filter(s => !s.dead).forEach((s, i, a) => { const u = u0 + (u1 - u0) * i / Math.max(1, a.length - 1); H.place(s, u, H.rail(u, off + (i % 2 ? -0.5 : 0.5), sd)); });
   H.aboard = () => G.sheep.filter(s => !s.dead && !s.air && onDeck(s.x, s.z)).length;
   H.swimmers = () => G.sheep.filter(s => !s.dead && s.air && s.air.kind === 'swim');
   if (opt.calm) for (const s of G.sheep) { s.hunger = 0.05; s.thirst = 0.02; }
@@ -55,7 +59,7 @@ if (want('polar')) {
     const { SEA } = GAME, out = {};
     for (const [name, twa] of [['irons', 0.35], ['close', 0.87], ['reach', 1.57], ['broad', 2.36], ['run', 3.05]]) {
       H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0;
-      H.run(45, t => { H.steer(0); if (t > 30) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); } });
+      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); } });   // (30 s: the seas make 15 s of it a lottery)
       out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(SEA.trim), boom: H.deg(Math.abs(SEA.boom)) };
     }
     return out;
@@ -122,7 +126,7 @@ if (want('heel')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA } = GAME, out = {};
     const heel = (v, hoist = 1) => { H.sea(1.57, 11, { flat: true }); SEA.hoist = hoist; let n = 0, a = 0, u = 0; H.run(40, t => { H.steer(0); H.flock(v); if (t > 25) { n++; a += SEA.heel; u += SEA.u; } }); return [H.deg(a / n), H.r(u / n)]; };
-    [out.mid, out.uMid] = heel(0); [out.lee, out.uLee] = heel(-3.6); [out.wind, out.uWind] = heel(3.6); [out.reef, out.uReef] = heel(0, 0.55);   // (wind from starboard: she heels to port; port is the lee side)
+    [out.mid, out.uMid] = heel(0); [out.lee, out.uLee] = heel(-5.4); [out.wind, out.uWind] = heel(5.4); [out.reef, out.uReef] = heel(0, 0.55);   // (wind from starboard: she heels to port; port is the lee side)
     return out;
   });
   ok(`wind on the starboard beam heels her to port (${r.mid}°)`, r.mid < -8, r);
@@ -136,31 +140,31 @@ if (want('stations')) {
     const { G, T, SEA, STATIONS, BOAT, stationOf } = GAME, out = {}, d = G.dogs[0], p = d.player, [til, sht, hal, anc] = STATIONS;
     H.sea(1.57, 8); H.flock(0, 4, 9);
     const at = st => { d.x = st.sx; d.z = st.sz; d.vx = d.vz = 0; d.yaw = st.yaw; p.bot = {}; H.run(0.1); };
-    // the tiller: a tap bites it; stick to starboard turns her to starboard; let go of the stick: she holds that heading; a tap lets go
-    at(til); H.tap(p); out.bit = stationOf(d) === til && til.by === d; const h0 = SEA.hdg;
-    p.bot = H.stick(0, 1); H.run(4); out.turned = H.deg(H.wrap(SEA.hdg - h0)); out.rud = H.r(SEA.rud); out.still = H.r(Math.hypot(d.x - til.sx, d.z - til.sz));
-    p.bot = {}; H.run(3); const h1 = SEA.hdg; H.run(8); out.held = H.deg(Math.abs(H.wrap(SEA.hdg - h1))); out.course = SEA.course !== null;
-    H.tap(p); H.run(0.5); out.letGo = !d.holding && !til.by;
-    // a shake (Ⓑ) lashes it: the dog's free, the helm stays where it was put
-    at(til); H.tap(p); p.bot = H.stick(0, -0.6); H.run(1.5); H.shake(p, H.stick(0, -0.6)); p.bot = {}; H.run(0.5);
-    out.lashed = SEA.lash && !d.holding; const hl = SEA.helm; H.run(3); out.lashHolds = Math.abs(SEA.helm - hl) < 1e-6 && Math.abs(hl) > 0.2;
-    at(til); H.tap(p); out.unlash = !SEA.lash && stationOf(d) === til; H.tap(p); H.run(0.5);
+    // the tiller: Ⓧ held bites it; stick to starboard turns her to starboard; let go of the stick: she holds that heading
+    at(til); H.hold(p); out.bit = stationOf(d) === til && til.by === d; const h0 = SEA.hdg;
+    p.bot = H.stick(0, 1, H.g()); H.run(4); out.turned = H.deg(H.wrap(SEA.hdg - h0)); out.rud = H.r(SEA.rud); out.still = H.r(Math.hypot(d.x - til.sx, d.z - til.sz));
+    p.bot = H.g(); H.run(3); const h1 = SEA.hdg; H.run(8); out.held = H.deg(Math.abs(H.wrap(SEA.hdg - h1))); out.course = SEA.course !== null;
+    // let go of Ⓧ: off it at once, free to run; the tiller's lashed: she holds her heading still
+    p.bot = {}; H.run(0.05); out.letGo = !d.holding && !til.by; out.lashed = SEA.lash; const h2 = SEA.hdg, x0 = d.x, z0 = d.z;
+    p.bot = H.stick(1, 0); H.run(1); out.ran = H.r(Math.hypot(d.x - x0, d.z - z0)); p.bot = {}; H.run(9); out.lashHeld = H.deg(Math.abs(H.wrap(SEA.hdg - h2)));
+    // taken again: unlashed; let go mid-turn: she settles near where she was heading
+    at(til); H.hold(p); out.unlash = !SEA.lash && stationOf(d) === til; p.bot = H.stick(0, -1, H.g()); H.run(2); p.bot = {}; H.run(0.05); const h3 = SEA.hdg; H.run(10); out.settled = H.deg(Math.abs(H.wrap(SEA.hdg - h3)));
     // the sheet: stick aft hauls in, forward eases; while the dog has it Hank leaves it be
-    SEA.sheet = 0.6; at(sht); H.tap(p); out.sheetBit = stationOf(d) === sht; p.bot = H.stick(-1, 0); H.run(1); out.hauled = H.r(SEA.sheet); p.bot = H.stick(1, 0); H.run(1.2); out.eased = H.r(SEA.sheet);
-    p.bot = {}; const s0 = SEA.sheet; H.run(3); out.mine = Math.abs(SEA.sheet - s0) < 1e-6; H.tap(p); H.run(0.5);
+    SEA.sheet = 0.6; at(sht); H.hold(p); out.sheetBit = stationOf(d) === sht; p.bot = H.stick(-1, 0, H.g()); H.run(1); out.hauled = H.r(SEA.sheet); p.bot = H.stick(1, 0, H.g()); H.run(1.2); out.eased = H.r(SEA.sheet);
+    p.bot = H.g(); const s0 = SEA.sheet; H.run(3); out.mine = Math.abs(SEA.sheet - s0) < 1e-6; p.bot = {}; H.run(0.5);
     // the halyard: stick down reefs, let go: it settles on a reef; up: full sail
-    at(hal); H.tap(p); p.bot = H.stick(-1, 0); H.run(0.8); p.bot = {}; H.run(3); out.reefed = H.r(SEA.hoist); p.bot = H.stick(-1, 0); H.run(2.5); out.down = H.r(SEA.hoist); p.bot = H.stick(1, 0); H.run(3); out.up = H.r(SEA.hoist); p.bot = {}; H.tap(p); H.run(0.5);
+    at(hal); H.hold(p); p.bot = H.stick(-1, 0, H.g()); H.run(0.8); p.bot = H.g(); H.run(3); out.reefed = H.r(SEA.hoist); p.bot = H.stick(-1, 0, H.g()); H.run(2.5); out.down = H.r(SEA.hoist); p.bot = H.stick(1, 0, H.g()); H.run(3); out.up = H.r(SEA.hoist); p.bot = {}; H.run(0.5);
     // the anchor: stick down (held a moment) lets it go; stick up, held, weighs it. Just weighed, the stick swung down doesn't drop it again,
     // nor a flick: only once it's been let go, the lock's out, and it's held down
-    at(anc); H.tap(p); p.bot = H.stick(-1, 0); H.run(0.15); out.flick = SEA.anchor; H.run(0.4); out.dropped = SEA.anchor; p.bot = H.stick(1, 0); H.run(1); out.weighing = H.r(SEA.weigh);
-    p.bot = {}; H.run(0.4); out.kept = H.r(SEA.weigh); p.bot = H.stick(1, 0); H.run(3); out.weighed = SEA.anchor;
-    p.bot = H.stick(-1, 0); H.run(2.5); out.swung = SEA.anchor; p.bot = {}; H.run(0.1); p.bot = H.stick(-1, 0); H.run(0.6); out.again = SEA.anchor;
+    at(anc); H.hold(p); p.bot = H.stick(-1, 0, H.g()); H.run(0.15); out.flick = SEA.anchor; H.run(0.4); out.dropped = SEA.anchor; p.bot = H.stick(1, 0, H.g()); H.run(1); out.weighing = H.r(SEA.weigh);
+    p.bot = H.g(); H.run(0.4); out.kept = H.r(SEA.weigh); p.bot = H.stick(1, 0, H.g()); H.run(3); out.weighed = SEA.anchor;
+    p.bot = H.stick(-1, 0, H.g()); H.run(2.5); out.swung = SEA.anchor; p.bot = H.g(); H.run(0.1); p.bot = H.stick(-1, 0, H.g()); H.run(0.6); out.again = SEA.anchor;
     return out;
   });
-  ok('a tap bites the tiller; the dog stands to it', r.bit && r.still < 0.3, r);
+  ok('Ⓧ held bites the tiller; the dog stands to it', r.bit && r.still < 0.3, r);
   ok(`stick to starboard: she turns to starboard (${r.turned}°)`, r.turned > 15 && r.rud > 0.1, r);
-  ok(`stick let go: she holds her heading (wandered ${r.held}°); a tap lets go`, r.course && r.held < 6 && r.letGo, r);
-  ok('a shake (Ⓑ) lashes the tiller; a bite unlashes it', r.lashed && r.lashHolds && r.unlash, r);
+  ok(`stick let go: she holds her heading (wandered ${r.held}°)`, r.course && r.held < 6, r);
+  ok(`Ⓧ let go: off the tiller at once (ran ${r.ran} m), lashed: she holds her heading (wandered ${r.lashHeld}°); taken again: unlashed; let go mid-turn: settles (${r.settled}° on)`, r.letGo && r.lashed && r.ran > 2 && r.lashHeld < 6 && r.unlash && r.settled < 25, r);
   ok(`the sheet: stick aft hauls in (0.6 → ${r.hauled}), forward eases (→ ${r.eased}); Hank leaves it to the dog`, r.sheetBit && r.hauled < 0.45 && r.eased > r.hauled + 0.3 && r.mine, r);
   ok(`the halyard: reefed ${r.reefed}, down ${r.down}, up ${r.up}`, r.reefed === 0.55 && r.down === 0 && r.up === 1, r);
   ok(`the anchor: a flick doesn't (${r.flick}), held down let go (${r.dropped}), weighed (${r.weighing} → ${r.kept} let go a moment → ${r.weighed})`, r.flick === 'up' && r.dropped === 'down' && r.weighing > 0.2 && r.kept >= r.weighing && r.weighed === 'up', r);
@@ -184,14 +188,14 @@ if (want('over')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, BOAT, seaOverRail, boatHB, boatU, boatV, onDeck } = GAME, out = {}, d = G.dogs[0], p = d.player;
     H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; H.flock(0); p.bot = {};   // lying to, no sail
-    const s = G.sheep[0]; H.place(s, -2, 3.5); seaOverRail(s, 1, 3.5, 5, 'test'); const saved0 = G.stats.saved || 0;
+    const s = G.sheep[0]; H.place(s, -2, H.rail(-2, 1.5)); seaOverRail(s, 1, 3.5, 5, 'test'); const saved0 = G.stats.saved || 0;
     H.run(2.5); out.swim = !!(s.air && s.air.kind === 'swim' && s.air.sea); out.off = H.r(boatV(s.x, s.z) - boatHB(boatU(s.x, s.z)));
     H.run(12); out.cling = !!(s.air && s.air.cling); out.lung = H.r(s.air ? s.air.lung : -1); out.side = H.r(boatV(s.x, s.z) - boatHB(boatU(s.x, s.z)));
     // a dog on deck by the rail there bites: up it comes
-    H.place(d, boatU(s.x, s.z), boatHB(boatU(s.x, s.z)) - 0.9); H.run(0.2); H.tap(p); H.run(2.5);
+    H.place(d, boatU(s.x, s.z), boatHB(boatU(s.x, s.z)) - 0.9); H.run(0.2); H.hold(p); p.bot = {}; H.run(2.5);
     out.back = !s.air && onDeck(s.x, s.z); out.saved = (G.stats.saved || 0) - saved0; out.calm = H.r(s.stress);
     // under way she sails on and leaves it: it drowns
-    H.sea(1.57, 8); H.flock(0); const s2 = G.sheep[1], n0 = G.sheep.filter(q => !q.dead).length; H.place(s2, -2, 3.5); seaOverRail(s2, 1, 3.5, 5, 'test'); T.sea.over.float = 12;   // (another may slide over meanwhile: it's s2 we watch)
+    H.sea(1.57, 8); H.flock(0); const s2 = G.sheep[1], n0 = G.sheep.filter(q => !q.dead).length; H.place(s2, -2, H.rail(-2, 1.5)); seaOverRail(s2, 1, 3.5, 5, 'test'); T.sea.over.float = 12;   // (another may slide over meanwhile: it's s2 we watch)
     H.run(4, () => H.steer(0)); out.astern = H.r(-boatU(s2.x, s2.z)); H.run(26, () => H.steer(0));
     out.gone = s2.dead; out.why = (G.lost.find(l => l.name === s2.name) || {}).why; out.lost = G.lost.map(l => l.why).join(); out.drowned = G.stats.drowned; out.left = G.sheep.filter(q => !q.dead).length - n0;
     return out;
@@ -208,11 +212,11 @@ if (want('dog')) {
     const { G, T, SEA, BOAT, seaOverRail, boatHB, boatU, boatV, onDeck, startJump } = GAME, out = {}, d = G.dogs[0], p = d.player;
     H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; H.flock(0, 3, 9);
     // pushing into the rail doesn't take it over; a running jump does
-    H.place(d, -4, 2); p.bot = H.stick(0, 1); H.run(2); out.stays = onDeck(d.x, d.z) && !d.air;
-    H.place(d, -4, -1); p.bot = H.stick(0, 1, { sprint: true }); H.run(0.35); p.bot = H.stick(0, 1, { sprint: true, jump: true }); H.run(0.05); p.bot = H.stick(0, 1, { sprint: true }); H.run(1.5);
+    H.place(d, -4, boatHB(-4) - 3); p.bot = H.stick(0, 1); H.run(2); out.stays = onDeck(d.x, d.z) && !d.air;
+    H.place(d, -4, boatHB(-4) - 6); p.bot = H.stick(0, 1, { sprint: true }); H.run(0.35); p.bot = H.stick(0, 1, { sprint: true, jump: true }); H.run(0.05); p.bot = H.stick(0, 1, { sprint: true }); H.run(1.5);
     out.swims = !!(d.air && d.air.swim); out.out = H.r(boatV(d.x, d.z) - boatHB(boatU(d.x, d.z)));
     // a sheep in the water: the swimming dog bites it and tows it back; against the hull they both come up
-    const s = G.sheep[0]; H.place(s, -4, 3.5); seaOverRail(s, 1, 6, 5, 'test'); p.bot = {}; H.run(2.5);
+    const s = G.sheep[0]; H.place(s, -4, H.rail(-4, 1.5)); seaOverRail(s, 1, 6, 5, 'test'); p.bot = {}; H.run(2.5);
     H.run(8, () => { p.bot = H.inp(s.x - d.x, s.z - d.z); return Math.hypot(s.x - d.x, s.z - d.z) < 1.5; }); p.bot = { ...p.bot, grab: true }; H.run(0.1); out.tow = d.tow === s;   // (Ⓧ held: by the scruff)
     out.t = H.r(H.run(14, () => { p.bot = H.stick(0, -1, { grab: true }); return !d.air && onDeck(d.x, d.z); })); H.run(2.5); p.bot = {};
     out.dogBack = !d.air && onDeck(d.x, d.z); out.sheepBack = !s.air && onDeck(s.x, s.z); out.dbg = { air: d.air && (d.air.kind || 'swim'), u: H.r(boatU(d.x, d.z)), v: H.r(boatV(d.x, d.z)), hold: d.holdKind };
@@ -226,6 +230,52 @@ if (want('dog')) {
   ok('the rail holds a dog pushing at it; a running jump clears it', r.stays && r.swims && r.out > 0, r);
   ok('it swims to the sheep, bites it, tows it back', r.tow, r);
   ok(`against the hull they scramble up the nets (${r.t} s): both aboard`, r.dogBack && r.sheepBack, r);
+}
+
+if (want('grab')) {
+  await setup({ calm: true });
+  const r = await h.page.evaluate(() => {
+    const { G, T, SEA, STATIONS, RINGS, BOAT, seaOverRail, boatU, boatV, boatHB, boatXZ, onDeck, grabPick, stationOf } = GAME, out = {}, d = G.dogs[0], p = d.player, til = STATIONS[0], R = RINGS[1];
+    H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; H.flock(0, 4, 9); p.bot = {};
+    // a sheep at its mouth, the tiller a little further: Ⓧ takes the tiller (the boat's gear first); what it'd take is what it bites
+    const fx = Math.sin(til.yaw), fz = Math.cos(til.yaw), s = G.sheep.find(q => !q.lamb && !q.ram);
+    d.x = til.sx - fx * 0.8; d.z = til.sz - fz * 0.8; d.yaw = til.yaw; d.vx = d.vz = 0; s.x = d.x + fx * 1.1; s.z = d.z + fz * 1.1; s.vx = s.vz = 0;
+    const g0 = grabPick(d); out.pick = g0 && g0.kind; out.sheepD = H.r(Math.hypot(s.x - d.x - fx * 1.1, s.z - d.z - fz * 1.1)); out.tilD = H.r(Math.hypot(til.x - d.x - fx * 1.1, til.z - d.z - fz * 1.1));
+    p.bot = { grab: true }; GAME.step(0.025); out.bit = stationOf(d) === til; p.bot = {}; H.run(0.3);
+    // a sheep in the water alongside, a few m along the rail from a dog at the ring: hauled in, not the ring
+    const w = G.sheep.find(q => q !== s && !q.lamb && !q.ram), wu = T.sea.ring.u + 3.2; H.place(w, wu, H.rail(wu, 1.5)); seaOverRail(w, 1, 3.5, 5, 'test');
+    H.run(12); out.cling = !!(w.air && w.air.cling);
+    H.place(d, boatU(R.sx, R.sz), boatV(R.sx, R.sz)); d.yaw = Math.atan2(R.hx - d.x, R.hz - d.z); H.run(0.1); out.far = H.r(Math.hypot(w.x - d.x, w.z - d.z));
+    const g1 = grabPick(d); out.pick2 = g1 && g1.kind; p.bot = { grab: true }; H.run(0.1); p.bot = {}; H.run(2.5);
+    out.hauled = !w.air && onDeck(w.x, w.z); out.racked = R.st === 'rack';
+    return out;
+  });
+  ok(`a sheep at its mouth (${r.sheepD} m), the tiller ${r.tilD} m: Ⓧ takes the tiller (${r.pick}), and that's what it bites`, r.pick === 'station' && r.bit, r);
+  ok(`a sheep in the water ${r.far} m off a dog at the life ring: Ⓧ hauls her in (${r.pick2}), the ring stays on its hook`, r.cling && r.pick2 === 'haul' && r.hauled && r.racked, r);
+}
+
+if (want('hungry')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, SEA, DECK, boatU, boatV, troughSet } = GAME, out = {}, d = G.dogs[0], p = d.player;
+    // hungry (or barely peckish), the deck's troughs stocked: they go and feed; a bark by them, then a fright from the ride
+    const go = hunger => {
+      H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; p.bot = {};
+      for (const tr of DECK.troughs) tr.food = tr.cap;
+      const L = G.sheep.filter(s => !s.dead); L.forEach(s => { s.hunger = hunger; s.thirst = 0; s.stress = 0; s.fear = 0; s.panic = 0; });
+      H.flock(0, -4, 4); H.place(d, 15, 0); H.run(20, () => L.forEach(s => { s.hunger = Math.max(s.hunger, hunger); }));
+      const at = () => L.filter(s => s.state === 'trough').length, o = { fed: at(), set: H.r(L.reduce((a, s) => a + troughSet(s), 0) / L.length) };
+      const tr = DECK.troughs[1]; H.place(d, boatU(tr.x, tr.z) + 1, boatV(tr.x, tr.z) + 3.5);
+      p.bot = { bark: true }; GAME.step(0.025); p.bot = {}; H.run(1.5, () => L.forEach(s => { s.hunger = Math.max(s.hunger, hunger); })); o.barked = at();
+      H.place(d, 15, 0); H.run(8, () => { SEA.fear = 0.9; L.forEach(s => { s.hunger = Math.max(s.hunger, hunger); }); }); o.ride = at(); o.panic = L.filter(s => s.panic > 0.25).length; SEA.fear = 0;
+      return o;
+    };
+    out.hungry = go(0.8); out.peckish = go(0.15);
+    return out;
+  });
+  ok(`hungry, they feed (${r.hungry.fed} at the troughs); a bark by them: they eat on (${r.hungry.barked})`, r.hungry.fed >= 6 && r.hungry.barked >= r.hungry.fed - 1, r);
+  ok(`barely peckish, a bark sends them off (${r.peckish.fed} → ${r.peckish.barked})`, r.peckish.fed >= 4 && r.peckish.barked <= r.peckish.fed / 2, r);
+  ok(`a frightening ride: the hungry stay at the troughs (${r.hungry.ride}, ${r.hungry.panic} panicked), the peckish don't (${r.peckish.ride})`, r.hungry.ride >= r.hungry.fed - 2 && r.hungry.panic === 0, r);
 }
 
 if (want('anchor')) {
@@ -297,7 +347,7 @@ if (want('ring')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, RINGS, BOAT, seaOverRail, boatU, boatV, boatXZ, onDeck, ringTarget } = GAME, out = {}, d = G.dogs[0], p = d.player, R = RINGS[1];
     // under way, a sheep over the starboard rail: left astern
-    H.sea(1.57, 6); T.sea.orca.from = 2; SEA.u = 3; H.flock(0); const s = G.sheep[0]; H.place(s, -5, 3.6); seaOverRail(s, 1, 4, 4, 'test'); const saved0 = G.stats.saved || 0;
+    H.sea(1.57, 6); T.sea.orca.from = 2; SEA.u = 3; H.flock(0); const s = G.sheep[0], ru = T.sea.ring.u + 0.4; H.place(s, ru, H.rail(ru, 1.3)); seaOverRail(s, 1, 4, 4, 'test'); const saved0 = G.stats.saved || 0;
     H.run(3, () => H.steer(0)); out.swim = !!(s.air && s.air.kind === 'swim'); out.astern = H.r(Math.hypot(s.x - R.hx, s.z - R.hz), 0); out.racked = RINGS.every(q => q.st === 'rack');
     // the ring off its hook (✊ held); facing her, it's aimed at her (led for the way the sea's taking her)
     H.place(d, boatU(R.sx, R.sz), boatV(R.sx, R.sz)); d.yaw = Math.atan2(BOAT.rx, BOAT.rz); p.bot = { grab: true }; H.run(0.3, () => H.steer(0)); out.held = R.st === 'held' && d.holdKind === 'ring';
@@ -352,9 +402,9 @@ if (want('orca')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, HAZ, orcasCome, boatXZ, boatHB, boatU, boatV, onDeck } = GAME, out = {}, d = G.dogs[0], p = d.player;
     const go = bark => {
-      H.sea(1.57, 7, { flat: true }); H.flock(3.6, -6, 6); H.place(d, 0, 0); p.bot = {}; SEA.leg = 1;
+      H.sea(1.57, 7, { flat: true }); H.flockRail(1.4); H.place(d, 0, 0); p.bot = {}; SEA.leg = 1;
       orcasCome(1); HAZ.orcaT = 1; let hit = false, heel = 0, charged = false, t0 = 0;
-      H.run(30, t => { H.steer(0); const o = HAZ.orcas[0]; if (!charged || o && o.st === 'charge') H.flock(3.6, -6, 6); if (o && o.st === 'charge') { if (!charged) { charged = true; t0 = t; } if (bark) p.bot = { bark: Math.round(t * 40) % 16 === 0 }; } heel = Math.max(heel, Math.abs(SEA.heelV)); return charged && o && o.st !== 'charge' && t > t0 + 0.5 && (H.run(2.5), true); });
+      H.run(30, t => { H.steer(0); const o = HAZ.orcas[0]; if (!charged || o && o.st === 'charge') H.flockRail(1.4); if (o && o.st === 'charge') { if (!charged) { charged = true; t0 = t; } if (bark) p.bot = { bark: Math.round(t * 40) % 16 === 0 }; } heel = Math.max(heel, Math.abs(SEA.heelV)); return charged && o && o.st !== 'charge' && t > t0 + 0.5 && (H.run(2.5), true); });
       return { charged, side: HAZ.orcas[0] && HAZ.orcas[0].side, over: H.swimmers().length, heel: H.r(heel), scared: HAZ.orcaScared, left: HAZ.orcaLeft };
     };
     out.hit = go(false); out.barked = go(true);
@@ -388,8 +438,8 @@ if (want('shark')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, HAZ, seaOverRail } = GAME, out = {}, d = G.dogs[0], p = d.player;
     const go = (leg, bark) => {
-      H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; SEA.leg = leg; H.flock(0); H.place(d, -2, 4); p.bot = {};
-      const s = G.sheep[0]; H.place(s, -2, 3.5); seaOverRail(s, 1, 3.5, 5, 'test'); let came = false;
+      H.sea(1.57, 6, { u: 0, flat: true }); SEA.hoist = 0; SEA.u = 0; SEA.leg = leg; H.flock(0); H.place(d, -2, H.rail(-2, 1)); p.bot = {};
+      const s = G.sheep[0]; H.place(s, -2, H.rail(-2, 1.5)); seaOverRail(s, 1, 3.5, 5, 'test'); let came = false;
       H.run(26, t => { if (HAZ.sharks.length) came = true; if (bark && came) p.bot = { bark: Math.round(t * 40) % 20 === 0 }; });
       return { came, dead: s.dead, why: G.lost.map(l => l.why).join(), off: HAZ.sharks.some(k => k.st === 'off') };
     };
@@ -410,7 +460,7 @@ if (want('storm')) {
     let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
     // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
-    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flock(-2.8, -6, 6); seaRogue(SEA.hdg + from, 3.4, 60); const g = SEA.rogue; let heel = 0, at = -1, pre = [], post = 0;
+    const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flockRail(3.3, -6, 6, -1); seaRogue(SEA.hdg + from, 3.4, 60); const g = SEA.rogue; let heel = 0, at = -1, pre = [], post = 0;
       H.run(12, t => { H.steer(0); const h = Math.abs(SEA.heel); heel = Math.max(heel, h); if (at < 0 && g.hit) at = t; if (at < 0) pre.push(h); else if (t - at < 2) post = Math.max(post, h); });
       // kick: what the wave itself does, the most she heels in the 2 s after it hits over the 2 s before (a storm swell rolls her anyway)
       return { over: H.swimmers().length, heel: H.deg(heel), kick: H.deg(post - Math.max(0, ...pre.slice(-80))), hit: !SEA.rogue || SEA.rogue.hit }; };
@@ -474,9 +524,9 @@ if (want('kraken')) {
     H.run(1.5); const sd = KRAKEN.side; out.arms = KRAKEN.arms.filter(q => q.kind === 'grip').length;
     // its arms haul that rail down: worse with the flock on the low side than on the high side
     const heel = v => { KRAKEN.phase = 'grip'; KRAKEN.t = 8; SEA.heel = 0; SEA.heelV = 0; let n = 0, s = 0; H.run(14, t => { H.flock(v); KRAKEN.t = Math.min(KRAKEN.t, 20); if (t > 8) { n++; s += SEA.heel * sd; } }); return H.deg(s / n); };
-    out.low = heel(sd * 3.6); out.high = heel(-sd * 3.6); out.barks = (() => { const n0 = KRAKEN.arms.length; p.bot = { bark: true }; H.run(0.1); p.bot = {}; H.run(0.5); return KRAKEN.arms.length === n0; })();
+    out.low = heel(sd * 5.4); out.high = heel(-sd * 5.4); out.barks = (() => { const n0 = KRAKEN.arms.length; p.bot = { bark: true }; H.run(0.1); p.bot = {}; H.run(0.5); return KRAKEN.arms.length === n0; })();
     // pounce each arm off the rail; then its eye comes up
-    H.flock(-sd * 2, -8, -4); let bonks = 0; for (const s of G.sheep) s.krakCd = 1e9;   // (no ram butting one: the dog's pounces)
+    H.flock(-sd * 3, -12, -6); let bonks = 0; for (const s of G.sheep) s.krakCd = 1e9;   // (no ram butting one: the dog's pounces)
     out.left0 = KRAKEN.arms.filter(q => q.kind === 'grip' && q.st !== 'hurt').length;   // (a ram may have butted one off already)
     for (let k = 0; k < 8 && KRAKEN.phase === 'grip'; k++) {
       const arm = KRAKEN.arms.find(q => q.kind === 'grip' && q.st === 'grip'); if (!arm) { H.run(0.5); continue; }
@@ -609,10 +659,10 @@ if (want('start')) {
     out.docked = SEA.docked && SEA.berth === 0 && DECK.lock; out.aboard = H.aboard(); out.dogs = G.dogs.every(q => onDeck(q.x, q.z)); out.food = H.r(DECK.troughs.reduce((a, t) => a + t.food, 0)); out.water = H.r(DECK.water.w);
     H.run(4); out.lying = H.r(Math.hypot(SEA.u, SEA.v)); out.sheet0 = H.r(SEA.sheet); out.land0 = LAND.parent === scene;
     const goTo = st => H.run(12, () => { p.bot = H.inp(st.sx - d.x, st.sz - d.z); return Math.hypot(st.sx - d.x, st.sz - d.z) < 0.5; });
-    goTo(anc); p.bot = {}; H.run(0.2); H.tap(p); out.onAnchor = stationOf(d) === anc; p.bot = H.stick(1, 0); H.run(3.2); out.cast = !SEA.docked && SEA.pilot != null; out.landOff = LAND.parent !== scene && inSea(0, 0); p.bot = {}; H.tap(p); H.run(0.5);
-    goTo(til); p.bot = {}; H.run(0.2); H.tap(p); out.onTiller = stationOf(d) === til && SEA.pilot === null;
+    goTo(anc); p.bot = {}; H.run(0.2); H.hold(p); out.onAnchor = stationOf(d) === anc; p.bot = H.stick(1, 0, H.g()); H.run(3.2); out.cast = !SEA.docked && SEA.pilot != null; out.landOff = LAND.parent !== scene && inSea(0, 0); p.bot = {}; H.run(0.5);
+    goTo(til); p.bot = {}; H.run(0.2); H.hold(p); out.onTiller = stationOf(d) === til && SEA.pilot === null;
     const d0 = Math.hypot(SEA.e - w.e, SEA.n - w.n);
-    H.run(60, t => { const off = H.wrap(Math.atan2(w.e - SEA.e, w.n - SEA.n) - SEA.hdg); p.bot = Math.abs(off) > 0.08 ? H.stick(0, Math.max(-1, Math.min(1, off * 2.5))) : {}; });
+    H.run(60, t => { const off = H.wrap(Math.atan2(w.e - SEA.e, w.n - SEA.n) - SEA.hdg); p.bot = Math.abs(off) > 0.08 ? H.stick(0, Math.max(-1, Math.min(1, off * 2.5)), H.g()) : H.g(); });
     out.made = H.r(d0 - Math.hypot(SEA.e - w.e, SEA.n - w.n)); out.u = H.r(GAME.seaSpd()); out.trim = H.r(SEA.trim); out.heel = H.deg(SEA.heel); out.aboard2 = H.aboard(); out.hull = SEA.hull;
     return out;
   });
@@ -657,11 +707,11 @@ if (want('dock')) {
     p.bot = {}; H.run(5); out.lashed = DECK.lock && DECK.gateT < 0.05 && SEA.docked && H.aboard() === n - 1;
     H.run(40, () => onDeck(HANK.x, HANK.z)); out.hank = onDeck(HANK.x, HANK.z);
     // to the bow: lines in (stick up), and she's off; the land's left behind (with the one never brought down)
-    H.place(d, anc.su, anc.sv); d.yaw = anc.yaw; H.run(0.2); H.tap(p); out.onBow = stationOf(d) === anc; p.bot = H.stick(1, 0); H.run(3.2); p.bot = {};
-    out.cast = !SEA.docked && !QUAY.on && DECK.lock && DECK.gateT < 0.05 && SEA.pilot != null && LAND.parent !== scene; out.left = stray.dead && (G.lost.find(l => l.name === stray.name) || {}).why === 'left'; H.tap(p); H.run(0.3);
+    H.place(d, anc.su, anc.sv); d.yaw = anc.yaw; H.run(0.2); H.hold(p); out.onBow = stationOf(d) === anc; p.bot = H.stick(1, 0, H.g()); H.run(3.2); p.bot = H.g();
+    out.cast = !SEA.docked && !QUAY.on && DECK.lock && DECK.gateT < 0.05 && SEA.pilot != null && LAND.parent !== scene; out.left = stray.dead && (G.lost.find(l => l.name === stray.name) || {}).why === 'left'; p.bot = {}; H.run(0.3);
     H.run(30); out.away = H.r(Math.hypot(SEA.e - DOCK.e, SEA.n - DOCK.n), 0); out.u = H.r(GAME.seaSpd()); out.crs = H.deg(H.wrap(SEA.hdg - ROUTE[1].crs)); out.hull = SEA.hull; out.aboard2 = H.aboard(); out.lost = G.lost.length;
     out.clear = H.r(seaLandDepth(SEA.e, SEA.n), 0);
-    H.place(d, til.su, til.sv); d.yaw = til.yaw; H.run(0.2); H.tap(p); out.helm = stationOf(d) === til && SEA.pilot === null;
+    H.place(d, til.su, til.sv); d.yaw = til.yaw; H.run(0.2); H.hold(p); out.helm = stationOf(d) === til && SEA.pilot === null;
     return out;
   });
   ok(`the top of the harbour road: ${r.n} sheep and the dog ${r.up} m over her deck, ${r.far0} m from the gangway (open); she lies still alongside (${r.still}), sheet let fly`, r.start && r.up > 35 && r.far0 > 100 && r.still < 0.01 && r.sheet > 0.9, r);
@@ -681,14 +731,14 @@ if (want('land')) {
     out.on = SEA.on; out.pens = pens.length - CAMPS.length; out.deck = pens[pens.length - 1] === DECK && DECK.deck && DECK.lock; out.gate = DECK.gateT; out.back = LAND.parent === scene && SEA.docked && !inSea(0, 0) && HARB.ice;
     out.flockAtCamp = G.sheep.every(s => !inSea(s.x, s.z)); for (let t = 0; t < 20; t += 0.025) step(0.025);
     out.none = !G.sheep.some(s => inSea(s.x, s.z)) && !G.dogs.some(d => inSea(d.x, d.z)) && !SEA.on; out.kit = [DECK.troughs.length, DECK.water.at.length, DECK.lick.at.length].join();
-    const off = boatXZ(0, 30); out.deckY = groundY(DECK.x, DECK.z) - (-3); out.sea = groundY(off.x, off.z); out.gap = sdfAt(HARB.gap.x, HARB.gap.z) < 0;
+    const off = boatXZ(0, 30); out.deckY = groundY(DECK.x, DECK.z) - (-3); out.fb = GAME.BOAT.fb; out.sea = groundY(off.x, off.z); out.gap = sdfAt(HARB.gap.x, HARB.gap.z) < 0;
     // the gap shut: a sheep knocked over the rim onto the road scrambles back up into the arena, and nothing wakes
     const P = HARB.pts, s = G.sheep.find(q => !q.dead); s.x = (P[1].x + P[2].x) / 2; s.z = (P[1].z + P[2].z) / 2; s.pen = null; for (let t = 0; t < 4; t += 0.025) step(0.025);
     out.hop = !s.dead && !s.air && Math.hypot(s.x - P[0].x, s.z - P[0].z) < 6 && sdfAt(s.x, s.z) > 1 && !SEA.on;
     return out;
   });
   ok('a new journey: the land back where it was, she alongside at Cold Harbour, her gangway lashed, the gap iced shut; nobody out there', !r.on && r.pens === 1 && r.deck && r.gate === 0 && r.back && r.flockAtCamp && r.none && r.gap, r);
-  ok(`the deck: ground ${r.deckY} m over the water, with its troughs (${r.kit}); the sea beyond`, Math.abs(r.deckY - 1.45) < 1e-6 && r.sea === -9 && r.kit === '3,1,1', r);
+  ok(`the deck: ground ${r.deckY} m over the water, with its troughs (${r.kit}); the sea beyond`, Math.abs(r.deckY - r.fb) < 1e-6 && r.sea === -9 && r.kit === '3,1,1', r);
   ok('the gap still shut: a sheep knocked onto the harbour road hops back up into the arena; she sleeps on', r.hop, r);
 }
 
