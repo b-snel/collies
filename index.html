@@ -1106,8 +1106,7 @@ const T = {
   hankGap: 12, hankRepeat: 15,     // s: unforced lines wait this long after any line; a line never repeats within hankRepeat
   hankNagGap: 7,                   // s: one nag (the ice gate's, the yeti's) after another of either kind
   hankCmdGap: 20,                  // s between whistled herding commands ("Come bye!")
-  hankNag: { greedy: 60, easy: 45, gently: 45, move: 90, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
-  hankMove: { bare: 0.35, late: 16.5, idle: 10 },   // "Get that greedy one movin'!": grass round the flock eaten under bare× what it grows, or out from late (h); no dog on it for idle s
+  hankNag: { easy: 45, gently: 45, starve: 150, penned: 0.05, tip: 0.15 },   // s between nags; chance per sheep penned / trough tip
   hankNap: { settle: 5, wakeR: 18, stay: 20, zzz: 1.6 },   // s quiet at the campfire before he beds down; m a predator wakes him; s awake after; s per "z"
   // LLAMAS (on: off in ?sim). Rare: `herds` a journey, each on its own leg of `legs` (not the first; not Falcon Canyon, the pass, the sea; own rng,
   // a new seed each journey), tucked away `lat` m off the trail: a male, `f` females, a cria maybe (`cria`); now and then a lone bachelor (`bach`)
@@ -16340,7 +16339,6 @@ const HANK_LINES = {
   morning: 'Morning! You did well.',
   thatll_do: "That'll do. That'll do.",
   good_dog: 'Good dog!', thats_it: "That's it!", nice_steady: 'Nice and steady!', in_ye_go: 'In ye go!',
-  quit_munchin: "Quit yer munchin'!", greedy_one: "Get that greedy one movin'!", no_snackin: "Oi! No snackin'!",
   easy: "Easy! Ye'll scatter them!", gently: "Gently! They won't go in scared!",
   teamwork: 'Grand teamwork, the pair of ye!',
   watch_it: 'Oi! Watch it!', manners: 'Mind yer manners!', not_me: 'Not me, the sheep!',
@@ -16356,7 +16354,7 @@ const HANK = {
   line: null, sayT: 0, talkT: 0, lastSay: -99, forceEnd: -99, nagAt: -99, lastKey: null, said: {}, pending: [], log: [], played: [],
   buf: {}, loading: {}, missing: {}, src: null, wsrc: null, gain: null, vol: 1, mute: false, prefetched: false, bubble: null,
   // what he keeps an eye on
-  cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99, starving: 0,
+  cmd: '', cmdT: -99, prevAng: null, omega: 0, watchT: 0, lastEasy: -99, lastGently: -99, lastStarve: -99, starving: 0,
   thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '',
   // asleep on his mat (sim); lieK 0 standing…1 lying (render)
   asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0,
@@ -16493,7 +16491,7 @@ function resetHank() {
   Object.assign(hk, { rescue: null, trunks: false, swim: false, cpr: false, changeT: 0 });   // RESCUE
   const g = hankGoal();
   Object.assign(hk, { goal: null, asleep: false, restT: 0, upT: -99, zzzT: 0, lieK: 0, x: g.x, z: g.z, y: groundY(g.x, g.z), vx: 0, vz: 0, stumble: 0, bumpCD: 0, farT: 0, stuckT: 0, hopT: 0, easeAt: null, sideT: 0, lastX: g.x, lastZ: g.z, celebrate: false,
-    lastSay: -99, forceEnd: -99, nagAt: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastGreedy: -99, lastEasy: -99, lastGently: -99, lastMove: -99, lastStarve: -99,
+    lastSay: -99, forceEnd: -99, nagAt: -99, lastKey: null, said: {}, pending: [], cmd: '', cmdT: -99, prevAng: null, omega: 0, lastEasy: -99, lastGently: -99, lastStarve: -99,
     starving: 0, thatllDay: 0, lostTonight: 0, bridgeSaid: false, finalSaid: false, teamSaid: false, barnHinted: false, packKey: '', eyesKey: '', sayT: 0, talkT: 0, line: null });
   hk.yaw = Math.PI / 4;
 }
@@ -16794,7 +16792,7 @@ function onLambsBorn(born) {
     saveFlock();   // new arrivals join the saved flock
   }
 }
-// a few times a second while you play: the herding commands, greedy grazers, a scattered flock, the launcher...
+// a few times a second while you play: the herding commands, a scattered flock, the launcher...
 function hankWatch(dt) {
   const hk = HANK;
   hankNap(dt); if (hk.asleep) return;
@@ -16802,12 +16800,6 @@ function hankWatch(dt) {
   hk.watchT -= dt; if (hk.watchT > 0) return; hk.watchT = 0.25;
   const t = G.time, out = []; for (const s of G.sheep) if (!s.dead && !s.grabbed && !s.pen) out.push(s);
   let fx = 0, fz = 0; for (const s of out) { fx += s.x; fz += s.z; } if (out.length) { fx /= out.length; fz /= out.length; }
-  // one keeps grazing while the rest are being driven on
-  if (out.length >= 4 && t - hk.lastGreedy > T.hankNag.greedy) {
-    let mx = 0, mz = 0, nm = 0; for (const s of out) if (s.state === 'move' || s.state === 'flee') { mx += s.x; mz += s.z; nm++; }
-    if (nm >= out.length * 0.5) { mx /= nm; mz /= nm;
-      if (out.some(s => s.eating && Math.hypot(s.x - mx, s.z - mz) > 9) && hank(pick(['quit_munchin', 'greedy_one', 'no_snackin']), null, { force: true })) hk.lastGreedy = t; }
-  }
   // a dog sprinting into the flock scatters it
   if (t - hk.lastEasy > T.hankNag.easy) for (const d of G.dogs) {
     if (d.mode !== 'sprint' || Math.hypot(d.vx, d.vz) < 8) continue;
@@ -16822,12 +16814,6 @@ function hankWatch(dt) {
   }
   // a dog opens a pen gate in the evening with the flock still out
   for (const p of pens) { if (p.open && !p._hankOpen && G.clock.hour >= 16 && !isNight() && out.length) hank('gate_open', null, { force: true }); p._hankOpen = p.open; }
-  // time to move them (grazed bare, or evening with the flock still out) and no dog on it: "Get that greedy one movin'!" at the next quiet moment
-  const M = T.hankMove;
-  if (out.length >= 3 && !isNight() && t - hk.lastMove > T.hankNag.move && t - MIND.workedT > M.idle) {
-    let g = 0, c = 0; for (const s of out) for (let q = 0; q < 5; q++) { const x = s.x + (q && Math.cos(q * 1.57) * 3), z = s.z + (q && Math.sin(q * 1.57) * 3); g += grassAt(x, z); c += grassCapAt(x, z); }   // under it and a few steps round
-    if ((g < c * M.bare || G.clock.hour >= M.late) && hank('greedy_one')) hk.lastMove = t;
-  }
   // starving: no recording, so the subtitle alone
   const starving = living().filter(s => s.hunger >= 1).length;
   if (starving > hk.starving && t - hk.lastStarve > T.hankNag.starve && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
