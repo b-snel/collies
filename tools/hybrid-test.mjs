@@ -85,7 +85,8 @@ try {
 
   // ---------------------------------------------------------------- the guest's two dogs share one screen: leashed together on the host
   const leash = await A.page.evaluate(sl => {
-    const [a, b] = sl.map(s => GAME.G.dogs.find(d => d.player.slot === s));
+    const [a, b] = sl.map(s => GAME.G.dogs.find(d => d.player.slot === s)), p = GAME.pens[0];
+    a.x = p.exitX + 3 + GAME.CAM_R.x * 10; a.z = p.exitZ + 2 + GAME.CAM_R.z * 10;   // from a fixed open spot by the corral, not wherever the keys left it (a lagging clock: a few m)
     b.x = a.x + 150; b.z = a.z - 150; GAME.step(0.02);
     return GAME.CAM_R.x * (b.x - a.x) + GAME.CAM_R.z * (b.z - a.z);
   }, slots);
