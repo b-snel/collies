@@ -26545,8 +26545,8 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 // G entities, smooths them, and runs the normal visual sync, overlay and HUD. Its camera follows its own dog.
 //
 // Messages (plain objects with a `t`; BinaryPack on the wire, one reliable ordered DataConnection per guest):
-//   guest → host  hi {v, b (build hash), cid (stable client id), name, n (players on that screen), ro (their role)} · i {h: held
-//                 inputs, p} on change and every 400 ms · e {k, p} one-shot buttons (NET_EDGES) + 'again' ·
+//   guest → host  hi {v, b (build hash), cid (stable client id), name, n (players on that screen), ro (their role), z (can unpack)} · i {h: held
+//                 inputs, p} on change (the stick: 20 a second at most) and every 400 ms · e {k, p} one-shot buttons (NET_EDGES) + 'again' ·
 //                 j {n} someone else on that screen picked up a controller · n {name} · b {ro} a role picked on their title ·
 //                 m {on} their screen's in a menu or out (MENUS) · dl {lk, p} their dog as they dress it in their barn ·
 //                 sh {id, ch} a sheep renamed / dressed in their barn or on their dawn card · hb {ts} · bye
@@ -26554,7 +26554,7 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 //   host → guest  w {slot, slots, host, code} welcome (slots: one per player there, -1 till the journey starts) ·
 //                 l {list, you: [entries]} roster · s snapshot (20 Hz) · g {h, c} grass changes
 //                 (3 Hz: hours to regrow, then [cell-index step, byte] pairs) · G {d} whole grass map, one byte a
-//                 cell (on join, and after a big change) · hb {hid} · pong {ts} · r {a, p} rumble · find {id, p} their dog dug it up ·
+//                 cell, or {z} the same deflated, each cell as the change from the one before (on join, and after a big change) · hb {hid} · pong {ts} · r {a, p} rumble · find {id, p} their dog dug it up ·
 //                 old / full / bye
 // HYBRID: a seat is one friend's browser; s.subs holds a {player, held, edges} for each person playing on that
 // screen (couch co-op on both ends: the host's sofa joins locally, each friend's sofa through their one link).
@@ -26566,6 +26566,10 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 // (small integers); a record whose mask comes in an array ([mask]) carries absolute values instead (a thing new to
 // that guest, or any keyframe; up to 53 fields). The channel is reliable and ordered, so each delta lands on top of the one
 // before; a (re)join gets a keyframe.
+// A BAD LINE (slow upload, long delay, lossy): a friend's link still sending the last lot (netBacked: NETT.backlog bytes queued)
+// skips the snapshot and grass ticks (the next says everything since the last sent: nothing lost; its effects wait), so the
+// delay can't pile up. Joining goes in stages (NET_STUCK: where it stuck) and tries again (NETT.joinTries); a dropped guest
+// gets back in by itself (NETT.rejoin). The relay for networks that won't link straight: the site's /turn (worker.js), else PeerJS's.
 //
 // HOW TO SYNC A NEW PROPERTY: add ONE line to its entity's `fields` in NET_TYPES, e.g.
 //     pounceT: .02,       // a number, sent as round(v / .02)
@@ -26594,7 +26598,11 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 // MENUS: every screen has its own pause menu, barn and dawn card; the world waits only once every screen's in one (menuTick).
 // =====================================================================
 const NET_VER = 1;
-const NETT = { hz: 20, grassMs: 330, staleIn: 1000, dropMs: 60000, joinMs: 20000, reclaimMs: 120000, maxGuests: 3, fxCap: 250 };
+// (a bad line: backlog = bytes still queued for a friend before the next snapshot goes; slowMs: a ping that far over its best
+//  sends every 2nd, then 4th snapshot; joinMs a try, joinTries;
+//  iceGrace: a link gone quiet that long is lost; rejoin: s between tries to get back in after a drop)
+const NETT = { hz: 20, grassMs: 330, staleIn: 1500, dropMs: 60000, joinMs: 30000, joinTries: 2, reclaimMs: 120000, maxGuests: 3, fxCap: 250,
+  backlog: 1500, slowMs: 300, iceGrace: 20000, iceMs: 3000, rejoin: [4, 8, 15, 30, 30] };
 const NET_BUILD = (() => {
   const s = document.querySelector('script[type="module"]'), t = (s && s.textContent) || '';
   let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
@@ -26917,8 +26925,25 @@ const netCleanName = v => String(v == null ? '' : v).replace(/[<>&"'`\u0000-\u00
 const netCleanCode = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 const netPeerId = code => 'collies-herd-' + code.toLowerCase();
 function netNewCode() { return [...crypto.getRandomValues(new Uint32Array(5))].map(v => NET_ABC[v % NET_ABC.length]).join(''); }
+// ICE: STUN finds each browser's public address; when two networks won't link straight (phone, satellite and rural
+// internet often sit behind a carrier's NAT) a TURN server relays. The site's own (/turn: worker.js, Cloudflare's)
+// when it has one, else PeerJS's free one. ?relay: relayed only (to check the relay works)
+const NET_ICE0 = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
+let netIceP = null, netIceAt = 0;
+function netIce() {   // fetched once going online (a day's credentials; again after 12 h); nothing in 3 s: the free ones
+  if (netIceP && performance.now() - netIceAt < 12 * 3600e3) return netIceP;
+  netIceAt = performance.now();
+  const ok = v => v && (typeof v.urls === 'string' || Array.isArray(v.urls));
+  netIceP = Promise.race([fetch('turn', { cache: 'no-store' }).then(r => r.status === 200 ? r.json() : null), new Promise(r => setTimeout(r, NETT.iceMs, null))])
+    .then(j => { const a = j && [].concat(j.iceServers || []).filter(ok); NET.ice = a && a.length ? [...a, { urls: 'stun:stun.l.google.com:19302' }] : NET_ICE0; NET.turn = !!(a && a.length); })
+    .catch(() => { NET.ice = NET_ICE0; NET.turn = false; netIceP = null; });
+  return netIceP;
+}
+async function netLib() { const Peer = await netLoadPeer(); await netIce(); return Peer; }
 function netPeerOpts() {
-  const o = { debug: 0 };
+  const o = { debug: 0, config: { iceServers: NET.ice || NET_ICE0 } };
+  if (/[?&]relay\b/.test(location.search)) o.config.iceTransportPolicy = 'relay';
   // to test against a PeerJS server of your own: ?peerserver=localhost:9000 (on every browser)
   try { const ps = new URLSearchParams(location.search).get('peerserver'); if (ps) { const [h, p] = ps.split(':'); Object.assign(o, { host: h, port: +p || 9000, path: '/', secure: location.protocol === 'https:' }); } } catch (e) {}
   return o;
@@ -26955,14 +26980,32 @@ function netSendSeat(s, m, kind = 'other') {
 function netSend(m) { const c = NET.conn; if (c && c.open) try { c.send(m); } catch (e) {} }
 function netRecUpdate() { NET.rec = NET.role === 'host' && NET.seats.some(s => s.conn); }
 // a browser that vanishes (closed lid, lost signal) can leave the channel looking open: give up if the link stays down
+// (a bad line blips 'disconnected' and comes back: NETT.iceGrace)
 function netIceWatch(conn, lost) {
   let t = 0;
   conn.on('iceStateChanged', st => {
-    if (st === 'disconnected') { if (!t) t = setTimeout(() => { t = 0; lost(); }, 10000); }
-    else if (st === 'failed' || st === 'closed') { clearTimeout(t); t = 0; lost(); }
+    if (st === 'disconnected') { if (!t) t = setTimeout(() => { t = 0; lost(st); }, NETT.iceGrace); }
+    else if (st === 'failed' || st === 'closed') { clearTimeout(t); t = 0; lost(st); }
     else { clearTimeout(t); t = 0; }
   });
 }
+// a link that can't keep up (a slow upload, a lossy line): don't pile more on while it's still sending the last lot
+function netBacked(c) { const dc = c && c.dataChannel; return !!c && ((c.bufferSize | 0) > 0 || (dc ? dc.bufferedAmount : 0) > NETT.backlog); }
+// how the link goes: straight between the two browsers, or through a relay (shown on the 🌐 chip's tooltip)
+async function netVia(c) {
+  try {
+    const st = await c.peerConnection.getStats(); let pair = null;
+    st.forEach(r => { if (!pair && r.type === 'transport' && r.selectedCandidatePairId) pair = st.get(r.selectedCandidatePairId); });
+    st.forEach(r => { if (!pair && r.type === 'candidate-pair' && r.selected) pair = r; });
+    if (!pair) return '';
+    const a = st.get(pair.localCandidateId), b = st.get(pair.remoteCandidateId);
+    return [a, b].some(x => x && x.candidateType === 'relay') ? 'relay' : 'direct';
+  } catch (e) { return ''; }
+}
+// packed for the wire (the grass map: 159 KB raw, ~30 KB packed)
+const NET_ZIP = typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+const netZip = d => new Response(new Blob([d]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer();
+const netUnzip = z => new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer().then(b => new Uint8Array(b));
 function netStoredName() { try { return localStorage.getItem('collies.name') || ''; } catch (e) { return ''; } }
 function netNameField() { const n = netCleanName($('netName').value); if (n) try { localStorage.setItem('collies.name', n); } catch (e) {} return n; }
 // the dogs this screen's camera follows (and leashes together): a guest's own dogs; the host's local dogs
@@ -27535,8 +27578,11 @@ function netSnapTick() {
     for (const o of T.one ? [T.one()] : T.all()) { const id = T.one ? 0 : T.id(o); if (id == null || id < 0) continue; m.set(id, T.F.map(F => F.enc(F.get(o)))); }
     cur[T.tag] = m;
   }
-  const fxq = NET.fxq.splice(0);
+  const fxq0 = NET.fxq.splice(0), tick = NET.tick = (NET.tick | 0) + 1;
   for (const s of live) {
+    // a link still sending the last lot, or slowed (netSeatRtt): skip this one (it says what changed since the last sent, so the next says it all); its effects wait
+    if (netBacked(s.conn) || tick % (s.every || 1)) { if (fxq0.length) { const q = s.fx || (s.fx = []); q.push(...fxq0); if (q.length > NETT.fxCap) q.splice(0, q.length - NETT.fxCap); } NET.stats.skip = (NET.stats.skip || 0) + 1; continue; }
+    const fxq = s.fx ? s.fx.concat(fxq0) : fxq0; s.fx = null;
     let kf = false; if (!s.sent) { s.sent = {}; kf = true; }
     const c = {}, r = {}; let any = false, anyR = false;
     for (const T of NET_LIST) {
@@ -27574,9 +27620,15 @@ function netGrassFull(s) {
   const d = new Uint8Array(VN); s.shadow = new Float32Array(VN);
   for (let k = 0; k < VN; k++) { const b = netGB(gAmt[k]); d[k] = b; s.shadow[k] = b / NET_GB; }
   s.gH = netHours();
-  netSendSeat(s, { t: 'G', d }, 'grass');
+  if (!s.zip) { s.gWait = null; netSendSeat(s, { t: 'G', d }, 'grass'); return; }
+  // packed: each cell as the change from the one before, deflated (~30 KB, not 159); the changes wait for it (gWait)
+  for (let k = VN - 1; k > 0; k--) d[k] = (d[k] - d[k - 1]) & 255;
+  const tok = s.gWait = {}, conn = s.conn;
+  netZip(d).then(z => { if (s.gWait === tok && s.conn === conn) { s.gWait = null; netSendSeat(s, { t: 'G', z }, 'grass'); } },
+    () => { if (s.gWait === tok) { s.zip = false; netGrassFull(s); } });
 }
 function netGrassTick(s) {
+  if (s.gWait || netBacked(s.conn)) return;   // (the map's still packing, or the link's backed up: the next tick catches up, hours and all)
   const H = netHours(), dtH = clamp(H - s.gH, 0, 48); s.gH = H;
   const sh = s.shadow; netRegrow(sh, dtH);
   const c = []; let last = 0, n = 0;
@@ -27594,7 +27646,7 @@ async function netHost() {
   NET.myName = netNameField() || netLocalName();
   NET.role = 'host'; NET.code = ''; netStatus('Opening a room…');
   Sound.init();
-  let Peer; try { Peer = await netLoadPeer(); } catch (e) { netStopHosting(); netStatus("Couldn't load the online code. Check your connection and try again.", true); return; }
+  let Peer; try { Peer = await netLib(); } catch (e) { netStopHosting(); netStatus("Couldn't load the online code. Check your connection and try again.", true); return; }
   netOpenRoom(Peer, 0);
 }
 function netOpenRoom(Peer, tries) {
@@ -27649,7 +27701,8 @@ function netWelcome(conn, m) {
   if (!s) return refuse('full');
   if (s.conn && s.conn !== conn) { const old = s.conn; setTimeout(() => { try { old.close(); } catch (e) {} }, 200); }   // the same friend on a fresh link
   const back = s.subs.some(u => u.player) && !s.conn && G.mode !== 'title';
-  Object.assign(s, { cid, name, conn, lastMsg: now, sent: null, left: false, lostAt: 0, menu: false });
+  Object.assign(s, { cid, name, conn, lastMsg: now, sent: null, left: false, lostAt: 0, menu: false, zip: !!m.z && NET_ZIP, fx: null, via: '', rtt: 0, rttMin: undefined, every: 1 });
+  netVia(conn).then(v => { if (s.conn === conn) { s.via = v; NET.uiKey = ''; } });
   for (const u of s.subs) { u.held = {}; u.inAt = 0; u.edges.length = 0; }
   s.subs[0].name = name; if (s.subs[0].player) s.subs[0].player.name = name;
   if (isRole(m.ro)) s.subs[0].role = m.ro;   // ROLES: their own pick (for their dog when the journey starts)
@@ -27774,8 +27827,17 @@ function netFromGuest(s, m) {
       break;
     }
     case 'hb': netSendSeat(s, { t: 'pong', ts: m.ts }); break;
+    case 'po': netSeatRtt(s, performance.now() - (+m.ts || 0)); break;
     case 'bye': s.left = true; netSeatLost(s); break;
   }
+}
+// a line slower than the browser can tell (a modem's own queue): the ping climbs over its best, so that friend gets every 2nd,
+// then every 4th snapshot till it's back down (each says everything since the last sent: nothing lost). Its best creeps up 2 ms a second (a new route)
+function netSeatRtt(s, rtt) {
+  if (!(rtt >= 0 && rtt < 60000)) return;
+  s.rtt = rtt; s.rttMin = Math.min(rtt, (s.rttMin ?? rtt) + 2);
+  const over = rtt - s.rttMin, e = s.every || 1;
+  s.every = over > NETT.slowMs ? Math.min(4, e * 2) : over < NETT.slowMs / 3 ? Math.max(1, e / 2) : e;
 }
 // readInput() for a friend's dog: their held inputs (zeroed if nothing's come for a second) + their button presses, once each
 function netReadInput(p, r) {
@@ -27794,7 +27856,7 @@ const NET_CY0 = Math.atan2(CAM_F.x, CAM_F.z);
 function netHeartbeat() {
   const now = performance.now();
   if (NET.role === 'host') {
-    for (const s of [...NET.seats]) { if (!s.conn) continue; netSendSeat(s, { t: 'hb', hid: document.hidden ? 1 : 0 }); if (now - s.lastMsg > NETT.dropMs) netSeatLost(s); }
+    for (const s of [...NET.seats]) { if (!s.conn) continue; netSendSeat(s, { t: 'hb', hid: document.hidden ? 1 : 0, ts: Math.round(now) }); if (now - s.lastMsg > NETT.dropMs) netSeatLost(s); }
     if (NET.flockDirty) { NET.flockDirty = false; saveFlock(); }   // friends' new names and outfits stick
   }
   else if (NET.role === 'guest' && NET.conn && NET.conn.open) netSend({ t: 'hb', ts: now });
@@ -27823,18 +27885,38 @@ async function netJoin(code, name) {
   if (code.length < 5) { netStatus("Type in the 5-letter room code from your friend's screen.", true); $('netCode').focus(); return; }
   try { localStorage.setItem('collies.name', name); } catch (e) {}
   Sound.init();
-  Object.assign(NET, { role: 'guest', code, myName: name, inRoom: false, dead: false, slot: -1, roster: [], locals: [netLocal()] });
+  Object.assign(NET, { role: 'guest', code, myName: name, inRoom: false, dead: false, slot: -1, roster: [], locals: [netLocal()], tries: 0, auto: 0 });
   netStatus('Connecting…');
-  let Peer; try { Peer = await netLoadPeer(); } catch (e) { netGuestFail("Couldn't load the online code. Check your connection and try again."); return; }
+  let Peer; try { Peer = await netLib(); } catch (e) { netGuestFail("Couldn't load the online code. Check your connection and try again."); return; }
   if (NET.role !== 'guest') return;
   netConnectGuest(Peer);
 }
+// how far a try got: the matchmaking server ('server'), the host's answer ('find'), the link itself ('link'), the hello ('hello').
+// What the status line says on the way, and where it stuck if it doesn't get in
+const NET_STUCK = {
+  server: "Couldn't reach the matchmaking server. Check your connection and try again.",
+  find: "Your friend's game didn't answer. Check the code and try again.",
+  link: "Found the game but couldn't link up: a network in between blocks it.",
+  hello: "Linked up, but the game didn't answer. Try again.",
+};
+function netStage(st, msg) { NET.stage = st; if (NET.dead) { NET.lostMsg = msg; NET.uiKey = ''; } else netStatus(msg); }
 function netConnectGuest(Peer) {
-  const p = new Peer(netPeerOpts()); NET.peer = p;
+  const p = new Peer(netPeerOpts()), n = NET.tries ? ` (${NET.tries + 1})` : '';
+  NET.peer = p; NET.via = ''; NET.err = '';
+  netStage('server', (NET.dead ? 'Reconnecting…' : 'Connecting…') + n);
   p.on('open', () => {
     if (NET.peer !== p) return;
+    netStage('find', 'Finding the game…' + n);
     const c = p.connect(netPeerId(NET.code), { reliable: true }); NET.conn = c;
-    c.on('open', () => { if (NET.conn !== c) return; netStatus('Connected. Saying hello…'); netSend({ t: 'hi', v: NET_VER, b: NET_BUILD, cid: NET.cid, name: NET.myName, n: NET.locals.length, ro: dogLook(0).role }); });
+    const linking = () => { if (NET.conn === c && NET.stage === 'find') netStage('link', 'Linking up…' + n); };   // the host answered
+    c.on('iceStateChanged', st => { if (st === 'checking') linking(); });
+    const pc = c.peerConnection; if (pc) pc.addEventListener('signalingstatechange', () => { if (pc.signalingState === 'stable') linking(); });
+    c.on('open', () => {
+      if (NET.conn !== c) return;
+      netStage('hello', 'Connected. Saying hello…');
+      netSend({ t: 'hi', v: NET_VER, b: NET_BUILD, cid: NET.cid, name: NET.myName, n: NET.locals.length, ro: dogLook(0).role, z: NET_ZIP ? 1 : 0 });
+      netVia(c).then(v => { if (NET.conn === c) { NET.via = v; NET.uiKey = ''; } });
+    });
     c.on('data', m => { if (NET.conn === c && m && typeof m === 'object') netFromHost(m); });
     c.on('close', () => { if (NET.conn === c) netGuestLost(); });
     c.on('error', () => {});
@@ -27843,33 +27925,52 @@ function netConnectGuest(Peer) {
   p.on('error', err => {
     if (NET.peer !== p) return;
     if (err.type === 'peer-unavailable') { netGuestFail(`No game with the code ${NET.code}. Check the code, and that your friend still has their room open.`); return; }
-    if (!NET.inRoom && !(NET.conn && NET.conn.open)) netGuestFail(netErrText(err));
+    if (!(NET.inRoom && !NET.dead) && !(NET.conn && NET.conn.open)) { NET.err = err.type; if (err.type === 'browser-incompatible') netGuestFail(netErrText(err)); else netGuestRetry(); }
   });
   clearTimeout(NET.joinTO); NET.awaiting = true;
-  NET.joinTO = setTimeout(() => { if (NET.peer === p && NET.awaiting) netGuestFail("Couldn't connect to that game. Check the code and try again."); }, NETT.joinMs);
+  NET.joinTO = setTimeout(() => { if (NET.peer === p && NET.awaiting) netGuestRetry(); }, NETT.joinMs);
 }
-// couldn't get in: back to playing on our own (or, after a drop, stay on the "lost" card)
+// a try that didn't get in: once more from scratch (fresh addresses, maybe another route; NETT.joinTries), then say where it stuck
+function netGuestRetry() {
+  if (NET.role !== 'guest' || (NET.inRoom && !NET.dead)) return;
+  const p = NET.peer; NET.peer = null; NET.conn = null; clearTimeout(NET.joinTO); NET.awaiting = false;
+  if (p) try { p.destroy(); } catch (e) {}
+  if (++NET.tries < NETT.joinTries) { netLib().then(Peer => { if (NET.role === 'guest' && !NET.peer) netConnectGuest(Peer); }).catch(() => netGuestFail("Couldn't load the online code.")); return; }
+  netGuestFail((NET_STUCK[NET.stage] || NET_STUCK.server) + (NET.err ? ` (${NET.err})` : ''));
+}
+// couldn't get in: back to playing on our own (or, after a drop, stay on the "lost" card and try again in a while)
 function netGuestFail(msg) {
   const p = NET.peer; NET.peer = null; NET.conn = null; clearTimeout(NET.joinTO);
   if (p) try { p.destroy(); } catch (e) {}
   NET.awaiting = false;
-  if (NET.dead) { NET.lostMsg = msg; NET.uiKey = ''; return; }
+  if (NET.dead) { NET.lostMsg = msg; NET.uiKey = ''; netAutoRejoin(); return; }
   const was = NET.inRoom; NET.role = null; NET.inRoom = false; NET.slot = -1; NET.locals = [];
   netStatus(msg, true);
   if (was) location.reload();
 }
-function netGuestLost(msg) {
-  if (NET.role !== 'guest' || NET.dead) return;
-  if (!NET.inRoom) { netGuestFail(msg || 'Lost the connection to the game.'); return; }
-  NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = '';
+// (auto: false when the host's closed the game: nothing to get back into)
+function netGuestLost(msg, auto = true) {
+  if (NET.role !== 'guest') return;
+  if (!NET.inRoom || NET.dead) { if (NET.peer) netGuestRetry(); return; }   // (a try at getting in that fell through)
+  NET.dead = true; NET.lostTitle = msg || 'Lost the connection'; NET.lostMsg = ''; NET.auto = auto ? 0 : NETT.rejoin.length;
   closeDawn(); closeBarn();
   const p = NET.peer; NET.peer = null; NET.conn = null; if (p) try { p.destroy(); } catch (e) {}
   NET.uiKey = '';
+  netAutoRejoin();
 }
-function netRejoin() {
+// dropped: back in by itself (the host keeps the dog): a few tries, further apart (NETT.rejoin, s); then only Rejoin
+function netAutoRejoin() {
+  clearTimeout(NET.autoTO);
+  if (NET.role !== 'guest' || !NET.dead) return;
+  const s = NETT.rejoin[NET.auto | 0]; if (s === undefined) return;
+  NET.auto = (NET.auto | 0) + 1;
+  NET.autoTO = setTimeout(() => netRejoin(true), s * 1000);
+}
+function netRejoin(auto = false) {
   if (NET.role !== 'guest' || !NET.dead || NET.peer) return;
-  NET.lostMsg = 'Reconnecting…'; NET.uiKey = '';
-  netLoadPeer().then(Peer => netConnectGuest(Peer)).catch(() => { NET.lostMsg = "Couldn't load the online code."; });
+  clearTimeout(NET.autoTO); if (!auto) NET.auto = 0;   // (pressed: the tries start over)
+  NET.tries = 0; NET.lostMsg = 'Reconnecting…'; NET.uiKey = '';
+  netLib().then(Peer => { if (NET.role === 'guest' && NET.dead && !NET.peer) netConnectGuest(Peer); }).catch(() => { NET.lostMsg = "Couldn't load the online code."; NET.uiKey = ''; netAutoRejoin(); });
 }
 function netLeave() {
   if (NET.role === 'guest') { netSend({ t: 'bye' }); const p = NET.peer; setTimeout(() => { try { p && p.destroy(); } catch (e) {} netHome(); }, 150); }
@@ -27881,7 +27982,7 @@ function netFromHost(m) {
   switch (m.t) {
     case 'w': {
       const first = !NET.inRoom;
-      NET.inRoom = true; NET.awaiting = false; clearTimeout(NET.joinTO); NET.hostName = netCleanName(m.host) || 'Your friend';
+      NET.inRoom = true; NET.awaiting = false; clearTimeout(NET.joinTO); clearTimeout(NET.autoTO); NET.tries = 0; NET.auto = 0; NET.hostName = netCleanName(m.host) || 'Your friend';
       const slots = Array.isArray(m.slots) ? m.slots : [m.slot];
       if (!NET.locals.length) NET.locals.push(netLocal());
       if (slots.length < NET.locals.length) { NET.locals.length = Math.max(1, slots.length); if (!first) toast('No room for another dog: 4 is the most', 'warn'); }
@@ -27901,10 +28002,9 @@ function netFromHost(m) {
       if (Array.isArray(m.a)) for (const [slot, q, ms] of m.a) { const L = netLocalOf(slot); if (L) L.ack = { q, ms: +ms || 0, fresh: true }; }
       break;
     }
-    case 'g': netGrassDelta(m); break;
-    case 'G': netGrassDump(m); break;
+    case 'g': case 'G': netGrassIn(m); break;
     case 'l': NET.roster = Array.isArray(m.list) ? m.list.slice(0, 5) : []; NET.you = Array.isArray(m.you) ? m.you.map(v => v | 0) : [m.you | 0]; NET.uiKey = ''; break;
-    case 'hb': NET.hostHid = !!m.hid; break;
+    case 'hb': NET.hostHid = !!m.hid; if (m.ts) netSend({ t: 'po', ts: m.ts }); break;   // (the host's ping of us: netSeatRtt)
     case 'pong': NET.rtt = performance.now() - (+m.ts || 0); break;
     case 'find': {   // our dog dug something up: ours to keep, and it goes straight on if it has nothing of that sort on
       const k = m.p | 0, it = DOG_ITEMS.find(x => x.id === m.id); if (!it || !NET.locals[k]) break;
@@ -27916,7 +28016,7 @@ function netFromHost(m) {
     case 'r': { const L = NET.locals[m.p | 0]; if (L && L.kind === 'pad' && Array.isArray(m.a)) NET.rumble0({ kind: 'pad', index: L.index }, ...m.a.map(v => +v || 0)); break; }
     case 'old': netGuestFail("Your copy of the game is a different version from your friend's. Both of you reload the page, then try again."); checkBuild(); break;
     case 'full': netGuestFail('That game is full: there are 4 dogs already.'); break;
-    case 'bye': netGuestLost('Your friend closed the game.'); break;
+    case 'bye': netGuestLost('Your friend closed the game.', false); break;
   }
 }
 // our k-th dog's look for the host: a coat or collar never picked takes the colours of our slot there; the first's name is ours
@@ -28002,6 +28102,23 @@ function netGuestMode(v) {
     $('title').classList.add('hidden'); $('end').style.opacity = 0; $('end').style.pointerEvents = 'none'; $('hud').classList.remove('hidden');
     updateCamera(0, true);
   }
+}
+// grass in the order it came: a packed map unpacks first, and what follows waits for it
+function netGrassIn(m) {
+  if (!NET.gq && !(m.t === 'G' && m.z)) { if (m.t === 'G') netGrassDump(m); else netGrassDelta(m); return; }
+  (NET.gq || (NET.gq = [])).push(m);
+  if (!NET.gqRun) netGrassPump();
+}
+async function netGrassPump() {
+  NET.gqRun = true;
+  try {
+    while (NET.gq && NET.gq.length) {
+      const m = NET.gq.shift();
+      if (m.t !== 'G') { netGrassDelta(m); continue; }
+      if (m.z) { let d = null; try { d = await netUnzip(m.z); for (let k = 1; k < d.length; k++) d[k] = (d[k] + d[k - 1]) & 255; } catch (e) {} m.d = d; }
+      netGrassDump(m);
+    }
+  } finally { NET.gq = null; NET.gqRun = false; }
 }
 function netGrassDump(m) {
   const d = m.d instanceof ArrayBuffer ? new Uint8Array(m.d) : ArrayBuffer.isView(m.d) ? new Uint8Array(m.d.buffer, m.d.byteOffset, m.d.byteLength) : null;
@@ -28093,8 +28210,11 @@ function netGuestInput(now) {
     const h = {}; for (const key in NET_HELD) { const v = r[key]; h[key] = typeof NET_HELD[key] === 'number' ? Math.round((+v || 0) * 100) / 100 : !!v; }
     if (SEAC.k > 0) { const cy = Math.atan2(CAM_F.x, CAM_F.z); if (!(Math.abs(wrapA(cy - L.cy)) < 0.03)) L.cy = Math.round(cy * 100) / 100; h.cy = L.cy; }   // SAILING: this screen's camera turns with her: the stick goes by it (netReadInput; resent as it turns 2°)
     const hk = JSON.stringify(h), p = k || undefined;
-    if (hk !== L.inKey ? now - L.inAt >= 16 : now - L.inAt >= 400) {
-      L.inKey = hk; L.inAt = now; const q = L.q = (L.q || 0) + 1;
+    // a button at once; the stick's drift 20 a second at most (a stick's never still: up to 60 a second, all upload); a link
+    // still sending the last lot waits (the next says it all)
+    const bk = h.mx === undefined ? hk : JSON.stringify({ ...h, mx: 0, my: 0 });
+    if ((hk !== L.inKey ? now - L.inAt >= (bk !== L.inBK ? 16 : 50) : now - L.inAt >= 400) && !netBacked(NET.conn)) {
+      L.inKey = hk; L.inBK = bk; L.inAt = now; const q = L.q = (L.q || 0) + 1;
       L.hist.push({ q, t: now, h }); while (L.hist.length > 2 && L.hist[1].t < now - 1500) L.hist.shift();   // for netPredFrame
       netSend(p ? { t: 'i', h, q, p } : { t: 'i', h, q });
     }
@@ -28115,7 +28235,7 @@ function netUI(now) {
   const pausedWhy = G.paused && G.hold === '#hidden' && guest ? `${NET.hostName}'s game is in the background — waiting for them…` : going && together ? '▶ The game waits till everyone pauses.' : '';
   const showPause = G.mode === 'play' && !NET.dead && (MENU.pause || (G.paused && !!G.hold)) && !BARN.open && !DAWN.open;
   const key = [NET.role, NET.code, NET.status, NET.statusErr, NET.inRoom, NET.dead, NET.lostMsg, NET.locals.map(L => L.slot).join(), G.mode, G.paused, pausedWhy, friends, quiet, NET.hostHid,
-    Math.round(NET.rtt / 10), JSON.stringify(NET.roster), $('netPanel').hidden, G.menus.join(), showPause, BARN.open, DAWN.open].join('|');
+    Math.round(NET.rtt / 10), NET.via, NET.seats.map(s => s.via + Math.round((s.rtt || 0) / 50)).join(), JSON.stringify(NET.roster), $('netPanel').hidden, G.menus.join(), showPause, BARN.open, DAWN.open].join('|');
   if (key === NET.uiKey) return; NET.uiKey = key;
   // title panel
   const panelOpen = !$('netPanel').hidden;
@@ -28137,6 +28257,8 @@ function netUI(now) {
   chip.className = 'panel net' + (guest && (NET.dead || !NET.inRoom) ? ' bad' : quiet || NET.hostHid || (host && !friends) ? ' warn' : '');
   $('netChipT').textContent = host ? `🌐 ${NET.code || '…'} · ${friends ? friends + (friends > 1 ? ' friends' : ' friend') + ' online' : 'waiting for friends'}`
     : guest ? (NET.dead ? '🌐 disconnected' : quiet || NET.hostHid ? `🌐 waiting for ${NET.hostName}…` : `🌐 ${NET.hostName}'s game · ${Math.round(NET.rtt)} ms`) : '';
+  const via = v => v === 'relay' ? 'relayed' : v === 'direct' ? 'direct' : '…';   // the link: straight between the two, or through a relay
+  chip.title = host ? NET.seats.filter(s => s.conn).map(s => `${s.name}: ${via(s.via)}${s.rtt ? ` · ${Math.round(s.rtt)} ms` : ''}`).join('\n') : guest && NET.inRoom ? `Link: ${via(NET.via)}` : '';
   $('netChipCopy').hidden = !(host && NET.code);
   // pause: this screen's menu. Online: everyone, ⏸ in a menu or ▶ playing; "Paused" only once the world waits
   $('pause').classList.toggle('hidden', !showPause); $('pause').classList.toggle('live', going && together);

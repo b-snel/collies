@@ -17,8 +17,8 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(req).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put('/index.html', copy)); return res; }).catch(() => caches.match('/index.html')));
     return;
   }
-  // The pipe-band music streams with range requests, and version.json must be live: let the browser handle them directly.
-  if (url.origin === location.origin && (url.pathname.startsWith('/audio/music/') || url.pathname === '/version.json')) return;
+  // The pipe-band music streams with range requests, and version.json and /turn (a day's relay credentials) must be live: let the browser handle them directly.
+  if (url.origin === location.origin && (url.pathname.startsWith('/audio/music/') || url.pathname === '/version.json' || url.pathname === '/turn')) return;
   // Everything else (three.js, icons, Google Fonts): cache first.
   if (url.origin === location.origin || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {

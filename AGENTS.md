@@ -42,7 +42,9 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   else "Dev build"). `build.js` also writes `version.json`; a different live
   build → 🔄 on the title reloads (`checkBuild`).
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
-  `?peerserver=host:port` for your own server.
+  `?peerserver=host:port` for your own server. Relay (TURN) for networks that won't link straight: `/turn`
+  (`worker.js`: Cloudflare TURN once the Worker has secrets `TURN_KEY_ID`, `TURN_KEY_TOKEN`), else PeerJS's free one;
+  `?relay`: relayed only (does the relay work?). 🌐 chip's tooltip: direct / relayed, ping.
 - Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊
   💤 ⚡ buttons (`TOUCH`, player `kind: 'touch'`), short `TOUCH_HINTS`,
   rotate prompt in portrait. Compact HUD under 520 px tall (icons, no
@@ -244,6 +246,11 @@ Bots: players with `kind: 'bot'`, `player.bot` merged into input. Inputs are
 screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 At sea each screen's camera turns on its own: a guest's input carries its camera's heading (`cy`), the host
 turns the stick into its own (`netReadInput`).
+
+Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`)
+skips snapshot / grass ticks (deltas from the last sent: nothing lost). The grass map goes deflated (`netZip`). Joining
+goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest rejoins by itself (`NETT.rejoin`).
+`tools/line-test.mjs`: the same over a throttled line.
 
 ### Keep these true
 
