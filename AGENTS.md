@@ -43,7 +43,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   build → 🔄 on the title reloads (`checkBuild`).
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
   `?peerserver=host:port` for your own server. Relay (TURN) for networks that won't link straight: `/turn`
-  (`worker.js`: Cloudflare TURN once the Worker has secrets `TURN_KEY_ID`, `TURN_KEY_TOKEN`), else PeerJS's free one;
+  (`worker.js`: Cloudflare TURN, `TURN_KEY_ID` in `wrangler.jsonc`, secret `TURN_KEY_TOKEN`; open `/turn` to check), else PeerJS's free one;
   `?relay`: relayed only (does the relay work?). 🌐 chip's tooltip: direct / relayed, ping.
 - Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊
   💤 ⚡ buttons (`TOUCH`, player `kind: 'touch'`), short `TOUCH_HINTS`,

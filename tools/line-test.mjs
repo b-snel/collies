@@ -5,8 +5,9 @@
 // Checks: the guest gets in over the line, and the grass map comes packed (~30 KB, not 159) with what the host's flock
 // grazed; a /turn relay goes to both browsers' links when the site has one; the link is direct (here); 40 sheep driven: the
 // guest's ping stays near the line's own (the host skips snapshots the line can't take yet, and slows down as its ping climbs)
-// and its flock follows the host's;
-// a dropped guest gets back in by itself. Numbers: the same drive with the skipping off (how far behind the guest falls).
+// and its flock follows the host's; a dropped guest gets back in by itself; a guest that can't reach a relay (relayed only, the
+// site's /turn slow and then off) asks /turn again each try and says where it stuck: "couldn't link up (free relay ✖)".
+// Numbers: the same drive with the skipping off (how far behind the guest falls).
 import { createRequire } from 'node:module';
 import { serve } from './serve.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -37,16 +38,21 @@ function LINE({ bps, ms, bloat }) {
   Object.defineProperty(P, 'bufferedAmount', { configurable: true, get() { const q = Q.get(this); return ba.call(this) + (q ? Math.max(0, q.bytes - bloat) : 0); } });
 }
 const TURN = 'turn:127.0.0.1:3479';   // (nothing there: only that it's handed over)
-async function openPage(query) {
+async function openPage(query, { turn = true } = {}) {   // (turn false: the site's /turn answers late, and has none)
   const ctx = await browser.newContext({ viewport: { width: 640, height: 400 }, deviceScaleFactor: 1 });
   await ctx.addInitScript(LINE, { bps: KBPS * 1000 / 8, ms: MS, bloat: BLOAT });
-  await ctx.route('**/turn', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ iceServers: [{ urls: [TURN], username: 'u', credential: 'p' }] }) }));
+  const hits = [];
+  await ctx.route('**/turn', async route => {
+    hits.push(Date.now());
+    if (turn) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ iceServers: [{ urls: [TURN], username: 'u', credential: 'p' }] }) });
+    await sleep(1500); route.fulfill({ status: 404, contentType: 'text/plain', body: 'relay off' }).catch(() => {});
+  });
   const page = await ctx.newPage(), errors = [];
   page.on('pageerror', e => errors.push(String(e.stack || e)));
   await page.goto(`http://localhost:${port}/index.html${query}`, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction(() => window.GAME && window.NET, null, { timeout: 120000 });
   await page.evaluate(() => { GAME.renderer.render = () => {}; });   // (SwiftShader would starve the CPU)
-  return { ctx, page, errors };
+  return { ctx, page, errors, hits };
 }
 const until = (P, fn, arg, ms = 20000) => P.page.waitForFunction(fn, arg, { timeout: ms, polling: 50 });
 const startRecorder = P => P.page.evaluate(() => {
@@ -157,7 +163,17 @@ try {
   await A.page.evaluate(() => { const L = NET.api.limits; [L.backlog, L.slowMs] = L.was; clearInterval(window.__drive); });
   console.log('numbers', JSON.stringify(report.numbers));
 
-  const errs = [...A.errors, ...B.errors];
+  // ---------------------------------------------------------------- no relay to be had: where it stuck, and why
+  const C = await openPage(`?debug&relay&join=${code}${PS}`, { turn: false });
+  await C.page.evaluate(() => { NET.ice = []; Object.assign(NET.api.limits, { joinMs: 6000, iceMs: 300 }); });   // (not even the free one: the same here and in CI)
+  await C.page.fill('#netName', 'Cuz');
+  await C.page.click('#netJoinBtn');
+  await until(C, () => !NET.role, null, 40000).catch(() => {});
+  await sleep(400);   // (the panel's redrawn every 120 ms)
+  const stuck = await C.page.evaluate(() => ({ role: NET.role, msg: document.getElementById('netStatus').textContent }));
+  check('no relay to be had: asks /turn each try, then "couldn\'t link up (free relay ✖)"', !stuck.role && /couldn't link up.*\(free relay ✖\)/.test(stuck.msg) && C.hits.length >= 2, { ...stuck, turnAsked: C.hits.length });
+
+  const errs = [...A.errors, ...B.errors, ...C.errors];
   check('no page errors', !errs.length, errs.slice(0, 3));
 } catch (e) {
   console.log('FAIL crashed', e && e.stack || e); failed++;
