@@ -39,7 +39,7 @@ const SECTIONS = {
   CAMERA: 'map-test amb-test', 'SYNC VISUALS': 'role-test nads-test idle-test', 'RAM NADS': 'nads-test', 'CARRY SWING': 'moves-sim water-test',
   HAIR: 'role-test', HUD: 'dawn-test map-test hank-test input-test vendor-test', MAP: 'map-test',
   HANK: 'hank-test vet-test shear-test swim-test path-test pass-test rope-test', VET: 'vet-test', 'FLOCK LOOKS': 'hank-test role-test',
-  'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim',
+  'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test llama-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim',
   'FLOCK SAVE': 'hank-test age-sim shear-test save-test', 'JOURNEY SAVE': 'save-test', VAGABOND: 'vendor-test vet-test map-test', LLAMAS: 'llama-test rope-test', SAILING: 'sail-test vendor-test swim-test amb-test',
   'ONLINE CO-OP': 'net-test sea-net-test hybrid-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
 };

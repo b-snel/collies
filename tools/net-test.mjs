@@ -491,20 +491,29 @@ try {
   const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
     boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
-  // LLAMAS: a guard and a wild one by the host's dog show on the guest (where, whose, its tassels); a spit flies on both
+  // LLAMAS: a guard and a wild one by the host's dog show on the guest (where, whose, its tassels, its name and gear); a spit flies on both
   await A.page.evaluate(() => {
     const { G, makeLlama, llamaJoin, llamaSpitAt } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
     const g = makeLlama({ x: d.x + 4, z: d.z + 2, sex: 'f', age: 5 }); g.tame = 1; llamaJoin(g);
+    GAME.LWARD.found = GAME.LLAMA_ITEMS.map(i => i.id); GAME.llamaSet(g, { name: 'Pacha', tint: '#3d8ef0', acc: ['blanket', 'pack'] }); g.greens = 6;   // LLAMA WARDROBE
     const w = makeLlama({ x: d.x - 6, z: d.z + 3, sex: 'm', age: 5 }); w.cdH = 99; window.__ll = [g, w];
     const tryIt = (n) => { if (GAME.LLAMA.spits.some(S => S.L === g) || n <= 0) return; g.hop = null; g.hopY = 0; g.air = null; if (g.state !== 'spit') { g.state = 'guard'; g.spitCd = 0; llamaSpitAt(g, w, 'llama'); } setTimeout(() => tryIt(n - 1), 250); };
     setTimeout(() => tryIt(12), 400);   // (till its spit's away: a coyote may have its eye first)
   });
   await sleep(1800); await until(B, () => !!NET.fxIn.spitFx, null, 4000).catch(() => {});
   const llH = await A.page.evaluate(() => window.__ll.map(L => ({ id: NET.api.types.llama.id(L), x: L.x, z: L.z, tame: L.tame })));
-  const llG = await B.page.evaluate(ids => ids.map(id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L ? { x: L.x, z: L.z, tame: L.tame, tassels: L.models.tassels[0].visible, n: GAME.LLAMAS.length } : null; }), llH.map(o => o.id));
+  await until(B, id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L && L.models.key.endsWith('blanket.pack'); }, llH[0].id, 4000).catch(() => {});
+  const llG = await B.page.evaluate(ids => ids.map(id => { const L = GAME.LLAMAS.find(o => o.nid === id); return L ? { x: L.x, z: L.z, tame: L.tame, tassels: L.models.tassels[0].visible, n: GAME.LLAMAS.length,
+    name: L.name, wear: GAME.llamaWearStr(L), greens: Math.round(L.greens), pack: !!L.models.pack, found: GAME.llamaFound().length } : null; }), llH.map(o => o.id));
   const llN = await A.page.evaluate(() => GAME.LLAMAS.length), spitIn = await B.page.evaluate(() => !!NET.fxIn.spitFx);
   check('llamas: a guard and a wild one on the host show on the guest (where, whose, tassels on the guard); its spit reaches the guest',
     llG.every(Boolean) && llG.every((o, i) => Math.hypot(o.x - llH[i].x, o.z - llH[i].z) < 1 && o.tame === llH[i].tame) && llG[0].tassels && !llG[1].tassels && llG[0].n === llN && spitIn, { llH, llG, llN, spitIn });
+  // …the guard's name and gear (its pack full) on the guest; the guest dresses it (its barn: llamaSet): the host's has it on
+  await B.page.evaluate(id => { const L = GAME.LLAMAS.find(o => o.nid === id); GAME.llamaSet(L, { name: 'Inti', hat: 'chullo' }); }, llH[0].id);
+  await until(A, () => window.__ll[0].name === 'Inti' && window.__ll[0].wear.hat === 'chullo', null, 4000).catch(() => {});
+  const llE = await A.page.evaluate(() => GAME.llamaWearStr(window.__ll[0]) + ' ' + window.__ll[0].name);
+  check(`llamas: a guard's name and gear on the guest (${llG[0] && llG[0].name}, ${llG[0] && llG[0].wear}); dressed there, it's on the host (${llE})`,
+    llG[0] && llG[0].name === 'Pacha' && llG[0].wear === 'none|#3d8ef0|blanket.pack' && llG[0].greens === 6 && llG[0].pack && llG[0].found === 5 && llE === 'chullo|#3d8ef0|blanket.pack Inti', { llG, llE });
   await A.page.evaluate(() => { for (const L of window.__ll) GAME.llamaRemove(L); });
   // sounds and juice from the dog moves arrived as effects (synth SFX, camera shake), and the mood readout matches
   const fxIn = await B.page.evaluate(() => NET.fxIn);

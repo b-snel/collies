@@ -1118,7 +1118,10 @@ const T = {
     catchR: 2.8, waryH: 2, bolt: 4, boltSpd: 7.5, lead: { pull: 0.12, near: 2.6 }, joinR: 7, far: 45, alarm: 26, mass: 120, buck: 1.4,
     tug: { base: 5.5, back: 1.5, heave: 3.2, beats: 2, heaveT: 0.45, yank: 3.8, walk: 1.8, tire: 10, tireR: 0.045, tireMin: 0.5 },
     spit: { r: 11, cd: 2.4, wind: 0.45, fly: 0.45, hit: 1.8, coyote: 1.2, dogR: 2.2, dogT: 1.4, dogStun: 0.35 },
-    shear: { min: 0.5, yield: 6, time: 5, regrowDays: 4 } },
+    shear: { min: 0.5, yield: 6, time: 5, regrowDays: 4 },
+    ward: { dig: 0.4, chest: 0.5 },   // LLAMA WARDROBE: a guard about and gear left: the first dig's the llamas', then this share (a chest: this)
+    cold: { wool: 0.7, blanket: 0.12, warmR: 28, numb: 0.85, dieHours: [3, 5] },   // the pass: as a sheep's, but its fleece keeps out `wool` × as much; a blanket: ×; cold: to a fire within warmR m; numb: no spit
+    pack: { greens: 12, salt: 3, r: 1.7 } },   // a pack holds this much (a dog this close tips its load in); penned, it takes it to the troughs and the lick
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
   shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, climbT: 1.2, giveUp: 15, skip: 45 },
@@ -5356,6 +5359,7 @@ function newStats() {
     llamas: 0,   // LLAMAS: brought to the flock
     spits: 0,   // LLAMAS: a guard's that hit
     criasLost: 0,   // LLAMAS: taken by a coyote or a cougar
+    llamasLost: 0,   // LLAMAS: frozen on the pass
   };
 }
 const G = {
@@ -9392,6 +9396,7 @@ function digUp(sp, d) {
     confetti(sp.x, sp.y + 1, sp.z, 40); Sound.chime([0, 4, 7, 12, 16], 660, 0.14, 0.08); starBurst(sp.x, sp.y + 1.2, sp.z, 8); shakeCam(0.15); rumble(d.player, 0.5, 0.6, 220);
     burst(sp.x, sp.y + 0.6, sp.z, 22, '#ffe27a', { speed: 4.5, up: 3.5, size: 0.13, life: 0.9, grav: -3 });
     floatText(`💎 +${n} 🧶`, sp.x, sp.y + 1.8, sp.z, '#ffd36b', 2); hank(null, pick(["Treasure! Well dug!", "Would ye look at that! A chest!"]), { force: true });
+    llamaDig(sp, d, T.llama.ward.chest, false, 1.2);   // LLAMA WARDROBE
     const more = DOG_ITEMS.filter(it => !DOGS.found.includes(it.id)); if (more.length && Math.random() < 0.6) { const it = pick(more); foundDogItem(it.id, d); setTimeout(() => floatText(`${it.icon} ${it.name.toUpperCase()}!`, sp.x, sp.y + 2.6, sp.z, '#ffd36b', 1.8), 600); }
     return;
   }
@@ -9400,6 +9405,7 @@ function digUp(sp, d) {
     giveHankClippers(d);
     return;
   }
+  if (llamaDig(sp, d)) return;   // LLAMA WARDROBE: a guard about: the first find's the llamas', then now and then
   const left = DOG_ITEMS.filter(it => !DOGS.found.includes(it.id));
   if (left.length && (!DOGS.found.length || Math.random() < T.dig.treasure)) {
     const it = pick(left); foundDogItem(it.id, d);
@@ -15334,6 +15340,18 @@ ART.llama = (({ C, E, W }) => ({ L: [['M10.6 31V18.5h10.8V31Z', '#f4efe6'], ['M1
   [E(16, 15.2, 7.8, 7.6), '#efe7da'], [E(16, 21.2, 5.2, 4.6), '#f4efe6'], [C(12.2, 8.4, 3) + C(16, 7, 3.4) + C(19.8, 8.4, 3), '#fbf8f2'],
   [C(12.3, 14.8, 1.7) + C(19.7, 14.8, 1.7), '#2b2623', 0, 0, 'n'], [C(12.9, 14.1, 0.6) + C(20.3, 14.1, 0.6), '#ffffff', 0, 0, 'n'],
   ['M14.4 20l-.7-.8M17.6 20l.7-.8M13.8 22.6c1.3 1.5 3.1 1.5 4.4 0', null, '#5a4a3e', 1.1, 'n'], [E(11.8, 10.6, 1.6, 0.9), W, 0, 0, 'n']] }))(ART_H);
+// LLAMA WARDROBE: a saddle blanket (stripes, a fringe), a chullo (flaps, ties, pompoms), a garland
+(({ C, R, W }) => Object.assign(ART, {
+  blanket: { L: [['M7 25v4.5M10.6 25v4.5M14.2 25v4.5M17.8 25v4.5M21.4 25v4.5M25 25v4.5', null, '#ffc83d', 1.6, 'o'], [R(3.5, 4.5, 25, 21.5, 3), '#d23a2e'],
+    ['M3.5 9.5h25M3.5 20.5h25', null, '#fff6e0', 2.2, 'n'], ['M3.5 12.6h25M3.5 17.4h25', null, '#ffc83d', 1.3, 'n'], ['M3.5 15h25', null, '#3a2530', 1.2, 'n'], ['M6.5 7h7', null, W, 1.4, 'n']] },
+  chullo: { L: [['M8.5 26v3M23.5 26v3', null, '#fff6e0', 1.2, 'o'], [C(8.5, 29.5, 1.6), '#ff70a6'], [C(23.5, 29.5, 1.6), '#ffc83d'],
+    ['M4.5 19.5h7v5.2c0 1.6-1.6 2.6-3.5 2.6s-3.5-1-3.5-2.6ZM20.5 19.5h7v5.2c0 1.6-1.6 2.6-3.5 2.6s-3.5-1-3.5-2.6Z', '#d23a2e'],
+    ['M4.5 20.5C4.5 11.5 9.5 6.5 16 6.5s11.5 5 11.5 14Z', '#d23a2e'], [R(3.5, 18, 25, 3.6, 1.8), '#fff6e0'], ['M7.5 14.6h17', null, '#ffc83d', 1.6, 'n'],
+    ['M9.5 11.6l1.6-1.6 1.6 1.6 1.6-1.6 1.6 1.6 1.6-1.6 1.6 1.6 1.6-1.6 1.6 1.6', null, '#fff6e0', 1.1, 'n'], [C(16, 5.2, 3), '#ffc83d'], ['M10 9.5c1.2-1.4 2.6-2.2 4.2-2.4', null, W, 1.3, 'n']] },
+  garland: { L: [[C(16, 16, 10), null, '#4f9a4a', 2.4, 'o'],
+    ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap(k => { const a = k / 8 * Math.PI * 2 - Math.PI / 2, x = +(16 + Math.cos(a) * 10).toFixed(2), y = +(16 + Math.sin(a) * 10).toFixed(2);
+      return [[C(x, y, 3.5), ['#ff70a6', '#fff6e0', '#ff8a2a', '#d23a2e'][k % 4]], [C(x, y, 1.3), '#ffc62a', 0, 0, 'n']]; })] },
+}))(ART_H);
 const EMOJI_ART = {   // one a line
   // SAILING
   '⚓': 'anchor',
@@ -15457,6 +15475,9 @@ const EMOJI_ART = {   // one a line
   '🪵': 'stick',
   // LLAMAS
   '🦙': 'llama',
+  '🧥': 'blanket',
+  '🧢': 'chullo',
+  '🌺': 'garland',
 };
 const ART_RE = new RegExp(`((?:${Object.keys(EMOJI_ART).join('|')})\uFE0F?)`, 'u'), ART_ANY = new RegExp(ART_RE.source.slice(1, -1), 'u');   // split on (keeps each emoji as written) / test for
 const artPaths = a => a.P || (a.P = a.L.map(([d, f, s, w, fl = '']) => ({ p: new Path2D(d), f, s, w, e: fl.includes('e'), o: fl.includes('o'), n: fl.includes('n') })));
@@ -15598,6 +15619,9 @@ const HINTS = {
   'llama-tug': '🦙 <b>Tug!</b> Heave on the beat to break it. Lose: it bolts.',
   'llama-led': '🦙 Broken! Lead it to the flock 🐑 or a pen.',
   'llama-guard': '🦙 A guard! It follows the flock and spits at 🐺 🐆 🦅 🐍 🐐.',
+  'llama-ward': '🦙 Llama gear! Dress your llamas in 🏚️ <b>Hank’s barn</b> (<b>Tab</b> / <b>View</b>).',
+  'llama-cold': '🦙 ❄️ A cold llama! A 🧥 <b>saddle blanket</b> keeps it warm. Or a 🔥.',
+  'llama-pack': '🦙 🎒 Bring 🌿 🧂 to its <b>pack</b>. Penned, it tips them in the troughs.',
   tug: '<b>Tug of war!</b> Walk back; <b>heave on the beat</b>: <b>Ⓑ</b>, the right stick, a flick back / <b>right click</b>. Together: team heave. <b>LT</b> / <b>C</b>: dig in. Step in as they heave: they stumble.',
   'bucket-full': 'Full! 💧 Go up to a pen\'s <b>water trough</b> to tip it in.',
   water: 'Water in! Penned sheep drink their fill.',
@@ -15664,6 +15688,7 @@ const TOUCH_HINTS = {
   bone: 'Bone! Let go ✊: <b>throw</b>',
   tug: 'Tug! Walk back, 💥 on the beat · 💤 dig in',
   llama: '🦙 Creep up with a 🪢 · tug to tame', 'llama-tug': '🦙 💥 on the beat!', 'llama-led': '🦙 → 🐑', 'llama-guard': '🦙 🛡 🐑: 🐺 🐆 🦅 🐍 🐐',
+  'llama-ward': '🦙 🧥 → 🏚️', 'llama-cold': '🦙 ❄️ → 🧥 · 🔥', 'llama-pack': '🦙 🎒 ← 🌿 🧂',
   'bucket-full': '🪣 Full! To a pen\'s 💧 trough',
   water: '💧 In! Penned sheep drink',
   thirst: 'Thirsty! 🪣 → water → 💧 trough',
@@ -17929,16 +17954,21 @@ expose(() => ({ DOGS, DOGS_KEY, DOG_ITEMS, dogGear, cycleDogBreed, dogLook, dogS
 // HANK'S BARN — two tabs on one turntable. Sheep: pick one from the flock,
 // rename it (or roll the dice), pick its wool, a hat and its colour, extras,
 // and paint straight onto its fleece. Dogs: each player's collie, its coat,
-// collar, and the hats and kit it has dug up (DOG WARDROBE). Opens from the
+// collar, and the hats and kit it has dug up (DOG WARDROBE). Llamas (once
+// there's one of ours): its coat, name, colour, and the gear dug up for them
+// (LLAMA WARDROBE). Opens from the
 // title (button / Tab / pad View) and in play (Tab / pad View); the world
 // waits while it's open. Edits go straight onto the real sheep (s.name,
 // s.look) and dogs (DOGS.looks), saved when it closes. Pad: LT/RT tab,
 // D-pad ↑↓ pick, ←→ hat, Ⓧ wool/coat, Ⓨ colour/collar, LB/RB extras,
 // Ⓐ new name, right stick turns, Ⓑ/View back.
 // =====================================================================
-const BARN = { open: false, pick: false, bf: { g: null, c: null, s: null }, tab: 'sheep', sel: null, dog: 0, col: PAINT_SWATCH[0], erase: false, size: 0.05, rot: -0.7, drag: null, fresh: 0, outfit: 0, kit: 0, mem: false, w: 0, h: 0 };
+const BARN = { open: false, pick: false, bf: { g: null, c: null, s: null }, tab: 'sheep', sel: null, dog: 0, ll: null, lkit: 0, col: PAINT_SWATCH[0], erase: false, size: 0.05, rot: -0.7, drag: null, fresh: 0, outfit: 0, kit: 0, mem: false, w: 0, h: 0 };
 const ACC_OUTFITS = [[], ['scarf'], ['bowtie'], ['shades'], ['flower'], ['scarf', 'shades'], ['bowtie', 'flower'], ['scarf', 'flower'], ['bowtie', 'shades']];
 const barnFlock = () => G.sheep.filter(s => !s.dead);
+const barnLlamas = () => LLAMAS.filter(L => L.tame > 0);   // LLAMA WARDROBE: ours (broken or a guard)
+const BARN_TABS = ['dogs', 'sheep', 'llamas'];
+const barnTabOK = t => t === 'dogs' || (t === 'sheep' ? !!BARN.sel : t === 'llamas' && !!BARN.ll);
 // ONLINE: every screen has its own barn. Whose dogs it dresses (DOGS.looks indices): offline / the host, every slot but a friend's
 // (they dress theirs in their own barn); a guest, its own: DOGS.looks[k] on its screen is its k-th dog, in the host's slot NET.locals[k].slot.
 // A guest's sheep edits go to the host as well (barnEdit → 'sh'); its snapshots bring everyone else's (barnSync).
@@ -17997,7 +18027,7 @@ function barnPart(parent, geo, mat, pos, outline = true) {
 // the selected sheep, built from the flock's own shapes, dressed in its look
 function barnModel() {
   const B = BARN; if (!B.r) return;
-  if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; B.dogM = null; }
+  if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; B.dogM = null; B.llamaM = null; }
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   B.modelKey = barnModelKey();
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
@@ -18005,6 +18035,16 @@ function barnModel() {
     M.root.scale.setScalar(1.05); M.root.position.y = 0.02; M.tail.rotation.x = 0.2;
     B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail; B.dogM = M; B.hop = performance.now();   // (a new look: a hop and a spin)
     if (B.pack) dogPackSync(dogPackBuild(M, (par, geo) => barnPart(par, geo, MAT.vc)), clamp(B.pack.greens ?? 1, 0, 1), !!B.pack.salt, 0, true);   // DOG PACK: worn here too
+    B.baseS = 1.05; return;
+  }
+  if (B.tab === 'llamas') {   // LLAMA WARDROBE: built like the one out there, in its look (its pack with what's in it)
+    const L = B.ll; if (!L) return;
+    const M = buildLlama(L, (par, geo, mat = MAT.vc, o = {}) => barnPart(par, geo, mat, null, o.outline !== false));
+    B.baseS = 0.92 * llamaSize(L); M.root.scale.setScalar(B.baseS); M.root.position.y = 0.02;
+    M.fleece.scale.setScalar(lerp(0.76, 1, clamp(L.wool, 0, 1))); M.tail.scale.setScalar(lerp(0.7, 1, clamp(L.wool, 0, 1)));
+    M.halter.visible = true; for (const m of M.tassels) m.visible = L.tame === 2; M.neck.rotation.x = 0.12;
+    llamaPackSync(M, L, 0, true);
+    B.stand.add(M.root); B.model = M.root; B.head = M.head; B.llamaM = M; B.hop = performance.now();
     return;
   }
   const s = B.sel; if (!s) return;
@@ -18034,21 +18074,22 @@ function barnRender(dt = 1 / 60) {
   if (!w || !h) return;
   if (w !== B.w || h !== B.h) { B.w = w; B.h = h; B.r.setSize(w, h, false); B.cam.aspect = w / h; B.cam.updateProjectionMatrix(); B.outline.uniforms.uRes.value.set(w * B.r.getPixelRatio(), h * B.r.getPixelRatio()); }
   if (!B.drag) B.rot += dt * 0.45;   // a slow turn on the turntable, unless you've got hold of it
-  const dogs = B.tab === 'dogs', fit = Math.max(1, 1.25 / B.cam.aspect), ck = B.tab + fit.toFixed(3);   // a step back for a dog in a top hat; further for a tall, narrow view
-  if (B.camFor !== ck) { B.camFor = ck; const ly = dogs ? 0.85 : 0.62; B.cam.position.set(0, ly + ((dogs ? 1.75 : 1.55) - ly) * fit, (dogs ? 5.3 : 4.6) * fit); B.cam.lookAt(0, ly, 0); }
+  const dogs = B.tab === 'dogs', lls = B.tab === 'llamas', fit = Math.max(1, 1.25 / B.cam.aspect), ck = B.tab + fit.toFixed(3);   // a step back for a dog in a top hat; further for a tall, narrow view
+  if (B.camFor !== ck) { B.camFor = ck; const ly = lls ? 1.08 : dogs ? 0.85 : 0.62; B.cam.position.set(0, ly + ((lls ? 1.9 : dogs ? 1.75 : 1.55) - ly) * fit, (lls ? 5.5 : dogs ? 5.3 : 4.6) * fit); B.cam.lookAt(0, ly, 0); }
   B.stand.rotation.y = B.rot;
-  if (B.tab === 'dogs' && B.dogM) {   // the hop: squash, up and round once, squash, settle
-    const p = (performance.now() - (B.hop || -1e9)) / 650, m = B.model;
+  if ((B.tab === 'dogs' && B.dogM) || (B.tab === 'llamas' && B.llamaM)) {   // the hop: squash, up and round once, squash, settle
+    const p = (performance.now() - (B.hop || -1e9)) / 650, m = B.model, k = B.baseS || 1.05;
     if (p < 1) { const up = Math.max(0, Math.sin(Math.PI * clamp((p - 0.12) / 0.7, 0, 1))), sq = p < 0.12 ? -Math.sin(p / 0.12 * Math.PI) * 0.16 : p > 0.82 ? -Math.sin((p - 0.82) / 0.18 * Math.PI) * 0.12 : up * 0.08;
-      m.position.y = 0.02 + up * 0.34; m.scale.set(1.05 * (1 - sq * 0.5), 1.05 * (1 + sq), 1.05 * (1 - sq * 0.5)); B.stand.rotation.y = B.rot + (1 - (1 - clamp((p - 0.12) / 0.7, 0, 1)) ** 3) * TAU; }
-    else { m.position.y = 0.02; m.scale.setScalar(1.05); }
+      m.position.y = 0.02 + up * 0.34; m.scale.set(k * (1 - sq * 0.5), k * (1 + sq), k * (1 - sq * 0.5)); B.stand.rotation.y = B.rot + (1 - (1 - clamp((p - 0.12) / 0.7, 0, 1)) ** 3) * TAU; }
+    else { m.position.y = 0.02; m.scale.setScalar(k); }
   }
   if (B.nadsMs && B.model && B.body && B.sel) {   // RAM NADS
     const s = B.sel; B.model.updateWorldMatrix(true, true);
     nadsStep(B.nads, B.body.matrixWorld, B.model.matrixWorld, (s.scale || 1) * ageGrow(s), nadsK(s), Math.min(dt, 0.1), 0, null);
     nadsMats(B.nads, B.nadsMs[0].matrix, B.nadsMs[1].matrix, B.nadsMs[2].matrix); for (const m of B.nadsMs) m.matrixWorldNeedsUpdate = true;
   }
-  if (B.head) B.head.rotation.x = 0.05 + Math.sin(performance.now() / 900) * 0.06;
+  if (B.head) B.head.rotation.x = (B.tab === 'llamas' ? -0.12 : 0.05) + Math.sin(performance.now() / 900) * 0.06;
+  if (B.tab === 'llamas' && B.llamaM) { const t = performance.now() / 1000; B.llamaM.head.rotation.y = Math.sin(t * 0.6) * 0.3; B.llamaM.ears.forEach((e, i) => { e.rotation.x = -0.05 + Math.max(0, Math.sin(t * 2.3 + i)) ** 8 * 0.3; e.rotation.z = (i ? -1 : 1) * 0.16; }); B.llamaM.eyes.scale.y = (t * 0.7) % 3 < 0.06 ? 0.15 : 1; }   // ears twitch, it blinks
   if (B.tab === 'dogs' && B.dogTail) B.dogTail.rotation.y = Math.sin(performance.now() / 110) * 0.5;   // a happy wag
   if (B.tab === 'dogs' && B.dogM) hairStep(B.dogM, Math.min(dt, 0.05), 0);   // HAIR: it swings as the turntable turns and the head bobs
   B.r.render(B.sc, B.cam);
@@ -18091,6 +18132,10 @@ function barnPickDog(slot) {
   BARN.dog = slot; barnModel(); barnRefresh(); Sound.bark(PCOL[barnSlot(slot)].pitch, 0, lookVoice(barnDogLook(slot)));
   const b = document.querySelector(`#barnList .dogCard[data-dog="${slot}"]`); if (!b) return;
   barnJuice(b, PCOL[barnSlot(slot)].ui);
+}
+function barnPickLlama(L) {   // LLAMA WARDROBE: its hum; it hops and spins
+  if (!L) return; BARN.ll = L; barnModel(); barnRefresh(); LSND.hum(0, 0.12, L.grown ? (L.sex === 'm' ? 0.85 : 1) : 1.5);
+  const b = document.querySelector(`#barnList [data-llama="${L.id}"]`); if (b) barnJuice(b, LLAMA_TINTS[0][0], 8);
 }
 // a picked thing: it squashes and hops (.pick), sparks fly out of it
 function barnJuice(b, col, n = 12) {
@@ -18234,11 +18279,12 @@ function openBarn(sel) {
   BARN.open = true; BARN.fromTitle = G.mode === 'title'; BARN.fresh = 0; BARN.mem = false; BARN.listKey = ''; keys.clear();
   BARN.sel = sel && flock.includes(sel) ? sel : flock.includes(BARN.sel) ? BARN.sel : flock[0] || null;
   if (!barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
-  BARN.tab = sel && BARN.sel ? 'sheep' : 'dogs';   // the dogs first (a sheep asked for: the flock)
+  const lls = barnLlamas(); BARN.ll = sel && sel.isLlama && lls.includes(sel) ? sel : lls.includes(BARN.ll) ? BARN.ll : lls[0] || null;   // LLAMA WARDROBE
+  BARN.tab = sel && sel.isLlama && BARN.ll ? 'llamas' : sel && BARN.sel ? 'sheep' : 'dogs';   // the dogs first (a sheep asked for: the flock; a llama: ours)
   const el = document.getElementById('barn');
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Hank's barn">
     <div class="barnHead"><h2>Hank’s barn</h2>
-      <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button></div>
+      <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="llamas">🦙 Llamas</button></div>
       <button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button></div>
     <div class="barnGrid">
       <div class="barnList" id="barnList"></div>
@@ -18266,9 +18312,10 @@ function openBarn(sel) {
   nm.addEventListener('input', () => {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
     if (BARN.tab === 'dogs') { dogName(BARN.dog, v.trim()); barnList(); return; }
+    if (BARN.tab === 'llamas') { if (BARN.ll && v.trim()) llamaSet(BARN.ll, { name: v.trim() }); barnList(); return; }
     const s = BARN.sel; if (!s) return; if (v.trim()) { s.name = v.trim(); s.renamed = true; netSheepEdit(s, { name: s.name }); } barnList();
   });
-  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? barnDogLook(BARN.dog).name : BARN.sel ? BARN.sel.name : ''; barnList(); });
+  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? barnDogLook(BARN.dog).name : BARN.tab === 'llamas' ? (BARN.ll ? BARN.ll.name : '') : BARN.sel ? BARN.sel.name : ''; barnList(); });
   document.getElementById('barnSize').addEventListener('input', e => { BARN.size = e.target.value / 100; });
   el.querySelector('.barnCard').addEventListener('click', barnClick);
   barnTab(BARN.tab);
@@ -18278,9 +18325,10 @@ function openBarn(sel) {
 }
 // switch between the flock and the dogs
 function barnTab(tab) {
-  if (tab === 'sheep' && !BARN.sel) return false;
+  if (!BARN_TABS.includes(tab)) tab = 'sheep';
+  if (!barnTabOK(tab)) return false;
   breedPickOpen(false);
-  BARN.tab = tab === 'dogs' ? 'dogs' : 'sheep'; BARN.drag = null; BARN.fresh = 0;
+  BARN.tab = tab; BARN.drag = null; BARN.fresh = 0;
   const ward = document.getElementById('barnWard'); if (!ward) return true;
   if (BARN.tab === 'sheep') ward.innerHTML =
       barnSec('Wool', 'barnWool', barnSwatches(WOOL_SWATCH, 'wool'))
@@ -18288,7 +18336,15 @@ function barnTab(tab) {
     + barnSec('Colour', 'barnHatCol', barnSwatches(HATCOL_SWATCH, 'hatcol'))
     + barnSec('Extras', 'barnAcc', barnIcons(SHEEP_ACC, 'acc'), 'chips')
     + '<span class="note" id="barnNote"></span>';
-  else {
+  else if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: its coat (free), the colour of its gear, a hat and its kit (dug up)
+    const lock = id => !llamaFound().includes(id);
+    ward.innerHTML =
+        barnSec('Coat', 'barnLCoat', LLAMA_COATS.map((c, i) => `<button type="button" class="swatch" data-lcoat="${i}" style="background:${c[0] === c[1] && !c[3] ? c[0] : `linear-gradient(135deg,${c[0]} 0 55%,${c[3] ? c[2] : c[1]} 55% 100%)`}" aria-label="${LLAMA_COAT_NAMES[i]}" title="${LLAMA_COAT_NAMES[i]}"></button>`).join(''))
+      + barnSec('Colour', 'barnLTint', barnSwatches(LLAMA_TINTS, 'ltint'))
+      + barnSec('Hat', 'barnLHat', barnIcons([{ id: 'none', name: 'No hat' }, ...LLAMA_HATS], 'lhat', id => id !== 'none' && lock(id)), 'chips')
+      + barnSec('Kit', 'barnLKit', barnIcons(LLAMA_KIT, 'lkit', lock), 'chips')
+      + '<span class="note" id="barnNote"></span>';
+  } else {
     const lock = id => !DOGS.found.includes(id);
     ward.innerHTML =
         barnSec('Role', 'barnRole', ROLES.map(b => `<button type="button" class="ico" data-role="${b.id}" title="${b.name}: ${b.tip}" aria-label="${b.name}">${b.icon}</button>`).join(''), 'chips')
@@ -18301,7 +18357,7 @@ function barnTab(tab) {
       + `<span class="note" id="barnNote"></span>`;
   }
   document.getElementById('barnTools').hidden = BARN.tab !== 'sheep';
-  document.getElementById('barnViewWrap').classList.toggle('dogs', BARN.tab === 'dogs');
+  document.getElementById('barnViewWrap').classList.toggle('dogs', BARN.tab !== 'sheep');
   document.querySelector('#barn .barnGrid').classList.toggle('dogs', BARN.tab === 'dogs');
   const ls = document.getElementById('barnList'); ls.classList.toggle('dogs', BARN.tab === 'dogs'); ls.dataset.mode = '';   // (the dog cards come in again)
   barnModel(); barnRefresh();
@@ -18329,6 +18385,17 @@ function barnClick(e) {
     if (d.collar) { dogSet(slot, { collar: d.collar }); return; }
     if (d.dhat) { dogSet(slot, { hat: d.dhat }); return; }
     if (d.kit) { dogSet(slot, { toggle: d.kit }); return; }
+    return;
+  }
+  if (BARN.tab === 'llamas') {   // LLAMA WARDROBE
+    const L = BARN.ll;
+    if (d.llama) { barnPickLlama(barnLlamas().find(o => o.id === +d.llama)); return; }
+    if (!L) return;
+    if (b.id === 'barnDice') { llamaSet(L, { name: llamaNameNew(L.name) }); return; }
+    if (d.lcoat !== undefined) { llamaSet(L, { coat: +d.lcoat }); return; }
+    if (d.ltint) { llamaSet(L, { tint: d.ltint }); return; }
+    if (d.lhat) { llamaSet(L, { hat: d.lhat }); return; }
+    if (d.lkit) { llamaSet(L, { toggle: d.lkit }); return; }
     return;
   }
   if (d.sheep) { barnSelect(barnFlock().find(o => o.id === +d.sheep)); Sound.baa((BARN.sel && BARN.sel.pitch) || 1, 0.25, 0, true); return; }
@@ -18367,6 +18434,11 @@ function barnList() {
     return;
   }
   el.dataset.mode = '';
+  if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: a row each: its coat, name, ♂ / ♀ / a cria
+    el.innerHTML = barnLlamas().map(L => `<button type="button" class="barnSheep${L === BARN.ll ? ' on' : ''}" data-llama="${L.id}"><i style="background:${LLAMA_COATS[L.coat % LLAMA_COATS.length][0]}"></i>${escHTML(L.name)}<small>${L.grown ? L.sex === 'm' ? '♂' : '♀' : '🍼'}</small></button>`).join('');
+    const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   const flock = barnFlock();
   el.innerHTML = flock.map(s => { const L = lookOf(s), tag = s.lamb ? '🍼' : s.ram ? '♈' : '';
     return `<button type="button" class="barnSheep${s === BARN.sel ? ' on' : ''}" data-sheep="${s.id}"><i style="background:${L.wool || (s.black ? '#4a4440' : '#f6f1e3')}"></i>${escHTML(s.name)}<small>${tag}</small></button>`; }).join('')
@@ -18376,6 +18448,12 @@ function barnList() {
 function barnInfo() {
   const el = document.getElementById('barnInfo'); if (!el) return;
   if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[barnSlot(BARN.dog)].name}’s dog` : 'Give your dog a name'; return; }
+  if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: ♂ / ♀ / cria, its age, fleece, what's in its pack, how cold it is
+    const L = BARN.ll; el.title = ''; if (!L) { el.textContent = ''; return; }
+    el.textContent = [L.grown ? (L.sex === 'm' ? '♂' : '♀') : '🍼', `${L.age | 0} day${(L.age | 0) === 1 ? '' : 's'}`, `🧶 ${Math.round(clamp(L.wool, 0, 1) * 100)}%`,
+      llamaHas(L, 'pack') ? `🎒 🌿 ${Math.round(L.greens)}/${T.llama.pack.greens} 🧂 ${L.salt | 0}/${T.llama.pack.salt}` : '', L.cold > 0.05 ? `❄️ ${Math.round(L.cold * 100)}%` : ''].filter(Boolean).join(' · ');
+    return;
+  }
   const s = BARN.sel; if (!s) { el.textContent = ''; return; }
   const hunger = s.hunger >= 1 ? 'starving' : s.hunger > 0.7 ? 'hungry' : s.hunger > 0.35 ? 'peckish' : 'well fed';
   const b = s.brave ?? 0.5;
@@ -18386,7 +18464,7 @@ function barnRefresh() {
   barnList(); barnInfo();
   const on = (sel, attr, fn) => document.querySelectorAll(sel).forEach(b => b.classList.toggle('on', fn(b.dataset[attr])));
   const pickName = (id, txt) => { const e = document.getElementById(id + 'Pick'); if (e) e.textContent = txt ? ' · ' + txt : ''; };
-  document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = b.dataset.tab === 'sheep' && !BARN.sel; });
+  document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = b.dataset.tab === 'sheep' && !BARN.sel; b.hidden = b.dataset.tab === 'llamas' && !BARN.ll; });
   const nm = document.getElementById('barnName'), note = document.getElementById('barnNote');
   if (BARN.tab === 'dogs') {
     const L = barnDogLook(BARN.dog);
@@ -18411,6 +18489,18 @@ function barnRefresh() {
     on('#barnRole button', 'role', v => v === tv.b); pickName('barnRole', B.name + (B.learn ? ` · ⬆×${B.learn}` : ''));
     if (tc) tc.innerHTML = TRAITS.map((t, i) => `<span title="${t.name}">${t.icon}</span>${roleStars(B[t.id])}<span class="pips" title="${t.name}: ${Math.floor(tv.p[i])}/${T.train.lv.length}">`
       + T.train.lv.map((_, k) => `<i style="--p:${clamp(tv.p[i] - k, 0, 1).toFixed(2)}"></i>`).join('') + '</span>').join('');
+  } else if (BARN.tab === 'llamas') {   // LLAMA WARDROBE
+    const L = BARN.ll;
+    if (L) {
+      const W = L.wear, ci = L.coat % LLAMA_COATS.length;
+      if (nm && document.activeElement !== nm) { nm.value = L.name; nm.placeholder = ''; }
+      on('#barnLCoat .swatch', 'lcoat', v => +v === ci); on('#barnLTint .swatch', 'ltint', v => v === W.tint);
+      on('#barnLHat button', 'lhat', v => v === W.hat); on('#barnLKit button', 'lkit', v => W.acc.includes(v));
+      pickName('barnLCoat', LLAMA_COAT_NAMES[ci]); pickName('barnLTint', colourName(LLAMA_TINTS, W.tint));
+      pickName('barnLHat', W.hat === 'none' ? '' : LLAMA_HATS.find(h => h.id === W.hat).name); pickName('barnLKit', W.acc.map(id => LLAMA_KIT.find(k => k.id === id).name).join(', '));
+    }
+    const n = llamaFound().length, all = LLAMA_ITEMS.length;
+    if (note) note.textContent = n >= all ? `🦴 All ${all} found!` : `🦴 ${n} of ${all} found · dig for more on the trail`;
   } else {
     const s = BARN.sel;
     if (s) {
@@ -18452,6 +18542,7 @@ function closeBarn() {
 // what the turntable shows, and what the list shows: rebuilt when either changes (the world can go on while it's open: online,
 // sheep come and go, friends rename and dress them, levels arrive)
 function barnModelKey() {
+  if (BARN.tab === 'llamas') { const L = BARN.ll; return L ? 'l' + L.id + llamaLookKey(L) + clamp(L.wool, 0, 1).toFixed(2) + L.grown + L.tame + Math.round(L.greens) + (L.salt | 0) : ''; }
   if (BARN.tab === 'dogs') return 'd' + BARN.dog + JSON.stringify(barnDogLook(BARN.dog)) + barnTrainView(BARN.dog).b;
   const s = BARN.sel; return s ? 's' + s.id + netLookJSON(s) + (s.wool ?? 1).toFixed(2) + !!s.lamb + !!s.ram : '';
 }
@@ -18459,8 +18550,10 @@ function barnSync() {
   const F = barnFlock();
   if (BARN.sel && !F.includes(BARN.sel)) { BARN.sel = F[0] || null; if (!BARN.sel && BARN.tab === 'sheep') { barnTab('dogs'); return; } }
   if (BARN.tab === 'dogs' && !barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
+  const LS = barnLlamas();   // LLAMA WARDROBE: ours come and go (a cria born, one lost)
+  if (!LS.includes(BARN.ll)) { BARN.ll = LS[0] || null; if (!BARN.ll && BARN.tab === 'llamas') { barnTab('dogs'); return; } }
   if (!BARN.drag && barnModelKey() !== BARN.modelKey) barnModel();
-  const key = BARN.tab === 'dogs' ? barnDogs().map(k => JSON.stringify(barnDogLook(k)) + JSON.stringify(barnTrainView(k))).join() : F.map(o => o.id + o.name).join() + (BARN.sel ? BARN.sel.id + BARN.sel.name : '');
+  const key = (BARN.ll ? 'L' + BARN.ll.id : '') + '|' + (BARN.tab === 'llamas' ? LS.map(L => L.id + L.name + llamaLookKey(L) + Math.round(L.greens) + (L.salt | 0) + Math.round((L.cold || 0) * 20) + Math.round(L.wool * 20)).join() : '') + '|' + (BARN.tab === 'dogs' ? barnDogs().map(k => JSON.stringify(barnDogLook(k)) + JSON.stringify(barnTrainView(k))).join() : F.map(o => o.id + o.name).join() + (BARN.sel ? BARN.sel.id + BARN.sel.name : ''));
   if (key !== BARN.listKey) { BARN.listKey = key; barnRefresh(); }
 }
 // called first thing in frame(): opens on the pad's View button; while open, runs the barn and tells frame() to skip the world
@@ -18484,7 +18577,7 @@ function barnFrame(dt) {
       continue;
     }
     if (e(1) || e(8)) { closeBarn(); break; }
-    if (e(6) || e(7)) barnTab(BARN.tab === 'dogs' ? 'sheep' : 'dogs');
+    if (e(6) || e(7)) { const tabs = BARN_TABS.filter(barnTabOK), i = tabs.indexOf(BARN.tab); barnTab(tabs[(i + (e(7) ? 1 : tabs.length - 1)) % tabs.length]); }
     const rx = gp.axes[2] || 0; if (Math.abs(rx) > 0.25) BARN.rot += rx * dt * 3;
     if (BARN.tab === 'dogs') {
       const slot = BARN.dog, D = dogLook(slot), kit = [[], ...DOG_KIT.filter(k => DOGS.found.includes(k.id)).map(k => [k.id])], ks = barnDogs();
@@ -18497,6 +18590,17 @@ function barnFrame(dt) {
       if (e(4) || e(5)) { BARN.kit = (BARN.kit + (e(5) ? 1 : kit.length - 1)) % kit.length; dogSet(slot, { acc: kit[BARN.kit] }); }
       if (e(0)) dogName(slot, pick(DOG_NAMES.filter(n => n !== barnDogLook(slot).name)));
       if (e(11)) { const i = ROLES.findIndex(b => b.id === barnTrainView(slot).b); dogSet(slot, { role: ROLES[(i + 1) % ROLES.length].id }); }   // R3: ROLES
+      continue;
+    }
+    if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: D-pad ↑↓ pick, ←→ hat, Ⓧ coat, Ⓨ colour, LB/RB kit, Ⓐ a new name
+      const L = BARN.ll; if (!L) continue;
+      const has = id => llamaFound().includes(id), W = L.wear;
+      if (e(12) || e(13)) barnPickLlama(cyc(barnLlamas(), L, e(13) ? 1 : -1));
+      if (e(14) || e(15)) llamaSet(L, { hat: cyc(['none', ...LLAMA_HATS.map(h => h.id).filter(has)], W.hat, e(15) ? 1 : -1) });
+      if (e(2)) llamaSet(L, { coat: (L.coat + 1) % LLAMA_COATS.length });
+      if (e(3)) llamaSet(L, { tint: cyc(LLAMA_TINTS.map(c => c[0]), W.tint, 1) });
+      if (e(4) || e(5)) { const os = LLAMA_OUTFITS.filter(o => o.every(has)); BARN.lkit = (BARN.lkit + (e(5) ? 1 : os.length - 1)) % os.length; llamaSet(L, { acc: os[BARN.lkit] }); }
+      if (e(0)) llamaSet(L, { name: llamaNameNew(L.name) });
       continue;
     }
     if (e(12) || e(13)) barnSelect(F[(F.indexOf(s) + (e(13) ? 1 : F.length - 1)) % F.length]);
@@ -18525,7 +18629,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'Tab') { e.preventDefault(); if (!e.repeat && (G.mode === 'play' || G.mode === 'title')) { Sound.init(); openBarn(); } }
 }, true);
-expose(() => ({ BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, barnPickDog, THUMB, barnEdit, barnDogs, barnDogLook, barnSync, dogName }));   // HANK'S BARN
+expose(() => ({ BARN, openBarn, closeBarn, barnSelect, barnSet, barnRender, barnTab, barnPickDog, THUMB, barnEdit, barnDogs, barnDogLook, barnSync, dogName, barnPickLlama, barnLlamas }));   // HANK'S BARN
 
 // =====================================================================
 // DAWN REPORT — at dawn, if anyone was born or lost since the last one:
@@ -20144,6 +20248,7 @@ expose(() => ({ VAG, VSTALL, vagPlan, vagPress, vagPressOK, vagTrade, vagPack, v
 // (L.tame 1), led on the rope; brought to the flock (or into a pen): a guard (L.tame 2). GUARDS go where the flock goes (into its pen with
 // a hop, aboard her, kushed at sea), stand between it and trouble and SPIT at a foe in reach: coyotes, cougars, the falcon, snakes, goats.
 // Hank shears them (llamaShear*). A guard's cria is a guard. Bonked and grabbed as sheep are (launchLlama, airStep, holdStep).
+// GEAR dug up for ours (LLAMA WARDROBE), dressed in the barn; COLD up the pass (a saddle blanket keeps it out); a PACK of greens and salt.
 // L.state: graze kush flee court mate bolt tug led guard spit shear
 // =====================================================================
 const LLAMAS = [], LLAMA = { seed: 0, nid: 0, herds: [], spits: [], seen: false, said: {}, fc: null, fr: 6, pen: null };
@@ -20152,6 +20257,67 @@ const LLAMA_COATS = [   // [fleece, face and legs, marks, pattern]: white, cream
   ['#2e2825', '#2e2825'], ['#a39c93', '#8f887f'], ['#f4efe6', '#7d5335', '#7d5335', 'paint'], ['#efe7da', '#efe7da', '#5b3b27', 'spots'], ['#5b3b27', '#f4efe6'],
 ];
 const LLAMA_TASSELS = ['#e8473f', '#ff8fb8', '#ffd34d', '#3fbf5a', '#3d8ef0', '#ff8a2a', '#9b59d0'];
+// ---------------- LLAMA WARDROBE: gear dug up (DIG SPOTS, once there's a guard: the blanket, the pack, then any), found for good
+// (localStorage[LWARD_KEY]); each llama of ours has its own look: L.name, L.coat, L.wear { hat, tint, acc }, dressed in HANK'S BARN.
+// The tinted parts take L.wear.tint. A SADDLE BLANKET keeps the cold out (COLD); a PACK carries greens and salt (PACK) ----------------
+Object.assign(ICONS, { chullo: '🧢', blanket: '🧥', pack: '🎒', garland: '🌺' });   // (the bell: the dogs')
+const LLAMA_ITEMS = [['blanket', 'Saddle blanket', 'acc'], ['pack', 'Pack', 'acc'], ['chullo', 'Chullo', 'hat'], ['bell', 'Bell', 'acc'], ['garland', 'Garland', 'acc']]
+  .map(([id, name, kind]) => ({ id, name, kind, icon: ICONS[id] }));
+const LLAMA_HATS = LLAMA_ITEMS.filter(it => it.kind === 'hat'), LLAMA_KIT = LLAMA_ITEMS.filter(it => it.kind === 'acc');
+const LLAMA_OUTFITS = [[], ['blanket'], ['pack'], ['blanket', 'pack'], ['bell'], ['garland'], ['blanket', 'bell'], ['blanket', 'pack', 'bell'], ['pack', 'garland'], ['blanket', 'pack', 'garland']];   // (the pad's LB/RB)
+const LLAMA_TINTS = [['#d23a2e', 'red'], ['#ff6fae', 'pink'], ['#f39c12', 'orange'], ['#f2c230', 'yellow'], ['#3fbf5a', 'green'], ['#1fa3a3', 'teal'], ['#3d8ef0', 'blue'], ['#8e44ad', 'purple']];
+const LLAMA_COAT_NAMES = ['White', 'Cream', 'Fawn', 'Brown', 'Chocolate', 'Black', 'Grey', 'Paint', 'Appaloosa', 'Two-tone'];
+const LLAMA_NAMES = ['Pacha', 'Inti', 'Killa', 'Chaska', 'Sumaq', 'Yaku', 'Nina', 'Wayra', 'Paco', 'Pepe', 'Lulu', 'Coco', 'Mocha', 'Quinoa', 'Dolly', 'Taki'];
+const LWARD_KEY = 'collies.llamas.v1', LWARD = { found: [], net: null };   // (net: ONLINE, on a guest: the host's)
+function loadLlamaWard() { let j = null; try { j = JSON.parse(localStorage.getItem(LWARD_KEY) || 'null'); } catch (e) {} LWARD.found = j && Array.isArray(j.found) ? LLAMA_ITEMS.map(it => it.id).filter(id => j.found.includes(id)) : []; }
+function saveLlamaWard() { try { localStorage.setItem(LWARD_KEY, JSON.stringify({ v: 1, found: LWARD.found })); return true; } catch (e) { return false; } }
+loadLlamaWard();
+const llamaFound = () => NET.role === 'guest' ? LWARD.net || [] : LWARD.found;   // (the llamas are the host's: so's their gear)
+const llamaHas = (L, id) => !!(L.wear && (L.wear.hat === id || L.wear.acc.includes(id)));
+function cleanLlamaWear(w) {
+  const o = { hat: 'none', tint: LLAMA_TINTS[0][0], acc: [] }; if (!w || typeof w !== 'object') return o;
+  if (LLAMA_HATS.some(h => h.id === w.hat)) o.hat = w.hat;
+  if (isHex(w.tint)) o.tint = w.tint;
+  if (Array.isArray(w.acc)) o.acc = LLAMA_KIT.map(a => a.id).filter(id => w.acc.includes(id));
+  return o;
+}
+const llamaWearStr = L => { const W = L.wear || cleanLlamaWear(); return `${W.hat}|${W.tint}|${W.acc.join('.')}`; };   // (ONLINE; the journey save)
+const llamaWearOf = v => { const [hat, tint, acc] = String(v || '').split('|'); return cleanLlamaWear({ hat, tint, acc: (acc || '').split('.') }); };
+const llamaLookKey = L => (L.coat % LLAMA_COATS.length) + '|' + llamaWearStr(L);   // (what its model's built in)
+function llamaNameNew(not) { const used = new Set(LLAMAS.map(o => o.name)); return pick(LLAMA_NAMES.filter(n => !used.has(n) && n !== not)) || pick(LLAMA_NAMES); }
+// a llama's name or look (the barn, the tests; ONLINE: a guest's goes to the host as well); only what's been found goes on
+function llamaSet(L, ch) {
+  if (!L || !L.tame || !ch || typeof ch !== 'object') return;
+  const W = L.wear || (L.wear = cleanLlamaWear()), has = id => llamaFound().includes(id), kit = () => { W.acc = LLAMA_KIT.map(a => a.id).filter(id => W.acc.includes(id)); };
+  if (ch.name !== undefined) { const n = String(ch.name).replace(/\s+/g, ' ').trim().slice(0, 14); if (n) L.name = n; }
+  if (ch.coat !== undefined && Number.isFinite(+ch.coat) && LLAMA_COATS[+ch.coat | 0]) L.coat = +ch.coat | 0;
+  if (ch.tint !== undefined && isHex(ch.tint)) W.tint = ch.tint;
+  if (ch.hat !== undefined && (ch.hat === 'none' || (has(ch.hat) && LLAMA_HATS.some(h => h.id === ch.hat)))) W.hat = ch.hat;
+  if (Array.isArray(ch.acc)) W.acc = ch.acc.filter(id => has(id));
+  if (ch.toggle !== undefined && has(ch.toggle) && LLAMA_KIT.some(a => a.id === ch.toggle)) { const i = W.acc.indexOf(ch.toggle); if (i >= 0) W.acc.splice(i, 1); else W.acc.push(ch.toggle); }
+  kit();
+  if (NET.role === 'guest' && L.nid) netSend({ t: 'll', id: L.nid, ch });
+  if (BARN.open && BARN.tab === 'llamas') { if (BARN.ll === L) { barnModel(); barnRefresh(); } else barnList(); }
+}
+// DIG SPOTS: a guard about and gear left: the first find's the llamas' (the blanket, the pack, then any), then now and then (p).
+// It goes straight on the guard nearest the dog without one
+function llamaDig(sp, d, p = T.llama.ward.dig, first = true, dy = 0) {
+  const left = LLAMA_ITEMS.filter(it => !LWARD.found.includes(it.id));
+  if (!left.length || !LLAMAS.some(o => o.tame === 2)) return false;
+  if (!(first && !LWARD.found.length) && Math.random() >= p) return false;
+  const it = LWARD.found.length < 2 ? left[0] : pick(left); LWARD.found.push(it.id); saveLlamaWard();
+  let L = null, bd = 1e9;
+  for (const o of LLAMAS) { if (o.tame !== 2 || (it.kind === 'hat' ? o.wear.hat !== 'none' : o.wear.acc.includes(it.id))) continue; const dd = Math.hypot(o.x - d.x, o.z - d.z); if (dd < bd) { bd = dd; L = o; } }
+  if (L) { if (it.kind === 'hat') L.wear.hat = it.id; else L.wear.acc = LLAMA_KIT.map(a => a.id).filter(id => id === it.id || L.wear.acc.includes(id)); }
+  confetti(sp.x, sp.y + 1, sp.z, 30); Sound.chime([0, 4, 7, 12, 16], 587, 0.12, 0.07);
+  burst(sp.x, sp.y + 0.6, sp.z, 16, '#ffe27a', { speed: 4, up: 2.5, size: 0.12, life: 0.7, grav: -2 });
+  floatText(`🦙 ${it.icon} ${it.name.toUpperCase()}!`, sp.x, sp.y + 1.6 + dy, sp.z, '#ffd36b', 1.8);
+  toast(`${d.player.name || PCOL[d.player.slot].name} dug up a ${it.name.toLowerCase()} for the llamas! ` + (LWARD.found.length === 1 ? 'Try it on in Hank’s barn.' : `(${LWARD.found.length}/${LLAMA_ITEMS.length})`), 'good');
+  hint('llama-ward');
+  if (it.id === 'blanket') hank(null, "A saddle blanket! That'll keep a llama warm up the mountain.", { force: true, delay: 0.8 });
+  else if (it.id === 'pack') hank(null, "A pack for a llama! It'll carry greens and salt to the troughs.", { force: true, delay: 0.8 });
+  return true;
+}
 const llamaSize = L => (L.sex === 'm' ? 1.05 : 1) * lerp(0.5, 1, clamp(L.age / T.llama.adultDays, 0, 1));
 const llamaMass = L => T.llama.mass * llamaSize(L) ** 3;   // (BONES, punts)
 const llamaWild = L => !L.tame;
@@ -20195,8 +20361,10 @@ function makeLlama(o) {
     sex: o.sex, age: o.age, coat: o.coat ?? Math.floor(_llamaR() * LLAMA_COATS.length), look: o.look ?? Math.floor(_llamaR() * 1e6), wool: o.wool ?? (0.75 + _llamaR() * 0.25),
     tame: o.tame || 0, herd: o.herd || null, mum: o.mum || null, r: K.r, state: o.tame === 2 ? 'guard' : 'graze', t: 0, prev: null, goal: null, goT: 0,
     thinkT: _llamaR() * 3, waryH: 0, preg: 0, cdH: o.cdH ?? _llamaR() * 4, mate: null, rope: null, ropeI: -1, tugS: 0, tugSide: 0, tugK: 0, tugT: 0, stumble: 0,
-    spitCd: 0, crowdT: 0, color: '#e8a24a', grabbed: null, pen: null, name: '🦙', hop: null, hopY: 0, air: null, heldBy: null, kushK: 0, grazeK: 0, leg: _llamaR() * TAU, ga: _llamaR() * TAU, alarmAt: 0, stuckT: 0, lastD: 1e9, pose: null };
+    spitCd: 0, crowdT: 0, color: '#e8a24a', grabbed: null, pen: null, name: o.name || '🦙', hop: null, hopY: 0, air: null, heldBy: null, kushK: 0, grazeK: 0, leg: _llamaR() * TAU, ga: _llamaR() * TAU, alarmAt: 0, stuckT: 0, lastD: 1e9, pose: null };
   L.pitch = 1.5;   // (COYOTES, COUGARS: a cria's cry, as a lamb's)
+  L.wear = cleanLlamaWear(o.wear); L.greens = o.greens || 0; L.salt = o.salt | 0; L.cold = o.cold || 0;   // LLAMA WARDROBE, PACK, COLD
+  if (L.tame && L.name === '🦙') L.name = llamaNameNew();
   L.grown = L.age >= K.adultDays; L.str = (L.sex === 'm' ? 1.15 : 1) * lerp(0.6, 1, clamp(L.age / K.adultDays, 0, 1));
   LLAMAS.push(L); llamaModel(L); return L;
 }
@@ -20229,6 +20397,7 @@ function resetLlamas(seed) {
 // ---------------- moving ----------------
 const _lmA = { x: 0, y: 0, z: 0 }, _lmB = { x: 0, y: 0, z: 0 };
 function llamaMove(L, gx, gz, spd, dt, stop = 0.4, F = L.tame ? SWIM_SDF : SDF) {
+  if (L.cold > T.cold.slow) spd *= llamaPep(L);   // COLD
   const dx = gx - L.x, dz = gz - L.z, d = Math.hypot(dx, dz);
   let tx = 0, tz = 0;
   if (d > stop) { const v = Math.min(spd, (d - stop) * 1.8 + 0.25); tx = dx / d * v; tz = dz / d * v; }
@@ -20285,9 +20454,9 @@ function llamaKilled(L, why) {
   if (!LLAMAS.includes(L)) return;
   if (L.grabbed) { if (L.grabbed.prey === L) L.grabbed.prey = null; L.grabbed = null; }
   burst(L.x, (L.y ?? groundY(L.x, L.z)) + 0.6, L.z, 18, LLAMA_COATS[L.coat % LLAMA_COATS.length][0], { speed: 2.6, up: 3 });
-  floatText('🕯️', L.x, (L.y ?? 0) + 1.6, L.z, '#fff4c8', 1.4); toast(`${why === 'cougar' ? '🐆' : '🐺'} 🦙 🕯️`, 'bad'); Sound.sad();
-  G.stats.criasLost++;
-  if (hankSees(L.x, L.z)) hank(null, pick(["Ach, the wee cria... no.", "Not the cria! Poor wee thing."]), { force: true, delay: 0.6 });
+  floatText('🕯️', L.x, (L.y ?? 0) + 1.6, L.z, '#fff4c8', 1.4); toast(`${why === 'cougar' ? '🐆' : why === 'cold' ? '❄️' : '🐺'} 🦙 🕯️`, 'bad'); Sound.sad();
+  if (L.grown) G.stats.llamasLost++; else G.stats.criasLost++;
+  if (hankSees(L.x, L.z)) hank(null, why === 'cold' ? pick(["Ach, the poor llama. Frozen stiff.", "We've lost a llama to the cold..."]) : pick(["Ach, the wee cria... no.", "Not the cria! Poor wee thing."]), { force: true, delay: 0.6 });
   llamaRemove(L);
 }
 // a herd found: the first dog within findR of one of its own. A fanfare over them (the journey's first: a banner, Hank's word, the hint)
@@ -20308,6 +20477,8 @@ function llamaStep(L, dt, dtH) {
   const grown = L.age >= K.adultDays; if (grown && !L.grown) llamaGrownUp(L); L.grown = grown;
   L.str = (L.sex === 'm' ? 1.15 : 1) * lerp(0.6, 1, clamp(L.age / K.adultDays, 0, 1));
   if (L.preg > 0 && (L.preg -= dtH) <= 0) { L.preg = 0; llamaBirth(L); }
+  if (llamaCold(L, dtH)) return;   // COLD
+  if (L.tame === 2 && !L.heldBy && !L.air && llamaHas(L, 'pack')) llamaPackLoad(L);   // PACK
   const lie = L.state === 'kush' || L.state === 'mate'; L.kushK = clamp(L.kushK + (lie ? dt * 1.5 : -dt * 2.5), 0, 1);
   if (L.grabbed) { L.gx = L.grabbed.x; L.gz = L.grabbed.z; L.kushK = 0; L.grazeK = 0; L.mate = null; return; }   // PREY: a coyote's or a cougar's (it moves it)
   if (L.gx !== undefined) { const fx = L.gx, fz = L.gz; L.gx = undefined; L.y = groundY(L.x, L.z); llamaFlee(L, fx, fz, T.llama.run); return; }   // dropped: off it runs
@@ -20509,7 +20680,7 @@ function llamaUnrope(L) {
 function llamaTugEnd(R, won, ax, az, L) {
   const K = T.llama; L.tugK = 0; L.t = 0;
   if (won === false) {
-    L.tame = 1; L.state = 'led'; L.waryH = 0; L.fleeT = 0; llamaKeep(L, true);
+    L.tame = 1; L.state = 'led'; L.waryH = 0; L.fleeT = 0; llamaKeep(L, true); if (L.name === '🦙') L.name = llamaNameNew();
     llamaFx('broken', L.x, L.z); hint('llama-led');
     if (hankSees(L.x, L.z)) hank(null, pick(["Ye've broken it! Bring it to the flock.", "That's the way! Lead it home."]), { force: true, delay: 0.4 });
     return;
@@ -20532,9 +20703,9 @@ function llamaLed(L, dt) {
   if ((p && !p.deck) || near >= 2) llamaJoin(L);
 }
 function llamaJoin(L) {
-  llamaUnrope(L); L.tame = 2; L.state = 'guard'; L.t = 0; L.goal = null; L.herd = null;
+  llamaUnrope(L); L.tame = 2; L.state = 'guard'; L.t = 0; L.goal = null; L.herd = null; if (L.name === '🦙') L.name = llamaNameNew();
   const fc = LLAMA.fc; L.ga = fc ? Math.atan2(L.z - fc.z, L.x - fc.x) : Math.random() * TAU; llamaKeep(L, true);
-  for (const o of LLAMAS) if (o.mum === L && !o.grown && !o.tame) { o.tame = 2; o.state = 'guard'; o.herd = null; llamaKeep(o, true); }   // her cria comes too
+  for (const o of LLAMAS) if (o.mum === L && !o.grown && !o.tame) { o.tame = 2; o.state = 'guard'; o.herd = null; llamaKeep(o, true); if (o.name === '🦙') o.name = llamaNameNew(); }   // her cria comes too
   G.stats.llamas++;
   llamaFx('join', L.x, L.z); hint('llama-guard');
   if (hankSees(L.x, L.z)) hank(null, pick(["A guard llama! The coyotes'll think twice now.", "Grand! She'll mind the flock for us.", "A llama in the flock! Watch it spit."]), { force: true, delay: 0.5 });
@@ -20548,12 +20719,13 @@ function llamaGuard(L, dt) {
     L.grazeK = 0; if (L.mate) { L.mate = null; } L.state = 'guard';
     if (G.time > (L.alarmAt || 0)) { L.alarmAt = G.time + 14; llamaFx('alarm', L.x, L.z, llamaSize(L)); if (hankSees(foe.e.x, foe.e.z) && !LLAMA.said.alarm) { LLAMA.said.alarm = true; hank(null, "Hear that? The llama's seen something!", { force: true, delay: 0.5 }); } }
     const fd = Math.hypot(foe.e.x - L.x, foe.e.z - L.z);
-    if (fd < K.spit.r && L.spitCd <= 0 && L.grown) { llamaSpitAt(L, foe.e, foe.kind); return; }
+    if (fd < K.spit.r && L.spitCd <= 0 && L.grown && !(L.cold > K.cold.numb)) { llamaSpitAt(L, foe.e, foe.kind); return; }   // (COLD: numb, it can't)
     const fc = LLAMA.fc || L, ux = fc.x - foe.e.x, uz = fc.z - foe.e.z, ul = Math.hypot(ux, uz) || 1, r = Math.min(K.spit.r * 0.6, ul);   // at it, on the flock's side
     llamaGo(L, foe.e.x + ux / ul * r, foe.e.z + uz / ul * r, K.run, dt, 0.5);
     return;
   }
   if (L.state === 'court') { llamaCourt(L, dt); return; }
+  if (llamaPacking(L, dt)) return;   // PACK: penned, to the troughs with it
   const g = llamaGuardGoal(L); if (!g) { llamaStop(L, dt); return; }
   if (L.sex === 'm' && L.grown && L.cdH <= 0 && (L.thinkT -= dt) <= 0) { L.thinkT = 3 + Math.random() * 3; const f = llamaMateFor(L); if (f) { L.state = 'court'; L.mate = f; L.t = 0; f.suitor = L; return; } }
   const d = Math.hypot(g.x - L.x, g.z - L.z);
@@ -20572,6 +20744,10 @@ function llamaGuard(L, dt) {
 function llamaGuardGoal(L) {
   const fc = LLAMA.fc, P = LLAMA.pen; if (!fc) return null;
   L.ga += (Math.random() - 0.5) * 0.02;
+  if (L.cold > 0.35) {   // COLD: to the nearest lit fire
+    let f = null, fd = T.llama.cold.warmR; for (const o of PASS.fires) { if (o.fuel <= 0) continue; const d = Math.hypot(o.x - L.x, o.z - L.z); if (d < fd) { fd = d; f = o; } }
+    if (f) return { x: f.x + Math.cos(L.ga) * 2.8, z: f.z + Math.sin(L.ga) * 2.8, kush: isNight() || L.cold > 0.6 };
+  }
   if (P && !P.deck) { const a = L.ga, r = P.R * 0.55; return { x: P.x + Math.cos(a) * r, z: P.z + Math.sin(a) * r, kush: isNight() }; }
   if (P && P.deck) { const q = llamaDeckSpot(LLAMAS.filter(o => o.tame === 2).indexOf(L)); return { x: q.x, z: q.z, kush: true }; }
   const r = LLAMA.fr + 2.2; let x = fc.x + Math.cos(L.ga) * r, z = fc.z + Math.sin(L.ga) * r;
@@ -20592,6 +20768,67 @@ function llamaAboard(L, i) {
 }
 // SAILING: cast off (or started at sea): every guard leaps aboard
 function llamasAboard() { let i = 0; for (const L of LLAMAS) if (L.tame === 2) llamaAboard(L, i++); }
+// ---------------- COLD (MOUNTAIN PASS): as a sheep's (T.cold), but its fleece keeps out less (T.llama.cold.wool); a SADDLE BLANKET
+// most of it. Cold: slow, shivering, off to a lit fire (llamaGuardGoal); numb: no spit; frozen dieHours h: gone ----------------
+const llamaPep = L => { const c = L.cold || 0, C = T.cold; return c > C.slow ? lerp(1, C.slowK, (c - C.slow) / (1 - C.slow)) : 1; };
+function llamaCold(L, dtH) {   // → true: it's frozen to death
+  const C = T.cold, K = T.llama.cold, pk = passK(sAt(L.x, L.z));
+  if (pk <= 0.05 && !(L.cold > 0)) return false;
+  const heat = pk > 0 ? Math.max(heatAt(L.x, L.z), torchHeat(L.x, L.z)) : 0, bz = PASS.blizz.k * pk;
+  const up = pk > 0.05 ? C.rate * pk * (1 - C.wool * K.wool * clamp(L.wool, 0, 1)) * (isNight() ? C.night : 1) * (1 + (C.blizz - 1) * bz)
+    * (L.grown ? 1 : C.lamb) * (llamaHas(L, 'blanket') ? K.blanket : 1) * (1 - heat) : 0;
+  L.cold = clamp((L.cold || 0) + (up - heat * C.warm - (pk < 0.05 ? C.thaw : 0)) * dtH, 0, 1);
+  if (L.cold >= 1) { L.freeze = (L.freeze || 0) + dtH; if (L.freeze > (L.freezeMax || (L.freezeMax = rnd(...K.dieHours)))) { llamaKilled(L, 'cold'); return true; } }
+  else L.freeze = Math.max(0, (L.freeze || 0) - dtH * 2);
+  if (L.cold > 0.6 && L.tame === 2 && G.mode === 'play') {
+    hint('llama-cold');
+    if (!LLAMA.said.cold && hankSees(L.x, L.z)) { LLAMA.said.cold = true; hank(null, llamaFound().includes('blanket') ? "The llama's freezin'! A blanket on it, in the barn. Or to the fire!" : "The llama's freezin'! Get it by the fire. A blanket'd do it, if we had one.", { force: true }); }
+  }
+  return false;
+}
+// ---------------- PACK: a guard wearing one carries greens (T.llama.pack.greens) and salt lumps; a dog with a load comes up to it (not
+// at a pen with room in its troughs): in it goes (llamaPackLoad). Penned, it takes them to the troughs and the lick (llamaPackGoal) ----------------
+function llamaPackLoad(L) {
+  const K = T.llama.pack, reach = K.r + L.r * llamaSize(L);
+  for (const d of G.dogs) {
+    if (d.air || d.heldBy || !((d.greens || 0) >= 0.01 || d.salt)) continue;
+    const dx = d.x - L.x, dz = d.z - L.z; if (Math.abs(dx) > reach || Math.abs(dz) > reach || Math.hypot(dx, dz) > reach) continue;
+    if (pens.some(p => !p.deck && Math.hypot(p.x - d.x, p.z - d.z) < p.R + 4 && (((d.greens || 0) >= 0.01 && p.troughs.some(tr => tr.food < tr.cap - 0.05))
+      || (d.salt && p.lick.salt <= p.lick.cap - T.salt.lump * 0.5)))) continue;   // (by a pen with room: that's where it's going)
+    let got = false; const g = Math.min(d.greens || 0, K.greens - L.greens);
+    if (g >= 0.01) { L.greens += g; d.greens -= g; if (d.greens < 0.01) d.greens = 0; got = true; }
+    if (d.salt && L.salt < K.salt) { L.salt++; d.salt = 0; got = true; }
+    if (got) { llamaFx('pack', L.x, L.z, L.greens >= K.greens - 0.01 ? 2 : 1); rumble(d.player, 0.25, 0.4, 90); hint('llama-pack'); }
+  }
+}
+// penned with something in it: the nearest trough with room (or the lick, for its salt) → where to stand, or null
+function llamaPackGoal(L) {
+  if (!llamaHas(L, 'pack') || (L.greens < 0.01 && !L.salt) || G.time < (L.packCd || 0)) return null;
+  const P = penAt(L.x, L.z); if (!P || P.deck) return null;
+  let best = null, bd = 1e9;
+  if (L.greens >= 0.01) for (const tr of P.troughs) { if (tr.food > tr.cap - 0.05) continue; const d = Math.hypot(tr.x - L.x, tr.z - L.z); if (d < bd) { bd = d; best = { tr }; } }
+  if (!best && L.salt && P.lick.salt <= P.lick.cap - T.salt.lump * 0.5) for (const u of P.lick.at) { const d = Math.hypot(u.x - L.x, u.z - L.z); if (d < bd) { bd = d; best = { u }; } }
+  if (!best) return null;
+  const o = best.tr || best.u, ux = P.x - o.x, uz = P.z - o.z, ul = Math.hypot(ux, uz) || 1;
+  return { x: o.x + ux / ul * 1.1, z: o.z + uz / ul * 1.1, P, ...best };
+}
+function llamaUnpack(L, g) {   // → true: tipped (it's there)
+  if (g.tr) {
+    const tr = g.tr; if (segDist(L.x, L.z, tr) > T.forage.tipR + 0.3) return false;
+    const amt = Math.min(L.greens, tr.cap - tr.food); if (amt < 0.01) return false;
+    tr.food += amt; L.greens -= amt; if (L.greens < 0.01) L.greens = 0; FORAGE.tipped += amt; llamaFx('tip', tr.x, tr.z, amt / tr.cap); return true;
+  }
+  const u = g.u, K = g.P.lick; if (Math.hypot(L.x - u.x, L.z - u.z) > T.forage.tipR + 0.5 || K.salt > K.cap - T.salt.lump * 0.5) return false;
+  K.salt = Math.min(K.cap, K.salt + T.salt.lump); L.salt--; FORAGE.salted++; llamaFx('salt', u.x, u.z); return true;
+}
+function llamaPacking(L, dt) {   // (llamaGuard, no foe about) → true: it's at it
+  const g = llamaPackGoal(L); if (!g) { L.packT = 0; return false; }
+  L.state = 'guard'; L.grazeK = 0;
+  if (llamaUnpack(L, g)) { L.packT = 0; llamaStop(L, dt); return true; }
+  if ((L.packT = (L.packT || 0) + dt) > 20) { L.packT = 0; L.packCd = G.time + 60; return false; }   // (can't get to it: later)
+  llamaMove(L, g.x, g.z, T.llama.trot * 0.7, dt, 0.3);
+  return true;
+}
 // ---------------- SPIT ----------------
 // what a guard spits at: the nearest foe within R m (→ { e, kind } or null)
 function llamaFoe(L, R) {
@@ -20881,6 +21118,9 @@ function llamaFx(kind, x, z, a = 1) {
     if (a) banner('🦙 Llamas!', '🪢 → 🛡 🐑');
   }
   else if (kind === 'join') { floatText('🛡 🐑', x, y + 2.8, z, '#7ed957', 1.5); Sound.chime([0, 5, 9, 12], 523, 0.16, 0.1); spawnRing(x, y, z, 4, '#7ed957', 0.6); }
+  else if (kind === 'pack') { SFX.rustle(pan); floatText(a > 1 ? '🎒 ✔' : '+🎒', x, y + 2.5, z, '#9bdc5a', 1.2); Sound.chime(a > 1 ? [0, 4, 7, 12] : [0, 7], 784, 0.1); }   // PACK: in (2: full)
+  else if (kind === 'tip') { SFX.rustle(pan); Sound.chime([0, 4, 7, 12], 587, 0.16, 0.06); for (const c of ['#7cc44a', '#ffffff', '#b48ae6', '#ffc62a']) burst(x, y + 1, z, 4, c, { speed: 1.4, up: 1.6, size: 0.12, life: 0.8, grav: -9 }); floatText(`🦙 🌾 +${Math.round(a * 100)}%`, x, y + 1.8, z, '#9bdc5a', 1.3); }
+  else if (kind === 'salt') { burst(x, y + 1, z, 10, '#f8f6f0', { speed: 1.6, up: 2, size: 0.12, life: 0.8, grav: -9 }); floatText('🦙 🧂', x, y + 1.8, z, '#ffffff', 1.3); Sound.chime([0, 4, 7, 12, 16], 659, 0.14, 0.07); }
   else if (kind === 'snip') { const c = LLAMA_COATS[a] || LLAMA_COATS[0]; burst(x, y + 1.1, z, 4, c[0], { speed: 1.6, up: 2.2, size: 0.18, life: 0.9, grav: -3 }); SFX.snip(pan); }
 }
 // SPIT: a glob from its mouth to (x1, y1, z1) in T s, a splat (ONLINE: fxDef: every screen flies its own)
@@ -20943,23 +21183,147 @@ const llamaHalterGeo = () => LLAMA_HALTER || (LLAMA_HALTER = (() => { const c = 
     ...[-1, 1].map(sd => P(BOX(0.01, 0.01, 0.2), c, { r: [0.45, 0, 0], p: [sd * 0.1, -0.03, 0.08] })), P(new THREE.TorusGeometry(0.022, 0.006, 5, 10), m, { p: [0, -0.135, 0.15] })); })());
 function llamaTasselGeo(L) { const r = mulberry32(L.look), c = () => LLAMA_TASSELS[Math.floor(r() * LLAMA_TASSELS.length)];
   return [-1, 1].map(() => merge(P(SPH(6), c(), { s: [0.034, 0.034, 0.034], p: [0, 0.07, 0.032] }), P(SPH(6), c(), { s: [0.03, 0.03, 0.03], p: [0, 0.12, 0.034] }), P(CYL(0.008, 0.008, 0.13, 4), c(), { p: [0, 0.02, 0.04] }), P(SPH(5), c(), { s: [0.026, 0.026, 0.026], p: [0, -0.05, 0.04] }))); }
-function llamaModel(L) {
-  const Gm = llamaGeo(L.coat % LLAMA_COATS.length), add = (par, geo, mat = MAT.vc) => part(par, geo, { mat });
+// its model in its look (its coat; what it's wearing). add(parent, geo, mat, { outline, shadow }) adds a part: the world's part(), the
+// barn turntable's barnPart(). Returns the pieces syncLlamas animates
+function buildLlama(L, add) {
+  const Gm = llamaGeo(L.coat % LLAMA_COATS.length);
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body); root.rotation.order = 'YXZ';
   add(body, Gm.core).position.set(0, 1.0, -0.02);
   const fleece = new THREE.Group(); fleece.position.set(0, 1.0, -0.02); body.add(fleece); furCoat(add, fleece, Gm.fleece, LLAMA_FUR);
   const tail = new THREE.Group(); tail.position.set(0, 1.14, -0.6); tail.rotation.x = -0.5; body.add(tail); furCoat(add, tail, Gm.tail, LLAMA_FUR_NECK);
   const neck = new THREE.Group(); neck.position.set(0, 1.12, 0.4); body.add(neck); furCoat(add, neck, Gm.neck, LLAMA_FUR_NECK);
   const head = new THREE.Group(); head.position.set(0, 0.8, 0.05); neck.add(head); const hs = new THREE.Group(); hs.scale.setScalar(1.15); head.add(hs); add(hs, Gm.head);
-  const eyes = part(hs, Gm.eyes, { outline: false, shadow: false });
+  const eyes = add(hs, Gm.eyes, MAT.vc, { outline: false, shadow: false });
   const ears = [-1, 1].map(sd => { const e = new THREE.Group(); e.position.set(sd * 0.066, 0.1, -0.035); e.rotation.order = 'ZXY'; hs.add(e); add(e, sd < 0 ? Gm.earL : Gm.earR); return e; });
-  const halter = part(hs, llamaHalterGeo(), { shadow: false }); halter.visible = false;
-  const tg = llamaTasselGeo(L), tassels = ears.map((e, i) => { const m = part(e, tg[i], { outline: false, shadow: false }); m.visible = false; return m; });
+  const halter = add(hs, llamaHalterGeo(), MAT.vc, { shadow: false }); halter.visible = false;
+  const tg = llamaTasselGeo(L), tassels = ears.map((e, i) => { const m = add(e, tg[i], MAT.vc, { outline: false, shadow: false }); m.visible = false; return m; });
   const legs = [[0.15, 0.86, 0.34], [-0.15, 0.86, 0.34], [0.15, 0.88, -0.38], [-0.15, 0.88, -0.38]].map(h => { const g = new THREE.Group(); g.position.set(h[0], h[1], h[2]); body.add(g); add(g, Gm.leg); return g; });
-  scene.add(root);
-  L.models = { root, body, fleece, tail, neck, head, eyes, ears, halter, tassels, legs, blinkT: Math.random() * 4, earT: 0, humT: 3 + Math.random() * 10 };
-  if (L.tame) llamaKeep(L, true);
-  return L.models;
+  const M = { root, body, fleece, tail, neck, head, hs, eyes, ears, halter, tassels, legs, pack: null, key: llamaLookKey(L) };
+  llamaDress(M, L, add);
+  return M;
+}
+function llamaModel(L) {
+  const M = buildLlama(L, (par, geo, mat = MAT.vc, o = {}) => part(par, geo, { mat, ...o }));
+  scene.add(M.root); Object.assign(M, { blinkT: Math.random() * 4, earT: 0, humT: 3 + Math.random() * 10 });
+  L.models = M; if (L.tame) llamaKeep(L, true);
+  return M;
+}
+function llamaRestyle(L) {   // a new look (the barn; ONLINE: the host's)
+  const old = L.models; if (!old) return;
+  if (old.root.parent) old.root.parent.remove(old.root);
+  const M = llamaModel(L); M.blinkT = old.blinkT; M.earT = old.earT; M.humT = old.humT;
+  M.ears.forEach((e, i) => e.rotation.copy(old.ears[i].rotation));
+}
+// ---------------- its gear, fitted to its coat's fleece (made the first time it's worn) ----------------
+// how far the fleece reaches out from its spine, r(φ, z) in the fleece's space (φ: 0 up, + its left), never in under a lock
+function llamaFleeceR(ci) {
+  const Gm = llamaGeo(ci); if (Gm.R) return Gm.R;
+  const NA = 36, NZ = 16, Z0 = -0.7, Z1 = 0.7, g = new Float32Array(NA * NZ), pos = Gm.fleece.attributes.position.array, A = i => ((i % NA) + NA) % NA;
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2], ia = A(Math.round((Math.atan2(x, y) / TAU + 0.5) * NA)), iz = Math.round((z - Z0) / (Z1 - Z0) * (NZ - 1));
+    if (iz < 0 || iz >= NZ) continue; const r = Math.hypot(x, y), k = iz * NA + ia; if (r > g[k]) g[k] = r;
+  }
+  const at = (a, z) => g[clamp(z, 0, NZ - 1) * NA + A(a)], m = new Float32Array(NA * NZ), s = new Float32Array(NA * NZ);
+  for (let z = 0; z < NZ; z++) for (let a = 0; a < NA; a++) { let v = 0; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) v = Math.max(v, at(a + i, z + j)); m[z * NA + a] = v; }   // (no gaps between the locks)
+  for (let z = 0; z < NZ; z++) for (let a = 0; a < NA; a++) { let v = 0; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) v += m[clamp(z + j, 0, NZ - 1) * NA + A(a + i)]; s[z * NA + a] = Math.max(v / 9, g[z * NA + a]); }
+  return (Gm.R = (phi, z) => {
+    const fa = (phi / TAU + 0.5) * NA, fz = clamp((z - Z0) / (Z1 - Z0) * (NZ - 1), 0, NZ - 1), a0 = Math.floor(fa), z0 = Math.min(NZ - 2, Math.floor(fz)), u = fa - a0, v = fz - z0;
+    return lerp(lerp(s[z0 * NA + A(a0)], s[z0 * NA + A(a0 + 1)], u), lerp(s[(z0 + 1) * NA + A(a0)], s[(z0 + 1) * NA + A(a0 + 1)], u), v);
+  });
+}
+// a cloth over it: `off` out from the fleece, t thick, from φ a0…a1, z0…z1 (both sheets, the edges closed)
+function llamaDrape(R, a0, a1, z0, z1, off, t, nu = 20, nv = 6) {
+  const pos = [], idx = [], W = nu + 1;
+  const grid = o => { const b = pos.length / 3; for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) { const a = lerp(a0, a1, i / nu), z = lerp(z0, z1, j / nv), r = R(a, z) + o; pos.push(Math.sin(a) * r, Math.cos(a) * r, z); } return b; };
+  const A = grid(off + t), B = grid(off);
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * W + i, c = a + W; idx.push(A + a, A + c, A + a + 1, A + a + 1, A + c, A + c + 1, B + a, B + a + 1, B + c, B + a + 1, B + c + 1, B + c); }
+  const edge = (ks, flip) => { for (let m = 0; m < ks.length - 1; m++) { const p = ks[m], q = ks[m + 1]; if (flip) idx.push(A + p, B + p, A + q, A + q, B + p, B + q); else idx.push(A + p, A + q, B + p, A + q, B + q, B + p); } };
+  const row = j => [...Array(W).keys()].map(i => j * W + i), col = i => [...Array(nv + 1).keys()].map(j => j * W + i);
+  edge(row(0), false); edge(row(nv), true); edge(col(0), true); edge(col(nu), false);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+const LLAMA_GEAR = new Map(), LLAMA_WHITE = '#fff6e0', LLAMA_GOLD = '#ffc83d';
+const BLANKET = { a: 1.75, z0: -0.34, z1: 0.26, off: LLAMA_FUR.len * 0.75, t: 0.022 };
+function llamaGear(ci) {   // { blanket, chullo, bell, garland, sprig, salt }: each { fixed, tint }
+  if (LLAMA_GEAR.has(ci)) return LLAMA_GEAR.get(ci);
+  const R = llamaFleeceR(ci), B = BLANKET, rng = mulberry32(4211 + ci), out = B.off + B.t, pt = (a, z, o) => { const r = R(a, z) + o; return [Math.sin(a) * r, Math.cos(a) * r, z]; };
+  // SADDLE BLANKET: woven, in its colour; stripes along it (white, gold), a dark hem, a fringe of tassels along each side
+  const stripe = (b0, b1, col) => [-1, 1].map(sd => P(llamaDrape(R, sd < 0 ? -b1 : b0, sd < 0 ? -b0 : b1, B.z0 - 0.004, B.z1 + 0.004, out - 0.004, 0.008, 3, 6), col));
+  const fringe = [];
+  for (const sd of [-1, 1]) for (let i = 0; i < 7; i++) {
+    const z = lerp(B.z0 + 0.03, B.z1 - 0.03, i / 6), [x, y] = pt(sd * B.a, z, B.off + B.t / 2), c = [LLAMA_WHITE, LLAMA_GOLD, '#ff70a6'][i % 3];
+    fringe.push(P(CYL(0.008, 0.008, 0.07, 4), c, { p: [x, y - 0.035, z] }), P(SPH(6), c, { s: [0.022, 0.03, 0.022], p: [x, y - 0.08, z] }));
+  }
+  const blanket = { tint: P(llamaDrape(R, -B.a, B.a, B.z0, B.z1, B.off, B.t, 26, 7), WHITE_TINT),
+    fixed: merge(...stripe(0.95, 1.03, LLAMA_WHITE), ...stripe(1.1, 1.16, LLAMA_GOLD), ...stripe(1.23, 1.31, LLAMA_WHITE), ...stripe(1.55, 1.75, '#3a2530'), ...stripe(0, 0.07, LLAMA_GOLD), ...fringe) };
+  // CHULLO (the head's space): a knitted cap, its ears through it; flaps over its cheeks, ties with pompoms, a pompom on top
+  const cap = { r: [0.145, 0.15, 0.15], y: 0.1, z: -0.02 }, ring = (k, col, tube) => P(new THREE.TorusGeometry(cap.r[0] * Math.sqrt(1 - k * k), tube, 5, 22), col, { s: [1, 1, 1], r: [Math.PI / 2, 0, 0], p: [0, cap.y + cap.r[1] * k, cap.z] });
+  const chullo = { tint: merge(P(new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI / 2), WHITE_TINT, { s: cap.r, p: [0, cap.y, cap.z] }),
+      ...[-1, 1].map(sd => P(SPH(8), WHITE_TINT, { s: [0.024, 0.085, 0.062], r: [0, 0, sd * 0.12], p: [sd * 0.136, 0.055, -0.03] }))),
+    fixed: merge(ring(0.08, LLAMA_WHITE, 0.016), ring(0.4, LLAMA_GOLD, 0.011), ring(0.62, LLAMA_WHITE, 0.01), P(SPH(8), LLAMA_GOLD, { s: [0.045, 0.045, 0.045], p: [0, cap.y + cap.r[1] + 0.02, cap.z] }),
+      ...[-1, 1].flatMap(sd => [P(CYL(0.006, 0.006, 0.1, 4), LLAMA_WHITE, { p: [sd * 0.14, -0.03, -0.03] }), P(SPH(6), sd < 0 ? '#ff70a6' : LLAMA_GOLD, { s: [0.022, 0.022, 0.022], p: [sd * 0.14, -0.085, -0.03] })])) };
+  // BELL (the neck's space): a strap round its neck, a brass bell at its throat
+  const ny = 0.64, nr = 0.198, nz = 0.02;
+  const bell = { tint: P(new THREE.TorusGeometry(nr, 0.02, 6, 24), WHITE_TINT, { s: [1, 1, 1.6], r: [Math.PI / 2, 0, 0], p: [0, ny, nz] }),
+    fixed: merge(P(new THREE.TorusGeometry(0.022, 0.007, 5, 10), '#d9dee4', { p: [0, ny - 0.03, nz + nr + 0.03] }), P(CONE(0.062, 0.1, 10), '#ffd23a', { p: [0, ny - 0.09, nz + nr + 0.05] }),
+      P(SPH(8), '#ffd23a', { s: [0.064, 0.024, 0.064], p: [0, ny - 0.14, nz + nr + 0.05] }), P(SPH(5), '#5a4a2a', { s: [0.02, 0.02, 0.02], p: [0, ny - 0.16, nz + nr + 0.05] })) };
+  // GARLAND (the neck's space): flowers round the bottom of its neck, low at the front
+  const fl = [], cols = ['#ff70a6', LLAMA_WHITE, '#ff8a2a', '#d23a2e', '#ffd34d'], gr = 0.25, tilt = (g) => g.rotateX(0.35).translate(0, 0.15, nz);
+  for (let i = 0; i < 14; i++) {
+    const a = i / 14 * TAU, x = Math.sin(a) * gr, z = Math.cos(a) * gr, b = a + Math.PI / 14;
+    fl.push(tilt(P(SPH(7), cols[i % cols.length], { s: [0.05, 0.05, 0.022], r: [0, a, 0], p: [x, 0, z] })), tilt(P(SPH(5), '#ffc62a', { s: [0.018, 0.018, 0.012], r: [0, a, 0], p: [Math.sin(a) * (gr + 0.018), 0, Math.cos(a) * (gr + 0.018)] })),
+      tilt(P(SPH(5), rng() < 0.5 ? '#5ea83a' : '#8fd35a', { s: [0.02, 0.012, 0.045], r: [0, b + Math.PI / 2, 0], p: [Math.sin(b) * (gr - 0.01), -0.01, Math.cos(b) * (gr - 0.01)] })));
+  }
+  const garland = { fixed: merge(...fl), tint: null };
+  const g = { blanket, chullo, bell, garland, packs: {} };
+  LLAMA_GEAR.set(ci, g); return g;
+}
+// PACK (the fleece's space): a saddle pad, a girth, two panniers (a band in its colour), a rolled bundle behind; over the blanket if it's
+// on. Greens show in the panniers' tops (slots), salt lumps on the pad
+function llamaPackGeo(ci, over) {
+  const G2 = llamaGear(ci), key = over ? 'b' : 'n'; if (G2.packs[key]) return G2.packs[key];
+  const R = llamaFleeceR(ci), off = BLANKET.off + (over ? BLANKET.t + 0.012 : 0), rng = mulberry32(977 + ci), canvas = '#c99a5a', dark = '#8a6238', leather = '#6b4a2e';
+  let xin = 0; for (let a = 1.1; a <= 2.05; a += 0.1) for (let z = -0.2; z <= 0.2; z += 0.1) xin = Math.max(xin, Math.sin(a) * (R(a, z) + off));
+  xin += 0.012;
+  const w = 0.16, h = 0.3, d = 0.4, yc = -0.03, top = yc + h / 2, fixed = [], tint = [], slots = [], salt = [];
+  fixed.push(P(llamaDrape(R, -0.95, 0.95, -0.21, 0.21, off, 0.028, 16, 5), leather), P(llamaDrape(R, -Math.PI + 0.02, Math.PI - 0.02, 0.1, 0.15, off * 0.8, 0.014, 40, 1), dark));
+  const ry = a => R(a, 0) + off + 0.028;
+  for (const sd of [-1, 1]) {
+    const xc = sd * (xin + w / 2), pa = sd * 0.9, px = Math.sin(pa) * ry(pa), py = Math.cos(pa) * ry(pa);
+    fixed.push(P(packBag(w, h, d, 0.06), canvas, { p: [xc, yc, 0] }), P(BOX(w * 1.04, 0.03, d * 0.96), dark, { p: [xc, top, 0] }));
+    for (const z of [-0.13, 0.13]) { const dx = xc - sd * w * 0.3 - px, dyy = top - py, len = Math.hypot(dx, dyy); fixed.push(P(BOX(0.016, len, 0.034), dark, { r: [0, 0, -Math.atan2(dx, dyy)], p: [px + dx / 2, py + dyy / 2, z] })); }
+    tint.push(P(BOX(0.012, 0.05, d * 0.9), WHITE_TINT, { p: [sd * (xin + w + 0.004), yc + 0.04, 0] }), P(BOX(0.012, 0.016, d * 0.9), WHITE_TINT, { p: [sd * (xin + w + 0.004), yc - 0.05, 0] }));
+    for (const z of [-d / 2 + 0.03, d / 2 - 0.03]) fixed.push(P(SPH(6), z < 0 ? '#ff70a6' : LLAMA_GOLD, { s: [0.03, 0.03, 0.03], p: [sd * (xin + w * 0.8), yc - h / 2 - 0.01, z] }));
+    for (const z of [-d * 0.22, d * 0.22]) slots.push({ p: [xc, top + 0.012, z], ww: w * 0.85, dd: d * 0.4 });
+  }
+  const by = ry(0), bz = -0.25;
+  tint.push(P(CYL(0.055, 0.055, 0.34, 10), WHITE_TINT, { r: [0, 0, Math.PI / 2], p: [0, R(0, bz) + off + 0.05, bz] }));
+  fixed.push(...[-0.12, 0, 0.12].map(x => P(CYL(0.058, 0.058, 0.02, 10), x ? LLAMA_WHITE : LLAMA_GOLD, { r: [0, 0, Math.PI / 2], p: [x, R(0, bz) + off + 0.05, bz] })));
+  for (const z of [-0.1, 0.02, 0.14]) salt.push([0, by + 0.035, z]);
+  return (G2.packs[key] = { fixed: merge(...fixed), tint: merge(...tint), slots, salt, sprig: packSprig(w * 0.85, d * 0.4, rng),
+    lump: merge(P(BOX(0.09, 0.065, 0.09), '#f3eee6', { r: [0.15, 0.5, 0.1] }), P(BOX(0.045, 0.035, 0.045), '#f6c9d4', { p: [0.015, 0.04, 0.01] })) });
+}
+// put on what it's wearing (buildLlama)
+function llamaDress(M, L, add) {
+  const W = L.wear || cleanLlamaWear(), ci = L.coat % LLAMA_COATS.length, tint = tintMat(W.tint);
+  if (!W.acc.length && W.hat === 'none') return;
+  const G2 = llamaGear(ci), on = (par, g) => { if (g.fixed) add(par, g.fixed); if (g.tint) add(par, g.tint, tint); };
+  const bl = W.acc.includes('blanket');
+  if (bl) on(M.fleece, G2.blanket);
+  if (W.hat === 'chullo') on(M.hs, G2.chullo);
+  if (W.acc.includes('bell')) on(M.neck, G2.bell);
+  if (W.acc.includes('garland')) on(M.neck, G2.garland);
+  if (W.acc.includes('pack')) {
+    const pg = llamaPackGeo(ci, bl); on(M.fleece, pg);
+    const grp = (p, geo) => { const g = new THREE.Group(); g.position.set(p[0], p[1], p[2]); add(g, geo); g.visible = false; M.fleece.add(g); return g; };
+    M.pack = { slots: pg.slots.map(sl => ({ g: grp(sl.p, pg.sprig), s: 0 })), salt: pg.salt.map(p => grp(p, pg.lump)) };
+  }
+}
+function llamaPackSync(M, L, dt, snap) {   // greens in the panniers' tops (one slot after another), a lump for each of its salt
+  const pk = M.pack; if (!pk) return;
+  const k = clamp((L.greens || 0) / T.llama.pack.greens, 0, 1), n = pk.slots.length;
+  pk.slots.forEach((sl, i) => { const f = clamp(k * n - i, 0, 1); sl.s = snap ? f : lerp(sl.s, f, Math.min(1, dt * 8)); sl.g.visible = sl.s > 0.02; sl.g.scale.set(0.55 + 0.45 * sl.s, Math.max(0.01, sl.s), 0.55 + 0.45 * sl.s); });
+  pk.salt.forEach((g, i) => { g.visible = (L.salt | 0) > i; });
 }
 // ---------------- drawing (every screen) ----------------
 const _lq = new THREE.Vector3();
@@ -20967,7 +21331,8 @@ function syncLlamas(dt) {
   syncSpits(dt);
   const t = G.time;
   for (const L of LLAMAS) {
-    const M = L.models; if (!M) continue;
+    let M = L.models; if (!M) continue;
+    if (L.tame && M.key !== llamaLookKey(L)) { llamaRestyle(L); M = L.models; }   // LLAMA WARDROBE: a new look
     const on = (!SEA_AWAY || L.tame === 2) && Math.abs(L.x - cam.x) + Math.abs(L.z - cam.z) < cam.view * 2.6 + 30; M.root.visible = on; if (!on) continue;
     const k = llamaSize(L), st = L.state, sp = Math.hypot(L.vx, L.vz), lift = L.air || L.heldBy || L.grabbed;
     // the pose: flying (somersaults), held (swings from the jaws), hopping, landing squash
@@ -20983,7 +21348,8 @@ function syncLlamas(dt) {
     // walking (llamas pace: a side's legs together), kushed, grazing, the neck and head
     const lie = lift ? 0 : L.kushK || 0, run = lift ? 1 : clamp(sp / 3, 0, 1.4), tug = st === 'tug' && L.rope;
     L.leg = (L.leg || 0) + dt * (lift ? 0 : sp * 2.6 / Math.max(0.5, k));
-    M.body.position.y = -0.56 * lie; M.body.rotation.x = tug ? (L.tugK > 0.4 ? -0.28 : 0.1) + Math.sin(t * 9) * 0.04 : st === 'spit' ? -0.06 : 0;
+    M.body.position.y = -0.56 * lie; M.body.position.x = L.cold > 0.45 && !lift ? Math.sin(t * 57 + L.id) * 0.016 * (L.cold - 0.3) : 0;   // COLD: shivering
+    M.body.rotation.x = tug ? (L.tugK > 0.4 ? -0.28 : 0.1) + Math.sin(t * 9) * 0.04 : st === 'spit' ? -0.06 : 0;
     M.legs.forEach((g, i) => {
       const fold = (i < 2 ? 1.5 : -1.5) * lie, side = i % 2 ? Math.PI : 0;
       g.rotation.x = lift ? Math.sin(t * 26 + i * 1.7) * 0.8 : fold + (1 - lie) * Math.sin(L.leg + side) * 0.5 * Math.min(1, run);
@@ -21001,6 +21367,8 @@ function syncLlamas(dt) {
     M.tail.rotation.x = -0.5 - (up || tug ? 0.5 : 0) + Math.sin(t * 3 + L.id) * 0.05;
     M.fleece.scale.setScalar(lerp(0.76, 1, clamp(L.wool, 0, 1))); M.tail.scale.setScalar(lerp(0.7, 1, clamp(L.wool, 0, 1)));
     M.halter.visible = L.tame > 0 || !!L.rope; M.tassels[0].visible = M.tassels[1].visible = L.tame === 2;
+    llamaPackSync(M, L, dt);   // PACK
+    if (L.cold > 0.6 && Math.random() < dt * 0.8) burst(L.x + Math.sin(L.yaw) * 0.9 * k, y + 1.85 * k, L.z + Math.cos(L.yaw) * 0.9 * k, 1, '#e6f6ff', { speed: 0.5, up: 0.6, size: 0.14, life: 0.9, grav: 0 });   // COLD: its breath
     if (st === 'shear' && Math.random() < dt * 3) burst(L.x, y + 1.1 * k, L.z, 1, LLAMA_COATS[L.coat % LLAMA_COATS.length][0], { speed: 1.2, up: 1.5, size: 0.16, life: 0.8, grav: -3 });
     if (L.preg > 0 && st === 'kush' && Math.random() < dt * 0.05) floatText('♥', L.x, y + 1.8 * k, L.z, '#ff8fb8', 0.9);
     if ((M.humT -= dt) <= 0) { M.humT = 6 + Math.random() * 14; if (G.mode === 'play' && Math.hypot(L.x - cam.x, L.z - cam.z) < 26 && !lift) LSND.hum(panOf(L.x, L.z), 0.07, k < 0.8 ? 1.5 : L.sex === 'm' ? 0.85 : 1); }
@@ -21008,7 +21376,7 @@ function syncLlamas(dt) {
 }
 // ONLINE: a guest's llama, from the host's snapshot; and every frame between them
 function netGuestLlama(id, f) {
-  const L = makeLlama({ x: f.x || 0, z: f.z || 0, sex: f.sex || 'f', age: f.age || 3, coat: f.coat || 0, look: f.look || 1, tame: f.tame || 0, yaw: f.yaw || 0 });
+  const L = makeLlama({ x: f.x || 0, z: f.z || 0, sex: f.sex || 'f', age: f.age || 3, coat: f.coat || 0, look: f.look || 1, tame: f.tame || 0, yaw: f.yaw || 0, name: f.name || undefined, wear: llamaWearOf(f.wear) });
   L.nid = id; return L;
 }
 function netAnimLlama(L, dt) {
@@ -21035,25 +21403,28 @@ function mapLlamas(c, u, on, seen) {
     drawArt(c, 'llama', q[0], q[1], (L.tame === 2 ? 10 : 8) * u * (L.grown ? 1 : 0.75));
   }
 }
-// dev (?debug): a wild herd by the first dog; with one there, a guard
+// dev (?debug): a wild herd by the first dog; with one there, a guard in its gear (LLAMA WARDROBE: all found, not saved)
 function devLlama() {
   const d = G.dogs[0]; if (!d) return;
   const wild = LLAMAS.filter(L => !L.tame && Math.hypot(L.x - d.x, L.z - d.z) < 20);
-  if (wild.length) { const L = wild.find(o => o.grown) || wild[0]; llamaUnrope(L); L.tame = 1; llamaJoin(L); return; }
+  if (wild.length) { const L = wild.find(o => o.grown) || wild[0]; llamaUnrope(L); L.tame = 1; llamaJoin(L);
+    for (const it of LLAMA_ITEMS) if (!LWARD.found.includes(it.id)) LWARD.found.push(it.id); llamaSet(L, { acc: ['blanket', 'pack'] }); return; }   // (its gear: all found, this time; not saved)
   const H = { id: LLAMA.herds.length, x: d.x + 8, z: d.z + 8, s: sAt(d.x, d.z) }; LLAMA.herds.push(H);
   makeLlama({ x: H.x, z: H.z, sex: 'm', age: 5, herd: H }); makeLlama({ x: H.x + 1.5, z: H.z, sex: 'f', age: 4, herd: H }); makeLlama({ x: H.x, z: H.z + 1.5, sex: 'f', age: 4, herd: H });
 }
 resetLlamas();
 onReset(() => resetLlamas(), 175);   // LLAMAS: new herds, no guards
 // JOURNEY SAVE: the same herds (their seed); the guards, by the flock (aboard at sea)
-onSave('llamas', () => ({ seed: LLAMA.seed, found: LLAMA.herds.map((H, i) => H.found ? i : -1).filter(i => i >= 0), guards: LLAMAS.filter(L => L.tame === 2).map(L => ({ sex: L.sex, age: +L.age.toFixed(2), coat: L.coat, look: L.look, wool: +L.wool.toFixed(3), at: journeyAt(L) })) }), v => {
+onSave('llamas', () => ({ seed: LLAMA.seed, found: LLAMA.herds.map((H, i) => H.found ? i : -1).filter(i => i >= 0), guards: LLAMAS.filter(L => L.tame === 2).map(L => ({ sex: L.sex, age: +L.age.toFixed(2), coat: L.coat, look: L.look, wool: +L.wool.toFixed(3), at: journeyAt(L),
+  name: L.name, wear: llamaWearStr(L), greens: +L.greens.toFixed(2), salt: L.salt, cold: +(L.cold || 0).toFixed(3) })) }), v => {
   if (!T.llama.on) return;
   if (Number.isFinite(v.seed)) resetLlamas(v.seed >>> 0);
   for (const i of Array.isArray(v.found) ? v.found : []) { const H = LLAMA.herds[i | 0]; if (H && !H.found) { H.found = true; LLAMA.seen = true; LLAMA.found++; } }   // (found: no fanfare again)
   const fc = flockCenter();
   for (const r of Array.isArray(v.guards) ? v.guards.slice(0, 12) : []) {
     if (!r || (r.sex !== 'm' && r.sex !== 'f')) continue;
-    const L = makeLlama({ x: fc.x, z: fc.z, sex: r.sex, age: +r.age || T.llama.adultDays, coat: r.coat | 0, look: r.look | 0, wool: clamp(+r.wool || 0, 0, 1), tame: 2 });
+    const L = makeLlama({ x: fc.x, z: fc.z, sex: r.sex, age: +r.age || T.llama.adultDays, coat: (r.coat | 0) % LLAMA_COATS.length, look: r.look | 0, wool: clamp(+r.wool || 0, 0, 1), tame: 2,
+      name: typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 14) : undefined, wear: llamaWearOf(r.wear), greens: clamp(+r.greens || 0, 0, T.llama.pack.greens), salt: clamp(r.salt | 0, 0, T.llama.pack.salt), cold: clamp(+r.cold || 0, 0, 1) });
     if (!SEA.on && !journeyPlace(L, r.at)) llamaPlace(L, fc.x, fc.z);
   }
   if (SEA.on) llamasAboard();
@@ -21061,7 +21432,9 @@ onSave('llamas', () => ({ seed: LLAMA.seed, found: LLAMA.herds.map((H, i) => H.f
 onSync(syncLlamas, 55);   // LLAMAS: and their spit
 expose(() => ({ LLAMAS, LLAMA, LLAMA_COATS, makeLlama, llamaRemove, resetLlamas, llamaPlan, llamaSpotOK, updateLlamas, llamaStep, llamaMateFor, llamaBirth, llamaCatch, llamaRope,
   llamaUnrope, llamaTugEnd, llamaJoin, llamaFoe, llamaSpitAt, llamaSpitHit, llamaBark, llamaPounce, launchLlama, llamaGrabbed, llamaLetGo, llamaGrabbable, llamaShearPick, llamaShearNext,
-  llamasAboard, llamaDeckSpot, llamaNeck, llamaSize, syncLlamas, devLlama, llamaFx, spitFx, newCoyote }));   // LLAMAS
+  llamasAboard, llamaDeckSpot, llamaNeck, llamaSize, syncLlamas, devLlama, llamaFx, spitFx, newCoyote,
+  LWARD, LWARD_KEY, LLAMA_ITEMS, LLAMA_TINTS, llamaLookKey, llamaSet, llamaDig, llamaHas, llamaFound, saveLlamaWard, loadLlamaWard, llamaWearStr, llamaWearOf, buildLlama, llamaGear, llamaPackGeo,
+  llamaCold, llamaPep, llamaGuardGoal, llamaPackLoad, llamaPackGoal, llamaPacking, llamaPackSync }));   // LLAMAS
 
 // =====================================================================
 // SAILING — a boat under sail, the flock on deck (issue #74). The deck is a pen (DECK) and never moves in the world: the sea goes by
@@ -23744,8 +24117,13 @@ const NET_TYPES = {
     tag: 'l', all: () => LLAMAS, id: L => L.nid || (L.nid = ++NET.nid),
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', sex: 's', age: .01, coat: 'i', look: 'i', wool: .02, tame: 'i', hopY: .02, tugK: .05,
       rp: { c: 'i', get: L => L.rope ? L.rope.i : -1, set: (L, v) => netLlamaRope(L, v) }, ropeI: 'i', heldBy: '@dog', ...NET_AIR,
-      grabbed: { c: 's', get: L => netRefStr(L.grabbed), set: (L, v) => { L.grabbed = netRefFind(v); } } },   // (PREY: a coyote 'c…', a cougar 'Q…')
+      grabbed: { c: 's', get: L => netRefStr(L.grabbed), set: (L, v) => { L.grabbed = netRefFind(v); } },   // (PREY: a coyote 'c…', a cougar 'Q…')
+      name: 's', wear: { c: 's', get: L => llamaWearStr(L), set: (L, v) => { L.wear = llamaWearOf(v); } }, greens: .05, salt: 'i', cold: .02 },   // LLAMA WARDROBE, PACK, COLD
     make: (id, f) => netGuestLlama(id, f), kill: L => llamaRemove(L), animate: (L, dt) => netAnimLlama(L, dt),
+  },
+  lward: {   // LLAMA WARDROBE: what the host's dug up for them (a guest's barn dresses the host's llamas)
+    tag: 'w', one: () => LWARD,
+    fields: { f: { c: 's', get: o => o.found.join(), set: (o, v) => { o.net = String(v || '').split(',').filter(id => LLAMA_ITEMS.some(it => it.id === id)); } } },
   },
   bone: {   // BONES: where each lies (or flies, how high, tumbling), which dog has it
     tag: 'O', all: () => BONES, id: b => b.nid || (b.nid = ++NET.nid),
@@ -24746,6 +25124,10 @@ function netFromGuest(s, m) {
     case 'n': { const nm = netCleanName(m.name); if (nm && nm !== s.name) { s.name = nm; s.subs[0].name = nm; if (s.subs[0].player) s.subs[0].player.name = nm; netRoster(); } break; }
     case 'm': s.menu = !!m.on; menuTick(); break;   // MENUS: their screen's in one (or out)
     case 'dl': { if (u && m.lk && typeof m.lk === 'object') { u.look = m.lk; netApplyLook(s, u); } break; }   // their dog, from their barn
+    case 'll': {   // LLAMA WARDROBE: a llama renamed or dressed in their barn
+      const L = LLAMAS.find(o => o.nid === (m.id | 0)); if (L && m.ch && typeof m.ch === 'object') llamaSet(L, m.ch);
+      break;
+    }
     case 'sh': {   // a sheep renamed or dressed in their barn or on their dawn card
       const sh = G.sheep.find(o => o.id === (m.id | 0) && !o.dead), ch = cleanSheepEdit(m.ch);
       if (sh && ch) { barnSet(sh, ch); NET.flockDirty = true; }
@@ -25436,7 +25818,7 @@ const DEV_CHEATS = [
   { code: 'KeyN', key: 'N', icon: '🕯', tip: 'Dusk', fn: () => { G.clock.hour = 19.9; } },
   { code: 'KeyB', key: 'B', icon: '🌅', tip: 'Dawn', fn: () => { G.clock.hour = 5.9; } },   // (M is the map)
   { code: 'KeyK', key: 'K', icon: '🐺', tip: 'A coyote', land: true, fn: () => spawnCoyotes(1) },
-  { code: 'Backslash', key: '\\', icon: '🦙', tip: 'Llamas here (again: one a guard)', land: true, fn: () => devLlama() },   // LLAMAS
+  { code: 'Backslash', key: '\\', icon: '🦙', tip: 'Llamas here (again: one a guard, in a blanket and a pack)', land: true, fn: () => devLlama() },   // LLAMAS
   { code: 'KeyX', key: 'X', icon: '🕳', tip: 'Coyotes dig into a pen', land: true, fn: () => devBurrow() },   // BURROWS
   { code: 'KeyJ', key: 'J', icon: '🐆', tip: 'A cougar hunts', land: true, fn: () => { const fc = flockCenter(); const ng = nearGrove().grove; if (ng && COUGARS.every(k => ['away', 'perch', 'fed'].includes(k.state))) perchGrove(ng); const k = [...COUGARS].filter(k => k.state === 'perch').sort((a, b) => Math.hypot(a.lair.x - fc.x, a.lair.z - fc.z) - Math.hypot(b.lair.x - fc.x, b.lair.z - fc.z))[0]; if (k) { if (!isNight()) G.clock.hour = 21; cougarHunt(k, 0); toast('A cougar is hunting', ''); } } },   // COUGARS
   { code: 'KeyV', key: 'V', icon: '🦅', tip: 'A falcon comes', land: true, fn: () => { if (G.clock.hour < 8 || G.clock.hour > 18) G.clock.hour = 12; falconCome(falconPick()); } },   // FALCON
