@@ -1124,7 +1124,7 @@ const T = {
     shy: 9, creep: 3.6, close: 2.2, flee: 2.6, seek: 70, seekB: 170, mateT: 7, mateCd: 10, gestH: 30, nurseH: 14, adultDays: 2, max: 12, maxG: 8,
     catchR: 2.8, waryH: 2, bolt: 4, boltSpd: 7.5, lead: { pull: 0.12, near: 2.6 }, joinR: 7, far: 45, alarm: 26, mass: 120, buck: 1.4,
     tug: { base: 5.5, back: 1.5, heave: 3.2, beats: 2, heaveT: 0.45, yank: 3.8, walk: 1.8, tire: 10, tireR: 0.045, tireMin: 0.5 },
-    spit: { r: 11, cd: 2.4, wind: 0.45, fly: 0.45, hit: 1.8, coyote: 1.2, dogR: 2.2, dogT: 1.4, dogStun: 0.35 },
+    spit: { r: 11, cd: 2.4, wind: 0.45, fly: 0.45, hit: 1.8, coyote: 1.2, dogR: 2.2, dogT: 1.4, dogStun: 0.35, nag: 2, nagFade: 12, nagBarkR: 4, stray: 1.1 },   // tame: at a dog only nagged `nag` × (each fades in nagFade s: a bark within nagBarkR m, a punt, a grab), or by accident (within `stray` m of a spit at a foe)
     shear: { min: 0.5, yield: 6, time: 5, regrowDays: 4 },
     ward: { dig: 0.4, chest: 0.5 },   // LLAMA WARDROBE: a guard about and gear left: the first dig's the llamas', then this share (a chest: this)
     cold: { wool: 0.7, blanket: 0.12, warmR: 28, numb: 0.85, dieHours: [3, 5] },   // the pass: as a sheep's, but its fleece keeps out `wool` × as much; a blanket: ×; cold: to a fire within warmR m; numb: no spit
@@ -22228,7 +22228,7 @@ function llamaFind() {
 }
 function llamaStep(L, dt, dtH) {
   const K = T.llama;
-  L.t += dt; L.age += dtH / 24; L.cdH -= dtH; L.waryH = Math.max(0, L.waryH - dtH); L.spitCd -= dt; L.stumble = Math.max(0, L.stumble - dt);
+  L.t += dt; L.age += dtH / 24; L.cdH -= dtH; L.waryH = Math.max(0, L.waryH - dtH); L.spitCd -= dt; L.nag = Math.max(0, (L.nag || 0) - dt / K.spit.nagFade); L.stumble = Math.max(0, L.stumble - dt);
   if (L.state !== 'shear') L.wool = Math.min(1, L.wool + dtH / 24 / K.shear.regrowDays);
   const grown = L.age >= K.adultDays; if (grown && !L.grown) llamaGrownUp(L); L.grown = grown;
   L.str = (L.sex === 'm' ? 1.15 : 1) * lerp(0.6, 1, clamp(L.age / K.adultDays, 0, 1));
@@ -22289,7 +22289,7 @@ function llamaWildStep(L, dt) {
   if (dog && dd < K.shy * (L.waryH > 0 ? 1.6 : 1) && !dog.ko && !(dog.air && dog.air.swim)) {
     const sp = Math.hypot(dog.vx, dog.vz);
     if (L.waryH > 0 || dd < K.close || sp > K.creep) {
-      if (L.grown && dd < K.spit.dogR && L.spitCd <= 0 && (L.crowdT += dt) > K.spit.dogT) { L.crowdT = 0; llamaSpitAt(L, dog, 'dog'); return; }
+      if (!L.tame && L.grown && dd < K.spit.dogR && L.spitCd <= 0 && (L.crowdT += dt) > K.spit.dogT) { L.crowdT = 0; llamaSpitAt(L, dog, 'dog'); return; }
       if (L.state !== 'flee') { llamaFlee(L, dog.x, dog.z, L.waryH > 0 || sp > T.dogWalk * 0.7 ? K.run : K.trot); return; }
     }
   } else L.crowdT = 0;
@@ -22618,6 +22618,7 @@ function llamaSpitsStep() {
   for (let i = LLAMA.spits.length - 1; i >= 0; i--) {
     const S = LLAMA.spits[i]; if (G.time < S.at) continue; LLAMA.spits.splice(i, 1);
     if (Math.hypot(S.e.x - S.x, S.e.z - S.z) < K.hit + Math.hypot(S.e.vx || 0, S.e.vz || 0) * 0.15) llamaSpitHit(S.e, S.kind, S.L);
+    if (S.kind !== 'dog') for (const d of G.dogs) if (d !== S.e.dog && d !== S.e.prey && !d.heldBy && !d.ko && Math.hypot(d.x - S.x, d.z - S.z) < K.stray) llamaSpitHit(d, 'dog', S.L);   // a dog in the way: an accident
   }
 }
 // a hit: in the eye. Coyotes and cougars turn tail (dropping what they have), the falcon lets go, a snake goes home, a goat bounds off
@@ -22644,12 +22645,21 @@ function llamaSpitHit(e, kind, L) {
     if (!LLAMA.said.spit && hankSees(e.x, e.z)) { LLAMA.said.spit = true; hank(null, pick(["Ha! Right in the eye!", "Pfft! Good llama!", "That's put it off its supper!"]), { force: true, delay: 0.4 }); }
   }
 }
+// a tame one nagged (a close bark, a punt, a grab): cross; again soon (T.llama.spit.nag): it spits at that dog
+function llamaNag(L, d) {
+  const K = T.llama;
+  if (!L.tame || !d || !G.dogs.includes(d)) return;
+  L.nag = (L.nag || 0) + 1;
+  if (L.nag >= K.spit.nag && L.grown && L.spitCd <= 0 && llamaFree(L) && !(L.cold > K.cold.numb)) { L.nag = 0; llamaSpitAt(L, d, 'dog'); }
+  else llamaFx('grump', L.x, L.z, llamaSize(L));
+}
 // ---------------- a dog and a llama: a bark sends wild ones off; a pounce punts it (as a sheep); grabbed by the scruff, carried, flung ----------------
 function llamaBark(d) {   // → how many it reached (herding: VAGABOND's nag counts these)
   let n = 0; const R = barkR(d);
   for (const L of LLAMAS) {
     if (Math.hypot(L.x - d.x, L.z - d.z) > R) continue; n++;
     if (!L.tame && llamaFree(L) && L.state !== 'tug' && L.state !== 'flee') llamaFlee(L, d.x, d.z, T.llama.run);
+    else if (L.tame && Math.hypot(L.x - d.x, L.z - d.z) < T.llama.spit.nagBarkR) llamaNag(L, d);
   }
   return n;
 }
@@ -22715,7 +22725,7 @@ function llamaAirStep(L, dt) {
 function llamaLanded(L, a, impact) {
   const by = a && a.by && G.dogs.includes(a.by) ? a.by : null;
   if (!L.tame) { if (by && L.grown && L.spitCd <= 0 && Math.random() < 0.6) llamaSpitAt(L, by, 'dog'); else llamaFlee(L, by ? by.x : L.x - L.vx, by ? by.z : L.z - L.vz, T.llama.run); }
-  else if (L.tame === 2) { L.state = 'guard'; if (by && L.grown && L.spitCd <= 0 && Math.random() < 0.35) llamaSpitAt(L, by, 'dog'); }
+  else if (L.tame === 2) { L.state = 'guard'; if (by) llamaNag(L, by); }
   else L.state = 'led';
   llamaFx('grump', L.x, L.z, llamaSize(L));
 }
@@ -22723,6 +22733,7 @@ function llamaLanded(L, a, impact) {
 const llamaGrabbable = L => !L.heldBy && !L.grabbed && !L.rope && !L.hop && L.state !== 'shear' && L.state !== 'tug' && !SEA_AWAY && !(L.air && L.air.h - groundY(L.x, L.z) > 1.8);
 function llamaGrabbed(L, d) {
   const caught = !!L.air; L.air = null; L.heldBy = d; L.kushK = 0; L.grazeK = 0;
+  if (L.tame && !caught) llamaNag(L, d);
   if (L.mate) { const o = L.mate; L.mate = null; if (o.mate === L) { o.mate = null; if (o.state === 'mate') o.state = o.tame === 2 ? 'guard' : 'graze'; } }
   if (L.state === 'mate' || L.state === 'court' || L.state === 'spit' || L.state === 'kush' || L.state === 'flee' || L.state === 'bolt') L.state = L.tame === 2 ? 'guard' : 'graze';
   if (caught) { floatText('NICE CATCH!', L.x, L.y + 2.4, L.z, '#ffd36b', 1.5); starBurst(L.x, L.y + 1, L.z, 8); Sound.chime([0, 7, 12], 784, 0.16); }
