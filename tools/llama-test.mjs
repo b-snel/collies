@@ -402,8 +402,8 @@ if (want('barn')) {
     openBarn(a); out.opensOn = BARN.tab === 'llamas' && BARN.ll === a; closeBarn();
     return out;
   });
-  ok(`no llama of ours: no 🦙 tab (${r.none})`, r.none === 'dogs,sheep' && r.noTab, r);
-  ok(`one broken: the 🦙 tab (${r.list}), coats, locks on what's not dug up`, r.tabs === 'dogs,sheep,llamas' && r.tab && r.list.includes('♀') && r.list.includes('Wee🍼') && r.coats === 10 && r.locks === 3, r);
+  ok(`no llama of ours: no 🦙 tab (${r.none})`, r.none === 'dogs,sheep,kin' && r.noTab, r);
+  ok(`one broken: the 🦙 tab (${r.list}), coats, locks on what's not dug up`, r.tabs === 'dogs,sheep,kin,llamas' && r.tab && r.list.includes('♀') && r.list.includes('Wee🍼') && r.coats === 10 && r.locks === 3, r);
   ok(`dressed in the barn (${r.wear}, coat ${r.coat}), on the turntable; info: ${r.info}`, r.wear === 'none|#3fbf5a|blanket.pack' && r.coat === 4 && r.on === 'blanket,pack' && r.info.includes('🎒') && r.model, r);
   ok(`renamed (${r.name}), another picked, a 🎲 name; the one out there wears it; opens on a llama asked for`, r.name === 'Duchess' && r.picked && r.dice && r.world === true && r.opensOn, r);
 }
