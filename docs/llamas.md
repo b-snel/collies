@@ -5,7 +5,7 @@
   rng, a new seed a journey (`LLAMA.seed`, `llamaPlan`, `llamaSpotOK`). A herd: a male, `f` females, a cria maybe. Found: the first dog within
   `findR` of one (`llamaFind`, `H.found`): ❗🦙, a chime; the journey's first, a banner, Hank's word, the hint. They graze their range (`range` m,
   `llamaGraze`), kush by night, shy off a dog going faster than `creep` m/s (`shy` m) or any within `close` (a creeping dog gets close); a bark
-  sends them off (`llamaBark`: herding, not a nag). A dog crowding one (`spit.dogR`, `dogT` s): spat at.
+  sends them off (`llamaBark`: herding, not a nag). A dog crowding a wild one (`spit.dogR`, `dogT` s): spat at.
 - **Population**: a grown male (`adultDays`, `L.grown`) seeks the nearest free female within `seek` m (`seekB`: a bachelor), `llamaMateFor`;
   they kush and mate `mateT` s (an orgle, ♥), she's pregnant `gestH` h (`L.preg`; a male near: spat off), then a cria at her side
   (`llamaBirth`, `L.mum`), grown at `adultDays`; a young male grown leaves his herd (`llamaGrownUp`, `llamaRoam`). Two males after one:
@@ -30,6 +30,8 @@
   (dog, llama) flying into one caroms it (`airHits`, by weight).
   Grabbed by the scruff (`grabKinds.llama` / `cria`, `holdStep`, CARRY SWING), carried, flung (`llamaLetGo`); a grown wild one bucks
   free after `buck` s and spits. On a rope (or a tug): it stands its ground (BOING). Landed: a wild one runs (or spits back).
+- **Tame ones spit at a dog** only nagged (`llamaNag`: a bark within `spit.nagBarkR` m, a punt, a grab; `spit.nag` of them, each
+  fading in `nagFade` s) or by accident (a dog within `spit.stray` m of where a spit at a foe lands).
 - **Shearing** (HANK): no sheep to shear, he shears a guard (`llamaShearNext`, `HANK.job.L`, `llamaShearStep`): `shear.yield` × wool ×
   size² 🧶; fleece regrows over `regrowDays`.
 - **Drawing** (`llamaModel`, `llamaGeo` per coat, `syncLlamas`, every screen): a woolly barrel and neck (FUR shells), banana ears, a
