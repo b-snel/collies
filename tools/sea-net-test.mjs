@@ -117,8 +117,9 @@ try {
   await sleep(1200);
   const over = await B.page.evaluate(() => { const s = GAME.G.sheep.find(s => !s.dead && s.air && s.air.sea); return s ? { sea: s.air.sea, lung: s.air.lung, y: s.y } : null; });
   check('a sheep overboard: the guest has it in the sea, its breath running', over && over.sea && over.lung > 0 && over.lung <= 1, over);
-  await A.page.evaluate(() => {   // the host's dog takes the starboard ring and throws it to her
-    const { G, RINGS } = GAME, d = G.dogs[0], r = RINGS[1], s = window.__s;
+  await A.page.evaluate(() => {   // the host's dog takes the starboard ring and throws it to her (she's set 8 m out from it: back alongside, the dog's grab would haul her in instead)
+    const { G, RINGS, BOAT } = GAME, d = G.dogs[0], r = RINGS[1], s = window.__s;
+    if (s.air) { s.x = r.hx + BOAT.rx * 8; s.z = r.hz + BOAT.rz * 8; s.vx = s.vz = 0; s.air.cling = false; }
     d.x = r.sx; d.z = r.sz; d.vx = d.vz = 0; d.yaw = Math.atan2(r.hx - d.x, r.hz - d.z); G.players[0].bot = { grab: true };
     window.__aim = setInterval(() => { if (r.st === 'held') d.yaw = Math.atan2(s.x - d.x, s.z - d.z); }, 20);
   });
