@@ -396,7 +396,7 @@ ok('a new journey: a new seed, at his first pitch, packed, no grudges; sticks by
 const r15 = await h.page.evaluate(() => {
   const { G, VAG, T, SEA, seaStart, seaCastOff, vagPress, vagFrame, vagReach, boatXZ, boatU, boatV, BOAT, DECK, kitN, ALL_WARES, vendorBark, seaDist, ROUTE, ISLES, onQuay } = GAME;
   const out = {}, d = G.dogs[0], run = H.run, aboard = () => { const p = boatXZ(-6, 0); H.place(d, p.x, p.z); run(0.3); }, press = () => vagPress(d, { bark: true });
-  H.reset(); G.wool = 200; seaStart({ leg: 0 }); run(0.2);
+  H.reset(); G.wool = 200; seaStart({ leg: 0 }); run(0.2); GAME.renderOnce();
   const hb = VAG.sea.b; out.harb = { mode: VAG.mode, ph: VAG.sea.ph, frame: vagFrame(), reach: vagReach(), sail: hb.on && hb.beach === 0, quay: onQuay(VAG.x, VAG.z) };
   let bMin = 1e9, bMax = 0, moved = 0, e0 = hb.e, n0b = hb.n; for (let i = 0; i < 60; i++) { run(0.5); const dd = seaDist(hb.e, hb.n); bMin = Math.min(bMin, dd); bMax = Math.max(bMax, dd); moved = Math.max(moved, Math.hypot(hb.e - e0, hb.n - n0b)); }
   out.bay = { ph: VAG.sea.ph, min: Math.round(bMin), max: Math.round(bMax), moved: Math.round(moved) };
@@ -417,7 +417,7 @@ const r15 = await h.page.evaluate(() => {
   aboard(); seaCastOff(true); run(0.3); out.bye = VAG.line;
   for (let i = 0; i < 150 && VAG.st !== 'off'; i++) run(1);
   out.gone = VAG.st;
-  for (const [leg, under] of [[2, true], [3, false], [3, true], [4, true]]) { seaStart({ leg, under }); run(0.3); out['g' + leg + (under ? 'u' : '')] = VAG.st; }
+  for (const [leg, under] of [[2, true], [3, false], [3, true], [4, true]]) { seaStart({ leg, under }); run(0.3); GAME.renderOnce(); out['g' + leg + (under ? 'u' : '')] = VAG.st; }   // (drawn too: gone, no site to stand on)
   GAME.resetGame(); run(0.1); out.reset = { mode: VAG.mode, sea: VAG.sea, st: VAG.st };
   return out;
 });
