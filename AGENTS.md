@@ -306,6 +306,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Read buttons once per frame, not per substep. Pad presses: `padEdge` (sampled at the frame's start, `padFrame`); never re-read the pad at the frame's end to mark presses seen.
 - Gamepad presses don't unlock audio.
 - Sound params that move: ease them (`setTargetAtTime`), never `.value =` every frame (zipper buzz).
+- DOM styles that move: write them only when they change (`will-change` them): a restyle every frame starves the game loop.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
 - Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies).
