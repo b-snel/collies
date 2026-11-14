@@ -324,7 +324,8 @@ const r9 = await h.page.evaluate(() => {
   Object.assign(out, { free: !VAG.heldBy && !d.holding, after: VAG.line, griev: VAG.griev, annoy: +VAG.annoy.toFixed(1) });
   return out;
 });
-ok('grabbed: "Ack! Get this mutt off me!", frantic, dragged a little', r9.held && /Ack! Get this mutt off me!/.test(r9.lines[0]) && new Set(r9.lines).size > 1 && r9.dragged > 0.5 && r9.dragged < 12, r9);
+// (how far: his flailing is a random walk (holdStep's holdWob) that pulls against the dog, or with it: ~6 m to ~13 m in the 3 s)
+ok('grabbed: "Ack! Get this mutt off me!", frantic, dragged a little', r9.held && /Ack! Get this mutt off me!/.test(r9.lines[0]) && new Set(r9.lines).size > 1 && r9.dragged > 0.5 && r9.dragged < 14, r9);
 ok('let go: he dusts himself off, annoyed; a grievance', r9.free && r9.after && !/Ack/.test(r9.after) && r9.griev === 1 && r9.annoy > 2, r9);
 
 // 10. annoyed past bearing: a spiteful line, his wares packed, off out of sight; gone a day; back at a pitch ahead of the flock, annoyance gone

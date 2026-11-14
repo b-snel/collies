@@ -114,7 +114,7 @@ const r6 = await h.page.evaluate(() => {
 });
 ok('a sheep saved from a coyote\'s jaws comes away cut', r6.ail > 0, r6);
 
-// 7. the trader: 💉 🩹 💊 🪏 straight to Hank (🧶 spent); too poor: no; the shovel gone from the mats once bought
+// 7. the trader: 💉 🩹 💊 🧪 🪏 (🧪: SHEEP POX, pox-test) straight to Hank (🧶 spent); too poor: no; the shovel gone from the mats once bought
 const r7 = await h.page.evaluate(() => {
   const { G, MARKET, buyWare, T, HANK, renderOnce } = GAME, d = G.dogs[0], ware = id => MARKET.wares.find(w => w.id === id);
   G.wool = 30; HANK.shovel = false; HANK.meds = { venom: 0, bandage: 0, pills: 0 };
@@ -125,7 +125,7 @@ const r7 = await h.page.evaluate(() => {
   G.wool = 0; out.poor = buyWare(ware('venom'), d); out.venom = HANK.meds.venom;
   return out;
 });
-ok(`second row: ${r7.kinds.join(' ')}; each straight to Hank (${r7.spent} 🧶)`, r7.kinds.join() === 'venom,bandage,pills,shovel' && r7.buy.every(k => k === 'buy') && r7.meds.venom === 1 && r7.meds.bandage === 1 && r7.meds.pills === 1 && r7.shovel && r7.back && r7.hip && r7.spent === 10, r7);
+ok(`second row: ${r7.kinds.join(' ')}; each straight to Hank (${r7.spent} 🧶)`, r7.kinds.join() === 'venom,bandage,pills,vaccine,shovel' && r7.buy.every(k => k === 'buy') && r7.meds.venom === 1 && r7.meds.bandage === 1 && r7.meds.pills === 1 && r7.shovel && r7.back && r7.hip && r7.spent === 10, r7);
 ok('too poor: no; the shovel off the mats once Hank has it', r7.poor === 'poor' && r7.venom === 1 && !r7.shovelShown, r7);
 
 // 8. Hank stocked: he goes to the sick and treats them, the worst first

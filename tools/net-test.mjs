@@ -419,7 +419,7 @@ try {
   await until(A, id => (GAME.G.sheep.find(s => s.id === id) || {}).name === 'Puddle', dawnLamb.id, 5000).catch(() => {});
   const dawnNamed = await A.page.evaluate(id => (GAME.G.sheep.find(s => s.id === id) || {}).name, dawnLamb.id);
   await A.page.evaluate(() => GAME.closeDawn());
-  await until(B, () => !GAME.G.paused, null, 5000).catch(() => {});
+  await until(B, () => !GAME.G.paused && /▶/.test(document.getElementById('menuBadge').textContent), null, 5000).catch(() => {});   // (the badge redraws up to 120 ms after: netUI)
   const dawnStill = await B.page.evaluate(() => !document.getElementById('dawn').classList.contains('hidden') && !GAME.G.paused && document.getElementById('menuBadge').textContent);
   const [holdS, graceS] = await B.page.evaluate(() => { document.activeElement && document.activeElement.blur(); return [GAME.T.dawn.hold, GAME.T.dawn.grace]; });   // (held to go on; not in its first moment)
   await sleep(graceS * 1000 + 150);
