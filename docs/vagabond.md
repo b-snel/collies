@@ -16,6 +16,7 @@
     apart, flush to it, no pockets), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
     (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. 🧪: `T.vendor.vaccine.n` doses (`docs/pox.md`). ♈ a ram, on a mat of its own out front (row 2), one a pitch, on land
     (`vagRamStock`, `vagRamSell`: he's on the mat, then off to the flock; new blood, docs/kin.md); called when the flock needs one (`kinNeedRam`).
+    🚧 RAM FOLDS, on the same row: hurdles for a ram fold by the 📍 pen (✔ it has one, ✖ no room; docs/kin.md).
     🐑 SELLING, on the same row: a sheep stood (or carried) on the mat (`sellSheepOn`; in the barking dog's jaws first); the tag: what he'd
     pay, ★ (`sheepStars`). A bark: his price (✔?, `VSTALL.sellAsk`); again within `T.vendor.sell.confirm` s: sold (`sellWare`, `sellSheep`:
     🧶 in, gone, not a death: no eulogy, no remains; its record `'sold'`; saved at once). What it's worth (`sheepWorth`, `T.vendor.sell`):
