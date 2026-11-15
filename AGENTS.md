@@ -128,6 +128,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `onSync(fn, o)`: every drawn frame; `frame` and `renderOnce` run them, `fn(dt, once)` (default 500: last)
 - `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
 - `onSave(key, save, load, o)`: JOURNEY SAVE; `save()` → plain JSON, `load(v)` on a resumed journey, lowest `o` first (`savePlain` / `loadPlain`, `journeyAt` / `journeyPlace`)
+- `collideFences(e, r, px, pz)` (px, pz: where it stood at its last check; shoved over a fence since: back that side)
 - `knockDog`
 - `grabPick(d)` (what Ⓧ would take, no side effects; `tryGrab` bites it, the sea overlay marks it)
 - `d.mud`/`d.wet` (0…1), `tubStep` (in a water trough: updateDog hands over)
@@ -273,6 +274,7 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   and water beat both: hungry/thirsty penned sheep eat or drink first, ones
   outside come in for it any time of day (`T.troughDraw`), barely while a dog
   works them (`pushed`). Hungry ones set on a trough eat through barks (`troughSet`, `T.hungry`).
+- **Shut pens hold.** No crush shoves a sheep through a fence or round a trough (`fenPrev`, `PREV`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
   leaf's free end; pressed ones slide along, not into it. Lambs follow a
   penned mum in.

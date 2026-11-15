@@ -3627,12 +3627,22 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
 // FENCES: generic segment colliders used by pens and the launcher
 // =====================================================================
 const HIT = { nx: 0, nz: 0 };
+// PREV (on: collideFences(e, r, px, pz)): where it stood at its last check. Shoved clean across a fence since (its middle over
+// the line: a crush of sheep, say), it goes back on that side, not out the far one
+const PREV = { on: false, x: 0, z: 0 };
 function collideSeg(e, r, s) {
   const abx = s.bx - s.ax, abz = s.bz - s.az, L2 = abx * abx + abz * abz;
   const t = clamp(((e.x - s.ax) * abx + (e.z - s.az) * abz) / L2, 0, 1);
   const qx = s.ax + abx * t, qz = s.az + abz * t;
-  let dx = e.x - qx, dz = e.z - qz, d = Math.hypot(dx, dz); const rr = r + 0.1;
-  if (d >= rr) return false;
+  let dx = e.x - qx, dz = e.z - qz, d = Math.hypot(dx, dz), back = false; const rr = r + 0.1;
+  if (PREV.on) {
+    const c0 = abx * (PREV.z - s.az) - abz * (PREV.x - s.ax), c1 = abx * (e.z - s.az) - abz * (e.x - s.ax);
+    if (c0 * c1 < 0) {   // crossed the line: through the fence itself, or past its end?
+      const u = c0 / (c0 - c1), ti = ((PREV.x + (e.x - PREV.x) * u - s.ax) * abx + (PREV.z + (e.z - PREV.z) * u - s.az) * abz) / L2;
+      if (ti >= 0 && ti <= 1) { const k = Math.sign(c0); dx = -abz * k; dz = abx * k; d = Math.sqrt(L2); back = true; }
+    }
+  }
+  if (d >= rr && !back) return false;
   if (d < 1e-4) { dx = -abz; dz = abx; d = Math.hypot(dx, dz); }
   const nx = dx / d, nz = dz / d; e.x = qx + nx * rr; e.z = qz + nz * rr;
   const vn = e.vx * nx + e.vz * nz; if (vn < 0) { e.vx -= vn * nx; e.vz -= vn * nz; }
@@ -3760,23 +3770,35 @@ function updateGateGeometry(pen) {
 }
 function insidePen(pen, x, z, margin = 0.3) { return pen.deck ? onDeck(x, z, margin) : (x - pen.x) ** 2 + (z - pen.z) ** 2 < (pen.R - margin) ** 2; }
 function penAt(x, z) { for (const p of pens) if (insidePen(p, x, z)) return p; return null; }
-// returns true if it hit something (HIT holds the last normal)
-function collideFences(e, r) {
+// returns true if it hit something (HIT holds the last normal). SHARED HOOK: px, pz: where it stood at its last check (PREV)
+function collideFences(e, r, px, pz) {
   let hit = false, hx = 0, hz = 0;
+  const x0 = e.x, z0 = e.z;
+  PREV.on = px !== undefined; PREV.x = px; PREV.z = pz;
+  // troughs and licks (boxFence) first, each as one box: off its nearest point (its sides one by one would roll a sheep
+  // by a corner round the back, over the fence). One that ended up inside (a lamb born on it, a squeeze, a landing)
+  // steps out on the side toward the middle of the pen. Then the fences, from where it stood before a box moved it
+  // (PREV): no box shoves anything over one
+  const rr = r + 0.1;
+  for (const p of pens) for (const b of p.solids || []) {
+    const rx = e.x - b.x, rz = e.z - b.z, far = b.hl + b.hw + rr; if (rx * rx + rz * rz > far * far) continue;
+    const u = rx * b.tx + rz * b.tz, v = rx * b.nx + rz * b.nz;
+    if (Math.abs(u) < b.hl && Math.abs(v) < b.hw) { const dv = b.hw + rr - v; e.x += b.nx * dv; e.z += b.nz * dv; hit = true; hx = b.nx; hz = b.nz; continue; }
+    const du = u - clamp(u, -b.hl, b.hl), dv = v - clamp(v, -b.hw, b.hw), d = Math.hypot(du, dv); if (d >= rr) continue;
+    const nx = (b.tx * du + b.nx * dv) / d, nz = (b.tz * du + b.nz * dv) / d;
+    e.x += nx * (rr - d); e.z += nz * (rr - d);
+    const vn = e.vx * nx + e.vz * nz; if (vn < 0) { e.vx -= vn * nx; e.vz -= vn * nz; }
+    hit = true; hx = nx; hz = nz;
+  }
+  if (hit && !PREV.on) { PREV.on = true; PREV.x = x0; PREV.z = z0; }
   for (const p of pens) {
     if (Math.abs(e.x - p.x) > p.R + 9 || Math.abs(e.z - p.z) > p.R + 9) continue;
     for (const s of p.segs) if (collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
     if ((!e.isDog || p.lock) && collideSeg(e, r, p.gateSeg)) { hit = true; hx = HIT.nx; hz = HIT.nz; }   // dogs and the gate leaf: updateGate (they push it; not the boat's gangway, lashed shut at sea)
     if (p.deck && QUAY.on && !p.lock && e.pen === p && collideSeg(e, r, p.mouthSeg)) { hit = true; hx = HIT.nx; hz = HIT.nz; }   // SAILING: alongside, a sheep that's come aboard doesn't walk back off
   }
-  for (const s of staticFences) if (Math.abs(e.x - s.ax) < 20 && Math.abs(e.z - s.az) < 20 && collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }
-  // something that ended up inside a trough or the salt lick (a lamb born on it, a squeeze, a landing) would be
-  // walled in by its sides for good: step it out on the side toward the middle of the pen
-  for (const p of pens) for (const b of p.solids || []) {
-    const rx = e.x - b.x, rz = e.z - b.z; if (rx * rx + rz * rz > 9) continue;
-    const u = rx * b.tx + rz * b.tz, v = rx * b.nx + rz * b.nz;
-    if (Math.abs(u) < b.hl && Math.abs(v) < b.hw) { const dv = b.hw + r + 0.02 - v; e.x += b.nx * dv; e.z += b.nz * dv; hit = true; hx = b.nx; hz = b.nz; }
-  }
+  for (const s of staticFences) if (!s.box && Math.abs(e.x - s.ax) < 20 && Math.abs(e.z - s.az) < 20 && collideSeg(e, r, s)) { hit = true; hx = HIT.nx; hz = HIT.nz; }   // (a box's sides: done above)
+  PREV.on = false;
   HIT.nx = hx; HIT.nz = hz; return hit;
 }
 
@@ -6424,8 +6446,14 @@ function breakOut(s, D) {
 function bellDing(s) { const d = Math.hypot(s.x - cam.x, s.z - cam.z); if (d < 32 && Sound.ready) Sound.chime([0, 7], 1568 * rnd(0.98, 1.02), 0.05 * (1 - d / 34), 0.05); }
 const NB = { nearest: 0, nearestO: null, nC: 0, cX: 0, cZ: 0, pp: null, steady: false };
 const NBL = [];   // this sheep's flockmates within 12 m (same side of any fence), rebuilt each step
+// Penned stays penned: where each sheep stood after its last fence check (s.fenX/fenZ, at step s.fenT). Shoved since (the crush
+// at a fence, a squeeze into a trough), it can't come out the far side (PREV). Not if it's been off its feet (air, held,
+// grabbed: no check), swept by a gate leaf (fenT = -1), or moved further than a shove (put there).
+let FEN_T = 0;
+const fenPrev = s => FEN_T - s.fenT <= 1 && Math.abs(s.x - s.fenX) + Math.abs(s.z - s.fenZ) < 2.5;
 function updateSheep(dt, dtH) {
   const S = G.sheep, N = S.length, night = isNight(), play = G.mode === 'play';
+  FEN_T++;
   for (const s of S) {
     if (s.dead || s.grabbed) continue;
     s.wasPen = s.pen; s.pen = null;
@@ -6844,7 +6872,8 @@ function updateSheep(dt, dtH) {
     const k = Math.min(1, acc * dt); s.vx += (tvx - s.vx) * k; s.vz += (tvz - s.vz) * k;
     s.x += s.vx * dt; s.z += s.vz * dt;
     if (SEA.on && s.pen && s.pen.deck) seaSheepDeck(s, dt);   // SAILING: the deck heels and jolts under it
-    collideWade(s, s.r); const hitFence = collideFences(s, s.r); collideGraves(s, s.r);   // (OPEN WATER: into the sea and the lake, not the river)
+    collideWade(s, s.r); const fp = fenPrev(s), hitFence = collideFences(s, s.r, fp ? s.fenX : undefined, s.fenZ); collideGraves(s, s.r);   // (OPEN WATER: into the sea and the lake, not the river)
+    s.fenX = s.x; s.fenZ = s.z; s.fenT = FEN_T;
     if (!s.pen && !inSea(s.x, s.z) && overWater(s.x, s.z)) { sheepWadeIn(s); continue; }   // ...out of its depth: swimming
     if (s.snag) snaggedStep(s, dt);   // BRAMBLES: held fast, struggling
     else if (T.bramble.on && play && !s.pen) {
@@ -8604,7 +8633,7 @@ function sweepGate(p, prev) {
     const psi = gatePsi(p, e.x, e.z), del = Math.asin(Math.min(1, rad / r));
     if (dir > 0 ? (psi < lo - 0.01 || psi > hi + del) : (psi > hi + 0.01 || psi < lo - del)) return 0;   // behind the old leaf, or clear of the new one
     const np = p.phi + dir * (del + 0.02), a = p.angClosed + p.outSign * np;
-    e.x = hx + Math.cos(a) * r; e.z = hz + Math.sin(a) * r;
+    e.x = hx + Math.cos(a) * r; e.z = hz + Math.sin(a) * r; e.fenT = -1;   // (the leaf moved it: the side it was on doesn't hold)
     const n = gateNormal(p, np), vt = p.w * r;   // the leaf's speed there
     const vn = e.vx * n.x + e.vz * n.z; if ((vt > 0 && vn < vt) || (vt < 0 && vn > vt)) { e.vx += n.x * (vt - vn); e.vz += n.z * (vt - vn); }
     E.nx = n.x; E.nz = n.z; return vt;
@@ -8974,7 +9003,7 @@ const boxFence = (cx, cz, tx, tz, hl, hw, p, on = true) => {   // sheep bump int
   let nx = -tz, nz = tx; if (nx * (p.x - cx) + nz * (p.z - cz) < 0) { nx = -nx; nz = -nz; }
   const corner = (u, v) => [cx + tx * u - tz * v, cz + tz * u + tx * v], cs = [corner(hl, hw), corner(-hl, hw), corner(-hl, -hw), corner(hl, -hw)];
   const box = { solid: { x: cx, z: cz, tx, tz, nx, nz, hl, hw }, segs: [] };   // solid: collideFences steps anything inside back out
-  for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; box.segs.push({ ax, az, bx, bz }); }
+  for (let i = 0; i < 4; i++) { const [ax, az] = cs[i], [bx, bz] = cs[(i + 1) % 4]; box.segs.push({ ax, az, bx, bz, box: true }); }   // (box: collideFences takes it whole, from p.solids)
   if (on) boxOn(p, box);
   return box;
 };

@@ -26,8 +26,8 @@ const SECTIONS = {
   'GAME STATE': CORE, 'GAME FLOW': CORE, 'MAIN LOOP': CORE,   // (every feature adds a line here: by name too)
   AUDIO: 'amb-test hank-test', AMBIENCE: 'amb-test', INPUT: 'input-test dawn-test rope-test moves-sim',
   'RENDERER, CAMERA, LIGHTS, CEL-SHADING MATERIALS': 'role-test nads-test map-test',
-  FENCES: CORE + ' pen-trap-test path-test', 'CREATURE MODELS': 'role-test nads-test',
-  SHEEP: CORE + ' graze-sim crowd-sim lamb-sim breed-sim age-sim poop-test forage-sim water-test pen-trap-test bonk-test bramble-test kin-test',
+  FENCES: CORE + ' pen-trap-test path-test pen-escape-test', 'CREATURE MODELS': 'role-test nads-test',
+  SHEEP: CORE + ' graze-sim crowd-sim lamb-sim breed-sim age-sim poop-test forage-sim water-test pen-trap-test pen-escape-test bonk-test bramble-test kin-test',
   DOGS: CORE + ' role-test idle-test maul-test team-test swim-test input-test',
   'DOG MOVES & PHYSICS': 'moves-sim rush-test bone-test rope-test bonk-test bramble-test team-test maul-test vendor-test',
   FORAGE: 'forage-sim crowd-sim role-test vendor-test', WATER: 'water-test swim-test', 'DIG SPOTS': 'dig-test shear-test bone-test',
@@ -51,7 +51,7 @@ const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26,
   'cluster-sim': 39, 'cougar-sim': 43, 'crowd-sim': 28, 'dawn-test': 96, 'den-defend-test': 18, 'den-test': 16, 'dig-test': 26, 'falcon-test': 62,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
   'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'mud-test': 30, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
-  'pen-trap-test': 32, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
+  'pen-trap-test': 32, 'pen-escape-test': 38, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
   'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'pox-test': 30, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90, 'line-test': 100, 'save-test': 40, 'trial-test': 150, 'duck-test': 60, 'kin-test': 180, 'sell-test': 30 };
 
 const argv = process.argv.slice(2), flag = k => argv.includes(k), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
