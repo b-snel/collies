@@ -13,12 +13,16 @@
     (his side of it kept while the flock's all round it, `f.hankA`; blocked short of it, he stokes it and sleeps from as near as he gets).
     Out or under `low` h: his first job after a dog down (`fireDue`): patients, shearing, ropes, burials wait; asleep, he's up to stoke it. Cold ones take the `spots`
     (two rings) round it, the coldest first (`warmGo`, state 'warm'; one up the hill first: Up); nobody's jostled into it (`fireShove`). Warm out to `r1`.
-    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it. The top one's in the ice cave.
+    Windbreak and watchtower are set against the cliff: nothing between a fire and the ground round it. Every campfire up here is one
+    (`fireFull`: h of fuel new lit): the camps, the cave's hearth (`f.hearth`), the yeti's campfire (`f.top`, `f.camp`), his pen's (`f.pen`:
+    the pen's own for-show one's gone). Hank's: the flock's (not his pen's while he's up, nor his campfire once he's done); the hearth
+    burning, the yeti not beaten: on up to light his campfire (by day; him up: any time), then back.
   - **Up** (`T.pass.up`, `passUpFire` → `MIND.upF`, `passUp`, `upScore`): the flock's way on is the next camp up (its middle `past` m
     beyond one: the next; at one, left alone, that one till `hold` m past). Toward it: the grazing front leans `graze` (a climb at `pace`),
     a look for grass `seek`, grass back down counts `behind` less; flight off a dog to the side bends up `flee` (not with the dog above);
     the walk-on `move`; milling `wander`. None within `stop` m of the camp, above it, off the floor, by the side trail's mouth, within
-    `edge` m of the arena. The cold: a lit fire up within `draw` m first (the top's: as ever); one behind only within `back` m past it, or freezing
+    `edge` m of the arena. The camps only (not the yeti's campfire, nor his pen's); the last is the ice cave (`caveUp`: along the floor
+    till it's near, across to its mouth, in; from above it: back down to it, till he's beaten). The cold: a lit fire up within `draw` m first (the top's: as ever); one behind only within `back` m past it, or freezing
     (`freeze`). Calm ones go round the ice and the cracks along their edge, however keen. The ice gate shut, the flock below it: its foot
     (`GATE.foot`, `gateHold`: in to `hold` m short of its edge, none on up; `kb`: grass back down still counts less), no fire past it.
     A lane through: to its foot, up it (`gateLead`), on to the next camp past it (the base camp left behind). Host only (sheep).
@@ -53,20 +57,33 @@
     A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
   - **Burning** (`s.burn`, `T.burn`): a sheep carried, flung or bolting into a lit fire catches;
     too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`). Alight, it melts the snow and ice round it (`melt`).
-  - **The ice cave** (`CAVE`, `T.pass.cave`, `caveD`, `inCave`): the top fire (`f.cave`) moved into it after world gen's draws, west of
-    his spot, its mouth (±`mouth`) toward him: past his reach (leash + butt), in a punt's (~15 m). Walls `block`ed (a ring), a dome of
-    glassy ice (fresnel), the doorway (low jambs, no lintel: side on it read as a wall; flagstones out of it), icicles, the fire's glow
-    (`C.glow`, out of its mouth `C.spill`), a beacon on a spire off the back of its crown. Snowballs smash on it (`caveFx`); he throws at
-    what's out in the open first (`yetiPick`). While he's up Hank keeps in it (`passFireFind`); round to its mouth the clear way (`caveDetour`:
-    it backs onto the cliff). A burning sheep or a lit torch against it: steam, a hiss (`caveHiss`); nothing melts it.
+  - **The ice cave** (`CAVE`, `T.pass.cave`, `caveD`, `inCave`): set into the east rim across from the hidden side trail's door, its
+    mouth (±`mouth`) onto the floor, far out of his sight; room for the whole flock (`r`). Cut into the land after world gen's draws and
+    the pass's scenery (`caveLand`: a level floor, a collar of crag, low on the camera's side; what stood there cleared, no goat on its
+    shoulder; the rim's rocks and pines skip it, their draws as ever). From it up to him the floor's clear (`gone` ice and cracks: off
+    the lists then). Walls `block`ed (a ring), a dome of glassy ice (fresnel), the doorway (low jambs, no lintel), icicles, the hearth's
+    glow (`C.glow`, out of its mouth `C.spill`), a beacon on a spire off the back of its crown.
+    **Hearth** (`PASS.hearth`, `f.cave`, `f.hearth`): a fire of its own (pushed onto `PASS.fires` then), kerbed (blocked): warm all through
+    the cave while it burns (`heatAt`), `hearth`× the fuel (the yeti's campfire too), nobody catches in it. Places for the flock (`fireSpots`: rings `gap` m apart, a
+    lane from the mouth kept, the back first; not on its stick, nor in Hank's place `f.hank`).
+    **Shelter** (`caveWant`, `caveHold`, `yetiHot`): its hearth lit, a free sheep makes for a place in it (`warmGo`, 'warm'): cold; by
+    night or in a blizzard from within `draw` m; while the yeti's at it (something in his sight these last `T.yeti.hot` s) from within
+    `yeti` m, his arena too, and it stays (a used one trots home). In its place a sheep's as one in a pen: a dog walking in among them
+    just gets room (`sheltered`); a bark, a sprint: they go. Snowballs smash on it (`caveFx`). While he's up Hank keeps in it
+    (`passFireFind`), in among the flock (`noShy`); round to its mouth the clear way (`caveDetour`). A burning sheep or a lit torch
+    against it: steam, a hiss (`caveHiss`); nothing melts it; no snow in it (not in `MELTV`).
+  - **The yeti's campfire** (`T.pass.camp`, `CAMPFIRE`): the top fire (world gen's: its old camp cleared away, built as ever first so
+    the scenery's rng goes on as it did), out in the open in the middle of the floor: past his reach (leash + butt), in a punt's. No
+    tower, no beacon. Him up: a dog with a sheep: 🐑 → 🔥 over it; out, a dog with a lit torch: 🪵🔥 → 🔥 (`drawTorchOverlay`).
   - **The yeti** (`YETI`, `T.yeti`, `SNOWBALLS`): wakes when something's past `arena`; rolls snowballs
-    that grow, headbutts what's close; a pounce bounces off him. A burning sheep flying into him:
-    a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`). HUD 🦍 ♥♥♥.
+    that grow (at dogs; at sheep too, but not one off to the cave for shelter, nor a singed one: `yetiPick`), headbutts what's close;
+    a pounce bounces off him. A burning sheep flying into him: a hit (`yetiStruck`); `hp` and he's done (`yetiBeaten('fire')`).
+    HUD 🦍 ♥♥♥. A sheep just out of the fire stays warm `T.burn.warm` h (`s.fireWarm`): time to get home.
   - **Hank's nags** (`YETI.nag`, `T.yeti.nag`, `YETI_NAGS`, `yetiNag`, `yetiNagOn(kind)`): no hit yet: a line `first` s in, then every
     `every` s (the clock waits while one's alight or a dog's up the side trail; a crack in the rock wall: as a hit); on a pounce off him, a
-    cold sheep a dog sent at him, a snowball bowling a dog (`kind`); `cd` s apart (both further each nag: `yetiNagK`), only what he sees,
-    subtitles only; never over a line that matters (`hankBusy`: forced, till it's off the screen, or on its way; the gate's nags too): after
-    it; one nag (gate or yeti) `T.hankNagGap` s after another. No torch hint or nudge at the cave while he's up. `tiers` lines a kind,
+    cold sheep a dog sent at him, a snowball bowling a dog (`kind`); `cd` s apart (both further each nag: `yetiNagK`), within `hear` m
+    (from the cave), subtitles only; never over a line that matters (`hankBusy`: forced, till it's off the screen, or on its way; the gate's nags too): after
+    it; one nag (gate or yeti) `T.hankNagGap` s after another. No torch hint or nudge at his campfire while he's up. `tiers` lines a kind,
     snarkier (SIGH… / TSK!: `yetiNagFx`); a hit: a cheer, back `back` tiers (`yetiNagHit`). Beaten: none. Only flights into him count
     (`yetiStruck`: not his own butts, snowballs).
   - **The rock wall** (`SIDE`, `ROCK`, `wallD`): the hidden side trail (`sideD`: a level road `hw`×2 wide, its mouth
@@ -85,7 +102,7 @@
     (`PASS.ledges`), the Shepherd Kings at the snow line, the old road (flags, treads), a watchtower at
     each fire camp, its beacon lit with the fire (`f.beacon`), frozen falls, needles, ice crystals, the
     hidden stair (flagstone courses, kerbs, walls, arches, gate stones, rune stone; nothing on the road), its door, the yeti's
-    hall behind his pen, the ice cave (and its old camp below, cold), mist in the valley.
+    hall behind his pen, the ice cave, the yeti's campfire, his pen's, mist in the valley.
     Keep `blk`, `gCap` and the global rng as they are below the snow line (else the whole world moves):
     new decor → its own rng, in that block. The world-gen draws run over the pass first, so they still see
     the side trail as it first was (`sideWas`, `hWas`); the road opens up after (`sideOpen`).

@@ -19,7 +19,7 @@ The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine and a shovel for wool;
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
-fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
+fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; an ice cave in the rim below the top (a hearth: the flock shelters in it); the yeti on top, a campfire by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
@@ -337,7 +337,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat).
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
-  camp (pushed onto `PASS.fires` after them), nor the ice cave (the top fire moved in at the end of the pass scenery), nor the door
+  camp (pushed onto `PASS.fires` after them), nor the ice cave (cut into the rim at the end of the pass scenery, its hearth and his pen's fire pushed on then; the top fire moved up by him), nor the door
   (`doorStamp`), nor `MELT` (all 0 then). It still sees the old stalls (`STALLS`: flattened, stamped; freed by `vagStall`).
 - Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`: the vagabond, his bed and mats are) or lies aboard.
   Far off the boat under way, draw in `seaG` (sea coords): the world's frame heels with her.
