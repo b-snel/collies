@@ -1,7 +1,7 @@
-// Headless checks for TRIALS: `node tools/trial-test.mjs [layout|start|course|ducks|brace|llama|agility|tug|throw|shear|fault|awards|keg|rosette|save|reset]`.
+// Headless checks for TRIALS: `node tools/trial-test.mjs [layout|start|course|ducks|brace|llama|agility|tug|throw|shear|fault|awards|again|tips|keg|rosette|save|reset]`.
 //   layout   the ring fits by Sweetgrass Meadow (east of the trail, before the camp), clear, dry; off in ?sim; built when a dog comes near,
 //            anything inside it put out; closed all round; ducks, llamas and the vagabond keep off it
-//   start    a dog on a mat barks: that event's on (the count, the clock slowed); not by night, not one already run, not two at once
+//   start    a dog on a mat barks: that event's on (the count, the clock slowed); not by night, not two at once; one run: again on its mat
 //   course   the host's five sheep; the outrun, lift, fetch through the gates (a miss: points off), drive, shed, pen (Hank shuts the gate)
 //   ducks    five ducks; through G1, G2, all into the house: points; one put up (a sprint at it): a fault
 //   brace    ten sheep; fetched; five in each pen: full marks for the pens
@@ -14,6 +14,9 @@
 //   fault    a grip or a bonk on the host's sheep: a fault (points off)
 //   awards   all eight run: placings; 🥇 the champion ram joins the flock (s.champ, saved with it, the dawn report) and the keg on every dog;
 //            🥈 the keg and wool; 🥉 wool; no prize below that
+//   again    any event again: the best counts (a worse run doesn't lower it; less xp); no prizes at dusk with some run (the mats stay, the
+//            next day on); a better place later: what it adds (3rd → 1st: the ram and the keg, once); the shearing race again: no wool
+//   tips     what to do now (trialTip) for every event and phase, the buttons in it (trialKeys); each event's card (TRIAL_HOW)
 //   keg      THE KEG: up the pass a dog wearing it warms the sheep round it (heatAt); its bark's a nip (cold down, then a wait);
 //            online a friend's dog gets it on too (with what it had on)
 //   rosette  an event won: a rosette for the dogs (once); never dug up
@@ -78,7 +81,7 @@ if (want('start')) {
     H.run(T.trial.count + 10); const dh = G.clock.hour - h0; out.slow = dh < 10 / T.dayHourSec * 0.3;
     H.place(d, TL.mats[1].u, TL.mats[1].v); out.two = trialPress(d) && TRIAL.ev.id === 'course';
     GAME.trialEnd(); out.res = TRIAL.res.course !== undefined;
-    H.place(d, TL.mats[0].u, TL.mats[0].v); out.again = trialPress(d) && !TRIAL.ev;
+    H.place(d, TL.mats[0].u, TL.mats[0].v); out.again = trialPress(d) && TRIAL.ev && TRIAL.ev.id === 'course'; GAME.trialEnd();
     H.place(d, 0, 0); out.offMat = !trialPress(d);
     return out;
   });
@@ -86,7 +89,7 @@ if (want('start')) {
   ok('start: a bark on a mat: its event on, after a count', r.press && r.count, r);
   ok('start: the clock slowed while it is on', r.slow, r);
   ok('start: not another while one is on', r.two, r);
-  ok('start: one run is done (no second go); off a mat a bark is a bark', r.res && r.again && r.offMat, r);
+  ok('start: one run done: a second go on its mat; off a mat a bark is a bark', r.res && r.again && r.offMat, r);
 }
 
 if (want('course')) {
@@ -319,6 +322,59 @@ if (want('awards')) {
   ok('awards: 🥇 the keg on the dogs (found for good), worn', r.keg && r.wears, r);
   ok('awards: the champion on the next dawn report', r.dawn, r);
   ok('awards: 🥈 wool (and the keg), 🥉 wool, 4th nothing; one ram only', r.p2.p === 2 && r.p2.wool === 25 && r.p3.p === 3 && r.p3.wool === 12 && r.p4.p === 4 && r.p4.wool === 0 && r.p4.ram === 1, r);
+}
+
+if (want('again')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, T, TL, TRIAL, TRIAL_EVENTS, trialPress, trialAwards, trialTotal, DOGS } = GAME, out = {}, d = H.d();
+    // the best counts: a worse run doesn't lower it, a better one raises it
+    TRIAL.rivals.forEach(r2 => { r2.sc.throw = 50; });
+    let ev = H.start('throw'); ev.throws = [11, 11, 11]; ev.pts.best = 50; GAME.trialEnd(); out.first = TRIAL.res.throw;
+    ev = H.start('throw'); ev.throws = [4, 4, 4]; ev.pts.best = 18; GAME.trialEnd(); out.worse = TRIAL.res.throw; out.worseLast = [TRIAL.last.score, TRIAL.last.best];
+    ev = H.start('throw'); ev.throws = [30, 30, 30]; ev.pts.best = 100; GAME.trialEnd(); out.better = TRIAL.res.throw; out.betterLast = [TRIAL.last.score, TRIAL.last.best, TRIAL.last.place];
+    // dusk with some run: no prizes; the mats stay; the next day on
+    TRIAL.res = { course: 60, ducks: 70 }; TRIAL.done = false; TRIAL.last = null; G.clock.hour = T.trial.to + 0.2; H.run(0.5);
+    out.dusk = { done: TRIAL.done, award: !!TRIAL.award };
+    H.place(d, TL.mats[0].u, TL.mats[0].v); out.night = trialPress(d) && !TRIAL.ev;
+    G.clock.hour = 9; out.day = trialPress(d) && !!TRIAL.ev; GAME.trialEnd(); H.place(d, 0, 0);
+    // all eight at third: wool; then better, to first: the ram and the keg (once); the same place again: nothing more
+    const cut = TRIAL.rivals.map(r2 => trialTotal(r2.sc)).sort((a, b) => b - a), set = tot => { let left = tot; for (const E of TRIAL_EVENTS) { TRIAL.res[E.id] = Math.max(0, Math.min(100, Math.ceil(left))); left -= TRIAL.res[E.id]; } };
+    G.wool = 0; TRIAL.done = false; TRIAL.place = 0; TRIAL.last = null; set((cut[1] + cut[2]) / 2); H.run(0.2);
+    out.third = { place: TRIAL.place, wool: G.wool, ram: G.sheep.filter(s => s.champ).length, keg: DOGS.found.includes('keg') };
+    const at = TRIAL.award && TRIAL.award.t; H.run(0.5); out.same = TRIAL.award && TRIAL.award.t === at;
+    set(cut[0] + 20); H.run(0.2);
+    out.first1 = { place: TRIAL.place, wool: G.wool, ram: G.sheep.filter(s => s.champ).length, keg: DOGS.found.includes('keg') };
+    TRIAL.res.course = Math.min(100, TRIAL.res.course + 1); H.run(0.5); out.once = G.sheep.filter(s => s.champ).length;
+    // the shearing race again: the count, no wool
+    TRIAL.res.shear = 40; ev = H.start('shear'); out.shearWool = ev.wool; GAME.trialEnd();
+    delete TRIAL.res.shear; ev = H.start('shear'); out.shearWool1 = ev.wool; GAME.trialEnd();
+    return out;
+  });
+  ok('again: the best counts (a worse run doesn\'t lower it, a better one raises it)', r.first === 50 && r.worse === 50 && r.worseLast[0] === 18 && !r.worseLast[1] && r.better === 100 && r.betterLast[1] === true && r.betterLast[2] === 1, r);
+  ok('again: dusk with some run: no prizes, the mats stay (by night ✖, the next day on)', !r.dusk.done && !r.dusk.award && r.night && r.day, r);
+  ok('again: all eight at third: its wool; the same place again: nothing more', r.third.place === 3 && r.third.wool === 12 && r.third.ram === 0 && !r.third.keg && r.same, r);
+  ok('again: better later, to first: the ram and the keg (once)', r.first1.place === 1 && r.first1.ram === 1 && r.first1.keg && r.first1.wool === 12 && r.once === 1, r);
+  ok('again: the shearing race again: no wool (the first run: wool)', r.shearWool === false && r.shearWool1 === true, r);
+}
+
+if (want('tips')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TRIAL, TRIAL_EVENTS, TRIAL_PH, TRIAL_HOW, trialTip, trialKeys } = GAME, out = { bad: [] };
+    for (const E of TRIAL_EVENTS) {
+      if (!TRIAL_HOW[E.id] || !TRIAL_HOW[E.id].goal || TRIAL_HOW[E.id].ph.length !== TRIAL_PH[E.id].length) out.bad.push('how ' + E.id);
+      const ev = H.start(E.id);
+      for (let ph = 0; ph < TRIAL_PH[E.id].length; ph++) { ev.ph = ph; const [ic, t] = trialTip(ev), k = trialKeys(t); if (!ic || (!k && E.id !== 'agility') || /[{}]/.test(k)) out.bad.push(`${E.id}:${ph} ${ic} ${k}`); }
+      if (E.id === 'agility') for (let i = 0; i < GAME.TL.agi.length; i++) { ev.next = i; const k = trialKeys(trialTip(ev)[1]); if (!k || /[{}]/.test(k)) out.bad.push('agi ' + i); }
+      GAME.trialEnd();
+    }
+    const ev = H.start('course'); ev.ph = 0; out.outrun = trialTip(ev)[1]; ev.ph = 3; ev.g1 = 1; out.d2 = trialTip(ev)[1]; GAME.trialEnd();
+    const ev2 = H.start('llama'); out.llama = trialKeys(trialTip(ev2)[1]); GAME.trialEnd();
+    return out;
+  });
+  ok('tips: every event, every phase: something to do (its button named)', !r.bad.length, r);
+  ok('tips: the course\'s outrun (behind them), the drive\'s 2nd gate; the llama: grab its rope', /BEHIND/.test(r.outrun) && /2nd blue gate/.test(r.d2) && /RB/.test(r.llama), r);
 }
 
 if (want('keg')) {
