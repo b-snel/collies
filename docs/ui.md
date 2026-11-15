@@ -4,7 +4,7 @@
   `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps,
   salt, graves once uncovered; the vagabond where he is once met (`VAG.seen`); flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
-  Edge arrows keep clear of it (`mapDodge`). By his wares, the pen they go to ringed + 📍 (on the edge if off it). No trail bar.
+  Edge arrows keep clear of it (`mapDodge`). Touch: small (72 px, 112 tall screens), above the stick's rest (`mapLayout`). By his wares, the pen they go to ringed + 📍 (on the edge if off it). No trail bar.
 - **Menus** (`MENU`, `menuUp`, `menuTick`, `setPause`): each screen's own pause menu, barn and dawn card. Offline any of them stops
   the world. Online `G.paused` only once every connected screen's in one (a guest says so: `m`, `s.menu`), or held (`holdWorld`:
   the host's tab hidden, tests). Meanwhile their dogs lie down and wait (`menuInput`, `netReadInput`), ⏸ by the name (`G.menus`).
