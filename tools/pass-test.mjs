@@ -43,7 +43,7 @@
 //             carried up: a lane (his lines), Hank and a sheep up it, a blizzard doesn't shut it; a dev jump melts it; a new journey: iced
 //   burn      a sheep carried into a fire: alight, too hot to hold, runs mad, rolls it out, singed; alight it melts the snow and the gate's ice
 //   uphill    (UP, seeded, on vs off) left alone the flock goes up to a lit camp 30 m up, not onto the ice or into a crack; 30 m past
-//             the base camp it goes on up (it used to go back down); a dog walking up behind drives it faster, ≤1 back past it (3 goes of 4);
+//             the base camp it goes on up (3 goes, every one; it used to go back down: the middle one of 3); a dog walking up behind drives it faster, ≤1 back past it (3 goes of 4);
 //             pressed from either side it veers up; cold, 15 m past a lit fire, it doesn't go back down to it (the ice gate melted for
 //             these); the ice gate up, no lane: it waits at its foot (was: back down), none onto the ice; a lane through: up it, on up
 //   finish    the yeti beaten: the ice goes from the gap in the east rim; the cave's a pen; through the gap and onto the harbour road: Cold Harbour wakes, nobody moved (SAILING)
@@ -880,12 +880,16 @@ if (!only || only === 'uphill') {
         lane: [1, 2].map(seed => trial(up, T.iceGate.s0 - 6, { t: 120, lit: [base.i], lane: true, seed })),   // ...a lane melted through: up it (2 goes)
       };
     }
+    // ...past the base camp, two goes more each (last: nothing above is nudged): as it was, an idle flock there drifts off a long way, down as a rule, now and then up
+    for (const k of ['off', 'on']) out[k].foot2 = [1, 2].map(seed => trial(k === 'on', base.s + 30, { t: 90, lit: [base.i], seed }));
     return out;
   });
   const { on, off } = r, s = o => `${o.ds} m (low ${o.low})`, avg = a => a.reduce((t, o) => t + o.ds / a.length, 0);
   const g = on.gate, gs = a => a.map(o => `${o.ds} (low ${o.low}, ${o.gate} on it)`).join(', ');
   ok(`idle, a lit camp 30 m up: up to it (${on.mid.near} m off it), ${s(on.mid)} (was ${off.mid.near} m, ${s(off.mid)}); none onto the ice or into the crack (${on.mid.slid}, ${on.mid.fell})`, on.mid.ds > 15 && on.mid.low > -3 && on.mid.near < 10 && !on.mid.slid && !on.mid.fell, r);
-  ok(`idle past the base camp: on up ${s(on.foot)} (was ${s(off.foot)}: back down)`, on.foot.ds > 20 && on.foot.low > -3 && on.foot.ds > off.foot.ds + 20 && !on.foot.slid && !on.foot.fell, r);
+  // (3 goes each: every one on up with UP on; as it was: the middle one of them well short of that. One go alone: what ran before nudges it, seeded or not)
+  const ft = o => [o.foot, ...o.foot2], mid3 = a => a.map(o => o.ds).sort((x, y) => x - y)[1];
+  ok(`idle past the base camp: on up ${ft(on).map(s).join(', ')} (was ${ft(off).map(s).join(', ')}: back down)`, ft(on).every(o => o.ds > 20 && o.low > -3 && !o.slid && !o.fell) && mid3(ft(on)) > mid3(ft(off)) + 20, r);
   // (the 4 goes: medians, and ≤1 back in 3 of them: a run's earlier scenarios still nudge a go now and then, seeded or not)
   const med = (a, k) => { const v = a.map(o => o[k]).sort((x, y) => x - y); return +((v[1] + v[2]) / 2).toFixed(1); }, sw = o => `${med(o, 'ds')} m, the last one ${med(o, 'rear')} m, ${o.map(g => g.back).join('/')} back past it`;
   ok(`a dog walking up behind it drives it faster: ${sw(on.sweep)} (was ${sw(off.sweep)})`, med(on.sweep, 'ds') > med(off.sweep, 'ds') && med(on.sweep, 'rear') > med(off.sweep, 'rear') && on.sweep.filter(g => g.back <= 1).length >= 3, r);
