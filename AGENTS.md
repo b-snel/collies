@@ -15,7 +15,7 @@ better with practice), local or online, drive a flock along one trail
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly.
-The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), each once, against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
+The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), again as often as you like (the best counts; each its card on its mat, a tip a step), against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel and a ram for wool, and buying sheep (the better the sheep, the more);
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
@@ -42,7 +42,9 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
   else "Dev build"). `build.js` also writes `version.json`; a different live
   build → 🔄 on the title reloads (`checkBuild`).
 - Online: PeerJS (`vendor/peerjs.min.js`), room code / `?join=CODE`,
-  `?peerserver=host:port` for your own server.
+  `?peerserver=host:port` for your own server. Relay (TURN) for networks that won't link straight: `/turn`
+  (`worker.js`: Cloudflare TURN, `TURN_KEY_ID` in `wrangler.jsonc`, secret `TURN_KEY_TOKEN`; open `/turn` to check), else PeerJS's free one;
+  `?relay`: relayed only (does the relay work?). 🌐 chip's tooltip: direct / relayed, ping.
 - Mobile: landscape. Touch → floating stick (light push = creep) + 📣 💥 ✊
   💤 ⚡ buttons (`TOUCH`, player `kind: 'touch'`), short `TOUCH_HINTS`,
   rotate prompt in portrait. Compact HUD under 520 px tall (icons, no
@@ -244,6 +246,11 @@ Bots: players with `kind: 'bot'`, `player.bot` merged into input. Inputs are
 screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 At sea each screen's camera turns on its own: a guest's input carries its camera's heading (`cy`), the host
 turns the stick into its own (`netReadInput`).
+
+Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`)
+skips snapshot / grass ticks (deltas from the last sent: nothing lost). The grass map goes deflated (`netZip`). Joining
+goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest rejoins by itself (`NETT.rejoin`).
+`tools/line-test.mjs`: the same over a throttled line.
 
 ### Keep these true
 

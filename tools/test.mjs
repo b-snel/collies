@@ -4,7 +4,7 @@
 //   --merge [C] after merging main: only what the merge C (default HEAD) resolved, its lines unlike both parents (`git diff --cc`)
 //   --list     each test and what it checks                                  --why  what would run and why, nothing run
 //   -j N       N at once (default: cores)      --shard I/N  part I of N (CI)      --timeout S  per test (default 1200)
-// Online ones (net, sea-net, hybrid) only with PEERSERVER=host:port. Seeded: SEED=n another Math.random (harness.mjs).
+// Online ones (net, sea-net, hybrid, line) only with PEERSERVER=host:port. Seeded: SEED=n another Math.random (harness.mjs).
 // Each a line: ok (its checks passed), FAIL (a FAIL line or "ok":false, or it crashed), ran (no checks: numbers; read them). Logs: --logs DIR.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const TOOLS = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(TOOLS, '..');
 const TESTS = fs.readdirSync(TOOLS).filter(f => /-(test|sim)\.mjs$/.test(f)).map(f => f.slice(0, -4)).sort();
-const NET = new Set(['net-test', 'sea-net-test', 'hybrid-test']);
+const NET = new Set(['net-test', 'sea-net-test', 'hybrid-test', 'line-test']);
 const src = Object.fromEntries(TESTS.map(t => [t, fs.readFileSync(path.join(TOOLS, t + '.mjs'), 'utf8')]));
 
 // index.html's sections (a `// ====` banner, then `// TITLE …`) → tests. '*': all. Not here: CORE, and a note to add it.
@@ -42,7 +42,7 @@ const SECTIONS = {
   'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test llama-test kin-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim kin-test',
   'FLOCK SAVE': 'hank-test age-sim shear-test save-test kin-test', LINEAGE: 'kin-test lamb-sim breed-sim age-sim dawn-test save-test sell-test', 'JOURNEY SAVE': 'save-test', TRIALS: 'trial-test kin-test', DUCKS: 'duck-test',
   VAGABOND: 'vendor-test vet-test map-test pox-test kin-test sell-test', LLAMAS: 'llama-test rope-test', 'WILD RAMS': 'kin-test rope-test llama-test', SAILING: 'sail-test vendor-test swim-test amb-test',
-  'ONLINE CO-OP': 'net-test sea-net-test hybrid-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
+  'ONLINE CO-OP': 'net-test sea-net-test hybrid-test line-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
 };
 // other files → tests ('*': all); a test's own file runs it; anything else: none
 const FILES = [[/^tools\/(harness|serve)\.mjs$/, '*'], [/^vendor\//, '*'], [/^audio\//, 'amb-test hank-test']];
@@ -52,7 +52,7 @@ const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
   'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'mud-test': 30, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
   'pen-trap-test': 32, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
-  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'pox-test': 30, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90, 'save-test': 40, 'trial-test': 150, 'duck-test': 60, 'kin-test': 180, 'sell-test': 30 };
+  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'pox-test': 30, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90, 'line-test': 100, 'save-test': 40, 'trial-test': 150, 'duck-test': 60, 'kin-test': 180, 'sell-test': 30 };
 
 const argv = process.argv.slice(2), flag = k => argv.includes(k), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
 const OPTS = new Set(['--base', '-j', '--shard', '--timeout', '--logs']), names = argv.filter((a, i) => !a.startsWith('-') && !OPTS.has(argv[i - 1]));
