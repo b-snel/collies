@@ -334,7 +334,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - DOM styles that move: write them only when they change (`will-change` them): a restyle every frame starves the game loop.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
-- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat).
+- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat; THE ICE CAVE's block, then `CAVE_DICE` draws for what it replaced). Anything that draws each step (a goat on its ledge) too: take none away. Else the seeded tests all move.
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
   camp (pushed onto `PASS.fires` after them), nor the ice cave (cut into the rim at the end of the pass scenery, its hearth and his pen's fire pushed on then; the top fire moved up by him), nor the door

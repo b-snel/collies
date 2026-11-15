@@ -2662,6 +2662,7 @@ const ICES = [], CREVS = [], SIDE = { pts: [], hw: 3.2, off: 7.7, flare: 2.2, fl
 // way (out onto the floor), a: that angle, mouth: ± rad of it open; (mx, mz): on the floor just outside it; s: where it is up the trail.
 // Nothing in world gen sees it (but the rim's rocks and pines: none on it)
 const CAVE = { x: 0, z: 0, r: 5, th: 1, h: 4, mouth: 0.5, ax: 0, az: 1, a: 0, mx: 0, mz: 0, s: 0 };
+const CAVE_DICE = 760;   // Math.random draws the cave that stood by the yeti took as it was built (its meshes): still taken, so seeded runs keep their dice
 let sideDist = null, sideWas = null;   // sideWas: the side trail as it first was (narrow): world gen's rng draws still see it (sideOpen)
 // ICE GATE: off (iceK doesn't see it) till world gen's draws are done (ICE GATE, MOUNTAIN PASS)
 const GATE = { on: false, open: false, all: false, path: null };
@@ -4328,7 +4329,8 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
     if (old) { old.junk.push(tw.g); old.n1 = [D.flag.length, D.cobble.length]; f.old = old; }
   }
   // ice: a pale blue glaze over each patch, a sheen on top
-  { const gs = []; for (const m of ICES) if (!m.gone) for (const [bi, b] of m.blobs.entries()) { gs.push(paint(drape(new THREE.CircleGeometry(b.r + 0.1, 24).rotateX(-Math.PI / 2), b.x, b.z, 0, 0.05), '#b8e2f8')); if (!bi) gs.push(paint(drape(new THREE.CircleGeometry(b.r * 0.45, 16).rotateX(-Math.PI / 2), b.x + b.r * 0.25, b.z - b.r * 0.2, 0, 0.07), '#e8f7ff')); }
+  { const gs = [], put = (m, g) => { if (!m.gone) gs.push(g); };   // (THE ICE CAVE: a `gone` patch's glaze: made as ever, so seeded runs keep their dice (a geometry: a Math.random), left out)
+    for (const m of ICES) for (const [bi, b] of m.blobs.entries()) { put(m, paint(drape(new THREE.CircleGeometry(b.r + 0.1, 24).rotateX(-Math.PI / 2), b.x, b.z, 0, 0.05), '#b8e2f8')); if (!bi) put(m, paint(drape(new THREE.CircleGeometry(b.r * 0.45, 16).rotateX(-Math.PI / 2), b.x + b.r * 0.25, b.z - b.r * 0.2, 0, 0.07), '#e8f7ff')); }
     if (gs.length) { const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });   // (MELT: gone where it's melted)
       mat.onBeforeCompile = sh => { sh.uniforms.uMelt = U.uMelt; sh.uniforms.uGrassXf = U.uGrassXf;
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vIceXZ;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvIceXZ = position.xz;');
@@ -4338,14 +4340,13 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
       const m = new THREE.Mesh(merge(...gs), mat); m.receiveShadow = true; scene.add(m); } }
   // cracks: a dark slot, its blue ice walls catching the light, snowy lips, icicles
   for (const c of CREVS) {
-    if (c.gone) continue;
     const yaw = Math.atan2(-c.az, c.ax), L = c.hl * 2, gs = [];
     gs.push(paint(drape(new THREE.PlaneGeometry(L, c.hw * 2, 12, 2).rotateX(-Math.PI / 2), c.x, c.z, yaw, 0.05), '#0f1d33'));
     for (const sd of [-1, 1]) {
       gs.push(paint(drape(new THREE.PlaneGeometry(L, c.hw * 0.55, 12, 1).rotateX(-Math.PI / 2).translate(0, 0.005, sd * c.hw * 0.62), c.x, c.z, yaw, 0.05), '#4f86b8'));
       for (let k = 0; k < 6; k++) { const u = (k / 5 - 0.5) * L * 0.95, g = SPH(7).scale(L / 9, 0.16, 0.3).translate(u, 0.06, sd * (c.hw + 0.18)); gs.push(paint(drape(g, c.x, c.z, yaw, 0), SNOWC)); }
     }
-    const m = new THREE.Mesh(merge(...gs), MAT.vc); m.receiveShadow = true; scene.add(m);
+    const m = new THREE.Mesh(merge(...gs), MAT.vc); m.receiveShadow = true; if (!c.gone) scene.add(m);   // (THE ICE CAVE: a `gone` one: made as ever (the dice), not shown)
   }
   const mix = (a, b, t) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
   const busyAt = (x, z, r) => grown(x, z, r) || ICES.some(m => Math.hypot(m.x - x, m.z - z) < m.r + r) || !!crevAt(x, z, r + 1) || PASS.fires.some(f => Math.hypot(f.x - x, f.z - z) < r + 7) || sideD(x, z) < r + SIDE.hw + 0.5 || caveD(x, z) < CAVE.r + CAVE.th + r + 2;   // (THE ICE CAVE too)
@@ -4657,8 +4658,9 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
   // a hearth in the middle (a fire of its own: f.cave, f.hearth; its glow inside: syncPass), a beacon in an ice bowl on top. Its walls:
   // blocked (a ring, the mouth open). From it up to the yeti the floor's clear (caveClear: that ice, those cracks gone). The top fire
   // (world gen's: its old camp below cleared away) is the yeti's campfire now, up by him (T.pass.camp, f.camp); his pen's campfire's a
-  // real fire too (f.pen). Its own rng
-  {
+  // real fire too (f.pen). Its own rng; all of it on its own dice (ownDice: every mesh and geometry's a Math.random), then as many
+  // draws as the cave that was here took (CAVE_DICE): seeded runs keep their dice
+  ownDice(271828, () => {
     const C = CAVE, K = T.pass.cave, CR = mulberry32(14142), cr = (a, b) => a + CR() * (b - a), cpick = a => a[Math.floor(CR() * a.length)];
     const R1 = C.r, R2 = C.r + C.th, RS = C.r + C.th * 0.55, IC = ['#bfe6fa', '#a6d8f4', '#d6f1ff', '#93cbee'], wrapM = a => Math.abs(wrapA(a - C.a)), camA = Math.atan2(-CAM_F.z, -CAM_F.x);
     const FL = ['#aab2bf', '#9aa2ae', '#b6bdc8', '#8f97a4'], flagAt = (x, z, sc = 1) => D.flag.push({ x, y: terrainH(x, z) + 0.015, z, sx: sc * cr(0.34, 0.55), sy: 1, sz: sc * cr(0.3, 0.5), rot: 0, rx: 0, rz: 0, col: cpick(FL) });
@@ -4720,12 +4722,12 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
       }
       for (let i = OBSTACLES.length - 1; i >= 0; i--) if (caveD(OBSTACLES[i].x, OBSTACLES[i].z) < R1) OBSTACLES.splice(i, 1);
     }
-    // what stood there: gone (in it, on its crag); what's by it: re-seated on the land as it lies now. No goat on its shoulder
+    // what stood there: gone (in it, on its crag); what's by it: re-seated on the land as it lies now. The goat on its shoulder: idle
     for (const k of Object.keys(D)) D[k] = D[k].filter(o => {
       const d = caveD(o.x, o.z); if (d > R2 + 14) return true;
       const ci = trailRaw(o.x, o.z); if (d < R2 + 1.2 || (ci.lat > hwEArr[ci.idx] - 0.5 && d < R2 + 12)) return false;
       o.y += terrainH(o.x, o.z) - hWas0(o.x, o.z); return true; });
-    for (let i = PASS.ledges.length - 1; i >= 0; i--) if (caveD(PASS.ledges[i].x, PASS.ledges[i].z) < R2 + 12) PASS.ledges.splice(i, 1);
+    for (const g of PASS.ledges) if (caveD(g.x, g.z) < R2 + 12) g.idle = true;   // (the goat on its shoulder: it only watches)
     // its hearth: a fire of its own (as the base camp: world gen never saw it)
     const f = PASS.hearth = { i: PASS.fires.length, s: C.s, lat: K.at[1], x: C.x, z: C.z, y: y0, fuel: 0, top: false, cave: true, hearth: true, by: [] }; PASS.fires.push(f);
     // the shell: a dome, lumpy, its doorway cut out (an arch: lintel lh m up)
@@ -4823,7 +4825,8 @@ function drape(g, x0, z0, yaw = 0, dy = 0.04) {
       pf.flames = [fm, fm2];
       for (let k = 0; k < 30; k++) { const a = cr(0, TAU), r = Math.sqrt(cr(1.2 * 1.2, 3.2 * 3.2)); flagAt(pf.x + Math.cos(a) * r, pf.z + Math.sin(a) * r); }
       { const a = Math.atan2(pn.z - pf.z, pn.x - pf.x) + 1.9, x = pf.x + Math.cos(a) * 2.2, z = pf.z + Math.sin(a) * 2.2; pf.torch = { x, z, yaw: a + Math.PI / 2 }; } }
-  }
+  });
+  for (let i = 0; i < CAVE_DICE; i++) Math.random();
   // all of the above that's instanced
   for (const k of ['needleA', 'needleB', 'tooth', 'cobble']) if (D[k].length) instanced(GEOS[k], D[k]);
   for (const k of ['flag', 'slab', 'drift']) if (D[k].length) instanced(GEOS[k], D[k], { outline: k === 'slab', shadow: false, gate: true });   // (none under the ICE GATE's ice)
@@ -13641,7 +13644,7 @@ const TORCH_STAR = (() => {   // a twinkle over its head: a gold four-point star
   return new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
 })();
 const torchPlanted = t => !t.by && t.h < 0.01 && Math.abs(t.x - t.home.x) + Math.abs(t.z - t.home.z) < 0.05;
-for (const t of TORCHES) {
+for (const t of TORCHES) (t.f.hearth || t.f.pen ? fn => ownDice(9500 + t.i, fn) : fn => fn())(() => {   // (THE ICE CAVE's hearth's, the yeti's pen's: on their own dice: seeded runs keep theirs)
   const g = new THREE.Group(); part(g, TORCH_GEO); scene.add(g); t.mesh = g;
   t.flames = [['#ff9a2a', 0.13, 0.5], ['#ffe07a', 0.075, 0.32]].map(([c, r, h]) => { const m = new THREE.Mesh(CONE(r, h, 6).translate(0, h / 2, 0), new THREE.MeshBasicMaterial({ color: c })); m.visible = false; scene.add(m); return m; });
   t.glow = new THREE.Sprite(TORCH_GLOW.clone()); t.glow.scale.setScalar(1.3); scene.add(t.glow);
@@ -13650,7 +13653,7 @@ for (const t of TORCHES) {
   const h = t.home, st = new THREE.Group(); st.position.set(h.x, terrainH(h.x, h.z), h.z); st.rotation.y = t.i * 1.7; scene.add(st);   // its cairn
   part(st, merge(P(SPH(8), '#f4f8fc', { s: [0.5, 0.17, 0.46], p: [0, 0.02, 0] }), P(ICO(1, 0), '#6c717e', { s: [0.2, 0.15, 0.18], p: [0.3, 0.09, 0.05] }),
     P(ICO(1, 0), '#7a7f8c', { s: [0.17, 0.13, 0.19], p: [-0.2, 0.08, 0.25] }), P(ICO(1, 0), '#5c6270', { s: [0.18, 0.14, 0.16], r: [0.3, 0.5, 0], p: [-0.12, 0.09, -0.29] })));
-}
+});
 const _tv = new THREE.Vector3();
 function syncTorches(dt) {
   const L = T.torch.len, t0 = G.time;
@@ -13709,7 +13712,7 @@ function drawTorchOverlay() {
 }
 // ---------------- GOATS: on the ledges up the walls ----------------
 const GOATS = PASS.ledges.map((g, i) => { const y = terrainH(g.x, g.z);   // one on each ledge cut for them (PASS.ledges)
-  return { i, home: { x: g.x, z: g.z, y, yaw: g.yaw }, state: 'perch', x: g.x, y, z: g.z, vx: 0, vz: 0, vy: 0, yaw: g.yaw, look: g.yaw, t: 0, rest: 0, target: null, hop: null, watchT: (i * 0.37) % 2, chew: i * 1.7 }; });
+  return { i, idle: !!g.idle, home: { x: g.x, z: g.z, y, yaw: g.yaw }, state: 'perch', x: g.x, y, z: g.z, vx: 0, vz: 0, vy: 0, yaw: g.yaw, look: g.yaw, t: 0, rest: 0, target: null, hop: null, watchT: (i * 0.37) % 2, chew: i * 1.7 }; });
 const goatTargetOK = e => e && (e === HANK ? !HANK.air && !HANK.rope && G.mode === 'play' : e.isDog ? G.dogs.includes(e) && !e.air && !e.heldBy && !e.crev && !e.ko && !e.maul : !e.dead && !e.air && !e.heldBy && !e.grabbed && !e.crev && !e.pen && G.sheep.includes(e));
 // a bound: from where it is to (x, z) on the ground, dur s, peaking up m over the higher end
 function goatHop(G0, x, z, dur, up = 1.6) { const y1 = groundY(x, z); G0.hop = { x0: G0.x, y0: G0.y, z0: G0.z, x1: x, y1, z1: z, T: dur, t: 0, up }; G0.yaw = Math.atan2(x - G0.x, z - G0.z); }
@@ -13729,7 +13732,7 @@ function goatLanding(g, e) {
   return { x: e.x + dx / dl * 3, z: e.z + dz / dl * 3 };
 }
 function goatPick(g) {
-  const K = T.goat, inReach = e => Math.hypot(e.x - g.x, e.z - g.z) < K.reach && passK(sAt(e.x, e.z)) > 0.6 && sAt(e.x, e.z) < T.pass.arena - 4, marked = new Set(GOATS.map(o => o.target).filter(Boolean));
+  const K = T.goat, inReach = e => Math.hypot(e.x - g.x, e.z - g.z) < K.reach && passK(sAt(e.x, e.z)) > 0.6 && sAt(e.x, e.z) < T.pass.arena - 4 && !inCave(e.x, e.z, 1), marked = new Set(GOATS.map(o => o.target).filter(Boolean));
   if (Math.random() < K.hankChance && goatTargetOK(HANK) && inReach(HANK) && !marked.has(HANK)) return HANK;
   const dogs = G.dogs.filter(d => goatTargetOK(d) && inReach(d) && !marked.has(d));
   if (dogs.length && Math.random() < K.dogChance) return pick(dogs);
@@ -13791,7 +13794,7 @@ function updateGoats(dt) {
       PASS.goatNext = rnd(...K.every);
       if (GOATS.filter(g => g.state !== 'perch').length < K.maxOut) {
         let best = null, bd = K.reach; const fc = flockCenter();
-        for (const g of GOATS) { if (g.state !== 'perch' || G.time < g.rest) continue; const d = Math.hypot(g.x - fc.x, g.z - fc.z); if (d < bd) { bd = d; best = g; } }
+        for (const g of GOATS) { if (g.state !== 'perch' || g.idle || G.time < g.rest) continue; const d = Math.hypot(g.x - fc.x, g.z - fc.z); if (d < bd) { bd = d; best = g; } }   // (idle: the one on THE ICE CAVE's shoulder: it never comes down)
         if (best) { const e = goatPick(best); if (e) goatGo(best, e); }
       }
     }

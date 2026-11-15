@@ -22,7 +22,8 @@
 //             every one goes in and warms (warm all through); nobody catches in the hearth; by night the flock comes in on its own, Hank
 //             asleep in it; the yeti up, the flock in his arena: back down into it on its own, to stay; Hank lights his campfire and goes
 //             back; a dog walks in among them: they keep to it; a snowball at a sheep in its mouth smashes on it; a burning sheep and a
-//             lit torch against its ice: it holds; fifty sheep, cold: every one in it at once
+//             lit torch against its ice: it holds; fifty sheep, cold: every one in it at once; the goat on its shoulder only watches,
+//             the others leave what's in it alone
 //   fires     every campfire up there's real: a lit torch lights it, it lights a torch, it's warm, its stick by it, a sheep in it catches
 //             (not in the hearth); no pen's for-show fire; the yeti's campfire: in the open, past his reach, a punt from him; a sheep
 //             carried into it catches, bonked at him from by it: a hit; his pen's campfire: Hank lights it once he's beaten
@@ -484,6 +485,11 @@ if (!only || only === 'cave') {
     setup(C.s - 22, { hour: 10, hankS: C.s - 6 }); while (living().length < 50) G.sheep.push(GAME.makeSheep(0, 0, { age: 12 }));
     { const p = pathPoint(C.s - 22, 0); living().forEach((sh, i) => { sh.x = p.x + (i % 7) * 1.4 - 4.2; sh.z = p.z + Math.floor(i / 7) * 1.4 - 4; sh.vx = sh.vz = 0; sh.pen = null; sh.hunger = 0.2; sh.thirst = 0.1; sh.cold = 0.5; sh.snow = 0; }); }
     f.fuel = 18; out.fifty = { n: living().length, t: +run(60, () => living().every(q => inCave(q.x, q.z))).toFixed(1) };
+    // the goats: the one on its shoulder only watches; the rest find nobody to bonk in it (the flock's all in it, the dog and Hank too)
+    { const { GOATS, goatPick, updateGoats } = GAME, dg = G.dogs[0]; dg.x = C.x + C.ax * 5; dg.z = C.z + C.az * 5; HANK.x = f.hank.x; HANK.z = f.hank.z;
+      const by = GOATS.filter(g => g.idle), near = GOATS.filter(g => !g.idle).sort((a, b) => caveD(a.x, a.z) - caveD(b.x, b.z))[0]; let picked = 0; for (let k = 0; k < 30; k++) if (goatPick(near)) picked++;
+      PASS.goatNext = 0; G.clock.hour = 11; let down = 0; for (let t = 0; t < 12; t += 0.025) { PASS.goatNext = Math.min(PASS.goatNext, 0.2); GAME.step(0.025); if (by.some(g => g.state !== 'perch')) down++; }
+      out.goats = { idle: by.length, at: by.length ? +caveD(by[0].x, by[0].z).toFixed(1) : null, n: GOATS.length, picked, down }; }
     return out;
   });
   const w = r.where;
@@ -501,6 +507,7 @@ if (!only || only === 'cave') {
   ok(`a snowball down the floor at a sheep in its mouth smashes on it (${r.ball.at} m from its middle): the sheep's fine`, !r.ball.hit && r.ball.at !== null && r.ball.at < 12, r.ball);
   ok(`a burning sheep and a lit torch against its ice: it holds (walled ${r.holds.walled}, shell up)`, r.holds.walled >= r.walled && r.holds.shell, r.holds);
   ok(`${r.fifty.n} sheep, cold: every one in it at once (${r.fifty.t} s)`, r.fifty.n >= 50 && r.fifty.t >= 0, r.fifty);
+  ok(`the goat on its shoulder (${r.goats.at} m off its middle) only watches; the others find nobody in it to bonk (${r.goats.picked} picked); ${r.goats.n} goats as ever`, r.goats.idle === 1 && r.goats.at < 22 && r.goats.picked === 0 && r.goats.down === 0 && r.goats.n === 12, r.goats);
 }
 
 if (!only || only === 'fires') {

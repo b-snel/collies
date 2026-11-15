@@ -59,9 +59,11 @@
     too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`). Alight, it melts the snow and ice round it (`melt`).
   - **The ice cave** (`CAVE`, `T.pass.cave`, `caveD`, `inCave`): set into the east rim across from the hidden side trail's door, its
     mouth (±`mouth`) onto the floor, far out of his sight; room for the whole flock (`r`). Cut into the land after world gen's draws and
-    the pass's scenery (`caveLand`: a level floor, a collar of crag, low on the camera's side; what stood there cleared, no goat on its
-    shoulder; the rim's rocks and pines skip it, their draws as ever). From it up to him the floor's clear (`gone` ice and cracks: off
-    the lists then). Walls `block`ed (a ring), a dome of glassy ice (fresnel), the doorway (low jambs, no lintel), icicles, the hearth's
+    the pass's scenery (`caveLand`: a level floor, a collar of crag, low on the camera's side; what stood there cleared; the goat on its
+    shoulder only watches: `g.idle`; the rim's rocks and pines skip it, their draws as ever). From it up to him the floor's clear (`gone`
+    ice and cracks: made as ever, not shown, off the lists then). Seeded runs keep their dice: its block's on its own (`ownDice`), then
+    the draws the old cave took (`CAVE_DICE`); the two new fires' torches on their own too; the goats as many as ever. Goats leave what's
+    in it alone (`goatPick`). Walls `block`ed (a ring), a dome of glassy ice (fresnel), the doorway (low jambs, no lintel), icicles, the hearth's
     glow (`C.glow`, out of its mouth `C.spill`), a beacon on a spire off the back of its crown.
     **Hearth** (`PASS.hearth`, `f.cave`, `f.hearth`): a fire of its own (pushed onto `PASS.fires` then), kerbed (blocked): warm all through
     the cave while it burns (`heatAt`), `hearth`× the fuel (the yeti's campfire too), nobody catches in it. Places for the flock (`fireSpots`: rings `gap` m apart, a
