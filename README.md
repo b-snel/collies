@@ -82,7 +82,9 @@ Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sh
 
 Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
 
-At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten, the ice goes from a gap in the east rim: a road leads down the mountainside to Cold Harbour, where the boat lies. (Online with friends the journey still ends up here: pen the flock in his cave and shut the gate.)
+Below the top an ice cave is set into the rim, across from the hidden stair: Hank lights its hearth, it's warm right through, and there's room for the whole flock. They shelter in it on their own: cold, by night, in a blizzard, and while the yeti's raging.
+
+At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: fetch a sheep from the ice cave, carry it up into the campfire by him, then pounce the burning sheep at him, three times (a singed one trots back to the cave by itself). Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten, the ice goes from a gap in the east rim: a road leads down the mountainside to Cold Harbour, where the boat lies. (Online with friends the journey still ends up here: pen the flock in his cave and shut the gate.)
 
 ## The sea
 
