@@ -40,6 +40,11 @@
   when pounced (`bucketPhysics`, `T.water.kick`). Wade/swim to fill, walk up to any water trough to tip in.
   Penned thirsty sheep drink;
   a few crowd behind and barge (`T.water.hold`, `crowd`). First camp starts full.
+- **Shut pens hold.** A crush (dog in the pen, a crammed flock) can shove a sheep's middle over a fence line:
+  it goes back the side it stood on at its last check (`s.fenX`/`fenZ`/`fenT`, `PREV`, `collideFences(e, r, px, pz)`),
+  not out. Troughs and licks collide as whole boxes, before the fence (`p.solids`; their `box` segs skipped):
+  nobody's rolled round a corner and out the back, and a box's push can't put anything (dogs too) over the
+  fence. Not after air, a carry, a gate's sweep (`fenT = -1`) or a move further than a shove.
 - **Ram bravery** (`s.brave` 0…1, `T.brave`): under `ramMin` a ram never
   fights, braver ones charge more and further, past `cougar` cougars too.
   Lambs take mostly the sire's (`sireBrave`). Scales everyone's stress gain.
