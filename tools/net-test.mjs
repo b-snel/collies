@@ -464,18 +464,20 @@ try {
   }, ropeAt.i);
   await sleep(300);
   await B.page.keyboard.down('KeyE');
-  await sleep(1000);
-  const tugH = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
+  await sleep(300);   // (then till the tug's on, on both: a loaded machine's slow to get there)
+  await until(A, i => !!GAME.ROPES[i].tug, ropeAt.i, 5000).catch(() => {});
+  await until(B, i => !!GAME.ROPES[i].tug, ropeAt.i, 5000).catch(() => {});
+  const tugH = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'), e = Math.min(Math.hypot(b.x - R.x[0], b.z - R.z[0]), Math.hypot(b.x - R.x[R.n - 1], b.z - R.z[R.n - 1])); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k, ...(b.holding === R ? {} : { has: b.holdKind, end: +e.toFixed(2) }) }; }, ropeAt.i);
   const tugG = await B.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.slot === NET.slot); return { held: b.holding === R, tug: !!R.tug, k: R.tug && R.tug.k }; }, ropeAt.i);
-  let heave = 0; const heaves = [];   // the strongest heave the host saw (one fades in 0.4 s; a press takes ~100 ms to get there); each: its heave, tug on, still held, knot
-  for (let k = 0; k < 5; k++) {
-    if (k < 3) await B.page.keyboard.press('KeyR'); await sleep(100);
-    const e = await A.page.evaluate(i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return [+(b.tugK || 0).toFixed(2), !!R.tug, b.holding === R, R.tug ? +R.tug.off.toFixed(2) : null]; }, ropeAt.i);
-    heaves.push(e); heave = Math.max(heave, e[0]);
-  }
+  // the strongest heave the host saw, every frame (one fades in 0.4 s; a press can take a while to get there on a loaded machine):
+  // R pressed (wound up: 0.4 s apart) till one's seen, 3 s at most; each: its heave, tug on, still held, knot
+  await probe(A, i => { const R = GAME.ROPES[i], b = GAME.G.dogs.find(d => d.player.kind === 'net'); return [+(b.tugK || 0).toFixed(2), !!R.tug, b.holding === R, R.tug ? +R.tug.off.toFixed(2) : null]; }, ropeAt.i);
+  const seen = () => A.page.evaluate(() => (window.__probe || []).some(p => p[1][0] > 0.3));
+  for (let t0 = Date.now(); Date.now() - t0 < 3000;) { await B.page.keyboard.press('KeyR'); await sleep(400); if (await seen()) break; }
+  const heaves = (await probed(A)).map(p => p[1]), heave = Math.max(0, ...heaves.map(e => e[0]));
   await B.page.keyboard.up('KeyE');
   check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest grabs it: a tug of war on both, R heaves',
-    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave), heaves });
+    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave), frames: heaves.length, heaves: heaves.filter((e, k) => !k || e[0] !== heaves[k - 1][0]).slice(0, 8) });
   await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; const g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
   // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
