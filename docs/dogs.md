@@ -36,7 +36,8 @@
   right-stick swing (`inp.shake`: out from rest or across, counted in `padPoll` like presses, `T.shake`; not a station) with
   something in its mouth: a shake (`shakeHold`, `T.shakeCd`), in a tug of war a heave (`tugTap`); a held gate: Ⓑ lets go,
   pounces. A coyote: each shake dazes it longer once let go (`c.shook` → `c.dazeT`, `coyoteDazed`: it sways, seeing stars,
-  then runs); `toss` shakes: shaken loose. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
+  then runs); `toss` shakes: shaken loose. A cougar on the ground (`cougarGrabbable`, `grabKinds.cougar`): it drops its catch;
+  held, it may rake the dog (`T.cougar.grab.scratch`/s ÷ grip, `dmg` hp) and get away; a shake calms it `calm` s; `toss`: flung. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
   What it'd take: `grabPick(d)` (no side effects; `tryGrab` bites it). At sea a sheep in the water within `T.sea.over.reach`
   comes first, the boat's gear before a sheep in the way (`T.sea.station.bias`); the overlay rings it (`drawGrabMarks`).
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`

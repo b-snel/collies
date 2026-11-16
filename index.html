@@ -920,12 +920,17 @@ const T = {
   // sheep; driven off `tries` times it gives up for the night, otherwise it rests `rest` in-game hours. Lambs first, always.
   cougar: { legs: [1, 2, 3, 4], trees: 3, apart: 60, spread: 18, penGap: 30, room: { w: 16, e: 10, near: 45, far: 115 },
     range: 80, chance: 1, treedR: 7, treedT: 6, delay: [0.5, 1.5], gap: [1.5, 2.2], stalk: 2.3, shyR: 7, guardR: 8, leapR: 6.5, leapT: 0.5, drag: 3.1, run: 9,
-    bonkRun: 0.72, bonkKick: 9, daze: 1.1, homeT: 25,   // bonked while it runs: yowls, knocked over, tumbles dazed `daze` s, limps home at bonkRun× (a dog catches it: bonk it again). homeT: s to get home
+    bonkRun: 0.72, bonk: 0.62, bonkH: 1.6, cling: 1.7, daze: 1.1, homeT: 25,   // a pounce on it (on the ground, or under bonkH m up): it drops what it has and flies as a punted sheep (T.punt, by weight) × bonk,
+    // lands dazed `daze` s, then limps to its nearest tree with no dog by it at bonkRun× (a dog catches it: bonk it again); flying past a
+    // trunk of its own (cling m), it grabs on and scrambles up. homeT: s to get home
     climbT: 2.4, climbDown: 1.3, hitR: 2.4, rest: 1.5, tries: 2, hold: 10, giveUp: 45, r: 0.5,
     vaultT: 0.75, vaultH: 2.2,   // it clears a pen fence in one bound, in or out, a sheep in its jaws or not
+    // grabbed (Ⓧ, on the ground): it drops what it has; held, it rakes the dog scratch/s (÷ grip), dmg hp, and is off. Dazed, or
+    // calm s after a shake: it won't. toss shakes (T.shake): flung off. knock: a flying sheep this near its body (or the trunk) knocks it out of its tree
+    grab: { scratch: 0.55, dmg: 0.07, calm: 0.7, knock: 1.7 },
     // a dog closer than shyR: it stands its ground and hisses; closer than maulR (or bumping it while it drags): it leaps on the dog.
     // Mauling: a swipe every `every` s (a bite each third), up to `max` hp in all; mashing pounce `mash` times throws it off
-    maulR: 4, maulCd: 10, maul: { leapT: 0.38, every: 0.3, swipe: 0.045, bite: 0.08, max: 0.5, mash: 10, decay: 0.35, kick: 9 } },
+    maulR: 4, maulCd: 10, maul: { leapT: 0.38, every: 0.3, swipe: 0.045, bite: 0.08, max: 0.5, mash: 10, decay: 0.35, kick: 9, up: 7 } },   // (thrown off: flies kick m/s, up m/s)
   // falcon (FALCON, NESTS): by day (from…to) every `every` in-game hours it circles (circleT s, circleH m up), screeches
   // and dives (diveSpd) on a dog (dogChance) or a sheep (lambs likelier, never rams). A dog: carried dogHop m, dropped.
   // A sheep: carried (carry m/s, cruiseH up) to the nearest nest; a bark within barkR makes it drop it. At the nest it
@@ -1048,6 +1053,7 @@ const T = {
     lamb: { speed: 0.9, pull: 3, grip: 0, reach: 0.95, lift: 0.42 },
     ram: { speed: 0.5, pull: 9, grip: 0.16, reach: 1.25, lift: 0.25 },
     coyote: { speed: 0.6, pull: 11, grip: 0.13, reach: 1.2, lift: 0.4 },
+    cougar: { speed: 0.5, pull: 13, grip: 0.16, reach: 1.35, lift: 0.3 },   // COUGARS: by the scruff (it scratches: T.cougar.grab)
     llama: { speed: 0.55, pull: 8, grip: 0.1, reach: 1.3, lift: 0.3 }, cria: { speed: 0.85, pull: 3, grip: 0, reach: 1, lift: 0.4 },   // LLAMAS
     duck: { speed: 0.95, pull: 2, grip: 0, reach: 0.9, lift: 0.5 }, tsheep: { speed: 0.75, pull: 5, grip: 0, reach: 1.15, lift: 0.35 },   // DUCKS; TRIALS: the host's sheep
     dog: { speed: 0.7, pull: 6, grip: 0.07, reach: 1.15, lift: 0.4 },   // another dog, by the scruff
@@ -3926,6 +3932,63 @@ const DENS = [];
 // cougar's (COUGARS[i]), T.cougar.trees trees round the camp at the end of leg GROVES[i].leg (COUGAR_CAMPS), well off the pen and
 // T.cougar.apart from any other's; at nightfall it takes a random one of its own (COUGARS).
 const LAIRS = [], GROVES = [];
+// a cougar tree's look (Math.random: ownDice). Local +x = the limb it lies on (always there: L.px/py/pz); the rest varies, so no
+// tree in a grove gives the cat away: a round oak, a tall cottonwood, a spreading live oak, a gaunt half-dead one, a pine
+const LAIR_LOOKS = ['oak', 'tall', 'spread', 'gaunt', 'pine'];
+const LAIR_LEAF = [['#2c5432', '#36643a'], ['#3b5a2a', '#4a6b30'], ['#27503f', '#2f6049'], ['#56502a', '#66602e'], ['#6b3f24', '#7d4e2a']];
+const LAIR_BARK = [['#5b4331', '#46331f'], ['#6a6058', '#4f4740'], ['#4a3a2e', '#33281f'], ['#7a6a58', '#5a4c3e']];
+function lairTree(L, rotY, bn, sk) {
+  const r = (a, b) => a + Math.random() * (b - a), pickOf = A => A[Math.floor(Math.random() * A.length) % A.length];
+  const used = (GROVES[L.grove] ? GROVES[L.grove].trees : []).filter(o => o !== L).map(o => o.look);   // (none alike in a grove)
+  let look; do look = LAIR_LOOKS[Math.floor(Math.random() * LAIR_LOOKS.length) % LAIR_LOOKS.length]; while (used.includes(look) && used.length < LAIR_LOOKS.length);
+  L.look = look;
+  const [bark, barkD] = look === 'gaunt' ? LAIR_BARK[2] : pickOf(LAIR_BARK);
+  const leaves = look === 'pine' ? ['#1f3d33', '#264a3c'] : Math.random() < 0.12 ? LAIR_LEAF[4] : pickOf(LAIR_LEAF.slice(0, 4));
+  const g = new THREE.Group(); g.position.set(L.x, L.y, L.z); g.rotation.y = rotY; scene.add(g);
+  const th = { oak: r(3.8, 4.3), tall: r(4.9, 5.6), spread: r(3.4, 3.7), gaunt: r(4.1, 4.7), pine: r(6.2, 7) }[look];
+  const tw = look === 'spread' ? 1.15 : look === 'tall' || look === 'pine' ? 0.85 : 1, lean = r(-0.06, 0.06), ga = []; let lc = 0;
+  const leaf = (x, y, z, sx, sy, sz) => ga.push(P(SPH(9), leaves[lc++ % 2], { s: [sx, sy, sz], p: [x, y, z], r: [0, r(0, TAU), 0] }));
+  const twig = (x, y, z, len, rad, az, tilt, col = bark) => {   // from (x, y, z), tilt from upright, toward az (0: along the limb)
+    const t = CYL(rad * 0.5, rad, len, 5); t.translate(0, len / 2, 0); t.rotateZ(-tilt); t.rotateY(az); t.translate(x, y, z); ga.push(paint(t, col));
+  };
+  ga.push(P(CYL(0.42 * tw * (look === 'pine' ? 0.7 : 1), 0.72 * tw, th, 9), bark, { r: [lean, 0, 0.05], p: [0, th / 2, 0] }));
+  const nr = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < nr; i++) { const a = i * TAU / nr + r(-0.3, 0.3); ga.push(P(SPH(8), barkD, { s: [r(0.45, 0.7) * tw, r(0.18, 0.28), r(0.28, 0.38)], r: [0, a, 0], p: [Math.cos(a) * 0.55 * tw, 0.1, -Math.sin(a) * 0.55 * tw] })); }
+  // the limb it lies on, out past the leaves
+  ga.push(P(CYL(0.15, 0.32, 3.7, 7), look === 'pine' ? barkD : bark, { r: [0, 0, Math.PI / 2 - 0.06], p: [1.75, 2.98, 0] }), P(SPH(7), bark, { s: [0.17, 0.15, 0.17], p: [3.6, 3.08, 0] }));
+  if (Math.random() < 0.6) twig(r(1.4, 2), 3.05, 0, r(0.6, 1.1), 0.05, r(0.9, 2.2) * (Math.random() < 0.5 ? 1 : -1), r(0.4, 0.9));   // a twig off it
+  const ring = (n, y0, y1, d0, d1, s0, s1, over = false) => {   // clumps round the crown; `over`: some out over the limb too
+    for (let i = 0; i < n; i++) {
+      const a = over ? r(0, TAU) : r(0.9, TAU - 0.9), d = r(d0, d1), sc = r(s0, s1), sy = sc * r(0.6, 0.85), x = Math.cos(a) * d - 0.4;
+      leaf(x, x > 0.6 ? Math.max(r(y0, y1), 4.5 + sy) : r(y0, y1), Math.sin(a) * d, sc, sy, sc * r(0.9, 1.1));   // (over the limb: above the cat)
+    }
+  };
+  if (look === 'oak') {
+    leaf(-0.7, th + 1.1, 0, r(1.9, 2.3), r(1.15, 1.4), r(1.9, 2.3)); ring(4 + Math.floor(Math.random() * 3), th + 0.4, th + 2, 0.9, 1.7, 0.8, 1.45);
+    twig(0, th - 0.5, 0, 1.8, 0.18, r(2.2, 4), 0.7);
+  } else if (look === 'tall') {
+    for (let y = th - 0.2, i = 0; i < 4; i++, y += r(0.7, 1)) leaf(r(-0.9, -0.3), y + 0.8, r(-0.5, 0.5), r(1.1, 1.5) - i * 0.12, r(1.1, 1.4), r(1.1, 1.5) - i * 0.12);
+    ring(3, th, th + 2.4, 0.7, 1.3, 0.7, 1.05); twig(0, th - 0.4, 0, 2.2, 0.14, r(1.5, 3), 0.45); twig(0, th - 0.8, 0, 1.8, 0.12, r(3.3, 4.8), 0.5);
+  } else if (look === 'spread') {
+    for (const a of [r(1.9, 2.6), r(3.7, 4.4)]) twig(0, 2.6, 0, r(2.8, 3.4), 0.24, a, Math.PI / 2 - r(0.2, 0.35));   // two more big limbs, low and long
+    leaf(-0.8, th + 1.3, 0, r(2.4, 2.8), r(0.9, 1.1), r(2.3, 2.7)); ring(6, th + 0.8, th + 1.6, 1.4, 2.6, 0.9, 1.35, true);
+  } else if (look === 'gaunt') {
+    for (let i = 0; i < 6; i++) twig(0, r(th - 1.2, th - 0.1), 0, r(1.4, 2.4), r(0.07, 0.12), r(0.7, TAU - 0.7), r(0.5, 1.1));
+    twig(0, th - 0.2, 0, 1.5, 0.16, r(0, TAU), 0.15);
+    for (let i = 0; i < 3; i++) { const a = r(0.9, TAU - 0.9), d = r(0.8, 1.6); leaf(Math.cos(a) * d, r(th, th + 1.4), Math.sin(a) * d, r(0.5, 0.8), r(0.4, 0.55), r(0.5, 0.8)); }
+  } else {   // pine: cones stacked up the trunk; the limb a dead branch under them
+    const n = 4 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) { const f = i / (n - 1), rad = lerp(1.9, 0.7, f), h = r(1.5, 1.9); ga.push(P(CONE(rad, h, 9), leaves[i % 2], { r: [0, r(0, TAU), 0], p: [-0.15, 4.2 + f * (th - 3.6) + h / 2, 0] })); }
+    for (let i = 0; i < 3; i++) twig(0, r(2.2, 3.6), 0, r(0.8, 1.3), 0.05, r(0.8, TAU - 0.8), r(1.1, 1.4), barkD);
+  }
+  if (look !== 'pine' && Math.random() < 0.55) for (const sz of [-1, 1]) leaf(r(3, 3.6), r(3.55, 3.85), sz * r(0.8, 0.95), r(0.35, 0.48), r(0.28, 0.36), r(0.35, 0.48));   // tufts by the limb's end: the head peeks between
+  part(g, merge(...ga));
+  // claw marks on the trunk, and old bones at its foot
+  part(g, merge(...[0, 1, 2].map(i => P(BOX(0.04, 0.55, 0.03), '#c9b28e', { r: [0, 0, 0.12], p: [0.58 * tw, 1.35 + i * 0.04, -0.14 + i * 0.13] })),
+    ...bn.map(([a, x, z]) => P(CYL(0.035, 0.035, 0.45, 5), '#efe6d2', { r: [Math.PI / 2, 0, a], p: [x, 0.04, z] })),
+    P(SPH(7), '#efe6d2', { s: [0.13, 0.1, 0.12], p: [sk[0], 0.08, sk[1]] })), { outline: false, shadow: false });
+  return g;
+}
 {
   const kr = mulberry32(80812), krr = (a, b) => a + kr() * (b - a);
   const clear = (x, z, r) => { if (wetLand(x, z, r + 3)) return false; for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r && isBlocked(x + i, z + j)) return false; return true; };   // (not in a stream or a bog)
@@ -3940,21 +4003,10 @@ const LAIRS = [], GROVES = [];
     L.y = terrainH(L.x, L.z); L.yaw = Math.atan2(ux, uz);
     L.px = L.x + ux * 2.45; L.pz = L.z + uz * 2.45; L.py = L.y + 3.25;
     L.bx = L.x + ux * 1.05; L.bz = L.z + uz * 1.05;
-    const g = new THREE.Group(); g.position.set(L.x, L.y, L.z); g.rotation.y = Math.atan2(-uz, ux); scene.add(g);   // local +x = the limb
-    const bark = '#5b4331', barkD = '#46331f', leaf = '#2c5432', leaf2 = '#36643a';
-    part(g, merge(
-      P(CYL(0.42, 0.72, 3.9, 9), bark, { r: [0, 0, 0.05], p: [0, 1.95, 0] }),
-      ...[0, 1, 2, 3].map(i => P(SPH(8), barkD, { s: [0.55, 0.22, 0.32], r: [0, i * 1.6 + 0.4, 0], p: [Math.cos(i * 1.6 + 0.4) * 0.55, 0.1, -Math.sin(i * 1.6 + 0.4) * 0.55] })),
-      P(CYL(0.15, 0.32, 3.7, 7), bark, { r: [0, 0, Math.PI / 2 - 0.06], p: [1.75, 2.98, 0] }),   // the limb it lies on, out past the leaves
-      P(SPH(7), bark, { s: [0.17, 0.15, 0.17], p: [3.6, 3.08, 0] }),
-      P(CYL(0.1, 0.18, 1.7, 6), bark, { r: [0.5, 0, 0.7], p: [-0.7, 3.9, 0.4] }),
-      P(SPH(10), leaf, { s: [2.1, 1.3, 2.1], p: [-0.7, 5.0, 0] }), P(SPH(9), leaf2, { s: [1.4, 1.0, 1.3], p: [-0.2, 4.6, 1.4] }),
-      P(SPH(9), leaf2, { s: [1.4, 0.95, 1.4], p: [-1.6, 4.5, -0.8] }), P(SPH(9), leaf, { s: [1.2, 0.85, 1.2], p: [-0.3, 5.9, -0.4] }),
-      P(SPH(9), leaf2, { s: [0.9, 0.7, 0.9], p: [0.6, 4.4, -1.2] })));
-    // claw marks on the trunk, and old bones at its foot
-    part(g, merge(...[0, 1, 2].map(i => P(BOX(0.04, 0.55, 0.03), '#c9b28e', { r: [0, 0, 0.12], p: [0.58, 1.35 + i * 0.04, -0.14 + i * 0.13] })),
-      ...[0, 1, 2].map(i => P(CYL(0.035, 0.035, 0.45, 5), '#efe6d2', { r: [Math.PI / 2, 0, krr(0, 3)], p: [krr(0.8, 1.9), 0.04, krr(-0.9, 0.9)] })),
-      P(SPH(7), '#efe6d2', { s: [0.13, 0.1, 0.12], p: [krr(1, 1.8), 0.08, krr(-0.7, 0.7)] })), { outline: false, shadow: false });
+    // (the old bones' draws, in their old order: the trees after this one stand where they did)
+    const bn = [0, 1, 2].map(() => [krr(0, 3), krr(0.8, 1.9), krr(-0.9, 0.9)]), sk = [krr(1, 1.8), krr(-0.7, 0.7)];
+    ownDice(70001 + LAIRS.length * 7919, () => lairTree(L, Math.atan2(-uz, ux), bn, sk));   // each its own look (own dice)
+    for (let i = 0; i < 188; i++) Math.random();   // the draws the one look all trees had took: the seeded dice stay where they were
     OBSTACLES.push({ x: L.x, z: L.z, r: 0.85 }); stampObstacle(L.x, L.z, 0.85);
     L.id = LAIRS.length; LAIRS.push(L);
   };
@@ -7948,7 +8000,7 @@ function pounceHits(d) {
     if (c.air || c.heldBy || c.gone || c.state === 'burrow') continue;   // coyotes can always be bonked, even running home or asleep in the den
     if (Math.hypot(c.x - d.x, c.z - d.z) < T.pounceCoyoteR) { pounceCoyote(c, d); return; }
   }
-  for (const k of COUGARS) if (k.state === 'retreat' && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); endLunge(d); return; }   // running away: bonk it
+  for (const k of COUGARS) if (cougarBonkable(k) && Math.hypot(k.x - d.x, k.z - d.z) < T.cougar.hitR) { cougarBonked(k, d); return; }   // COUGARS: on the ground (or low on its trunk): bonked, flying
   if (eyrieShake(d)) return;   // FALCON CANYON: THE GREAT FALCON eating on its pillar
   for (const g of GOATS) if (['down', 'windup', 'charge', 'skid', 'dazed'].includes(g.state) && Math.abs(g.x - d.x) < 2 && Math.abs(g.z - d.z) < 2 && Math.hypot(g.x - d.x, g.z - d.z) < 1.8 && g.y - d.y < 1.5) { goatPounced(g, d); return; }   // MOUNTAIN PASS: a goat
   if (yetiOK() && YETI.state !== 'dead' && Math.hypot(YETI.x - d.x, YETI.z - d.z) < 2.4) { knockDog(d, -d.pdx * 9, -d.pdz * 9, 0.5, 'BOING!'); yetiFx('scoff'); yetiNagOn('pounce'); return; }   // ...the yeti: like bonking a wall
@@ -8081,6 +8133,7 @@ function updateAirborneSheep(s, dt) {
   if (s.air !== a || s.dead) return;
   const sp = Math.hypot(s.vx, s.vz);
   if (sp > 0.5) s.yaw = lerpA(s.yaw, Math.atan2(s.vx, s.vz), Math.min(1, dt * 6));
+  if (sp > 5) for (const k of COUGARS) if (cougarKnock(k, s, a)) { s.vx *= -0.3; s.vz *= -0.3; break; }   // COUGARS: up into one in its tree: knocked out of it
   if (a.h - groundY(s.x, s.z) < 1.6) airHits(s, a, sp);
   if (s.air !== a) return;
   if (a.kind === 'launch' && Math.random() < dt * 30) starBurst(s.x, s.y + 0.6, s.z, 1, ['#ffd36b', '#fff3a0'], { speed: 0.6, up: 0.4, size: 0.22, life: 0.5, grav: 0 });
@@ -8348,6 +8401,11 @@ function grabPick(d) {
     const dd = Math.hypot(c.x - mx, c.z - mz) - 0.3;
     if (dd < bd && !fenceBetween(d.x, d.z, c.x, c.z)) { bd = dd; best = c; kind = 'coyote'; }
   }
+  for (const k of COUGARS) {   // COUGARS: one on the ground (it may scratch)
+    if (!cougarGrabbable(k)) continue;
+    const dd = Math.hypot(k.x - mx, k.z - mz) - 0.4;
+    if (dd < bd && !fenceBetween(d.x, d.z, k.x, k.z)) { bd = dd; best = k; kind = 'cougar'; }
+  }
   for (const s of G.sheep) {
     if (s.dead || s.heldBy || s.grabbed || s.bog || s.balk || s.seaHold || s.state === 'cast') continue;   // (a bogged, cast or balking sheep only moves for a bonk; BRAMBLES: a snagged one is pulled out)
     if (s.air && (s.air.kind === 'swim' || s.air.h - groundY(s.x, s.z) > 1.8)) continue;
@@ -8399,6 +8457,7 @@ function tryGrab(d) {
   if (kind === 'vag') { vagGrabbed(d); return true; }   // VAGABOND
   if (kind === 'llama' || kind === 'cria') { llamaGrabbed(best, d); return true; }   // LLAMAS
   if (kind === 'duck' || kind === 'tsheep') { herdGrabbed(best, d); return true; }   // DUCKS (the TRIALS' sheep)
+  if (kind === 'cougar') { cougarGrabbed(best, d); return true; }   // COUGARS
   best.heldBy = d;
   if (kind === 'coyote') {
     if (best.state === 'pack') best.state = 'held';   // out of the pack's plans while it's in your jaws
@@ -8439,6 +8498,7 @@ function releaseHold(d, fling) {
   if (kind === 'rope') { ropeLetGo(H, d, throwIt); return; }   // ROPES
   if (kind === 'llama' || kind === 'cria') { llamaLetGo(H, d, throwIt); return; }   // LLAMAS: dropped, or flung as a sheep
   if (kind === 'duck' || kind === 'tsheep') { herdLetGo(H, d, throwIt); return; }   // DUCKS (the TRIALS' sheep)
+  if (kind === 'cougar') { cougarLetGoOf(H, d, throwIt); return; }   // COUGARS: dropped, or flung
   H.heldBy = null;
   if (kind === 'dog') {   // flung as a sheep is (it flies like one too: launchDog)
     if (throwIt) {
@@ -8480,6 +8540,7 @@ function shakeHold(d) {
   Sound.growl(pan, 0.12);
   if (kind === 'vag') { vagShaken(d); return; }   // VAGABOND: worried by the coat
   if (kind === 'duck' || kind === 'tsheep') { herdShaken(H, d); return; }   // DUCKS (the TRIALS' sheep)
+  if (kind === 'cougar') { cougarShaken(H, d); return; }   // COUGARS: shaken silly (no scratching a while), then tossed
   if (kind === 'torch') { if (H.lit > 0) torchFx('wave', H.x, H.z); return; }   // MOUNTAIN PASS: a lit one waved about: sparks
   if (kind === 'bone' || kind === 'apple') return;   // BONES (APPLES): a good worrying
   if (kind === 'gate') { SFX.creak(pan, 0.25, 1.4); return; }   // a rattle
@@ -12208,19 +12269,22 @@ expose(() => ({ BURROWS, makeBurrow, newBurrow, burrowSpot, killBurrow, resetBur
 // COUGARS — loners, one to a territory: a grove of big old trees round the
 // camp at the end of a leg (GROVES, LAIRS), more of them each leg
 // (T.cougar.legs). By day they're gone. At nightfall each one near the flock
-// is up on the limb of a random tree in its own grove, eyes catching the
-// light (k.lair: tonight's tree), and hunts alone: some hours later it comes
+// is up on the limb of a random tree in its own grove, a shadow with glowing
+// eyes (k.lair: tonight's tree), and hunts alone: some hours later it comes
 // down (never while another's out: the next one waits its turn),
 // stalks in slow and low, shies off from dogs, then leaps on a sheep (lambs
 // first, always) and drags it, crying, back to its tree. Once it's up the
-// tree the sheep is gone. Catch it before then: a pounce, or just running
-// into it, makes it drop the sheep and bolt up the tree. Shut pens keep it
-// out. A grabbed sheep's s.grabbed is the cougar (k.isCougar), as with coyotes.
+// tree the sheep is gone. Catch it before then: running into it makes it
+// drop the sheep; a pounce bonks it (any time it's on the ground): it flies as
+// a punted sheep does ('fly', k.air), lands dazed and limps off up the nearest
+// tree of its own with no dog by it (cougarRefuge). Grabbed, it may scratch
+// ('held'). A sheep punted up into it knocks it out of its tree (cougarKnock).
+// A grabbed sheep's s.grabbed is the cougar (k.isCougar), as with coyotes.
 // =====================================================================
 const COUGARS = GROVES.map((gv, i) => { const L = gv.trees[0];
   return { i, grove: gv, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
     state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, dazeT: 0, models: makeCougar() }; });
-function perchCougar(k) { const L = k.lair; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
+function perchCougar(k) { const L = k.lair; k.air = null; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
 const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && (!s.isHerd || duckPrey(s));   // a shut pen doesn't stop it: it jumps the fence (DUCKS: on land)
 // the pen the cougar is standing in (open or shut), if any
 const cougarPen = k => penAt(k.x, k.z);
@@ -12302,22 +12366,31 @@ function cougarGrab(k, s) {
   }
   if (!wild) hint('cougar-grab');
 }
-// it lets go (a dog got to it, or dawn): the sheep runs off, and the cougar bolts for its tree
-function cougarDrop(k, saved) {
-  const s = k.prey; k.prey = null;
-  if (s) {
-    s.grabbed = null; s.y = groundY(s.x, s.z); s.panic = 1; s.fear = 1; s.state = 'flee'; s.hopV = 3;
-    const dx = s.x - k.lair.x, dz = s.z - k.lair.z, dl = Math.hypot(dx, dz) || 1; s.fdx = dx / dl; s.fdz = dz / dl;
-    if (s.isHerd) duckFreed(s, k);   // DUCKS: up and off
-    if (saved && !preyWild(s)) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
+// it lets go (a dog got to it, or dawn): the sheep runs off
+function cougarLetGo(k, saved) {
+  const s = k.prey; k.prey = null; if (!s) return;
+  s.grabbed = null; s.y = groundY(s.x, s.z); s.panic = 1; s.fear = 1; s.state = 'flee'; s.hopV = 3;
+  const dx = s.x - k.lair.x, dz = s.z - k.lair.z, dl = Math.hypot(dx, dz) || 1; s.fdx = dx / dl; s.fdz = dz / dl;
+  if (s.isHerd) duckFreed(s, k);   // DUCKS: up and off
+  if (saved && !preyWild(s)) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
+}
+// ...and bolts for a tree
+function cougarDrop(k, saved) { cougarLetGo(k, saved); cougarSpooked(k, 1); }
+// the tree it runs for: the nearest of its own with no dog by its foot (all of them: the nearest)
+function cougarRefuge(k) {
+  let best = k.lair, bs = Infinity;
+  for (const L of k.grove.trees) {
+    let sc = Math.hypot(L.bx - k.x, L.bz - k.z);
+    for (const d of G.dogs) if (Math.hypot(d.x - L.bx, d.z - L.bz) < T.cougar.treedR + 2) sc += 60;
+    if (sc < bs) { bs = sc; best = L; }
   }
-  cougarSpooked(k, 1);
+  return best;
 }
 function cougarSpooked(k, hit) {
   Sound.hiss(panOf(k.x, k.z), 0.22); floatText('HSSS!', k.x, k.y + 1.9, k.z, '#ffd36b');
   k.driven += hit; k.target = null;
   if (k.state === 'climb' || k.state === 'down') { const u = k.state === 'climb' ? clamp(k.t / T.cougar.climbT, 0, 1) : 1 - clamp(k.t / T.cougar.climbDown, 0, 1); k.state = 'up'; k.t = u * T.cougar.climbT * 0.6; }
-  else { k.state = 'retreat'; k.t = 0; }
+  else if (k.state !== 'fly') { k.state = 'retreat'; k.t = 0; k.lair = cougarRefuge(k); }
 }
 function cougarBark(d) {   // spotted: a bark close by sends a stalking cougar back up its tree (till it's wise to it: then it may come for the dog). → how many it reached
   let n = 0;
@@ -12348,16 +12421,90 @@ function cougarLeapDog(k, d) {
   k.state = 'leapDog'; k.t = 0; k.dog = d; k.lx = k.x; k.lz = k.z; k.ltx = d.x; k.ltz = d.z; k.faceT = 0;
   Sound.growl(panOf(k.x, k.z), 0.22);
 }
+// a pounce lands (on the ground, or low on the trunk: not once it's scrambling up to safety): it drops what it has, yowls and flies
+// off the way the dog hit it, as a punted sheep would (by weight); lands dazed, then limps off up a tree. Every bonk sends it flying.
+const cougarBonkable = k => !['away', 'perch', 'fed', 'maul', 'fly', 'up', 'held'].includes(k.state) && k.h < T.cougar.bonkH;
 function cougarBonked(k, d) {
+  const C = T.cougar;
   SFX.bonk(panOf(k.x, k.z), 0.35); starBurst(k.x, k.y + 0.9, k.z, 10, undefined, { speed: 5, up: 4 }); shakeCam(0.4); hitStop(0.07); rumble(d.player, 0.9, 0.6, 220);
-  Sound.yowl(panOf(k.x, k.z)); floatText('BONK!', k.x, k.y + 1.9, k.z, '#ffffff', 1.3); dizzy(k, T.cougar.daze + 1.5, 1.2);
-  const dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz) || 1, kick = T.cougar.bonkKick * dogK(d, 'bonk'); k.vx = dx / dl * kick; k.vz = dz / dl * kick;
-  k.bonks = (k.bonks || 0) + 1; train(d, 'bonk', T.train.bonkFoe);
-  cougarSpooked(k, 1);
-  if (k.state === 'retreat') {   // knocked over: it tumbles on toward its tree, seeing stars, then limps home: a dog can catch it and bonk it again, all the way
-    const L = k.lair, tx = L.bx - k.x, tz = L.bz - k.z, tl = Math.hypot(tx, tz) || 1; k.vx = tx / tl * T.cougar.bonkKick; k.vz = tz / tl * T.cougar.bonkKick;
-    k.dazeT = T.cougar.daze; k.yaw = Math.atan2(k.vx, k.vz); k.y = groundY(k.x, k.z); k.h = 0;
+  Sound.yowl(panOf(k.x, k.z)); floatText('BONK!', k.x, k.y + 1.9, k.z, '#ffffff', 1.3); dizzy(k, C.daze + 1.5, 1.2);
+  cougarLetGo(k, true);
+  k.bonks = (k.bonks || 0) + 1; k.driven += 1; k.target = null; k.dog = null; k.faceT = 0; train(d, 'bonk', T.train.bonkFoe);
+  const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(k, 'cougar')) * C.bonk, dx = k.x - d.x, dz = k.z - d.z, dl = Math.hypot(dx, dz) || 1;
+  let ux = (d.pdx ?? dx / dl) * 0.7 + dx / dl * 0.3, uz = (d.pdz ?? dz / dl) * 0.7 + dz / dl * 0.3; const ul = Math.hypot(ux, uz) || 1;
+  cougarLaunch(k, ux / ul * P.speed * kb, uz / ul * P.speed * kb, P.up * Math.pow(kb, 0.25), d);   // (heavy: not far, but high)
+  endLunge(d);
+}
+// SHARED HOOK owner: k.air is set (state 'fly') → it's flying, head over heels; it lands dazed
+function cougarLaunch(k, vx, vz, vy, by = null) {
+  if (k.heldBy) { if (k.heldBy.holding === k) { k.heldBy.holding = null; k.heldBy.holdKind = null; k.heldBy.grabLock = true; } k.heldBy = null; }
+  k.air = { h: k.y, vy, t: 0, spin: 0, bounces: 1, ghost: 0, noLand: 0.05, by };
+  k.vx = vx; k.vz = vz; k.state = 'fly'; k.t = 0; k.dazeT = 0;
+}
+// ---------------- grabbed (Ⓧ): k.heldBy, state 'held'; it may rake the dog and get away (T.cougar.grab) ----------------
+const cougarGrabbable = k => !k.heldBy && ['stalk', 'retreat', 'drag'].includes(k.state) && k.h < 0.6;
+function cougarGrabbed(k, d) {
+  const pan = panOf(k.x, k.z);
+  cougarLetGo(k, true);
+  k.heldBy = d; k.state = 'held'; k.t = 0; k.target = null; k.faceT = 0; k.calmT = Math.max(k.dazeT, 0.25); k.dazeT = 0; k.driven += 0.5;
+  floatText('GOTCHA!', k.x, k.y + 1.9, k.z, '#ffd36b', 1.3); Sound.hiss(pan, 0.24); Sound.growl(pan, 0.2); shakeCam(0.18);
+}
+// it's let go of: on its way (flung: flying)
+function cougarLetGoOf(k, d, throwIt) {
+  k.heldBy = null; k.y = groundY(k.x, k.z); k.h = 0;
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), F = T.fling, kg = Math.sqrt(dogK(d, 'grip'));
+  if (throwIt) {
+    cougarLaunch(k, (d.vx * F.mul + fx * F.add) * kg * 0.8, (d.vz * F.mul + fz * F.add) * kg * 0.8, F.up * 0.8, d); k.air.ghost = 0.15;
+    SFX.whoosh(panOf(k.x, k.z), 0.3); Sound.yowl(panOf(k.x, k.z)); floatText('YEET!', k.x, k.y + 1.9, k.z, '#ffd36b', 1.3); MV.flings++;
+    return;
   }
+  k.vx = fx * 3; k.vz = fz * 3; k.state = 'retreat'; k.t = 0; k.dazeT = Math.min(T.cougar.daze, Math.max(0, k.calmT || 0)); k.lair = cougarRefuge(k);
+}
+// Ⓑ: shaken silly (it won't scratch a while); shaken enough: tossed
+function cougarShaken(k, d) {
+  const G2 = T.cougar.grab, fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);
+  d.shakes++; train(d, 'grip', T.train.fling); k.calmT = G2.calm * dogK(d, 'grip');
+  floatText(d.shakes > 1 ? 'SHAKE SHAKE!' : 'SHAKE!', k.x, k.y + 1.9, k.z, '#ff8a6b', Math.min(2, 1.2 + d.shakes * 0.06));
+  starBurst(k.x, k.y + 1, k.z, 5); shakeCam(0.18); dizzy(k, 1.5, 1.2); Sound.yowl(panOf(k.x, k.z));
+  if (d.shakes >= T.shake.toss) {
+    cougarLaunch(k, fx * 9 + d.vx, fz * 9 + d.vz, 6, d); k.air.ghost = 0.15;
+    floatText('AND STAY OUT!', k.x, k.y + 2.2, k.z, '#ffd36b', 1.3);
+  }
+}
+// held: at the dog's mouth, thrashing; now and then it rakes the dog and is off
+function cougarHeldStep(k, dt) {
+  const d = k.heldBy, C = T.cougar;
+  if (!d || d.holding !== k || !G.dogs.includes(d)) { k.heldBy = null; k.state = 'retreat'; k.t = 0; k.y = groundY(k.x, k.z); k.h = 0; k.lair = cougarRefuge(k); return; }
+  const gk = T.grabKinds.cougar;
+  holdStep(d, k, gk, C.r, dt);
+  k.y = groundY(k.x, k.z) + gk.lift; k.h = gk.lift; k.yaw = d.yaw + Math.PI / 2; k.leg += dt * 26;
+  if (Math.random() < dt * 1.2) Sound.hiss(panOf(k.x, k.z), 0.16);
+  if ((k.calmT -= dt) > 0 || !(Math.random() < dt * C.grab.scratch / dogK(d, 'grip'))) return;
+  const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw);   // a scratch: the dog lets go
+  d.holding = null; d.holdKind = null; d.grabLock = true; k.heldBy = null;
+  maulHitFx(d, k, false); hurtDog(d, C.grab.dmg);
+  if (!d.ko) knockDog(d, -fx * 5, -fz * 5, 0.35, 'SCRATCH!');
+  k.y = groundY(k.x, k.z); k.h = 0; k.vx = fx * 4; k.vz = fz * 4; k.state = 'retreat'; k.t = 0; k.dazeT = 0; k.lair = cougarRefuge(k);
+}
+// ---------------- a flying sheep up into it on its limb (or hard into the trunk under it): knocked out of its tree ----------------
+function cougarKnock(k, s, a) {
+  if (!['perch', 'fed', 'up', 'down', 'climb'].includes(k.state) || k.h < T.cougar.bonkH) return false;
+  const L = k.lair, R = T.cougar.grab.knock, sh = a.h + 0.6 * (s.scale || 1);   // (the sheep's middle)
+  const body = Math.hypot(k.x - s.x, k.z - s.z) < R && Math.abs(sh - (k.y + 0.3)) < R;
+  const trunk = Math.hypot(L.x - s.x, L.z - s.z) < 0.85 + (s.r || 0.5) + 0.35 && Math.hypot(s.vx, s.vz) > 7;
+  if (!body && !trunk) return false;
+  const by = a.by && a.by.isDog ? a.by : null, pan = panOf(k.x, k.z);
+  SFX.bonk(pan, 0.35); Sound.yowl(pan); starBurst(k.x, k.y + 0.6, k.z, 12, undefined, { speed: 5, up: 3 }); shakeCam(0.4); hitStop(0.07);
+  floatText(trunk && !body ? 'THWACK!' : 'BONK!', k.x, k.y + 1.6, k.z, '#ffffff', 1.4); dizzy(k, T.cougar.daze + 2, 1.2);
+  burst(L.px, L.py + 1.2, L.pz, 14, '#36643a', { speed: 2.2, up: 1.5, size: 0.2, life: 0.9, grav: -4 });   // leaves come down too
+  cougarLetGo(k, true);
+  k.bonks = (k.bonks || 0) + 1; k.driven += 1; k.target = null; k.treedAt = -1e9;
+  if (by) { train(by, 'bonk', T.train.bonkFoe); rumble(by.player, 0.8, 0.6, 200); }
+  const sv = Math.hypot(s.vx, s.vz) || 1, ox = k.x - L.x, oz = k.z - L.z, ol = Math.hypot(ox, oz) || 1;   // off the limb, the way the sheep was going (or out from the trunk)
+  const ux = s.vx / sv * 0.6 + ox / ol * 0.4, uz = s.vz / sv * 0.6 + oz / ol * 0.4;
+  if (k.state !== 'perch' && k.state !== 'fed') { k.x = L.px; k.z = L.pz; }   // (on the trunk: off it from the limb side)
+  cougarLaunch(k, ux * 4, uz * 4, 3, by);
+  return true;
 }
 function startMaul(k, d) {
   if (d.holding) releaseHold(d, false);
@@ -12373,11 +12520,12 @@ function endMaul(k, how, by) {
   if (d) { d.maul = null; d.mauled = false; d.maulEsc = 0; d.hurtAt = G.time; if (!d.ko) d.stunT = Math.max(d.stunT, how === 'thrown' ? 0.25 : 0.9); }
   if (k.state !== 'maul') return;
   k.y = groundY(k.x, k.z);
-  if (how === 'thrown') {
-    const kk = T.cougar.maul.kick; k.vx = k.mux * kk; k.vz = k.muz * kk;
-    maulEndFx(d || by, k, by || d);
+  if (how === 'thrown') {   // flung off the dog: it flies, lands dazed, limps off
+    const M = T.cougar.maul; maulEndFx(d || by, k, by || d);
+    Sound.hiss(panOf(k.x, k.z), 0.22); k.driven += 1; k.target = null;
+    cougarLaunch(k, k.mux * M.kick, k.muz * M.kick, M.up, by || d); return;
   }
-  cougarSpooked(k, how === 'thrown' ? 1 : 0.5);
+  cougarSpooked(k, 0.5);
 }
 function maulStartFx(d, k) {
   if (!d) return;
@@ -12442,10 +12590,10 @@ function cougarsAtDawn() {
     else if (k.state === 'stalk' || k.state === 'leap' || k.state === 'leapDog') { k.state = 'retreat'; k.t = 0; k.target = null; k.dog = null; k.h = 0; }
   }
 }
-function resetCougars() { for (const k of COUGARS) { if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.dazeT = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
+function resetCougars() { for (const k of COUGARS) { if (k.heldBy) { if (k.heldBy.holding === k) { k.heldBy.holding = null; k.heldBy.holdKind = null; } k.heldBy = null; } if (k.dog) { k.dog.maul = null; k.dog.mauled = false; k.dog = null; } k.barks = 0; k.bonks = 0; k.dazeT = 0; k.maulAt = 0; k.treedAt = -1e9; if (k.prey) k.prey.grabbed = null; k.prey = k.target = null; k.hunts = false; k.state = 'away'; perchCougar(k); } G.cougarHeard = false; }
 onReset(resetCougars, 50);   // COUGARS
 // JOURNEY SAVE: a cougar out hunting still is
-onSave('cougars', () => ({ on: COUGARS.map((k, i) => k.hunts || cougarAbroad(k) && k.state !== 'retreat' ? i : -1).filter(i => i >= 0) }), v => {
+onSave('cougars', () => ({ on: COUGARS.map((k, i) => k.hunts || cougarAbroad(k) && k.state !== 'retreat' && k.state !== 'fly' ? i : -1).filter(i => i >= 0) }), v => {
   if (SEA.on) return;
   for (const i of Array.isArray(v.on) ? v.on : []) { const k = COUGARS[i]; if (k && perchGrove(k.grove).length) cougarHunt(k, 0.2); }
 }, 91);
@@ -12521,7 +12669,7 @@ function updateCougars(dt) {
       case 'drag': {
         const s = k.prey; if (!s) { k.state = 'retreat'; k.t = 0; break; }
         const hd = cougarHitBy(k, C.hitR);
-        if (hd) { cougarDrop(k, true); if (!(hd.pounceT > 0) && canMaul(k, hd)) startMaul(k, hd); break; }   // pounced: it drops it and runs. Just run into: it drops it and goes for you
+        if (hd) { if (hd.pounceT > 0) { cougarBonked(k, hd); break; } cougarDrop(k, true); if (canMaul(k, hd)) startMaul(k, hd); break; }   // pounced: bonked. Just run into: it drops it and goes for you
         if (cougarOut(k, 'drag', C.drag, dt)) { holdCougarPrey(k); break; }   // in a pen: over the fence with it
         moveCougar(k, L.bx, L.bz, C.drag, dt); holdCougarPrey(k);
         if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.45, 0.85); preyCry(s, 1.2, 0.5, panOf(s.x, s.z)); }   // it cries all the way
@@ -12530,7 +12678,8 @@ function updateCougars(dt) {
       }
       case 'climb': {   // up the trunk with the sheep in its jaws: near the bottom a dog can still pull it down
         const s = k.prey, f = clamp(k.t / C.climbT, 0, 1);
-        if (s && f < 0.5 && cougarHitBy(k, C.hitR + 0.4)) { cougarDrop(k, true); break; }
+        const hd = s && f < 0.5 && cougarHitBy(k, C.hitR + 0.4);
+        if (hd) { if (hd.pounceT > 0 && cougarBonkable(k)) cougarBonked(k, hd); else cougarDrop(k, true); break; }
         climbPose(k, f);
         const ox = L.bx - L.x, oz = L.bz - L.z, ol = Math.hypot(ox, oz) || 1;
         if (s) {
@@ -12588,8 +12737,29 @@ function updateCougars(dt) {
         if (k.state === 'maul' && k.dealt >= C.maul.max - 1e-6) endMaul(k, 'done');
         break;
       }
+      case 'held': cougarHeldStep(k, dt); break;
+      case 'fly': {   // bonked (or flung off a dog): head over heels through the air, a bounce, then down dazed
+        const a = k.air; if (!a) { k.state = 'retreat'; k.t = 0; break; }
+        const tr = a.t > 0.15 && k.grove.trees.find(T2 => Math.hypot(T2.x - k.x, T2.z - k.z) < C.cling && k.y - T2.y < T2.py - T2.y - 0.4);
+        if (tr) {   // past a trunk of its own: claws in, and up
+          const gy = groundY(tr.bx, tr.bz); k.lair = tr; k.air = null; k.state = 'up'; k.dazeT = 0;
+          k.t = clamp((k.y - gy) / (tr.py - gy), 0, 1) * 0.8 * C.climbT * 0.6; SFX.thud(panOf(k.x, k.z), 0.2); break;
+        }
+        const res = airStep(k, a, C.r, dt); a.spin += dt * 9; k.y = a.h; k.h = k.y - groundY(k.x, k.z);
+        if (res === 'water') {   // OPEN WATER: a splash, then it swims for a tree
+          k.air = null; k.vx *= 0.25; k.vz *= 0.25; splashFx(k.x, k.z, 1.2); floatText('SPLASH!', k.x, WATER_Y + 1.6, k.z, '#9fe3ff', 1.3); Sound.yowl(panOf(k.x, k.z));
+          k.state = 'retreat'; k.t = 0; k.lair = cougarRefuge(k); break;
+        }
+        if (res !== 'ground') break;
+        const impact = -a.vy;
+        burst(k.x, k.y + 0.15, k.z, 10, '#e8dcc0', { speed: 2.6, up: 1.3, size: 0.26, life: 0.6, grav: 0 }); SFX.thud(panOf(k.x, k.z), 0.25);
+        if (a.bounces > 0 && impact > 4) { a.bounces--; a.vy = impact * 0.4; k.vx *= 0.7; k.vz *= 0.7; break; }
+        k.air = null; k.y = groundY(k.x, k.z); k.h = 0; k.vx *= 0.45; k.vz *= 0.45; if (wadeSdfAt(k.x, k.z) < C.r) collideWade(k, C.r);
+        k.state = 'retreat'; k.t = 0; k.dazeT = C.daze; k.lair = cougarRefuge(k);
+        break;
+      }
       case 'retreat': {
-        if (k.dazeT > 0) {   // bonked: tumbling, then sprawled, seeing stars
+        if (k.dazeT > 0) {   // bonked: sprawled, sliding to a stop, seeing stars
           k.dazeT -= dt; const q = Math.max(0, 1 - 3.5 * dt); k.vx *= q; k.vz *= q;
           k.x += k.vx * dt; k.z += k.vz * dt; collideWorld(k, C.r); collideFences(k, C.r); k.y = groundY(k.x, k.z); k.h = 0;
           k.t = 0;
@@ -15590,18 +15760,57 @@ function syncCoyote(c) {
   M.tail.rotation.x = c.state === 'flee' || c.state === 'leave' ? 1.0 : 0.5;
 }
 onSync(() => { for (const c of G.coyotes) syncCoyote(c); }, 20);
-// COUGARS: on the limb, creeping, leaping, running and climbing (host and guests alike, from k.state)
-function syncCougar(k) {
-  const M = k.models, st = k.state; M.root.visible = st !== 'away'; if (!M.root.visible) return;
-  const t = G.time, sp = Math.hypot(k.vx, k.vz), L = k.lair;
+// COUGARS: up its tree at night it's a shadow with eyes: its own material, darkened (M.mat), a glow on each eye; they blink,
+// shut a while now and then, and fix on a dog that comes near. Now and then a pair of eyes opens on the limb of another
+// tree of its grove (M.ghost): nothing there. Made the first time it's drawn out (own dice).
+function cougarLook(k) {
+  const M = k.models; M.mat = MAT.vc.clone(); M.dark = 0; M.eyeK = 0; M.lookY = 0;
+  M.root.traverse(o => { if (o.isMesh && o.material === MAT.vc) o.material = M.mat; });
+  const glow = op => new THREE.SpriteMaterial({ map: FIND_GLOW.dig.map, color: '#d9ff7a', transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+  M.glowMat = glow(0);
+  M.glows = M.eyes.map(e => { const g = new THREE.Sprite(M.glowMat); g.position.set(e.position.x * 1.2, e.position.y, e.position.z + 0.05); g.scale.setScalar(0.3); M.head.add(g); return g; });
+  M.ghost = new THREE.Group(); M.ghost.visible = false; scene.add(M.ghost);
+  M.ghostMat = glow(0); M.ghostEye = new THREE.MeshBasicMaterial({ color: '#d9ff7a', transparent: true, opacity: 0 });
+  M.ghostEyes = [-1, 1].map(sx => { const e = new THREE.Mesh(SPH(6), M.ghostEye); e.scale.set(0.075, 0.06, 0.06); M.ghost.add(e); const g = new THREE.Sprite(M.ghostMat); g.scale.setScalar(0.33); M.ghost.add(g); return { e, g, sx }; });
+}
+const COUGAR_SHADOW = new THREE.Color('#16151f');
+const hash01 = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function cougarGhost(k, dark, dt) {
+  const M = k.models, t = G.time, others = k.grove.trees.filter(o => o !== k.lair);
+  const slot = Math.floor((t + k.i * 13) / 9), f = (t + k.i * 13) / 9 - slot, h = hash01(slot * 7 + k.i), from = 0.2 + hash01(slot * 3 + k.i) * 0.5, len = 0.09 + h * 0.1;
+  const on = dark > 0.5 && others.length && h < 0.6 && f > from && f < from + len && !((t * 1.3 + k.i) % 3.1 < 0.12);
+  const op = M.ghostOp = lerp(M.ghostOp || 0, on ? 1 : 0, Math.min(1, dt * (on ? 6 : 10)));
+  M.ghost.visible = op > 0.02; if (!M.ghost.visible) return;
+  const L = others[slot % others.length], ux = Math.sin(L.yaw), uz = Math.cos(L.yaw), x = L.px + ux * 1.05, z = L.pz + uz * 1.05, y = L.py + 0.66;
+  M.ghost.position.set(x, y, z);
+  for (const { e, g, sx } of M.ghostEyes) { e.position.set(CAM_R.x * 0.1 * sx, 0, CAM_R.z * 0.1 * sx); g.position.copy(e.position); }
+  M.ghostEye.opacity = op; M.ghostMat.opacity = op * 0.8;
+}
+// on the limb, creeping, leaping, running and climbing (host and guests alike, from k.state)
+function syncCougar(k, dt = 0) {
+  const M = k.models, st = k.state, was = M.root.visible; M.root.visible = st !== 'away';
+  if (!M.mat) { if (st === 'away') return; ownDice(91000 + k.i, () => cougarLook(k)); }   // (its own dice: renderOnce in a seeded test mustn't move them)
+  const high = st === 'perch' || st === 'fed' || ['up', 'down', 'climb', 'fly'].includes(st) && k.h > 1.6 ? clamp((k.h - 1.2) / 1.6, 0, 1) : 0;
+  M.dark = lerp(M.dark, high * (isNight() ? 1 : 0.4), was ? Math.min(1, dt * 2.5) : 1);   // (just up there: dark at once)
+  cougarGhost(k, st === 'perch' || st === 'fed' ? M.dark : 0, dt);
+  if (!M.root.visible) return;
+  const t = G.time, sp = Math.hypot(k.vx, k.vz), L = k.lair, dk = M.dark;
   M.root.position.set(k.x, k.y, k.z);
-  const blink = (t + k.i * 1.7) % 4.3 < 0.13; for (const e of M.eyes) e.scale.y = blink ? 0.004 : 0.035;
+  M.mat.color.setScalar(1 - dk); M.mat.emissive.copy(COUGAR_SHADOW).multiplyScalar(dk);   // one flat shadow up there; the colour back as it comes down
+  const nd = nearestDog(L.bx, L.bz), watch = dk > 0.5 && nd.dog && nd.d < 26;   // a dog near its tree: it watches it, eyes wide
+  const shut = dk > 0.5 && !(watch && nd.d < 14) && Math.sin(t * 0.37 + k.i) + Math.sin(t * 0.23 + k.i * 2.1) > 1.15;
+  const blink = (t + k.i * 1.7) % 4.3 < 0.13 || shut;
+  M.eyeK = lerp(M.eyeK, blink ? 0 : 1, Math.min(1, dt * (blink ? 25 : 8)));
+  const es = 1 + dk * 0.7; for (const e of M.eyes) e.scale.set(0.045 * es, Math.max(0.004, 0.035 * es * M.eyeK), 0.03 * es);
+  M.glowMat.opacity = dk * M.eyeK * (0.75 + Math.sin(t * 2.3 + k.i) * 0.15);
   let pitch = 0, roll = 0, bodyY = 0, headX = 0, headY = 0, t0 = -0.3, t1 = 0, t2 = 0.4, tSway = Math.sin(t * 1.4 + k.i) * 0.2;
   M.legs.forEach(g => { g.rotation.set(0, 0, 0); });
   if (st === 'perch' || st === 'fed') {   // stretched along the limb, legs hanging either side, tail hanging down and swaying
     bodyY = -0.55; t0 = -1.35; t1 = 0.15; t2 = 0.35;
     M.legs.forEach((g, i) => { g.rotation.z = (i % 2 ? -1 : 1) * 0.45; g.rotation.x = i < 2 ? -0.25 : 0.25; });
-    headX = st === 'fed' ? 0.35 : 0.1 + Math.sin(t * 0.3 + k.i) * 0.08; headY = st === 'fed' ? 0.25 : Math.sin(t * 0.37 + k.i * 2) * 0.7;
+    const want = watch ? clamp(wrapA(Math.atan2(nd.dog.x - k.x, nd.dog.z - k.z) - k.yaw), -1.4, 1.4) : Math.sin(t * 0.37 + k.i * 2) * 0.7;
+    M.lookY = lerp(M.lookY, want, Math.min(1, dt * (watch ? 3 : 1.2)));
+    headX = st === 'fed' ? 0.35 : watch ? 0.3 : 0.1 + Math.sin(t * 0.3 + k.i) * 0.08; headY = st === 'fed' ? 0.25 : M.lookY;
     M.body.scale.y = 1.35 * (1 + Math.sin(t * 1.3 + k.i) * 0.02);
   } else {
     M.body.scale.y = 1.35;
@@ -15620,9 +15829,18 @@ function syncCougar(k) {
     } else if (st === 'leap' || st === 'vault' || st === 'leapDog') {
       pitch = -0.25 * clamp(k.h / 1.3, 0, 1);
       M.legs.forEach((g, i) => { g.rotation.x = i < 2 ? -1.15 : 1.05; }); t0 = 0.1; t2 = 0.2;
-    } else if (st === 'retreat' && k.dazeT > 0) {   // bonked: head over heels, sprawled on its side, legs going, seeing stars; then up
+    } else if (st === 'held') {   // by the scruff: thrashing, claws out, tail lashing
+      roll = Math.sin(t * 13) * 0.25; bodyY = -0.1;
+      M.legs.forEach((g, i) => { const ph = t * 19 + i * 1.9; g.rotation.x = (i < 2 ? -0.9 : 0.6) + Math.sin(ph) * 0.8; g.rotation.z = (i % 2 ? -1 : 1) * (0.3 + Math.max(0, Math.cos(ph)) * 0.4); });
+      headX = -0.2 + Math.sin(t * 11) * 0.3; headY = Math.sin(t * 7) * 0.6; t0 = 0.3; t1 = 0.4; t2 = 0.5; tSway = Math.sin(t * 12) * 1.1;
+    } else if (st === 'fly') {   // bonked: head over heels (the way it's flying), legs splayed, tail lashing
+      const fw = Math.sin(k.yaw) * k.vx + Math.cos(k.yaw) * k.vz >= 0 ? 1 : -1;
+      k.flySpin = (k.flySpin || 0) + fw * 9 * dt; pitch = k.flySpin;
+      M.legs.forEach((g, i) => { g.rotation.x = (i < 2 ? -1 : 1) * 0.9 + Math.sin(t * 23 + i) * 0.3; g.rotation.z = (i % 2 ? -1 : 1) * 0.5; });
+      headX = -0.3; t0 = 0.6; t1 = 0.5; t2 = 0.5; tSway = Math.sin(t * 17) * 0.9;
+    } else if (st === 'retreat' && k.dazeT > 0) {   // bonked: rolled onto its side, legs going, seeing stars; then up
       const f = clamp(1 - k.dazeT / T.cougar.daze, 0, 1), sg = k.i % 2 ? 1 : -1;
-      roll = sg * (f < 0.4 ? f / 0.4 * (TAU + Math.PI / 2) : Math.PI / 2 * (1 - smooth(0.8, 1, f)) + (f < 0.8 ? Math.sin(t * 9) * 0.08 : 0));
+      roll = sg * (f < 0.25 ? f / 0.25 * Math.PI / 2 : Math.PI / 2 * (1 - smooth(0.8, 1, f)) + (f < 0.8 ? Math.sin(t * 9) * 0.08 : 0));
       M.legs.forEach((g, i) => { g.rotation.x = Math.sin(t * 17 + i * 1.7) * 0.9; g.rotation.z = (i % 2 ? -1 : 1) * 0.35; });
       headX = 0.25; headY = Math.sin(t * 5) * 0.5; t0 = -0.2; t1 = 0.5; t2 = 0.6; tSway = Math.sin(t * 7) * 0.6;
     } else {   // stalking low and slow, or running (bonked: limping home, head and tail low, wobbling)
@@ -15633,15 +15851,19 @@ function syncCougar(k) {
       if (limp) { roll = Math.sin(k.leg * 2.2) * 0.1; headY = Math.sin(t * 3) * 0.25; }
     }
   }
+  if (st !== 'fly') k.flySpin = 0;
   M.root.rotation.set(pitch, k.yaw + (st === 'down' && k.y < L.py - 0.3 ? Math.PI : 0), roll);   // head first down the trunk
-  if (roll) {   // rolled about its middle, not its feet: its side (or back) on the ground
+  if (st === 'fly') {   // spun about its middle
+    const B = 0.9, sp2 = Math.sin(pitch), cp = Math.cos(pitch);
+    M.root.position.set(k.x - Math.sin(k.yaw) * B * sp2, k.y + B - B * cp, k.z - Math.cos(k.yaw) * B * sp2);
+  } else if (roll) {   // rolled about its middle, not its feet: its side (or back) on the ground
     const B = 0.92, sr = Math.sin(roll), cr = Math.cos(roll);
     M.root.position.set(k.x + Math.cos(k.yaw) * B * sr, k.y + 0.38 + 0.54 * Math.max(0, cr) - B * cr, k.z - Math.sin(k.yaw) * B * sr);
   }
   M.body.position.y = bodyY; M.head.rotation.set(headX, headY, 0);
   M.tail[0].rotation.set(t0, 0, 0); M.tail[1].rotation.set(t1, tSway, 0); M.tail[2].rotation.set(t2, tSway * 1.4, 0);
 }
-onSync(() => { for (const k of COUGARS) syncCougar(k); }, 30);
+onSync(dt => { for (const k of COUGARS) syncCougar(k, dt); }, 30);
 expose(() => ({ hairStep }));   // HAIR
 
 // =====================================================================
@@ -17354,7 +17576,7 @@ function hankWatch(dt) {
 }
 // Night at the campfire: a quiet spell there and he beds down. Asleep he says nothing, until a coyote or cougar
 // he can see comes within T.hankNap.wakeR: up he gets and shouts it (hankSpotPredators), awake a while after.
-const HANK_COUGAR_UP = new Set(['down', 'stalk', 'leap', 'leapDog', 'maul', 'drag', 'vault', 'retreat']);
+const HANK_COUGAR_UP = new Set(['down', 'stalk', 'leap', 'leapDog', 'maul', 'drag', 'vault', 'retreat', 'fly', 'held']);
 function hankThreats(r) {
   const hk = HANK, out = [], near = (x, z) => Math.hypot(x - hk.x, z - hk.z) < r;
   for (const c of G.coyotes) if (c.state !== 'sleep' && c.state !== 'leave' && near(c.x, c.z) && hankSees(c.x, c.z)) out.push(c);
@@ -28640,6 +28862,7 @@ const NET_PRED = ['vx', 'vz', 'mode', 'pounceT'];   // fields prediction writes;
 function netKindOf(h) {   // one a line
   return !h ? ''
     : G.coyotes.includes(h) ? 'coyote'
+    : h.isCougar ? 'cougar'
     : G.sheep.includes(h) ? (h.ram ? 'ram' : h.lamb ? 'lamb' : 'sheep')
     : pens.includes(h) ? 'gate'
     : G.dogs.includes(h) ? 'dog'

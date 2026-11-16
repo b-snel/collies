@@ -21,9 +21,16 @@
   `penGap`+ m off pens; the land `room` m wider there). Night only: each near the flock (`cougarsNear`)
   takes a random tree of its own (`perchGrove`, `k.lair`, synced) and hunts, one after another (`delay`,
   `gap`); none comes down while another's out (`cougarAbroad`). Held up only by a dog barking under its
-  tree (`treedR`). Lambs first, never rams; pounce or bump drops the sheep; vaults pen fences. Pounce one
-  running away: bonked, yowls (`Sound.yowl`), knocked head over heels, dazed (`daze`, `k.dazeT`, synced;
-  stars), limps home at `bonkRun`×: bonk it again, all the way home (dazed at its trunk: up it goes).
+  tree (`treedR`). Lambs first, never rams; a bump drops the sheep; vaults pen fences. Pounce it any time it's on
+  the ground or low on a trunk (`cougarBonkable`, `bonkH`; not scrambling up to safety): bonked (`cougarBonked`), drops its
+  catch, yowls, flies as a punted sheep by weight × `bonk` (`cougarLaunch`, state `fly`, `k.air`), lands dazed (`daze`,
+  `k.dazeT`, synced; stars), limps at `bonkRun`× for its nearest tree with no dog by it (`cougarRefuge`, `k.lair`). Every
+  bonk flies it; flying past a trunk of its own (`cling`) it grabs on and goes up. Flung off a mauled dog: flies too.
+  Grabbed: see docs/dogs.md (it scratches). A punted sheep up into it on its limb, or hard into its trunk (`grab.knock`,
+  `cougarKnock`): knocked out of the tree (its catch saved). Up its tree at night: one flat shadow (`COUGAR_SHADOW`) with
+  glowing eyes that blink, shut a while now and then, fix on a dog near; now and then a pair opens on another grove tree's
+  limb with nothing there (`cougarGhost`). Grove trees each look different (`lairTree`: oak, tall, spread, gaunt, pine;
+  own dice, then the old build's draws burnt: the seeded dice don't move).
   The night doesn't fast-forward while one's out. `s.grabbed` may be a cougar (`k.isCougar`).
 - **Falcon** (`FALCON`, `NESTS`, `T.falcon`): day only, from day 2 (`fromDay`), every few hours circles
   (shadow), screeches, dives. A dog: carried a way, dropped (`d.air.kind
