@@ -1078,7 +1078,7 @@ const T = {
   // so a dog's full load (carryCap) is a few hours' grazing each for most of a 14-sheep flock.
   forage: { daisy: 0.25, alfalfa: 0.55, carryCap: 4, troughCap: 6, troughs: 3, pickR: 1.35, regrowDays: [1, 2],
     tipR: 1.9,   // tipR: a dog this close to a trough (either side of the fence) tips its greens in. Feeding: troughWant/troughRate
-    ring: { in: 0.7, gate: 3.5, hinge: 3.5 } },   // the pen kit (kitRing): m in off the fence; clear past the latch post, short of the hinge
+    ring: { in: 0.7, gate: 3.5, hinge: 3.5, chock: 0.15 } },   // the pen kit (kitRing): m in off the fence; clear past the latch post, short of the hinge; chock: m over a ram's width a slot to the fence must be (else it's chocked: kitChocks)
   // salt: rocks of it along the trail. Run over one to pick up a lump, take it to a pen's salt lick. s.salt (0..1) runs
   // down every day; salty sheep are peppy (boost at 1, normal at mid), a sheep out of salt slows (slow at 0) and, left
   // without for deathHours, dies of it. Penned sheep under want go and lick till they're at full.
@@ -9108,6 +9108,7 @@ function kitSet(p, k, n) {
   if (k === 'salt') { const L = p.lick; L.cap = T.salt.lickCap * on.length; L.salt = Math.min(L.salt, L.cap); }
   if (gone) stampNav();
   p.kitV = (p.kitV || 0) + 1;   // the sheep's places at them: troughSpots
+  kitChocks(p);   // (a slot that's opened or closed up)
 }
 function kitReset() { for (const p of pens) for (const k in KIT) kitSet(p, k, 0); }   // a new journey: what each pen came with
 // SHARED HOOK (sheep mind): a sheep eats from one of a pen's troughs. amt in hunger units; returns what was taken.
@@ -9463,6 +9464,27 @@ for (const p of pens) {
   const pl = makePail(); pl.root.scale.setScalar(1.5); pl.root.rotation.y = a; scene.add(pl.root); if (p.deck) seaKeep(pl.root);
   BUCKETS.push({ i: BUCKETS.length, pen: p, hx: h.x, hz: h.z, x: h.x, z: h.z, w: 0, by: null, drop: null, root: pl.root, water: pl.water });
 }
+// No pockets: straight troughs on a ring leave a slot to the fence between neighbours narrowest at its mouth, wider behind. Narrower
+// than a ram (and a bit), it's chocked (p.chocks: solids, while both neighbours are out): else one shoved in can't get back out
+function kitChocks(p) {
+  if (p.deck) return;
+  if (!p.chocks) {
+    const sl = [...p.troughSlots, ...p.waterSlots, ...p.lickSlots].map(u => ({ b: u.box.solid, a: Math.atan2(u.box.solid.z - p.z, u.box.solid.x - p.x) })).sort((A, B) => A.a - B.a);
+    const dBox = (x, z, b) => { const rx = x - b.x, rz = z - b.z; return Math.hypot(Math.max(0, Math.abs(rx * b.tx + rz * b.tz) - b.hl), Math.max(0, Math.abs(rx * b.nx + rz * b.nz) - b.hw)); };
+    const corners = b => [[1, 1], [-1, 1], [1, -1], [-1, -1]].map(([u, v]) => [b.x + b.tx * b.hl * u + b.nx * b.hw * v, b.z + b.tz * b.hl * u + b.nz * b.hw * v]);
+    p.chocks = [];
+    for (let i = 0; i < sl.length; i++) {
+      const A = sl[i], B = sl[(i + 1) % sl.length], da = wrapA(B.a - A.a); if (!(da > 0 && da < 1)) continue;   // (not across the gateway)
+      const gap = Math.min(...corners(A.b).map(c => dBox(c[0], c[1], B.b)), ...corners(B.b).map(c => dBox(c[0], c[1], A.b)));
+      if (gap >= 2 * (T.ramRadius + 0.1) + T.forage.ring.chock) continue;
+      const am = A.a + da / 2, ri = p.R - T.forage.ring.in - Math.max(A.b.hw, B.b.hw), rc = (ri + p.R) / 2;   // (from the boxes' faces to the fence)
+      p.chocks.push({ A: A.b, B: B.b, solid: { x: p.x + Math.cos(am) * rc, z: p.z + Math.sin(am) * rc, tx: -Math.sin(am), tz: Math.cos(am), nx: -Math.cos(am), nz: -Math.sin(am), hl: gap / 2 + 0.1, hw: (p.R - ri) / 2, chock: true } });
+    }
+  }
+  const S = (p.solids || []).filter(o => !o.chock); p.solids = S;
+  for (const c of p.chocks) if (S.includes(c.A) && S.includes(c.B)) S.push(c.solid);
+}
+for (const p of pens) kitChocks(p);
 // SHARED HOOK: add amt water to a pen's water trough (1 = one sheep from parched to quenched); returns what went in (it's capped)
 function fillWater(pen, amt) {
   const tr = pen && pen.water; if (!tr || !(amt > 0)) return 0;

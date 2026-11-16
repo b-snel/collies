@@ -13,7 +13,7 @@
     VENDOR as before on his one "stall" (`VSTALL` = `MARKET`, `ALL_WARES` = `WARES`): a dog on a mat barks (`vendorBark`, host) to buy
     with `G.wool`. 📍 picks the pen (found ones, `G.visited`; default the furthest; `st.sel`). 🌾 💧 🧂: one more trough / water trough /
     lick in it, stocked (`kitSet`), up to `T.vendor.max` × R/9 (slots prebuilt round the fence, `kitRing` / `deckKit`: a sheep's width
-    apart, flush to it, no pockets), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
+    apart, flush to it, no pockets: a slot between neighbours too narrow for a ram is chocked, `kitChocks`), then batches. Water and salt: one pool per pen (`p.water.at`, `p.lick.at`). New journey: back to base
     (`kitReset`). On a mat: the ware hops, its name plate pops up (`drawWarePop`). ✂️ free while Hank has none. 🧪: `T.vendor.vaccine.n` doses (`docs/pox.md`). ♈ a ram, on a mat of its own out front (row 2), one a pitch, on land
     (`vagRamStock`, `vagRamSell`: he's on the mat, then off to the flock; new blood, docs/kin.md); called when the flock needs one (`kinNeedRam`).
     🐑 SELLING, on the same row: a sheep stood (or carried) on the mat (`sellSheepOn`; in the barking dog's jaws first); the tag: what he'd
