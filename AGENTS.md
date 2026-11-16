@@ -276,7 +276,7 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   works them (`pushed`). Hungry ones set on a trough eat through barks (`troughSet`, `T.hungry`).
 - **Shut pens hold.** No crush shoves a sheep through a fence or round a trough (`fenPrev`, `PREV`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
-  leaf's free end; pressed ones slide along, not into it. Lambs follow a
+  leaf's free end; pressed ones slide along, not into it; one heading into an open leaf rounds its free end (`T.gateRound`). Lambs follow a
   penned mum in.
 - **Ajar gates.** Unlatched and a crack open (`penAjar`): pens pull as if open; a sheep wanting in (`s.ppPen`) or driven at
   it shoulders it wider (`sheepNudgesGate`, `T.gate.sheep`).

@@ -126,7 +126,8 @@ if (want('heel')) {
   await setup({ calm: true });
   const r = await h.page.evaluate(() => {
     const { G, T, SEA } = GAME, out = {};
-    const heel = (v, hoist = 1) => { H.sea(1.57, 11, { flat: true }); SEA.hoist = hoist; let n = 0, a = 0, u = 0; H.run(40, t => { H.steer(0); H.flock(v); if (t > 25) { n++; a += SEA.heel; u += SEA.u; } }); return [H.deg(a / n), H.r(u / n)]; };
+    // (a moderate breeze: in a strong one Hank eases her before the flock can heel her further)
+    const heel = (v, hoist = 1) => { H.sea(1.57, 8, { flat: true }); SEA.hoist = hoist; let n = 0, a = 0, u = 0; H.run(40, t => { H.steer(0); H.flock(v); if (t > 25) { n++; a += SEA.heel; u += SEA.u; } }); return [H.deg(a / n), H.r(u / n)]; };
     [out.mid, out.uMid] = heel(0); [out.lee, out.uLee] = heel(-5.4); [out.wind, out.uWind] = heel(5.4); [out.reef, out.uReef] = heel(0, 0.55);   // (wind from starboard: she heels to port; port is the lee side)
     return out;
   });
@@ -578,18 +579,20 @@ if (want('wind')) {
       for (const g of WIND.gusts) if (!seen.has(g)) { seen.add(g); (g.k > 0 ? up : down).push(g.veer); }
     });
     const avg = a => a.reduce((m, v) => m + v, 0) / Math.max(1, a.length);
-    Object.assign(out, { lo: H.deg(Math.min(...rel)), hi: H.deg(Math.max(...rel)), shifts: tos.size - 1, held: H.r(held / n), gust: H.deg(avg(up)), lull: H.deg(avg(down)), gusts: up.length, lulls: down.length,
+    const st = [...tos].map(Number), steps = st.slice(1).map((v, i) => v - st[i]);   // (each shift's step: a veer or a back)
+    Object.assign(out, { veered: steps.filter(d => d > 0).length, backed: steps.filter(d => d < 0).length, lo: H.deg(Math.min(...rel)), hi: H.deg(Math.max(...rel)), shifts: tos.size - 1, held: H.r(held / n), gust: H.deg(avg(up)), lull: H.deg(avg(down)), gusts: up.length, lulls: down.length,
       veers: up.every(v => v > 0) && down.every(v => v < 0) });
     // a big shift (60°): the wind sea comes round with it; the swell, from the weather that raised it, lags (a cross sea), then follows
     T.sea.wind.shiftGap = [1e4, 1e4]; WIND.shiftT = 1e4; T.sea.wind.veer = [0, 0];
-    const a0 = SWAVES[0].ang, c0 = SWAVES[2].ang; WIND.shiftTo = WIND.shift + 1.05;
-    H.run(45, () => H.steer(0)); out.chop = H.deg(Math.abs(H.wrap(SWAVES[2].ang - c0))); out.swell = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
+    const a0 = SWAVES[0].ang, c0 = SWAVES[2].ang, w0 = WIND.dir; WIND.shiftTo = WIND.shift + 1.05;
+    H.run(45, () => H.steer(0)); out.wind60 = H.deg(Math.abs(H.wrap(WIND.dir - w0))); out.chop = H.deg(Math.abs(H.wrap(SWAVES[2].ang - c0))); out.swell = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
     H.run(400, () => H.steer(0)); out.swellLate = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
+    out.swellOff = H.deg(Math.abs(H.wrap(SWAVES[0].ang - SWAVES[0].off - (WIND.base + WIND.shift + Math.PI))));   // (how far it's still to come round: where it was before the shift is the last shifts' lag)
     return out;
   });
-  ok(`left to itself the wind goes round: ${r.shifts} shifts that hold (settled ${Math.round(r.held * 100)}% of the time), ${r.lo}°…${r.hi}° off the leg's own`, r.shifts >= 5 && r.held > 0.5 && r.hi - r.lo > 30 && r.lo < -8 && r.hi > 8 && r.hi - r.lo < 110, r);
+  ok(`left to itself the wind goes round: ${r.shifts} shifts that hold (settled ${Math.round(r.held * 100)}% of the time; ${r.veered} veer, ${r.backed} back), ${r.lo}°…${r.hi}° off the leg's own`, r.shifts >= 5 && r.held > 0.5 && r.veered > 0 && r.backed > 0 && r.hi - r.lo > 30 && r.hi - r.lo < 110, r);   // (both ways: which side of the leg's own it wanders is the dice)
   ok(`gusts veer (${r.gust}°, ${r.gusts} of them), lulls back (${r.lull}°, ${r.lulls})`, r.gusts > 3 && r.lulls > 0 && r.veers, r);
-  ok(`60° round: the wind sea comes with it (${r.chop}° in 45 s), the swell lags (${r.swell}°): a cross sea; later it follows (${r.swellLate}°)`, r.chop > 30 && r.swell < r.chop / 2 && r.swellLate > 45, r);
+  ok(`60° round: the wind sea comes with it (${r.chop}° in 45 s, the wind ${r.wind60}°: gusts the rest), the swell lags (${r.swell}°): a cross sea; later it follows (${r.swellLate}°, ${r.swellOff}° to go)`, r.wind60 > 30 && r.chop > r.wind60 / 2 && r.swell < r.chop / 2 && r.swellLate > 30 && r.swellOff < 8, r);
 }
 
 if (want('front')) {

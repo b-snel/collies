@@ -293,7 +293,7 @@ if (want('fault')) {
     const { TRIAL, fu, fv } = GAME, ev = H.start('course'), d = H.d(), e = TRIAL.grp.list[0], out = {};
     H.place(d, fu(e.x, e.z) - 1.1, fv(e.x, e.z)); d.yaw = Math.atan2(e.x - d.x, e.z - d.z); e.state = 'stay';
     H.run(0.1, () => ({ mx: 0, my: 0, grab: true })); out.grip = ev.faults.includes('grip');
-    H.run(0.1); e.state = 'idle'; const e2 = TRIAL.grp.list[3]; H.place(d, fu(e2.x, e2.z) - 2.4, fv(e2.x, e2.z)); e2.state = 'stay'; d.yaw = Math.atan2(e2.x - d.x, e2.z - d.z);
+    H.run(0.1); e.state = 'idle'; const e2 = TRIAL.grp.list[3]; H.place(d, fu(e2.x, e2.z) - 2.4, fv(e2.x, e2.z)); e2.state = 'idle'; e2.vx = e2.vz = 0; d.yaw = Math.atan2(e2.x - d.x, e2.z - d.z);
     H.run(0.6, t => t < 0.05 ? { ...H.inp(e2.x - d.x, e2.z - d.z), pounce: true } : null); out.faults = ev.faults.slice();
     GAME.trialEnd(); out.score = TRIAL.res.course;
     return out;

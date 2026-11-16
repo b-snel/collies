@@ -25,7 +25,8 @@ const r = await h.page.evaluate(N => {
         P().bot = {}; step(0.025);
         for (const c of [15, 40, 80, 119.9]) if (Math.abs(t - c) < 0.0124) {
           const S = live(), out = S.filter(s => !s.pen), d = out.length ? out.reduce((a, s) => a + Math.hypot(s.x - pen.gx, s.z - pen.gz), 0) / out.length : 0;
-          const o = acc[c] || (acc[c] = { out: 0, of: 0, dist: 0 }); o.out += out.length; o.of += S.length; o.dist += d / N;
+          const feed = S.filter(s => s.pen && ['trough', 'lick', 'drink', 'wait', 'exit'].includes(s.state)).length;   // (in for a bite, a lick or a drink, or on the way out again)
+          const o = acc[c] || (acc[c] = { out: 0, of: 0, dist: 0, feed: 0 }); o.out += out.length; o.of += S.length; o.dist += d / N; o.feed += feed;
         }
       }
     }
@@ -40,7 +41,7 @@ console.log(JSON.stringify(r.res, null, 1)); console.log(h.errors.slice(0, 3));
 let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
 for (const [k, o] of Object.entries(r.num)) {
   const a = o[15], b = o[80], dog = k.includes('dog');
-  ok(`${k}: gate opened, out they go (${a.out}/${a.of} by ~8:00), out till ~13:00 (${b.out}/${b.of}: one may stop to lick, eat or drink), off the gate (${b.dist.toFixed(1)} m)`, a.out >= a.of * (dog ? 0.4 : 0.8) && b.out >= b.of - 2 && b.dist > 8);
+  ok(`${k}: gate opened, out they go (${a.out}/${a.of} by ~8:00), out till ~13:00 (${b.out}/${b.of}; in for a bite, a lick or a drink: ${b.feed}), off the gate (${b.dist.toFixed(1)} m)`, a.out >= a.of * (dog ? 0.4 : 0.8) && b.out + b.feed >= b.of - 2 && b.dist > 8);   // (troughs stocked: any time of day they come in for them)
 }
 ok('no page errors', !h.errors.length);
 await h.close();

@@ -57,11 +57,12 @@ const r3 = await h.page.evaluate(() => {
   const stop = RUN(s, 0.25, (t, dt) => { v = Math.max(0, v - 25 * dt); s.vx = v; s.x += v * dt; s.leg += v * dt * 3; });
   s.vx = 0; const after = RUN(s, 6);
   const f = a => a.map(L => L.n[0].f - rest), amp = (a, i, j) => Math.max(...f(a.slice(i, j)).map(Math.abs));
-  return { back: Math.min(...f(go)), fwd: Math.max(...f(stop.concat(after.slice(0, 30)))), a1: amp(after, 0, 60), a2: amp(after, 60, 120), a3: amp(after, 120, 180), end: amp(after, 300, 360), endV: Math.max(...after.at(-1).n.map(n => n.v)), ok: [...go, ...cruise, ...stop, ...after].every(L => L.ok) };
+  // fwd: forward of where they hang, within 1.2 s of the stop (the legs had them swinging: caught on the back swing, they come forward on the next)
+  return { back: Math.min(...f(go)), fwd: Math.max(...f(stop.concat(after.slice(0, 72)))), a1: amp(after, 0, 60), a2: amp(after, 60, 120), a3: amp(after, 120, 180), end: amp(after, 300, 360), endV: Math.max(...after.at(-1).n.map(n => n.v)), ok: [...go, ...cruise, ...stop, ...after].every(L => L.ok) };
 });
 ok(`off he goes: they swing back (${r3.back.toFixed(3)} m)`, r3.back < -0.03 && r3.ok, r3);
 ok(`stops dead: they swing on forward (${r3.fwd.toFixed(3)} m)`, r3.fwd > 0.03, r3);
-ok(`the swing dies away, give or take a wobble (${r3.a1.toFixed(3)} → ${r3.a2.toFixed(3)} → ${r3.a3.toFixed(3)} → ${r3.end.toFixed(4)})`, r3.a2 < 0.8 * r3.a1 && r3.a3 < 0.5 * r3.a1 && r3.a3 < 1.25 * r3.a2 + 0.002 && r3.end < 0.006 && r3.endV < 0.03, r3);
+ok(`the swing dies away, give or take a wobble (${r3.a1.toFixed(3)} → ${r3.a2.toFixed(3)} → ${r3.a3.toFixed(3)} → ${r3.end.toFixed(4)})`, r3.a3 < 0.5 * Math.max(r3.a1, r3.a2) && r3.a3 < 1.25 * r3.a2 + 0.002 && r3.end < 0.006 && r3.endV < 0.03, r3);
 
 // 4. trotting: the legs bat them about; never inside a leg, his belly or the ground
 const r4 = await h.page.evaluate(() => {

@@ -251,10 +251,12 @@ try {
   const newIds = await A.page.evaluate(() => GAME.G.coyotes.filter(c => !window.__old.has(c)).map(c => c.nid));
   await until(B, ids => ids.every(id => GAME.G.coyotes.some(c => c.nid === id && c.models.root.parent)), newIds, 5000);
   await sleep(1500);
+  await A.page.evaluate(() => NET.api.hold(true, 'test')); await sleep(800);   // (held: the guest draws them a moment behind, so running ones are off by their speed × that)
   const [hc, gc] = await Promise.all([A.page.evaluate(ids => GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => [c.nid, c.x, c.z, c.alpha]), newIds),
     B.page.evaluate(ids => GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => [c.nid, c.x, c.z, c.alpha]), newIds)]);
   const cErr = Math.max(...hc.map(([id, x, z]) => { const q = gc.find(r => r[0] === id); return q ? Math.hypot(q[1] - x, q[2] - z) : 99; }));
-  check('coyotes spawned on the host appear on the guest (with the alpha\'s model)', newIds.length === 3 && gc.length === 3 && cErr < 0.6 && gc.filter(r => r[3]).length === hc.filter(r => r[3]).length, { n: gc.length, maxErr: r3(cErr) });
+  await A.page.evaluate(() => NET.api.hold(false, 'test')); await until(B, () => !GAME.G.paused, null, 5000);
+  check('coyotes spawned on the host appear on the guest (with the alpha\'s model), where they are once the host holds', newIds.length === 3 && gc.length === 3 && cErr < 0.1 && gc.filter(r => r[3]).length === hc.filter(r => r[3]).length, { n: gc.length, maxErr: r3(cErr) });
   await B.page.evaluate(ids => { window.__coyRoots = GAME.G.coyotes.filter(c => ids.includes(c.nid)).map(c => c.models.root); }, newIds);
   await A.page.evaluate(ids => { for (const c of GAME.G.coyotes) if (ids.includes(c.nid)) c.gone = true; }, newIds);
   await until(B, ids => !GAME.G.coyotes.some(c => ids.includes(c.nid)), newIds, 5000);
