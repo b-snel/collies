@@ -28,6 +28,8 @@ Issue #176. Sections: LINEAGE (after FLOCK SAVE), WILD RAMS (after LLAMAS). Test
 - Head: name, ♈ / ♀ / 🍼, days old (or the day it died / 🏠), new blood, 🧬 meter (`kinCol`: green, yellow, amber ≥ `warn`, red ≥ `bad`).
 - `o.mates`: ♥ who a live grown one could breed with, safest first, kin flagged. `o.back`: ↶.
 - HTML nodes (emoji → icons) over an SVG of branches (`vector-effect: non-scaling-stroke`). Icons: 🌳 `tree`, 🧬 `dna`.
+- The view (`kinPan(el)` after each render): a `.kinWorld` roomy enough for the names (`data-cols`, `--rows`), scaled to fit the box (`kinFit`, again on resize till moved);
+  drag pans (not a click), pinch / wheel zooms (`kinZoom`, kept in reach: `kinClamp`), double-click the ground: fit. Short screens: the box fills what's left.
 - **Barn** 🌳 Family tab (`barnTab('kin')`, needs a sheep picked): the list (inbred: a dot), the tree spanning the rest (`barnKinDraw`,
   redrawn when the family or the flock changes). A node: its tree (`barnKinGo`; one out here is picked in the list too), ↶ `barnKinBack`.
   Pad: D-pad ↑↓ pick, ← sire, → dam, Ⓨ back.
