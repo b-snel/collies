@@ -24,7 +24,7 @@ in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
 A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
-First time: a practice evening at the corral (four lessons, the sun waits; 🎓 on the title: again, or not).
+First time: a practice at the corral (six lessons from an afternoon to dawn, the sun waits; 🎓 on the title: again, or not).
 
 ### Run
 
@@ -227,7 +227,8 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
 - `trialClear(x, z, pad)` (keep off the trials' ring), `trialY(x, z)` (in `groundY` via `TRIAL_Y`), `trialHerdFault(kind, e, d)`, `R.champ` (a dog on a rope: `ropeNpc`), `b.trial` (not kept)
 - `kegHeat(x, z)` (in `heatAt`), `d.keg`
-- `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `G.ff` off)
+- `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `saveFlock` too, `G.ff` off), `tutDawnNote()` (in `dawnHTML`)
+- `lambBorn(s)` (one lamb by its mother: `lambsAtDawn`, TUTORIAL)
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 

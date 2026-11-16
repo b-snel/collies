@@ -479,6 +479,8 @@
   #dawn .barnCard.f1 { width:min(1100px, 100%); }
   #dawn .barnCard.fz { max-height:none; }
   .dawnBody { display:flex; flex-direction:column; gap:10px; }
+  .dawnTut { padding:8px 12px; border-radius:12px; background:rgba(255,211,107,.13); border:2px solid rgba(255,211,107,.5); font-size:16px; line-height:1.4; text-align:left; }   /* TUTORIAL: how lambs come */
+  .dawnTut b { color:var(--barn-accent); }
   .dawnList { display:flex; flex-direction:column; gap:6px; }
   #dawn .f1 .dawnBody { flex-flow:row wrap; align-items:flex-start; gap:10px 22px; }
   #dawn .f1 .dawnSec { flex:1 1 300px; min-width:0; }
@@ -7082,6 +7084,18 @@ function ageAtDawn() {
     if (s.age >= s.life && !s.grabbed && !s.heldBy && !s.air) killSheep(s, 'old');
   }
 }
+// one lamb, by its mother (the ram that courted her: s.sireLid, s.sireBrave)
+function lambBorn(s) {
+  let lx = s.x + rnd(-0.6, 0.6), lz = s.z + rnd(-0.6, 0.6);
+  if (s.pen && !insidePen(s.pen, lx, lz, 1.2)) { lx = lerp(lx, s.pen.x, 0.15); lz = lerp(lz, s.pen.z, 0.15); }   // born by the fence: on the pen side of it
+  const B = T.brave, brave = clamp(B.sire * (s.sireBrave ?? 0.5) + B.dam * (s.brave ?? 0.5) + (1 - B.sire - B.dam) * Math.random(), 0, 1);   // like father, like lamb
+  const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2, brave });
+  kinBorn(l, s, s.sireLid);   // LINEAGE: its line; born inbred, it pays for it
+  G.sheep.push(l);
+  burst(l.x, l.y + 0.8, l.z, 6, '#ff8fb8', { speed: 0.8, up: 2, size: 0.12, grav: 1.5 });
+  floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
+  return l;
+}
 function lambsAtDawn() {
   ageAtDawn();
   let born = 0; const ramAlive = G.sheep.some(s => !s.dead && s.ram), babies = [];
@@ -7090,16 +7104,7 @@ function lambsAtDawn() {
     if (!s.lamb && !s.ram && s.bred && s.hunger < T.lambHunger && Math.random() < Math.min(0.95, T.lambChance * (s.flushed ? T.flushLamb : 1) * (1 - T.oldLamb * oldK(s)) * kinFert(s))) {   // (LINEAGE: close kin, fewer)
       const n = Math.random() < (s.flushed ? T.flushTwins : T.twinChance) ? 2 : 1;
       s.lambedDay = G.clock.day;   // she rests a few days before she can be courted again
-      for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) {
-        let lx = s.x + rnd(-0.6, 0.6), lz = s.z + rnd(-0.6, 0.6);
-        if (s.pen && !insidePen(s.pen, lx, lz, 1.2)) { lx = lerp(lx, s.pen.x, 0.15); lz = lerp(lz, s.pen.z, 0.15); }   // born by the fence: on the pen side of it
-        const B = T.brave, brave = clamp(B.sire * (s.sireBrave ?? 0.5) + B.dam * (s.brave ?? 0.5) + (1 - B.sire - B.dam) * Math.random(), 0, 1);   // like father, like lamb
-        const l = makeSheep(lx, lz, { lamb: true, mother: s, black: s.black ? Math.random() < 0.6 : Math.random() < 0.08, hunger: 0.2, brave });
-        kinBorn(l, s, s.sireLid);   // LINEAGE: its line; born inbred, it pays for it
-        G.sheep.push(l); born++; babies.push(l);
-        burst(l.x, l.y + 0.8, l.z, 6, '#ff8fb8', { speed: 0.8, up: 2, size: 0.12, grav: 1.5 });
-        floatText('♥', l.x, l.y + 1.6, l.z, '#ff8fb8');
-      }
+      for (let k = 0; k < n && G.sheep.length < T.maxSheep; k++) { babies.push(lambBorn(s)); born++; }
     }
     s.bred = false; s.breedOK = false; s.flushed = false; s.troughAte = 0; s.ready = false; s.sireLid = 0;
   }
@@ -14875,7 +14880,8 @@ expose(() => ({ yardGrow, yardRoom, yardAt, yardLine, yardStep, syncYard, buildY
 function crossed(prev, now, h) { return prev <= now ? (prev < h && now >= h) : (prev < h || now >= h); }
 const hourLen = (h = G.clock.hour) => isNight(h) ? T.hourSec : T.dayHourSec;   // real s per in-game hour
 function stepClock(dt) {
-  const mul = G.tut ? 0 : (G.ff ? T.ffMul : 1) * (TRIAL.ev ? T.trial.clock : 1), dtH = dt / hourLen() * mul;   // (TRIALS: an event on: the day waits. TUTORIAL: the sun waits)
+  if (G.tut) return dt / hourLen() * (G.tut.time || 0);   // TUTORIAL: the sun waits (a lesson may let the hours' work go on: eating, drinking)
+  const mul = (G.ff ? T.ffMul : 1) * (TRIAL.ev ? T.trial.clock : 1), dtH = dt / hourLen() * mul;   // (TRIALS: an event on: the day waits)
   const prev = G.clock.hour; let now = prev + dtH;
   if (now >= 24) { now -= 24; G.clock.day++; }
   G.clock.hour = now;
@@ -19320,6 +19326,7 @@ function dawnHTML(v) {
     <div class="dawnBody">
     ${born.length ? `<div class="dawnSec born"><span class="eyebrow">${lambs.length ? `🐣 ${lambs.length} new lamb${lambs.length > 1 ? 's' : ''}` : ''}${born.filter(s => s.champ || s.src).map(s => ` ${KIN_SRC[s.src] || '🏆'} ♈`).join('')}</span><div class="dawnList">${born.map(s => `<div class="dawnRow" data-id="${s.id}" data-lid="${s.lid | 0}"${s.mum ? ` title="Mum: ${escHTML(s.mum)}"` : ''}>${KIN_SRC[s.src] || (s.champ ? '🏆' : '')}<i title="Wool" style="background:${escHTML(s.wool)}"></i><input maxlength="14" spellcheck="false" autocomplete="off" aria-label="Name" value="${escHTML(s.name)}"><button type="button" data-dice title="New name" aria-label="New name">🎲</button><button type="button" data-edit title="Dress" aria-label="Dress">✏️</button>${s.lid ? `<button type="button" data-tree title="Family tree" aria-label="Family tree">🌳</button>` : ''}${s.F >= T.kin.warn ? `<span class="kinTag" style="--k:${kinCol(s.F)}" title="Inbred ${kinPct(s.F)}">🧬 ${kinPct(s.F)}</span>` : ''}${s.mum ? `<small title="Mum">mum <b>${escHTML(s.mum)}</b></small>` : ''}</div>`).join('')}</div></div>` : ''}
     ${obitHTML(dead)}
+    ${tutDawnNote()}
     </div>
     <div class="barnFoot"><button type="button" class="bbtn" data-flock title="Hank's barn (Tab)">🐑 ✏️</button><button type="button" class="bbtn go hold" title="Hold Enter / Ⓐ" aria-label="Hold to go on"><i></i><span>▶</span></button></div>
   </div>`;
@@ -19490,6 +19497,7 @@ const customised = r => r.renamed || r.look.hat !== 'none' || r.look.acc.length 
 function sheepRecord(s) { const L = lookOf(s); return { name: s.name, look: { wool: L.wool, hat: L.hat, hatColor: L.hatColor, acc: L.acc.slice(), paint: L.paint }, black: !!s.black, ram: !!s.ram, lamb: !!s.lamb, renamed: !!s.renamed, age: s.age | 0, life: s.life | 0, brave: +(s.brave ?? 0.5).toFixed(2), wool: +(s.wool ?? 1).toFixed(2), champ: !!s.champ, lid: s.lid | 0 }; }   // (TRIALS: the champion ram; LINEAGE: its record)
 function saveFlock() {
   if (NET.role === 'guest') return false;   // ONLINE: a guest is drawing the host's flock; this browser's own saved flock stays as it was
+  if (G.tut) return false;   // TUTORIAL: nothing's saved till it's over (tutEnd carries names and looks across)
   const flock = G.sheep.filter(s => !s.dead).map(sheepRecord).concat(FLOCK.home).slice(0, 80);
   const kin = kinOut(true), body = f => JSON.stringify({ v: 1, saved: Date.now(), journeys: FLOCK.journeys, flock: f, memorial: FLOCK.memorial.slice(0, 60), kin, kinNext: KIN.next });   // (LINEAGE: the family)
   // too big for the browser's storage? drop the paint from the ones at home, then from everyone, rather than lose the flock
@@ -26933,18 +26941,21 @@ expose(() => ({ SEA, WIND, BOAT, DECK, STATIONS, ROUTE, REEFS, BUOYS, SWAVES, KR
   waterLevel, killSheep, step, startGame, resetGame, finishGame, makeSheep, spawnDog }));   // SAILING
 
 // =====================================================================
-// TUTORIAL — a practice evening at Hank's corral before day 1 (G.tut while it's on; TUT, TUT_L). The sun waits: the clock only
-// moves between lessons (stepClock), nobody's hungry, no dens, nothing dies (tutSafe). A lesson is a few steps, a button each, done
-// by doing it (never a timer): its card (#tut, where the hints go: none meanwhile), a marker over what it's about and where to
-// stand (drawTutOverlay). The stray (the gate, herding one ewe home), the bunch (sprint, lie down, creep, five home), trouble (a cast
-// ewe: pounce; grab, fling), night (one coyote: bark, pounce). Then, or skipped (⏩ on the card, the pause screen), the journey starts
-// as ever (tutEnd → resetGame) with the flock they practised on (TUT.seed) and no hint for what was learnt.
+// TUTORIAL — a practice evening, night and dawn at Hank's corral before day 1 (G.tut while it's on; TUT, TUT_L). The sun waits: the
+// clock only moves between lessons (stepClock), nobody's hungry, no dens, nothing dies (tutSafe). A lesson is a few steps, a button
+// each, done by doing it (never a timer): its card (#tut, where the hints go: none meanwhile), a marker over what it's about and
+// where to stand (drawTutOverlay). The stray (the gate, herding one ewe home), the bunch (sprint, lie down, creep, five home), trouble
+// (a cast ewe: pounce; grab, fling), supper (greens to a trough, a bucket to the water trough), night (one coyote: bark, pounce),
+// dawn (a lamb: the dawn card says how they come, and what close kin costs: tutDawnNote). Then, or skipped (⏩ on the card, the pause
+// screen), the journey starts as ever (tutEnd → resetGame) with the flock they practised on (TUT.seed), its lamb, and no hint for
+// what was learnt.
 // On by itself the first time on this device (TUT_KEY: done), not under ?sim / ?debug / a dev jump; the title's 🎓 (T / Ⓨ): again,
-// or not at all. Offline: going online ends it. Friends on the sofa join as ever. Nothing's saved till it's over (journeyCan).
+// or not at all. Offline: going online ends it. Friends on the sofa join as ever. Nothing's saved till it's over (journeyCan, saveFlock).
 // =====================================================================
 const TUT_KEY = 'collies.tut';
 const TUT = { want: false, seed: 0, n: 0, fade: 0, fadeS: '', key: '', rect: null, btn: null };
-const TUT_T = { in: 0.7, won: 1.4, out: 0.45, dark: 0.15, fed: 0.08, prey: 2.5, hp: 0.5 };   // s: fading in, "✔", fading out, black; fed: nobody's hungry (they keep to the pen, a stray comes home); a coyote's catch dropped after prey s; a dog's hp never under hp
+const TUT_T = { in: 0.7, won: 1.4, out: 0.45, dark: 0.15, fed: 0.08, prey: 2.5, hp: 0.5,   // s: fading in, "✔", fading out, black; fed: nobody's hungry (they keep to the pen, a stray comes home); a coyote's catch dropped after prey s; a dog's hp never under hp
+  hungry: 0.5, thirsty: 0.5, greens: 1, dawn: 2 };   // SUPPER: the flock's hunger and thirst, the greens to gather; DAWN: s of looking at the lamb before its card
 const tutGate = () => { const p = pens[0]; return { x: p.gx, z: p.gz, y: p.y, h: 2.7 }; };
 const tutIn = s => s.pen === pens[0] && !s.heldBy && !s.air && !s.grabbed;
 const tutOut = () => living().filter(s => !tutIn(s));   // still to come home
@@ -26993,6 +27004,37 @@ function tutCoyote(U) {
   pack.members.push(c); pack.leader = c; G.packs.push(pack); U.coy = c; U.pack = pack;
   Sound.howl(panOf(q.x, q.z), 0.16);
 }
+// SUPPER: a hungry, thirsty flock, empty troughs, every plant grown; Hank's left the bucket out past the water trough, full (the nearest water's a long way off)
+function tutSupper(U) {
+  const p = pens[0], b = BUCKETS.find(o => o.pen === p), w = p.water, wl = Math.hypot(w.x - p.x, w.z - p.z) || 1;
+  let q = { x: p.x + (w.x - p.x) / wl * (p.R + 11), z: p.z + (w.z - p.z) / wl * (p.R + 11) }; if (sdfAt(q.x, q.z) < 2) q = tutSpot(11, -9);
+  for (const s of living()) { s.hunger = TUT_T.hungry; s.thirst = TUT_T.thirsty; }
+  for (const tr of p.troughs) tr.food = 0;
+  p.water.w = 0; resetPlants();
+  for (const d of G.dogs) { dropBucket(d); d.greens = 0; d.grabLock = false; }
+  if (b) Object.assign(b, { x: q.x, z: q.z, w: T.water.bucket, by: null, drop: null, vx: 0, vz: 0, vy: 0, h: 0, rot: 0, spin: 0 });
+  Object.assign(U, { bucket: b, tips: FORAGE.tips, wtips: WATER.tips });
+}
+const tutPlant = () => {   // the greens nearest the first dog
+  const d = G.dogs[0]; let b = null, bd = 1e9; if (!d) return null;
+  for (const q of PLANTS) { if (q.picked || q.off) continue; const k = (q.x - d.x) ** 2 + (q.z - d.z) ** 2; if (k < bd) { bd = k; b = q; } }
+  return b && { x: b.x, z: b.z, y: b.y, h: 1.7 };
+};
+const tutTrough = () => { const p = pens[0], tr = p.troughs.filter(t => t.food < t.cap - 0.05)[0] || p.troughs[0]; return { x: tr.x, z: tr.z, y: p.y, h: 2 }; };
+// DAWN: a lamb, to a ewe a ram courted in the night (none did: one the first ram might have), born as any is (lambBorn, on dice tutEnd rolls again)
+function tutLamb(U) {
+  const L = living(), mum = s => L.some(l => l.lamb && l.mother === s), rams = L.filter(s => s.ram && !s.lamb), ewes = L.filter(s => !s.lamb && !s.ram && !mum(s));
+  const e = ewes.find(s => s.bred && kinRec(s.sireLid)) || ewes.find(s => !s.bell) || ewes[0]; if (!e || G.sheep.length >= T.maxSheep) return null;
+  if (!(e.bred && kinRec(e.sireLid)) && rams[0]) { e.sireLid = rams[0].lid; e.sireBrave = rams[0].brave; }
+  U.sire = e.sireLid; U.dice = (Math.random() * 2 ** 31) | 0;
+  const l = ownDice(U.dice, () => lambBorn(e));
+  for (const s of L) { s.bred = s.breedOK = s.flushed = s.ready = false; s.sireLid = 0; }   // (as at any dawn)
+  return l;
+}
+// DAWN REPORT (dawnHTML): on the practice's card: how lambs come, what close kin costs
+function tutDawnNote() {
+  return G.tut ? '<div class="dawnTut">🐣 Ewes penned <b>well fed</b> with a <b>ram</b> lamb at dawn.<br>🧬 <b>Close kin</b> breed weak lambs, and fewer. 🌳 shows who is kin. The cure: a <b>new ram</b> (the trader sells one).</div>' : '';
+}
 // the last step of a lesson: everyone in, the gate latched
 const TUT_SHUT = {
   text: () => { const n = tutOut().length; return n ? `🐑 ${n} still out: bring ${n > 1 ? 'them' : 'her'} in` : '<b>Push the gate shut</b>: it clacks'; },
@@ -27001,7 +27043,8 @@ const TUT_SHUT = {
     const p = pens[0]; if (tutOut().length || Math.abs(p.phi) < 0.15) return null;
     const a = p.angClosed + p.outSign * (p.phi + Math.sign(p.phi) * 0.5), r = p.gateLen * 0.65; return { x: p.hinge.x + Math.cos(a) * r, z: p.hinge.z + Math.sin(a) * r, r: 0.85 };
   }, done: tutShut };
-// a lesson: name, hour (the sun's there), setup(U), steps, learnt (hints it stands in for), line (Hank's, as it starts), calm (its ewe's stress and panic never over this).
+// a lesson: name, hour (the sun's there), setup(U), steps, learnt (hints it stands in for), line (Hank's, as it starts), won (his, as it's done), calm (its
+// ewe's stress and panic never over this), time (the hours' work goes on at this pace, the sun still: eating, drinking).
 // a step: text(U, cap, touch) → its line (cap(act): that button's cap); at(U): what it's about (a marker over each); drive(U): sheep to
 // get behind, spot(U): or just there (a ring where to stand); done(U, dt): it's been done (U.acc: s of doing it, 0 as the step starts)
 const TUT_L = [
@@ -27030,11 +27073,26 @@ const TUT_L = [
       { text: (U, cap) => `Hold ${cap('grab')} to <b>grab</b> her`, at: U => U.ewe, done: (U, dt) => (U.acc += G.dogs.some(d => d.holding && G.sheep.includes(d.holding)) ? dt : 0) > 0.5 },
       { text: () => 'Drag her home. Let go on the run to <b>fling</b> her: over the fence, even', at: U => tutIn(U.ewe) ? null : [U.ewe, tutGate()], done: U => tutIn(U.ewe) },
       TUT_SHUT] },
-  { name: 'Night', hour: 21, learnt: ['bark'], line: 'here_they_come',
+  { name: 'Supper', hour: 19, time: 1, learnt: ['forage', 'deliver', 'water'], setup: tutSupper,
+    steps: [
+      { text: () => "They're hungry. Run over 🌼 <b>greens</b>: your dog gathers them", at: tutPlant,
+        done: U => FORAGE.tips > U.tips || G.dogs.some(d => (d.greens || 0) >= TUT_T.greens - 1e-6) },
+      { text: () => 'Go up to a 🌾 <b>trough</b>, in the pen or over the fence by it: in they go', at: tutTrough, done: U => FORAGE.tips > U.tips },
+      { text: (U, cap) => `Thirsty, too. Hold ${cap('grab')} on the 🪣 <b>bucket</b> to carry it: it's full`, at: U => U.bucket && !U.bucket.by ? { x: U.bucket.x, z: U.bucket.z, h: 1.7 } : null,
+        done: U => WATER.tips > U.wtips || !U.bucket || G.dogs.some(d => bucketOf(d)) },
+      { text: () => 'Take it to the 💧 <b>water trough</b>. Empty? Wade into any water to fill it', at: () => { const w = pens[0].water; return { x: w.x, z: w.z, y: pens[0].y, h: 2 }; },
+        done: U => WATER.tips > U.wtips || !U.bucket },
+      TUT_SHUT] },
+  { name: 'Night', hour: 21, learnt: ['bark'], line: 'here_they_come', won: 'all_safe',
     setup(U) { tutCoyote(U); },
     steps: [
       { text: (U, cap) => `🐺 A coyote's after the flock. Run at it and <b>bark</b> ${cap('bark')}`, at: U => U.coy, done: U => (U.coy.barks || 0) > 0 || tutGone(U.coy) },
       { text: (U, cap) => `It won't fall for that twice. <b>Pounce</b> on it ${cap('pounce')}`, at: U => U.coy, done: U => tutGone(U.coy) }] },
+  { name: 'Dawn', hour: 6.5, learnt: [], won: 'morning',
+    setup(U) { U.lamb = tutLamb(U); U.card = false; },
+    steps: [   // a look at the lamb, then its card (the game's own, with tutDawnNote; none under ?sim): held to go on
+      { text: () => '🐣 A <b>lamb</b>, born in the night!', at: U => U.lamb,
+        done: (U, dt) => { if (!U.card) { if (U.lamb && (U.ph !== 'play' || (U.acc += dt) < TUT_T.dawn)) return false; U.card = true; if (U.lamb) dawnReport([U.lamb]); } return !DAWN.open && !DAWN.pending; } }] },
 ];
 const tutSeen = () => { try { return !!localStorage.getItem(TUT_KEY); } catch (e) { return true; } };
 const tutDue = () => TUT.want && !NET.role && !SEA.on && G.mode === 'play';
@@ -27048,13 +27106,13 @@ function tutStart() {
   for (const c of G.coyotes) scene.remove(c.models.root);
   G.coyotes = []; G.packs = []; G.dens = [];   // no dens: the only coyote's the lesson's
   G.hints = {}; hintQ.length = 0; hintT = 0; $('hint').classList.remove('show');
-  G.tut = { L: 0, S: 0, acc: 0, ph: 'in', pt: 0, fade: 1, passed: [], coy: null, pack: null, ewe: null, bunch: [] };
+  G.tut = { L: 0, S: 0, acc: 0, ph: 'in', pt: 0, fade: 1, time: 0, passed: [], coy: null, pack: null, ewe: null, bunch: [], bucket: null, lamb: null };
   tutLesson(0);
   return true;
 }
 function tutLesson(i) {
   const U = G.tut, L = TUT_L[i]; if (!U || !L) return false;
-  Object.assign(U, { L: i, S: 0, acc: 0, ph: 'in', pt: 0, fade: 1 });
+  Object.assign(U, { L: i, S: 0, acc: 0, ph: 'in', pt: 0, fade: 1, time: L.time || 0 });
   G.clock.hour = L.hour; G.clock.day = 1;
   const p = pens[0];
   G.dogs.forEach((d, k) => {   // a dog shut in with the flock (it latched the gate from inside): out by the gate (it's dark)
@@ -27068,10 +27126,12 @@ function tutLesson(i) {
   if (L.line) hank(L.line, null, { force: true, delay: 1.2 });
   return true;
 }
-// nothing dies in the practice: a dog's never badly hurt, a coyote lets go of its catch, the lesson's coyote doesn't dig
+// nothing dies in the practice: a dog's never badly hurt, a coyote lets go of its catch, the lesson's coyote doesn't dig; where the
+// hours' work goes on (time) nobody gets hungrier or thirstier than the lesson made them, however long it's left
 function tutSafe(dt) {
   const U = G.tut, L = TUT_L[U.L];
   for (const d of G.dogs) if (d.hp < TUT_T.hp) d.hp = TUT_T.hp;
+  if (U.time) for (const s of G.sheep) { s.starve = s.saltStarve = s.parchT = 0; if (s.hunger > TUT_T.hungry) s.hunger = TUT_T.hungry; if (s.thirst > TUT_T.thirsty) s.thirst = TUT_T.thirsty; }
   if (L.calm && U.ewe) { U.ewe.stress = Math.min(U.ewe.stress, L.calm); U.ewe.panic = Math.min(U.ewe.panic, L.calm); }
   if (U.pack) { U.pack.digNight = nightOf(); U.pack.digs = false; }
   for (const c of G.coyotes) {
@@ -27092,17 +27152,21 @@ function updateTut(dt) {
     if (U.S < L.steps.length) { Sound.chime([0, 7], 880, 0.12); return; }
     U.passed[U.L] = true; U.ph = 'won'; U.pt = 0; U.fade = 0;
     Sound.chime([0, 4, 7, 12], 660, 0.16);
-    hank(U.L === TUT_L.length - 1 ? 'all_safe' : pick(['good_dog', 'thats_it']), null, { force: true, delay: 0.3 });
+    hank(L.won || pick(['good_dog', 'thats_it']), null, { force: true, delay: 0.3 });
   } else if (U.ph === 'won') { if (U.pt >= TUT_T.won) { U.ph = 'out'; U.pt = 0; } }
   else if (U.ph === 'out') {
     U.fade = clamp(U.pt / TUT_T.out, 0, 1);
     if (U.pt >= TUT_T.out + TUT_T.dark) { if (U.L + 1 < TUT_L.length) tutLesson(U.L + 1); else tutEnd(); }
   }
 }
-// over (or skipped): a new journey, as ever; the same flock; no hints for what the lessons taught. A journey that was saved: on with it
+// over (or skipped): a new journey, as ever; the same flock (what the barn did to it too), the lamb born at dawn; no hints for what the
+// lessons taught. A journey that was saved: on with it
 function tutEnd() {
   const U = G.tut; if (!U) return false;
   const all = TUT_L.every((L, i) => U.passed[i]), learnt = TUT_L.filter((L, i) => U.passed[i]).flatMap(L => L.learnt).concat(all ? ['herd'] : []), keep = JOURNEY.saved;
+  const was = G.sheep.map(s => ({ name: s.name, look: s.look, renamed: !!s.renamed })), l = U.lamb && !U.lamb.dead && G.sheep.includes(U.lamb) ? U.lamb : null;   // (by place: the flock's built on the same dice)
+  const lamb = l && { at: G.sheep.indexOf(l), mum: G.sheep.indexOf(l.mother), sire: G.sheep.findIndex(s => s.lid && s.lid === U.sire), dice: U.dice };
+  if (DAWN.open) closeDawn();
   G.tut = null; TUT.fade = 1; TUT.key = '';
   try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {}
   tutWant(false); setPause(false);
@@ -27110,6 +27174,12 @@ function tutEnd() {
   if (keep) { try { localStorage.setItem(JOURNEY_KEY, JSON.stringify(keep)); } catch (e) {} JOURNEY.saved = keep; journeyTitle(); }
   if (keep && journeyResume()) { FLOCK.journeys = TUT.n; return true; }
   ownDice(TUT.seed, spawnFlock);   // the flock they practised on
+  if (lamb && lamb.at === G.sheep.length && G.sheep[lamb.mum]) {   // ...and its lamb, by the same mother
+    const m = G.sheep[lamb.mum], f = G.sheep[lamb.sire];
+    m.sireLid = f ? f.lid : 0; m.sireBrave = f ? f.brave : 0.5; ownDice(lamb.dice, () => lambBorn(m)); m.sireLid = 0;
+    G.stats.start = G.sheep.length;
+  }
+  G.sheep.forEach((s, i) => { const w = was[i]; if (!w) return; s.name = w.name; s.renamed = w.renamed; if (w.look) s.look = cleanLook(w.look); kinSync(s); });
   FLOCK.journeys = TUT.n;
   for (const k of learnt) G.hints[k] = true;
   setTimeout(() => hint(all ? 'travel' : 'start'), 2500);
