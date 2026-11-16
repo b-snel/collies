@@ -13,7 +13,7 @@
 //   shear   Hank (clippers, no sheep to shear) shears a guard: 🧶
 //   punt    a pounce punts it as a sheep (flies, lands, off it runs); on a rope: it stands
 //   grab    grabbed by the scruff, carried, flung; a grown wild one bucks free
-//   prey    a cria's taken as a lamb is: a coyote pack goes for it, drags it off, it's gone; a dog's pounce on the coyote drops it (it runs);
+//   prey    a cria's taken as a lamb is: a coyote pack goes for it, drags it off, it's gone (a wild one: no toast, not counted); a dog's pounce on the coyote drops it (it runs);
 //           a cougar goes for it before the sheep, up its tree with it
 //   ward    LLAMA WARDROBE: no guard, no llama gear dug up; with one: the first find's a saddle blanket, on the nearest guard, then the
 //           pack, then any; found for good (saved); only found gear goes on; dressed: a new model, its pack shows what's in it
@@ -308,8 +308,9 @@ if (want('prey')) {
     pen(); H.place(d, P0.x - 60, P0.z - 60); G.clock.hour = 22; G.clock.day = 3;
     let c = herd(spot.x, spot.z), took = null;
     spawnPack(2, { howl: false });
-    H.run(150, () => { G.clock.hour = 22; if (c.grabbed && !took) took = c.grabbed.isCougar ? 'cougar' : 'coyote'; return !LLAMAS.includes(c); });   // (held at night: the flock's shut in, the night would fly by)
-    out.coyote = { took, gone: !LLAMAS.includes(c), lost: G.stats.criasLost };
+    const box = document.getElementById('toasts'); for (const el of [...box.children]) el.remove(); let toasts = 0;
+    H.run(150, () => { G.clock.hour = 22; toasts = Math.max(toasts, box.children.length); if (c.grabbed && !took) took = c.grabbed.isCougar ? 'cougar' : 'coyote'; return !LLAMAS.includes(c); });   // (held at night: the flock's shut in, the night would fly by)
+    out.coyote = { took, gone: !LLAMAS.includes(c), lost: G.stats.criasLost, toasts };
     // again: a dog's pounce on the coyote drops it, and it runs
     for (const o of G.coyotes) { o.state = 'leave'; o.gone = true; } H.run(0.1);
     c = herd(spot.x, spot.z); spawnPack(2, { howl: false }); let saved = false, ran = false;
@@ -334,7 +335,8 @@ if (want('prey')) {
     out.cougar = { up, gone: !LLAMAS.includes(c), sheep: G.sheep.filter(s => s.dead).length };
     return out;
   });
-  ok(`a coyote pack takes a cria (${r.coyote.took}), drags it off: gone`, r.coyote.took === 'coyote' && r.coyote.gone && r.coyote.lost >= 1, r);
+  ok(`a coyote pack takes a cria (${r.coyote.took}), drags it off: gone`, r.coyote.took === 'coyote' && r.coyote.gone, r);
+  ok('a wild cria: none of ours (no toast, not counted lost)', r.coyote.lost === 0 && r.coyote.toasts === 0, r);
   ok('a pounce on the coyote drops the cria: it runs', r.saved.saved && r.saved.ran && r.saved.alive, r);
   ok('a cougar goes for the cria first, up its tree with it', r.cougarPicks && r.cougar.up && r.cougar.gone && r.cougar.sheep === 0, r);
 }
