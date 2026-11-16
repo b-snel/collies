@@ -6,19 +6,22 @@ Live at **https://collies.app**
 
 ## Controls
 
-| | Controller | Player 1 keys | Player 2 keys |
+| | Controller | Keys + mouse | Arrow side (same dog) |
 | --- | --- | --- | --- |
-| Move | left stick | WASD | arrows |
+| Move | left stick or D-pad | WASD | arrows |
 | Bark | A | Space | / |
-| Pounce | B | E | . |
-| Grab / drag (tap; tap again to drop, moving: fling; tap fast to shake) | X | R | , |
-| Lie down (hold) | Y or LT | C | ' |
-| Sprint | RT or RB | Left Shift | Right Shift |
+| Pounce | B | R or right click | . |
+| Grab / drag (let go to drop; running: fling) | hold RB or X | hold E or left click | hold , |
+| Shake (holding) | B or waggle right stick | R or right click | . |
+| Lie down | hold LT | hold C | hold ' |
+| Jump (sprinting: vault) | Y | F | [ |
+| Sprint | RT or click left stick | Left Shift | Right Shift |
 | Creep (gentle pressure) | LB | Q | ; |
 | Hank's barn | View | Tab | |
+| Map | click right stick | M | |
 | Pause | Start | P / Esc | |
 
-There's no gate button: walk into a gate to push it. Extra controllers press A at any time to drop in, and player 2 joins by pressing one of their keys.
+There's no gate button: walk into a gate to push it. Extra players press A on a controller at any time to drop in; online, a second person can join that way on a guest's screen too.
 
 ## Herding
 
