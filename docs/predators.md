@@ -44,6 +44,10 @@
     it (`bossHit`): drops what it has. `hp` (+`perDog`) hits: gone for the journey, +`bounty` 🧶, the gorge quiet
     (`bossBeaten`). Eating on the eyrie: a pounce into its foot shakes the sheep loose (`eyrieShake`). HUD 🦅 ♥♥♥
     (`#bossBar`, `body.boss`). Off in `?sim` (`T.canyon.boss.on`).
+- **Wild prey** (`preyWild`: a duck, a wild cria): not ours. Taken, dropped, eaten without a word: no toast, Hank, hint, rumble,
+  `G.stats` (saved, `criasLost`), "Saved!", red arrow; the night still fast-forwards. **Ducks** (docs/ducks.md, PREY): a hunting coyote
+  snaps one up close by (`coyoteDuck`; the pack hunts on), a cougar hunts one in its range; asleep they're easy, awake they fly. A new
+  predator: `duckNear` / `duckPrey`, `e.grabbed`, `preyKill`.
 - **Coyotes never shove at a fence.** A goal behind a shut pen's fence: the nearest spot this side (`navPenSide`); none
   reachable: as near as it gets, standing (`NAVDIR.stop`). Pulls that cancel (walls, packmates) slow it, not spin it.
   A sheep behind a shut fence isn't prey, whatever `s.pen` says (`shutIn`).
