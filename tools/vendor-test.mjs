@@ -5,7 +5,7 @@
 // then a discount; grabbed he screams; annoyed past bearing he's off for a day; he walks on, skips ahead, sleeps; no Cabo. At sea: his
 // Laser (out in Cold Harbour's bay, sailing by her, beached on the islands, asleep by it, gone after Gull Rock).
 // `node tools/vendor-test.mjs`
-// Checks: the vagabond: pitches (1–2 a leg, seeded, the last at the Trading Post, none up the pass), stalls gone; the trade press (pad
+// Checks: the vagabond: pitches (1–2 a leg, by the road, seeded, the last at the Trading Post, none up the pass), stalls gone; the trade press (pad
 //   bark, keyboard Space), packing up; 📍 pen pick, troughs added to the max then batches, fit (a sheep's width apart, flush to the fence, a
 //   dog walks out), sheep use them, reset; too poor, full pen; nags (not herding, not from afar), bonks (worse each time), 3 warnings then
 //   prices up (capped); fetch, apple, tug: grievances off then a discount (capped); grabbed (screams, dragged, dusts off); leaves for a day,
@@ -29,6 +29,7 @@ const r1 = await h.page.evaluate(() => {
     penFinal: finalPen && finalPen.final && finalPen.camp === FINAL, postFinal: !!postPen.final, toEnd: Math.round(PATH_LEN - POST.s), wetNear: wet,
     legs, n: P.length, same: JSON.stringify(P) === JSON.stringify(P2), other: JSON.stringify(P) !== JSON.stringify(P3),
     lastAtPost: P.at(-1).old && Math.abs(P.at(-1).s - STALLS.at(-1).s) < 1 && P.at(-1).s < POST.s, pastPost: P.filter(p => p.s > POST.s).length,
+    road: Math.round(Math.max(...P.map(p => { const c = GAME.pathPoint(p.s, 0); return Math.hypot(p.x - c.x, p.z - c.z); }))), roadMax: T.vag.lat[1] + 4,
     river: Math.round(Math.min(...P.filter(p => !p.old).map(p => Math.abs(p.s - RIVER.s)))), canyon: P.filter(p => canyonK(p.s) > 0).length,
     badMats: mats.filter(m => m.sdf <= 1 || m.inPen).slice(0, 6),
     stallsGone: OBSTACLES.every(o => !o.stall) && STALLS.every(m => sdfAt(m.x + m.rx * -1 + m.fx * 0.2, m.z + m.rz * -1 + m.fz * 0.2) > 2),   // (their counters: rocks to world gen only)
@@ -40,6 +41,7 @@ ok('the yeti\'s cave is the last camp and the only final one; the Trading Post i
 ok('the trail climbs on past the Trading Post (the MOUNTAIN PASS)', r1.toEnd > 300, r1);
 ok('no water near the Trading Post', r1.wetNear === 0, r1);
 ok('his pitches: 1–2 on every leg up to the Trading Post (it the last, where its stall stood), none up the pass, in the canyon, by the river', r1.legs.slice(0, -1).every(n => n >= 1 && n <= 2) && r1.legs.at(-1) === 0 && r1.lastAtPost && !r1.pastPost && !r1.canyon && r1.river > 40, r1);
+ok(`his pitches: by the road (≤ ${r1.road} m off its middle), not off at the valley's edge`, r1.road <= r1.roadMax, r1);
 ok('his pitches: seeded (same seed, same pitches; another seed, others)', r1.same && r1.other, r1);
 ok('every mat at every pitch on open ground, none in a pen', !r1.badMats.length, r1.badMats);
 ok('no stalls: where they stood is open ground', r1.stallsGone, r1);

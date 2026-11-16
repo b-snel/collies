@@ -2,7 +2,7 @@
 
 - **The vagabond** (`VAG`, `T.vag`, VAGABOND; on: off in `?sim`): the one trader, on foot. No stalls: their sites (`STALLS`) are clearings
   world gen still flattens and stamps (freed after its draws: `vagStall`; nothing moves). Each journey a new `VAG.seed` (own rng, `vagPlan`):
-  1–2 pitches a land leg (`VAG.pitches`: trail's edge, clear flat ground with room for the mats, not in the canyon, by the river, a camp,
+  1–2 pitches a land leg (`VAG.pitches`: by the road, `T.vag.lat` m off the trail's middle, never off at the valley's edge; clear flat ground with room for the mats, not in the canyon, by the river, a camp,
   den, cemetery), the last where the Trading Post's stall stood; never up the pass. He waits at the next pitch ahead of the flock;
   it's `past` m past, nobody by him: walks on along the trail (`st 'walk'`, clear of the pens); behind and off screen: just there. By
   night asleep on his bedroll. Cues (`vagCalls`, `vagNeeds`: Hank's missing cures, a shovel, clippers, low `STORE`s first), his own
