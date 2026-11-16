@@ -762,6 +762,7 @@ const T = {
   fleeBase: 2.0, fleeGain: 6.8, fleeStress: 0.8, panicRun: 1.6,   // flee speed = base + gain*fear + stress bonus (+panicRun when panicked), capped by run
   sheepTrot: 3.8, penWalk: 1.6, courtWalk: 2.2,
   gatePocketOut: 2.2,    // a sheep caught behind an open gate (between the leaf and the fence) walks out away from the hinge this hard
+  gateRound: 6,          // heading into an open gate's leaf within this many m (the nav grid doesn't know it): round its free end
   moveMin: 1.0,          // a calm sheep joins neighbours moving faster than this (m/s); scale it with sheepWalk or the flock coasts on
   pressSteer: 0.9,         // how far a moving dog's pressure bends toward its direction of travel (at 8 m/s)
   stressCalmSpd: 6,        // a dog closing on a sheep slower than this (m/s) doesn't stress it by speed alone
@@ -1247,9 +1248,9 @@ const T = {
   shear: { min: 0.5, regrowDays: 3, time: 3.5, yield: 3, start: [0.75, 1], lamb: 0.3, reach: 0.45, stress: 0.08, calm: 3, climbT: 1.2, giveUp: 15, skip: 45 },
   // RAM NADS (drawing only): size by s.brave (× of normal); steps/s; m/s²; spring Hz and damping ratio (cord, each nut, jiggle);
   // per s: swing damping vs the body (inner: nut vs cord), air drag (wet: in water), pull to the body's down, the bag holding the pair; cone tan
-  // (fore/aft, side); tuck/relax s (cremaster); dry s
+  // (fore/aft, side); tuck/relax s (cremaster); dry s; rest: m/s into a contact under which it doesn't bounce
   nads: { size: [0.6, 1.5], hz: 240, g: 9.8, cordHz: 4.5, nutHz: 6, jigHz: 9, zeta: 0.25, jigZeta: 0.14, jig: 0.5, swing: 1.6, inner: 0.6, drag: 0.15, wetDrag: 5,
-    bend: 10, bag: 16, coneF: 3, coneS: 0.9, tuck: 0.25, relax: 2.5, dry: 30 },
+    bend: 10, bag: 16, coneF: 3, coneS: 0.9, tuck: 0.25, relax: 2.5, dry: 30, rest: 0.3 },
   // SAILING (SEA, WIND, STATIONS; m, s, rad). view: camera height at rest / at speed / with a dog far astern. ui: the overlay's chips and marks × at sea (a compact screen: [1]). stores: what's in the hold (🌾 💧 🧂)
   // sail: k: push per (m/s)² of wind, full sail; the boom swings boomMin…boomMax off the centreline as the sheet's eased; stall: the angle to
   //   the wind past which it stalls; luffA: under it, it luffs; noGo: nearer the wind than that she won't sail; ceH: how low the push sits
@@ -1268,7 +1269,8 @@ const T = {
   //   reaches her `at` along
   // anchor: rode m, holds in under depth m (else it only drags: a drogue); dropT / weighT s; just weighed (or cast off): no drop for lock s, nor
   //   till the stick's been let go, then held down dropHold s; hauling paused, it slips back after slip s. station: reach m (bias: m nearer than a sheep it counts); dead: stick dead zone; holdP/holdD: the
-  //   helm holding a course; ease/haul: sheet /s (÷ load); hoist /s; hank…: Hank on the sheet (slack rad off the best, haul /s, eases past hankEase rad of heel)
+  //   helm holding a course; ease/haul: sheet /s (÷ load); hoist /s; hank…: Hank on the sheet (slack rad off the best, haul /s, eases past hankEase rad of heel
+  //   (where she is hankLead s on), spills hankSpill per rad past it, lets it run hankDump × haul /s)
   // deck: grip: sin of the heel a sheep's feet hold (dogGrip: a dog's); slide m/s per sin past it; wash: green water; stress /s per unit of rough ride (hungry: less, set on the trough)
   // over: a sheep overboard floats `float` s (stormK: less in a sea; clingK: hanging on the nets), swims swim× its speed, clings under clingSpd m/s;
   //   reach: a dog on deck hauls one in within that (before any other grab); lost m astern: gone. A dog over lineR m off a boat under way, making for her (or
@@ -1288,7 +1290,7 @@ const T = {
       prevail: 22, shiftGap: [25, 55], shiftStep: [0.15, 0.4], shiftTurn: [5, 10], shiftMax: 0.45, light: 1,
       front: { eta: 24, far: [120, 330], spd: 13, w: 60, k: 0.75, pre: 120, lull: 0.45, rain: 0.85, warn: 16, at: [0.3, 0.65], veer: [55, 85], hold: [70, 100] } },
     anchor: { rode: 14, k: 1.6, damp: 0.5, drag: 9, creep: 1.2, drogue: 0.12, lever: 0.3, vane: 0.0012, depth: 30, dropT: 1.4, weighT: 2.4, lock: 1.5, dropHold: 0.35, slip: 0.8 },
-    station: { reach: 0.7, bias: 0.6, dead: 0.2, lead: 0.5, holdP: 2.2, holdD: 2.4, ease: 0.6, haul: 0.5, load: 0.25, hoist: 0.45, run: 0.9, hankSlack: 0.05, hankHaul: 0.22, hankEase: 0.42, hankSpill: 1.6 },
+    station: { reach: 0.7, bias: 0.6, dead: 0.2, lead: 0.5, holdP: 2.2, holdD: 2.4, ease: 0.6, haul: 0.5, load: 0.25, hoist: 0.45, run: 0.9, hankSlack: 0.05, hankHaul: 0.22, hankEase: 0.3, hankSpill: 4, hankDump: 5, hankLead: 0.8 },
     deck: { grip: 0.36, dogGrip: 0.5, slide: 5.5, wash: 3, washOver: 0.45, washR: 1.6, washRate: 1.4, stress: 0.9, stormStress: 0.9, uneasy: 0.5, hungry: 0.5, jolt: 0.25, slideStress: 0.25 },
     over: { float: 75, clingK: 0.12, stormK: 1, swim: 0.7, clingSpd: 3.2, reach: 4.5, lost: 110, towK: 0.7, climbR: 1.25, climbT: 0.3, dogFar: 60, farMoored: 130, lineR: 6, lineGain: 1.5, lineT: 2.5, lineSpd: 13 },
     // LIFE RINGS: at u along each rail; rope m of line; thrown `speed` m/s over the water (air: its least and most s aloft; g m/s²), toss m with nobody to throw
@@ -6838,6 +6840,13 @@ function updateSheep(dt, dtH) {
           const g = p.gateSeg, leafOpen = Math.abs(p.phi || 0) > 0.2;   // the gate leaf: ax/az is the hinge, bx/bz its free end
           const abx = g.bx - g.ax, abz = g.bz - g.az, l2 = abx * abx + abz * abz, t = clamp(((s.x - g.ax) * abx + (s.z - g.az) * abz) / l2, 0, 1);
           const nx0 = s.x - (g.ax + abx * t), nz0 = s.z - (g.az + abz * t), dd = Math.hypot(nx0, nz0);
+          if (leafOpen && (p.phi < 0) === (s.pen === p)) {   // heading into it from further off (on its side of the fence): make for just past its free end instead (else: bump, unstick, back again)
+            const dl = Math.hypot(dX, dZ), ux = dX / (dl || 1), uz = dZ / (dl || 1), den = ux * abz - uz * abx;
+            if (dl > 1e-3 && Math.abs(den) > 1e-6) {
+              const wx = g.ax - s.x, wz = g.az - s.z, tr = (wx * abz - wz * abx) / den, tu = (wx * uz - wz * ux) / den;   // (where the heading meets the leaf: m along it, its fraction from the hinge)
+              if (tr > 0 && tr < T.gateRound && tu > 0 && tu < 1) { const ll = Math.sqrt(l2), px = g.bx + abx / ll * (s.r + 0.9) - s.x, pz = g.bz + abz / ll * (s.r + 0.9) - s.z, pl = Math.hypot(px, pz) || 1; dX = px / pl * dl; dZ = pz / pl * dl; }
+            }
+          }
           if (dd > 1.4 || dd < 1e-4) continue;
           const nx = nx0 / dd, nz = nz0 / dd, into = -(dX * nx + dZ * nz);
           dX += nx * (1.4 - dd) * 0.9; dZ += nz * (1.4 - dd) * 0.9;
@@ -15095,7 +15104,7 @@ function nadsRest(N, A, dn, sd) {
 function nadsHit(o, nm, vc, e, fr) {
   const rv = NV[15].subVectors(o.v, vc), vn = rv.dot(nm);
   if (vn >= 0) return;
-  o.v.addScaledVector(nm, -vn * (1 + e));
+  o.v.addScaledVector(nm, -vn * (1 + (vn < -T.nads.rest ? e : 0)));   // (resting on it, no bounce: else a nut against a standing leg buzzes for ever)
   rv.addScaledVector(nm, -vn); o.v.addScaledVector(rv, -fr);
   if (o.w !== undefined) o.wv += vn * T.nads.jig;
 }
@@ -23237,7 +23246,9 @@ function llamaLed(L, dt) {
   if (d) { const m = ropeMouth(d, _lmA), dd = Math.hypot(m.x - L.x, m.z - L.z); if (dd > K.lead.near) llamaGo(L, m.x, m.z, Math.min(K.run, Math.hypot(d.vx, d.vz) + 2), dt, K.lead.near); else llamaStop(L, dt); }
   else { llamaStop(L, dt); L.grazeK = Math.min(1, L.grazeK + dt); }
   const p = penAt(L.x, L.z);
-  let near = 0; if (!p) for (const s of G.sheep) if (!s.dead && Math.abs(s.x - L.x) < K.joinR && Math.abs(s.z - L.z) < K.joinR && Math.hypot(s.x - L.x, s.z - L.z) < K.joinR && ++near >= 2) break;
+  // brought to the flock: 2 sheep near it, or near the dog leading it (out in front: the sheep it walks up to back off past where it trails)
+  const by = (e, s) => Math.abs(s.x - e.x) < K.joinR && Math.abs(s.z - e.z) < K.joinR && Math.hypot(s.x - e.x, s.z - e.z) < K.joinR;
+  let near = 0; if (!p) for (const s of G.sheep) if (!s.dead && (by(L, s) || (d && by(d, s))) && ++near >= 2) break;
   if ((p && !p.deck) || near >= 2) llamaJoin(L);
 }
 function llamaJoin(L) {
@@ -25002,9 +25013,9 @@ function seaStations(dt) {
   if (!STATIONS[1].by) {
     const fly = S.anchor === 'down' || S.docked || S.dogOver || S.hold;
     if (S.assist || fly) {
-      let aim = fly ? 1 : sheetFor(S.best + K.hankSlack);
-      if (!fly && Math.abs(S.heel) > K.hankEase) aim = Math.min(1, aim + (Math.abs(S.heel) - K.hankEase) * K.hankSpill);
-      S.sheet += clamp(aim - S.sheet, -K.hankHaul * dt, (fly ? 1.2 : K.hankHaul * 1.6) * dt);
+      let aim = fly ? 1 : sheetFor(S.best + K.hankSlack); const hl = Math.max(Math.abs(S.heel), Math.abs(S.heel + S.heelV * K.hankLead)), pressed = !fly && hl > K.hankEase;   // (where she's heeling to, a moment on)
+      if (pressed) aim = Math.min(1, aim + (hl - K.hankEase) * K.hankSpill);
+      S.sheet += clamp(aim - S.sheet, -K.hankHaul * dt, (fly ? 1.2 : K.hankHaul * (pressed ? K.hankDump : 1.6)) * dt);   // (pressed: he lets it run, quick)
     } else S.sheet = Math.min(1, S.sheet + K.run * dt);   // full manual: let go, it runs out and the sail flaps
   }
 }

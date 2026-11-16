@@ -50,5 +50,5 @@
   Lambs take mostly the sire's (`sireBrave`). Scales everyone's stress gain.
 - **Ram nads** (`s.nads`, `T.nads`, drawing only): a cord and a pair on springs,
   stepped in world space (`nadsStep`); belly, hind legs, ground and each other
-  collide. Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
+  collide (a slow touch doesn't bounce: `T.nads.rest`, else one resting on a leg buzzes). Size by `s.brave` (`nadsK`). Cold, wet, scared, charging: tucked;
   desert sun, age: lower (`nadsHang`).

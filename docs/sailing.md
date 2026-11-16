@@ -53,7 +53,7 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   drops, up weighs (alongside: casts off); hauling paused, it holds a moment (`slip`). Just weighed or cast off: no drop for `lock` s
   (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller, nor lashed (nor Hank's `pilot`): it swings amidships and she rounds up.
 - **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
-  pressed; lets fly at anchor or with a dog overboard. On the helm out of harbour (`SEA.pilot`) till a dog takes it: for the next island's
+  pressed, quick, and on where she's heeling to (`hankEase`, `hankLead`, `hankDump`: keeps her rail out of it, casting off too); lets fly at anchor or with a dog overboard. On the helm out of harbour (`SEA.pilot`) till a dog takes it: for the next island's
   jetty, never closer to the wind than close-hauled (`seaPilotCrs`). Calls what he sees (`seaHank`).
 - **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
   alongside if she's slow; a dog on deck within `reach` ✊ hauls it in (`seaHaul`; before any other grab: `seaGrabPick`), a
