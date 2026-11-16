@@ -41,3 +41,5 @@
   New builds: each part loads alone (one that throws keeps its fresh state); `loadPlain` copies a field only onto the same type or a
   field the code doesn't set yet; a spot that's not walkable or `T.save.lag` m off along the trail goes by the flock (`journeyPlace`).
   A change of meaning: bump `JOURNEY_V`, add its step to `JOURNEY_UP`.
+- **Home Screen tip** (`#tHome`): iPhone / iPad Safari can't go fullscreen; outside the Home Screen app the title shows 📲 (tap: Share ⬆️ → Add to Home Screen).
+  Open on the first visit (localStorage `collies.homeTip`), then just 📲.
