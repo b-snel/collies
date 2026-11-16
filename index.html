@@ -850,6 +850,7 @@ const T = {
   // × (1 − size·F), hardiness (starving, thirst, salt) × (1 − hardy·F), fleece regrowth × (1 − wool·F); a pairing whose lambs would be F: lambChance
   // × (1 − fert·F). warn: a ram courting a ewe this close: 🧬; bad: red. keep: records the flock save keeps (all forebears first)
   kin: { life: 0.9, brave: 0.8, size: 0.3, hardy: 0.8, wool: 1, fert: 1.2, warn: 0.0625, bad: 0.125, keep: 400 },
+  fold: { R: 4.2, gap: 0.8 },   // RAM FOLDS: a fold's radius (m), its fence this far off its camp pen's
   // dogs
   dogWalk: 9, dogSprint: 13.5, dogCreep: 3.2, dogAccel: 16, dogR: 0.4,
   staminaDrain: 0.3, staminaRegen: 0.4,
@@ -1133,6 +1134,7 @@ const T = {
     // SELLING: what he pays for a sheep on the 🐑 mat: base 🧶 × its worth (sheepWorth): a lamb, a yearling (× lamb, year; old: down to old at the
     // end), its fleece (wool: bare…full), its size, a ram (× ram, his bravery: brave), the champion, the bell ewe, sick, hungry (at most × 1 −
     // hungry), inbred (× 1 − kin·F, at least kinMin); ÷ his mood (vagRate). confirm: s to bark again and it's sold. stars: worth per ★
+    fold: { price: 15 },   // RAM FOLDS: hurdles, put up by the pen picked on 📍 (one a camp)
     sell: { base: 9, lamb: 0.45, year: 0.8, old: 0.45, wool: [0.6, 1.2], ram: 1.35, brave: 0.4, champ: 3, bell: 1.2, sick: 0.35, hungry: 0.5, kin: 1.6, kinMin: 0.3, confirm: 4, stars: 0.4 } },
   // VAGABOND (VAG): the one trader, on foot along the trail (selling T.vendor's wares). walk/run m/s. Pitches: 1–2 a land leg (own rng, a new seed
   // each journey), the last at the Trading Post; past: m the flock's past his before he packs and walks on. callR m, callGap s: his cues. tradeR: a
@@ -7118,7 +7120,7 @@ function lambsAtDawn() {
     if (c.length >= 3) { const b = pick(c); b.bell = true; b.trait = null; toast(`${b.name} has taken up the bell. The flock will follow her.`, 'good'); }
   }
   if (born) { G.stats.born += born; toast(`${born} lamb${born > 1 ? 's were' : ' was'} born overnight! 🐑`, 'good'); Sound.chime([0, 4, 7, 12, 16], 523); }
-  else if (G.clock.day > 1) toast(ramAlive ? 'No lambs this morning. Pen the well-fed ewes with a ram overnight.' : 'No lambs this morning: there are no rams left…', 'warn');
+  else if (G.clock.day > 1 && !G.sheep.some(s => !s.dead && s.ram && s.pen && s.pen.fold)) toast(ramAlive ? 'No lambs this morning. Pen the well-fed ewes with a ram overnight.' : 'No lambs this morning: there are no rams left…', 'warn');   // (RAM FOLDS: kept apart on purpose)
   onLambsBorn(born);   // HANK + FLOCK SAVE: he coos over them; new arrivals join the saved flock
   dawnReport([...babies, ...trialNewcomers(), ...kinNewcomers()]);  // DAWN REPORT: who was born, who we lost (TRIALS: who joined: the champion ram; LINEAGE: new blood)
 }
@@ -9132,7 +9134,7 @@ const KIT = { food: p => [p.troughs, p.troughSlots, p.troughBase], water: p => [
 const kitN = (p, k) => KIT[k](p)[0].length, kitMax = (p, k) => KIT[k](p)[1].length;
 // SHARED HOOK: show/hide bought ones so pen p has n of kind k (host: a sale, a new journey; guests: synced). A new one comes empty
 function kitSet(p, k, n) {
-  const [on, slots, base] = KIT[k](p); n = clamp(Math.round(n) || 0, base, slots.length);
+  const [on, slots, base] = KIT[k](p); n = clamp(Math.round(n) || 0, Math.min(base, slots.length), slots.length);   // (RAM FOLDS: none at all)
   if (n === on.length) return;
   let gone = false;
   while (on.length < n) {
@@ -9172,7 +9174,7 @@ const STORE_K = {
   water: [p => p.water.w, p => p.water.cap, (p, v) => { p.water.w = v; }],
   salt: [p => p.lick.salt, p => p.lick.cap, (p, v) => { p.lick.salt = v; }],
 };
-const storePens = () => pens.filter(p => !p.deck);
+const storePens = () => pens.filter(p => !p.deck && !p.fold);   // (RAM FOLDS: nothing in them)
 function shareStores() {
   const ps = storePens();
   for (const k in STORE_K) {
@@ -9197,9 +9199,9 @@ function resetForage() {
 }
 onReset(resetForage, 110);   // FORAGE: troughs and salt licks empty, dogs carrying nothing, every plant and salt rock grown
 // JOURNEY SAVE: each camp's gate and bought kit (by name), the shared stores ashore; the deck's in 'sea'
-onSave('pens', () => ({ store: { ...STORE }, pens: pens.filter(p => !p.deck).map(p => ({ name: p.camp.name, open: !p.latched, kit: Object.fromEntries(Object.keys(KIT).map(k => [k, kitN(p, k)])) })) }), v => {
+onSave('pens', () => ({ store: { ...STORE }, pens: pens.filter(p => !p.deck && !p.fold).map(p => ({ name: p.camp.name, open: !p.latched, kit: Object.fromEntries(Object.keys(KIT).map(k => [k, kitN(p, k)])) })) }), v => {
   for (const r of Array.isArray(v.pens) ? v.pens : []) {
-    const p = pens.find(q => !q.deck && r && q.camp.name === r.name); if (!p) continue;
+    const p = pens.find(q => !q.deck && !q.fold && r && q.camp.name === r.name); if (!p) continue;
     if (r.kit) for (const k in KIT) if (Number.isFinite(r.kit[k])) kitSet(p, k, r.kit[k]);
     if (p !== finalPen || !p.frozen) { setGate(p, !!r.open); p.wasOpen = !!r.open; }
   }
@@ -9711,7 +9713,7 @@ function drawWaterOverlay() {
   }
   const dry = WATER.avg > T.water.want;
   for (const p of pens) {   // under the pen's 🐑 badge
-    const tr = p.water; if (Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;
+    const tr = p.water; if (!(tr.cap > 0) || Math.hypot(p.x - cam.x, p.z - cam.z) > 70) continue;   // (RAM FOLDS: no water in one)
     if (tr.w < tr.cap - 0.01) for (const u of tr.at) if (G.dogs.some(d => (bucketOf(d)?.w || 0) > 0.01 && Math.hypot(d.x - u.x, d.z - u.z) < 9)) { nudge('water', u.x, p.y + 1.9, u.z, '🪣 Walk up: tip in', '#6fc3ff'); break; }
     const [px, py, pz] = proj(p.x, p.y + 1.6, p.z); if (!vis(px, py, pz)) continue;
     const pct = Math.round(tr.shown / tr.cap * 100);
@@ -10002,7 +10004,7 @@ const balkSpot = p => { const nx = Math.cos(p.gateA), nz = Math.sin(p.gateA); re
 function balkCheck(s) {   // the lead ewe nearing an open pen of an evening: once a day a pen, she may balk
   if (s.pen || s.air || s.heldBy || s.grabbed || s.state === 'cast' || s.bog || s.snag || isNight() || homeK() <= 0 || G.clock.day < 2) return;
   for (const p of pens) {
-    if (p.gateT < 0.5 || p.balkDay === G.clock.day || Math.hypot(s.x - p.gx, s.z - p.gz) > T.balk.r || insidePen(p, s.x, s.z, 0)) continue;
+    if (p.fold || p.gateT < 0.5 || p.balkDay === G.clock.day || Math.hypot(s.x - p.gx, s.z - p.gz) > T.balk.r || insidePen(p, s.x, s.z, 0)) continue;
     p.balkDay = G.clock.day;
     if (Math.random() < T.balk.chance) startBalk(s, p);
     return;
@@ -15744,6 +15746,7 @@ const ART = (({ C, E, R, band, leaf, W }) => {
     // LINEAGE: the family tree; inbreeding
     tree: { L: [['M13.6 30.5l.9-10h3l.9 10Z', '#8a5a32'], ['M6 18.5a5.5 5.5 0 0 1 2.2-8.6a7.6 7.6 0 0 1 15.6 0a5.5 5.5 0 0 1 2.2 8.6a5.6 5.6 0 0 1-5 3.5h-10a5.6 5.6 0 0 1-5-3.5Z', '#5fb04a'],
       ['M16 22v-4.5M16 19.5l-3-2.4M16 18.5l3.4-2.8', null, '#8a5a32', 1.4], [C(12, 13, 1.3) + C(20.5, 12, 1.1) + C(21.5, 17.5, 1), '#8fd46a', 0, 0, 'n'], ['M9.6 11c.9-2.6 3-4.4 5.8-4.9', null, W, 1.6]] },
+    hurdle: { L: [['M6 6v22M26 6v22', null, '#7a5230', 3, 'o'], ['M3.5 10.5h25v3h-25ZM3.5 16.5h25v3h-25ZM3.5 22.5h25v3h-25Z', '#c48c52'], ['M7 25L25 11', null, '#a8743f', 2.4, 'o'], ['M4.5 11.2h10', null, W, 1]] },   // RAM FOLDS
     dna: { L: [['M12.3 6.5h7.4M12.3 13h7.4M12.3 19h7.4M12.3 25.5h7.4', null, '#f6f1e3', 1.8, 'o'], ['M10 3C10 10 22 10 22 16S10 22 10 29', null, '#e04a6f', 3, 'o'], ['M22 3C22 10 10 10 10 16S22 22 22 29', null, '#3a9be0', 3, 'o']] },
     sprout: { L: [['M16 26V15.5', null, '#4f9a4a', 2.2, 'o'], ['M2.5 29.5c1-4.8 6.4-7.4 13.5-7.4s12.5 2.6 13.5 7.4Z', '#a8743f'], ['M15.6 15.8Q12.48 8.35 4.75 10.67Q7.87 18.12 15.6 15.8Z', '#7cc455'], ['M16.4 14.6Q24.91 16.62 27.81 8.37Q19.3 6.35 16.4 14.6Z', '#7cc455'], ['M14.8 15.4L7 12.3M17.2 14.2l8.4-4.4', null, '#4f9a4a', 1.1], ['M8.7 26.4a1.3 0.8 0 1 0 2.6 0a1.3 0.8 0 1 0 -2.6 0ZM20.4 25.6a1.1 0.7 0 1 0 2.2 0a1.1 0.7 0 1 0 -2.2 0ZM15.6 27.8a0.9 0.6 0 1 0 1.8 0a0.9 0.6 0 1 0 -1.8 0Z', '#8a5a32', 0, 0, 'n']] },
     daisy: { L: [['M18.96 14.78A6 3.1 -22.5 1 0 30.04 10.18A6 3.1 -22.5 1 0 18.96 14.78ZM18.96 17.22A6 3.1 22.5 1 0 30.04 21.82A6 3.1 22.5 1 0 18.96 17.22ZM17.22 18.96A6 3.1 67.5 1 0 21.82 30.04A6 3.1 67.5 1 0 17.22 18.96ZM14.78 18.96A6 3.1 112.5 1 0 10.18 30.04A6 3.1 112.5 1 0 14.78 18.96ZM13.04 17.22A6 3.1 157.5 1 0 1.96 21.82A6 3.1 157.5 1 0 13.04 17.22ZM13.04 14.78A6 3.1 202.5 1 0 1.96 10.18A6 3.1 202.5 1 0 13.04 14.78ZM14.78 13.04A6 3.1 247.5 1 0 10.18 1.96A6 3.1 247.5 1 0 14.78 13.04ZM17.22 13.04A6 3.1 292.5 1 0 21.82 1.96A6 3.1 292.5 1 0 17.22 13.04Z', '#ffffff'], ['M10.4 16a5.6 5.6 0 1 0 11.2 0a5.6 5.6 0 1 0 -11.2 0Z', '#ffd36b'], ['M14 17.2a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0Z', '#f2b33c', 0, 0, 'n'], ['M13.1 14.3a1.3 1.3 0 1 0 2.6 0a1.3 1.3 0 1 0 -2.6 0Z', W, 0, 0, 'n']] },
@@ -15931,6 +15934,7 @@ const EMOJI_ART = {   // one a line
   '🌱': 'sprout',
   '🌳': 'tree',   // LINEAGE
   '🧬': 'dna',
+  '🚧': 'hurdle',   // RAM FOLDS
   '🌼': 'daisy',
   '🌸': 'blossom',
   '🍃': 'leaves',
@@ -16140,6 +16144,7 @@ const HINTS = {
   'wild-tug': '♈ <b>Tug!</b> Heave on the beat. Lose: he bolts.',
   'wild-led': '♈ Got him! Lead him to the flock 🐑 or a pen.',
   castaway: '🏖 ♈ A lonely ram: he follows you. Bring him <b>aboard</b>.',
+  fold: '🚧 ♈ <b>A ram fold!</b> Pen the rams in it overnight, gate shut: they court nobody but who\'s in there with them.',   // RAM FOLDS
   'kin-new': '🧬 ♈ <b>New blood!</b> His lambs won\'t be kin to the flock. See them in 🌳 <b>Hank’s barn</b>.',
   kin: '🧬 <b>Inbreeding!</b> Lambs of close kin come out weak. Get a <b>new ram</b>, and follow the lines: 🌳 in <b>Hank’s barn</b> (Tab / View).',   // LINEAGE
   duck: '🦆 <b>Ducks!</b> Herd them gently: rush them and they fly.',   // DUCKS
@@ -16212,7 +16217,7 @@ const TOUCH_HINTS = {
   bone: 'Bone! Let go ✊: <b>throw</b>',
   tug: 'Tug! Walk back, 💥 on the beat · 💤 dig in',
   kin: '🧬 Close kin: weak lambs. A new ♈ · 🌳 🏚️',   // LINEAGE
-  wild: '🌿 ♈ Creep up with a 🪢 · tug: new blood', 'wild-tug': '♈ 💥 on the beat!', 'wild-led': '♈ → 🐑', castaway: '🏖 ♈ follows you: aboard!', 'kin-new': '🧬 ♈ New blood · 🌳 🏚️',   // WILD RAMS
+  wild: '🌿 ♈ Creep up with a 🪢 · tug: new blood', 'wild-tug': '♈ 💥 on the beat!', 'wild-led': '♈ → 🐑', castaway: '🏖 ♈ follows you: aboard!', fold: '🚧 ♈ in it, shut: no lambs of his', 'kin-new': '🧬 ♈ New blood · 🌳 🏚️',   // WILD RAMS
   llama: '🦙 Creep up with a 🪢 · tug to tame', 'llama-tug': '🦙 💥 on the beat!', 'llama-led': '🦙 → 🐑', 'llama-guard': '🦙 🛡 🐑: 🐺 🐆 🦅 🐍 🐐',
   'llama-ward': '🦙 🧥 → 🏚️', 'llama-cold': '🦙 ❄️ → 🧥 · 🔥', 'llama-pack': '🦙 🎒 ← 🌿 🧂',
   duck: '🦆 Gently! Rushed, they fly', trial: '🏆 On a mat: 📣 · again any time · all 8 for 🏆', keg: '🛢 ❄ 🐑 warm · 📣 a nip',   // DUCKS, TRIALS
@@ -16658,7 +16663,7 @@ function mapMarks(c, u) {
   for (const p of pens) {   // camps: a ring of fence, the camp's icon
     const q = mapPt(p.x, p.z); if (!on(q, 20) || !mapSeen(p.x, p.z)) continue;
     c.fillStyle = 'rgba(207,174,106,.9)'; c.strokeStyle = INK; c.lineWidth = 1.5; c.beginPath(); c.arc(q[0], q[1], Math.max(3, p.R * V.k), 0, TAU); c.fill(); c.stroke();
-    drawArt(c, artOf(p.camp.icon), q[0], q[1], 13 * u);
+    drawArt(c, artOf(p.fold ? '♈' : p.camp.icon), q[0], q[1], (p.fold ? 9 : 13) * u);   // (RAM FOLDS: ♈)
   }
   if (VAG.seen && vagHere()) { const q = mapPt(VAG.x, VAG.z); if (on(q)) drawArt(c, 'shop', q[0], q[1], 11 * u); }   // VAGABOND: where he is, once a dog's met him
   for (const f of PASS.fires) { const q = mapPt(f.x, f.z); if (on(q) && mapSeen(f.x, f.z)) { c.globalAlpha = f.fuel > 0 ? 1 : 0.5; drawArt(c, 'fire', q[0], q[1], 11 * u); c.globalAlpha = 1; } }   // MOUNTAIN PASS: fire camps
@@ -17290,12 +17295,12 @@ function hankWatch(dt) {
   }
   // sheep panicking at an open gate won't go in (only when they're meant to: not of a morning, going out)
   if (t - hk.lastGently > T.hankNag.gently && homeK() > 0) for (const p of pens) {
-    if (p.gateT < 0.5) continue;
+    if (p.gateT < 0.5 || p.fold) continue;   // (RAM FOLDS: not his worry)
     let near = 0, panicky = 0; for (const s of out) if (Math.hypot(s.x - p.gx, s.z - p.gz) < 10) { near++; if (s.panic > 0.5 || s.fear > 0.7) panicky++; }
     if (near >= 3 && panicky >= 2 && hank('gently', null, { force: true })) { hk.lastGently = t; break; }
   }
   // a dog opens a pen gate in the evening with the flock still out
-  for (const p of pens) { if (p.open && !p._hankOpen && G.clock.hour >= 16 && !isNight() && out.length) hank('gate_open', null, { force: true }); p._hankOpen = p.open; }
+  for (const p of pens) { if (p.open && !p._hankOpen && !p.fold && G.clock.hour >= 16 && !isNight() && out.length) hank('gate_open', null, { force: true }); p._hankOpen = p.open; }
   // starving: no recording, so the subtitle alone
   const starving = living().filter(s => s.hunger >= 1).length;
   if (starving > hk.starving && t - hk.lastStarve > T.hankNag.starve && hank(null, "They're starvin'! Find them some good grass!", { force: true })) hk.lastStarve = t;
@@ -21596,17 +21601,18 @@ const WARE_KINDS = {   // name: what pops up over it when a dog steps on (more: 
   shovel: { icon: '🪏', col: '#9a7a5a', row: 1, name: 'Shovel', sub: 'for 🪦 burials', show: () => !HANK.shovel },   // (one's enough)
   ram: { icon: '♈', col: '#c99550', row: 2, name: 'Ram', sub: '🧬 new blood', show: () => vagRamStock() },   // LINEAGE: one a pitch, on land
   sell: { icon: '🐑', col: '#e0a83a', row: 2, name: 'Sell', sub: '🐑 → 🧶' },   // SELLING: a sheep brought onto it
+  fold: { icon: '🚧', col: '#b08048', row: 2, name: 'Ram fold', sub: '♈ apart', show: () => VAG.mode === 'land' && !SEA.on },   // RAM FOLDS: by the 📍 pen
 };
 // his one "stall": where his mats are laid (x, z: his spot behind them; f: toward the camera; r: its right), the pen picked on 📍
 const VSTALL = { i: 0, market: true, x: 0, z: 0, s: 0, fx: Math.SQRT1_2, fz: Math.SQRT1_2, rx: Math.SQRT1_2, rz: -Math.SQRT1_2, yaw: Math.PI / 4, sel: 0, pick: -1, waveAt: -9, noAt: -9, wares: [] };
 const MARKET = VSTALL;   // (the old name)
 const ALL_WARES = VSTALL.wares;   // w.i / w.gi: its place
-['pen', 'clippers', 'water', 'food', 'salt', ...VET_KINDS, 'ram', 'sell'].forEach((id, i) => { const w = { id, row: 0, ...WARE_KINDS[id], stall: VSTALL, i, gi: i }; w.art = EMOJI_ART[w.icon.replace('️', '')]; ALL_WARES.push(w); });
+['pen', 'clippers', 'water', 'food', 'salt', ...VET_KINDS, 'ram', 'sell', 'fold'].forEach((id, i) => { const w = { id, row: 0, ...WARE_KINDS[id], stall: VSTALL, i, gi: i }; w.art = EMOJI_ART[w.icon.replace('️', '')]; ALL_WARES.push(w); });
 for (const w of ALL_WARES) { const row = ALL_WARES.filter(o => o.row === w.row); w.ri = row.indexOf(w); w.rn = row.length; }   // its place in its row
 const WARES = ALL_WARES;
 const VENDOR = { hello: false, met: false, bought: {} };
 const wareOn = w => !w.show || w.show();
-const penFound = p => (SEA.on ? p.deck : G.visited.has(p.camp.name)) && !p.final;   // (MOUNTAIN PASS: nobody delivers up to the yeti's cave; SAILING: the boat's deck only)
+const penFound = p => (SEA.on ? p.deck : G.visited.has(p.camp.name)) && !p.final && !p.fold;   // (RAM FOLDS: nothing's delivered into one)   // (MOUNTAIN PASS: nobody delivers up to the yeti's cave; SAILING: the boat's deck only)
 function stallPen(st) { const p = pens[st.pick]; return p && penFound(p) ? p : [...pens].reverse().find(penFound) || pens[0]; }   // picked on 📍, else the furthest found
 function pickPen(st) {   // a bark on 📍: the next pen found, along the trail
   const found = pens.filter(penFound), p = found[(found.indexOf(pens[st.sel]) + 1) % found.length] || pens[0];
@@ -21646,6 +21652,8 @@ const vagMatR = () => T.vendor.matR * T.vag.mat / 2.5;   // a dog this near a ma
   };
   // wares added since: made on their own dice (ownDice), so the seeded tests' runs stay as they were
   const LATE = {
+    fold: () => merge(...[-0.16, 0, 0.16].flatMap((z, k) => [...[-0.32, 0.32].map(x => P(BOX(0.05, 0.56, 0.05), '#7a5230', { r: [0.25, 0, 0], p: [x, 0.28, back + z] })),   // RAM FOLDS: a stack of hurdles, leant up
+      ...[0.16, 0.34, 0.52].map(y => P(BOX(0.7, 0.06, 0.04), k === 1 ? '#c48c52' : '#b07a46', { r: [0.25, 0, 0], p: [0, y, back + z + 0.06] }))])),
     sell: () => merge(...[-0.34, 0.34].map(x => P(BOX(0.06, 0.62, 0.06), '#7a5230', { p: [x, 0.31, back] })), ...[0.2, 0.44].map(y => P(BOX(0.74, 0.07, 0.04), '#a8784a', { p: [0, y, back] })),   // SELLING: a hurdle and a skein
       P(SPH(10), '#ec7a52', { s: [0.17, 0.17, 0.17], p: [0.1, 0.17, back + 0.4] }), P(new THREE.TorusGeometry(0.15, 0.025, 5, 14), '#b5492c', { r: [0.4, 0, 0.3], p: [0.1, 0.17, back + 0.4] })),
     ram: () => merge(SHEEP_GEO.body.clone().translate(0, 0.66, 0), SHEEP_GEO.head.clone().translate(0, 0.8, 0.5), SHEEP_GEO.horn.clone().translate(0, 0.8, 0.5),   // LINEAGE: a wee ram, the real one's shapes
@@ -21701,6 +21709,7 @@ function buyWare(w, d = null) {
   }
   else if (w.id === 'clippers') giveHankClippers();
   else if (w.id === 'ram') { if (!vagRamSell(w)) kind = 'full'; }   // LINEAGE: new blood
+  else if (w.id === 'fold') { if (!foldSell(pen)) kind = 'full'; }   // RAM FOLDS: by the 📍 pen
   else if (vet) giveHank({ [w.id]: V[w.id].n || 1 }, d);   // (🧪: n doses)
   if (kind === 'buy' || kind === 'add') { if (price) G.wool = wool - price; VENDOR.bought[w.id] = (VENDOR.bought[w.id] || 0) + 1; }
   vendorFx(w.gi, kind, price, st.sel, KIT[w.id] ? kitN(pens[st.sel] || postPen, w.id) : 0);
@@ -22781,8 +22790,9 @@ function drawVendorOverlay() {
       ctx.restore(); continue;
     }
     const room = !kit || deal.kind === 'add' || kitRoom(pen, w.id) >= V[w.id].amt * V.room;
-    const ok = w.id === 'pen' || (wool >= price && room);
-    const top = w.id === 'pen' ? '📍' : w.icon, low = w.id === 'pen' ? pen.camp.icon : room ? price + '🧶' : '100%', n = kit ? `${deal.kind === 'add' ? '+' : ''}${kitN(pen, w.id)}/${kitMax(pen, w.id)}` : '';
+    const ok = w.id === 'pen' || (wool >= price && room && !(w.id === 'fold' && !foldCan(pen)));
+    const fold = w.id === 'fold' && !foldCan(pen);   // (RAM FOLDS: that pen has one, or no room for it)
+    const top = w.id === 'pen' ? '📍' : w.icon, low = w.id === 'pen' ? pen.camp.icon : fold ? (foldOf(pen) ? '✔' : '✖') : room ? price + '🧶' : '100%', n = kit ? `${deal.kind === 'add' ? '+' : ''}${kitN(pen, w.id)}/${kitMax(pen, w.id)}` : w.id === 'fold' ? `📍 ${pen.camp.icon}` : '';
     const sc = (on ? 1.12 : want.has(w.id) ? 1.08 + 0.08 * Math.sin(G.time * 6) : 1) * Math.min(1, w.k) * (H < 520 ? 0.78 : 1);
     ctx.save(); ctx.translate(px, py); ctx.scale(sc, sc);
     vagTag(top, low, n, w.id === 'pen' ? 'rgba(150,50,45,.93)' : ok ? 'rgba(60,140,60,.93)' : 'rgba(130,60,55,.9)', price > 0 ? mark : '', on);
@@ -22807,7 +22817,7 @@ function drawWarePop(w, pen) {
   let [px0, py0, pz] = proj(w.x, w.y + 2.4, w.z); if (pz > 1) return;
   if (dog) py0 = Math.min(py0, proj(dog.x, dog.y + 1.5, dog.z)[1] - 30 - 44 * S);   // clear of its name tag and what it carries
   const kit = !!KIT[w.id], title = kit && wareDeal(w, pen).kind !== 'add' ? w.more : w.name;
-  const sub = w.id === 'pen' ? `${pen.camp.icon} ${pen.camp.name}` : kit ? `📍 ${pen.camp.icon}` : w.sub || '';
+  const sub = w.id === 'pen' ? `${pen.camp.icon} ${pen.camp.name}` : kit || w.id === 'fold' ? `📍 ${pen.camp.icon}` : w.sub || '';
   const R = 20, ph = 32, gap = 8, padR = 12, INK = ART_INK;
   ctx.font = '700 20px Fredoka, sans-serif'; const letters = [...title], lw = letters.map(ch => ctx.measureText(ch).width), tw = lw.reduce((a, b) => a + b, 0);
   ctx.font = '700 12px Fredoka, sans-serif'; const kw = ctx.measureText(key).width + 12;
@@ -24392,6 +24402,115 @@ function devWild() {
 }
 function devCastaway() { if (!WILDS.some(W => W.kind === 'isle')) makeWild({ kind: 'isle', isle: WILD.isle || 1, x: 0, z: 0 }); seaStart({ leg: WILD.isle || 1 }); }
 expose(() => ({ WILDS, WILD, makeWild, wildRemove, wildReset, wildJoin, wildRope, wildTugEnd, wildIsleSpot, devWild, devCastaway, updateWild }));   // WILD RAMS
+
+// =====================================================================
+// RAM FOLDS (LINEAGE: rams apart) — hurdles from the vagabond (🚧, T.vendor.fold): Hank's fold goes up beside the camp's pen picked on 📍,
+// a little round pen of its own (T.fold.R) with its own gate, facing the way the camp's does (foldSpot: open, dry ground at the camp pen's
+// side, clear of its fire, bucket, other pens). One a camp. It's a pen like any other (pens, p.fold, p.parent): penned, gated, safe for the
+// night, a ram in it courts only what's in it, so his daughters in the camp's pen are spared. No troughs, water or lick in it (one night's
+// fine). Kept for the journey (JOURNEY SAVE 'folds'); gone on a new one. Online: the host's list of folds (NET_TYPES.fold), built the same
+// on every screen in the same order (pens' indices agree).
+// =====================================================================
+const FOLDS = [];
+// where one goes by pen p: its side (not the gate's, not the fire's), its gate the way p's faces, out onto open ground → { x, z } or null
+function foldSpot(p) {
+  const K = T.fold, R = K.R, ok = (x, z, sd = 1) => sdfAt(x, z) > sd && !wetAt(x, z) && !inRiver(x, z) && !penAt(x, z);
+  const bucket = BUCKETS.find(b => b.pen === p), gx = Math.cos(p.gateA), gz = Math.sin(p.gateA);
+  for (const da of [-1.75, 1.75, -2.2, 2.2, -1.35, 1.35, -2.6, 2.6]) {
+    const a = p.gateA + da, d = p.R + R + K.gap, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+    if (!ok(x, z, 1.5)) continue;
+    let fine = true;
+    for (let k = 0; k < 16 && fine; k++) { const b = k / 16 * TAU; if (!ok(x + Math.cos(b) * (R + 0.8), z + Math.sin(b) * (R + 0.8))) fine = false; }
+    const ex = x + gx * (R + 2.6), ez = z + gz * (R + 2.6);   // in front of its gate: room to drive a ram in
+    if (!fine || !ok(ex, ez) || Math.hypot(ex - p.x, ez - p.z) < p.R + 1.5) continue;
+    if (p.fire && Math.hypot(x - p.fire.x, z - p.fire.z) < R + 2) continue;
+    if (bucket && Math.hypot(x - bucket.hx, z - bucket.hz) < R + 1.2) continue;
+    if (pens.some(q => q !== p && Math.hypot(x - q.x, z - q.z) < q.R + R + 1.5) || YARDS.some(y => Math.hypot(x - y.x, z - y.z) < y.r + R + 1) || !trialClear(x, z, R + 1)) continue;
+    return { x, z };
+  }
+  return null;
+}
+const foldOf = p => FOLDS.find(f => f.parent === p) || null;
+const foldCan = p => !!p && !p.deck && !p.final && !p.fold && !foldOf(p) && !!foldSpot(p);
+// put one up by pen p (host: bought; guests and a reload: the host's / the save's list) → the fold, or null
+function foldBuild(p) {
+  if (!p || p.deck || p.fold || foldOf(p)) return null;
+  const at = foldSpot(p); if (!at) return null;
+  const R = T.fold.R, ga = p.gateA, f = { camp: p.camp, fold: true, parent: p, x: at.x, z: at.z, R, gateA: ga, open: false, gateT: 0, final: false, segs: [], count: 0, discovered: true };
+  f.y = terrainH(at.x, at.z);
+  const gh = (GATE_W / 2) / R; f.gapHalf = gh;
+  const N = 14, a0 = ga + gh, a1 = ga + TAU - gh, pts = [];
+  for (let k = 0; k <= N; k++) { const a = lerp(a0, a1, k / N); pts.push([at.x + Math.cos(a) * R, at.z + Math.sin(a) * R]); }
+  for (let k = 0; k < N; k++) f.segs.push({ ax: pts[k][0], az: pts[k][1], bx: pts[k + 1][0], bz: pts[k + 1][1] });
+  const postB = pts[0], postA = pts[N];
+  f.hinge = { x: postA[0], z: postA[1] }; f.gateLen = Math.hypot(postB[0] - postA[0], postB[1] - postA[1]);
+  f.angClosed = Math.atan2(postB[1] - postA[1], postB[0] - postA[0]); f.angOpen = ga - 0.62;
+  f.gateSeg = { ax: postA[0], az: postA[1], bx: postB[0], bz: postB[1] };
+  f.gx = at.x + Math.cos(ga) * R; f.gz = at.z + Math.sin(ga) * R; f.exitX = at.x + Math.cos(ga) * (R + 4.5); f.exitZ = at.z + Math.sin(ga) * (R + 4.5);
+  // what every pen has (none of it here): no troughs, an empty lick and water trough; the camp's fire
+  Object.assign(f, { troughs: [], troughSlots: [], troughBase: 0, lickSlots: [], waterSlots: [], solids: [], kit: { food: [0, 0], water: [0, 0], salt: [0, 0] }, fire: p.fire,
+    lick: { salt: 0, cap: 0, shown: 0, x: at.x, z: at.z, at: [] }, water: { w: 0, cap: 0, shown: 0, muck: 0, x: at.x, z: at.z, tx: 1, tz: 0, len: 1, yaw: 0, at: [] } });
+  // the looks: hurdles, straw, a gate (scene: off with the land at cast-off)
+  const g = new THREE.Group(); g.position.set(0, f.y, 0); scene.add(g); f.g = g;
+  part(g, foldHurdlesGeo(f.segs));
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(R - 0.1, 28).rotateX(-Math.PI / 2), new THREE.MeshToonMaterial({ color: '#d9bb78', gradientMap: TOON_GRAD }));
+  floor.position.set(at.x, 0.04, at.z); floor.receiveShadow = true; g.add(floor);
+  const gate = new THREE.Group(); gate.position.set(postA[0], 0, postA[1]); g.add(gate); part(gate, gateLeafGeo(f.gateLen)); gate.rotation.y = -f.angClosed; f.gateMesh = gate;
+  f.flames = [new THREE.Object3D(), new THREE.Object3D()];   // (the camp's fire is p's: nothing to flicker here)
+  f.outSign = Math.sign(wrapA(f.angOpen - f.angClosed)) || -1;   // (as initGates)
+  f.mouthSeg = { ax: f.hinge.x, az: f.hinge.z, bx: f.hinge.x + Math.cos(f.angClosed) * f.gateLen, bz: f.hinge.z + Math.sin(f.angClosed) * f.gateLen };
+  resetGate(f);
+  for (const o of [...G.sheep, ...G.dogs, HANK]) if (o && !o.dead && insidePen(f, o.x, o.z, -1.2) && !o.heldBy && !o.air) { const a = Math.atan2(o.z - at.z, o.x - at.x), r = R + 1.6; o.x = at.x + Math.cos(a) * r; o.z = at.z + Math.sin(a) * r; }   // (anyone where it goes up: stepped out)
+  pens.push(f); FOLDS.push(f); stampNav();
+  return f;
+}
+// the hurdles: the camp's rails, lower, a post at every panel, a slat across each
+function foldHurdlesGeo(segs) {
+  const parts = [];
+  for (const s of segs) {
+    const dx = s.bx - s.ax, dz = s.bz - s.az, L = Math.hypot(dx, dz), a = Math.atan2(dz, dx), mx = (s.ax + s.bx) / 2, mz = (s.az + s.bz) / 2;
+    for (const y of [0.35, 0.65, 0.95]) parts.push(P(BOX(L + 0.06, 0.09, 0.06), '#c48c52', { r: [0, -a, 0], p: [mx, y, mz] }));
+    parts.push(P(BOX(0.08, 0.7, 0.06), '#a8743f', { r: [0, -a, 0.5], p: [mx, 0.65, mz] }));
+    parts.push(P(CYL(0.07, 0.08, 1.15, 5), '#7a5230', { p: [s.ax, 0.55, s.az] }));
+  }
+  return merge(...parts);
+}
+function foldRemove(f) {
+  if (f.g && f.g.parent) f.g.parent.remove(f.g);
+  for (const s of G.sheep) { if (s.pen === f) s.pen = null; if (s.wasPen === f) s.wasPen = null; }
+  const i = pens.indexOf(f); if (i >= 0) pens.splice(i, 1);
+  const j = FOLDS.indexOf(f); if (j >= 0) FOLDS.splice(j, 1);
+}
+function foldsClear() { if (!FOLDS.length) return; for (const f of [...FOLDS].reverse()) foldRemove(f); stampNav(); }
+onReset(foldsClear, 85);   // RAM FOLDS: a new journey, none (before the gates: 90)
+// the vagabond: 🚧 bought, delivered to the pen picked on 📍 (VENDOR's buyWare) → the fold, or null (no room, one there already)
+function foldSell(p) {
+  const f = foldCan(p) ? foldBuild(p) : null; if (!f) return null;
+  foldFx('built', f.x, f.z);
+  if (!FOLD_SAID.built) { FOLD_SAID.built = true; hank(null, "A ram fold! Pen the rams in it and they'll leave the ewes be.", { force: true, delay: 1.2 }); hint('fold'); }
+  return f;
+}
+const FOLD_SAID = {};
+onReset(() => { for (const k in FOLD_SAID) delete FOLD_SAID[k]; }, 86);
+function foldFx(kind, x, z) {
+  const y = groundY(x, z);
+  if (kind === 'built') { floatText('🚧 ♈', x, y + 2.4, z, '#ffd36b', 1.6); confetti(x, y + 1, z, 24); spawnRing(x, y, z, T.fold.R + 0.5, '#ffd36b', 0.6); SFX.thud(panOf(x, z), 0.35); Sound.chime([0, 4, 7, 12], 523, 0.16); }
+}
+// JOURNEY SAVE: which camps have one (in the order they went up: pens' indices), its gate (before the flock is placed: 'where')
+onSave('folds', () => FOLDS.map(f => ({ p: pens.indexOf(f.parent), open: !f.latched })), list => {
+  foldsClear();
+  for (const r of Array.isArray(list) ? list : []) { const f = foldBuild(pens[r && r.p | 0]); if (f && r.open) setGate(f, true); }
+}, 19);
+// ONLINE: the host's folds, as the camp pens they're by; a guest builds (or clears) to match
+const FOLD_NET = { s: '' };
+function foldNetOut() { return FOLDS.map(f => pens.indexOf(f.parent)).join(); }
+function foldNetIn(v) {
+  v = String(v || ''); if (v === FOLD_NET.s) return; FOLD_NET.s = v;
+  const want = v ? v.split(',').map(Number) : [];
+  if (want.length < FOLDS.length || FOLDS.some((f, i) => pens.indexOf(f.parent) !== want[i])) foldsClear();
+  for (let i = FOLDS.length; i < want.length; i++) foldBuild(pens[want[i]]);
+}
+expose(() => ({ FOLDS, foldSpot, foldBuild, foldCan, foldSell, foldsClear, foldOf }));   // RAM FOLDS
 
 // =====================================================================
 // SAILING — a boat under sail, the flock on deck (issue #74). The deck is a pen (DECK) and never moves in the world: the sea goes by
@@ -27570,6 +27689,7 @@ const NET_TYPES = {
       name: 's', wear: { c: 's', get: L => llamaWearStr(L), set: (L, v) => { L.wear = llamaWearOf(v); } }, greens: .05, salt: 'i', cold: .02, nag: .05 },   // LLAMA WARDROBE, PACK, COLD, nagged (ears back)
     make: (id, f) => netGuestLlama(id, f), kill: L => llamaRemove(L), animate: (L, dt) => netAnimLlama(L, dt),
   },
+  fold: { tag: 'm', one: () => FOLD_NET, fields: { b: { c: 's', get: () => foldNetOut(), set: (o, v) => foldNetIn(v) } } },   // RAM FOLDS: which camp pens have one (in order: pens' indices agree)
   wild: {   // WILD RAMS: where, what he's at, on a rope (which, where), the castaway's off while she's not at his island
     tag: 'z', all: () => WILDS, id: W => W.nid || (W.nid = ++NET.nid),
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', kind: 's', isle: 'i', name: 's', wool: 's', off: 'b', hopY: .02, tugK: .05, stumble: .05,

@@ -34,6 +34,18 @@ Issue #176. Sections: LINEAGE (after FLOCK SAVE), WILD RAMS (after LLAMAS). Test
 - **Dawn card**: each new lamb's 🧬 (≥ `warn`) and 🌳 → `dawnTree`: the tree over the card (`.kinPop`); a node: its tree; Backspace / Ⓑ
   back, Esc / ✕ the card.
 
+## Ram folds (`FOLDS`, RAM FOLDS)
+
+- 🚧 hurdles from the vagabond (`T.vendor.fold.price`, land only): `foldSell` → `foldBuild` by the pen picked on 📍. One a camp (`foldOf`,
+  `foldCan`); none by the yeti's cave or the boat.
+- Where (`foldSpot`): the camp pen's side (not its gate's, not its fire's), `T.fold.R` m round, `gap` m off its fence, its gate facing the
+  way the camp's does with room in front; open, dry ground, clear of the bucket, other pens, yards, the trials' ring.
+- A pen like any other (`pens`, `p.fold`, `p.parent`): penned sheep, its gate, the night's fast-forward, coyotes, Hank round it. A ram in it
+  (shut) courts only who's in there: the ewes in the camp's pen are spared (no "no lambs" nag then). No troughs, water or lick in it
+  (empty `troughs`, `lick`, `water`: `kitSet` clamps to what's there). Kept out of the shared stores, the 📍, the pens' save, Hank's gate nags, the balker.
+- Kept: JOURNEY SAVE `folds` (camp pen, gate; built before the flock's placed). Gone on a new journey (`foldsClear`). Online:
+  `NET_TYPES.fold` (the camp pens they're by, in order: `foldNetIn` builds the same, so pens' indices agree).
+
 ## New blood
 
 - **The trials' champion** (docs/trials.md): `kinFounder(s, 'trial')`.
