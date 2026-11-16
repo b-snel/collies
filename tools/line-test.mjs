@@ -5,7 +5,7 @@
 // Checks: the guest gets in over the line, and the grass map comes packed (~30 KB, not 159) with what the host's flock
 // grazed; a /turn relay goes to both browsers' links when the site has one; the link is direct (here); 40 sheep driven: the
 // guest's ping stays near the line's own (the host skips snapshots the line can't take yet, and slows down as its ping climbs)
-// and its flock follows the host's (as the host's was a moment before: at the lag that fits best, ≤ the ping's bound); a
+// and its flock follows the host's (each sheep on its trail on the host, the ping's bound back: the lag comes and goes); a
 // dropped guest gets back in by itself; a guest that can't reach a relay (relayed only, the site's /turn slow and then off)
 // asks /turn again each try and says where it stuck: "couldn't link up (free relay ✖)".
 // Numbers: the same drive with the skipping off (how far behind the guest falls).
@@ -80,6 +80,20 @@ function flockLag(host, guest, max) {
   for (let lag = 50; lag <= max; lag += 50) { const e = flockErr(host, guest, lag); if (e.p50 < best.p50) best = { lag, ...e }; }
   return best;
 }
+// each sheep the guest shows vs where that sheep went on the host in the max ms before (its trail): on it, it follows, however
+// the line's lag comes and goes
+function flockTrail(host, guest, max) {
+  const H = host.map(([t, ss]) => [t, new Map(ss.map(r => [r[0], r]))]), errs = []; let j0 = 0, j1 = 0;
+  for (const [t, gs] of guest) {
+    while (j0 < H.length && H[j0][0] < t - max) j0++;
+    while (j1 < H.length && H[j1][0] <= t) j1++;
+    if (j1 - j0 < 2) continue;
+    for (const [id, x, z] of gs) { let m = 1e9; for (let j = j0; j < j1; j++) { const a = H[j][1].get(id); if (a) m = Math.min(m, Math.hypot(x - a[1], z - a[2])); } if (m < 1e9) errs.push(m); }
+  }
+  errs.sort((a, b) => a - b);
+  const q = f => r2(errs[Math.min(errs.length - 1, Math.floor(errs.length * f))] || 0);
+  return { samples: errs.length, p50: q(0.5), p95: q(0.95) };
+}
 async function drive(A, B, secs) {   // ping every half second on the guest, the flock on both
   await Promise.all([startRecorder(A), startRecorder(B)]);
   const s0 = await A.page.evaluate(() => ({ ...NET.stats })), pings = [];
@@ -88,7 +102,7 @@ async function drive(A, B, secs) {   // ping every half second on the guest, the
   const [ra, rb] = await Promise.all([takeRecord(A), takeRecord(B)]);
   const tail = pings.slice(pings.length / 2).sort((a, b) => a - b);
   const every = await A.page.evaluate(() => NET.seats[0].every);
-  return { pingLast: pings[pings.length - 1], pingMax: Math.max(...pings), pingP50: tail[tail.length >> 1], every, skipped: (s1.skip || 0) - (s0.skip || 0), sentBps: Math.round((s1.bytes - s0.bytes) / secs), flock: flockErr(ra, rb), behind: flockLag(ra, rb, 2 * MS + 1500) };
+  return { pingLast: pings[pings.length - 1], pingMax: Math.max(...pings), pingP50: tail[tail.length >> 1], every, skipped: (s1.skip || 0) - (s0.skip || 0), sentBps: Math.round((s1.bytes - s0.bytes) / secs), flock: flockErr(ra, rb), behind: flockLag(ra, rb, 2 * MS + 1500), trail: flockTrail(ra, rb, 2 * MS + 1500) };
 }
 
 try {
@@ -151,7 +165,7 @@ try {
   await sleep(3000);
   const on = report.numbers.skipOn = await drive(A, B, 15);
   const bound = 2 * MS + 1500;
-  check(`40 sheep driven: the guest's ping stays near the line's own (≤ ${bound} ms) and its flock follows (${on.behind.p50} m off the host's ${on.behind.lag} ms before)`, on.pingP50 > 0 && on.pingP50 <= bound && on.pingLast <= bound && on.behind.p50 < 1.5, on);   // (behind: how far the line puts it is the ping's to say; a slow machine adds to it)
+  check(`40 sheep driven: the guest's ping stays near the line's own (≤ ${bound} ms) and its flock follows (${on.trail.p50} m off the host's trail)`, on.pingP50 > 0 && on.pingP50 <= bound && on.pingLast <= bound && on.trail.p50 < 0.5, on);   // (behind: how far the line puts it is the ping's to say; a slow machine adds to it)
 
   // ---------------------------------------------------------------- dropped: back in by itself
   await B.page.evaluate(() => NET.conn.close());
