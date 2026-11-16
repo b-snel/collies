@@ -222,7 +222,7 @@ await h.page.evaluate(() => {
     out.barkCallsOff = { afterProvoke: st0, charged, stateAfter: ram.rs, dogStunned: d.stunT > 0 };
     // c) a coyote near a ram gets bonked
     reset(21); sh = live(); place(sh, p0.x + 40, p0.z, 4); ram = sh.find(s => s.ram); ram.x = p0.x; ram.z = p0.z; ram.rcd = 0.2; ram.state = 'idle';
-    ram.brave = Math.max(ram.brave, 0.9);   // (a bold one: under T.brave.ramMin a ram never fights)
+    ram.brave = 1;   // (a bold one: under T.brave.ramMin a ram never fights; under 1, now and then he doesn't look: ramTarget's Math.random() < brave)
     d.x = p0.x - 30; d.z = p0.z; P().bot = {};
     const pk = GAME.spawnPack(1, { howl: false }); const c = pk.members[0]; c.x = ram.x + 5.5; c.z = ram.z + 1; c.courage = 1;
     let t3 = 0, bonk = -1, target = null;

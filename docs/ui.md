@@ -4,13 +4,16 @@
   `mapReveal`); the land inked round a ragged edge, grazed patches bare. Camera's way round. Camps,
   salt, graves once uncovered; the vagabond where he is once met (`VAG.seen`); flock, Hank, dogs always; predators only while a dog sees them. Each screen
   uncovers its own; a late friend gets the host's (`NET_TYPES.game.fog`). New journey: parchment (`mapReset`).
-  Edge arrows keep clear of it (`mapDodge`). By his wares, the pen they go to ringed + 📍 (on the edge if off it). No trail bar.
+  Edge arrows keep clear of it (`mapDodge`). Touch: small (72 px, 112 tall screens), above the stick's rest (`mapLayout`). By his wares, the pen they go to ringed + 📍 (on the edge if off it). No trail bar.
 - **Menus** (`MENU`, `menuUp`, `menuTick`, `setPause`): each screen's own pause menu, barn and dawn card. Offline any of them stops
   the world. Online `G.paused` only once every connected screen's in one (a guest says so: `m`, `s.menu`), or held (`holdWorld`:
   the host's tab hidden, tests). Meanwhile their dogs lie down and wait (`menuInput`, `netReadInput`), ⏸ by the name (`G.menus`).
   The pause screen: "Menu" + ⏸ / ▶ chips while it goes on (`#pause.live`), "Paused" once it waits; over a barn / dawn card `#menuBadge`.
-- **Hints** (`HINTS`, `hint`, `updateHints`): one at a time, queued; up `hintLen` s (9–16, by length), the clock waits while
-  paused / a menu's up; a bar runs down; more waiting → 8 s. `TOUCH_HINTS` on touch.
+- **Hints** (`HINTS`, `hint`, `updateHints`): one at a time, queued; up `hintLen` s (12–22, by length), the clock waits while
+  paused / a menu's up; a bar runs down; more waiting → `HINT_MIN` (12 s). The first ones `HINT_MIN` + 1 s apart. `TOUCH_HINTS` on touch.
+  Button nudges over things (`nudge`): `NUDGE_DUR` (6.5 s) on screen, then retired. None in the practice (docs/tutorial.md: its card).
+- **Toasts** (`toast`, `updateToasts`): one at a time, queued (≤4, no repeats); `TOAST_DUR` s, more waiting → `TOAST_BUSY`.
+  One up: the hint steps aside (`#hint.wait`), its clock waits. None in the practice. One message on screen at a time.
 - **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep and Llamas (only once one's ours: `barnLlamas`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
   Every screen its own (Tab / View / 🏚️ / pause). A guest dresses its own dogs (`barnDogs`: DOGS.looks[k] → its k-th dog, colours `barnSlot`;
   saved on its device; sent as `dl`, `netLookOut`: a coat or collar never picked (`pick`) takes its slot's colours there) and renames /
@@ -31,7 +34,7 @@
 - **Journey save** (`JOURNEY`, `localStorage['collies.journey']`): a reload carries on; it never undoes. Written every `T.save.every` s
   of play, at dawn, when the tab hides, and at once on a death (`mournSheep`): no save-scumming. No save / load button: the title shows
   ▶ day · flock (`#tSave`; ✖ forgets it), the first dog in resumes (`startGame` → `journeyResume`). Gone on a new journey, at the end,
-  "Start a fresh flock". Host / offline only. Closed tab: the world waits (nothing runs).
+  "Start a fresh flock". Host / offline only. Closed tab: the world waits (nothing runs). Not in the practice (docs/tutorial.md).
   Each section keeps its own (`onSave`): `core` (clock, `G.time`, tally, wool, hints, lost, training), `flock` (every living sheep's plain
   fields, look, mum, spot), `dogs`, `hank` (spot, kit), `pass` (fuel, ice gate, walls, yeti), `graves`, `yards` (cemeteries: built, rows, `Y.n`), `where` (land: `devJump` to the
   flock's s, then every saved spot that fits; sea: `seaStart` alongside the last island reached, `SEA.saved`), `pens` (gates, bought kit,
@@ -40,3 +43,5 @@
   New builds: each part loads alone (one that throws keeps its fresh state); `loadPlain` copies a field only onto the same type or a
   field the code doesn't set yet; a spot that's not walkable or `T.save.lag` m off along the trail goes by the flock (`journeyPlace`).
   A change of meaning: bump `JOURNEY_V`, add its step to `JOURNEY_UP`.
+- **Home Screen tip** (`#tHome`): iPhone / iPad Safari can't go fullscreen; outside the Home Screen app the title shows 📲 (tap: Share ⬆️ → Add to Home Screen).
+  Open on the first visit (localStorage `collies.homeTip`), then just 📲.

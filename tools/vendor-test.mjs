@@ -404,7 +404,8 @@ const r15 = await h.page.evaluate(() => {
   seaCastOff(true); run(0.2); out.cast = { ph: VAG.sea.ph, out: VAG.out, line: VAG.line };
   run(8); const b = VAG.sea.b; out.sail = { ph: VAG.sea.ph, frame: vagFrame(), reach: vagReach(), press: press() };
   let minD = 1e9, n = 0, lee = 0;
-  for (let i = 0; i < 40; i++) { run(0.5); minD = Math.min(minD, seaDist(b.e, b.n)); if (VAG.sea.ph === 'sail' && Math.abs(b.heel) > 0.1) { n++; if (Math.sign(b.heel) === -b.ws && Math.sign(b.boom) === -b.ws) lee++; } }
+  let ws1 = 0, ws2 = 0;   // (the wind side half a second and a second ago: just after a tack or gybe the heel and boom are still swinging over)
+  for (let i = 0; i < 40; i++) { run(0.5); minD = Math.min(minD, seaDist(b.e, b.n)); if (VAG.sea.ph === 'sail' && Math.abs(b.heel) > 0.1 && b.ws === ws1 && b.ws === ws2) { n++; if (Math.sign(b.heel) === -b.ws && Math.sign(b.boom) === -b.ws) lee++; } ws2 = ws1; ws1 = b.ws; }
   out.by = { minD: Math.round(minD), n, lee, far: Math.round(seaDist(b.e, b.n)) };
   const w1 = ROUTE[1]; SEA.e = w1.e - Math.sin(w1.crs) * 260; SEA.n = w1.n - Math.cos(w1.crs) * 260; SEA.hdg = SEA.pilot = w1.crs; SEA.u = 4;   // (260 m short of Seal Skerry)
   let first = null; for (let i = 0; i < 90 && !(SEA.docked && VAG.sea.ph === 'ashore'); i++) { run(1); if (!first && VAG.sea.ph === 'ashore') first = { docked: SEA.docked, i: VAG.sea.i }; }

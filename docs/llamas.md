@@ -17,7 +17,8 @@
   `R.llama`, `L.ropeI` a little past the dog's grip) and it's a tug of war, the llama as a man on a rope (`e.npc`, `ropeNpc(R)`,
   `hankTug` with `T.llama.tug` × `L.str`; it pulls facing away, spits at the dog now and then: just goo, even landing after it). Heaves on the beat break it;
   mashing or just walking back loses. Lost (or let go): it bolts (`boltSpd`, `bolt` s), wary `waryH` h (`llamaTugEnd`). Won: broken
-  (`L.tame` 1), led on the rope (`llamaLed`, `lead`: barely pulls back); within `joinR` of 2 sheep, or in a pen: a guard (`llamaJoin`,
+  (`L.tame` 1), led on the rope (`llamaLed`, `lead`: barely pulls back); 2 sheep within `joinR` of it or of the dog leading it (out in
+  front: the sheep back off past where it trails), or in a pen: a guard (`llamaJoin`,
   `L.tame` 2), off the rope (still in the dog's mouth), her cria too. Hank and the vagabond keep off a rope with a llama on it.
 - **Guards** (`llamaGuard`, `llamaGuardGoal`): round the flock's edge (`L.ga`), in its pen (a hop over the fence: `llamaHop`, `llamaGo`),
   kushed by night; far off and out of sight: caught up (`far`). A foe within `alarm` m: an alarm call, at it; within `spit.r`: SPIT

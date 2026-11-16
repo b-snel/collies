@@ -4,21 +4,28 @@ A 3D herding game. You're a border collie (or up to four of them) driving Hank's
 
 Live at **https://collies.app**
 
+## Practice
+
+The first time you play, the journey starts with a practice at Hank's corral, from one afternoon to the next dawn. Six short lessons: bring a stray ewe home through the gate; fetch a bunch of five with sprint, lie down and creep; pounce a ewe back onto her feet, then grab her and carry her in; gather greens for the troughs and carry the bucket to the water trough; bark at a coyote, then pounce it; and at dawn a lamb, with how lambs come and why close kin shouldn't breed. The clock only moves between lessons and nothing can die. The lamb comes with you. Skip it with ⏩ on the lesson card or from the pause menu. 🎓 on the title screen (T, or Y on a controller) turns it on again, or off.
+
 ## Controls
 
-| | Controller | Player 1 keys | Player 2 keys |
+| | Controller | Keys + mouse | Arrow side (same dog) |
 | --- | --- | --- | --- |
-| Move | left stick | WASD | arrows |
+| Move | left stick or D-pad | WASD | arrows |
 | Bark | A | Space | / |
-| Pounce | B | E | . |
-| Grab / drag (tap; tap again to drop, moving: fling; tap fast to shake) | X | R | , |
-| Lie down (hold) | Y or LT | C | ' |
-| Sprint | RT or RB | Left Shift | Right Shift |
+| Pounce | B | R or right click | . |
+| Grab / drag (let go to drop; running: fling) | hold RB or X | hold E or left click | hold , |
+| Shake (holding) | B or waggle right stick | R or right click | . |
+| Lie down | hold LT | hold C | hold ' |
+| Jump (sprinting: vault) | Y | F | [ |
+| Sprint | RT or click left stick | Left Shift | Right Shift |
 | Creep (gentle pressure) | LB | Q | ; |
 | Hank's barn | View | Tab | |
+| Map | click right stick | M | |
 | Pause | Start | P / Esc | |
 
-There's no gate button: walk into a gate to push it. Extra controllers press A at any time to drop in, and player 2 joins by pressing one of their keys.
+There's no gate button: walk into a gate to push it. Extra players press A on a controller at any time to drop in; online, a second person can join that way on a guest's screen too.
 
 ## Herding
 
@@ -43,14 +50,14 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
 ## The dog's moves
 
 - **Pounce** lunges you forward. Pounce into a sheep and it goes flying. Flying sheep carom into others (CAROM!, CHAIN x3!) and bowl coyotes over, and a punt that lands in a pen is a HOLE IN ONE. Pounce into a coyote to knock it flying and make it drop what it's carrying.
-- **Grab** (tap) a sheep, a ram or a coyote and drag it. It fights back and tires you out.
-  - Tap fast to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
-  - Tap once to let go; moving, you fling it, over a fence into a pen if you like.
+- **Grab** (hold) a sheep, a ram or a coyote and drag it. It fights back and tires you out.
+  - Pounce (or waggle the right stick) to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
+  - Let go to drop it; running, you fling it, over a fence into a pen if you like.
   - A stubborn sheep can be hauled where it won't be driven.
   - You can grab a gate and drag it round.
-- **Ropes**: one lies coiled off the trail on every leg. Grab it anywhere and drag it about; tap fast to send a wave down it. Carrying it costs no stamina.
-  - **Tug of war**: when a second dog grabs it, the knot (a red rag) starts on a white line with each side's line 3 m away. Walk back and tap grab to heave. Drag the knot over your line, or outlast the other dog: whoever runs out of stamina lets go and loses.
-- **Bones**: some dig spots turn up a bone, and it stays on the map for good. Carry it in your mouth and tap grab to throw it (further on the run). Whatever it hits gets a real knock for its size: a lamb or a coyote goes tumbling, a ewe flinches, a cougar or Hank barely budges.
+- **Ropes**: one lies coiled off the trail on every leg. Grab it anywhere and drag it about; pounce to send a wave down it. Carrying it costs no stamina.
+  - **Tug of war**: when a second dog grabs it, the knot (a red rag) starts on a white line with each side's line 3 m away. Walk back and pounce to heave. Drag the knot over your line, or outlast the other dog: whoever runs out of stamina lets go and loses.
+- **Bones**: some dig spots turn up a bone, and it stays on the map for good. Carry it in your mouth and let go to throw it (further on the run). Whatever it hits gets a real knock for its size: a lamb or a coyote goes tumbling, a ewe flinches, a cougar or Hank barely budges.
 - **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to slam it open or shut. Dogs hop fences when they push into them; sheep and coyotes can't.
 - **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
 - **Swimming**: dogs can swim anywhere: the river, the sea, the lake. Swimming slowly tires a dog out, and one that runs out of stamina in the water goes under. Sheep and coyotes can be driven into the sea or the lake too (never the river); they swim back to shore, and a soaked coyote gives up for the night.
@@ -82,7 +89,9 @@ Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sh
 
 Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
 
-At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: grab a sheep into a fire, then pounce the burning sheep at him, three times. Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten, the ice goes from a gap in the east rim: a road leads down the mountainside to Cold Harbour, where the boat lies. (Online with friends the journey still ends up here: pen the flock in his cave and shut the gate.)
+Below the top an ice cave is set into the rim, across from the hidden stair: Hank lights its hearth, it's warm right through, and there's room for the whole flock. They shelter in it on their own: cold, by night, in a blizzard, and while the yeti's raging.
+
+At the top a yeti guards his cave. He rolls snowballs that grow as they come, and headbutts anything that gets close. Fire hurts him: fetch a sheep from the ice cave, carry it up into the campfire by him, then pounce the burning sheep at him, three times (a singed one trots back to the cave by itself). Or find the hidden stair up behind the rim (a rune stone marks it), bring sheep up it single file, and bonk three of them into the cracked wall of rock at the top: it comes down on him. Once he's beaten, the ice goes from a gap in the east rim: a road leads down the mountainside to Cold Harbour, where the boat lies. (Online with friends the journey still ends up here: pen the flock in his cave and shut the gate.)
 
 ## The sea
 

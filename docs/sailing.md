@@ -12,6 +12,8 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   (`seaGangway`). Alongside, its leaf's held wide open (`gangHeld`): no dog swings, slams or grabs it into the way; only Hank (`p.auto`). Bow station, stick up: `seaCastOff` (not with sheep or dogs ashore: 🐑 / 🐕 n ✖). Sheep never brought down: `'left'`.
   The gap still shut: anything knocked onto the road hops back up (`seaWake`).
 - **What's sea** (`inSea`): past the pier's shore end (`SEAM_V`), and everywhere once she's cast off (`SEA_AWAY`).
+- **The jetty** (`quaySdf`): the most of three boxes (quay, gangplank, pier). Boxes that join overlap well (the pier 3 m under the
+  quay): each only sees its own edge, so a thin overlap leaves a ridge where they meet (it held rams off the pier).
 - **The boat never moves; the sea does.** The deck is a pen (`DECK`: `pen.deck`, its bulwark `pen.segs`, a gangway gate lashed at sea:
   `pen.lock`). 43.5 m stern to bow, 15 m across (`BOAT`; `boatHB`; the water shader's hull mask is built from it). Room to work: the tiller
   at the stern, the sheet aft, the halyard at the mast, the anchor at the bow; troughs along the rails (`deckKit`), the rings aft of them. `SEA.e/n/hdg` is where she is on the sea; `seaG` (the sea, islands, orcas: sea coords) is set to her pose undone. Cast off
@@ -53,7 +55,8 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   drops, up weighs (alongside: casts off); hauling paused, it holds a moment (`slip`). Just weighed or cast off: no drop for `lock` s
   (`SEA.aweighT`) nor till the stick's let go (`st.free`). Nobody on the tiller, nor lashed (nor Hank's `pilot`): it swings amidships and she rounds up.
 - **Hank's crew**: on the sheet while no dog has it (`SEA.assist`; off: it runs out), a beat late; eases her when
-  pressed; lets fly at anchor or with a dog overboard. On the helm out of harbour (`SEA.pilot`) till a dog takes it: for the next island's
+  pressed, quick, and on how far she'll swing over: where the wind lays her (`SEA.heelTo`, waves aside) and her roll's overshoot past it
+  (`hankEase`, `hankOver`, `hankDump`: keeps her rail out of it, casting off too; steady sailing as it was); lets fly at anchor or with a dog overboard. On the helm out of harbour (`SEA.pilot`) till a dog takes it: for the next island's
   jetty, never closer to the wind than close-hauled (`seaPilotCrs`). Calls what he sees (`seaHank`).
 - **Overboard** (`seaSwimSheep`, `T.sea.over`): a sheep swims after her, tires (`a.lung`, a ring over it), clings
   alongside if she's slow; a dog on deck within `reach` ✊ hauls it in (`seaHaul`; before any other grab: `seaGrabPick`), a

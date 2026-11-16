@@ -19,11 +19,12 @@ The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel, a ram and hurdles (a ram fold by a camp's pen: rams apart) for wool, and buying sheep (the better the sheep, the more);
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
-fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; the yeti on top, the last fire in an ice cave by him. Beat him: the ice goes from a gap
+fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; an ice cave in the rim below the top (a hearth: the flock shelters in it); the yeti on top, a campfire by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
 A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
+First time: a practice at the corral (six lessons from an afternoon to dawn, the sun waits; 🎓 on the title: again, or not).
 
 ### Run
 
@@ -38,6 +39,8 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Journey save: a reload carries on (localStorage `collies.journey`; title ▶, ✖ forgets). Not under `?sim`, `?sea`, `?go`, `?join`. See `docs/ui.md`.
+- Tutorial: the first journey on a device starts with the practice (localStorage `collies.tut`: done). Title 🎓 (T / Ⓨ): on / off; `GAME.tutWant(true)`,
+  `GAME.tutStart()`, `GAME.tutLesson(i)`. Off by itself under `?sim`, `?debug`, `?sea`, `?go`, `?join`. See `docs/tutorial.md`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
   build → 🔄 on the title reloads (`checkBuild`).
@@ -113,6 +116,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - WILD RAMS (the castaway)
 - RAM FOLDS
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
+- TUTORIAL
 - game flow
 - `ambMix`
 - main loop
@@ -129,6 +133,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `onSync(fn, o)`: every drawn frame; `frame` and `renderOnce` run them, `fn(dt, once)` (default 500: last)
 - `expose(() => ({ … }))`: into `window.GAME`, read once loading's done (after the `fxDef` wraps)
 - `onSave(key, save, load, o)`: JOURNEY SAVE; `save()` → plain JSON, `load(v)` on a resumed journey, lowest `o` first (`savePlain` / `loadPlain`, `journeyAt` / `journeyPlace`)
+- `collideFences(e, r, px, pz)` (px, pz: where it stood at its last check; shoved over a fence since: back that side)
 - `knockDog`
 - `grabPick(d)` (what Ⓧ would take, no side effects; `tryGrab` bites it, the sea overlay marks it)
 - `d.mud`/`d.wet` (0…1), `tubStep` (in a water trough: updateDog hands over)
@@ -224,6 +229,8 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
 - `trialClear(x, z, pad)` (keep off the trials' ring), `trialY(x, z)` (in `groundY` via `TRIAL_Y`), `trialHerdFault(kind, e, d)`, `R.champ` (a dog on a rope: `ropeNpc`), `b.trial` (not kept)
 - `kegHeat(x, z)` (in `heatAt`), `d.keg`
+- `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `saveFlock` too, `G.ff` off), `tutDawnNote()` (in `dawnHTML`)
+- `lambBorn(s)` (one lamb by its mother: `lambsAtDawn`, TUTORIAL)
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -275,8 +282,9 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   and water beat both: hungry/thirsty penned sheep eat or drink first, ones
   outside come in for it any time of day (`T.troughDraw`), barely while a dog
   works them (`pushed`). Hungry ones set on a trough eat through barks (`troughSet`, `T.hungry`).
+- **Shut pens hold.** No crush shoves a sheep through a fence or round a trough (`fenPrev`, `PREV`).
 - **Round the pen.** `penTarget` leads stragglers round the fence and the open
-  leaf's free end; pressed ones slide along, not into it. Lambs follow a
+  leaf's free end; pressed ones slide along, not into it; one heading into an open leaf rounds its free end (`T.gateRound`). Lambs follow a
   penned mum in.
 - **Ajar gates.** Unlatched and a crack open (`penAjar`): pens pull as if open; a sheep wanting in (`s.ppPen`) or driven at
   it shoulders it wider (`sheepNudgesGate`, `T.gate.sheep`).
@@ -319,6 +327,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
+- `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
 
 ### Icons
 
@@ -336,10 +345,10 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - DOM styles that move: write them only when they change (`will-change` them): a restyle every frame starves the game loop.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
-- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat).
+- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat; THE ICE CAVE's block, then `CAVE_DICE` draws for what it replaced). Anything that draws each step (a goat on its ledge) too: take none away. Else the seeded tests all move.
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
-  camp (pushed onto `PASS.fires` after them), nor the ice cave (the top fire moved in at the end of the pass scenery), nor the door
+  camp (pushed onto `PASS.fires` after them), nor the ice cave (cut into the rim at the end of the pass scenery, its hearth and his pen's fire pushed on then; the top fire moved up by him), nor the door
   (`doorStamp`), nor `MELT` (all 0 then). It still sees the old stalls (`STALLS`: flattened, stamped; freed by `vagStall`).
 - Anything in `scene` goes off with the land at cast-off unless it's the boat's (`seaKeep`: the vagabond, his bed and mats are) or lies aboard.
   Far off the boat under way, draw in `seaG` (sea coords): the world's frame heels with her.

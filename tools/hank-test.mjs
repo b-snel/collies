@@ -106,6 +106,7 @@ const r4 = await h.page.evaluate(() => {
   const { G, BARN, openBarn, closeBarn, barnSet, syncSheep, syncSheepDressUp, DRESS, SI, describeSheep } = GAME;
   const out = {};
   const s = G.sheep[2];
+  for (const o of G.sheep) if (o !== s && o.name === 'Dolly') o.name = GAME.sheepName({ not: 'Dolly' });   // (the dice may have named one Dolly already: she's ours alone)
   out.opened = openBarn(s); out.domShown = !document.getElementById('barn').classList.contains('hidden');
   out.sel = BARN.sel === s;
   barnSet(s, { name: 'Dolly', hat: 'straw', wool: '#f3d0dc', hatColor: '#2f8a4a', acc: ['scarf', 'shades'] });
