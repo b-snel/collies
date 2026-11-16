@@ -1,7 +1,7 @@
 # Sheep
 
 - **Lambs.** Ewes under `T.breedHunger` from 16:00, courted in a shut pen,
-  lamb at dawn (`T.lambChance`). A ram over `T.readyLose` eats before he courts.
+  lamb at dawn (`T.lambChance`; `lambsAtDawn`, one at a time: `lambBorn`). A ram over `T.readyLose` eats before he courts.
   Each lamb's mum and sire are kept; close kin breed weak lambs, fewer of them (docs/kin.md).
 - **Age** (`s.age` days, `ageAtDawn`, `oldK(s)` from `T.oldDays`); dies of age
   at dawn past `s.life`.
