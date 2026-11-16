@@ -1,6 +1,6 @@
 # Tutorial (the practice)
 
-- **A practice evening, night and dawn at Hank's corral, before day 1** (`G.tut` while it's on; `TUT`, `TUT_L`, TUTORIAL). `startGame` →
+- **A practice evening, night, dawn and morning at Hank's corral, before day 1** (`G.tut` while it's on; `TUT`, `TUT_L`, TUTORIAL). `startGame` →
   `tutDue` → `tutStart` instead of the journey. Why: a journey throws 14 sheep, eight hints and nightfall at a new player in 3 minutes.
 - **The sun waits**: `stepClock` stands still (`dtH` 0: no hunger, no nightfall, no events); each lesson sets its own hour
   (`L.hour`) behind a dip to black (`#tutFade`, `TUT_T`). No dens (`G.dens` empty: the only coyote is the lesson's), no hints
@@ -22,6 +22,9 @@
   6. **Dawn** (06:30, `tutLamb`): a lamb, to a ewe a ram courted in the night (none did: the first ram's), born as any is
      (`lambBorn`). A look at it (`TUT_T.dawn` s), then the game's own dawn card, with a note (`tutDawnNote`, `.dawnTut`): fed ewes
      penned with a ram lamb at dawn; close kin breed weak lambs, and fewer; 🌳; a new ram. Held to go on. (`?sim`: no card.)
+  7. **Wool** (09:00, `tutWool`): Hank gets his clippers and shears the shut corral (🧶 `TUT_T.wool`); a ewe's cut (🩸, `TUT_T.cut`:
+     the sun waits, so no worse); the vagabond stands by the corral (`TUT_T.trader`; his only pitch meanwhile, on even under `?sim`). Bark
+     by him; on the 🩹 mat, bark: to Hank; he patches her up. The trader's back on the trail on the next lesson (`vagReset`) or the journey.
 - **A step** is done by doing it, never by a timer: `done(U, dt)` (`U.acc`: s of doing it). `text(U, cap, touch)`: its line, the
   player's own buttons (`TUT_CAPS`, `tutDev`). `at(U)`: what it's about; `drive(U)` / `spot(U)`: where to stand. Order's forgiving
   (the ewe walks in by herself: both steps done). `TUT_SHUT` ends a lesson: everyone in, the gate latched; sheep that got out: "🐑 n still out".
@@ -32,7 +35,7 @@
 - **Over or skipped** (`tutEnd`): `resetGame`, a new journey as ever; the same flock (`TUT.seed`: `spawnFlock` on the same dice),
   the names and looks the barn or the dawn card gave it (by place in the flock), and the lamb (born again to the same mother and
   ram on the same dice: `U.dice`; it counts in `G.stats.start`, not as born). Hints for what the passed lessons taught are marked
-  seen (`learnt`; all six: `herd` too, then `travel`); `TUT_KEY` set.
+  seen (`learnt`; all seven: `herd` too, then `travel`); `TUT_KEY` set.
   A journey that was saved is carried on with instead. `FLOCK.journeys`: the practice isn't one.
 - **When**: by itself the first time on a device (no `collies.tut`, no saved journey, no flock that's been on one); never under
   `?sim`, `?debug`, `?sea`, `?go`, `?join`. The title's 🎓 (`#tTut`, T / Ⓨ; `tutWant`): on or off, any time. Skip: ⏩ on the card, the

@@ -1,7 +1,8 @@
 // Headless test: `node tools/tutorial-test.mjs` (TUTORIAL). A bot plays the practice through, each step by doing it: the stray
 // (pushes the gate open, herds one ewe home, pushes it shut), the bunch (sprint, lie down, creep, five home), trouble (pounces a cast
 // ewe over, grabs her, flings her in over the fence), supper (gathers greens, tips them in a trough, carries the bucket to the water
-// trough), night (barks at the coyote, pounces it off), dawn (a lamb). Meanwhile the sun waits, nothing's hinted or saved, nobody's
+// trough), night (barks at the coyote, pounces it off), dawn (a lamb), wool (Hank shears 🧶; barks by the trader, buys 🩹 on its mat;
+// Hank patches the cut ewe up; then the trader's back on the trail). Meanwhile the sun waits, nothing's hinted or saved, nobody's
 // hurt. Then day 1 starts as ever with the same flock, its lamb and the name it was given, and what was learnt isn't hinted again.
 // Also: left alone nothing moves on; at supper the flock eats and drinks though the clock stands; skipped (⏩) it's the plain
 // journey; a saved journey is carried on with; off by itself under ?sim.
@@ -69,7 +70,9 @@ const r = await h.page.evaluate(() => {
     else if (key === 34) shut();
     else if (key === 40) { const c = U.coy, dd = Math.hypot(c.x - d.x, c.z - d.z); goTo(c.x, c.z, { stop: 3, extra: { sprint: dd > 12 } }); if (dd < 8 && G.time - pressed > 0.8) { P().bot.bark = true; pressed = G.time; } }
     else if (key === 41) { const c = U.coy, dd = Math.hypot(c.x - d.x, c.z - d.z); goTo(c.x + c.vx * 0.2, c.z + c.vz * 0.2, { stop: 1, extra: { sprint: dd > 9 } }); if (dd < 5.5 && G.time - pressed > 0.9) { P().bot = to(c.x + c.vx * 0.15 - d.x, c.z + c.vz * 0.15 - d.z, { pounce: true }); pressed = G.time; } }
-    else P().bot = {};   // (dawn: a look at the lamb)
+    else if (key === 61) { const V = GAME.VAG; if (goTo(V.x, V.z, { stop: 2.4 }) && G.time - pressed > 0.6) { P().bot = { bark: true }; pressed = G.time; } }
+    else if (key === 62) { const w = GAME.ALL_WARES.find(o => o.id === 'bandage'); if (goTo(w.x, w.z, { stop: 0.4 }) && G.time - pressed > 0.6) { P().bot = { bark: true }; pressed = G.time; } }
+    else P().bot = {};   // (dawn: a look at the lamb; wool: Hank shears, then patches her up)
   };
   const watch = () => {
     seen.hour.add(r1(G.clock.hour)); seen.hints = Math.max(seen.hints, HINTED.filter(k => G.hints[k]).length); seen.dens = Math.max(seen.dens, G.dens.length);
@@ -79,6 +82,8 @@ const r = await h.page.evaluate(() => {
     if (U.L === 3) { seen.food = Math.max(seen.food || 0, ...p.troughs.map(t => t.food)); seen.water = Math.max(seen.water || 0, p.water.w); seen.hungry = Math.max(seen.hungry || 0, ...G.sheep.map(s => s.hunger)); }
     if (U.L === 5 && U.lamb && !seen.lamb) { const r = GAME.kinRec(U.lamb.lid) || {}, by = id => G.sheep.find(s => s.lid === id); seen.lamb = { n: G.sheep.length, name: U.lamb.name, mum: U.lamb.mother.name, mumRec: (by(r.m) || {}).name, sire: (by(r.f) || {}).name, ram: !!(by(r.f) || {}).ram, penned: U.lamb.pen === p || GAME.penAt(U.lamb.x, U.lamb.z) === p, hour: G.clock.hour };
       U.lamb.name = 'Pip'; U.lamb.renamed = true; G.sheep[4].name = 'Biscuit'; G.sheep[4].renamed = true; seen.noSave = GAME.saveFlock() === false && !localStorage.getItem(GAME.FLOCK_KEY); }   // (named on the dawn card; one renamed in the barn)
+    if (U.L === 6) { const V = GAME.VAG; seen.wool = Math.max(seen.wool || 0, G.wool || 0); if (V.out) seen.traded = true; if ((GAME.HANK.meds.bandage || 0) > 0) seen.bought = true;
+      seen.trader = Math.max(seen.trader || 0, Math.hypot(V.x - p.gx, V.z - p.gz)); seen.cut = seen.cut || (U.ewe.bleedRate > 0 && U.ewe.name); seen.cured = !(U.ewe.bleedRate > 0); }
     seen.dead = Math.max(seen.dead, G.sheep.filter(s => s.dead).length);
   };
 
@@ -114,6 +119,7 @@ const r = await h.page.evaluate(() => {
   res.play = { secs: r1(t), log, stuck, hours: [...seen.hour], hints: seen.hints, saved: seen.saved, minHp: r1(seen.minHp), dead: seen.dead, dens: seen.dens, marks: seen.marks };
   const L1 = G.sheep[G.sheep.length - 1], k1 = GAME.kinRec(L1.lid) || {}, by1 = id => G.sheep.find(s => s.lid === id);
   res.lamb = { seen: seen.lamb, noSave: seen.noSave, lamb: !!L1.lamb, name: L1.name, mum: L1.mother && L1.mother.name, mumRec: (by1(k1.m) || {}).name, sire: (by1(k1.f) || {}).name, renamed: G.sheep[4].name, start: G.stats.start, born: G.stats.born };
+  res.wool = { wool: seen.wool, traded: !!seen.traded, bought: !!seen.bought, trader: r1(seen.trader || 0), cut: seen.cut, cured: !!seen.cured, after: { st: GAME.VAG.st, clippers: GAME.HANK.clippers, wool: G.wool, meds: GAME.HANK.meds.bandage } };
   res.supper = { food: r1(seen.food || 0), water: r1(seen.water || 0), hungry: r1(seen.hungry || 0) };
   res.after = { on: !!G.tut, hour: G.clock.hour, day: G.clock.day, n: G.sheep.filter(s => !s.dead).length, n0, same: G.sheep.slice(0, n0).map((s, i) => i === 4 ? 'x' : s.name).join() === names2.split(',').map((n, i) => i === 4 ? 'x' : n).join(), dens: G.dens.length, coyotesUp: G.coyotes.filter(c => c.state !== 'sleep').length,
     hints: Object.keys(G.hints).sort().join(), journeys: GAME.FLOCK.journeys - j0, mode: G.mode, latched: p.latched, penned: G.sheep.filter(s => GAME.penAt(s.x, s.z) === p).length, stats: G.stats.saved + G.stats.eaten, want: TUT.want };
@@ -143,21 +149,23 @@ const r = await h.page.evaluate(() => {
 });
 console.log(JSON.stringify(r, null, 1)); console.log(h.errors.slice(0, 3));
 let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
-const { start: S, idle: I, skip: K, play: Pl, after: A, resume: Z, lamb: Lm, supper: Su, eat: E } = r, steps = Pl.log.map(l => l[0]).join();
+const { start: S, idle: I, skip: K, play: Pl, after: A, resume: Z, lamb: Lm, supper: Su, eat: E, wool: W } = r, steps = Pl.log.map(l => l[0]).join();
 ok('off by itself under ?sim: the plain journey; a reset is never a practice', !r.auto && r.simPlain && r.resetPlain);
 ok(`it starts: lesson 1 at ${S.hour}:00, one ewe ${S.eweOut} m out, the gate latched, no dens`, S.on && S.L === 0 && S.S === 0 && S.eweOut > 25 && S.latched && !S.dens && !S.coyotes);
 ok(`left alone 30 s: the sun waits (${I.hour}), the lesson waits, the flock keeps to the pen (${I.penned}), nobody's hungry`, I.hour === S.hour && I.L === 0 && I.S === 0 && I.penned >= 13 && I.hunger < 0.2 && !I.ff);
 ok(`skipped: day 1, 07:00, the same flock penned, dens back, every hint to come, not offered again`, !K.on && K.hour === 7 && K.day === 1 && K.same && K.dens > 0 && !K.hints && K.seen && !K.want && K.penned === 14 && K.latched);
-ok(`played through in ${Pl.secs} s, every step by doing it (${steps})`, !Pl.stuck && !A.on && steps === '0,1,2,10,11,12,13,14,20,21,22,23,30,31,32,33,34,40,41,50');
-ok(`each lesson its own hour (${Pl.hours.join(', ')}), the clock never running`, Pl.hours.join() === '13.5,15.5,17.8,19,21,6.5');
+ok(`played through in ${Pl.secs} s, every step by doing it (${steps})`, !Pl.stuck && !A.on && steps === '0,1,2,10,11,12,13,14,20,21,22,23,30,31,32,33,34,40,41,50,60,61,62,63');
+ok(`each lesson its own hour (${Pl.hours.join(', ')}), the clock never running`, Pl.hours.join() === '13.5,15.5,17.8,19,21,6.5,9');
 ok(`supper: a hungry flock (${Su.hungry}); greens in a trough (${Su.food}), the bucket's water in theirs (${Su.water})`, Su.hungry >= 0.45 && Su.food > 0.9 && Su.water > 5);
 ok(`left alone 200 s at supper: nobody hungrier than ${E.left.worst}, none starving or dead, the step still waiting`, E.left.hour === 19 && E.left.worst <= 0.5 && !E.left.starve && !E.left.dead && E.left.S === 0);
 ok(`...and they eat and drink though the sun stands still (${E.hour}:00; fed ${E.fed}/14, drank ${E.drank}/14 in 40 s; the bucket out in the field, full)`, E.hour === 19 && E.h0 >= 0.45 && E.fed >= 8 && E.t0 >= 0.45 && E.drank >= 8 && E.food < 12 && E.bucketOut > 12 && E.bucketW > 5);
 ok(`dawn (${Lm.seen && Lm.seen.hour}): a lamb in the pen by its mum ${Lm.seen && Lm.seen.mum}, its line her and a ram (${Lm.seen && Lm.seen.sire}); the flock save untouched`, !!Lm.seen && Lm.seen.n === A.n0 + 1 && Lm.seen.penned && Lm.seen.mumRec === Lm.seen.mum && Lm.seen.ram && Lm.noSave);
+ok(`wool: Hank shears (🧶 ${W.wool}); ${W.cut}'s cut; the trader by the corral (${W.trader} m), his wares out, 🩹 bought, she's patched up`, W.wool >= 2 && W.cut && W.trader < 30 && W.traded && W.bought && W.cured);
+ok(`...then day 1 as ever: the trader off the corral (${W.after.st} under ?sim), no clippers, no wool, no 🩹`, W.after.st === 'off' && !W.after.clippers && !W.after.wool && !W.after.meds);
 ok(`meanwhile: no hints (${Pl.hints}), nothing saved (${Pl.saved}), no dens, nobody dead, no dog badly hurt (${Pl.minHp}), a marker up`, !Pl.hints && !Pl.saved && !Pl.dens && !Pl.dead && Pl.minHp >= 0.5 && Pl.marks > 20);
 ok(`then day 1 as ever: 07:00, the same flock penned behind the latched gate (${A.n}: the lamb too), dens asleep, a clean tally, one journey`, A.hour === 7 && A.day === 1 && A.n === A.n0 + 1 && A.same && A.penned === A.n && A.latched && A.dens > 0 && !A.coyotesUp && !A.stats && A.journeys === 1 && A.mode === 'play' && !A.want);
 ok(`the lamb's there by the same mum (${Lm.mum}) and ram (${Lm.sire}), with the name it was given (${Lm.name}); the one renamed in the barn too (${Lm.renamed}); it counts from the start (${Lm.start}), not as born`, Lm.lamb && Lm.name === 'Pip' && Lm.mum === Lm.seen.mum && Lm.mumRec === Lm.mum && Lm.sire === Lm.seen.sire && Lm.renamed === 'Biscuit' && Lm.start === A.n && !Lm.born);
-ok(`what was learnt isn't hinted again (${A.hints})`, A.hints === 'bark,deliver,forage,gates,grab,herd,lie,modes,pounce,start,water');
+ok(`what was learnt isn't hinted again (${A.hints})`, A.hints === 'bark,deliver,forage,gates,grab,herd,lie,modes,pounce,start,water,wound');
 ok('the journey runs and saves', r.journey.hour && r.journey.saves);
 ok(`a saved journey (day ${Z.keep}): untouched by the practice, carried on with after (day ${Z.day}, ${Z.hour}:00)`, Z.keep === 3 && Z.mid.on && Z.mid.hour === 13.5 && Z.mid.savedDay === 3 && !Z.on && Z.day === 3 && Z.hour === 11 && Z.stored);
 ok('no page errors', !h.errors.length);
