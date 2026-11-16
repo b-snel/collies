@@ -46,14 +46,14 @@ Two rams travel with the flock. They're big, creamy and stubborn to drive. Lean 
 ## The dog's moves
 
 - **Pounce** lunges you forward. Pounce into a sheep and it goes flying. Flying sheep carom into others (CAROM!, CHAIN x3!) and bowl coyotes over, and a punt that lands in a pen is a HOLE IN ONE. Pounce into a coyote to knock it flying and make it drop what it's carrying.
-- **Grab** (tap) a sheep, a ram or a coyote and drag it. It fights back and tires you out.
-  - Tap fast to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
-  - Tap once to let go; moving, you fling it, over a fence into a pen if you like.
+- **Grab** (hold) a sheep, a ram or a coyote and drag it. It fights back and tires you out.
+  - Pounce (or waggle the right stick) to shake it: a shaken coyote drops its prey and runs, and a ram bucks you off.
+  - Let go to drop it; running, you fling it, over a fence into a pen if you like.
   - A stubborn sheep can be hauled where it won't be driven.
   - You can grab a gate and drag it round.
-- **Ropes**: one lies coiled off the trail on every leg. Grab it anywhere and drag it about; tap fast to send a wave down it. Carrying it costs no stamina.
-  - **Tug of war**: when a second dog grabs it, the knot (a red rag) starts on a white line with each side's line 3 m away. Walk back and tap grab to heave. Drag the knot over your line, or outlast the other dog: whoever runs out of stamina lets go and loses.
-- **Bones**: some dig spots turn up a bone, and it stays on the map for good. Carry it in your mouth and tap grab to throw it (further on the run). Whatever it hits gets a real knock for its size: a lamb or a coyote goes tumbling, a ewe flinches, a cougar or Hank barely budges.
+- **Ropes**: one lies coiled off the trail on every leg. Grab it anywhere and drag it about; pounce to send a wave down it. Carrying it costs no stamina.
+  - **Tug of war**: when a second dog grabs it, the knot (a red rag) starts on a white line with each side's line 3 m away. Walk back and pounce to heave. Drag the knot over your line, or outlast the other dog: whoever runs out of stamina lets go and loses.
+- **Bones**: some dig spots turn up a bone, and it stays on the map for good. Carry it in your mouth and let go to throw it (further on the run). Whatever it hits gets a real knock for its size: a lamb or a coyote goes tumbling, a ewe flinches, a cougar or Hank barely budges.
 - **Gates** swing when you push them, and latch shut with a clack. A latched gate needs a fresh shove to open again. Sprint into one to slam it open or shut. Dogs hop fences when they push into them; sheep and coyotes can't.
 - **The sheep launcher**: just upstream of the river bridge there's a seesaw. Drive sheep onto the low end and pounce on the red target, and everyone on it sails across the river. Anything that lands in the water swims back out.
 - **Swimming**: dogs can swim anywhere: the river, the sea, the lake. Swimming slowly tires a dog out, and one that runs out of stamina in the water goes under. Sheep and coyotes can be driven into the sea or the lake too (never the river); they swim back to shore, and a soaked coyote gives up for the night.
