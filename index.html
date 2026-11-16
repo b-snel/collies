@@ -1258,9 +1258,20 @@ const T = {
     cast: { follow: 6, lose: 16, near: 1.7, walk: 2.2, run: 4.6, hop: 8 } },
   // DUCKS: runner ducks on the legs before Falcon Canyon (on: off in ?sim): `groups` a leg (CAMPS legs[0]…legs[1]), n a bunch, `lat` m off the trail,
   // by water within `wet` m if it can; home within `range` m; found within findR; only stepped within `near` m of a dog; in a line `line` m apart;
-  // off somewhere every moveT s. coats: [body, head]
-  duck: { on: !SIM, groups: 2, legs: [0, 3], n: [4, 7], lat: [8, 34], wet: 26, range: 12, findR: 16, max: 48, near: 140, line: 0.7, moveT: [18, 40],
-    coats: [['#f6f2e8', '#f6f2e8'], ['#d9b98c', '#f6f2e8'], ['#6a4430', '#6a4430'], ['#2a2a30', '#2f5a3a'], ['#b8a890', '#7a8a6a']] },
+  // off somewhere every moveT s. coats: [body, head]; `max` wild ones in all (no more hatch)
+  duck: { on: !SIM, groups: 2, legs: [0, 3], n: [4, 7], lat: [8, 34], wet: 26, range: 12, findR: 16, max: 72, near: 140, line: 0.7, moveT: [18, 40],
+    coats: [['#f6f2e8', '#f6f2e8'], ['#d9b98c', '#f6f2e8'], ['#6a4430', '#6a4430'], ['#2a2a30', '#2f5a3a'], ['#b8a890', '#7a8a6a']],
+    // LIFE (DUCKS): a duckling (`fluff` its down) trails its mum, `follow` m apart in a line; grown at `grow` days (from `small` × the size), old from
+    // `old` (paler, `slow` × the pace), gone at `die` days. A grown drake (`drake` of them) and a hen without a brood in a bunch mate, `mateP` an hour
+    // × room left (1 − n / `cap`, clutches to come counted), by day; no drake (or hen): one comes over from a bunch within `seek` m (`visitP` an
+    // hour). She hatches `clutch` ducklings `incubH` h on. A new bunch: `brood` of them a hen with ducklings. Ticked every `tick` h, every bunch.
+    life: { grow: 2, small: 0.42, old: 7, slow: 0.85, die: [9, 13], follow: 0.42, drake: 0.45, mateP: 0.12, cap: 12, seek: 120, visitP: 0.2,
+      incubH: 16, clutch: [2, 5], brood: 0.5, tick: 0.25, fluff: ['#f2d65e', '#e9c84a'] },
+    // PREY (DUCKS): a coyote ('pack', not striking) runs at one within `coyR` m on land (`chase` s, then none for `cd` s), its catch eaten `eatT` s on;
+    // a cougar hunts one in its range (`cougarSc` m worse than a sheep). Awake ones shy off one within `seeR` m (a cougar: half), fly up within `flyR`
+    // (ducklings can't: they run); asleep they don't see it, till one's taken (the rest up, awake `alarmT` s). Out of every dog's reach (`near`,
+    // off screen) by night, `farP` an hour × (n / cap)² one's taken (`farW`: weights duckling, old, the rest). None of it's ours: no alerts.
+    prey: { coyR: 9, chase: 6, cd: 20, cougarSc: 14, seeR: 7, flyR: 2.4, eatT: 5, alarmT: 25, farP: 0.3, farW: [3, 2, 1] } },
   // HERD (the small-herd mover: ducks, the TRIALS' sheep), each kind: press: × the sheep's pressure radius; walk/trot/run m/s; bunch: how close
   // they keep (m); space: apart; mom: s a push carries them; swim m/s; fly (ducks): up and off with a dog within `close` m, a sprinter within
   // `sprint`, a bark this hard (`bark`, 0…1): v m/s, up m, T s
@@ -11764,14 +11775,21 @@ function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
   scareCoyote(c, amt, src || { x: c.x - vx, z: c.z - vz }, true);
   c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
 }
-// a predator's catch is done for: a sheep (killSheep), or a cria (LLAMAS: llamaKilled)
-function preyKill(s, why) { if (s.isLlama) llamaKilled(s, why); else killSheep(s, why); }
+// SHARED HOOK: a predator's catch is done for: a sheep (killSheep), a cria (LLAMAS: llamaKilled), a duck (DUCKS: duckDie)
+function preyKill(s, why) { if (s.isLlama) llamaKilled(s, why); else if (s.isHerd) duckDie(s, 'prey'); else killSheep(s, why); }
+// SHARED HOOK: not ours (a wild cria, a duck): taken, dropped, eaten without a word (no toast, Hank, hint, rumble, stats, red arrow)
+const preyWild = s => !!s && (s.isHerd || (s.isLlama && !s.tame));
+function preyCry(s, k = 1.1, vol = 0.45, pan = 0) { if (s.isHerd) { if (duckling(s)) DSND.peep(pan, 0.1, 1.1, 3); else DSND.quack(pan, 0.14, s.pitch * k, 2); } else Sound.baa(s.pitch * k, vol, pan, true); }
+const preyName = s => s.isLlama ? (s.name && s.name !== '🦙' ? s.name : 'a cria') : s.name || 'a sheep';
 function grab(c, s) {
+  const wild = preyWild(s);
   s.grabbed = c; c.prey = s; c.state = 'drag'; c.stateT = 0; s.state = 'flee'; c.fromPen = s.pen || penAt(s.x, s.z);
-  if (c.pack) { c.pack.carrier = c; setPhase(c.pack, 'escape'); for (const o of c.pack.members) if (o !== c && o.state !== 'leave') o.role = 'screen'; }
+  if (c.pack && !s.isHerd) { c.pack.carrier = c; setPhase(c.pack, 'escape'); for (const o of c.pack.members) if (o !== c && o.state !== 'leave') o.role = 'screen'; }   // (DUCKS: a snack: the pack hunts on)
   burst(s.x, s.y + 0.7, s.z, 10, '#f7f3e8', { speed: 2.5, up: 2.5 });
-  Sound.baa(s.pitch * 1.1, 0.45, 0, true);
-  toast(`A coyote grabbed ${s.name || 'a sheep'} — chase it down!`, 'bad');
+  preyCry(s);
+  if (s.isHerd) duckSnatched(s, c);   // DUCKS: the rest of the bunch up and off
+  if (wild) return;
+  toast(`A coyote grabbed ${preyName(s)} — chase it down!`, 'bad');
   // (Hank calls "Get 'im!" once he can see it: hankSpotPredators)
   for (const p of G.players) rumble(p, 0.6, 0.4, 250);
   hint('coyote-grab');
@@ -11780,8 +11798,9 @@ function dropPrey(c, saved) {
   const s = c.prey; if (!s) return;
   c.prey = null; s.grabbed = null; s.panic = 1; s.fear = 1; const a = Math.random() * TAU; s.fdx = Math.cos(a); s.fdz = Math.sin(a); s.hopV = 3;
   if (c.state === 'drag') { c.state = 'pack'; c.stateT = 0; }
-  if (c.pack && c.pack.phase === 'escape') { c.pack.carrier = null; c.pack.target = s; setPhase(c.pack, 'stalk'); }
-  if (saved) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
+  if (c.pack && c.pack.phase === 'escape' && !s.isHerd) { c.pack.carrier = null; c.pack.target = s; setPhase(c.pack, 'stalk'); }
+  if (s.isHerd) duckFreed(s, c);   // DUCKS: up and off
+  if (saved && !preyWild(s)) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
 }
 // the pack's brain: phases and posts. Members read their goal from c.gx/c.gz/c.spd.
 function updatePack(p, dt, fc) {
@@ -11955,15 +11974,15 @@ const penPrey = (c, pen) => { let b = null, bd = 1e9; for (const s of G.sheep) {
 // shut in with its catch: it mauls it where it stands. The sheep's done for unless a dog gets there (scareCoyote drops it: saved)
 function coyoteMaul(c, dt) {
   const s = c.prey, M = T.coyoteMaul;
-  if (!c.mauling) { c.mauling = true; c.maulT = 0; s.maulHp = s.maulHp ?? 1; toast(`🐺 ${s.name || ''} 🔒`, 'bad'); for (const p of G.players) rumble(p, 0.7, 0.5, 250); Sound.growl(panOf(c.x, c.z), 0.25); }
+  if (!c.mauling) { c.mauling = true; c.maulT = 0; s.maulHp = s.maulHp ?? 1; if (!preyWild(s)) { toast(`🐺 ${s.name || ''} 🔒`, 'bad'); for (const p of G.players) rumble(p, 0.7, 0.5, 250); } Sound.growl(panOf(c.x, c.z), 0.25); }
   c.maulT -= dt; c.yaw += Math.sin(G.time * 22) * dt * 6;   // shaking it
   if (c.maulT <= 0) {
     c.maulT = M.every * rnd(0.8, 1.2); s.maulHp -= M.every / M.time;
     burst(s.x, s.y + 0.6, s.z, 7, '#f7f3e8', { speed: 2.4, up: 2.2, size: 0.14, life: 0.7 }); Sound.growl(panOf(c.x, c.z), 0.14);
-    if (Math.random() < 0.5) Sound.baa(s.pitch * 1.2, 0.45, panOf(s.x, s.z), true);
-    floatText(`${Math.max(0, Math.round(s.maulHp * 100))}%`, s.x, s.y + 1.5, s.z, '#ff7a6b', 0.7);
+    if (Math.random() < 0.5) preyCry(s, 1.2, 0.45, panOf(s.x, s.z));
+    if (!preyWild(s)) floatText(`${Math.max(0, Math.round(s.maulHp * 100))}%`, s.x, s.y + 1.5, s.z, '#ff7a6b', 0.7);
   }
-  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; preyKill(s, 'eaten'); c.state = 'leave'; c.stateT = 0; c.restT = G.time + M.rest; if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
+  if (s.maulHp <= 0) { c.prey = null; s.grabbed = null; c.mauling = false; preyKill(s, 'eaten'); c.state = 'leave'; c.stateT = 0; c.restT = G.time + M.rest; if (c.pack && !s.isHerd) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); } }
 }
 // shut in and not fleeing: dodges dogs, else runs down the nearest penned sheep (grab → coyoteMaul), a short rest after each kill
 function penHavoc(c, nd, ndd) {
@@ -12010,6 +12029,7 @@ function updateCoyotes(dt) {
     let dX = 0, dZ = 0, spd = 0, crouchW = 0, bed = false;
     c.inPen = penAt(c.x, c.z); c.trap = c.inPen && penShut(c.inPen) ? c.inPen : null;
     if (c.state !== 'drag') c.mauling = false;
+    if (c.state === 'pack') coyoteDuck(c, dt);   // DUCKS: one on land close by: a snack
     if (c.state === 'pack' && c.trap && c.courage > 0 && !(c.pack && c.pack.phase === 'retreat')) {   // shut in: whatever's in here with it
       const s = penPrey(c, c.trap);
       if (s) { c.gx = s.x; c.gz = s.z; c.spd = T.coyoteRun; c.crouchW = 0; if (Math.hypot(s.x - c.x, s.z - c.z) < 1.05) grab(c, s); }
@@ -12053,10 +12073,10 @@ function updateCoyotes(dt) {
         let ax = c.x - fc.x + (c.pack ? (c.pack.homeX - c.x) * 0.3 : 0), az = c.z - fc.z + (c.pack ? (c.pack.homeZ - c.z) * 0.3 : 0);   // toward its den
         if (nd) { ax += (c.x - nd.x) * 2; az += (c.z - nd.z) * 2; }
         const al = Math.hypot(ax, az) || 1; dX = ax / al; dZ = az / al; spd = T.coyoteDrag;
-        if ((c.stateT > T.coyoteDragTime && ndd > 14) || c.stateT > T.coyoteDragTime * 1.8) {
+        if (s.isHerd ? c.stateT > T.duck.prey.eatT : (c.stateT > T.coyoteDragTime && ndd > 14) || c.stateT > T.coyoteDragTime * 1.8) {   // (DUCKS: gulped down)
           const prey = c.prey; c.prey = null; prey.grabbed = null; preyKill(prey, 'eaten');
           c.state = 'leave'; c.stateT = 0;
-          if (c.pack) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); }
+          if (c.pack && !prey.isHerd) { c.pack.carrier = null; setPhase(c.pack, 'retreat'); }   // (DUCKS: it's had its supper; the pack hunts on)
         }
         break;
       }
@@ -12266,7 +12286,7 @@ const COUGARS = GROVES.map((gv, i) => { const L = gv.trees[0];
   return { i, grove: gv, lair: L, isCougar: true, x: L.px, z: L.pz, y: L.py, h: 0, vx: 0, vz: 0, yaw: L.yaw, leg: 0,
     state: 'away', t: 0, huntT: 0, holdT: 0, prey: null, target: null, hunts: false, wait: 0, driven: 0, cryT: 0, dazeT: 0, models: makeCougar() }; });
 function perchCougar(k) { const L = k.lair; k.air = null; k.x = L.px; k.z = L.pz; k.y = L.py; k.h = L.py - groundY(L.px, L.pz); k.vx = k.vz = 0; k.yaw = L.yaw; }
-const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram;   // a shut pen doesn't stop it: it jumps the fence
+const cougarPrey = s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.ram && (!s.isHerd || duckPrey(s));   // a shut pen doesn't stop it: it jumps the fence (DUCKS: on land)
 // the pen the cougar is standing in (open or shut), if any
 const cougarPen = k => penAt(k.x, k.z);
 // a point just inside (in < 0) or outside (in > 0) a pen's fence, on the side facing (x, z)
@@ -12291,6 +12311,14 @@ function cougarTarget(k, exclude = null, range = T.cougar.range) {
     if (s === exclude || !criaPrey(s) || !cougarPrey(s)) continue;
     const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > range) continue;
     let sc = Math.hypot(s.x - k.x, s.z - k.z) + dl * 0.3 - 1000;
+    for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 20) sc += (20 - dd) * 4; }
+    for (const o of COUGARS) if (o !== k && o.target === s) sc += 25;
+    if (sc < bs) { bs = sc; best = s; }
+  }
+  if (range !== Infinity) for (const s of HERDS) {   // DUCKS: one in its range (a sheep's worth more)
+    if (s === exclude || !duckPrey(s)) continue;
+    const dl = Math.hypot(s.x - L.x, s.z - L.z); if (dl > range) continue;
+    let sc = Math.hypot(s.x - k.x, s.z - k.z) + dl * 0.3 + T.duck.prey.cougarSc;
     for (const d of G.dogs) { const dd = Math.hypot(d.x - s.x, d.z - s.z); if (dd < 20) sc += (20 - dd) * 4; }
     for (const o of COUGARS) if (o !== k && o.target === s) sc += 25;
     if (sc < bs) { bs = sc; best = s; }
@@ -12328,22 +12356,24 @@ function cougarWarn(k) {
 function cougarGrab(k, s) {
   s.grabbed = k; s.pen = null; k.prey = s; k.target = null; s.state = 'flee'; k.state = 'drag'; k.t = 0; k.cryT = 0.3;
   burst(s.x, s.y + 0.7, s.z, 12, '#f7f3e8', { speed: 2.5, up: 2.5 });
-  Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); Sound.growl(panOf(k.x, k.z), 0.2);
-  toast(`A cougar has ${s.name || 'a sheep'} — stop it before it gets up its tree!`, 'bad');
-  for (const p of G.players) rumble(p, 0.7, 0.5, 300);
+  preyCry(s, 1.2, 0.5, panOf(s.x, s.z)); Sound.growl(panOf(k.x, k.z), 0.2);
+  if (s.isHerd) duckSnatched(s, k);   // DUCKS: the rest up and off
+  const wild = preyWild(s);   // (a duck, a wild cria: not ours, no alarm)
+  if (!wild) { toast(`A cougar has ${preyName(s)} — stop it before it gets up its tree!`, 'bad'); for (const p of G.players) rumble(p, 0.7, 0.5, 300); }
   for (const o of G.sheep) {   // the sheep round about scatter
     if (o === s || o.dead || o.grabbed || o.air || o.heldBy) continue;
     const dx = o.x - k.x, dz = o.z - k.z, d = Math.hypot(dx, dz) + 1e-4; if (d > 14) continue;
     const q = 1 - d / 14; o.fdx = dx / d; o.fdz = dz / d; o.fear = Math.max(o.fear, 0.5 + q * 0.5); o.panic = Math.max(o.panic, 0.4 + q * 0.6); o.hopV = Math.max(o.hopV, 2 + q * 2);
   }
-  hint('cougar-grab');
+  if (!wild) hint('cougar-grab');
 }
 // it lets go (a dog got to it, or dawn): the sheep runs off
 function cougarLetGo(k, saved) {
   const s = k.prey; k.prey = null; if (!s) return;
   s.grabbed = null; s.y = groundY(s.x, s.z); s.panic = 1; s.fear = 1; s.state = 'flee'; s.hopV = 3;
   const dx = s.x - k.lair.x, dz = s.z - k.lair.z, dl = Math.hypot(dx, dz) || 1; s.fdx = dx / dl; s.fdz = dz / dl;
-  if (saved) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
+  if (s.isHerd) duckFreed(s, k);   // DUCKS: up and off
+  if (saved && !preyWild(s)) { G.stats.saved++; floatText('Saved!', s.x, s.y + 1.6, s.z, '#7ed957'); Sound.chime([0, 7, 12], 660, 0.18); hankSaved(s); }
 }
 // ...and bolts for a tree
 function cougarDrop(k, saved) { cougarLetGo(k, saved); cougarSpooked(k, 1); }
@@ -12643,7 +12673,7 @@ function updateCougars(dt) {
         if (hd) { if (hd.pounceT > 0) { cougarBonked(k, hd); break; } cougarDrop(k, true); if (canMaul(k, hd)) startMaul(k, hd); break; }   // pounced: bonked. Just run into: it drops it and goes for you
         if (cougarOut(k, 'drag', C.drag, dt)) { holdCougarPrey(k); break; }   // in a pen: over the fence with it
         moveCougar(k, L.bx, L.bz, C.drag, dt); holdCougarPrey(k);
-        if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.45, 0.85); Sound.baa(s.pitch * 1.2, 0.5, panOf(s.x, s.z), true); }   // it cries all the way
+        if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.45, 0.85); preyCry(s, 1.2, 0.5, panOf(s.x, s.z)); }   // it cries all the way
         if (Math.hypot(L.bx - k.x, L.bz - k.z) < 1.3 || Math.hypot(L.x - k.x, L.z - k.z) < 1.6) { k.state = 'climb'; k.t = 0; }
         break;
       }
@@ -12655,11 +12685,11 @@ function updateCougars(dt) {
         const ox = L.bx - L.x, oz = L.bz - L.z, ol = Math.hypot(ox, oz) || 1;
         if (s) {
           s.x = k.x + ox / ol * 0.7; s.z = k.z + oz / ol * 0.7; s.y = Math.max(groundY(s.x, s.z), k.y + 0.3); s.vx = s.vz = 0;
-          if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.4, 0.7); Sound.baa(s.pitch * 1.25, 0.5, panOf(s.x, s.z), true); }
+          if ((k.cryT -= dt) <= 0) { k.cryT = rnd(0.4, 0.7); preyCry(s, 1.25, 0.5, panOf(s.x, s.z)); }
         }
         if (f < 1) break;
         if (s) {   // up the tree: the sheep is gone. Its stone goes at the foot of the tree.
-          burst(L.px, L.py + 0.6, L.pz, 18, '#f7f3e8', { speed: 2, up: 1.5 });
+          burst(L.px, L.py + 0.6, L.pz, s.isHerd ? 8 : 18, '#f7f3e8', { speed: 2, up: 1.5 });
           k.prey = null; s.grabbed = null;
           s.x = L.x + ox / ol * 2.2; s.z = L.z + oz / ol * 2.2; s.y = groundY(s.x, s.z);
           preyKill(s, 'cougar');   // (LLAMAS: a cria)
@@ -16567,14 +16597,15 @@ function drawCoyoteArrows() {
   }
   const pad = 40, cx = W / 2, cy = H / 2;
   for (const c of G.coyotes) {
-    if ((c.state === 'leave' && !c.prey) || c.state === 'sleep') continue;
+    const ours = c.prey && !preyWild(c.prey);   // (a duck, a wild cria: none of ours, no alarm)
+    if ((c.state === 'leave' && !ours) || c.state === 'sleep') continue;
     const [px, py, pz] = proj(c.x, c.y + 0.8, c.z);
     if (px > 0 && px < W && py > 0 && py < H && pz < 1) continue;
     const dx = px - cx, dy = py - cy, k = Math.min((W / 2 - pad) / Math.abs(dx || 1e-3), (H / 2 - pad) / Math.abs(dy || 1e-3));
     const [ax, ay] = mapDodge(cx + dx * k, cy + dy * k, cx, cy), a = Math.atan2(dy, dx), dist = Math.hypot(c.x - cam.x, c.z - cam.z);   // (MAP: not under the minimap)
-    const pulse = c.prey ? 1 + Math.sin(G.time * 12) * 0.25 : 1, sz = (c.prey ? 15 : 11) * pulse;
+    const pulse = ours ? 1 + Math.sin(G.time * 12) * 0.25 : 1, sz = (ours ? 15 : 11) * pulse;
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.globalAlpha = clamp(1.4 - dist / 70, 0.35, 1);
-    ctx.fillStyle = c.prey ? '#ff3b2f' : '#e8574a'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 2.5;
+    ctx.fillStyle = ours ? '#ff3b2f' : '#e8574a'; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(sz, 0); ctx.lineTo(-sz * 0.6, -sz * 0.8); ctx.lineTo(-sz * 0.25, 0); ctx.lineTo(-sz * 0.6, sz * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
@@ -17590,7 +17621,7 @@ function hankSees(x, z, y = null, far = 1) {
 function hankSpotPredators() {
   const hk = HANK, night = isNight(), key = night ? 'n' + (G.clock.hour < 12 ? G.clock.day - 1 : G.clock.day) : 'd' + G.clock.day;
   for (const c of G.coyotes) {   // one with a sheep in its jaws: "Get 'im!"
-    if (!c.prey || c.hankGrab === c.prey || !hankSees(c.x, c.z)) continue;
+    if (!c.prey || preyWild(c.prey) || c.hankGrab === c.prey || !hankSees(c.x, c.z)) continue;   // (a duck, a wild cria: not ours)
     c.hankGrab = c.prey; if (c.pack) c.pack.hankSeen = true; hank('get_im', null, { force: true });
   }
   for (const p of G.packs) {   // a pack he hasn't seen yet: first today/tonight, or more of them
@@ -17602,9 +17633,9 @@ function hankSpotPredators() {
   }
   for (const k of COUGARS) {
     const L = k.lair;
-    if (k.prey && k.hankGrab !== k.prey && hankSees(k.x, k.z, k.y)) {
-      k.hankGrab = k.prey; k.hankSaw = true; const s = k.prey;
-      hank(null, pick([`Cougar! It's got ${s.name}! After it!`, `The big cat's got ${s.name}! Don't let it reach the tree!`]), { force: true });
+    if (k.prey && !preyWild(k.prey) && k.hankGrab !== k.prey && hankSees(k.x, k.z, k.y)) {   // (a duck, a wild cria: not ours)
+      k.hankGrab = k.prey; k.hankSaw = true; const s = k.prey, nm = preyName(s);
+      hank(null, pick([`Cougar! It's got ${nm}! After it!`, `The big cat's got ${nm}! Don't let it reach the tree!`]), { force: true });
     } else if (k.state === 'maul' && k.dog && k.hankMaul !== k.dog && hankSees(k.x, k.z)) {
       k.hankMaul = k.dog; hank(null, pick(['Shake it off! Fight, dog!', 'Get it off ye!']), { force: true });
     } else if (!k.hankSaw && (k.state === 'stalk' || k.state === 'leap') && hankSees(k.x, k.z)) {
@@ -21381,25 +21412,27 @@ expose(() => ({ TRIAL, TF, TL, TRIAL_EVENTS, TRIAL_PH, TRIAL_HOW, trialTip, tria
 // HERD: the small-herd mover (herdStep): dog pressure (the sheep's radii × T.herd[kind].press, bent toward its heading), momentum, contagion,
 // a bunch, stress and panic, a bark, a pounce, ✊. TRIALS uses it for the host's sheep and ducks. e.isHerd; e.kind 'duck' | 'sheep'; e.grp.
 // =====================================================================
-const HERDS = [], HERD = { nid: 0, groups: [], seed: 0, seen: false, I: null };
+const HERDS = [], HERD = { nid: 0, groups: [], seed: 0, seen: false, I: null, lifeH: 0, peepT: 1, died: { old: 0, prey: 0 }, born: 0 };
 let _herdR = Math.random;
 function herdMake(kind, x, z, o = {}) {
   const K = T.herd[kind], R = _herdR;
   const e = { isHerd: true, kind, id: o.id || ++HERD.nid, x, z, y: groundY(x, z), vx: 0, vz: 0, yaw: o.yaw ?? R() * TAU, r: K.r, grp: o.grp || null,
     fear: 0, stress: 0, panic: 0, goT: 0, gdx: 0, gdz: 0, spd: 0, press: 0, state: 'idle', t: 0, thinkT: R() * 2, tx: x, tz: z, peck: R() * 3,
     heldBy: null, air: null, fly: null, swim: false, hopY: 0, leg: R() * TAU, wing: 0, coat: o.coat | 0, mark: !!o.mark, wool: o.wool ?? 1, scale: o.scale ?? 1,
-    trial: !!o.trial, landT: -9, pitch: o.pitch ?? (kind === 'duck' ? 0.9 + R() * 0.3 : 0.85 + R() * 0.3) };
+    trial: !!o.trial, landT: -9, pitch: o.pitch ?? (kind === 'duck' ? 0.9 + R() * 0.3 : 0.85 + R() * 0.3), grabbed: null, pep: 1 };
+  if (kind === 'duck' && !e.trial) duckBorn(e, o);   // LIFE: its age, drake or hen, its mum
   HERDS.push(e); if (e.grp) e.grp.list.push(e); return e;
 }
 function herdRemove(e) {
   if (e.heldBy) { const d = e.heldBy; if (d.holding === e) { d.holding = null; d.holdKind = null; d.grabLock = true; } e.heldBy = null; }
+  if (e.grabbed) { if (e.grabbed.prey === e) e.grabbed.prey = null; e.grabbed = null; }   // PREY: in a coyote's or a cougar's jaws
   const i = HERDS.indexOf(e); if (i >= 0) HERDS.splice(i, 1);
-  if (e.grp) { const j = e.grp.list.indexOf(e); if (j >= 0) e.grp.list.splice(j, 1); }
-  e.gone = true;
+  if (e.grp) { const j = e.grp.list.indexOf(e); if (j >= 0) e.grp.list.splice(j, 1); for (const o of e.grp.list) if (o.mum === e) o.mum = null; }
+  e.gone = e.dead = true;
 }
 function herdGroup(kind, x, z, o = {}) { const g = { id: HERD.groups.length, kind, x, z, hx: x, hz: z, list: [], trial: !!o.trial, found: false, goal: null, goT: 0, sleep: false, cx: x, cz: z, n: 0, workT: -99, active: true, ...o }; HERD.groups.push(g); return g; }
 function herdDropGroup(g) { for (const e of [...g.list]) herdRemove(e); const i = HERD.groups.indexOf(g); if (i >= 0) HERD.groups.splice(i, 1); }
-const herdFree = e => !e.heldBy && !e.air && !e.fly && e.state !== 'shear' && e.state !== 'stay';
+const herdFree = e => !e.heldBy && !e.grabbed && !e.air && !e.fly && e.state !== 'shear' && e.state !== 'stay';
 const herdHoldKind = e => e.kind === 'duck' ? 'duck' : 'tsheep';
 // ---------------- where they live: two bunches a leg, the legs before Falcon Canyon (own rng) ----------------
 const duckSpotOK = (x, z) => sdfAt(x, z) > 2.5 && !overWater(x, z) && !inRiver(x, z) && !inSea(x, z) && harbK(x, z) <= 0 && passK(sAt(x, z)) <= 0 && canyonK(sAt(x, z)) <= 0
@@ -21437,9 +21470,14 @@ function resetDucks(seed) {
   const R = mulberry32((HERD.seed ^ 0x5d1c4b) >>> 0), K = T.duck; _herdR = R;
   for (const P of duckPlan(HERD.seed)) {
     const g = herdGroup('duck', P.x, P.z, { s: P.s, leg: P.leg, goT: K.moveT[0] * R() }), coat = Math.floor(R() * K.coats.length), mix = R() < 0.3 ? Math.floor(R() * K.coats.length) : coat;
-    for (let i = 0, n = Math.round(K.n[0] + R() * (K.n[1] - K.n[0])); i < n; i++) {
-      const a = R() * TAU, r = 0.4 + R() * 1.4, x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
-      herdMake('duck', sdfAt(x, z) > 0.6 ? x : P.x, sdfAt(x, z) > 0.6 ? z : P.z, { grp: g, coat: i % 3 === 2 ? mix : coat });
+    const at = () => { const a = R() * TAU, r = 0.4 + R() * 1.4, x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r; return sdfAt(x, z) > 0.6 ? [x, z] : [P.x, P.z]; };
+    for (let i = 0, n = Math.round(K.n[0] + R() * (K.n[1] - K.n[0])); i < n; i++) {   // LIFE: a drake and a hen at least; all ages
+      const [x, z] = at(), L = K.life;
+      herdMake('duck', x, z, { grp: g, coat: i % 3 === 2 ? mix : coat, male: i === 0 ? true : i === 1 ? false : R() < L.drake, age: L.grow + R() * (L.die[0] - L.grow) });
+    }
+    if (R() < K.life.brood) {   // a hen with her ducklings
+      const hen = g.list.find(e => !e.male && duckOldK(e) < 0.5);
+      if (hen) for (let i = 0, n = 2 + Math.floor(R() * 3), age = R() * K.life.grow * 0.8; i < n; i++) { const [x, z] = at(); herdMake('duck', x, z, { grp: g, coat: R() < 0.5 ? hen.coat : coat, age, mum: hen }); }
     }
   }
   _herdR = Math.random;
@@ -21449,22 +21487,23 @@ function updateHerds(dt, dtH) {
   if (!HERDS.length || SEA_AWAY) return;
   const K = T.duck;
   for (const g of HERD.groups) {
-    let x = 0, z = 0, n = 0; for (const e of g.list) if (!e.heldBy) { x += e.x; z += e.z; n++; }
+    let x = 0, z = 0, n = 0; for (const e of g.list) if (!e.heldBy && !e.grabbed) { x += e.x; z += e.z; n++; }
     if (n) { g.cx = x / n; g.cz = z / n; } g.n = n;
-    g.active = g.trial || G.dogs.some(d => Math.abs(d.x - g.cx) < K.near && Math.abs(d.z - g.cz) < K.near) || g.list.some(e => e.heldBy);
+    g.active = g.trial || G.dogs.some(d => Math.abs(d.x - g.cx) < K.near && Math.abs(d.z - g.cz) < K.near) || g.list.some(e => e.heldBy || e.grabbed);
     if (g.active && !g.trial) duckGroupStep(g, dt, dtH);
   }
   for (const e of [...HERDS]) if (!e.grp || e.grp.active) herdStep(e, dt);
+  if ((HERD.lifeH += dtH) >= K.life.tick) { duckLife(HERD.lifeH); HERD.lifeH = 0; }   // LIFE: every bunch, near or far
   if (G.mode === 'play') duckFind();
 }
 // a wild bunch: home by the water; now and then the leader marches them off in a line to a spot near it (or into the water); asleep by night.
 // Worked by a dog and then left be: home's where they ended up
 function duckGroupStep(g, dt, dtH) {
-  const K = T.duck, worked = g.list.some(e => e.goT > 0 && e.press > 0.04) || g.list.some(e => e.heldBy || e.fly || e.air);
+  const K = T.duck, worked = g.list.some(e => e.goT > 0 && e.press > 0.04) || g.list.some(e => e.heldBy || e.grabbed || e.fly || e.air);
   if (worked) { g.workT = G.time; g.goal = null; }
   if (G.time - g.workT < 1) return;
   if (G.time - g.workT < 8 && G.time - g.workT > 6 && g.n) { g.hx = g.cx; g.hz = g.cz; }   // settled where they were driven
-  g.sleep = isNight();
+  g.sleep = isNight() && G.time - (g.alarmT ?? -1e9) > K.prey.alarmT;   // (PREY: one taken: the rest awake a while)
   if (g.sleep) { g.goal = null; return; }
   if (g.goal) {
     const L = g.list.find(herdFree);
@@ -21489,9 +21528,157 @@ function duckFind() {
     if (first) { hint('duck'); if (hankSees(g.cx, g.cz)) hank(null, pick(["Ducks! Nice and gentle: they'll fly if ye rush them.", "Runner ducks! Good practice, them. Steady now."]), { force: true, delay: 0.8 }); }
   }
 }
+// ---------------- LIFE (wild ones; T.duck.life): e.age days, e.male (a drake) or a hen, e.life (days it has). A duckling (younger than `grow`)
+// trails its mum (e.mum) in a line, pecks round her, sleeps tucked in by her, can't fly; grown, it's on its own. Old: paler, slower; then gone.
+// A drake and a free hen in a bunch mate (♥); she hatches a clutch (e.clutch: hours to go) at her side. duckLife: every T.duck.life.tick h, every
+// bunch, near or far (the host) ----------------
+function duckWild(e) { return e.kind === 'duck' && !e.trial; }
+function duckGrowK(e) { return duckWild(e) ? clamp(e.age / T.duck.life.grow, 0, 1) : 1; }
+function duckling(e) { return duckWild(e) && e.age < T.duck.life.grow; }
+function duckOldK(e) { const L = T.duck.life; return duckWild(e) && e.life ? clamp((e.age - L.old) / Math.max(0.5, e.life - L.old), 0, 1) : 0; }
+function duckMum(e) { const m = e.mum; return m && !m.gone && m.grp === e.grp && !m.grabbed && !m.fly && !m.air ? m : null; }   // (held by a dog: they trail the dog)
+function duckBorn(e, o) {
+  const L = T.duck.life, R = _herdR;
+  e.age = o.age ?? L.grow + R() * (L.old - L.grow); e.male = o.male ?? R() < L.drake; e.life = o.life ?? L.die[0] + R() * (L.die[1] - L.die[0]);
+  e.mum = o.mum || null; e.clutch = o.clutch || 0; e.dad = o.dad ?? null;
+  duckLook(e);
+}
+function duckLook(e) { const L = T.duck.life; e.scale = lerp(L.small, 1, duckGrowK(e)); e.pep = 1 - (1 - L.slow) * duckOldK(e); }
+// the one ahead of it in the march: the next grown one up the list (its own mum's brood trails her: duckTrail)
+function herdAhead(e) { const L = e.grp.list; for (let i = L.indexOf(e) - 1; i >= 0; i--) if (!duckMum(L[i])) return L[i]; return null; }
+// a duckling's place in its mum's line: after the sibling ahead of it (list order), or her
+function duckAhead(e, mum) { let a = mum; for (const o of e.grp ? e.grp.list : HERDS) { if (o === e) break; if (o.mum === mum && herdFree(o)) a = o; } return a; }
+function duckTrail(e, mum, dt, K) {
+  const L = T.duck.life, ahead = duckAhead(e, mum), d = mum.heldBy, sp = Math.hypot((d || mum).vx, (d || mum).vz), g = e.grp;
+  if (sp > 0.35 || d || mum.swim || (g && g.goal) || mum.state === 'move') {   // she's off: in a line behind her, each after the one ahead
+    const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = L.follow * (ahead === mum ? 1.4 : 1) + (ahead.heldBy ? 0.6 : 0);
+    const dx = ahead.x - Math.sin(ay) * f - e.x, dz = ahead.z - Math.cos(ay) * f - e.z, dd = Math.hypot(dx, dz);
+    e.state = 'walk';
+    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
+    return _hdv;
+  }
+  e.state = 'graze';   // she's pecking about: so are they, round her
+  const dm = Math.hypot(mum.x - e.x, mum.z - e.z);
+  if ((e.thinkT -= dt) <= 0 || dm > 1.5) { e.thinkT = rnd(1, 3); const a = Math.random() * TAU, r = rnd(0.25, 0.85); e.tx = mum.x + Math.cos(a) * r; e.tz = mum.z + Math.sin(a) * r; e.peck = dm > 1.5 ? 0 : rnd(0.4, 1.6); }
+  e.peck -= dt;
+  const dx = e.tx - e.x, dz = e.tz - e.z, dd = Math.hypot(dx, dz);
+  if (e.peck <= 0 && dd > 0.12) { const v = K.walk * (dm > 1.2 ? 1.3 : 0.5); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
+  return _hdv;
+}
+const duckHenFree = e => !e.male && e.age >= T.duck.life.grow && duckOldK(e) < 0.5 && !e.clutch && !e.grabbed && !e.grp.list.some(o => o.mum === e);
+function duckLife(h) {
+  const L = T.duck.life, P = T.duck.prey, night = isNight();
+  let total = 0; for (const e of HERDS) if (duckWild(e)) total++;
+  for (const g of HERD.groups) {
+    if (g.trial || !g.list.length) continue;
+    for (const e of [...g.list]) {   // a day older: ducklings grow (grown: on their own), the old slow, the oldest go
+      e.age += h / 24;
+      if (e.mum && (e.mum.gone || e.age >= L.grow)) e.mum = null;
+      duckLook(e);
+      if (e.age >= e.life && !e.grabbed && !e.heldBy) { duckDie(e, 'old'); total--; }
+    }
+    for (const e of [...g.list]) if (e.clutch > 0 && (e.clutch -= h) <= 0) { e.clutch = 0; total += duckHatch(e, total); }   // her clutch hatches
+    const n = g.list.length, egg = (L.clutch[0] + L.clutch[1]) / 2; let due = n + g.list.filter(e => e.clutch > 0).length * egg;   // (and the clutches still to hatch)
+    if (!night && due < L.cap && total < T.duck.max) {   // by day: a drake and a free hen (none of one: one comes over from a bunch near; none at all: a pair)
+      const hens = g.list.filter(duckHenFree), drakes = g.list.filter(e => e.male && e.age >= L.grow && !e.grabbed);
+      if (hens.length && drakes.length) { for (const hen of hens) if (due < L.cap && Math.random() < L.mateP * h * (1 - due / L.cap)) { duckMate(drakes[Math.floor(Math.random() * drakes.length)], hen); due += egg; } }
+      else if (Math.random() < L.visitP * h) { if (!hens.length) duckVisit(g, false); if (!drakes.length) duckVisit(g, true); }
+    }
+    if (!n) continue;
+    if (night && !g.active && !duckSeen(g) && Math.random() < P.farP * h * (n / L.cap) ** 2) duckFarPrey(g);   // PREY: out of sight, in the night (more, the more of them)
+  }
+}
+const duckSeen = g => Math.abs(g.cx - cam.x) + Math.abs(g.cz - cam.z) < cam.view * 2.6 + 30;
+function duckMate(dr, hen) {
+  hen.clutch = T.duck.life.incubH; hen.dad = dr.coat;
+  if (hen.grp.active) herdFx('love', (dr.x + hen.x) / 2, (dr.z + hen.z) / 2, 1);
+}
+function duckHatch(hen, total) {   // → how many
+  const L = T.duck.life, g = hen.grp, n = Math.min(Math.round(rnd(L.clutch[0] - 0.49, L.clutch[1] + 0.49)), T.duck.max - total); if (n <= 0) return 0;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU, r = hen.swim ? 0.3 : 0.5, x = hen.x - Math.sin(hen.yaw) * r + Math.cos(a) * 0.2, z = hen.z - Math.cos(hen.yaw) * r + Math.sin(a) * 0.2;
+    herdMake('duck', x, z, { grp: g, age: 0, male: Math.random() < 0.5, mum: hen, coat: hen.dad !== null && Math.random() < 0.5 ? hen.dad : hen.coat, yaw: hen.yaw });
+  }
+  HERD.born += n;
+  if (g.active) herdFx('hatch', hen.x, hen.z, n);
+  return n;
+}
+// a bunch with no drake (male) or no free hen: one comes over from a bunch within `seek` m with one to spare (or none to mate there). Both out
+// of sight: it's there; both near a dog: it walks over (the bunch pulls it in)
+function duckVisit(g, male) {
+  const L = T.duck.life, ok = male ? e => e.male && e.age >= L.grow && !e.grabbed && !e.heldBy : e => duckHenFree(e) && !e.heldBy;
+  let best = null, bd = L.seek; const gx = g.list.length ? g.cx : g.hx, gz = g.list.length ? g.cz : g.hz;
+  for (const o of HERD.groups) {
+    if (o === g || o.trial || !o.list.length) continue;
+    const d = Math.hypot(o.cx - gx, o.cz - gz); if (d >= bd) continue;
+    const c = o.list.filter(ok), mates = o.list.some(male ? duckHenFree : e => e.male && e.age >= L.grow);
+    if (c.length > 1 || (c.length && !mates)) { bd = d; best = c.sort((a, b) => duckOldK(a) - duckOldK(b))[0]; }
+  }
+  if (!best) return;
+  const o = best.grp, far = !g.active && !o.active && !duckSeen(g) && !duckSeen(o);
+  if (!far && !(g.active && o.active)) return;   // (one near, one not: he'd stop half way)
+  o.list.splice(o.list.indexOf(best), 1); best.grp = g; g.list.push(best);
+  if (far) { const a = Math.random() * TAU; best.x = g.hx + Math.cos(a) * 1.2; best.z = g.hz + Math.sin(a) * 1.2; best.y = groundY(best.x, best.z); best.vx = best.vz = 0; best.swim = false; }
+  if (g.list.length === 1) { g.cx = best.x; g.cz = best.z; g.n = 1; }
+}
+// ---------------- PREY (T.duck.prey): coyotes (coyoteDuck), cougars (cougarTarget), any predator: duckPrey(e) / duckNear(x, z, r) to find
+// one, e.grabbed = it and it.prey = e (its jaws move it: herdStep lets it), duckSnatched(e, by), preyKill(e) (duckDie) or duckFreed(e, by).
+// Awake ones shy off and fly up (duckFoes); asleep they don't see it coming. Out of sight: duckFarPrey. Not ours: no alerts (preyWild) ----------------
+function duckPrey(e) { return e.kind === 'duck' && !e.trial && !e.gone && !e.grabbed && !e.heldBy && !e.air && !e.fly && !e.swim && !SEA_AWAY; }
+function duckNear(x, z, r) {
+  let best = null, bd = r;
+  for (const e of HERDS) { if (Math.abs(e.x - x) > bd || Math.abs(e.z - z) > bd || !duckPrey(e)) continue; const d = Math.hypot(e.x - x, e.z - z); if (d < bd) { bd = d; best = e; } }
+  return best;
+}
+const _dkF = { x: 0, z: 0, press: 0, fly: null };
+function duckFoes(e) {   // → { x, z: away; press; fly: the one to fly up from }
+  const P = T.duck.prey; _dkF.x = _dkF.z = _dkF.press = 0; _dkF.fly = null;
+  const see = (o, R) => {
+    const dx = e.x - o.x, dz = e.z - o.z; if (Math.abs(dx) > R || Math.abs(dz) > R) return;
+    const dd = Math.hypot(dx, dz) + 1e-4; if (dd > R) return;
+    const k = (1 - dd / R) * 1.2; _dkF.x += dx / dd * k; _dkF.z += dz / dd * k; _dkF.press = Math.max(_dkF.press, k);
+    if (dd < P.flyR) _dkF.fly = o;
+  };
+  for (const c of G.coyotes) if (!c.gone && !c.air && !c.heldBy && c.state !== 'sleep' && c.state !== 'burrow' && c.state !== 'dead') see(c, P.seeR);
+  for (const k of COUGARS) if ((k.h || 0) < 1.5 && ['stalk', 'leap', 'drag', 'retreat', 'leapDog'].includes(k.state)) see(k, P.seeR * 0.5);
+  return _dkF;
+}
+// taken: the rest of its bunch wake, up and off (ducklings scurry)
+function duckSnatched(e, by) {
+  e.state = 'held'; e.fly = null; e.air = null; e.goT = 0; e.swim = false;
+  const g = e.grp; if (g) g.alarmT = G.time;
+  if (g) for (const o of g.list) if (o !== e && herdFree(o) && Math.hypot(o.x - by.x, o.z - by.z) < 12) { o.stress = 1; if (!o.swim) herdFly(o, o.x - by.x + rnd(-1, 1), o.z - by.z + rnd(-1, 1)); }
+}
+// dropped (a dog got to it, dawn): up and off (a duckling runs)
+function duckFreed(e, by) {
+  e.grabbed = null; e.y = groundY(e.x, e.z); e.stress = 1; e.panic = 1; e.state = 'move';
+  herdFly(e, e.x - by.x + rnd(-0.5, 0.5), e.z - by.z + rnd(-0.5, 0.5));
+}
+// gone: eaten (preyKill: a puff of feathers), taken out of sight, or of old age (a few feathers, if anyone's near)
+function duckDie(e, why, fx = true) {
+  HERD.died[why === 'old' ? 'old' : 'prey']++;
+  if (fx && e.grp && e.grp.active) herdFx('feathers', e.x, e.z, why === 'old' ? 0 : 1);
+  herdRemove(e);
+}
+function duckFarPrey(g) {   // ducklings likeliest, then the old
+  const W = T.duck.prey.farW, w = e => duckling(e) ? W[0] : duckOldK(e) > 0 ? W[1] : W[2];
+  let tot = 0; for (const e of g.list) if (!e.heldBy) tot += w(e);
+  let r = Math.random() * tot; for (const e of g.list) { if (e.heldBy) continue; if ((r -= w(e)) <= 0) { duckDie(e, 'prey', false); return; } }
+}
+// a coyote on the hunt ('pack'; not striking, dragging, defending) runs at a duck on land close by: a while, then gives up on ducks
+function coyoteDuck(c, dt) {
+  const P = T.duck.prey, ph = c.pack && c.pack.phase;
+  if (!HERDS.length || c.prey || c.trap || G.time < (c.duckCd || 0) || ['strike', 'escape', 'defend', 'retreat', 'dig', 'raid'].includes(ph)) { c.duck = null; return; }
+  let e = c.duck;
+  if (!e || !duckPrey(e) || Math.hypot(e.x - c.x, e.z - c.z) > P.coyR * 1.6) { e = c.duck = duckNear(c.x, c.z, P.coyR); c.duckT = 0; if (!e) return; }
+  if ((c.duckT += dt) > P.chase) { c.duck = null; c.duckCd = G.time + P.cd; return; }
+  c.gx = e.x + e.vx * 0.2; c.gz = e.z + e.vz * 0.2; c.spd = T.coyoteRun; c.crouchW = 0.3;
+  if (Math.hypot(e.x - c.x, e.z - c.z) < 1.0) { c.duck = null; grab(c, e); }
+}
 function herdStep(e, dt) {
   const K = T.herd[e.kind], g = e.grp;
   e.t += dt;
+  if (e.grabbed) { if (e.grabbed.prey !== e) e.grabbed = null; else { e.state = 'held'; e.wing = 1; e.swim = false; e.fly = null; return; } }   // PREY: in its jaws (it moves it)
   if (e.heldBy) { herdHeld(e, dt); return; }
   if (e.air) { herdAirStep(e, dt); return; }
   if (e.fly) { herdFlyStep(e, dt); return; }
@@ -21520,6 +21707,9 @@ function herdStep(e, dt) {
     if (K.fly && !e.swim && (dd < K.fly.close || (d.mode === 'sprint' && dd < K.fly.sprint && closing > 3) || (pounce && dd < 4))) flyFrom = d;
   }
   { const dx = e.x - HANK.x, dz = e.z - HANK.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd < 2.2) { const k = (2.2 - dd) / 2.2 * 0.5; dfx += dx / dd * k; dfz += dz / dd * k; press = Math.max(press, k * 0.4); } }   // Hank: just aside
+  if (e.kind === 'duck' && !e.trial && !(g && g.sleep)) {   // PREY: a coyote or a cougar about: off, and up from one close (asleep: they don't see it)
+    const F = duckFoes(e); dfx += F.x; dfz += F.z; press = Math.max(press, F.press); stressIn += F.press * 0.8; if (F.fly && !e.swim) flyFrom = F.fly;
+  }
   e.press = press;
   // its bunch: where they are, who's crowding it, who's on the move by it, their mood
   const L = g ? g.list : null; let mx = 0, mz = 0, mn = 0, ms = 0, sx = 0, sz = 0, avx = 0, avz = 0, an = 0;
@@ -21527,13 +21717,14 @@ function herdStep(e, dt) {
     if (o === e || !herdFree(o)) continue;
     const dx = o.x - e.x, dz = o.z - e.z, dd = Math.hypot(dx, dz) + 1e-4;
     mx += o.x; mz += o.z; mn++; ms += o.stress;
-    if (dd < K.space) { const k = (K.space - dd) / K.space; sx -= dx / dd * k; sz -= dz / dd * k; }
+    const sp0 = K.space * (e.scale + o.scale) * 0.5;   // (LIFE: ducklings tuck in closer)
+    if (dd < sp0) { const k = (sp0 - dd) / sp0; sx -= dx / dd * k; sz -= dz / dd * k; }
     if (dd < K.bunch * 2.2) { const sp = Math.hypot(o.vx, o.vz); if (sp > T.moveMin) { avx += o.vx; avz += o.vz; an++; } }
   }
   e.stress = clamp(e.stress + (stressIn - (calm ? 0.45 : stressIn > 0.02 ? 0 : 0.15)) * dt, 0, 1);
   if (mn) { const avg = ms / mn; e.stress = clamp(e.stress + (avg - e.stress) * (avg > e.stress ? T.stressUp : T.stressDown) * dt * 0.5, 0, 1); }
   e.panic = e.stress > T.panicAt ? 1 : Math.max(0, e.panic - dt);
-  if (flyFrom) { herdFly(e, e.x - flyFrom.x, e.z - flyFrom.z); return; }
+  if (flyFrom) { herdFly(e, e.x - flyFrom.x, e.z - flyFrom.z); if (e.fly) return; }   // (LIFE: a duckling can't: it runs)
   // pushed: off the way the pressure says, and on a while after (momentum); calm by movers: along with them (contagion)
   if (press > 0.04) {
     const l = Math.hypot(dfx, dfz) || 1, ux = dfx / l, uz = dfz / l;
@@ -21548,26 +21739,32 @@ function herdStep(e, dt) {
     if (e.panic) { const w = Math.sin(e.t * 3.1 + e.id * 1.7) * 0.9, c = Math.cos(w), s = Math.sin(w); hx = e.gdx * c - e.gdz * s; hz = e.gdz * c + e.gdx * s; }   // panicked: weaving
     const f = Math.min(1, e.goT / (K.mom * 0.4)); tx = hx * e.spd * f; tz = hz * e.spd * f;
   } else { const v = herdIdle(e, dt, K); tx = v.x; tz = v.z; }
-  if (mn && !e.panic && !(g && g.goal && e.state === 'walk')) {   // the bunch pulls a straggler back in (less while it's all on the move)
+  const mum = duckMum(e);
+  if (mum && !e.panic && e.state !== 'walk') {   // LIFE: a duckling keeps by its mum (pushed, it comes back to her)
+    const dx = mum.x - e.x, dz = mum.z - e.z, dd = Math.hypot(dx, dz) + 1e-4, want = 0.9;
+    if (dd > want) { const k = Math.min(1.6, (dd - want) * 0.8) * (e.goT > 0 ? 0.6 : 1); tx += dx / dd * k * K.trot * 0.6; tz += dz / dd * k * K.trot * 0.6; }
+  } else if (mn && !e.panic && !(g && g.goal && e.state === 'walk')) {   // the bunch pulls a straggler back in (less while it's all on the move)
     const cx = mx / mn, cz = mz / mn, dx = cx - e.x, dz = cz - e.z, dd = Math.hypot(dx, dz) + 1e-4, want = K.bunch + Math.sqrt(mn) * K.space * 0.6;
     if (dd > want) { const k = Math.min(1.5, (dd - want) * 0.6) * (e.goT > 0 ? 0.5 : 1); tx += dx / dd * k * K.trot * 0.5; tz += dz / dd * k * K.trot * 0.5; }
   }
   tx += sx * K.trot; tz += sz * K.trot;
   if (e.swim) { tx *= K.swim / K.trot; tz *= K.swim / K.trot; }
+  tx *= e.pep; tz *= e.pep;   // (LIFE: the old slower)
   const a = Math.min(1, dt * (press > 0.04 ? 7 : 3.5)); e.vx += (tx - e.vx) * a; e.vz += (tz - e.vz) * a;
   herdMove(e, dt);
 }
 const _hdv = { x: 0, z: 0 };
 // left alone: wild ones asleep by night (huddled), marching in line after the leader, pecking about; the trials' just graze where they are
 function herdIdle(e, dt, K) {
-  const g = e.grp; _hdv.x = _hdv.z = 0;
-  if (g && g.sleep) {
-    e.state = 'sleep'; const dx = g.cx - e.x, dz = g.cz - e.z, dd = Math.hypot(dx, dz);
-    if (dd > 0.9) { _hdv.x = dx / dd * K.walk * 0.6; _hdv.z = dz / dd * K.walk * 0.6; }
+  const g = e.grp, mum = duckMum(e); _hdv.x = _hdv.z = 0;
+  if (g && g.sleep) {   // (LIFE: a duckling tucked in by its mum)
+    e.state = 'sleep'; const dx = (mum ? mum.x : g.cx) - e.x, dz = (mum ? mum.z : g.cz) - e.z, dd = Math.hypot(dx, dz);
+    if (dd > (mum ? 0.3 : 0.9)) { const v = K.walk * (mum ? 0.9 : 0.6); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
     return _hdv;
   }
-  if (g && g.goal) {   // in a line: the leader to the spot, each after the one ahead
-    const i = g.list.indexOf(e), ahead = i > 0 ? g.list[i - 1] : null, lead = !ahead || !herdFree(ahead);
+  if (mum) return duckTrail(e, mum, dt, K);   // LIFE: a duckling: after its mum
+  if (g && g.goal) {   // in a line: the leader to the spot, each after the one ahead (LIFE: a duckling after its mum: duckTrail)
+    const ahead = herdAhead(e), lead = !ahead || !herdFree(ahead);
     const gx = lead ? g.goal.x : ahead.x - Math.sin(ahead.yaw) * T.duck.line, gz = lead ? g.goal.z : ahead.z - Math.cos(ahead.yaw) * T.duck.line, dx = gx - e.x, dz = gz - e.z, dd = Math.hypot(dx, dz);
     e.state = 'walk';
     if (dd > (lead ? 0.4 : 0.15)) { const v = Math.min(K.walk * (lead ? 1 : 1.25), dd * 2); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
@@ -21594,6 +21791,11 @@ function herdMove(e, dt) {
 // up and off a few metres, away from what put it up (a fx: quack, feathers)
 function herdFly(e, dx, dz) {
   const F = T.herd[e.kind].fly; if (!F) return;
+  if (duckling(e)) {   // LIFE: too small to fly: it scurries off, cheeping
+    const K = T.herd.duck, l = Math.hypot(dx, dz) || 1; e.gdx = dx / l; e.gdz = dz / l; e.goT = K.mom; e.spd = K.run; e.stress = Math.min(1, e.stress + 0.3); e.state = 'move';
+    if (G.time - (e.peepAt || -9) > 1) { e.peepAt = G.time; herdFx('peep', e.x, e.z, 1); }
+    return;
+  }
   const l = Math.hypot(dx, dz) || 1, a = Math.atan2(dx / l, dz / l) + rnd(-0.5, 0.5), k = e.trial ? 0.65 : 1;
   e.fly = { t: 0, T: rnd(F.T[0], F.T[1]) * k, vx: Math.sin(a) * F.v * k, vz: Math.cos(a) * F.v * k, up: F.up * k };
   e.goT = 0; e.stress = Math.min(1, e.stress + 0.25); e.state = 'fly'; e.yaw = a;
@@ -21614,7 +21816,7 @@ function herdFlyStep(e, dt) {
 // flung, dropped from a height, bonked: it flies (a duck flaps down, slowly)
 function herdLaunch(e, vx, vz, vy) { e.air = { vx, vz, vy, h: Math.max(0.3, e.hopY), spin: 0 }; e.fly = null; e.goT = 0; e.state = 'air'; }
 function herdAirStep(e, dt) {
-  const a = e.air, g = T.airGrav * (e.kind === 'duck' ? 0.32 : 1);
+  const a = e.air, g = T.airGrav * (e.kind === 'duck' ? (duckling(e) ? 0.6 : 0.32) : 1);   // (LIFE: a duckling's wings won't hold it up)
   a.vy -= g * dt; a.h += a.vy * dt; a.spin += dt * (e.kind === 'duck' ? 2 : 9);
   e.vx = a.vx; e.vz = a.vz; e.x += a.vx * dt; e.z += a.vz * dt;
   collideWorld(e, e.r, SWIM_SDF); if (a.h < T.fenceClear) collideFences(e, e.r); a.vx = e.vx; a.vz = e.vz;
@@ -21628,7 +21830,8 @@ function herdAirStep(e, dt) {
 // a pounce into one: bowled over (a duck flaps up out of it)
 function herdBonked(e, d) {
   e.bonkT = G.time;
-  if (e.kind === 'duck') herdFly(e, d.pdx, d.pdz);
+  if (duckling(e)) { herdLaunch(e, d.pdx * 3 + d.vx * 0.1, d.pdz * 3 + d.vz * 0.1, 2.2); herdFx('peep', e.x, e.z, 1); }   // LIFE: a duckling's bowled over, cheeping
+  else if (e.kind === 'duck') herdFly(e, d.pdx, d.pdz);
   else { herdLaunch(e, d.pdx * 5 + d.vx * 0.2, d.pdz * 5 + d.vz * 0.2, 4.5); e.stress = Math.min(1, e.stress + 0.5); herdFx('bonk', e.x, e.z, 1); }
   if (e.trial) trialHerdFault('bonk', e, d);   // TRIALS: a fault
 }
@@ -21643,7 +21846,7 @@ function herdHeld(e, dt) {
 function herdGrip(d, mx, mz, best) {
   let out = null;
   for (const e of HERDS) {
-    if (e.heldBy || e.state === 'shear' || e.hopY > 1.5 || Math.abs(e.x - mx) > 3 || Math.abs(e.z - mz) > 3) continue;
+    if (e.heldBy || e.grabbed || e.state === 'shear' || e.hopY > 1.5 || Math.abs(e.x - mx) > 3 || Math.abs(e.z - mz) > 3) continue;
     const dd = Math.hypot(e.x - mx, e.z - mz) - (e.fly || e.air ? 0.4 : 0.1);
     if (dd < best && !fenceBetween(d.x, d.z, e.x, e.z)) { best = dd; out = { e, dd }; }
   }
@@ -21666,7 +21869,7 @@ function herdShaken(e, d) { e.stress = 1; e.panic = 1; herdFx(e.kind === 'duck' 
 function herdBark(d) {
   const R = barkR(d); let n = 0;
   for (const e of HERDS) {
-    if (e.heldBy || e.state === 'shear' || e.state === 'stay') continue;
+    if (e.heldBy || e.grabbed || e.state === 'shear' || e.state === 'stay') continue;
     const dx = e.x - d.x, dz = e.z - d.z; if (Math.abs(dx) > R || Math.abs(dz) > R) continue;
     const dd = Math.hypot(dx, dz) + 1e-4; if (dd > R) continue;
     const k = 1 - dd / R, K = T.herd[e.kind]; n++;
@@ -21692,6 +21895,14 @@ const DSND = (() => {
         const g = ac.createGain(); A.env(g, t, 0.01, 0.9, dur); o.connect(g); g.connect(f); g.connect(f2); o.start(t); o.stop(t + dur + 0.05);
       }
     },
+    peep(pan = 0, vol = 0.07, p = 1, n = 1) {   // LIFE: a duckling: a thin high cheep (or a few)
+      const A = R(); if (!A) return; const ac = A.ac, d = A.out(vol, pan);
+      for (let i = 0; i < n; i++) {
+        const t = ac.currentTime + i * 0.12, f = 3200 * p * (0.95 + Math.random() * 0.1), dur = 0.075;
+        const o = ac.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(f * 1.12, t); o.frequency.exponentialRampToValueAtTime(f * 0.78, t + dur);
+        const g = ac.createGain(); A.env(g, t, 0.006, 0.8, dur); o.connect(g); g.connect(d); o.start(t); o.stop(t + dur + 0.03);
+      }
+    },
     flap(pan = 0, vol = 0.12) {   // wings beating: a flutter of soft noise
       const A = R(); if (!A) return; const ac = A.ac, t0 = ac.currentTime, d = A.out(vol, pan);
       const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.8; f.connect(d);
@@ -21711,6 +21922,10 @@ function herdFx(kind, x, z, a = 1) {
   else if (kind === 'splash') { spawnRing(x, waterLevel(x, z), z, 1.2, '#e8f8ff', 0.5); burst(x, WATER_Y + 0.1, z, 5, '#cfefff', { speed: 1.4, up: 1.8, size: 0.12, life: 0.5 }); }
   else if (kind === 'bonk') { floatText('BONK!', x, y + 1.5, z, '#ffffff', 1.1); SFX.bonk(pan, 0.2); starBurst(x, y + 0.9, z, 4); if (near) Sound.baa(1.1, 0.4, pan, true); }
   else if (kind === 'found') { floatText('❗🦆', x, y + 1.8, z, '#ffd36b', 1.3); Sound.chime(a ? [0, 4, 7, 12] : [0, 7], 784, 0.1, 0.07); if (near) DSND.quack(pan, 0.15, 1, 2); }
+  else if (kind === 'peep') { if (near) DSND.peep(pan, 0.08, rnd(0.95, 1.12), 2 + (Math.random() < 0.5 ? 1 : 0)); }   // LIFE
+  else if (kind === 'love') { floatText('♥', x, y + 1.1, z, '#ff7aa8', 1); if (near) DSND.quack(pan, 0.1, 0.95, 2); }   // LIFE: a drake and a hen
+  else if (kind === 'hatch') { burst(x, y + 0.15, z, 8, '#f4efe2', { speed: 1.1, up: 1.4, size: 0.07, life: 0.7 }); burst(x, y + 0.2, z, 5, T.duck.life.fluff[0], { speed: 0.8, up: 1, size: 0.08, life: 0.6, grav: -1 }); if (near) DSND.peep(pan, 0.1, 1.05, 3); }   // LIFE: a clutch
+  else if (kind === 'feathers') { burst(x, y + 0.4, z, a ? 12 : 5, '#f2eee4', { speed: a ? 2 : 0.8, up: a ? 2 : 1, size: 0.1, life: a ? 1.1 : 1.4, grav: -1.5 }); if (a && near) DSND.quack(pan, 0.12, 1.25, 1); }   // PREY: eaten; LIFE: old
 }
 // ---------------- drawing (every screen): instanced, one mesh a part (made the first time there's a duck to draw). A runner duck: an upright
 // bottle of a body, a long neck, a bill ----------------
@@ -21724,39 +21939,44 @@ const duckGeo = () => DUCK_GEO || (DUCK_GEO = (() => {
     bill: merge(P(SPH(8), BILL, { s: [0.04, 0.02, 0.075], p: [0, 0.72, 0.19] }), ...[-1, 1].map(sd => P(SPH(5), EYE, { s: [0.014, 0.016, 0.014], p: [sd * 0.052, 0.755, 0.12] }))),
     wing: P(SPH(9), W, { s: [0.03, 0.09, 0.19], r: [-0.95, 0, 0], p: [0, -0.06, -0.06] }),
     foot: merge(P(CYL(0.016, 0.016, 0.16, 5), FOOT, { p: [0, -0.08, 0] }), P(CONE(0.05, 0.11, 3), FOOT, { s: [1, 0.25, 1], r: [Math.PI / 2, 0, 0], p: [0, -0.16, 0.04] })),
+    curl: P(new THREE.TorusGeometry(0.042, 0.015, 5, 10, Math.PI * 1.6), W, { r: [0, Math.PI / 2, 0.4], p: [0, 0.21, -0.27] }),   // LIFE: a drake's curled tail feather
   };
 })());
 const NECK_AT = new THREE.Vector3(0, 0.5, 0.06), WING_AT = [-1, 1].map(sd => new THREE.Vector3(sd * 0.115, 0.42, 0.04)), FOOT_AT = [-1, 1].map(sd => new THREE.Vector3(sd * 0.055, 0.17, 0.0));
 function duckInst() {   // (made the first time there's a duck to draw: ?sim never needs them, so their uuids leave the seeded dice alone)
   if (HERD.I) return HERD.I;
   const n = T.duck.max + 12, D = duckGeo();
-  return (HERD.I = { body: sheepInstanced(D.body, n), head: sheepInstanced(D.head, n), bill: sheepInstanced(D.bill, n), wing: sheepInstanced(D.wing, n * 2), foot: sheepInstanced(D.foot, n * 2) });
+  return (HERD.I = { body: sheepInstanced(D.body, n), head: sheepInstanced(D.head, n), bill: sheepInstanced(D.bill, n), wing: sheepInstanced(D.wing, n * 2), foot: sheepInstanced(D.foot, n * 2), curl: sheepInstanced(D.curl, n) });
 }
 const _dkR = new THREE.Matrix4(), _dkP = new THREE.Matrix4(), _dkM = new THREE.Matrix4(), _dkE = new THREE.Euler(), _dkC = new THREE.Color(), _dkV = new THREE.Vector3(), _dkS = new THREE.Vector3(), _dkQ = new THREE.Quaternion();
-function syncDucks() {
+function syncDucks(dt, once) {
   if (!HERD.I && !HERDS.some(e => e.kind === 'duck')) return;
-  const I = duckInst(); let n = 0, nw = 0, nf = 0;
-  const reach = cam.view * 2.6 + 30, t = G.time;
+  const I = duckInst(); let n = 0, nw = 0, nf = 0, nc = 0, peep = null, pd = 22;
+  const reach = cam.view * 2.6 + 30, t = G.time, FL = T.duck.life.fluff;
   for (const e of HERDS) {
     if (e.kind !== 'duck' || n >= I.body.max) continue;
     if (Math.abs(e.x - cam.x) + Math.abs(e.z - cam.z) > reach || (SEA_AWAY && !e.heldBy)) continue;
     const C = T.duck.coats[e.coat % T.duck.coats.length], sp = Math.hypot(e.vx, e.vz), sleep = e.state === 'sleep' && !e.heldBy, sit = sleep || e.swim;
-    const waddle = e.swim || sleep ? 0 : Math.sin(e.leg) * Math.min(0.22, sp * 0.12), held = !!e.heldBy, fly = e.fly || e.air;
+    const waddle = e.swim || sleep ? 0 : Math.sin(e.leg) * Math.min(0.22, sp * 0.12), held = !!e.heldBy || e.state === 'held', fly = e.fly || e.air;   // (PREY: in a coyote's jaws too)
     const sq = e.landT > t - 0.3 ? 1 - 0.18 * Math.cos((t - e.landT) / 0.3 * Math.PI * 2.5) * (1 - (t - e.landT) / 0.3) : 1;
+    const gk = duckGrowK(e), ok = duckOldK(e), fat = 1 - 0.12 * (1 - gk);   // LIFE: a duckling's down (and rounder), an old one paler
     _dkE.set(held ? 0.5 : fly ? -0.35 : 0, e.yaw, held ? Math.sin(t * 13 + e.id) * 0.3 : waddle + (e.air ? Math.sin(e.air.spin) * 0.4 : 0), 'YXZ');
-    _dkR.compose(_dkV.set(e.x, e.y + e.hopY + (held ? 0.35 : 0) - (sit ? 0.12 : 0), e.z), _dkQ.setFromEuler(_dkE), _dkS.set(0.95 * e.scale, 0.95 * e.scale * sq, 0.95 * e.scale));
-    I.body.m.setMatrixAt(n, _dkR); I.body.m.setColorAt(n, _dkC.set(C[0]));
+    _dkR.compose(_dkV.set(e.x, e.y + e.hopY + (held ? 0.35 : 0) - (sit ? 0.12 * e.scale : 0), e.z), _dkQ.setFromEuler(_dkE), _dkS.set(0.95 * e.scale, 0.95 * e.scale * sq * fat, 0.95 * e.scale));
+    const body = duckTint(_dkC, C[0], FL[0], gk, ok);
+    I.body.m.setMatrixAt(n, _dkR); I.body.m.setColorAt(n, body);
+    if (gk < 1 && (Math.abs(e.x - cam.x) + Math.abs(e.z - cam.z) < pd)) { pd = Math.abs(e.x - cam.x) + Math.abs(e.z - cam.z); peep = e; }
     // the neck and head: pecking (down and up), asleep (round, bill tucked), swimming (dabbling now and then), on the move (forward)
     const peck = e.state === 'graze' && e.peck > 0 ? Math.max(0, Math.sin(t * 7 + e.id * 2.1)) * 1.1 : 0, dab = e.swim && !sp && Math.sin(t * 0.7 + e.id) > 0.85 ? 1.6 : 0;
     const nx = sleep ? 0.7 : peck || dab || (sp > 1.5 ? 0.35 : 0), ny = sleep ? 2.6 : Math.sin(t * 0.9 + e.id * 1.3) * 0.25 * (sp < 0.2 ? 1 : 0);
     _dkP.makeTranslation(NECK_AT.x, NECK_AT.y, NECK_AT.z).multiply(_dkM.makeRotationFromEuler(_dkE.set(nx, ny, 0, 'YXZ'))).multiply(_dkM.makeTranslation(-NECK_AT.x, -NECK_AT.y, -NECK_AT.z));
-    _dkM.multiplyMatrices(_dkR, _dkP); I.head.m.setMatrixAt(n, _dkM); I.head.m.setColorAt(n, _dkC.set(C[1])); I.bill.m.setMatrixAt(n, _dkM);
+    _dkM.multiplyMatrices(_dkR, _dkP); I.head.m.setMatrixAt(n, _dkM); I.head.m.setColorAt(n, duckTint(_dkC3, C[1], FL[1], gk, ok)); I.bill.m.setMatrixAt(n, _dkM);
+    if (e.male && gk >= 1 && !e.trial) { I.curl.m.setMatrixAt(nc, _dkR); I.curl.m.setColorAt(nc, _dkC3.multiplyScalar(0.62)); nc++; }   // LIFE: a drake
     // wings: folded, or beating (flying, held, flapping after a fright)
     const fl = e.wing > 0 ? Math.abs(Math.sin(t * 24 + e.id)) * 1.3 * Math.min(1, e.wing) : 0;
     for (let k = 0; k < 2; k++) {
       const sd = k ? 1 : -1, W = WING_AT[k];
       _dkP.compose(W, _dkQ.setFromEuler(_dkE.set(0, 0, sd * (0.05 + fl))), _dkS.set(1, 1, 1)); _dkM.multiplyMatrices(_dkR, _dkP);
-      I.wing.m.setMatrixAt(nw, _dkM); I.wing.m.setColorAt(nw, _dkC.set(C[0]).multiplyScalar(0.88)); nw++;
+      I.wing.m.setMatrixAt(nw, _dkM); I.wing.m.setColorAt(nw, _dkC2.copy(body).multiplyScalar(0.88)); nw++;
       const step = sit || fly ? 0 : Math.sin(e.leg + k * Math.PI) * Math.min(0.9, sp * 0.5), F = FOOT_AT[k];
       _dkP.compose(F, _dkQ.setFromEuler(_dkE.set(fly ? 0.9 : step, 0, 0)), _dkS.set(1, sit ? 0.01 : 1, 1)); _dkM.multiplyMatrices(_dkR, _dkP);
       I.foot.m.setMatrixAt(nf++, _dkM);
@@ -21766,6 +21986,15 @@ function syncDucks() {
   for (const k of ['body', 'head', 'bill']) { const M = I[k]; M.m.count = M.o.count = n; M.m.instanceMatrix.needsUpdate = true; if (M.m.instanceColor) M.m.instanceColor.needsUpdate = true; }
   I.wing.m.count = I.wing.o.count = nw; I.wing.m.instanceMatrix.needsUpdate = true; I.wing.m.instanceColor.needsUpdate = true;
   I.foot.m.count = I.foot.o.count = nf; I.foot.m.instanceMatrix.needsUpdate = true;
+  I.curl.m.count = I.curl.o.count = nc; I.curl.m.instanceMatrix.needsUpdate = true; I.curl.m.instanceColor.needsUpdate = true;
+  if (!once && peep && (HERD.peepT -= dt) <= 0) { HERD.peepT = 0.8 + ((t * 7.31) % 1) * 2.2; DSND.peep(panOf(peep.x, peep.z), 0.06, 0.95 + (peep.id % 5) * 0.05, 1 + (Math.floor(t * 3.7) % 2)); }   // LIFE: ducklings cheep
+}
+// LIFE: its colour: a duckling's down feathering out to its coat, an old one paling
+const _dkC3 = new THREE.Color(), _dkC4 = new THREE.Color();
+function duckTint(out, coat, fluff, gk, ok) {
+  out.set(coat); if (gk < 1) out.lerp(_dkC4.set(fluff), 1 - gk * gk);
+  if (ok > 0) out.lerp(_dkC4.set('#dcd8cf'), ok * 0.5);
+  return out;
 }
 // the trials' sheep: after the flock, in the same instanced meshes (syncSheep's look: white fleece, a red ribbon on the one to shed)
 function syncHerdSheep() {
@@ -21806,10 +22035,11 @@ function mapDucks(c, u, on, seen) {
 }
 // ONLINE: a guest's, from the host's snapshot
 function netGuestHerd(id, f) {
-  const e = herdMake(f.kind === 'sheep' ? 'sheep' : 'duck', f.x || 0, f.z || 0, { id, coat: f.coat | 0, yaw: f.yaw || 0, mark: !!f.mark, trial: !!f.trial });
+  const e = herdMake(f.kind === 'sheep' ? 'sheep' : 'duck', f.x || 0, f.z || 0, { id, coat: f.coat | 0, yaw: f.yaw || 0, mark: !!f.mark, trial: !!f.trial, age: Number.isFinite(f.age) ? f.age : undefined, male: !!f.male, life: f.life || undefined });
   return e;
 }
 function netAnimHerd(e, dt) {
+  if (duckWild(e)) duckLook(e);   // LIFE: its size by its age
   e.y = e.swim ? waterLevel(e.x, e.z) - 0.1 : groundY(e.x, e.z);
   e.leg += Math.hypot(e.vx, e.vz) * dt * (e.kind === 'duck' ? 10 : 3.2);
   if (e.fly || e.air) e.wing = 1; else e.wing = Math.max(0, (e.wing || 0) - dt * 3);
@@ -21820,17 +22050,32 @@ function herdWipe() { for (const e of [...HERDS]) herdRemove(e); HERD.groups.len
 function devDucks() {
   const d = G.dogs[0]; if (!d) return;
   const x = d.x + Math.sin(d.yaw) * 8, z = d.z + Math.cos(d.yaw) * 8, g = herdGroup('duck', x, z, { found: true });
-  for (let i = 0; i < 6; i++) herdMake('duck', x + rnd(-1.5, 1.5), z + rnd(-1.5, 1.5), { grp: g, coat: i % 2 });
+  for (let i = 0; i < 6; i++) herdMake('duck', x + rnd(-1.5, 1.5), z + rnd(-1.5, 1.5), { grp: g, coat: i % 2, male: i < 2, age: i === 5 ? T.duck.life.old + 1 : undefined });   // (LIFE: two drakes, an old hen)
+  const hen = g.list[2]; for (let i = 0; i < 4; i++) herdMake('duck', hen.x + rnd(-0.6, 0.6), hen.z + rnd(-0.6, 0.6), { grp: g, coat: hen.coat, age: 0.3, mum: hen });   // a brood
   toast('🦆', '');
 }
 resetDucks();
 onReset(() => resetDucks(), 176);   // DUCKS: new bunches
-onSave('ducks', () => ({ seed: HERD.seed, found: HERD.groups.filter(g => !g.trial).map((g, i) => g.found ? i : -1).filter(i => i >= 0), seen: HERD.seen }), v => {
+// (LIFE: every bunch as it is now: where, who, how old, whose; `g` [hx, hz, [[x, z, age, drake, coat, life, clutch, mum's index, dad's coat], …]])
+const duckR2 = v => Math.round(v * 100) / 100;
+function duckSaveGroup(g) { const r2 = duckR2, L = g.list.filter(e => !e.grabbed); return [r2(g.hx), r2(g.hz), L.map(e => [r2(e.x), r2(e.z), r2(e.age), e.male ? 1 : 0, e.coat, r2(e.life), r2(e.clutch), L.indexOf(e.mum), e.dad ?? -1])]; }
+onSave('ducks', () => ({ seed: HERD.seed, found: HERD.groups.filter(g => !g.trial).map((g, i) => g.found ? i : -1).filter(i => i >= 0), seen: HERD.seen,
+  g: HERD.groups.filter(g => !g.trial).map(duckSaveGroup) }), v => {
   if (!T.duck.on || !Number.isFinite(+v.seed)) return;
   resetDucks(+v.seed >>> 0); HERD.seen = !!v.seen;
   const W = HERD.groups.filter(g => !g.trial); for (const i of v.found || []) if (W[i]) W[i].found = true;
+  if (Array.isArray(v.g)) W.forEach((g, i) => {   // LIFE: as they were
+    const q = v.g[i]; if (!Array.isArray(q) || !Array.isArray(q[2])) return;
+    for (const e of [...g.list]) herdRemove(e);
+    if (Number.isFinite(+q[0]) && Number.isFinite(+q[1])) { g.hx = +q[0]; g.hz = +q[1]; }
+    const L = q[2].filter(r => Array.isArray(r) && Number.isFinite(+r[0]) && Number.isFinite(+r[1])).slice(0, T.duck.max);
+    const made = L.map(r => herdMake('duck', +r[0], +r[1], { grp: g, age: Math.max(0, +r[2] || 0), male: !!r[3], coat: (r[4] | 0) % T.duck.coats.length, life: +r[5] || undefined, clutch: Math.max(0, +r[6] || 0), dad: r[8] >= 0 ? r[8] | 0 : null }));
+    L.forEach((r, j) => { const m = made[r[7] | 0]; if (r[7] >= 0 && m && m !== made[j]) made[j].mum = m; });
+    if (made.length) { g.cx = made.reduce((a, e) => a + e.x, 0) / made.length; g.cz = made.reduce((a, e) => a + e.z, 0) / made.length; }
+  });
 }, 176);
-expose(() => ({ HERDS, HERD, herdMake, herdRemove, herdGroup, herdDropGroup, herdStep, herdBark, herdFly, herdGrip, resetDucks, duckPlan, duckSpotOK, duckWater, updateHerds, syncDucks, devDucks, herdFx, herdLaunch }));   // DUCKS
+expose(() => ({ HERDS, HERD, herdMake, herdRemove, herdGroup, herdDropGroup, herdStep, herdBark, herdFly, herdGrip, resetDucks, duckPlan, duckSpotOK, duckWater, updateHerds, syncDucks, devDucks, herdFx, herdLaunch,
+  duckLife, duckling, duckMum, duckGrowK, duckOldK, duckMate, duckHatch, duckVisit, duckFarPrey, duckPrey, duckNear, duckFoes, coyoteDuck, preyWild, preyKill }));   // DUCKS (LIFE, PREY)
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
@@ -23365,6 +23610,7 @@ function llamaKilled(L, why) {
   if (!LLAMAS.includes(L)) return;
   if (L.grabbed) { if (L.grabbed.prey === L) L.grabbed.prey = null; L.grabbed = null; }
   burst(L.x, (L.y ?? groundY(L.x, L.z)) + 0.6, L.z, 18, LLAMA_COATS[L.coat % LLAMA_COATS.length][0], { speed: 2.6, up: 3 });
+  if (!L.tame) { llamaRemove(L); return; }   // a wild one: none of ours (no candle, no toast, no Hank)
   floatText('🕯️', L.x, (L.y ?? 0) + 1.6, L.z, '#fff4c8', 1.4); toast(`${why === 'cougar' ? '🐆' : why === 'cold' ? '❄️' : '🐺'} 🦙 🕯️`, 'bad'); Sound.sad();
   if (L.grown) G.stats.llamasLost++; else G.stats.criasLost++;
   if (hankSees(L.x, L.z)) hank(null, why === 'cold' ? pick(["Ach, the poor llama. Frozen stiff.", "We've lost a llama to the cold..."]) : pick(["Ach, the wee cria... no.", "Not the cria! Poor wee thing."]), { force: true, delay: 0.6 });
@@ -27991,9 +28237,9 @@ const NET_TYPES = {
       rp: { c: 'i', get: W => W.rope ? W.rope.i : -1, set: (W, v) => netWildRope(W, v) }, ropeI: 'i' },
     make: (id, f) => netGuestWild(id, f), kill: W => wildRemove(W), animate: (W, dt) => netAnimWild(W, dt),
   },
-  herd: {   // DUCKS (and the TRIALS' sheep and ducks): where, what at, held, up in the air; its looks
+  herd: {   // DUCKS (and the TRIALS' sheep and ducks): where, what at, held, up in the air; its looks (LIFE: its age, a drake)
     tag: 'e', all: () => HERDS, id: e => e.id,
-    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', kind: 's', coat: 'i', mark: 'b', trial: 'b', hopY: .02, wool: .02, swim: 'b', heldBy: '@dog',
+    fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', kind: 's', coat: 'i', mark: 'b', trial: 'b', hopY: .02, wool: .02, swim: 'b', heldBy: '@dog', age: .02, life: .1, male: 'b',   // (LIFE)
       fly: { c: 'b', get: e => !!e.fly, set: (e, v) => { e.fly = v ? e.fly || {} : null; } }, air: { c: 'b', get: e => !!e.air, set: (e, v) => { e.air = v ? e.air || { spin: 0 } : null; } }, stress: .05 },
     make: (id, f) => netGuestHerd(id, f), kill: e => herdRemove(e), animate: (e, dt) => netAnimHerd(e, dt),
   },
@@ -29697,9 +29943,9 @@ function step(dt) {
     // fast-forward the night when the whole flock is penned behind a closed gate (and done with its supper)
     const live = living();
     G.ff = !G.tut && isNight() && live.length > 0 && live.every(s => !s.grabbed && (s.pen && (s.pen.gateT < 0.05 || s.pen.deck && SEA.docked && SEA.berth > 0) || passSafe(s)) && s.state !== 'trough' && s.state !== 'wait')   // (MOUNTAIN PASS: or warm by a fire)
-      && !G.coyotes.some(c => c.prey) && !G.packs.some(p => p.phase === 'dig' || p.phase === 'raid' || (p.phase === 'prowl' && p.digs))   // (BURROWS: they're coming to dig: watch them,
+      && !G.coyotes.some(c => c.prey && !preyWild(c.prey)) && !G.packs.some(p => p.phase === 'dig' || p.phase === 'raid' || (p.phase === 'prowl' && p.digs))   // (BURROWS: they're coming to dig: watch them,
       && !BURROWS.some(h => h.open && live.some(s => s.pen === h.pen))                                                                   //  and fill it)
-      && !COUGARS.some(k => k.prey || !['away', 'perch', 'fed'].includes(k.state))   // (watch it come over the fence)
+      && !COUGARS.some(k => k.prey ? !preyWild(k.prey) : !['away', 'perch', 'fed'].includes(k.state) && !preyWild(k.target))   // (watch it come over the fence; a duck, a wild cria: not ours)
       && !HANK.care && !live.some(s => s.bleedRate > 0)   // VET: not while one's bleeding (time to fetch bandages) or Hank's seeing to one
       && (!SEA.on || seaAtRest());   // SAILING: only at anchor
     const dtH = stepClock(dt);

@@ -12,7 +12,8 @@
   a spitting match, the weaker gives up. Caps: `max` wild, `maxG` guards. A guard's cria is a guard; wild males court guards too.
 - **Prey** (COYOTES, COUGARS): a cria's taken as a lamb is (`criaPrey`; in `pickPackTarget`, `cougarTarget`: lambs first). `L.grabbed`:
   the predator, which moves it (it dangles, kicking); a shut pen keeps it safe (`L.pen`). Dropped (a dog, a guard's spit): off it runs.
-  Carried home: gone (`preyKill` → `llamaKilled`, `G.stats.criasLost`; no grave). Online: `grabbed`; a coyote's `prey` is a sheep or a cria.
+  Carried home: gone (`preyKill` → `llamaKilled`, `G.stats.criasLost`; no grave). A wild one's none of ours (`preyWild`): no toast, Hank,
+  hint, candle, count. Online: `grabbed`; a coyote's `prey` is a sheep, a cria or a duck.
 - **Capture** (ROPES): a dog dragging a rope within `catchR` of a grown wild one (not `L.waryH`): the rope's on its halter (`llamaRope`,
   `R.llama`, `L.ropeI` a little past the dog's grip) and it's a tug of war, the llama as a man on a rope (`e.npc`, `ropeNpc(R)`,
   `hankTug` with `T.llama.tug` × `L.str`; it pulls facing away, spits at the dog now and then: just goo, even landing after it). Heaves on the beat break it;
