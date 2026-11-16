@@ -24,6 +24,7 @@ in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
 A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
+First time: a practice evening at the corral (four lessons, the sun waits; 🎓 on the title: again, or not).
 
 ### Run
 
@@ -38,6 +39,8 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Journey save: a reload carries on (localStorage `collies.journey`; title ▶, ✖ forgets). Not under `?sim`, `?sea`, `?go`, `?join`. See `docs/ui.md`.
+- Tutorial: the first journey on a device starts with the practice (localStorage `collies.tut`: done). Title 🎓 (T / Ⓨ): on / off; `GAME.tutWant(true)`,
+  `GAME.tutStart()`, `GAME.tutLesson(i)`. Off by itself under `?sim`, `?debug`, `?sea`, `?go`, `?join`. See `docs/tutorial.md`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
   build → 🔄 on the title reloads (`checkBuild`).
@@ -112,6 +115,7 @@ A sheep overboard: throw it a life ring, haul it in. The Promised Land: that win
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
 - WILD RAMS (the castaway)
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
+- TUTORIAL
 - game flow
 - `ambMix`
 - main loop
@@ -223,6 +227,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
 - `trialClear(x, z, pad)` (keep off the trials' ring), `trialY(x, z)` (in `groundY` via `TRIAL_Y`), `trialHerdFault(kind, e, d)`, `R.champ` (a dog on a rope: `ropeNpc`), `b.trial` (not kept)
 - `kegHeat(x, z)` (in `heatAt`), `d.keg`
+- `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `G.ff` off)
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -319,6 +324,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
+- `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
 
 ### Icons
 

@@ -11,7 +11,7 @@
   The pause screen: "Menu" + ⏸ / ▶ chips while it goes on (`#pause.live`), "Paused" once it waits; over a barn / dawn card `#menuBadge`.
 - **Hints** (`HINTS`, `hint`, `updateHints`): one at a time, queued; up `hintLen` s (12–22, by length), the clock waits while
   paused / a menu's up; a bar runs down; more waiting → `HINT_MIN` (12 s). The first ones `HINT_MIN` + 1 s apart. `TOUCH_HINTS` on touch.
-  Button nudges over things (`nudge`): `NUDGE_DUR` (6.5 s) on screen, then retired.
+  Button nudges over things (`nudge`): `NUDGE_DUR` (6.5 s) on screen, then retired. None in the practice (docs/tutorial.md: its card).
 - **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep and Llamas (only once one's ours: `barnLlamas`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
   Every screen its own (Tab / View / 🏚️ / pause). A guest dresses its own dogs (`barnDogs`: DOGS.looks[k] → its k-th dog, colours `barnSlot`;
   saved on its device; sent as `dl`, `netLookOut`: a coat or collar never picked (`pick`) takes its slot's colours there) and renames /
@@ -32,7 +32,7 @@
 - **Journey save** (`JOURNEY`, `localStorage['collies.journey']`): a reload carries on; it never undoes. Written every `T.save.every` s
   of play, at dawn, when the tab hides, and at once on a death (`mournSheep`): no save-scumming. No save / load button: the title shows
   ▶ day · flock (`#tSave`; ✖ forgets it), the first dog in resumes (`startGame` → `journeyResume`). Gone on a new journey, at the end,
-  "Start a fresh flock". Host / offline only. Closed tab: the world waits (nothing runs).
+  "Start a fresh flock". Host / offline only. Closed tab: the world waits (nothing runs). Not in the practice (docs/tutorial.md).
   Each section keeps its own (`onSave`): `core` (clock, `G.time`, tally, wool, hints, lost, training), `flock` (every living sheep's plain
   fields, look, mum, spot), `dogs`, `hank` (spot, kit), `pass` (fuel, ice gate, walls, yeti), `graves`, `yards` (cemeteries: built, rows, `Y.n`), `where` (land: `devJump` to the
   flock's s, then every saved spot that fits; sea: `seaStart` alongside the last island reached, `SEA.saved`), `pens` (gates, bought kit,

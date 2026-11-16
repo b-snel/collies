@@ -4,6 +4,10 @@ A 3D herding game. You're a border collie (or up to four of them) driving Hank's
 
 Live at **https://collies.app**
 
+## Practice
+
+The first time you play, the journey starts with a practice evening at Hank's corral. Four short lessons: bring a stray ewe home through the gate; fetch a bunch of five with sprint, lie down and creep; pounce a ewe back onto her feet, then grab her and carry her in; bark at a coyote, then pounce it. The clock only moves between lessons and nothing can die. Skip it with ⏩ on the lesson card or from the pause menu. 🎓 on the title screen (T, or Y on a controller) turns it on again, or off.
+
 ## Controls
 
 | | Controller | Player 1 keys | Player 2 keys |
