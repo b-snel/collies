@@ -1,4 +1,4 @@
-// Headless checks for DUCKS: `node tools/duck-test.mjs [layout|find|press|fly|bark|grab|line|sleep|stay|brood|grow|mate|prey|cougar|pop|save|reset]`.
+// Headless checks for DUCKS: `node tools/duck-test.mjs [layout|find|press|fly|bark|grab|line|sleep|stay|brood|grow|mate|imprint|prey|cougar|pop|save|reset]`.
 //   layout  a few bunches a journey on every leg before Falcon Canyon (none in it or past it), by water where there's some, off the
 //           trail, off the trials' ring; drakes and hens; off in ?sim
 //   find    a dog comes on a bunch: found (the journey's first: the hint), once
@@ -12,6 +12,8 @@
 //   brood   LIFE: ducklings trail their mum in a line as she walks, peck round her, sleep tucked in by her; rushed, they run (can't fly)
 //   grow    LIFE: a duckling grows to full size and leaves her side; old: paler, slower; then gone
 //   mate    LIFE: a drake and a free hen mate (by day), she hatches a clutch by her; none past a full bunch; no drake: one comes over
+//   imprint IMPRINT: orphans take the first dog near for their mum: trail it, unafraid (pressure, barks); grown: on their own, in a bunch;
+//           a reload: still with it
 //   prey    PREY: a coyote takes one asleep (the rest up and off), eats it; awake they fly up; a pounce on the coyote drops it; no alerts
 //   cougar  PREY: a cougar hunts one in its range, up its tree with it; no alerts. Wild crias too (LLAMAS): no toast; ours: one
 //   pop     LIFE, PREY: 30 days of it out of sight: they breed, age, die and are taken; never past the cap, never gone
@@ -237,6 +239,40 @@ if (want('mate')) {
   ok('mate: no drake in her bunch: one comes over from one near', r.visit.a === 1 && r.visit.b === 1 && r.visit.near, r);
 }
 
+if (want('imprint')) {
+  await setup();
+  const r = await h.page.evaluate(`${BROOD}(() => {
+    const { G, T, HERD, preyKill, duckLife, updateHerds, JOURNEY, journeySave, journeyRead, journeyResume, resetDucks } = GAME, L = T.duck.life, d = H.d(), out = {};
+    H.place(d, H.P.x - 40, H.P.z); T.duck.life.mateP = 0;
+    const { g, hen, kids } = H.brood(3, 0.4); H.run(2);
+    preyKill(hen, 'eaten'); H.run(1);
+    out.orphans = kids.every(k => k.orphan && !k.dog);
+    out.far = kids.every(k => !k.dog);   // (no dog near: not yet)
+    H.place(d, kids[0].x - 4, kids[0].z); d.yaw = Math.PI / 2; H.run(0.5);
+    out.took = kids.every(k => k.dog === d);
+    // walked off: they trail it, behind, unafraid
+    let stress = 0; const ux = 1, x0 = d.x;
+    H.run(8, () => { stress = Math.max(stress, ...kids.map(k => k.stress)); return H.inp(ux, 0, { creep: true }); });
+    H.run(3); out.walk = { went: H.r(d.x - x0), near: H.r(Math.max(...kids.map(k => Math.hypot(k.x - d.x, k.z - d.z)))), stress: H.r(stress) };
+    H.run(0.5, () => H.inp(0, 0, { bark: true })); H.run(1.5);
+    out.bark = { fly: kids.some(k => k.fly), with: kids.every(k => k.dog === d), near: H.r(Math.max(...kids.map(k => Math.hypot(k.x - d.x, k.z - d.z)))) };
+    // a reload: still with its dog
+    JOURNEY.off = false; journeySave(); resetDucks(7); JOURNEY.saved = journeyRead(); journeyResume(); H.run(0.5);
+    const back = GAME.HERDS.filter(e => e.dog === G.dogs[0]);
+    out.reload = { with: back.length, near: H.r(Math.max(...back.map(k => Math.hypot(k.x - G.dogs[0].x, k.z - G.dogs[0].z)))) };
+    // grown: on its own, in a bunch near (or one of its own)
+    for (const k of back) k.age = L.grow - 0.01; duckLife(0.5); updateHerds(0, 0);
+    out.grown = back.every(k => !k.dog && !k.orphan && k.grp && k.grp.list.includes(k) && Math.hypot(k.grp.cx - k.x, k.grp.cz - k.z) < L.settleR);
+    return out;
+  })()`);
+  ok('imprint: her ducklings orphaned; no dog near: none yet', r.orphans && r.far, r);
+  ok('imprint: a dog comes near: they take it for their mum', r.took, r);
+  ok('imprint: they trail it, unafraid', r.walk.went > 8 && r.walk.near < 4 && r.walk.stress < 0.2, r);
+  ok('imprint: its bark: they stay with it', !r.bark.fly && r.bark.with && r.bark.near < 4, r);
+  ok('imprint: a reload: still with it', r.reload.with === 3 && r.reload.near < 8, r);
+  ok('imprint: grown: on their own, in a bunch', r.grown, r);
+}
+
 if (want('prey')) {
   await setup();
   const r = await h.page.evaluate(`${BROOD}(() => {
@@ -287,7 +323,7 @@ if (want('cougar')) {
     // LLAMAS: a wild cria taken: no toast, not counted; a guard's: both
     const cria = (tame) => { const m = makeLlama({ x: Lr.x + ux * 22, z: Lr.z + uz * 22, sex: 'f', age: 5, tame, herd: tame ? null : { id: 90 } }); const c = makeLlama({ x: Lr.x + ux * 22 + 1, z: Lr.z + uz * 22, sex: 'm', age: 0.4, tame, herd: m.herd, mum: m }); m.cdH = c.cdH = 99; if (tame) llamaRemove(m); return c; };   // (ours: no guard by it to spit the cougar off)
     for (const e of [...g.list]) GAME.herdRemove(e);
-    const runCria = c => { k.state = 'perch'; k.hunts = true; k.prey = k.target = null; k.driven = 0; k.treedAt = -1e9; cougarHunt(k, 0); let t = 0, took = false; H.run(150, () => { G.clock.hour = 22; t = Math.max(t, box.children.length); took = took || c.grabbed === k; return !LLAMAS.includes(c) || (took && t) ? true : null; }); return { took, gone: !LLAMAS.includes(c), toasts: t }; };
+    const runCria = c => { k.state = 'perch'; k.hunts = true; k.prey = k.target = null; k.driven = 0; k.treedAt = -1e9; cougarHunt(k, 0); let t = 0, took = false, st = []; H.run(150, () => { G.clock.hour = 22; if (st.at(-1) !== k.state) st.push(k.state); t = Math.max(t, box.children.length); took = took || c.grabbed === k; return !LLAMAS.includes(c) || (took && t) ? true : null; }); return { took, gone: !LLAMAS.includes(c), toasts: t, st: st.join() }; };
     for (const el of [...box.children]) el.remove();
     out.wild = runCria(cria(0)); out.wild.lost = G.stats.criasLost;
     for (const L of [...LLAMAS]) llamaRemove(L); for (const el of [...box.children]) el.remove(); H.run(1, () => { G.clock.hour = 22; });
