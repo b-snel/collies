@@ -586,11 +586,12 @@ if (want('wind')) {
     const a0 = SWAVES[0].ang, c0 = SWAVES[2].ang; WIND.shiftTo = WIND.shift + 1.05;
     H.run(45, () => H.steer(0)); out.chop = H.deg(Math.abs(H.wrap(SWAVES[2].ang - c0))); out.swell = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
     H.run(400, () => H.steer(0)); out.swellLate = H.deg(Math.abs(H.wrap(SWAVES[0].ang - a0)));
+    out.swellOff = H.deg(Math.abs(H.wrap(SWAVES[0].ang - SWAVES[0].off - (WIND.base + WIND.shift + Math.PI))));   // (how far it's still to come round: where it was before the shift is the last shifts' lag)
     return out;
   });
   ok(`left to itself the wind goes round: ${r.shifts} shifts that hold (settled ${Math.round(r.held * 100)}% of the time), ${r.lo}°…${r.hi}° off the leg's own`, r.shifts >= 5 && r.held > 0.5 && r.hi - r.lo > 30 && r.lo < -8 && r.hi > 8 && r.hi - r.lo < 110, r);
   ok(`gusts veer (${r.gust}°, ${r.gusts} of them), lulls back (${r.lull}°, ${r.lulls})`, r.gusts > 3 && r.lulls > 0 && r.veers, r);
-  ok(`60° round: the wind sea comes with it (${r.chop}° in 45 s), the swell lags (${r.swell}°): a cross sea; later it follows (${r.swellLate}°)`, r.chop > 30 && r.swell < r.chop / 2 && r.swellLate > 45, r);
+  ok(`60° round: the wind sea comes with it (${r.chop}° in 45 s), the swell lags (${r.swell}°): a cross sea; later it follows (${r.swellLate}°, ${r.swellOff}° to go)`, r.chop > 30 && r.swell < r.chop / 2 && r.swellLate > 30 && r.swellOff < 8, r);
 }
 
 if (want('front')) {
