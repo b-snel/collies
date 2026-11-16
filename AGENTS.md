@@ -17,7 +17,7 @@ fight off coyotes (they dig under fences: fill the hole), cougars and falcons ti
 desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly.
 The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), again as often as you like (the best counts; each its card on its mat, a tip a step), against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
-A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel and a ram for wool, and buying sheep (the better the sheep, the more);
+A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel, a ram and hurdles (a ram fold by a camp's pen: rams apart) for wool, and buying sheep (the better the sheep, the more);
 Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
 fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; an ice cave in the rim below the top (a hearth: the flock shelters in it); the yeti on top, a campfire by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
@@ -114,6 +114,7 @@ First time: a practice at the corral (six lessons from an afternoon to dawn, the
 - VAGABOND (the VENDOR's wares)
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
 - WILD RAMS (the castaway)
+- RAM FOLDS
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
 - TUTORIAL
 - game flow
@@ -222,6 +223,7 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `vagSeaStart()` (from `seaStart`)
 - `vagBarkAt(d, busy)` (busy: loose sheep / foes the bark reached: not a nag)
 - `e.isLlama` (LLAMAS: on a rope it's an `e.npc`; `R.llama`, `ropeNpc(R)`), `llamaNeck(L, out)` (its halter), `launchLlama(L, vx, vz, vy, kind, by)` / `L.air` / `L.heldBy` (as a sheep's), `llamasAboard()`
+- `p.fold` / `p.parent` (RAM FOLDS: a pen of hurdles by a camp pen; no troughs, water, lick)
 - `s.lid` / `s.inF` (LINEAGE: its record in `KIN`, how inbred), `kinFounder(s, src)` (new blood: no known parents; `src` a `KIN_SRC` key), `kinPair(a, b)`
 - `L.wear` (`{ hat, tint, acc }`, `llamaHas(L, id)`), `llamaSet(L, ch)` (LLAMA WARDROBE: a guest's goes to the host as `ll`), `L.greens` / `L.salt` (its pack), `L.cold` (0…1)
 - `e.isHerd` (DUCKS: HERD, `herdStep`; `e.kind` 'duck' | 'sheep', `e.grp`; ✊ as `duck` / `tsheep`)
@@ -323,7 +325,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/ducks.md`: duck bunches, HERD (the small-herd mover: ducks, the trials' sheep), flying up, drawing.
 - `docs/llamas.md`: wild herds, population, capture (rope, tug), guards and their spit, bonk and grab, shearing, gear (wardrobe, barn), cold, packs.
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
-- `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
+- `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
 - `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
 
