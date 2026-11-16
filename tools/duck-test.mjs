@@ -285,9 +285,9 @@ if (want('cougar')) {
     H.run(150, () => { G.clock.hour = 22; toasts = Math.max(toasts, box.children.length); up = up || (k.prey && k.prey.isHerd && k.state === 'climb'); return HERD.died.prey > died ? true : null; });
     out.cougar = { up, eaten: HERD.died.prey - died, toasts, sheep: G.sheep.filter(s => s.dead).length };
     // LLAMAS: a wild cria taken: no toast, not counted; a guard's: both
-    const cria = (tame) => { const m = makeLlama({ x: Lr.x + ux * 22, z: Lr.z + uz * 22, sex: 'f', age: 5, tame, herd: tame ? null : { id: 90 } }); const c = makeLlama({ x: Lr.x + ux * 22 + 1, z: Lr.z + uz * 22, sex: 'm', age: 0.4, tame, herd: m.herd, mum: m }); m.cdH = c.cdH = 99; return c; };
+    const cria = (tame) => { const m = makeLlama({ x: Lr.x + ux * 22, z: Lr.z + uz * 22, sex: 'f', age: 5, tame, herd: tame ? null : { id: 90 } }); const c = makeLlama({ x: Lr.x + ux * 22 + 1, z: Lr.z + uz * 22, sex: 'm', age: 0.4, tame, herd: m.herd, mum: m }); m.cdH = c.cdH = 99; if (tame) llamaRemove(m); return c; };   // (ours: no guard by it to spit the cougar off)
     for (const e of [...g.list]) GAME.herdRemove(e);
-    const runCria = c => { k.state = 'perch'; k.hunts = true; k.prey = k.target = null; cougarHunt(k, 0); let t = 0, took = false; H.run(150, () => { G.clock.hour = 22; t = Math.max(t, box.children.length); took = took || c.grabbed === k; return !LLAMAS.includes(c) || (took && t) ? true : null; }); return { took, gone: !LLAMAS.includes(c), toasts: t }; };
+    const runCria = c => { k.state = 'perch'; k.hunts = true; k.prey = k.target = null; k.driven = 0; k.treedAt = -1e9; cougarHunt(k, 0); let t = 0, took = false; H.run(150, () => { G.clock.hour = 22; t = Math.max(t, box.children.length); took = took || c.grabbed === k; return !LLAMAS.includes(c) || (took && t) ? true : null; }); return { took, gone: !LLAMAS.includes(c), toasts: t }; };
     for (const el of [...box.children]) el.remove();
     out.wild = runCria(cria(0)); out.wild.lost = G.stats.criasLost;
     for (const L of [...LLAMAS]) llamaRemove(L); for (const el of [...box.children]) el.remove(); H.run(1, () => { G.clock.hour = 22; });
