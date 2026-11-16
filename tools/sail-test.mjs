@@ -126,7 +126,8 @@ if (want('heel')) {
   await setup({ calm: true });
   const r = await h.page.evaluate(() => {
     const { G, T, SEA } = GAME, out = {};
-    const heel = (v, hoist = 1) => { H.sea(1.57, 11, { flat: true }); SEA.hoist = hoist; let n = 0, a = 0, u = 0; H.run(40, t => { H.steer(0); H.flock(v); if (t > 25) { n++; a += SEA.heel; u += SEA.u; } }); return [H.deg(a / n), H.r(u / n)]; };
+    // (a moderate breeze: in a strong one Hank eases her before the flock can heel her further)
+    const heel = (v, hoist = 1) => { H.sea(1.57, 8, { flat: true }); SEA.hoist = hoist; let n = 0, a = 0, u = 0; H.run(40, t => { H.steer(0); H.flock(v); if (t > 25) { n++; a += SEA.heel; u += SEA.u; } }); return [H.deg(a / n), H.r(u / n)]; };
     [out.mid, out.uMid] = heel(0); [out.lee, out.uLee] = heel(-5.4); [out.wind, out.uWind] = heel(5.4); [out.reef, out.uReef] = heel(0, 0.55);   // (wind from starboard: she heels to port; port is the lee side)
     return out;
   });
