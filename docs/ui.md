@@ -12,6 +12,8 @@
 - **Hints** (`HINTS`, `hint`, `updateHints`): one at a time, queued; up `hintLen` s (12–22, by length), the clock waits while
   paused / a menu's up; a bar runs down; more waiting → `HINT_MIN` (12 s). The first ones `HINT_MIN` + 1 s apart. `TOUCH_HINTS` on touch.
   Button nudges over things (`nudge`): `NUDGE_DUR` (6.5 s) on screen, then retired. None in the practice (docs/tutorial.md: its card).
+- **Toasts** (`toast`, `updateToasts`): one at a time, queued (≤4, no repeats); `TOAST_DUR` s, more waiting → `TOAST_BUSY`.
+  One up: the hint steps aside (`#hint.wait`), its clock waits. None in the practice. One message on screen at a time.
 - **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep and Llamas (only once one's ours: `barnLlamas`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each, 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
   Every screen its own (Tab / View / 🏚️ / pause). A guest dresses its own dogs (`barnDogs`: DOGS.looks[k] → its k-th dog, colours `barnSlot`;
   saved on its device; sent as `dl`, `netLookOut`: a coat or collar never picked (`pick`) takes its slot's colours there) and renames /
