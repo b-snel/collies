@@ -1,4 +1,4 @@
-// Headless checks for LINEAGE (KIN) and new blood: `node tools/kin-test.mjs [lines|court|save|tree|barn|dawn|vag|wild|catch|cast|reset]`.
+// Headless checks for LINEAGE (KIN) and new blood: `node tools/kin-test.mjs [lines|court|save|tree|barn|dawn|view|vag|wild|catch|cast|reset]`.
 //   lines  every sheep a record; founders no parents; the first lambs, their mums' and a ram's. F: ram × daughter and full sibs 1/4, half
 //          sibs 1/8, strangers 0. Born inbred: shorter lived, less brave, smaller, less hardy, slower fleece; a close pair, fewer lambs
 //   court  a ram courting his daughter in a shut pen: 🧬, Hank's word; her lambs at dawn: his and hers, F 1/4
@@ -6,6 +6,7 @@
 //   tree   the tree: forebears (sire left, dam right), one twice ringed, unknown ones '?', lambs below
 //   barn   🌳 in the barn: the picked sheep's tree; a node: its tree, ↶ back; ♥ who a ram could breed with, kin flagged; dots in the list
 //   dawn   a new lamb's 🌳 on the dawn card: its tree over it; Esc: back
+//   view   a phone (667×307): the tree fits its box; drag pans (not a click on a node), pinch zooms, double-click fits again
 //   vag    the vagabond's ram: on land, for 🧶, one a pitch, not at sea; new blood (🎒), on the next dawn card
 //   wild   wild rams: 1–2 a journey on land legs, well off the trail, the castaway on an island (off in ?sim); a dog walking at one: off,
 //          creeping: it stays
@@ -19,7 +20,7 @@ let h = await open(), fails = 0;
 const errors = [];
 const ok = (name, cond, info) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}${cond ? '' : '  ' + JSON.stringify(info)}`); if (!cond) fails++; };
 const want = k => !only || only === k;
-const setup = async (query) => { errors.push(...h.errors); await h.close(); h = await open(query ? { query } : undefined); return h.page.evaluate(() => {
+const setup = async (query, size) => { errors.push(...h.errors); await h.close(); h = await open({ ...(query ? { query } : {}), ...(size || {}) }); return h.page.evaluate(() => {
   const { G, T, step, startGame, groundY, CAM_R, CAM_F, pathPoint, HANK, makeSheep, kinBorn } = GAME;
   try { localStorage.clear(); } catch (e) {}
   startGame({ kind: 'bot', index: 0 }); G.players[0].bot = {}; G.clock.hour = 10;
@@ -114,8 +115,8 @@ if (want('save')) {
   ok(`a reload: the same records (${r.recs}), the same line`, r.resumed && r.recs === before.recs && r.g && r.g.lid === before.after.lid && r.g.F === before.after.F && r.tagged, r);
 }
 
-if (want('tree') || want('barn') || want('dawn')) {
-  await setup();
+if (want('tree') || want('barn') || want('dawn') || want('view')) {
+  await setup(undefined, want('view') ? { width: 667, height: 307 } : undefined);
   // a line: the ram sires Dot; Dot × the ram: Pip; Clover × the ram: Rocky (a ram); Pip × Rocky: Wee Tam (the ram twice up her tree)
   await h.page.evaluate(() => {
     const { G } = GAME, ram = G.sheep.find(s => s.ram), ewes = G.sheep.filter(s => !s.ram && !s.lamb);
@@ -168,6 +169,27 @@ if (want('tree') || want('barn') || want('dawn')) {
       closeDawn(); return out;
     });
     ok(`a new lamb on the dawn card: 🧬, 🌳 → its tree over it; a node: its tree; Backspace back; Esc: the card`, r.tag && r.pop && r.went && r.back && r.shut, r);
+  }
+  if (want('view')) {
+    await h.page.evaluate(() => { const { DAWN, openDawn } = GAME, tam = GAME.G.sheep.find(s => s.lid === LN.tam); openDawn([tam], []); DAWN.t0 = -1e9;
+      document.querySelector('#dawn .dawnRow [data-tree]').click(); document.querySelector(`#dawn .kinPop .kinNode[data-kin="${LN.rocky}"]`).click(); });
+    const st = () => h.page.evaluate(() => { const b = document.querySelector('#dawn .kinPop .kinBox'), r = b.getBoundingClientRect();
+      const out = [...b.querySelectorAll('.kinNode')].filter(n => { const q = n.getBoundingClientRect(); return q.left < r.left - 1 || q.top < r.top - 1 || q.right > r.right + 1 || q.bottom > r.bottom + 1; }).length;
+      return { out, n: b.querySelectorAll('.kinNode').length, v: { ...b._kv }, root: b.closest('.kinTree').dataset.root, box: [r.left, r.top, r.width, r.height] }; });
+    const a = await st();
+    ok(`a phone: the tree fits its box (${a.n} nodes, ${a.out} out; ×${a.v.s && a.v.s.toFixed(2)})`, a.n >= 7 && a.out === 0, a);
+    const node = await h.page.evaluate(() => { const r = document.querySelector(`#dawn .kinPop .kinNode.g0`).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 3]; });
+    await h.page.mouse.move(node[0], node[1]); await h.page.mouse.down(); await h.page.mouse.move(node[0] + 30, node[1] + 20, { steps: 5 }); await h.page.mouse.up();
+    const b = await st();
+    ok(`drag: pans (${(b.v.x - a.v.x).toFixed(0)}, ${(b.v.y - a.v.y).toFixed(0)}), not a click`, b.v.x - a.v.x > 20 && b.v.y - a.v.y > 10 && b.root === a.root, b);
+    const cdp = await h.page.context().newCDPSession(h.page), [bx, by, bw, bh] = b.box, cx = bx + bw / 2, cy = by + bh / 2;
+    const tp = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: d == null ? [] : [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }] });
+    await tp('touchStart', 20); for (let d = 30; d <= 80; d += 10) await tp('touchMove', d); await tp('touchEnd');
+    const c = await st();
+    ok(`pinch: zooms in (×${c.v.s.toFixed(2)})`, c.v.s > b.v.s * 2, c);
+    await h.page.evaluate(() => { const b = document.querySelector('#dawn .kinPop .kinBox'); b.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
+    const d = await st();
+    ok(`double-click: fits again`, d.out === 0 && Math.abs(d.v.s - a.v.s) < 1e-3, d);
   }
 }
 
