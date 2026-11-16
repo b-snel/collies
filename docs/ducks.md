@@ -15,6 +15,11 @@
   counted; ♥); she hatches `clutch` ducklings `incubH` h on (`e.clutch`, `duckHatch`), her coat or the drake's (`e.dad`). No drake (or hen) in a
   bunch: one comes over from a bunch within `seek` m with one to spare (`duckVisit`; out of sight: it's there; both near: it walks). Never past
   `T.duck.max`. `duckLife`: every `tick` h, every bunch, near or far (`HERD.lifeH`, `HERD.born`, `HERD.died`).
+- **Imprint** (IMPRINT): a duckling whose mum dies (`e.orphan`, `herdRemove`) takes the first dog within `imprintR` m for its mum (`duckImprint`,
+  `e.dog`, ♥, cheeps): trails it in a line (`duckLead`, `dogGap` m back; a walking dog outruns them, creeping it doesn't; left behind, they
+  hurry), pecks round it, sleeps by it at night, unafraid of it (no pressure, its barks don't scatter them). Stepped wherever its bunch is. Grown,
+  or `loseR` m behind, or its dog gone: on its own again, in the nearest bunch within `settleR` m or one of its own (`duckSettle`). Saved with
+  its dog's slot (`e.dogSlot`) and new bunches.
 - **Prey** (PREY, `T.duck.prey`): a hunting coyote ('pack', not striking) runs at one on land within `coyR` m (`coyoteDuck`, `chase` s, then `cd`),
   grabs it (`grab`: the pack hunts on), eats it `eatT` s on (`preyKill` → `duckDie`), off home. A cougar hunts one in its range (`cougarTarget`,
   `cougarSc` m worse than a sheep), up its tree. Awake ones shy off a predator within `seeR` (a cougar: half) and fly up within `flyR` (`duckFoes`;

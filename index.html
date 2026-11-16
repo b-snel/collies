@@ -1265,8 +1265,10 @@ const T = {
     // `old` (paler, `slow` × the pace), gone at `die` days. A grown drake (`drake` of them) and a hen without a brood in a bunch mate, `mateP` an hour
     // × room left (1 − n / `cap`, clutches to come counted), by day; no drake (or hen): one comes over from a bunch within `seek` m (`visitP` an
     // hour). She hatches `clutch` ducklings `incubH` h on. A new bunch: `brood` of them a hen with ducklings. Ticked every `tick` h, every bunch.
+    // IMPRINT: an orphan (its mum gone) takes the first dog within `imprintR` m for its mum: trails it (`dogGap` m back; a walking dog outruns
+    // them, creep) till grown or `loseR` m behind, then joins the nearest bunch within `settleR` m (or starts one there).
     life: { grow: 2, small: 0.42, old: 7, slow: 0.85, die: [9, 13], follow: 0.42, drake: 0.45, mateP: 0.12, cap: 12, seek: 120, visitP: 0.2,
-      incubH: 16, clutch: [2, 5], brood: 0.5, tick: 0.25, fluff: ['#f2d65e', '#e9c84a'] },
+      incubH: 16, clutch: [2, 5], brood: 0.5, tick: 0.25, fluff: ['#f2d65e', '#e9c84a'], imprintR: 7, dogGap: 1.1, loseR: 80, settleR: 30 },
     // PREY (DUCKS): a coyote ('pack', not striking) runs at one within `coyR` m on land (`chase` s, then none for `cd` s), its catch eaten `eatT` s on;
     // a cougar hunts one in its range (`cougarSc` m worse than a sheep). Awake ones shy off one within `seeR` m (a cougar: half), fly up within `flyR`
     // (ducklings can't: they run); asleep they don't see it, till one's taken (the rest up, awake `alarmT` s). Out of every dog's reach (`near`,
@@ -21427,7 +21429,7 @@ function herdRemove(e) {
   if (e.heldBy) { const d = e.heldBy; if (d.holding === e) { d.holding = null; d.holdKind = null; d.grabLock = true; } e.heldBy = null; }
   if (e.grabbed) { if (e.grabbed.prey === e) e.grabbed.prey = null; e.grabbed = null; }   // PREY: in a coyote's or a cougar's jaws
   const i = HERDS.indexOf(e); if (i >= 0) HERDS.splice(i, 1);
-  if (e.grp) { const j = e.grp.list.indexOf(e); if (j >= 0) e.grp.list.splice(j, 1); for (const o of e.grp.list) if (o.mum === e) o.mum = null; }
+  if (e.grp) { const j = e.grp.list.indexOf(e); if (j >= 0) e.grp.list.splice(j, 1); for (const o of e.grp.list) if (o.mum === e) { o.mum = null; if (duckling(o)) o.orphan = true; } }   // (LIFE: an orphan: IMPRINT)
   e.gone = e.dead = true;
 }
 function herdGroup(kind, x, z, o = {}) { const g = { id: HERD.groups.length, kind, x, z, hx: x, hz: z, list: [], trial: !!o.trial, found: false, goal: null, goT: 0, sleep: false, cx: x, cz: z, n: 0, workT: -99, active: true, ...o }; HERD.groups.push(g); return g; }
@@ -21487,12 +21489,12 @@ function updateHerds(dt, dtH) {
   if (!HERDS.length || SEA_AWAY) return;
   const K = T.duck;
   for (const g of HERD.groups) {
-    let x = 0, z = 0, n = 0; for (const e of g.list) if (!e.heldBy && !e.grabbed) { x += e.x; z += e.z; n++; }
+    let x = 0, z = 0, n = 0; for (const e of g.list) if (!e.heldBy && !e.grabbed && !e.dog) { x += e.x; z += e.z; n++; }   // (IMPRINT: not one off with its dog)
     if (n) { g.cx = x / n; g.cz = z / n; } g.n = n;
     g.active = g.trial || G.dogs.some(d => Math.abs(d.x - g.cx) < K.near && Math.abs(d.z - g.cz) < K.near) || g.list.some(e => e.heldBy || e.grabbed);
     if (g.active && !g.trial) duckGroupStep(g, dt, dtH);
   }
-  for (const e of [...HERDS]) if (!e.grp || e.grp.active) herdStep(e, dt);
+  for (const e of [...HERDS]) if (!e.grp || e.grp.active || e.dog || e.dogSlot != null) herdStep(e, dt);   // (IMPRINT: with its dog, wherever)
   if ((HERD.lifeH += dtH) >= K.life.tick) { duckLife(HERD.lifeH); HERD.lifeH = 0; }   // LIFE: every bunch, near or far
   if (G.mode === 'play') duckFind();
 }
@@ -21544,26 +21546,59 @@ function duckBorn(e, o) {
   duckLook(e);
 }
 function duckLook(e) { const L = T.duck.life; e.scale = lerp(L.small, 1, duckGrowK(e)); e.pep = 1 - (1 - L.slow) * duckOldK(e); }
+// whom a duckling trails: its mum, or (IMPRINT) the dog it took for her
+function duckLead(e) { return e.dog || duckMum(e); }
 // the one ahead of it in the march: the next grown one up the list (its own mum's brood trails her: duckTrail)
-function herdAhead(e) { const L = e.grp.list; for (let i = L.indexOf(e) - 1; i >= 0; i--) if (!duckMum(L[i])) return L[i]; return null; }
-// a duckling's place in its mum's line: after the sibling ahead of it (list order), or her
-function duckAhead(e, mum) { let a = mum; for (const o of e.grp ? e.grp.list : HERDS) { if (o === e) break; if (o.mum === mum && herdFree(o)) a = o; } return a; }
+function herdAhead(e) { const L = e.grp.list; for (let i = L.indexOf(e) - 1; i >= 0; i--) if (!duckLead(L[i])) return L[i]; return null; }
+// a duckling's place in its mum's (or dog's) line: after the sibling ahead of it (list order), or her
+function duckAhead(e, mum) { let a = mum; for (const o of e.grp ? e.grp.list : HERDS) { if (o === e) break; if ((o.dog || o.mum) === mum && herdFree(o)) a = o; } return a; }
 function duckTrail(e, mum, dt, K) {
-  const L = T.duck.life, ahead = duckAhead(e, mum), d = mum.heldBy, sp = Math.hypot((d || mum).vx, (d || mum).vz), g = e.grp;
-  if (sp > 0.35 || d || mum.swim || (g && g.goal) || mum.state === 'move') {   // she's off: in a line behind her, each after the one ahead
-    const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = L.follow * (ahead === mum ? 1.4 : 1) + (ahead.heldBy ? 0.6 : 0);
+  const L = T.duck.life, dog = !!mum.isDog, ahead = duckAhead(e, mum), d = dog ? null : mum.heldBy, sp = Math.hypot((d || mum).vx, (d || mum).vz), g = e.grp;
+  if (sp > 0.35 || d || mum.swim || (!dog && ((g && g.goal) || mum.state === 'move'))) {   // she's off: in a line behind her, each after the one ahead
+    const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = ahead === mum ? (dog ? L.dogGap : L.follow * 1.4) : L.follow + (ahead.heldBy ? 0.6 : 0);
     const dx = ahead.x - Math.sin(ay) * f - e.x, dz = ahead.z - Math.cos(ay) * f - e.z, dd = Math.hypot(dx, dz);
     e.state = 'walk';
-    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
+    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), K.run * 1.5, dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
     return _hdv;
   }
-  e.state = 'graze';   // she's pecking about: so are they, round her
-  const dm = Math.hypot(mum.x - e.x, mum.z - e.z);
-  if ((e.thinkT -= dt) <= 0 || dm > 1.5) { e.thinkT = rnd(1, 3); const a = Math.random() * TAU, r = rnd(0.25, 0.85); e.tx = mum.x + Math.cos(a) * r; e.tz = mum.z + Math.sin(a) * r; e.peck = dm > 1.5 ? 0 : rnd(0.4, 1.6); }
+  e.state = 'graze';   // she's pecking about (the dog's standing): so are they, round her
+  const dm = Math.hypot(mum.x - e.x, mum.z - e.z), r0 = dog ? 0.8 : 0.25, r1 = dog ? 1.5 : 0.85, far = dog ? 2.4 : 1.5;
+  if ((e.thinkT -= dt) <= 0 || dm > far) { e.thinkT = rnd(1, 3); const a = Math.random() * TAU, r = rnd(r0, r1); e.tx = mum.x + Math.cos(a) * r; e.tz = mum.z + Math.sin(a) * r; e.peck = dm > far ? 0 : rnd(0.4, 1.6); }
   e.peck -= dt;
   const dx = e.tx - e.x, dz = e.tz - e.z, dd = Math.hypot(dx, dz);
-  if (e.peck <= 0 && dd > 0.12) { const v = K.walk * (dm > 1.2 ? 1.3 : 0.5); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
+  if (e.peck <= 0 && dd > 0.12) { const v = dm > far - 0.3 ? Math.min(K.run * 1.5, K.walk + dm) : K.walk * 0.5; _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (left behind: they hurry)
   return _hdv;
+}
+// ---------------- IMPRINT: an orphan duckling (e.orphan: its mum gone) takes the first dog within `imprintR` for its mum (e.dog): trails it
+// wherever it goes, unafraid of it (its pressure, barks), sleeps by it. Grown, or lost (`loseR` behind, the dog gone): on its own again, in the
+// nearest bunch (duckSettle). JOURNEY SAVE: e.dogSlot (its dog's player slot) till it finds it again ----------------
+function duckImprint(e) {
+  const L = T.duck.life;
+  if (e.dog) {
+    if (G.dogs.includes(e.dog) && Math.hypot(e.dog.x - e.x, e.dog.z - e.z) < L.loseR) return;
+    e.dog = null; e.orphan = duckling(e); duckSettle(e); return;   // lost it
+  }
+  if (e.dogSlot != null) {   // (a reload: back with its dog)
+    const d = G.dogs.find(o => o.player && o.player.slot === e.dogSlot); e.dogSlot = null;
+    if (d) { e.dog = d; e.orphan = false; if (Math.hypot(d.x - e.x, d.z - e.z) > 6) { e.x = d.x - Math.sin(d.yaw) * L.dogGap; e.z = d.z - Math.cos(d.yaw) * L.dogGap; e.y = groundY(e.x, e.z); } return; }
+  }
+  if (!e.orphan || !duckling(e)) { e.orphan = false; return; }
+  let best = null, bd = L.imprintR;
+  for (const d of G.dogs) { if (d.ko || d.heldBy) continue; const dd = Math.hypot(d.x - e.x, d.z - e.z); if (dd < bd) { bd = dd; best = d; } }
+  if (!best) return;
+  e.dog = best; e.orphan = false; e.mum = null; e.stress = 0; e.goT = 0;
+  herdFx('imprint', e.x, e.z, 1);
+}
+// on its own away from its bunch: the nearest within `settleR` m takes it in, or it starts one where it is
+function duckSettle(e) {
+  const L = T.duck.life, g0 = e.grp;
+  if (g0 && g0.list.length === 1) { g0.hx = g0.cx = e.x; g0.hz = g0.cz = e.z; return; }   // (its own bunch: there now)
+  if (g0 && Math.hypot(g0.cx - e.x, g0.cz - e.z) < L.settleR) return;
+  let best = null, bd = L.settleR;
+  for (const g of HERD.groups) { if (g.trial || g === g0 || !g.list.length) continue; const d = Math.hypot(g.cx - e.x, g.cz - e.z); if (d < bd) { bd = d; best = g; } }
+  if (!best) best = herdGroup('duck', e.x, e.z, { found: true, cx: e.x, cz: e.z, n: 1 });
+  if (g0) { const i = g0.list.indexOf(e); if (i >= 0) g0.list.splice(i, 1); }
+  e.grp = best; best.list.push(e);
 }
 const duckHenFree = e => !e.male && e.age >= T.duck.life.grow && duckOldK(e) < 0.5 && !e.clutch && !e.grabbed && !e.grp.list.some(o => o.mum === e);
 function duckLife(h) {
@@ -21574,6 +21609,7 @@ function duckLife(h) {
     for (const e of [...g.list]) {   // a day older: ducklings grow (grown: on their own), the old slow, the oldest go
       e.age += h / 24;
       if (e.mum && (e.mum.gone || e.age >= L.grow)) e.mum = null;
+      if (e.age >= L.grow) { e.orphan = false; if (e.dog) { e.dog = null; duckSettle(e); } }   // IMPRINT: grown: on its own
       duckLook(e);
       if (e.age >= e.life && !e.grabbed && !e.heldBy) { duckDie(e, 'old'); total--; }
     }
@@ -21662,8 +21698,8 @@ function duckDie(e, why, fx = true) {
 }
 function duckFarPrey(g) {   // ducklings likeliest, then the old
   const W = T.duck.prey.farW, w = e => duckling(e) ? W[0] : duckOldK(e) > 0 ? W[1] : W[2];
-  let tot = 0; for (const e of g.list) if (!e.heldBy) tot += w(e);
-  let r = Math.random() * tot; for (const e of g.list) { if (e.heldBy) continue; if ((r -= w(e)) <= 0) { duckDie(e, 'prey', false); return; } }
+  let tot = 0; for (const e of g.list) if (!e.heldBy && !e.dog) tot += w(e);   // (IMPRINT: not one off with its dog)
+  let r = Math.random() * tot; for (const e of g.list) { if (e.heldBy || e.dog) continue; if ((r -= w(e)) <= 0) { duckDie(e, 'prey', false); return; } }
 }
 // a coyote on the hunt ('pack'; not striking, dragging, defending) runs at a duck on land close by: a while, then gives up on ducks
 function coyoteDuck(c, dt) {
@@ -21679,6 +21715,7 @@ function herdStep(e, dt) {
   const K = T.herd[e.kind], g = e.grp;
   e.t += dt;
   if (e.grabbed) { if (e.grabbed.prey !== e) e.grabbed = null; else { e.state = 'held'; e.wing = 1; e.swim = false; e.fly = null; return; } }   // PREY: in its jaws (it moves it)
+  if (e.orphan || e.dog || e.dogSlot != null) duckImprint(e);   // IMPRINT: an orphan takes a dog for its mum
   if (e.heldBy) { herdHeld(e, dt); return; }
   if (e.air) { herdAirStep(e, dt); return; }
   if (e.fly) { herdFlyStep(e, dt); return; }
@@ -21692,6 +21729,7 @@ function herdStep(e, dt) {
     const dx = e.x - d.x, dz = e.z - d.z; if (Math.abs(dx) > 24 || Math.abs(dz) > 24) continue;
     const dd = Math.hypot(dx, dz) + 1e-4;
     if (d.pounceT > 0 && dd < e.r + 0.7 && G.time - (e.bonkT || -9) > 0.6) { herdBonked(e, d); return; }
+    if (d === e.dog) continue;   // IMPRINT: its own dog: no fright
     if (d.mode === 'lie') { if (dd < T.lieCalmR * 0.5) calm = true; if (dd < 3) { const k = (3 - dd) / 3 * 0.4; dfx += dx / dd * k; dfz += dz / dd * k; press = Math.max(press, k * 0.5); } continue; }
     const pounce = d.pounceT > 0;
     let R = (T.pressR[d.mode] || T.pressR.walk) * K.press * (1 + 0.25 * e.stress), Kp = T.pressK[d.mode] || 1;
@@ -21739,9 +21777,9 @@ function herdStep(e, dt) {
     if (e.panic) { const w = Math.sin(e.t * 3.1 + e.id * 1.7) * 0.9, c = Math.cos(w), s = Math.sin(w); hx = e.gdx * c - e.gdz * s; hz = e.gdz * c + e.gdx * s; }   // panicked: weaving
     const f = Math.min(1, e.goT / (K.mom * 0.4)); tx = hx * e.spd * f; tz = hz * e.spd * f;
   } else { const v = herdIdle(e, dt, K); tx = v.x; tz = v.z; }
-  const mum = duckMum(e);
-  if (mum && !e.panic && e.state !== 'walk') {   // LIFE: a duckling keeps by its mum (pushed, it comes back to her)
-    const dx = mum.x - e.x, dz = mum.z - e.z, dd = Math.hypot(dx, dz) + 1e-4, want = 0.9;
+  const mum = duckLead(e);
+  if (mum && !e.panic && e.state !== 'walk') {   // LIFE: a duckling keeps by its mum (IMPRINT: its dog; pushed, it comes back to her)
+    const dx = mum.x - e.x, dz = mum.z - e.z, dd = Math.hypot(dx, dz) + 1e-4, want = mum.isDog ? 1.7 : 0.9;
     if (dd > want) { const k = Math.min(1.6, (dd - want) * 0.8) * (e.goT > 0 ? 0.6 : 1); tx += dx / dd * k * K.trot * 0.6; tz += dz / dd * k * K.trot * 0.6; }
   } else if (mn && !e.panic && !(g && g.goal && e.state === 'walk')) {   // the bunch pulls a straggler back in (less while it's all on the move)
     const cx = mx / mn, cz = mz / mn, dx = cx - e.x, dz = cz - e.z, dd = Math.hypot(dx, dz) + 1e-4, want = K.bunch + Math.sqrt(mn) * K.space * 0.6;
@@ -21757,6 +21795,7 @@ const _hdv = { x: 0, z: 0 };
 // left alone: wild ones asleep by night (huddled), marching in line after the leader, pecking about; the trials' just graze where they are
 function herdIdle(e, dt, K) {
   const g = e.grp, mum = duckMum(e); _hdv.x = _hdv.z = 0;
+  if (e.dog) { const v = duckTrail(e, e.dog, dt, K); if (isNight() && e.state === 'graze' && Math.hypot(e.dog.x - e.x, e.dog.z - e.z) < 2) { e.state = 'sleep'; v.x = v.z = 0; } return v; }   // IMPRINT: after its dog (still by night: asleep by it)
   if (g && g.sleep) {   // (LIFE: a duckling tucked in by its mum)
     e.state = 'sleep'; const dx = (mum ? mum.x : g.cx) - e.x, dz = (mum ? mum.z : g.cz) - e.z, dd = Math.hypot(dx, dz);
     if (dd > (mum ? 0.3 : 0.9)) { const v = K.walk * (mum ? 0.9 : 0.6); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }
@@ -21869,7 +21908,7 @@ function herdShaken(e, d) { e.stress = 1; e.panic = 1; herdFx(e.kind === 'duck' 
 function herdBark(d) {
   const R = barkR(d); let n = 0;
   for (const e of HERDS) {
-    if (e.heldBy || e.grabbed || e.state === 'shear' || e.state === 'stay') continue;
+    if (e.heldBy || e.grabbed || e.dog === d || e.state === 'shear' || e.state === 'stay') continue;   // (IMPRINT: its own dog's)
     const dx = e.x - d.x, dz = e.z - d.z; if (Math.abs(dx) > R || Math.abs(dz) > R) continue;
     const dd = Math.hypot(dx, dz) + 1e-4; if (dd > R) continue;
     const k = 1 - dd / R, K = T.herd[e.kind]; n++;
@@ -21923,6 +21962,7 @@ function herdFx(kind, x, z, a = 1) {
   else if (kind === 'bonk') { floatText('BONK!', x, y + 1.5, z, '#ffffff', 1.1); SFX.bonk(pan, 0.2); starBurst(x, y + 0.9, z, 4); if (near) Sound.baa(1.1, 0.4, pan, true); }
   else if (kind === 'found') { floatText('❗🦆', x, y + 1.8, z, '#ffd36b', 1.3); Sound.chime(a ? [0, 4, 7, 12] : [0, 7], 784, 0.1, 0.07); if (near) DSND.quack(pan, 0.15, 1, 2); }
   else if (kind === 'peep') { if (near) DSND.peep(pan, 0.08, rnd(0.95, 1.12), 2 + (Math.random() < 0.5 ? 1 : 0)); }   // LIFE
+  else if (kind === 'imprint') { floatText('♥', x, y + 0.8, z, '#ffd36b', 0.9); if (near) DSND.peep(pan, 0.1, 1.15, 3); }   // IMPRINT: a dog for a mum
   else if (kind === 'love') { floatText('♥', x, y + 1.1, z, '#ff7aa8', 1); if (near) DSND.quack(pan, 0.1, 0.95, 2); }   // LIFE: a drake and a hen
   else if (kind === 'hatch') { burst(x, y + 0.15, z, 8, '#f4efe2', { speed: 1.1, up: 1.4, size: 0.07, life: 0.7 }); burst(x, y + 0.2, z, 5, T.duck.life.fluff[0], { speed: 0.8, up: 1, size: 0.08, life: 0.6, grav: -1 }); if (near) DSND.peep(pan, 0.1, 1.05, 3); }   // LIFE: a clutch
   else if (kind === 'feathers') { burst(x, y + 0.4, z, a ? 12 : 5, '#f2eee4', { speed: a ? 2 : 0.8, up: a ? 2 : 1, size: 0.1, life: a ? 1.1 : 1.4, grav: -1.5 }); if (a && near) DSND.quack(pan, 0.12, 1.25, 1); }   // PREY: eaten; LIFE: old
@@ -22058,24 +22098,26 @@ resetDucks();
 onReset(() => resetDucks(), 176);   // DUCKS: new bunches
 // (LIFE: every bunch as it is now: where, who, how old, whose; `g` [hx, hz, [[x, z, age, drake, coat, life, clutch, mum's index, dad's coat], …]])
 const duckR2 = v => Math.round(v * 100) / 100;
-function duckSaveGroup(g) { const r2 = duckR2, L = g.list.filter(e => !e.grabbed); return [r2(g.hx), r2(g.hz), L.map(e => [r2(e.x), r2(e.z), r2(e.age), e.male ? 1 : 0, e.coat, r2(e.life), r2(e.clutch), L.indexOf(e.mum), e.dad ?? -1])]; }
+function duckSaveGroup(g) { const r2 = duckR2, L = g.list.filter(e => !e.grabbed); return [r2(g.hx), r2(g.hz), L.map(e => [r2(e.x), r2(e.z), r2(e.age), e.male ? 1 : 0, e.coat, r2(e.life), r2(e.clutch), L.indexOf(e.mum), e.dad ?? -1,
+  e.dog && e.dog.player ? e.dog.player.slot : e.orphan ? -2 : -1])]; }   // (IMPRINT: its dog's slot; -2 an orphan)
 onSave('ducks', () => ({ seed: HERD.seed, found: HERD.groups.filter(g => !g.trial).map((g, i) => g.found ? i : -1).filter(i => i >= 0), seen: HERD.seen,
   g: HERD.groups.filter(g => !g.trial).map(duckSaveGroup) }), v => {
   if (!T.duck.on || !Number.isFinite(+v.seed)) return;
   resetDucks(+v.seed >>> 0); HERD.seen = !!v.seen;
   const W = HERD.groups.filter(g => !g.trial); for (const i of v.found || []) if (W[i]) W[i].found = true;
-  if (Array.isArray(v.g)) W.forEach((g, i) => {   // LIFE: as they were
-    const q = v.g[i]; if (!Array.isArray(q) || !Array.isArray(q[2])) return;
+  if (Array.isArray(v.g)) v.g.forEach((q, i) => {   // LIFE: as they were (IMPRINT: bunches started since)
+    if (!Array.isArray(q) || !Array.isArray(q[2])) return;
+    const g = W[i] || (Number.isFinite(+q[0]) && Number.isFinite(+q[1]) ? herdGroup('duck', +q[0], +q[1], { found: true }) : null); if (!g) return;
     for (const e of [...g.list]) herdRemove(e);
     if (Number.isFinite(+q[0]) && Number.isFinite(+q[1])) { g.hx = +q[0]; g.hz = +q[1]; }
     const L = q[2].filter(r => Array.isArray(r) && Number.isFinite(+r[0]) && Number.isFinite(+r[1])).slice(0, T.duck.max);
     const made = L.map(r => herdMake('duck', +r[0], +r[1], { grp: g, age: Math.max(0, +r[2] || 0), male: !!r[3], coat: (r[4] | 0) % T.duck.coats.length, life: +r[5] || undefined, clutch: Math.max(0, +r[6] || 0), dad: r[8] >= 0 ? r[8] | 0 : null }));
-    L.forEach((r, j) => { const m = made[r[7] | 0]; if (r[7] >= 0 && m && m !== made[j]) made[j].mum = m; });
+    L.forEach((r, j) => { const m = made[r[7] | 0]; if (r[7] >= 0 && m && m !== made[j]) made[j].mum = m; if (r[9] >= 0) made[j].dogSlot = r[9] | 0; else if (r[9] === -2) made[j].orphan = true; });
     if (made.length) { g.cx = made.reduce((a, e) => a + e.x, 0) / made.length; g.cz = made.reduce((a, e) => a + e.z, 0) / made.length; }
   });
 }, 176);
 expose(() => ({ HERDS, HERD, herdMake, herdRemove, herdGroup, herdDropGroup, herdStep, herdBark, herdFly, herdGrip, resetDucks, duckPlan, duckSpotOK, duckWater, updateHerds, syncDucks, devDucks, herdFx, herdLaunch,
-  duckLife, duckling, duckMum, duckGrowK, duckOldK, duckMate, duckHatch, duckVisit, duckFarPrey, duckPrey, duckNear, duckFoes, coyoteDuck, preyWild, preyKill }));   // DUCKS (LIFE, PREY)
+  duckLife, duckling, duckMum, duckLead, duckImprint, duckSettle, duckGrowK, duckOldK, duckMate, duckHatch, duckVisit, duckFarPrey, duckPrey, duckNear, duckFoes, coyoteDuck, preyWild, preyKill }));   // DUCKS (LIFE, PREY)
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
