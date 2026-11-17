@@ -4,7 +4,8 @@
 //   (a modem's) holds that the browser can't see)
 // Checks: the guest gets in over the line, and the grass map comes packed (~30 KB, not 159) with what the host's flock
 // grazed; a /turn relay goes to both browsers' links when the site has one; the link is direct (here); 40 sheep driven: the
-// guest's ping stays near the line's own (the host skips snapshots the line can't take yet, and slows down as its ping climbs)
+// guest's ping stays near the line's own (the host skips snapshots the line can't take yet, slows down as its ping climbs, and
+// speeds up again a step at a time once it's stopped falling: up all at once, or mid-drain, the queue piled back to ~3 s)
 // and its flock follows the host's (each sheep on its trail on the host, the ping's bound back: the lag comes and goes); a
 // dropped guest gets back in by itself; a guest that can't reach a relay (relayed only, the site's /turn slow and then off)
 // asks /turn again each try and says where it stuck: "couldn't link up (free relay ✖)".
@@ -180,7 +181,7 @@ try {
 
   // ---------------------------------------------------------------- for comparison: the same, the skipping off
   await sleep(4000);
-  await A.page.evaluate(() => { const L = NET.api.limits; L.was = [L.backlog, L.slowMs]; L.backlog = L.slowMs = 1e12; });
+  await A.page.evaluate(() => { const L = NET.api.limits; L.was = [L.backlog, L.slowMs]; L.backlog = L.slowMs = 1e12; for (const s of NET.seats) s.every = 1; });
   report.numbers.skipOff = await drive(A, B, 15);
   await A.page.evaluate(() => { const L = NET.api.limits; [L.backlog, L.slowMs] = L.was; clearInterval(window.__drive); });
   console.log('numbers', JSON.stringify(report.numbers));
