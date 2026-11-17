@@ -15,7 +15,8 @@
   they're coming to dig or one's open. Off in `?sim` (`T.burrow.on`). Online: `NET_TYPES.burrow`, coyote `sink`/`bt`/`digOn`.
 - **Den defence.** A dog or sheep startling a sleeping den (`defendDen`,
   `T.denDefend`): the pack nips dogs and snaps sheep away, only within `r` of
-  the mouth (leash), then goes back to sleep.
+  the mouth (leash), then goes back to sleep. A lost sheep walking back goes round a sleeping den, a coyote about,
+  a cougar out and a rattlesnake (`T.lonely.avoid`, docs/sheep.md).
 - **Cougars** (`COUGARS`, `GROVES`, `LAIRS`, `T.cougar`): loners. `legs[i]` round the camp at the end
   of leg i (`COUGAR_CAMPS`), each its own territory (`k.grove`: `trees` trees, `apart` m from any other's,
   `penGap`+ m off pens; the land `room` m wider there). Night only: each near the flock (`cougarsNear`)
