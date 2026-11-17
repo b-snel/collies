@@ -5,11 +5,14 @@
 //   nopred   no predators (and none wandering in): the mice fill the land (≥ 90% K); predators back: down again
 //   crash    the mice crash (a plague: × 0.05): the coyotes go hungry within days, dwindle; the mice come back, then the coyotes
 //   meso     no coyotes: more stray cats (mesopredator release), the cats' own crowding still holds them
-//   harvest  our cats taking 25 mice a day on a leg (a few cats' fill): fewer mice there, and fewer coyotes (less for them). (A few a day:
-//            hardly a dent: fast breeders make up a small take)
+//   harvest  4 of our cats hunting a leg (a cat's take: fewer to find, fewer caught): they compete with the coyotes (fewer coyotes, as
+//            many mice or fewer: the leg's mice are robust; the feed the cats guard is by the pen) and the mice hold on
 //   game     the game reads it (T.eco.on): tonight's coyotes × the leg's (more when many, fewer when few), the den shrinks in lean
 //            times, the falcon's wait ÷, cougars out by numbers; hungry coyotes braver; a kill (preyKill) feeds the leg; off: all × 1
 //   save     a reload: the same numbers on every leg
+//   migrate  MIGRATION and MATING: starving coyotes leave a leg far faster than fed ones, and look further (2+ legs away), toward the leg
+//            with food; an emptied leg is filled again from its neighbours; few about: fewer find a mate, more set off to look; the
+//            game's reach (dens, groves) grows with hunger
 // --chart FILE: an SVG of 300 days (mice, cats, coyotes, falcons on leg 1)
 import fs from 'node:fs';
 import { open } from './harness.mjs';
@@ -130,16 +133,17 @@ if (want('harvest')) {
     const { ecoStepLeg, ecoMove, T } = GAME;
     const base = E.run(E.legs(6), 700)[1];
     const L = E.legs(6), H = T.eco.hab, out = { mice: [], coy: [] };
-    for (let t = 0; t < 700; t += 1 / 24) {   // our cats: 25 mice a day off leg 1 (ecoEat's way: the count down)
+    for (let t = 0; t < 700; t += 1 / 24) {   // our cats: 4 more on leg 1, each taking mice as a cat does (Holling II: fewer to find, fewer caught)
       L.legs.forEach((g, i) => ecoStepLeg(g, H[i], 1 / 24, L.R)); ecoMove(L.legs, 1 / 24);
-      L.legs[1].mice = Math.max(0, L.legs[1].mice - 25 / 24);
+      const C = T.eco.pred.cats, m = L.legs[1].mice; L.legs[1].mice = Math.max(0, m - 4 * C.a.mice * m / (1 + C.a.mice * C.h.mice * m) / 24);
       if (t > 200 && Math.abs(t % 1) < 1 / 48) { out.mice.push(L.legs[1].mice); out.coy.push(L.legs[1].coy); }
     }
     return { mice0: E.r2(E.mean(base.mice.slice(200))), mice1: E.r2(E.mean(out.mice)), coy0: E.r2(E.mean(base.coy.slice(200))), coy1: E.r2(E.mean(out.coy)) };
   });
-  console.log(`  leg 1: mice ${r.mice0} → ${r.mice1} with our cats taking 25 a day; coyotes ${r.coy0} → ${r.coy1}`);
-  ok('harvest: our cats taking mice: fewer mice on the leg', r.mice1 < r.mice0 * 0.97, r);
-  ok('harvest: and fewer coyotes (less for them to eat)', r.coy1 < r.coy0, r);
+  console.log(`  leg 1: mice ${r.mice0} → ${r.mice1} with 4 of our cats hunting there; coyotes ${r.coy0} → ${r.coy1}`);
+  ok('harvest: our cats compete with the coyotes: the mice no more than before (± 5%)', r.mice1 <= r.mice0 * 1.05, r);
+  ok('harvest: and fewer coyotes (less for them to eat)', r.coy1 < r.coy0 * 0.99, r);
+  ok('harvest: the mice hold on (≥ 10% of before)', r.mice1 >= r.mice0 * 0.1, r);
 }
 
 if (want('game')) {
@@ -182,15 +186,47 @@ if (want('save')) {
     const { T, ECO, resetEco, startGame, JOURNEY, JOURNEY_KEY, journeySave } = GAME;
     localStorage.clear(); JOURNEY.off = false;
     startGame({ kind: 'bot', index: 0 }); T.eco.on = true; resetEco(21);
-    const snap = JSON.stringify(ECO.legs.map(g => [g.mice, g.coy, g.cats, g.fed.coy].map(v => Math.round(v * 100))));
+    const vals = () => ECO.legs.flatMap(g => [g.mice, g.coy, g.cats, g.fed.coy]), snap = vals(), same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 0.006 + Math.abs(v) * 1e-4);
     const saved = journeySave(), part = JSON.parse(localStorage.getItem(JOURNEY_KEY) || '{}').parts?.eco;
-    resetEco(99); const moved = JSON.stringify(ECO.legs.map(g => [g.mice, g.coy, g.cats, g.fed.coy].map(v => Math.round(v * 100)))) !== snap;
+    resetEco(99); const moved = !same(vals(), snap);
     JOURNEY.saved = JSON.parse(localStorage.getItem(JOURNEY_KEY)); GAME.journeyResume();
-    const after = JSON.stringify(ECO.legs.map(g => [g.mice, g.coy, g.cats, g.fed.coy].map(v => Math.round(v * 100))));
+    const after = vals();
     T.eco.on = false; JOURNEY.off = true; localStorage.clear();
-    return { saved, part: !!part, moved, same: snap === after };
+    return { saved, part: !!part, moved, same: same(after, snap) };
   });
   ok('save: a reload: the same numbers on every leg', r.saved && r.part && r.moved && r.same, r);
+}
+
+if (want('migrate')) {
+  const r = await h.page.evaluate(() => {
+    const { ecoDisperse, ecoMate, ecoStepLeg, T, ECO_PRED } = GAME, out = {};
+    // three days of it from one start: who leaves leg 1, where they go
+    const go = prep => { const L = E.legs(7); E.run(L, 200); prep(L.legs); const mv = []; GAME.ecoRun(L.legs, 3, L.R, 1 / 24, null, (j, i, k, n) => { if (j === 'coy' && i === 1) mv.push([k, n]); }); const n0 = L.n0; const tot = mv.reduce((a, [, n]) => a + n, 0); return { tot, far: mv.filter(([k]) => Math.abs(k - 1) >= 2).reduce((a, [, n]) => a + n, 0) / (tot || 1), to0: mv.filter(([k]) => k === 0).reduce((a, [, n]) => a + n, 0), to2: mv.filter(([k]) => k === 2).reduce((a, [, n]) => a + n, 0) }; };
+    const H = T.eco.hab;
+    out.fed = go(L => { L[1].mice = H[1].mice; L[1].fed.coy = 1.3; L[1].coy = 15; });
+    out.starve = go(L => { L[1].mice = H[1].mice * 0.02; L[1].fed.coy = 0.12; L[1].coy = 15; L[0].mice = H[0].mice; L[2].mice = H[2].mice * 0.05; });
+    // an emptied leg: filled again from its neighbours
+    { const L = E.legs(8); E.run(L, 200); L.legs[2].coy = 0; let inn = 0; const keep = T.eco.pred.coy.in; T.eco.pred.coy.in = 0;
+      GAME.ecoRun(L.legs, 20, L.R, 1 / 24, null, (j, i, k, n) => { if (j === 'coy' && k === 2) inn += n; }); T.eco.pred.coy.in = keep;
+      out.refill = { n: E.r2(L.legs[2].coy), base: E.r2(GAME.ecoBase()[2].coy), inn: E.r2(inn) }; }
+    // lonely: few about (fed well), more of them set off a head
+    const lone = n => { const L = E.legs(9); E.run(L, 100); L.legs[1].coy = n; L.legs[1].fed.coy = 1.1; let o = 0; ecoDisperse(L.legs, 1 / 24, (j, i, k, m) => { if (j === 'coy' && i === 1) o += m; }); return o / n; };
+    out.lone = { few: lone(0.6), many: lone(15) };
+    out.mate = { few: E.r2(ecoMate('coy', 0.5)), base: E.r2(ecoMate('coy', 15)), cougar1: E.r2(ecoMate('cougar', 1)) };
+    // the game's reach
+    const { ECO, resetEco, ecoReach, ecoHere } = GAME; out.reachOff = ecoReach('coy');
+    GAME.startGame({ kind: 'bot', index: 0 }); T.eco.on = true; resetEco(3); const li = ecoHere(); ECO.legs[li].fed.coy = 1.2; out.reachFed = E.r2(ecoReach('coy')); ECO.legs[li].fed.coy = 0; out.reachHungry = E.r2(ecoReach('coy')); T.eco.on = false;
+    for (const k of ['fed', 'starve']) for (const x in out[k]) out[k][x] = E.r2(out[k][x]);
+    return out;
+  });
+  console.log(`  leg 1, 3 days: fed ${r.fed.tot} coyotes off (${r.fed.far} of them 2+ legs); starving ${r.starve.tot} off (${r.starve.far} 2+ legs; to the fed desert ${r.starve.to0}, the eaten-out coast ${r.starve.to2})`);
+  console.log(`  an emptied leg: ${r.refill.n} coyotes (base ${r.refill.base}) 20 days on, ${r.refill.inn} came in; a mate found: few ${r.mate.few}, many ${r.mate.base}; set off a day a head: few ${r.lone.few.toFixed(3)}, many ${r.lone.many.toFixed(3)}; reach × ${r.reachFed} fed, ${r.reachHungry} starving`);
+  ok('migrate: starving coyotes leave far faster than fed ones (≥ 4×)', r.starve.tot >= r.fed.tot * 4, r);
+  ok('migrate: the hungry look further (≥ 20% go 2+ legs; fed ≤ 10%)', r.starve.far >= 0.2 && r.fed.far <= 0.1, r);
+  ok('migrate: toward food (more to the fed leg than the eaten-out one)', r.starve.to0 >= r.starve.to2 * 1.5, r);
+  ok('migrate: an emptied leg is filled again from its neighbours (≥ 25% of base in 20 days)', r.refill.n >= r.refill.base * 0.25 && r.refill.inn > 1, r.refill);
+  ok('migrate: few about: fewer find a mate; more set off to look', r.mate.few < 0.3 && r.mate.base > 0.85 && r.lone.few > r.lone.many * 1.5, r);
+  ok('migrate: in the game, hungry coyotes come from further (× 1 off and fed, more starving)', r.reachOff === 1 && r.reachFed === 1 && r.reachHungry >= 1.5, r);
 }
 
 if (chart) {

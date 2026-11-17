@@ -1297,17 +1297,21 @@ const T = {
   eco: { on: !SIM, tick: 1, burn: 60, k: [0.45, 1.8], bold: 0.35, base: 600, meal: { sheep: 20, lamb: 10, cria: 12, duck: 3, cat: 6, mouse: 1, fish: 1, llama: 20 },
     prey: { mice: { r: 0.35, e: 1, in: 1 }, ducks: { r: 0.14, e: 3, in: 0.02 }, fish: { r: 0.2, e: 1, in: 0.05 }, cats: { e: 6 } },
     pred: {
-      coy: { a: { mice: 0.012, ducks: 0.004, cats: 0.004 }, h: { mice: 0.16, ducks: 0.3, cats: 0.5 }, need: 3, alt: 0.5, b: 0.16, m: 0.05, dd: 0.06, lag: 3, starve: 0.1, in: 0.04 },
-      cougar: { a: { ducks: 0.01, cats: 0.01, mice: 0.0006 }, h: { ducks: 0.4, cats: 0.5, mice: 0.1 }, need: 4, alt: 3, b: 0.06, m: 0.02, dd: 0.04, lag: 6, starve: 0.06, in: 0.004 },
-      falcon: { a: { mice: 0.005, ducks: 0.006, cats: 0.001 }, h: { mice: 0.2, ducks: 0.4, cats: 1 }, need: 2, alt: 0.8, b: 0.12, m: 0.05, dd: 0.05, lag: 4, starve: 0.08, in: 0.01 },
-      cats: { a: { mice: 0.02 }, h: { mice: 0.12 }, need: 2.5, alt: 0.6, b: 0.12, m: 0.05, dd: 0.06, lag: 3, starve: 0.1, in: 0.02 } },   // (strays: camp scraps, dumped ones)
+      coy: { a: { mice: 0.012, ducks: 0.004, cats: 0.004 }, h: { mice: 0.16, ducks: 0.3, cats: 0.5 }, need: 3, alt: 0.5, b: 0.16, m: 0.05, dd: 0.06, lag: 3, starve: 0.1, in: 0.04, mate: 1.5 },
+      cougar: { a: { ducks: 0.01, cats: 0.01, mice: 0.0006 }, h: { ducks: 0.4, cats: 0.5, mice: 0.1 }, need: 4, alt: 3, b: 0.07, m: 0.02, dd: 0.04, lag: 6, starve: 0.06, in: 0.004, mate: 0.3 },
+      falcon: { a: { mice: 0.005, ducks: 0.006, cats: 0.001 }, h: { mice: 0.2, ducks: 0.4, cats: 1 }, need: 2, alt: 0.8, b: 0.12, m: 0.05, dd: 0.05, lag: 4, starve: 0.08, in: 0.01, mate: 0.6 },
+      cats: { a: { mice: 0.02 }, h: { mice: 0.12 }, need: 2.5, alt: 0.6, b: 0.12, m: 0.05, dd: 0.06, lag: 3, starve: 0.1, in: 0.02, mate: 1 } },   // (strays: camp scraps, dumped ones)
     hab: [   // by leg: K (prey), base (predators); 0: none there
       { mice: 500, ducks: 16, fish: 40, cats: 5, coy: 9, cougar: 0, falcon: 3 },   // the desert
       { mice: 800, ducks: 16, fish: 60, cats: 4, coy: 11, cougar: 1.5, falcon: 3 },   // the mountains
       { mice: 700, ducks: 18, fish: 80, cats: 5, coy: 10, cougar: 1.5, falcon: 3 },   // the ocean
       { mice: 1000, ducks: 16, fish: 50, cats: 6, coy: 12, cougar: 1.5, falcon: 4 },   // Sweetgrass, the canyon, the snakes' desert
       { mice: 250, ducks: 0, fish: 12, cats: 1.5, coy: 0, cougar: 1, falcon: 0 } ],   // up the pass
-    noise: { tau: 6, sd: 0.5 }, move: 0.03,
+    // MATING: births × n / (n + `mate`) (a mate to find: few about, fewer litters). MIGRATION (`mig`): a day, `base` + `hungry` × hunger + `lone` ×
+    // (no mate) of them set off; the hungrier, the further they look (`reach` legs: [0] fed … + [1] starving), to land with food, mates and room
+    // (staying weighs `home` × as much: they know it); they bring their hunger. Mice only drift (`move`). In the game: hungry coyotes come from
+    // dens `den` × further, cougars from groves `grove` × further; `show`: a flow (a day, × base) the map arrows and Hank tell of
+    noise: { tau: 6, sd: 0.5 }, move: 0.03, mig: { base: 0.01, hungry: 0.3, lone: 0.2, reach: [0.35, 1.6], home: 2, den: 0.8, grove: 0.6, show: 0.04 },
     say: { boom: 0.75, bust: 0.25, many: 1.35, few: 0.7, hungry: 0.45 } },
   trial: { on: !SIM, at: [776, 30], hl: 17, hw: 14, buildR: 120, from: 7, to: 18.5, count: 3, clock: 0.12, mat: 1.2, rivals: [0.74, 0.82, 0.9], spread: 0.08,
     fault: 5, xp: 30, againXp: 0.5, wool: [0, 25, 12], ram: { age: 14, brave: 0.95, scale: 1.08, life: 60 },
@@ -11744,7 +11748,7 @@ function defendDen(D) {
 function wakeDens(size, wave = 1) {
   const fc = flockCenter();
   const near = G.dens.filter(D => ['den', 'retreat', 'defend'].includes(D.pack.phase)).map(D => ({ D, d: Math.hypot(D.x - fc.x, D.z - fc.z) }))
-    .filter(o => o.d < T.denRange).sort((a, b) => a.d - b.d);
+    .filter(o => o.d < T.denRange * ecoReach('coy')).sort((a, b) => a.d - b.d);   // (ECOSYSTEM: hungry, they come from further)
   if (near.length) return wakeDen(near[0].D, size);
   if (wave > 1) {   // no second den in reach: the pack that's out gets its second wind, and one more joins it
     const out = G.packs.find(p => p.den && !['den', 'retreat'].includes(p.phase));
@@ -12625,7 +12629,7 @@ function nearGrove() {
 }
 // the cougars round the flock tonight: each one with a tree of its own within range (+30) of it
 function cougarsNear() {
-  const fc = flockCenter(), R = T.cougar.range + 30;
+  const fc = flockCenter(), R = (T.cougar.range + 30) * ecoReach('cougar');   // (ECOSYSTEM: hungry, from further)
   return COUGARS.filter(k => k.grove.trees.some(L => Math.hypot(L.x - fc.x, L.z - fc.z) < R));
 }
 // gv's cougar up a random tree of its own (nobody knows which one it'll come from); not one still out with its catch. → [it] or []
@@ -17022,7 +17026,7 @@ function mapMarks(c, u) {
   for (const F of FALCONS) if (['circle', 'dive', 'carry', 'nest'].includes(F.state)) { const q = mapPt(F.x, F.z); if (on(q) && sees(F.x, F.z)) drawArt(c, 'falcon', q[0], q[1], 11 * u); }
   mapLlamas(c, u, on, mapSeen);   // LLAMAS: guards; wild ones where a dog's been
   mapDucks(c, u, on, mapSeen);   // DUCKS: bunches where a dog's been
-  mapEco(c, u, on, mapSeen);   // ECOSYSTEM: each leg's wild (big)
+  mapEco(c, u, on, mapSeen); mapEcoFlows(c, u, on, mapSeen);   // ECOSYSTEM: each leg's wild, who's on the move (big)
   if (T.trial.on && mapSeen(TF.x, TF.z)) { const q = mapPt(TF.x, TF.z); if (on(q)) drawArt(c, 'trophy', q[0], q[1], 11 * u); }   // TRIALS
   for (const d of G.dogs) {   // the dogs: an arrow each, their colour, the way they face
     const q = mapPt(d.x, d.z); if (!on(q, 6)) continue;
@@ -25051,7 +25055,7 @@ expose(() => ({ WILDS, WILD, makeWild, wildRemove, wildReset, wildJoin, wildRope
 // (a kill or a catch seen), ecoAdd (a stray taken in). Off (?sim): every ecoK 1, ecoD / ecoN the long-run mean. Own dice throughout.
 // =====================================================================
 const ECO_PREY = ['mice', 'ducks', 'fish'], ECO_PRED = ['coy', 'cougar', 'falcon', 'cats'], ECO_KINDS = ['mice', 'ducks', 'fish', 'cats', 'coy', 'cougar', 'falcon'];
-const ECO = { legs: [], seed: 0, R: Math.random, h: 0, base: null, said: {}, kills: {}, show: [], at: -1, newsT: 0 };   // show: each leg's [mice, cats, coyotes, falcons, cougars] × their mean, coyotes' hunger (the map; guests' from the host)
+const ECO = { legs: [], seed: 0, R: Math.random, h: 0, base: null, said: {}, kills: {}, show: [], at: -1, newsT: 0, cross: [], mv: null, flows: [] };   // cross[b][j]: MIGRATION over the line between leg b and b+1 (a day, + onward; smoothed); flows: the map's arrows   // show: each leg's [mice, cats, coyotes, falcons, cougars] × their mean, coyotes' hunger (the map; guests' from the host)
 // a fresh leg: prey 30–90% of K, predators 60–140% of base, fed about right
 function ecoLegNew(h, R) {
   const g = { fed: {}, noise: (R() * 2 - 1) * 0.4, dl: 0 };
@@ -25071,7 +25075,7 @@ function ecoStepLeg(g, h, dt, R) {
   const E = T.eco, loss = { mice: 0, ducks: 0, fish: 0, cats: 0 }, sat = {};
   g.noise += -g.noise / E.noise.tau * dt + E.noise.sd * Math.sqrt(2 * dt / E.noise.tau) * (R() + R() + R() - 1.5) * 2;
   for (const j of ECO_PRED) { if (!h[j] || g[j] <= 0) { sat[j] = 1; continue; } sat[j] = ecoIntake(j, g); for (const k in _ecoIn) loss[k] += _ecoIn[k] * g[j] * dt; }
-  g.dl = g.ducks > 0.5 ? loss.ducks / g.ducks / dt : 0;   // (a duck's chance a day of being taken: DUCKS' out of sight)
+  g.dl = g.ducks > 0.5 ? loss.ducks / g.ducks / dt : 0; g.sat = sat;   // (a duck's chance a day of being taken: DUCKS' out of sight)
   for (const k of ECO_PREY) {
     if (!h[k]) { g[k] = 0; continue; }
     const r = E.prey[k].r * (k === 'mice' ? Math.exp(g.noise) : 1);
@@ -25080,22 +25084,43 @@ function ecoStepLeg(g, h, dt, R) {
   for (const j of ECO_PRED) {
     if (!h[j]) { g[j] = 0; continue; }
     const P = E.pred[j]; g.fed[j] += (sat[j] - g.fed[j]) * Math.min(1, dt / P.lag);
-    const f = clamp(g.fed[j], 0, 1.6), rate = P.b * f - P.m - P.dd * g[j] / h[j] - P.starve * Math.max(0, 1 - f);
+    const f = clamp(g.fed[j], 0, 1.6), rate = P.b * f * ecoMate(j, g[j]) - P.m - P.dd * g[j] / h[j] - P.starve * Math.max(0, 1 - f);   // (MATING: a mate to find)
     g[j] = Math.max(0, g[j] + g[j] * rate * dt - (j === 'cats' ? loss.cats : 0) + P.in * dt);
   }
 }
-// a share of each drifts to the next leg's land (evens out how crowded they are)
+// the mice: a share drifts to the next leg's land (evens out how crowded they are)
 function ecoMove(legs, dt) {
   const H = T.eco.hab;
-  for (const k of ['mice', 'cats', 'coy', 'cougar', 'falcon']) for (let i = 0; i + 1 < legs.length; i++) {
+  for (const k of ['mice']) for (let i = 0; i + 1 < legs.length; i++) {
     const a = legs[i], b = legs[i + 1], ha = H[i][k], hb = H[i + 1][k]; if (!ha || !hb) continue;
     const m = T.eco.move * dt * (a[k] / ha - b[k] / hb) * Math.min(ha, hb) / 2; a[k] -= m; b[k] += m;
   }
 }
-// every leg, days on, in steps of dt days (on: each step's numbers to on(legs, t))
-function ecoRun(legs, days, R, dt = 1 / 24, on = null) {
+// MATING: the share that find a mate (n about: few, fewer litters)
+const ecoMate = (j, n) => n > 0 ? n / (n + T.eco.pred[j].mate) : 0;
+// MIGRATION (predators, stray cats): the hungry and the lonely set off; the hungrier, the further they look (legs away), toward land with food,
+// mates and room (or home: they know it); they bring their hunger. rec(kind, from, to, n): who went where
+const _ecoW = [];
+function ecoDisperse(legs, dt, rec) {
+  const H = T.eco.hab, M = T.eco.mig, w = _ecoW;
+  const pull = (o, k, j) => clamp(o.sat ? o.sat[j] : 1, 0.05, 2) * (0.5 + ecoMate(j, o[j] + 1)) / (1 + o[j] / H[k][j]);   // food, a mate, room
+  for (const j of ECO_PRED) for (let i = 0; i < legs.length; i++) {
+    const g = legs[i]; if (!H[i][j] || g[j] < 1e-3) continue;
+    const hun = clamp(1 - g.fed[j], 0, 1), go = g[j] * Math.min(0.5, (M.base + M.hungry * hun + M.lone * (1 - ecoMate(j, g[j]))) * dt), L = M.reach[0] + M.reach[1] * hun;
+    let W = M.home * pull(g, i, j);
+    for (let k = 0; k < legs.length; k++) { w[k] = k !== i && H[k][j] ? pull(legs[k], k, j) * Math.exp(-(Math.abs(k - i) - 1) / L) : 0; W += w[k]; }
+    for (let k = 0; k < legs.length; k++) {
+      if (!(w[k] > 0)) continue;
+      const n = go * w[k] / W, o = legs[k]; if (n < 1e-9) continue;
+      o.fed[j] = (o.fed[j] * o[j] + g.fed[j] * n) / (o[j] + n); o[j] += n; g[j] -= n;
+      if (rec) rec(j, i, k, n);
+    }
+  }
+}
+// every leg, days on, in steps of dt days (on: each step's numbers to on(legs, t); rec: MIGRATION's moves)
+function ecoRun(legs, days, R, dt = 1 / 24, on = null, rec = null) {
   const H = T.eco.hab;
-  for (let t = 0; t < days - 1e-9; t += dt) { for (let i = 0; i < legs.length; i++) ecoStepLeg(legs[i], H[i], dt, R); ecoMove(legs, dt); if (on) on(legs, t + dt); }
+  for (let t = 0; t < days - 1e-9; t += dt) { for (let i = 0; i < legs.length; i++) ecoStepLeg(legs[i], H[i], dt, R); ecoMove(legs, dt); ecoDisperse(legs, dt, rec); if (on) on(legs, t + dt); }
   return legs;
 }
 // the long run (own dice, once): each leg's mean of each kind, and of how fed: what ecoK is against
@@ -25108,7 +25133,7 @@ function ecoBase() {
 }
 // a new journey: each leg somewhere in its cycle (T.eco.burn days from a fresh start, on the journey's own dice)
 function resetEco(seed) {
-  ECO.said = {}; ECO.kills = {}; ECO.h = 0; ECO.at = -1; ECO.newsT = 0;
+  ECO.said = {}; ECO.kills = {}; ECO.h = 0; ECO.at = -1; ECO.newsT = 0; ECO.cross = T.eco.hab.slice(1).map(() => Object.fromEntries(ECO_PRED.map(j => [j, 0])));
   ECO.seed = seed ?? (Math.random() * 2 ** 31) >>> 0;
   ECO.R = mulberry32((ECO.seed ^ 0x3c0e11) >>> 0);
   ECO.legs = T.eco.hab.map(h => ecoLegNew(h, ECO.R));
@@ -25117,16 +25142,38 @@ function resetEco(seed) {
 }
 // what the map shows (the host's: guests get it as it is)
 const ECO_SHOW = ['mice', 'cats', 'coy', 'falcon', 'cougar'];
-function ecoShow() { ECO.show = T.eco.on ? ECO.legs.map((g, i) => [...ECO_SHOW.map(k => T.eco.hab[i][k] ? Math.round(ecoK(k, i) * 20) / 20 : 0), Math.round(ecoHunger('coy', i) * 20) / 20]) : []; }
-const ecoNetOut = () => ECO.show.map(a => a.join(',')).join(';');
-function ecoNetIn(v) { ECO.show = typeof v === 'string' && v ? v.split(';').map(r => r.split(',').map(Number)) : []; }
+function ecoShow() {
+  ECO.show = T.eco.on ? ECO.legs.map((g, i) => [...ECO_SHOW.map(k => T.eco.hab[i][k] ? Math.round(ecoK(k, i) * 20) / 20 : 0), Math.round(ecoHunger('coy', i) * 20) / 20]) : [];
+  ECO.flows = T.eco.on ? ECO.cross.map((c, b) => {   // MIGRATION: over each line, the kind moving most (× its base, a day): [its ECO_SHOW index, ± toward leg b+1]
+    let best = [0, 0]; for (const j of ['coy', 'falcon', 'cougar', 'cats']) { const B = ecoBase(), n = (B[b][j] + B[b + 1][j]) / 2, v = n > 0.05 ? c[j] / n : 0; if (Math.abs(v) > Math.abs(best[1])) best = [ECO_SHOW.indexOf(j), v]; }
+    return Math.abs(best[1]) >= T.eco.mig.show ? [best[0], Math.round(best[1] * 100) / 100] : [0, 0];
+  }) : [];
+}
+const ecoNetOut = () => ECO.show.map(a => a.join(',')).join(';') + '|' + ECO.flows.map(a => a.join(',')).join(';');
+function ecoNetIn(v) {
+  const [a, b] = typeof v === 'string' ? v.split('|') : ['', ''];
+  ECO.show = a ? a.split(';').map(r => r.split(',').map(Number)) : []; ECO.flows = b ? b.split(';').map(r => r.split(',').map(Number)) : [];
+}
+// MIGRATION: who went where this tick → each line's flow (a day, smoothed over a day)
+function ecoCross(days) {
+  const mv = ECO.mv; if (!mv) return;
+  for (let b = 0; b < ECO.cross.length; b++) for (const j of ECO_PRED) {
+    let net = 0; for (const [i, k, n] of mv[j]) if (i <= b && k > b) net += n; else if (k <= b && i > b) net -= n;
+    ECO.cross[b][j] += (net / days - ECO.cross[b][j]) * (1 - Math.exp(-days / 1));
+  }
+}
+const ECO_LAND = ['desert', 'mountains', 'coast', 'meadows', 'pass'];
+// MIGRATION in the game: how much further the hungry come from (coyotes' dens, cougars' groves; off, fed: × 1)
+const ecoReach = kind => 1 + (kind === 'coy' ? T.eco.mig.den : T.eco.mig.grove) * ecoHunger(kind);
 // Hank's word on a leg, once a journey: the flock's come onto it by day and something's out of the way (T.eco.say)
 function ecoNews(dt) {
   const li = ecoHere(); if (li !== ECO.at) { ECO.at = li; ECO.newsT = 6; }
   if (li < 0 || ECO.said[li] || isNight() || (ECO.newsT -= dt) > 0) return;
   ECO.said[li] = true;
   const S = T.eco.say, coy = T.eco.hab[li].coy ? ecoK('coy', li) : 1, hun = T.eco.hab[li].coy ? ecoHunger('coy', li) : 0;
-  const line = hun >= S.hungry && coy >= 0.9 ? pick(["Coyotes are hungry round here. They'll be bold tonight.", "Not much out there for the coyotes. They'll come for the flock."])
+  const inc = (li > 0 ? ECO.cross[li - 1].coy : 0) - (li < ECO.cross.length ? ECO.cross[li].coy : 0), from = li > 0 && ECO.cross[li - 1].coy > 0 && (li >= ECO.cross.length || -ECO.cross[li].coy < ECO.cross[li - 1].coy) ? li - 1 : li + 1;
+  const line = T.eco.hab[li].coy && inc / Math.max(1, ecoBase()[li].coy) >= T.eco.mig.show * 1.5 && T.eco.hab[from] ? `Coyotes coming in from the ${ECO_LAND[from]}. Hungry ones, eaten out of their own.`
+    : hun >= S.hungry && coy >= 0.9 ? pick(["Coyotes are hungry round here. They'll be bold tonight.", "Not much out there for the coyotes. They'll come for the flock."])
     : ecoD('mice', li) >= S.boom ? pick(["Mice everywhere this year! They'll be at the feed.", "Look at all these mice. A cat'd earn its keep here."])
     : coy >= S.many ? pick(["Coyote country, this. Plenty of 'em about.", "Lot of coyotes this year. Pen 'em early."])
     : ecoD('mice', li) <= S.bust ? pick(["Hardly a mouse about. Lean times for the coyotes.", "Mice are scarce. The coyotes'll be thin."])
@@ -25184,8 +25231,9 @@ function updateEco(dtH) {
   while (ECO.h >= T.eco.tick) {
     ECO.h -= T.eco.tick;
     if (T.duck.on) { const n = ECO.legs.map(() => 0); for (const e of HERDS) if (duckWild(e) && e.grp && e.grp.leg >= 0) n[e.grp.leg]++; ECO.legs.forEach((g, i) => { if (T.eco.hab[i].ducks) g.ducks = n[i]; }); }
-    ecoRun(ECO.legs, T.eco.tick / 24, ECO.R, T.eco.tick / 24);
-    ecoShow();
+    ECO.mv = Object.fromEntries(ECO_PRED.map(j => [j, []]));
+    ecoRun(ECO.legs, T.eco.tick / 24, ECO.R, T.eco.tick / 24, null, (j, i, k, n) => ECO.mv[j].push([i, k, n]));
+    ecoCross(T.eco.tick / 24); ecoShow();
   }
 }
 // a predator's kill in the game (preyKill: why 'eaten' a coyote's, 'cougar', 'falcon'): its leg's predators fed, the prey's count down
@@ -25215,6 +25263,20 @@ function mapEco(c, u, on, seen) {
     });
   });
 }
+// MAP (big): MIGRATION over each line between legs where a dog's been: the kind moving most, an arrow the way they're going
+function mapEcoFlows(c, u, on, seen) {
+  if (!MAP.big || !ECO.flows.length) return;
+  ECO.flows.forEach(([ki, v], b) => {
+    if (!v) return;
+    const camp = CAMPS[b + 1]; if (!seen(camp.x, camp.z)) return;
+    const pa = pathPoint(camp.s - 30, 0), pb = pathPoint(camp.s + 30, 0), a = mapPt(pa.x, pa.z), bq = mapPt(pb.x, pb.z), q = mapPt(camp.x, camp.z); if (!on(q, 40)) return;
+    let dx = bq[0] - a[0], dy = bq[1] - a[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l; if (v < 0) { dx = -dx; dy = -dy; }
+    const nx = -dy, ny = dx, x = q[0] + nx * 16 * u, y = q[1] + ny * 16 * u, L = (8 + 8 * Math.min(1, Math.abs(v) / 0.15)) * u;
+    c.strokeStyle = 'rgba(176,52,40,.9)'; c.fillStyle = 'rgba(176,52,40,.9)'; c.lineWidth = 2.2 * u; c.beginPath(); c.moveTo(x - dx * L, y - dy * L); c.lineTo(x + dx * L, y + dy * L); c.stroke();
+    c.beginPath(); c.moveTo(x + dx * (L + 4 * u), y + dy * (L + 4 * u)); c.lineTo(x + dx * L + nx * 4 * u, y + dy * L + ny * 4 * u); c.lineTo(x + dx * L - nx * 4 * u, y + dy * L - ny * 4 * u); c.closePath(); c.fill();
+    const art = artOf(['🐭', '🐱', '🐺', '🦅', '🐆'][ki]); if (art) drawArt(c, art, x + nx * 10 * u, y + ny * 10 * u, 11 * u);
+  });
+}
 // DEV: the wild here, a press at a time: a mouse boom (few coyotes yet), then a crash (many, hungry), then as it was
 function devEco() {
   const li = ecoHere(); if (li < 0 || !T.eco.on) return;
@@ -25230,7 +25292,7 @@ onSave('eco', () => T.eco.on ? { seed: ECO.seed, h: +ECO.h.toFixed(3), legs: ECO
   v.legs.forEach((a, i) => { const g = ECO.legs[i]; if (!g || !Array.isArray(a)) return; ECO_KINDS.forEach((k, j) => { if (Number.isFinite(a[j])) g[k] = Math.max(0, a[j]); }); ECO_PRED.forEach((j, n) => { const f = a[ECO_KINDS.length + n]; if (Number.isFinite(f)) g.fed[j] = f; }); if (Number.isFinite(a.at(-1))) g.noise = a.at(-1); });
 }, 26);
 resetEco(T.eco.on ? undefined : 1);   // (the first journey)
-expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ECO_SHOW, ecoShow, ecoNews, ecoNetOut, ecoNetIn, mapEco, devEco, ecoMeal, ecoCoyotes, ecoCougarP, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
+expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ECO_SHOW, ECO_LAND, ecoReach, ecoMate, ecoDisperse, ecoCross, mapEcoFlows, ecoShow, ecoNews, ecoNetOut, ecoNetIn, mapEco, devEco, ecoMeal, ecoCoyotes, ecoCougarP, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
 
 // =====================================================================
 // RAM FOLDS (LINEAGE: rams apart) — hurdles from the vagabond (🚧, T.vendor.fold): Hank's fold goes up beside the camp's pen picked on 📍,
