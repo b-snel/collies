@@ -278,8 +278,9 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   trough food pulls hungry ones (`T.penTroughPull`).
 - **Homeward.** From 13:00 to night (`homeK`, `T.penHome`) the pen pull
   reaches further, beats stress, and a bark bends flight toward the gate.
-- **Morning rush.** Gate opened dawn–13:00 (or open at 06:00): for
-  `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`);
+- **Morning rush.** Gate opened dawn–13:00 (or open at 06:00; open: past `T.morningRush.gap`, or unlatched and ajar: `penOut`): for
+  `T.morningRush.dur` s every penned sheep trots out (`penRush`, `rushOut`), shouldering the leaf wider (`sheepNudgesOut`),
+  round a dog standing by, no fright (`s.dodge`, `T.exitDodge`; out a moment: `s.outT`), not milling in the pen;
   then till 13:00 no pen pull, nobody goes back in (`morningOut`). Trough food
   and water beat both: hungry/thirsty penned sheep eat or drink first, ones
   outside come in for it any time of day (`T.troughDraw`), barely while a dog
@@ -289,7 +290,9 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   leaf's free end; pressed ones slide along, not into it; one heading into an open leaf rounds its free end (`T.gateRound`). Lambs follow a
   penned mum in.
 - **Ajar gates.** Unlatched and a crack open (`penAjar`): pens pull as if open; a sheep wanting in (`s.ppPen`) or driven at
-  it shoulders it wider (`sheepNudgesGate`, `T.gate.sheep`).
+  it shoulders it wider (`sheepNudgesGate`, `T.gate.sheep`; a dog leaning on it: as far as it lets).
+- **Latching.** A gate latches swinging through shut from open (`p.peak` past `T.gate.catchAt`), or let be near shut
+  (`T.gate.rest`); a wobble in, then out, swings on through.
 - **Carrying.** A held sheep passes an open gateway (`mouthOf`), not a shut
   gate or a fence.
 - **Cornered sheep break out** past the dog after a warning bleat.
