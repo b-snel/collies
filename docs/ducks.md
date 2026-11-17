@@ -5,11 +5,12 @@
   Own rng, a new seed a journey (`HERD.seed`, `duckPlan`, `duckSpotOK`). Found: the first dog within `findR` (`duckFind`): ❗🦆; the first,
   Hank's word and the hint. Only stepped within `near` m of a dog.
 - **Left be** (`duckGroupStep`, `herdIdle`): peck about; now and then (`moveT`) the leader walks them in a line (`line` m apart) to a spot
-  near home (by the water: in it half the time); swim on the water; asleep huddled by night. Driven somewhere and left be: home's there.
+  near home (by the water: in it half the time; the line leads, no contagion meanwhile); swim on the water; asleep huddled by night. Driven
+  somewhere and left be: home's there (no march off till then).
 - **Life** (LIFE, `T.duck.life`; wild ones, `duckWild`): `e.age` days, `e.male` (a drake: a curled tail feather) or a hen, `e.life`. A new
   bunch: a drake and a hen at least, all ages, `brood` of them a hen with ducklings. A **duckling** (`duckling`, under `grow` days, from `small` ×
   the size, `fluff` down feathering out) trails its mum (`e.mum`, `duckMum`): in a line behind her as she walks or swims (`duckTrail`, `duckAhead`,
-  `follow` m), pecking round her, tucked in by her asleep; pushed, back to her. Can't fly: rushed, barked at, it runs (cheeping), bonked it tumbles.
+  `follow` m: each at the one ahead's pace, closing in; behind, they hurry), pecking round her, tucked in by her asleep; pushed, back to her. Can't fly: rushed, barked at, it runs (cheeping), bonked it tumbles.
   Grown: on its own. **Old** from `old` (`duckOldK`): paler, slower (`slow`, `e.pep`); gone at `e.life` (a few feathers). **Mating** (by day): a
   grown drake and a free hen in a bunch (`duckHenFree`: no brood, no clutch, not too old), `mateP` an hour × room (1 − n / `cap`, clutches to come
   counted; ♥); she hatches `clutch` ducklings `incubH` h on (`e.clutch`, `duckHatch`), her coat or the drake's (`e.dad`). No drake (or hen) in a

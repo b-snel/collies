@@ -1208,7 +1208,7 @@ const T = {
   // a hopping dog's missed); then back behind its rock for cd s. A pounce within hitR or a bark within barkR: back for scareCd s.
   // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp.
   // slither: rattling, it slides out after its mark (spd m/s, up to r m from its rock); back home at `back` m/s
-  snake: { from: 966, every: 10, lat: 10, latMin: 3.5, warnR: 7, strikeR: 3.2, rattleT: 0.6, strikeT: 0.2, hit: 0.9, cd: [8, 14], shy: 0.55,
+  snake: { from: 995, every: 11, lat: 10, latMin: 3.5, warnR: 7, strikeR: 3.2, rattleT: 0.6, strikeT: 0.2, hit: 0.9, cd: [8, 14], shy: 0.55,
     barkR: 4.5, hitR: 2.2, scareCd: 6, dieHours: [9, 15], lamb: 0.65, dogDmg: 0.22, slither: { r: 6, spd: 2.6, back: 1.2 } },
   // WOUNDS (VET): a sheep a predator lets go of is cut: sev = base[kind] + held s × perS + a pen mauling's damage × maul. sev ≥ deep:
   // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
@@ -3781,7 +3781,9 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     for (let t = 0; t < 12; t++) {
       const k = pathIdx(s0), side = SR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.75, lat = side * (S.latMin + SR() * Math.max(0.5, Math.min(S.lat, room) - S.latMin));
       const p = pathPoint(s0 + (SR() - 0.5) * 8, lat), sc = 0.75 + SR() * 0.45;
-      if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)) continue;
+      const sn = sc * 0.85 + 0.3;   // (the snake: in front of it, as the camera sees it, latMin off the trail too)
+      if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)
+        || Math.abs(trailRaw(p.x + CAM_F.x * sn, p.z + CAM_F.z * sn).lat) < S.latMin) continue;
       scen.rock.push({ x: p.x, z: p.z, y: terrainH(p.x, p.z), sc, rot: SR() * TAU, cr: sc * 0.85, col: ROCK_COL[0], snake: true });
       OBSTACLES.push({ x: p.x, z: p.z, r: sc * 0.85 }); stampObstacle(p.x, p.z, sc * 0.85);
       break;
@@ -8909,7 +8911,7 @@ function wetAt(x, z) { return terrainH(x, z) < WATER_Y + 0.6 || !inSea(x, z) && 
 function overWater(x, z) { return terrainH(x, z) < WATER_Y - 0.05; }
 // one ballistic step. Walls, rocks and trees bounce low fliers back; fences only stop low ones. → 'ground' | 'water' | null
 function airStep(e, a, r, dt) {
-  const ox = e.x, oz = e.z;
+  const ox = e.x, oz = e.z, gy0 = groundY(ox, oz);
   a.t = (a.t || 0) + dt; a.vy -= T.airGrav * dt; a.h += a.vy * dt;
   e.x += e.vx * dt; e.z += e.vz * dt;
   let gy = groundY(e.x, e.z);
@@ -8922,7 +8924,7 @@ function airStep(e, a, r, dt) {
     }
     e.x = ox; e.z = oz; gy = groundY(e.x, e.z);
   }
-  if (a.h - gy < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }
+  if (a.h - Math.max(gy, gy0) < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }   // (over the higher of the step's ground: a fence on a ledge's lip, the boat's rail)
   if (a.t < (a.noLand || 0)) return null;
   const water = overWater(e.x, e.z), floor = water ? waterLevel(e.x, e.z) : gy;
   if (a.h <= floor) { a.h = floor; return water ? 'water' : 'ground'; }
@@ -11391,7 +11393,7 @@ expose(() => ({ DIRT, paws, waterTroughAt, updateDirt, tubIn, tubEnd, tubStep, r
 // n.ft: the strike (0 coiled … 1 at its mark, hx/hz). Rattling, it slithers
 // out after its mark (n.x/z; home n.x0/z0 behind its rock: T.snake.slither).
 // =====================================================================
-const SNAKES = [];
+const SNAKES = [], SNAKE_DICE = 10;   // (as many snakes as there were: CAVE_DICE's way)
 {
   for (const r of scen.rock) {   // one behind each rock put down for it (SCENERY), as the camera sees it
     if (!r.snake) continue;
@@ -11410,13 +11412,18 @@ const SNAKES = [];
   const headG = merge(P(SPH(8), '#a2783f', { s: [0.085, 0.055, 0.13] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [0.06, 0.03, 0.05] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [-0.06, 0.03, 0.05] }),
     P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [0.066, 0.03, 0.06] }), P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [-0.066, 0.03, 0.06] }), P(SPH(6), DARK, { s: [0.05, 0.02, 0.07], p: [0, 0.045, -0.02] }));
   const tongueG = merge(P(BOX(0.012, 0.006, 0.12), '#e0304a', { p: [0, 0, 0.06] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, 0.4, 0], p: [0.012, 0, 0.135] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, -0.4, 0], p: [-0.012, 0, 0.135] }));
+  let per = 0;   // (Math.random draws a snake's meshes take)
   for (const n of SNAKES) {
-    const root = new THREE.Group(); root.position.set(n.x, n.y, n.z); scene.add(root);
-    const coil = part(root, coilG), rattle = new THREE.Group(); rattle.position.set(0.21, 0.08, 0); root.add(rattle); part(rattle, rattleG, { shadow: false });
-    const neck = part(root, neckG), head = new THREE.Group(); root.add(head); part(head, headG);
-    const tongue = part(head, tongueG, { outline: false, shadow: false }); tongue.position.set(0, -0.01, 0.1);
-    n.m = { root, coil, rattle, neck, head, tongue };
+    const r0 = Math.random; per = 0; Math.random = () => (per++, r0());
+    try {
+      const root = new THREE.Group(); root.position.set(n.x, n.y, n.z); scene.add(root);
+      const coil = part(root, coilG), rattle = new THREE.Group(); rattle.position.set(0.21, 0.08, 0); root.add(rattle); part(rattle, rattleG, { shadow: false });
+      const neck = part(root, neckG), head = new THREE.Group(); root.add(head); part(head, headG);
+      const tongue = part(head, tongueG, { outline: false, shadow: false }); tongue.position.set(0, -0.01, 0.1);
+      n.m = { root, coil, rattle, neck, head, tongue };
+    } finally { Math.random = r0; }
   }
+  for (let i = per * (SNAKE_DICE - SNAKES.length); i > 0; i--) Math.random();   // (fewer than there were: their draws still taken, seeded runs keep their dice)
 }
 // what it goes for: the nearest sheep (or dog) within r
 function snakeMark(n, r) {
@@ -22416,6 +22423,7 @@ function duckGroupStep(g, dt, dtH) {
   if (G.time - g.workT < 8 && G.time - g.workT > 6 && g.n) { g.hx = g.cx; g.hz = g.cz; }   // settled where they were driven
   g.sleep = isNight() && G.time - (g.alarmT ?? -1e9) > K.prey.alarmT;   // (PREY: one taken: the rest awake a while)
   if (g.sleep) { g.goal = null; return; }
+  if (G.time - g.workT < 8) return;   // (settling where they were driven: no march off till that's home)
   if (g.goal) {
     const L = g.list.find(herdFree);
     if (!L || Math.hypot(L.x - g.goal.x, L.z - g.goal.z) < 0.9 || (g.goT -= dt) < -25) { g.goal = null; g.goT = rnd(K.moveT[0], K.moveT[1]); }
@@ -22467,7 +22475,8 @@ function duckTrail(e, mum, dt, K) {
     const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = ahead === mum ? (dog ? L.dogGap : L.follow * 1.4) : L.follow + (ahead.heldBy ? 0.6 : 0);
     const dx = ahead.x - Math.sin(ay) * f - e.x, dz = ahead.z - Math.cos(ay) * f - e.z, dd = Math.hypot(dx, dz);
     e.state = 'walk';
-    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), K.run * 1.5, dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
+    const asp = ahead === mum ? sp : Math.hypot(ahead.vx, ahead.vz);   // (the one ahead's pace, and closing in: no lag down the line; left behind: they hurry)
+    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3) + dd * 2, K.run * 1.5, asp + dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
     return _hdv;
   }
   e.state = 'graze';   // she's pecking about (the dog's standing): so are they, round her
@@ -22677,7 +22686,7 @@ function herdStep(e, dt) {
     const l = Math.hypot(dfx, dfz) || 1, ux = dfx / l, uz = dfz / l;
     if (e.goT <= 0) { e.gdx = ux; e.gdz = uz; } else { const a = Math.min(1, dt * 6); e.gdx = lerp(e.gdx, ux, a); e.gdz = lerp(e.gdz, uz, a); const q = Math.hypot(e.gdx, e.gdz) || 1; e.gdx /= q; e.gdz /= q; }
     e.goT = K.mom; e.spd = lerp(K.trot, K.run, clamp(press * 1.1 + e.stress * 0.5 - 0.2, 0, 1)); e.state = 'move';
-  } else if (an && e.goT <= 0.3) {
+  } else if (an && e.goT <= 0.3 && !(g && g.goal)) {   // (marching in a line: the line leads, not the ones by it)
     const sp = Math.hypot(avx, avz) / an; if (sp > T.moveMin) { e.gdx = avx / an / sp; e.gdz = avz / an / sp; e.goT = Math.max(e.goT, 0.8); e.spd = sp * 0.88; e.state = 'move'; }
   }
   let tx = 0, tz = 0;
@@ -28082,7 +28091,7 @@ const SEA = {
   hoist: 1, sheet: 1, boom: 0, boomV: 0, helm: 0, rud: 0, course: null, lash: false,   // sail up 0…1, sheet 0 hard in … 1 right out, boom + to starboard, helm -1…1, rudder rad
   docked: true, berth: 0, warp: null, moorOff: 0, pilot: null,   // alongside a jetty (berth: which island's; 0: Cold Harbour) … seaCastOff; warp: being hauled in to one; pilot: the course Hank holds her on till a dog takes the tiller
   anchor: 'up', anchorT: 0, ae: 0, an: 0, weigh: 0, holding: false, aweighT: 0,   // 'up' | 'down' (ae/an: where it lies; holding: it's bitten the bottom; aweighT: s till it can be dropped again)
-  aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
+  aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0, spill: -99,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
   state: 0.2, run: 0, swell: 0, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0,   // sea state, where the wind sea / the swell runs to, lee of an island, how wild the ride, water over a rail (±), ballast moment
   jolt: { u: 0, v: 0 }, hull: 5, leg: 0, legK: 0, saved: -1, wake: [], wakeT: 0, slamT: 0, gybeT: -9, overT: -9, flash: 0, rogue: null,
   storm: 0, rain: 0, fog: 0, calm: 0, ink: 0, hold: null,       // weather over her; hold: something has her (the kraken)
@@ -28759,7 +28768,7 @@ function seaStations(dt) {
     const fly = S.anchor === 'down' || S.docked || S.dogOver || S.hold;
     if (S.assist || fly) {
       let aim = fly ? 1 : sheetFor(S.best + K.hankSlack); const to = Math.abs(S.heelTo || 0), hl = Math.max(Math.abs(S.heel), to + Math.max(0, to - Math.abs(S.heel)) * K.hankOver) - K.hankEase, pressed = !fly && hl > 0;   // (or how far she'll swing on over: past where the wind's laying her, by hankOver of what's still to come)
-      if (pressed) aim = Math.min(1, aim + hl * K.hankSpill);
+      if (pressed) aim = Math.min(1, aim + hl * K.hankSpill); S.spill = pressed ? G.time : S.spill;   // (when he last eased her for it)
       S.sheet += clamp(aim - S.sheet, -K.hankHaul * dt, (fly ? 1.2 : K.hankHaul * (pressed ? K.hankDump : 1.6)) * dt);   // (pressed: he lets it run, quick)
     } else S.sheet = Math.min(1, S.sheet + K.run * dt);   // full manual: let go, it runs out and the sail flaps
   }
