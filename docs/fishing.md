@@ -10,9 +10,9 @@
   by the dog), Ⓑ again lets fly (`castGo`: `min`…`max` m past the tip, the water nearest that); left winding, it flies at `auto` s. Near
   the top (`sweet`): PERFECT, bites sooner (`perfect`). Away from water: 💧 ✖. Walked off past `line` m: the bobber's dragged after it
   (out of the water: reeled in, `fishIn`).
-- **Bites** (`ph 'float'`, `fishFloat`): a fish comes after `wait` s ÷ `ecoD('fish')` (fished out: slower, at most `out`×); the camera frames the bobber too (`fishCam`); its kind by
-  the water (`waters`, `fishPick`: trout, perch, catfish, salmon, mackerel, a rare golden one; `kinds`: kg, beat, strength, runs, leaps,
-  wariness, colours). Its shadow noses up (`fst 'come'`), nibbles (`'nib'`: the bobber dips, a plip). Ⓑ then: spooked (`fishLost('spook')`,
+- **Bites** (`ph 'float'`, `fishFloat`; the camera frames the bobber too, `fishCam`): a fish comes after `wait` s ÷ `ecoD('fish')`
+  (fished out: slower, at most `out`×); its kind by the water (`waters`, `fishPick`: trout, perch, catfish, salmon, mackerel, a rare
+  golden one; `kinds`: kg, beat, strength, runs, leaps, wariness, colours). Its shadow noses up (`fst 'come'`), nibbles (`'nib'`: the bobber dips, a plip). Ⓑ then: spooked (`fishLost('spook')`,
   the next later). Ⓑ with none near: a twitch (one comes sooner). **The bite** (`ph 'bite'`): under it goes, ❗ Ⓑ, a rumble: Ⓑ within
   `win` × the kind's `wary` s: hooked (`fishHook`: hit-stop, HOOKED!); late: the bait's gone; none by `plunge` s: gone too.
 - **The fight** (`ph 'fight'`, `fishFight`, `T.fish.fight`), a tug of war with the fish (ROPES' rules): struck, it bolts `start` m out.

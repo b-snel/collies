@@ -40,6 +40,7 @@
   held, it may rake the dog (`T.cougar.grab.scratch`/s ÷ grip, `dmg` hp) and get away; a shake calms it `calm` s; `toss`: flung. Sprint is RT / L3. Bots: `grab: true` is held, `shake: true` a swing.
   What it'd take: `grabPick(d)` (no side effects; `tryGrab` bites it). At sea a sheep in the water within `T.sea.over.reach`
   comes first, the boat's gear before a sheep in the way (`T.sea.station.bias`); the overlay rings it (`drawGrabMarks`).
+  The rod (FISHING, `holdKind 'rod'`): Ⓑ casts, strikes, heaves (`rodPress`); LT in a fight digs in; with it a dog stops at the water's edge (docs/fishing.md).
 - **Bones** (`BONES`, `T.bone`): permanent (not reset; saved in `localStorage['collies.bones.v1']`, host only, `T.bone.save`
   off in `?sim`; up to `max`). Bitten like anything (`boneGrip`, `holdKind 'bone'`, free to carry), crosswise in the jaws;
   let go, it's tossed (`boneLetGo`: the run × `mul` + `add`, `up`); knocked about, just dropped. Flies, tumbles, bounces,
