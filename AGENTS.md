@@ -279,7 +279,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 At sea each screen's camera turns on its own: a guest's input carries its camera's heading (`cy`), the host
 turns the stick into its own (`netReadInput`).
 
-Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`)
+Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`: back a step a ping, not while it's still falling)
 skips snapshot / grass ticks (deltas from the last sent: nothing lost). The grass map goes deflated (`netZip`). Joining
 goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest rejoins by itself (`NETT.rejoin`).
 `tools/line-test.mjs`: the same over a throttled line.
@@ -318,7 +318,7 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   gate or a fence.
 - **Cornered sheep break out** past the dog after a warning bleat.
 - **Knots.** Every 0.5 s sheep cluster (link 3.6 m); lone knots are pulled to
-  groups (`T.grav*`).
+  groups (`T.grav*`). A few left well behind: lost, back by themselves (`T.lonely.knot`; over the river: onto the launcher), round dens and predators (`T.lonely.avoid`).
 - **Sheep path-find** with A* when stuck or target out of sight (`startUnstick`,
   `sheepNav`, ≤1 search/step).
 - **Calm but brisk** (`T.calmBrisk`); grazing stays slow.

@@ -17,3 +17,4 @@
 - **Sand** (`T.bare`, `offBare`): the beach grows nothing (zeroed after world gen); a calm sheep on it walks to grass; no wandering onto it.
 - **Launcher chute** (`T.launcher.funnel`, `inChute`): long wings; driven sheep bend
   for the mouth, slide round a wing's tip, walk on to the low end. In the chute: no breakouts.
+  Lost (or drawn to the flock) with the flock over the river: they walk on by themselves (`launcherGoal`, docs/sheep.md).
