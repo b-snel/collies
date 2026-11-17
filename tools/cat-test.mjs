@@ -90,17 +90,18 @@ if (want('raid')) {
   const r = await h.page.evaluate(() => {
     const { G, T, MC, MICE, CATS, catMake, fillTroughs, troughFood, raidStep, raidGuard, mcLook, setGate, makeLlama, LLAMAS, llamaRemove, resetMiceCats, mouseHoles } = GAME, d = H.d(), P = H.P0, out = {};
     // in sight: the flock by the pen (not in it), the troughs full, a night of it
-    const night = (setupFn, hours = 6) => {
+    const night = (setupFn, hours = 4) => {
       for (const c of [...CATS]) GAME.catRemove(c); for (const m of [...MICE]) GAME.mouseRemove(m); for (const L of [...LLAMAS]) llamaRemove(L);
       setGate(P, false); for (const s of G.sheep) { H.place(s, P.x + 26 + Math.random() * 4, P.z + 26 + Math.random() * 4); s.pen = null; s.hunger = 0; }
-      H.place(d, P.x + 40, P.z + 34); fillTroughs(P, 18); setupFn();
-      G.clock.hour = 21; H.run(3, () => { G.clock.hour = 21; }); const f0 = troughFood(P), n0 = MC.night;
-      let k = 0; H.run(hours * T.hourSec, () => { G.clock.hour = 21 + (k++) * 0.025 / T.hourSec; if (G.clock.hour > 4.5 && G.clock.hour < 20) G.clock.hour = 4.5; });
+      H.place(d, P.x + 22, P.z + 12); fillTroughs(P, 18); setupFn();   // (a dog lying by: the mice round the pen stay out)
+      G.clock.hour = 21; H.run(3, () => { G.clock.hour = 21; return { lie: true }; }); const f0 = troughFood(P), n0 = MC.night;
+      let k = 0; H.run(hours * T.hourSec, () => { G.clock.hour = 21 + (k++) * 0.025 / T.hourSec; if (G.clock.hour > 4.5 && G.clock.hour < 20) G.clock.hour = 4.5; return { lie: true }; });
       return { lost: H.r(f0 - troughFood(P)), tally: H.r(MC.night - n0), ff: G.ff };
     };
-    out.none = night(() => {});
-    out.cat = night(() => { const c = catMake({ x: P.x, z: P.z, owned: true, name: 'Tam', hunger: 0.25, age: 30 }); c.trust = 1; });
-    out.llama = night(() => { makeLlama({ x: P.x + 2, z: P.z, sex: 'f', age: 5, tame: 2 }); });
+    const two = f => { const a = night(f), b = night(f); return { lost: H.r(a.lost + b.lost), tally: H.r(a.tally + b.tally), ff: a.ff || b.ff }; };   // (two nights each: less luck in it)
+    out.none = two(() => {});
+    out.cat = two(() => { const c = catMake({ x: P.x, z: P.z, owned: true, name: 'Tam', hunger: 0.25, age: 30 }); c.trust = 1; });
+    out.llama = two(() => { makeLlama({ x: P.x + 2, z: P.z, sex: 'f', age: 5, tame: 2 }); });
     // out of sight / fast-forwarding: by the hour, × (1 − guard)
     for (const c of [...CATS]) GAME.catRemove(c); for (const L of [...LLAMAS]) llamaRemove(L); for (const m of [...MICE]) GAME.mouseRemove(m);
     for (const s of G.sheep) { H.place(s, P.x + (Math.random() - 0.5) * 6, P.z + (Math.random() - 0.5) * 6); s.pen = P; } mcLook(); G.clock.hour = 23; G.ff = true; MC.live = [];
@@ -113,9 +114,9 @@ if (want('raid')) {
     return out;
   });
   show(r);
-  ok('raid: mice at the flock\'s pen by night eat its stored food (counted)', r.none.lost > 0.3 && Math.abs(r.none.lost - r.none.tally) < 0.05, r);
+  ok('raid: mice at the flock\'s pen by night eat its stored food (counted)', r.none.lost > 0.6 && Math.abs(r.none.lost - r.none.tally) < 0.05, r);
   ok('raid: ours in the pen cuts it hard', r.cat.lost < r.none.lost * 0.5, r);
-  ok('raid: a llama doesn\'t', r.llama.lost > r.none.lost * 0.55, r);
+  ok('raid: a llama doesn\'t', r.llama.lost > r.none.lost * 0.6, r);
   ok('raid: out of sight, by the hour: as the leg has (ecoD), a cat ×(1 − guard), a llama nothing', r.ff.raid && Math.abs(r.ff.none - r.ff.want) < 0.05 && r.ff.cat < r.ff.none * 0.25 && Math.abs(r.ff.llama - r.ff.none) < 0.01, r);
 }
 
