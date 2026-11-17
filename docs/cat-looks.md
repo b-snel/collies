@@ -24,7 +24,8 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
 - **Poses** (`catPose`; `CAT_Q`): a target for every state (`sit loaf sleep groom stretch walk trot run flee stalk freeze wiggle pounce pin play
   bite eat drink hiss swipe rub meow climb perch held taken`, and `c.dead`), angles absolute (level / straight down); the drawn pose crossfades
   into it (`CAT_BLEND`). Walks: a lateral sequence; fast: a gallop, the spine flexing. `crouch`, `tail` (up: a hooked tip), `puff`, `look`,
-  `lookUp` eased in. Held / taken: hanging from the scruff (a standing cat's scruff height above `y`; `heldBy.cw` swings it), limp / kicking.
+  `lookUp` eased in. Held / taken (`heldBy` / `grabbed`, whatever the state; dead: limp): hanging from its scruff, which is at `x, z`,
+  `catScruffH(c)` above `y` (so `y` = a jaw's height − that), limp / kicking; `heldBy.cw` swings it. Shut eyes: lids ("‿ ‿").
   A cat with its mouse in its mouth: mouth open, the mouse drawn there (`catMouth`).
 - **Mice** (`mouseInst`, instanced, first use): body, head (big round pink ears, bead eyes, pink nose), tail, four feet; coats brown, grey,
   sandy (`MOUSE_COATS`, `m.coat`). Run / walk (scurrying), sit (up on its haunches, nose twitching), nibble, groom, caught (wriggling),
