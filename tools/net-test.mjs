@@ -490,8 +490,11 @@ try {
   const boneId = await A.page.evaluate(() => window.__bone.nid);   // (this one: poops and the vagabond's sticks are bones too)
   const boneG1 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id), d = GAME.G.dogs.find(d => d.player.slot === 0); return { there: !!b, held: !!b && b.by === d && d.holding === b }; }, boneId);
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; });   // let go: thrown
-  await sleep(3500);
-  const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
+  // till it's landed and stopped on the host (a loaded machine's game runs slow), then till the guest's copy is there (or 5 s)
+  await sleep(500);
+  await until(A, () => { const b = window.__bone; return !b.by && b.h <= 0.01 && Math.hypot(b.vx, b.vz) < 0.05; }, null, 15000).catch(() => {});
+  const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved, v: +Math.hypot(b.vx, b.vz).toFixed(2) }; });
+  await until(B, ([id, x, z]) => { const b = GAME.BONES.find(b => b.nid === id); return b && Math.hypot(b.x - x, b.z - z) < 0.1; }, [boneId, boneH.x, boneH.z], 5000).catch(() => {});
   const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
     boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
