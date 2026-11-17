@@ -110,7 +110,7 @@ if (sheets.includes('mice')) await save('mice', ({ size }) => {
     CELL(sheet, i * size, co * size, size, x, m.y + 0.04, z, 0.32, 0, `${st} ${co}`);
   });
   CATS.length = 0; MICE.length = 0; const x = SHOT.spot.x, z = SHOT.spot.z;
-  MOUSE_HOLES.push({ x, z, yaw: 0.3 }); MICE.push({ isMouse: true, id: 40, x: x + 0.12, z: z + 0.1, yaw: 2.4, state: 'sit', coat: 2, scale: 1, spd: 0 });
+  MOUSE_HOLES.push({ x, z, yaw: 0.3 }); MICE.push({ isMouse: true, id: 40, x: x + 0.2, z: z + 0.2, yaw: 2.4, state: 'sit', coat: 2, scale: 1, spd: 0 });
   GAME.syncMice(1 / 30); CELL(sheet, 0, 3 * size, size, x, groundY(x, z), z, 0.5, 0, 'hole');
   CELL(sheet, size, 3 * size, size, x, groundY(x, z), z, 2.5, 0, 'hole ×5');
   const c = CAT({ breed: 'moggy', coat: 1, state: 'walk', spd: 0.6, yaw: Math.atan2(SHOT.CAM.x, SHOT.CAM.z) + 1.0, tail: 0.8 });
