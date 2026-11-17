@@ -6,18 +6,26 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
 - **Drawing** (`syncCats`, onSync 35; `syncMice`, onSync 36): a cat's model is made the first time it's in view (`catModel`, in `CATM`, on its
   own dice: `ownDice`), hidden out of view or at sea unless ours, dropped once `c.gone` or out of `CATS` (`catDrop`); a new breed or coat: a new
   model. Nothing's made at load; no `Math.random`.
-- **Breeds** (`CAT_BREEDS`, `CAT_BREED_IDS`, `CAT_COATS`; looks only): one chibi cat bent by numbers (`leg body head eye ex mz ear tail fur
-  cheek ruff tufts`, `catDims`): moggy (brown / orange tabby, black, tuxedo, calico, grey), ragdoll (seal / blue point, bicolour: long hair, ruff,
-  blue eyes), Maine Coon (brown / red tabby, silver, black smoke: the biggest, lynx tufts, ruff, a huge brush), Persian (white, cream,
-  chinchilla: flat face, small ears, fluffiest), British Shorthair (blue-grey, lilac: round, plush, copper eyes), Siamese (seal / blue point:
-  slim, big ears, a wedge), Bengal (golden rosettes, snow). Size: `catSize(c)` = `CAT_K` × breed `k` × `c.scale` (a moggy ~0.43 m at the
-  shoulder); kittens (`catKitten`: from `scale`) a bigger head, stubby legs, a short tail.
+- **Breeds** (`CAT_BREEDS`, `CAT_BREED_IDS`, `CAT_COATS`; looks only): one chibi cat bent by numbers (`leg hl body head eye slant mz ear earX
+  tail fur hair cheek ruff tufts britches toes`, `catDims`): moggy (brown / orange tabby, black, tuxedo, calico, grey), ragdoll (seal / blue
+  point, bicolour: long hair, a bib, blue eyes), Maine Coon (brown / red tabby, silver, black smoke: big, lynx tufts, a bib, a brush), Persian
+  (white, cream, chinchilla: flat face, small ears), British Shorthair (blue-grey, lilac: round, plush, copper eyes), Siamese (seal / blue
+  point: slim, big ears, a wedge), Bengal (golden rosettes, snow), Norwegian Forest Cat (one coat, a real cat's: blue-grey and white, a big
+  white bib, a narrow blaze into a white muzzle, white mittens, one higher, pale gold-green eyes; big, longer hind legs (the rump higher),
+  wide-set ears with a hint of lynx tip, britches, toe tufts, a plume as long as it: the fluffiest). Size: `catSize(c)` = `CAT_K` × breed `k`
+  × `c.scale` (a moggy ~0.43 m at the shoulder); kittens (`catKitten`: from `scale`) a bigger head, stubby legs, a short tail, longer fur.
 - **Coats** (`catPaint`, `catTailCol`; `CQ`, `catMerge`: vertex colours and `aPat`, how much pattern, which way): base, belly, muzzle,
-  white (tuxedo, calico, bicolour), colourpoints (face mask, ears, legs, tail). Stripes (mackerel, a line down the spine, the brow), rosettes,
-  calico patches: drawn crisp by `catMat` (one program, `'catCoat'`; a material a coat). Long hair: FUR shells on the body (`catFur`; roots
-  barely darker; the outline stays on the body). Ruff, belly and cheek tufts: soft fluff in the coat's colours, no outline (`fluffF`, `fluffR`, `cheek`).
+  white (tuxedo, calico, bicolour; bib: a blaze, bib, belly, mittens (`mitt`: a front leg each), a flank sheen `sh`), colourpoints (face
+  mask, ears, legs, tail). Stripes (mackerel, a line down the spine, the brow), rosettes, calico patches: drawn crisp (`CAT_PAT_GLSL`;
+  `catMat`, one program `'catCoat'`, a material a coat).
+- **Long hair** (`catFur`, `catFurMat`, `catFurSync`; ragdoll, Maine, Persian, Norwegian): shells over each furry part in one InstancedMesh
+  (an instance a shell, `gl_InstanceID` its height; the part's own geometry, so the bent tail's shells bend with it): locks and strands cut
+  by noise along the lie, tapering out, the coat's pattern on them, no outline. Combed by gravity in the part's own frame, a breeze, the gait
+  (sway, bounce) and speed (streams back); longer on a kitten, on end when puffed; off with `T.fur.lite`. On the body, the bib, the belly,
+  cheeks, britches and the tail; the face stays smooth. Bib, belly and cheek tufts, britches: soft fluff, no outline (`bib`, `fluffR`, `cheek`, `brit`).
 - **The model**: two body halves on a spine (they arch, curl, wiggle apart), a big round head (cheeks, whisker pads, a pink nose, a "w"),
-  big eyes (`MAT.basic`: they shine; a dark rim, iris, pupil, two highlights; blink, squint, shut), pink-lined ears (swivel, flatten, flick),
+  eyes (`MAT.basic`: they shine) set flush in a flatter face (`face`, no outline), level (almond breeds' outer corners a touch up: `slant`),
+  an eye's width apart, facing forward: a thin even rim, iris, an upright pupil, two highlights; blink, squint, shut. Pink-lined ears (swivel, flatten, flick),
   whiskers, a mouth that opens (tongue, fangs), four legs, and a tail re-bent every frame (`catTailSet`: a tube along a curve; lift, bend,
   side, hook, sway, bottle-brush puff; its outline the same geometry). Ours (`c.owned`): a collar and a bell (`catCollar`, made the first
   time; the bell swings).
@@ -32,4 +40,5 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
   air (tumbling), dead (on its side); hide: not drawn. Held: at `x, y, z` (a cat's: its drawn mouth). `MOUSE_HOLES`: a dark hole, turned
   earth heaped behind it.
 - **Icons**: 🐱 `cat`, 🐭 `mouse` (`ART`).
-- **Contact sheets**: `node tools/cat-shots.mjs OUTDIR` (breeds × coats, walking, faces, kittens, every pose, mice and a hole, game zoom).
+- **Contact sheets**: `node tools/cat-shots.mjs OUTDIR` (breeds × coats, walking, faces, heads (front, ¾, profile, a kitten), kittens, every
+  pose, mice and a hole, game zoom; the Norwegian: posed, side on, at game zoom).

@@ -1,14 +1,15 @@
 // CAT LOOKS as contact sheets (a look check, not a test): every breed in every coat, kittens, every pose, ours (a collar and a bell),
 // mice in every state and a hole, and a game-zoom shot (cats by a dog and the flock).
-// node tools/cat-shots.mjs OUTDIR [--sheets coats,walk,faces,kittens,poses,mice,game] [--breeds moggy:0,siamese:0 (poses: who)] [--states sit,hiss]
+// node tools/cat-shots.mjs OUTDIR [--sheets coats,walk,faces,heads,kittens,poses,mice,game,norwegian] [--breeds moggy:0,siamese:0 (poses: who)] [--states sit,hiss]
 //   [--side rad (poses: the cat turned from facing the camera, 1.1)] [--elev k (the camera's height, 1.2: the game's; lower: more side on)] [--size px (a cell, 200)] [--view m (a close-up's height, 1.0)] [--turn rad (the cat turned from facing the camera, 0.6)] [--scale n (deviceScaleFactor, 1)]
-// Writes OUTDIR/cats-coats.png, cats-walk.png, cats-faces.png, cats-kittens.png, cats-poses-<breed>.png, mice.png, cats-game.png; prints any page errors.
+// Writes OUTDIR/cats-coats.png, cats-walk.png, cats-faces.png, cats-heads.png (eyes: front, ¾, profile, a kitten),
+//   cats-norwegian.png, cats-norwegian-side.png, cats-norwegian-game.png, cats-kittens.png, cats-poses-<breed>.png, mice.png, cats-game.png; prints any page errors.
 import { open } from './harness.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const dir = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'cat-shots';
 mkdirSync(dir, { recursive: true });
-const sheets = (arg('--sheets', 'coats,walk,faces,kittens,poses,mice,game')).split(',');
+const sheets = (arg('--sheets', 'coats,walk,faces,heads,kittens,poses,mice,game,norwegian')).split(',');
 const h = await open({ query: '?debug', width: 1000, height: 800, scale: +arg('--scale', 1) });
 await h.page.evaluate(elev => {
   const { G, startGame, renderOnce, CATS, MICE, MOUSE_HOLES, groundY, camera, renderer, scene, CAM_R, THREE, CATL } = GAME;
@@ -22,8 +23,8 @@ await h.page.evaluate(elev => {
   const CAM = new THREE.Vector3(1, elev, 1).normalize();
   window.SHOT = { spot, CAM };
   // a cell: the camera on (x, y, z), view m tall, from the game's angle (or turned: ang about y), into the sheet at (cx, cy)
-  window.CELL = (sheet, cx, cy, size, x, y, z, view, ang = 0, label = '') => {
-    const v = CAM.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), ang), cv = renderer.domElement, W = cv.width, H = cv.height, asp = W / H;
+  window.CELL = (sheet, cx, cy, size, x, y, z, view, ang = 0, label = '', el = 0) => {
+    const v = (el ? new THREE.Vector3(1, el, 1).normalize() : CAM.clone()).applyAxisAngle(new THREE.Vector3(0, 1, 0), ang), cv = renderer.domElement, W = cv.width, H = cv.height, asp = W / H;
     camera.position.set(x + v.x * 300, y + v.y * 300, z + v.z * 300); camera.lookAt(x, y, z);
     camera.top = view / 2; camera.bottom = -view / 2; camera.left = -view / 2 * asp; camera.right = view / 2 * asp; camera.updateProjectionMatrix();
     renderer.render(scene, camera);
@@ -63,6 +64,51 @@ for (const [name, st] of [['coats', 'sit'], ['walk', 'walk'], ['faces', 'sit']])
     }));
     return sheet.toDataURL('image/png');
   }, { name, size, view, turn, st });
+}
+// heads, every breed: front on, ¾ (the game's angle), profile, a kitten front on (the eyes: set in, level, apart)
+if (sheets.includes('heads')) await save('cats-heads', ({ size }) => {
+  const { CAT_BREEDS, catSize, catMouth } = GAME, ids = Object.keys(CAT_BREEDS), cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, ids.length, size);
+  ids.forEach((b, r) => [['front', 0, 1, 0.3], ['3/4', 0.55, 1, 0], ['profile', Math.PI / 2, 1, 0.25], ['kitten', 0, 0.55, 0.3]].forEach(([lab, turn, sc, el], i) => {
+    const c = CAT({ breed: b, coat: b === 'moggy' ? 1 : 0, state: 'sit', yaw: cy + turn, scale: sc }), k = catSize(c), f = catMouth(c);
+    CELL(sheet, i * size, r * size, size, f.x, f.y + 0.06 * k, f.z, 0.36 * k * (sc < 1 ? 1.25 : 1), 0, `${b} ${lab}`, el);
+  }));
+  return sheet.toDataURL('image/png');
+}, { size });
+// the Norwegian: its coats sitting and walking (¾), kittens, faces; side on (its plume, britches, a stride or two); at game zoom
+if (sheets.includes('norwegian')) {
+  await save('cats-norwegian', ({ size }) => {   // (its one coat, posed as in its photo: sat, looking up a little)
+    const { catSize, catMouth } = GAME, cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, 2, size);
+    [['face', { state: 'sit', lookUp: 0.25, yaw: cy }, 'face', 0.5], ['face 3/4', { state: 'sit', lookUp: 0.2, yaw: cy + 0.5 }, 'face', 0.5], ['sat', { state: 'sit', lookUp: 0.25, yaw: cy + 0.15 }, 'body', 1.4],
+      ['sat 3/4', { state: 'sit', lookUp: 0.2, yaw: cy + 0.6, owned: true }, 'body', 0], ['side', { state: 'idle', yaw: cy + Math.PI / 2, tail: 0.6 }, 'body', 0.4], ['walk', { state: 'walk', spd: 0.8, tail: 0.7, yaw: cy + Math.PI / 2 }, 'body', 0.4],
+      ['walk 3/4', { state: 'walk', spd: 0.8, tail: 0.75, yaw: cy + 1.1 }, 'body', 0], ['kitten', { state: 'sit', scale: 0.55, lookUp: 0.2, yaw: cy + 0.5, tail: 0.8 }, 'body', 0]].forEach(([lab, o, kind, el], i) => {
+      const c = CAT({ breed: 'norwegian', coat: 0, ...o }), k = catSize(c), cx = (i % 4) * size, cy2 = Math.floor(i / 4) * size;
+      if (kind === 'face') { const f = catMouth(c); CELL(sheet, cx, cy2, size, f.x, f.y + 0.06 * k, f.z, 0.46 * k, 0, lab, el); }
+      else CELL(sheet, cx, cy2, size, c.x, c.y + 0.3 * k, c.z, 1.05 * k * (o.scale ? 1.4 : 1), 0, lab, el);
+    });
+    return sheet.toDataURL('image/png');
+  }, { size });
+  await save('cats-norwegian-side', ({ size }) => {
+    const { catSize } = GAME, cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, 2, size), side = cy + Math.PI / 2;
+    [['stand', { state: 'sit', yaw: side, tail: 0.6 }, 40, 0], ['walk', { state: 'walk', spd: 0.8, tail: 0.7, yaw: side }, 40], ['walk +', { state: 'walk', spd: 0.8, tail: 0.7, yaw: side }, 46],
+      ['trot', { state: 'trot', spd: 2, tail: 0.5, yaw: side }, 40], ['tail up', { state: 'walk', spd: 0.5, tail: 1, yaw: side }, 40], ['from behind', { state: 'walk', spd: 0.6, tail: 0.55, yaw: cy + Math.PI - 0.5 }, 40],
+      ['loaf', { state: 'loaf', yaw: side }, 40], ['kitten', { state: 'walk', spd: 0.5, scale: 0.55, tail: 0.8, yaw: side }, 40]].forEach(([lab, o, fr], i) => {
+      if (lab === 'stand') o.state = 'idle';
+      const c = CAT({ breed: 'norwegian', coat: i % 4, ...o }, fr), k = catSize(c);
+      CELL(sheet, (i % 4) * size, Math.floor(i / 4) * size, size, c.x, c.y + 0.26 * k, c.z, 1.15 * k * (o.scale ? 1.3 : 1), 0, lab, 0.4);
+    });
+    return sheet.toDataURL('image/png');
+  }, { size });
+  await save('cats-norwegian-game', () => {
+    const { G, CATS, MICE, MOUSE_HOLES, groundY, renderer } = GAME, d = G.dogs[0];
+    CATS.length = 0; MICE.length = 0; MOUSE_HOLES.length = 0;
+    [['sit', 0], ['walk', 1], ['loaf', 2], ['walk', 3], ['sit', 1]].forEach(([st, co], i) => { const a = i / 5 * Math.PI * 2 + 0.4, x = d.x + Math.cos(a) * 2.6, z = d.z + Math.sin(a) * 2.6;
+      CATS.push({ isCat: true, id: 70 + i, breed: 'norwegian', coat: co, x, z, y: groundY(x, z), yaw: a + 1.2, vx: 0, vz: 0, scale: i === 4 ? 0.55 : 1, state: st, spd: st === 'walk' ? 0.8 : 0, tail: 0.7, owned: i < 2 }); });
+    CATS.push({ isCat: true, id: 79, breed: 'moggy', coat: 1, x: d.x - 1.5, z: d.z + 1.2, y: groundY(d.x - 1.5, d.z + 1.2), yaw: 2, state: 'sit', tail: 0.6 });
+    for (let i = 0; i < 30; i++) GAME.renderOnce(1 / 30);
+    const cv = renderer.domElement, s = document.createElement('canvas'), W = cv.width, H = cv.height; s.width = W * 1.5; s.height = H;
+    const c = s.getContext('2d'); c.drawImage(cv, 0, 0); c.imageSmoothingEnabled = false; c.drawImage(cv, W * 0.415, H * 0.35, W * 0.17, H * 0.3, W, 0, W * 0.5, H * 0.88);
+    return s.toDataURL('image/png');
+  });
 }
 // kittens: each breed at 0.55, 0.75, 1
 if (sheets.includes('kittens')) await save('cats-kittens', ({ size, view, turn }) => {
