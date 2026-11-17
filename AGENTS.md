@@ -34,7 +34,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, 🤒 button: the pox, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
-  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island). `window.GAME` exposes
+  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island, 🌿 the wild here: a mouse boom, a crash, as it was). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
@@ -114,6 +114,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
 - VAGABOND (the VENDOR's wares)
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
 - WILD RAMS (the castaway)
+- ECOSYSTEM
 - RAM FOLDS
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
 - TUTORIAL
@@ -233,6 +234,8 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `kegHeat(x, z)` (in `heatAt`), `d.keg`
 - `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `saveFlock` too, `G.ff` off), `tutDawnNote()` (in `dawnHTML`)
 - `lambBorn(s)` (one lamb by its mother: `lambsAtDawn`, TUTORIAL)
+- `ecoLeg(x, z)` / `ecoHere()` (ECOSYSTEM: the leg, 0…4; −1 at sea), `ecoN` / `ecoD` / `ecoK` / `ecoHunger(kind, li)` (how many; prey / K; × the mean, 1 when off; 0…1),
+  `ecoEat(pred, prey, li, n)` (a kill or catch seen), `ecoAdd(kind, dn, li)`, `ecoMeal(s, why)` (in `preyKill`: a predator's kill feeds its leg)
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -332,6 +335,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
+- `docs/eco.md`: the ecosystem: each leg's mice, ducks, fish, strays, coyotes, cougars, falcons (a population model); what the game reads from it and feeds it.
 - `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
 
 ### Icons
