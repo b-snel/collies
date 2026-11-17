@@ -59,9 +59,10 @@ if (want('polar')) {
   const r = await h.page.evaluate(() => {
     const { SEA } = GAME, out = {};
     for (const [name, twa] of [['irons', 0.35], ['close', 0.87], ['reach', 1.57], ['broad', 2.36], ['run', 3.05]]) {
-      H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0, trim = 0, boom = 0;
-      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); trim += SEA.trim; boom += Math.abs(SEA.boom); } });   // (30 s: the seas make 15 s of it a lottery; a moment of it more so: Hank eases her in a gust)
-      out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(trim / n), boom: H.deg(boom / n) };
+      H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0, trim = 0, tn = 0, boom = 0;
+      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); boom += Math.abs(SEA.boom); if (GAME.G.time - SEA.spill > 2) { tn++; trim += SEA.trim; } } });   // (30 s: the seas make 15 s of it a lottery)
+      // trim: while Hank's not easing her (pressed, he spills it on purpose: how often the seas lay her over is the dice's)
+      out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(tn ? trim / tn : SEA.trim), eased: H.r(1 - tn / n), boom: H.deg(boom / n) };
     }
     return out;
   });
@@ -244,8 +245,9 @@ if (want('grab')) {
     d.x = til.sx - fx * 0.8; d.z = til.sz - fz * 0.8; d.yaw = til.yaw; d.vx = d.vz = 0; s.x = d.x + fx * 1.1; s.z = d.z + fz * 1.1; s.vx = s.vz = 0;
     const g0 = grabPick(d); out.pick = g0 && g0.kind; out.sheepD = H.r(Math.hypot(s.x - d.x - fx * 1.1, s.z - d.z - fz * 1.1)); out.tilD = H.r(Math.hypot(til.x - d.x - fx * 1.1, til.z - d.z - fz * 1.1));
     p.bot = { grab: true }; GAME.step(0.025); out.bit = stationOf(d) === til; p.bot = {}; H.run(0.3);
-    // a sheep in the water alongside, a few m along the rail from a dog at the ring: hauled in, not the ring
-    const w = G.sheep.find(q => q !== s && !q.lamb && !q.ram), wu = T.sea.ring.u + 3.2; H.place(w, wu, H.rail(wu, 1.5)); seaOverRail(w, 1, 3.5, 5, 'test');
+    // a sheep in the water alongside, a few m along the rail from a dog at the ring: hauled in, not the ring (2.4 m along: where it clings is
+    // the water's, and from 3.2 m along that's up to `over.reach` off)
+    const w = G.sheep.find(q => q !== s && !q.lamb && !q.ram), wu = T.sea.ring.u + 2.4; H.place(w, wu, H.rail(wu, 1.5)); seaOverRail(w, 1, 3.5, 5, 'test');
     H.run(12); out.cling = !!(w.air && w.air.cling);
     H.place(d, boatU(R.sx, R.sz), boatV(R.sx, R.sz)); d.yaw = Math.atan2(R.hx - d.x, R.hz - d.z); H.run(0.1); out.far = H.r(Math.hypot(w.x - d.x, w.z - d.z));
     const g1 = grabPick(d); out.pick2 = g1 && g1.kind; p.bot = { grab: true }; H.run(0.1); p.bot = {}; H.run(2.5);
@@ -457,9 +459,10 @@ if (want('storm')) {
   await setup({ calm: true });
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, WIND, ROUTE, seaRogue, HAZ } = GAME, out = {}, a = ROUTE[2], b = ROUTE[3];
-    // just into the gale on the Storm Key leg (past `full`: short of it, how far she sails in 45 s is the dice's), the weather left to itself
-    const k0 = T.sea.storm.full + 0.02; GAME.seaStart({ under: true, leg: 2 }); SEA.e = a.e + (b.e - a.e) * k0; SEA.n = a.n + (b.n - a.n) * k0; SEA.hdg = b.crs; SEA.hoist = 0.55; H.flock(0);
-    let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
+    // a third of the way along the Storm Key leg, the weather left to itself: at its height (how fast she sails into it and out the far side is the dice's)
+    GAME.seaStart({ under: true, leg: 2 }); SEA.e = a.e + (b.e - a.e) * 0.3; SEA.n = a.n + (b.n - a.n) * 0.3; SEA.hdg = b.crs; SEA.hoist = 0.55; H.flock(0);
+    let flash = 0, top = { storm: 0, wind: 0, state: 0, rain: 0 }; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; for (const [k, v] of [['storm', SEA.storm], ['wind', WIND.spd], ['state', SEA.state], ['rain', SEA.rain]]) top[k] = Math.max(top[k], v); });
+    out.storm = H.r(top.storm); out.wind = H.r(top.wind); out.state = H.r(top.state); out.rain = H.r(top.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
     // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
     const wave = from => { H.sea(1.57, 8); SEA.hoist = 0.55; H.flockRail(3.3, -6, 6, -1); seaRogue(SEA.hdg + from, 3.4, 60); const g = SEA.rogue; let heel = 0, at = -1, pre = [], post = 0;
