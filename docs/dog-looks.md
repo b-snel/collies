@@ -1,7 +1,7 @@
 # Dog looks
 
 - **Dog pack** (DOG PACK, `dogPackBuild`, `dogPackSync`, drawing only): carrying greens or salt, a dog wears saddlebags in its collar's colour,
-  fitted to its breed's hull (`packHull`, `packR`). Greens fill the pockets in turn (bags, then outer pockets), salt in the top pocket. Emptied: it pops off.
+  fitted to its breed's hull (`packHull`, `packR`). Greens fill the pockets in turn (bags, then outer pockets), salt in the top pocket, a fish poking out of a bag for each it carries (FISHING: `dogPackSync(…, fish)`, `dogPackFish`, made the first time). Emptied: it pops off.
 - **Prizes** (TRIALS): a rosette (on the collar's side) and the keg (a cask under the throat, from the collar's ring): DOG_KIT, `prize`: never dug up.
 - **Wearables: every breed.** Anything a dog wears (hats, kit, the pack): check it on all breeds before it ships: a `role-test.mjs` check over
   every breed's coat lengths (`DOG_BREEDS.flatMap(dogForms)`; outside the body, off the ground, clear of head and legs) and a look at `node tools/dog-shots.mjs OUT.png` (`--pack`, `--tilt`).

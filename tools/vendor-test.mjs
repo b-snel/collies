@@ -73,7 +73,7 @@ const r2 = await h.page.evaluate(() => {
   H.at(1); H.by(6); d.barkCd = 0; let b0 = G.barks || 0; H.press('bark'); out.far = { out: VAG.out, barked: (G.barks || 0) - b0 };
   H.run(1); H.by(2.2); d.barkCd = 0; b0 = G.barks || 0; H.press('bark'); out.near = { out: VAG.out, barked: (G.barks || 0) - b0, lay: !!VAG.lay };
   VAG.out = false; const k = d.player.kind; d.player.kind = 'kb'; out.kbBark = vagPress(d, { bark: true }); VAG.out = false; out.kbJump = vagPress(d, { jump: true }); d.player.kind = k;
-  H.run(1.5); out.mats = GAME.ALL_WARES.every(w => Math.hypot(w.x - VAG.x, w.z - VAG.z) < 16);
+  H.run(1.5); out.mats = GAME.ALL_WARES.every(w => Math.hypot(w.x - VAG.x, w.z - VAG.z) < 17);   // (row 2's ends: ~16 m out, 5 wide)
   H.place(d, VAG.x + 40, VAG.z); H.run(GAME.T.vag.packT + 1); out.packed = !VAG.out;
   return out;
 });
