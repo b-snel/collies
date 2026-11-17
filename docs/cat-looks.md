@@ -18,14 +18,15 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
   white (tuxedo, calico, bicolour; bib: a blaze, bib, belly, mittens (`mitt`: a front leg each), a flank sheen `sh`), colourpoints (face
   mask, ears, legs, tail). Stripes (mackerel, a line down the spine, the brow), rosettes, calico patches: drawn crisp (`CAT_PAT_GLSL`;
   `catMat`, one program `'catCoat'`, a material a coat).
-- **Long hair** (`catFur`, `catFurMat`, `catFurSync`; ragdoll, Maine, Persian, Norwegian): shells over each furry part in one InstancedMesh
-  (an instance a shell, `gl_InstanceID` its height; the part's own geometry, so the bent tail's shells bend with it): locks and strands cut
-  by noise along the lie, tapering out, the coat's pattern on them, no outline. Combed by gravity in the part's own frame, a breeze, the gait
-  (sway, bounce) and speed (streams back); longer on a kitten, on end when puffed; off with `T.fur.lite`. On the body, the bib, the belly,
-  cheeks, britches and the tail; the face stays smooth. Bib, belly and cheek tufts, britches: soft fluff, no outline (`bib`, `fluffR`, `cheek`, `brit`).
+- **Long hair** (`B.fur`: how fluffy; ragdoll, Maine, Persian, Norwegian): solid fluff, cel-shaded and outlined like the rest, no strands.
+  Soft tufts (`catTuft`: a rounded lock narrowing to a gentle point, its tip a touch lighter) merged into the parts: a scalloped fringe down
+  the belly, a tufty rump, britches down the back of the thighs, toe tufts, ear furnishings; cheek ruffs (`cheek`) widening the face; a bib
+  (`bib`): a white cloud of round lobes layered down the chest, hung from under the chin (it swings with the gait and a breeze; a kitten's
+  bigger: puffballs). Tufty parts' outlines pushed back from the eye (`catInk`): no line between tufts, the silhouette scalloped. The plume:
+  the tail's tube in soft lobes, its section scalloped. White fur `CAT_SNOW` (over-bright, a touch blue: white in the warm sun, cream in shadow).
 - **The model**: two body halves on a spine (they arch, curl, wiggle apart), a big round head (cheeks, whisker pads, a pink nose, a "w"),
   eyes (`MAT.basic`: they shine) set flush in a flatter face (`face`, no outline), level (almond breeds' outer corners a touch up: `slant`),
-  an eye's width apart, facing forward: a thin even rim, iris, an upright pupil, two highlights; blink, squint, shut. Pink-lined ears (swivel, flatten, flick),
+  an eye's width apart, facing forward: a thin even rim, iris, a big round pupil, two highlights (up-left, low-right); blink, squint, shut. Pink-lined ears (swivel, flatten, flick),
   whiskers, a mouth that opens (tongue, fangs), four legs, and a tail re-bent every frame (`catTailSet`: a tube along a curve; lift, bend,
   side, hook, sway, bottle-brush puff; its outline the same geometry). Ours (`c.owned`): a collar and a bell (`catCollar`, made the first
   time; the bell swings).
