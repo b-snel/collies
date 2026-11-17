@@ -457,10 +457,18 @@ try {
   const ropeH = await A.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.kind !== 'net'); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeG = await B.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.slot === 0); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeErr = Math.max(...ropeH.x.map((x, k) => Math.hypot(x - ropeG.x[k], ropeH.z[k] - ropeG.z[k])));
-  await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it
+  const placed = await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it; else further in, till Ⓧ there takes the rope (not a dog by it)
     const R = GAME.ROPES[i], a = GAME.G.dogs.find(d => d.player.kind !== 'net'), b = GAME.G.dogs.find(d => d.player.kind === 'net');
-    const k = a.ropeI < R.n / 2 ? R.n - 1 : 0, j = k ? k - 2 : 2, tx = R.x[k] - R.x[j], tz = R.z[k] - R.z[j], l = Math.hypot(tx, tz) || 1;
-    b.x = R.x[k] + tx / l * 1.05; b.z = R.z[k] + tz / l * 1.05; b.yaw = Math.atan2(-tx, -tz); b.vx = b.vz = 0;
+    const far = a.ropeI < R.n / 2 ? 1 : -1, k0 = far > 0 ? R.n - 1 : 0, j = k0 - far * 2, ex = R.x[k0] - R.x[j], ez = R.z[k0] - R.z[j], el = Math.hypot(ex, ez) || 1;
+    const tries = [[R.x[k0] + ex / el * 1.05, R.z[k0] + ez / el * 1.05, Math.atan2(-ex, -ez)]];
+    for (let k = k0 - far * 2; far * (k - a.ropeI) > 3; k -= far * 2) {   // further in: beside it, on the side away from the host's dog
+      const tx = R.x[k + 1] - R.x[k - 1], tz = R.z[k + 1] - R.z[k - 1], tl = Math.hypot(tx, tz) || 1; let nx = -tz / tl, nz = tx / tl;
+      if ((a.x - R.x[k]) * nx + (a.z - R.z[k]) * nz > 0) { nx = -nx; nz = -nz; }
+      tries.push([R.x[k] + nx * 1.05, R.z[k] + nz * 1.05, Math.atan2(-nx, -nz)]);
+    }
+    let g = null, n = 0;
+    for (const [x, z, yaw] of tries) { b.x = x; b.z = z; b.yaw = yaw; b.vx = b.vz = 0; n++; g = GAME.grabPick(b); if (g && g.best === R) break; }
+    return { tries: n, takes: g ? g.kind : null, dogs: GAME.G.dogs.length };
   }, ropeAt.i);
   await sleep(300);
   await B.page.keyboard.down('KeyE');
@@ -477,7 +485,7 @@ try {
   const heaves = (await probed(A)).map(p => p[1]), heave = Math.max(0, ...heaves.map(e => e[0]));
   await B.page.keyboard.up('KeyE');
   check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest grabs it: a tug of war on both, R heaves',
-    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave), frames: heaves.length, heaves: heaves.filter((e, k) => !k || e[0] !== heaves[k - 1][0]).slice(0, 8) });
+    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], placed, tugH, tugG, heave: r2(heave), frames: heaves.length, heaves: heaves.filter((e, k) => !k || e[0] !== heaves[k - 1][0]).slice(0, 8) });
   await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; const g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
   // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
