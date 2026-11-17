@@ -8120,7 +8120,7 @@ function wetAt(x, z) { return terrainH(x, z) < WATER_Y + 0.6 || !inSea(x, z) && 
 function overWater(x, z) { return terrainH(x, z) < WATER_Y - 0.05; }
 // one ballistic step. Walls, rocks and trees bounce low fliers back; fences only stop low ones. → 'ground' | 'water' | null
 function airStep(e, a, r, dt) {
-  const ox = e.x, oz = e.z;
+  const ox = e.x, oz = e.z, gy0 = groundY(ox, oz);
   a.t = (a.t || 0) + dt; a.vy -= T.airGrav * dt; a.h += a.vy * dt;
   e.x += e.vx * dt; e.z += e.vz * dt;
   let gy = groundY(e.x, e.z);
@@ -8133,7 +8133,7 @@ function airStep(e, a, r, dt) {
     }
     e.x = ox; e.z = oz; gy = groundY(e.x, e.z);
   }
-  if (a.h - gy < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }
+  if (a.h - Math.max(gy, gy0) < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }   // (over the higher of the step's ground: a fence on a ledge's lip, the boat's rail)
   if (a.t < (a.noLand || 0)) return null;
   const water = overWater(e.x, e.z), floor = water ? waterLevel(e.x, e.z) : gy;
   if (a.h <= floor) { a.h = floor; return water ? 'water' : 'ground'; }
@@ -21552,6 +21552,7 @@ function duckGroupStep(g, dt, dtH) {
   if (G.time - g.workT < 8 && G.time - g.workT > 6 && g.n) { g.hx = g.cx; g.hz = g.cz; }   // settled where they were driven
   g.sleep = isNight() && G.time - (g.alarmT ?? -1e9) > K.prey.alarmT;   // (PREY: one taken: the rest awake a while)
   if (g.sleep) { g.goal = null; return; }
+  if (G.time - g.workT < 8) return;   // (settling where they were driven: no march off till that's home)
   if (g.goal) {
     const L = g.list.find(herdFree);
     if (!L || Math.hypot(L.x - g.goal.x, L.z - g.goal.z) < 0.9 || (g.goT -= dt) < -25) { g.goal = null; g.goT = rnd(K.moveT[0], K.moveT[1]); }
@@ -21603,7 +21604,8 @@ function duckTrail(e, mum, dt, K) {
     const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = ahead === mum ? (dog ? L.dogGap : L.follow * 1.4) : L.follow + (ahead.heldBy ? 0.6 : 0);
     const dx = ahead.x - Math.sin(ay) * f - e.x, dz = ahead.z - Math.cos(ay) * f - e.z, dd = Math.hypot(dx, dz);
     e.state = 'walk';
-    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), K.run * 1.5, dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
+    const asp = ahead === mum ? sp : Math.hypot(ahead.vx, ahead.vz);   // (the one ahead's pace, and closing in: no lag down the line; left behind: they hurry)
+    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3) + dd * 2, K.run * 1.5, asp + dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
     return _hdv;
   }
   e.state = 'graze';   // she's pecking about (the dog's standing): so are they, round her
@@ -21813,7 +21815,7 @@ function herdStep(e, dt) {
     const l = Math.hypot(dfx, dfz) || 1, ux = dfx / l, uz = dfz / l;
     if (e.goT <= 0) { e.gdx = ux; e.gdz = uz; } else { const a = Math.min(1, dt * 6); e.gdx = lerp(e.gdx, ux, a); e.gdz = lerp(e.gdz, uz, a); const q = Math.hypot(e.gdx, e.gdz) || 1; e.gdx /= q; e.gdz /= q; }
     e.goT = K.mom; e.spd = lerp(K.trot, K.run, clamp(press * 1.1 + e.stress * 0.5 - 0.2, 0, 1)); e.state = 'move';
-  } else if (an && e.goT <= 0.3) {
+  } else if (an && e.goT <= 0.3 && !(g && g.goal)) {   // (marching in a line: the line leads, not the ones by it)
     const sp = Math.hypot(avx, avz) / an; if (sp > T.moveMin) { e.gdx = avx / an / sp; e.gdz = avz / an / sp; e.goT = Math.max(e.goT, 0.8); e.spd = sp * 0.88; e.state = 'move'; }
   }
   let tx = 0, tz = 0;

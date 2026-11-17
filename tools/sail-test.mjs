@@ -59,9 +59,9 @@ if (want('polar')) {
   const r = await h.page.evaluate(() => {
     const { SEA } = GAME, out = {};
     for (const [name, twa] of [['irons', 0.35], ['close', 0.87], ['reach', 1.57], ['broad', 2.36], ['run', 3.05]]) {
-      H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0;
-      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); } });   // (30 s: the seas make 15 s of it a lottery)
-      out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(SEA.trim), boom: H.deg(Math.abs(SEA.boom)) };
+      H.sea(twa, 8); let n = 0, u = 0, lee = 0, heel = 0, trim = 0, boom = 0;
+      H.run(45, t => { H.steer(0); if (t > 15) { n++; u += SEA.u; lee += Math.atan2(SEA.v, Math.max(0.1, SEA.u)); heel += Math.abs(SEA.heel); trim += SEA.trim; boom += Math.abs(SEA.boom); } });   // (30 s: the seas make 15 s of it a lottery; a moment of it more so: Hank eases her in a gust)
+      out[name] = { u: H.r(u / n), lee: H.deg(lee / n), heel: H.deg(heel / n), trim: H.r(trim / n), boom: H.deg(boom / n) };
     }
     return out;
   });
@@ -457,8 +457,8 @@ if (want('storm')) {
   await setup({ calm: true });
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, WIND, ROUTE, seaRogue, HAZ } = GAME, out = {}, a = ROUTE[2], b = ROUTE[3];
-    // a third of the way along the Storm Key leg, the weather left to itself
-    GAME.seaStart({ under: true, leg: 2 }); SEA.e = a.e + (b.e - a.e) * 0.3; SEA.n = a.n + (b.n - a.n) * 0.3; SEA.hdg = b.crs; SEA.hoist = 0.55; H.flock(0);
+    // just into the gale on the Storm Key leg (past `full`: short of it, how far she sails in 45 s is the dice's), the weather left to itself
+    const k0 = T.sea.storm.full + 0.02; GAME.seaStart({ under: true, leg: 2 }); SEA.e = a.e + (b.e - a.e) * k0; SEA.n = a.n + (b.n - a.n) * k0; SEA.hdg = b.crs; SEA.hoist = 0.55; H.flock(0);
     let flash = 0; H.run(45, () => { H.steer(b.crs); if (SEA.flash > 0.9) flash++; }); out.storm = H.r(SEA.storm); out.wind = H.r(WIND.spd); out.state = H.r(SEA.state); out.rain = H.r(SEA.rain); out.flash = flash;
     out.stress = H.r(G.sheep.reduce((m, s) => m + s.stress, 0) / G.sheep.length);
     // a great wave: abeam it sweeps the deck; on the bow it doesn't (the flock toward the port rail: the lee one, for a sea from starboard)
@@ -537,9 +537,9 @@ if (want('kraken')) {
       p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = H.stick(0, sd); H.run(0.6); p.bot = {}; bonks += n0 - on();
     }
     out.bonks = bonks; H.run(1.2); out.eye = KRAKEN.phase; out.righted = H.deg(Math.abs(SEA.heel));
-    // a sheep punted over the rail into its eye: a hit; it bounces back aboard
+    // a sheep punted over the rail into its eye: a hit; it bounces back aboard (3.2 m in: a heavy ewe's punt is up over the rail by then)
     const hp0 = KRAKEN.hp, e = krakenEyeAt(), s = G.sheep.find(q => !q.ram && !q.lamb);
-    H.place(s, -1, sd * (boatHB(-1) - 2.2)); H.place(d, -1, sd * (boatHB(-1) - 5)); d.pounceCD = 0; p.bot = {}; H.run(0.3);
+    H.place(s, -1, sd * (boatHB(-1) - 3.2)); H.place(d, -1, sd * (boatHB(-1) - 6)); d.pounceCD = 0; p.bot = {}; H.run(0.3);
     p.bot = H.stick(0, sd, { pounce: true }); H.run(0.05); p.bot = {}; H.run(2.5);
     out.hit = hp0 - KRAKEN.hp; out.back = !s.air && onDeck(s.x, s.z) && !s.dead; out.phase = KRAKEN.phase; out.side2 = KRAKEN.side === -sd || KRAKEN.phase === 'sink';
     // and the rest of it
