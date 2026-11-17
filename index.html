@@ -5872,7 +5872,7 @@ const CAT_BREEDS = {
   norwegian: { k: 1.25, leg: [1.0, 1.2], hl: 1.08, body: [1.26, 1.18, 1.06], head: [0.96, 1, 1.03], eye: 1.18, mz: 1.05, ear: [0.98, 1.2], earX: 0.58, tail: [1.4, 3.1],
     fur: 1.5, cheek: 0.75, ruff: 1.7, tufts: 0.35, britches: 1.35, toes: 1, coats: [
     // (one: a blue-grey and white: a big white bib, a narrow blaze into a white muzzle, white mittens, the right one higher; pale gold-green eyes)
-    { n: 'grey & white', b: '#5c636e', sh: '#7d848f', wh: 'bib', mitt: [0.86, 0.58, 0.84], eye: '#c8bd3c', nose: '#f0a4ae', in: '#c9a3ad', tip: '#474d56' }] },
+    { n: 'grey & white', b: '#5c636e', sh: '#7d848f', wh: 'bib', bib: [0.55, 3], mitt: [0.86, 0.58, 0.84], eye: '#c8bd3c', nose: '#f2aab4', nk: 0.72, mouth: '#4a4a52', in: '#c9a3ad', tip: '#474d56' }] },
 };
 const CAT_COLLARS = ['#e8473f', '#3d8ef0', '#f2c230', '#3fbf5a', '#b05ad8', '#ff7aa8'];
 const catBreed = c => CAT_BREEDS[c.breed] || CAT_BREEDS.moggy;
@@ -5890,8 +5890,9 @@ const catC = (a, b, t = 0) => { const c = new THREE.Color(a); if (b && t > 0) c.
 function catPaint(B, C, D) {
   const WH = CAT_SNOW, tab = C.pat === 'tabby', w0 = C.pat ? 1 : 0, pt = C.pt, wh = C.wh, R = D.hr;
   const body = (x, y, z) => {
-    if (wh === 'bib') {   // a white bib down the chest, white underneath; a lighter sheen on the flanks
-      if (y < -D.bh * 0.42 || (z > D.bl * 0.3 && y < D.bh * 0.3 && Math.abs(x) < D.bw * 0.78)) return [WH.clone(), 0];
+    if (wh === 'bib') {   // a white bib down the middle of the chest (narrowing, to mid-chest), grey shoulders round it; white under the belly behind; a sheen on the flanks
+      const bibW = D.bw * (0.42 * smooth(-D.bh * 0.35, D.bh * 0.45, y) + 0.08);
+      if ((z > D.bl * 0.55 && y > -D.bh * 0.35 && Math.abs(x) < bibW) || (y < -D.bh * 0.7 && z < -D.bl * 0.1 && Math.abs(x) < D.bw * 0.5)) return [WH.clone(), 0];
       return [catC(C.b, C.sh, 0.6 * smooth(D.bw * 0.4, D.bw * 0.95, Math.abs(x)) * smooth(-D.bh * 0.6, 0, y)), 0];
     }
     if (wh && (y < -D.bh * (wh === 'cal' ? 0.15 : 0.3) || (z > D.bl * 0.5 && y < D.bh * (wh === 'bi' ? 0.45 : 0.2) && Math.abs(x) < D.bw * 0.7))) return [WH.clone(), 0];
@@ -5910,13 +5911,14 @@ function catPaint(B, C, D) {
     if (wh === 'tux' && ((muz || chin) || (Math.abs(x) < R * 0.13 * (1 - (y + R * 0.12) / R) && z > R * 0.6 && y < R * 0.25))) return [WH.clone(), 0];   // a white muzzle and a blaze
     if (wh === 'cal' && (muz || chin)) return [WH.clone(), 0];
     if (wh === 'bib' && ((muz && Math.abs(x) < R * 0.34) || chin || (z > R * 0.5 && y < R * 0.34 && Math.abs(x) < R * (0.03 + 0.2 * smooth(R * 0.34, -R * 0.2, y)))))
-      return [WH.clone(), 0];   // a narrow blaze between the eyes, widening down the nose into a white muzzle
+      return [CAT_SNOW_FACE.clone(), 0];   // a narrow blaze between the eyes, widening down the nose into a white muzzle (whiter still: it faces down)
     if (muz || chin) return [catC(C.mz || C.b, pt, pt ? 0.85 : 0), 0];
     return [c, w];
   };
   const leg = (L, i = 0) => (x, y, z) => {
     const lo = smooth(-L * 0.35, -L * 0.75, y);
-    if (wh === 'bib') { const m = (C.mitt || [0.8, 0.8, 0.85])[Math.min(i, 2)]; return [catC(y < -L * m || (i === 1 && z < -D.legR * 0.3 && y < -L * 0.25) ? '#f7f4ee' : C.b), 0]; }   // mittens (one higher, white up its back)
+    if (wh === 'bib') { const m = (C.mitt || [0.8, 0.8, 0.85])[Math.min(i, 2)], inner = i < 2 && (i ? x : -x) > D.legR * 0.35 && y < -L * 0.3;   // mittens (one higher, white up its back), the inner front legs
+      return [y < -L * m || inner || (i === 1 && z < -D.legR * 0.3 && y < -L * 0.25) ? WH.clone() : catC(C.b), 0]; }
     if (wh === 'bi' || ((wh === 'tux' || wh === 'cal') && y < -L * 0.55)) return [WH.clone(), 0];
     let c = catC(C.b, C.bl, wh === 'cal' ? 0 : 0.2), w = w0;
     if (pt) c.lerp(_c.set(pt), lo);
@@ -6000,7 +6002,7 @@ function catTuft(w, len, col, tip, at, dir, flat = 0.78) {
   const out = CQ(g, (x, y) => [c0.clone().lerp(c1, smooth(len * 0.4, len, y)), 0]);
   return out.applyQuaternion(_tQ.setFromUnitVectors(_tU, _tD.set(...dir).normalize())).translate(at[0], at[1], at[2]);
 }
-const CAT_SNOW = new THREE.Color(1.3, 1.36, 1.56);   // (white fur: a touch blue and over-bright, so it reads white in the warm sun, cream in shadow)
+const CAT_SNOW = new THREE.Color(1.3, 1.36, 1.56), CAT_SNOW_FACE = new THREE.Color(1.55, 1.62, 1.85);   // (white fur: a touch blue and over-bright, so it reads white in the warm sun, cream in shadow)
 const catBright = c => { const o = c.isColor ? c.clone() : catC(c); return o.r + o.g + o.b > 2.6 ? o.copy(CAT_SNOW) : o; };
 // a fluffy part's outline: the hull pushed back from the eye (m), so a tuft in front of a tuft draws no line: the outer silhouette only, scalloped
 const CAT_INKS = new Map();
@@ -6031,10 +6033,10 @@ function catGeo(B, C) {
   // the bib: a white cloud of tufts layered down the chest (it swings a little: its own mesh, hung from under the chin)
   const BP = [0, D.bh * 0.5, D.bl * 0.86], bib = [];
   if (B.ruff) {
-    const rc = catBright(f.ruff(0, 0, 0)[0]), k = B.ruff, sh = g => g.translate(-BP[0], -BP[1], -BP[2]);
-    bib.push(sh(CQ(SPH(14), () => [rc, 0], { s: [D.bw * (0.82 + 0.1 * k), D.bh * (0.8 + 0.1 * k), D.bl * 0.34], p: [0, D.bh * 0.05, D.bl * 0.74] })));
-    for (let r = 0; r < 4; r++) {   // rows of round lobes, overlapping, each a soft point down: a cloud
-      const n = 3 + (r % 2), y = lerp(D.bh * 0.38, -D.bh * (0.5 + 0.1 * k), r / 3), wd = D.bw * (0.7 - 0.12 * r) * (0.85 + 0.12 * k);
+    const rc = catBright(f.ruff(0, 0, 0)[0]), k = B.ruff, sh = g => g.translate(-BP[0], -BP[1], -BP[2]), [bw, rows] = C.bib || [1, 4], bt = rows - 1;
+    bib.push(sh(CQ(SPH(14), () => [rc, 0], { s: [D.bw * (0.82 + 0.1 * k) * bw, D.bh * (0.8 + 0.1 * k) * (0.4 + 0.6 * rows / 4), D.bl * 0.34], p: [0, D.bh * (0.05 + 0.3 * (1 - rows / 4)), D.bl * 0.74] })));
+    for (let r = 0; r < rows; r++) {   // rows of round lobes, overlapping, each a soft point down: a cloud
+      const n = bw < 0.8 ? Math.max(1, 3 - r) : 3 + (r % 2), y = lerp(D.bh * 0.38, -D.bh * (0.5 + 0.1 * k) * bt / 3, r / bt), wd = D.bw * (0.7 - 0.12 * r) * (0.85 + 0.12 * k) * bw;
       for (let j = 0; j < n; j++) {
         const u = n > 1 ? j / (n - 1) * 2 - 1 : 0, x = u * wd, z = D.bl * (0.96 - 0.05 * r) - Math.abs(u) * D.bl * 0.16;
         bib.push(sh(catTuft(D.bw * (0.46 - 0.04 * r) * (0.8 + 0.15 * k), D.bh * (0.36 + 0.1 * r) * (0.6 + 0.3 * k), rc, null, [x, y, z], [u * 0.6, -1, 0.5 - 0.1 * r], 0.85)));
@@ -6044,15 +6046,15 @@ function catGeo(B, C) {
   const rear = [...rear0, CQ(SPH(18), f.body, { s: [D.bw * 1.05, D.bh * 1.03, D.bl * 0.62], p: [0, 0, -D.bl * 0.38] }), CQ(SPH(14), f.body, { s: [D.bw * 0.97, D.bh * 0.97, D.bl * 0.5] }),
     ...[-1, 1].map(sd => CQ(SPH(12), f.body, { s: [D.bw * 0.5, D.bh * 0.78, D.bl * 0.42], p: [sd * D.bw * 0.56, -D.bh * 0.22, -D.bl * 0.5] }))];   // (the haunches)
   // the head: a round skull, a flatter face on it (the eyes sit in it), cheeks, whisker pads, chin, nose, a "w"
-  const pz = R * (0.5 + 0.32 * (mz - 1)), PA = [R * 0.98 * sx, R * 0.62 * sy, R * 0.46], PY = -R * 0.04;
+  const nk = C.nk || 1, mk = C.mouth ? 0.7 : 1, pz = R * (0.5 + 0.32 * (mz - 1)), PA = [R * 0.98 * sx, R * 0.62 * sy, R * 0.46], PY = -R * 0.04;
   const face = [CQ(SPH(36), f.head, { s: PA, p: [0, PY, pz] })];   // (fine enough for a narrow blaze)   // (no outline: no mask line round it)
   const head = [CQ(SPH(26), f.head, { s: [R * 1.05 * sx, R * 0.93 * sy, R * 0.95] }),
     ...[-1, 1].map(sd => CQ(SPH(12), f.head, { s: [R * 0.5 * ch, R * 0.44 * Math.min(ch, 1.15), R * 0.5], p: [sd * R * 0.44 * sx * Math.min(1, ch), -R * 0.34, R * 0.26] })),   // cheeks
     ...[-1, 1].map(sd => CQ(SPH(10), f.head, { s: [R * 0.25, R * 0.2, R * 0.2], p: [sd * R * 0.165, -R * 0.33, fz(0.77)] })),   // whisker pads
     CQ(SPH(8), f.head, { s: [R * 0.17, R * 0.12, R * 0.15], p: [0, -R * 0.52, fz(0.66)] }),   // chin
-    CQ(SPH(10), C.nose || '#ee9aa2', { s: [R * 0.14, R * 0.09, R * 0.08], p: [0, -R * 0.15, fz(0.93)] }),   // nose
-    CQ(BOX(R * 0.024, R * 0.1, R * 0.03), CAT_INK, { p: [0, -R * 0.25, fz(0.955)] }),
-    ...[-1, 1].map(sd => CQ(new THREE.TorusGeometry(R * 0.075, R * 0.018, 4, 10, Math.PI), CAT_INK, { r: [0, 0, Math.PI], p: [sd * R * 0.075, -R * 0.295, fz(0.965)] }))];   // the "w"
+    CQ(SPH(10), C.nose || '#ee9aa2', { s: [R * 0.14 * nk, R * 0.09 * nk, R * 0.08], p: [0, -R * 0.15, fz(0.93)] }),   // nose
+    CQ(BOX(R * 0.024 * mk, R * 0.1, R * 0.03), C.mouth || CAT_INK, { p: [0, -R * 0.25, fz(0.955)] }),
+    ...[-1, 1].map(sd => CQ(new THREE.TorusGeometry(R * 0.075, R * 0.018 * mk, 4, 10, Math.PI), C.mouth || CAT_INK, { r: [0, 0, Math.PI], p: [sd * R * 0.075, -R * 0.295, fz(0.965)] }))];   // the "w"
   if (mz > 1) head.push(CQ(SPH(12), f.head, { s: [R * 0.32, R * 0.25, R * 0.45], p: [0, -R * 0.16, fz(0.56)] }));   // a wedge's long, straight nose
   // eyes: set in the face (flush with it), level (an almond's outer corners a touch up), an eye's width apart, facing forward; a thin even lid line
   const E = R * 0.22 * B.eye, EW = E * (B.slant ? 1.12 : 1), EH = E * (B.slant ? 0.88 : 1.02), ex = 2 * EW, ey = R * 0.06;
