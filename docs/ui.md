@@ -27,7 +27,7 @@
   🧬 inbred; new blood with its source: TRIALS' champion ram 🏆, the vagabond's 🎒, wild 🌿, the castaway 🏖) and
   a eulogy per sheep lost since last dawn (`eulogy`, by `s.brave`). Every screen gets it (`dawnShare`, an effect) and goes on from its own;
   a guest's names go to the host. Waits while the barn's open (`DAWN.pending`). `?sim` only fills `G.dawnReport`. Eulogies are seeded
-  (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed).
+  (name, day, cause): same everywhere. Never scrolls (`dawnFit`: wide, compact, small, then zoomed; again on a resize, and when its size really changes: a `ResizeObserver`).
   Held to go on (`T.dawn`: Ⓐ / Start, Enter / Space / Esc, ▶; `dawnHoldStart`, timed by press and let-go, `padT`); nothing in the first `grace` s; mashing never skips it.
 - **End screen** (`finishGame`): ★ score (🐑 there vs start), 🐣 🛟 🕯️ ☀️ chips,
   an obituary for every sheep lost this journey (`endObit`, `G.lost`).

@@ -202,15 +202,19 @@ try {
   const p1 = { ...p1A, ran: r2(await A.page.evaluate(() => GAME.G.time) - t0p), dog: await A.page.evaluate(() => GAME.G.dogs[0].mode), guest: p1B };
   check('the host pauses alone: its own menu ("Menu", ▶ the guest), the game goes on, its dog lies down, ⏸ by it on the guest',
     !p1.paused && p1.menu && p1.shown && p1.title === 'Menu' && p1.live && /⏸ Hostie/.test(p1.who) && /▶ Moss/.test(p1.who) && p1.ran > 0.2 && p1.dog === 'lie' && !p1B.shown && !p1B.paused && p1B.menus === '0', p1);
-  await B.page.keyboard.press('KeyP');
-  await until(A, () => GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  await B.page.keyboard.press('KeyP');   // (then till both panels say so: they redraw on their own, netUI, later on a loaded machine)
+  const pzSays = (title, who) => [A, B].map(P => until(P, ([t, w]) => document.getElementById('pauseT').textContent === t && new RegExp(w).test(document.getElementById('pauseWho').textContent), [title, who], 5000).catch(() => {}));
+  await until(A, () => GAME.G.paused, null, 5000).catch(() => {}); await Promise.all(pzSays('Paused', '⏸ Hostie.*⏸ Moss'));
   const [p2A, p2B] = await Promise.all([pz(A), pz(B)]);
   check('the guest pauses too: now the world waits, "Paused" on both screens, ⏸ by both', p2A.paused && p2B.paused && p2A.title === 'Paused' && p2B.title === 'Paused' && !p2B.live && p2B.shown
     && /⏸ Hostie/.test(p2B.who) && /⏸ Moss/.test(p2B.who) && p2A.menus === '0,1', { host: p2A, guest: p2B });
   await B.page.keyboard.press('KeyP');
-  await until(A, () => !GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  await until(A, () => !GAME.G.paused, null, 5000).catch(() => {});
+  await until(A, () => document.getElementById('pauseT').textContent === 'Menu', null, 5000).catch(() => {});
+  await until(B, () => document.getElementById('pause').classList.contains('hidden'), null, 5000).catch(() => {});
   const [p3A, p3B] = await Promise.all([pz(A), pz(B)]);
-  await A.page.keyboard.press('KeyP'); await sleep(300);
+  await A.page.keyboard.press('KeyP');
+  await until(A, () => document.getElementById('pause').classList.contains('hidden') && !GAME.G.menus.length, null, 5000).catch(() => {});
   const p4 = await pz(A);
   check('the guest carries on: the world goes on, the host still in its menu; then the host too', !p3A.paused && p3A.shown && p3A.title === 'Menu' && !p3B.shown && p3A.menus === '0'
     && !p4.paused && !p4.shown && p4.menus === '', { host: p3A, guest: p3B, after: p4 });
@@ -457,10 +461,18 @@ try {
   const ropeH = await A.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.kind !== 'net'); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeG = await B.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.slot === 0); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeErr = Math.max(...ropeH.x.map((x, k) => Math.hypot(x - ropeG.x[k], ropeH.z[k] - ropeG.z[k])));
-  await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it
+  const placed = await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it; else further in, till Ⓧ there takes the rope (not a dog by it)
     const R = GAME.ROPES[i], a = GAME.G.dogs.find(d => d.player.kind !== 'net'), b = GAME.G.dogs.find(d => d.player.kind === 'net');
-    const k = a.ropeI < R.n / 2 ? R.n - 1 : 0, j = k ? k - 2 : 2, tx = R.x[k] - R.x[j], tz = R.z[k] - R.z[j], l = Math.hypot(tx, tz) || 1;
-    b.x = R.x[k] + tx / l * 1.05; b.z = R.z[k] + tz / l * 1.05; b.yaw = Math.atan2(-tx, -tz); b.vx = b.vz = 0;
+    const far = a.ropeI < R.n / 2 ? 1 : -1, k0 = far > 0 ? R.n - 1 : 0, j = k0 - far * 2, ex = R.x[k0] - R.x[j], ez = R.z[k0] - R.z[j], el = Math.hypot(ex, ez) || 1;
+    const tries = [[R.x[k0] + ex / el * 1.05, R.z[k0] + ez / el * 1.05, Math.atan2(-ex, -ez)]];
+    for (let k = k0 - far * 2; far * (k - a.ropeI) > 3; k -= far * 2) {   // further in: beside it, on the side away from the host's dog
+      const tx = R.x[k + 1] - R.x[k - 1], tz = R.z[k + 1] - R.z[k - 1], tl = Math.hypot(tx, tz) || 1; let nx = -tz / tl, nz = tx / tl;
+      if ((a.x - R.x[k]) * nx + (a.z - R.z[k]) * nz > 0) { nx = -nx; nz = -nz; }
+      tries.push([R.x[k] + nx * 1.05, R.z[k] + nz * 1.05, Math.atan2(-nx, -nz)]);
+    }
+    let g = null, n = 0;
+    for (const [x, z, yaw] of tries) { b.x = x; b.z = z; b.yaw = yaw; b.vx = b.vz = 0; n++; g = GAME.grabPick(b); if (g && g.best === R) break; }
+    return { tries: n, takes: g ? g.kind : null, dogs: GAME.G.dogs.length };
   }, ropeAt.i);
   await sleep(300);
   await B.page.keyboard.down('KeyE');
@@ -477,7 +489,7 @@ try {
   const heaves = (await probed(A)).map(p => p[1]), heave = Math.max(0, ...heaves.map(e => e[0]));
   await B.page.keyboard.up('KeyE');
   check('ropes: one dragged on the host shows on the guest (nodes, who holds it); the guest grabs it: a tug of war on both, R heaves',
-    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], tugH, tugG, heave: r2(heave), frames: heaves.length, heaves: heaves.filter((e, k) => !k || e[0] !== heaves[k - 1][0]).slice(0, 8) });
+    ropeH.held && ropeG.held && ropeG.at === ropeH.at && ropeErr < 0.3 && tugH.held && tugH.tug && tugG.held && tugG.tug && tugG.k === tugH.k && heave > 0.3, { err: r2(ropeErr), at: [ropeH.at, ropeG.at], placed, tugH, tugG, heave: r2(heave), frames: heaves.length, heaves: heaves.filter((e, k) => !k || e[0] !== heaves[k - 1][0]).slice(0, 8) });
   await A.page.evaluate(b => { GAME.resetRopes(); const [x, z, bx, bz] = b, d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; const g = GAME.G.dogs.find(d => d.player.kind === 'net'); d.x = x; d.z = z; g.x = bx; g.z = bz; }, ropeAt.back);
   await sleep(300);
   // BONES: the host's dog bites one (the guest sees it in its jaws), throws it; where it ends up matches on both screens
@@ -490,8 +502,11 @@ try {
   const boneId = await A.page.evaluate(() => window.__bone.nid);   // (this one: poops and the vagabond's sticks are bones too)
   const boneG1 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id), d = GAME.G.dogs.find(d => d.player.slot === 0); return { there: !!b, held: !!b && b.by === d && d.holding === b }; }, boneId);
   await A.page.evaluate(() => { const d = GAME.G.dogs.find(d => d.player.kind !== 'net'); d.player.bot = {}; });   // let go: thrown
-  await sleep(3500);
-  const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved }; });
+  // till it's landed and stopped on the host (a loaded machine's game runs slow), then till the guest's copy is there (or 5 s)
+  await sleep(500);
+  await until(A, () => { const b = window.__bone; return !b.by && b.h <= 0.01 && Math.hypot(b.vx, b.vz) < 0.05; }, null, 15000).catch(() => {});
+  const boneH = await A.page.evaluate(() => { const b = window.__bone; return { x: b.x, z: b.z, by: !!b.by, moved: b.moved, v: +Math.hypot(b.vx, b.vz).toFixed(2) }; });
+  await until(B, ([id, x, z]) => { const b = GAME.BONES.find(b => b.nid === id); return b && Math.hypot(b.x - x, b.z - z) < 0.1; }, [boneId, boneH.x, boneH.z], 5000).catch(() => {});
   const boneG2 = await B.page.evaluate(id => { const b = GAME.BONES.find(b => b.nid === id); return b ? { x: b.x, z: b.z, by: !!b.by } : null; }, boneId);
   check('bones: one the host bites shows in its jaws on the guest; thrown, it lands in the same place on both',
     boneG1.there && boneG1.held && boneH.moved && !boneH.by && boneG2 && !boneG2.by && Math.hypot(boneH.x - boneG2.x, boneH.z - boneG2.z) < 0.1, { boneG1, boneH, boneG2 });
