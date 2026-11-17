@@ -1,5 +1,6 @@
 // Headless gateway test: `node tools/gateway-sim.mjs`. Driving the flock into a pen through a gate swung in (pushed open from
 // outside) vs swung out, and the flock leaving in the morning both ways: how many get through, and does anyone stall at the gate?
+// And a dog pushing the gate open (a crack, or wide) then standing in the gateway or just out in front: the flock still gets out.
 import { open } from './harness.mjs';
 const h = await open({ query: '?sim&debug' });
 const r = await h.page.evaluate(() => {
@@ -38,6 +39,20 @@ const r = await h.page.evaluate(() => {
     while (t < 40) { P().bot = {}; step(0.025); stuckTrack(pen, false); t += 0.025; for (const k of [10, 20, 40]) if (!out[k] && t >= k) out[k] = live().filter(s => !s.pen).length; }
     res[(inward ? 'out-swungIn' : 'out-swungOut')] = { left: out, of: live().length, stuckOver2s: live().filter(s => s._st > 2).length, maxStuckSecs: +Math.max(...live().map(s => s._st)).toFixed(1) };
   }
+  // ---- pushed: asleep in the pen at dawn, the dog walks into the gate from outside (it swings in) for a crack or wide, then stands
+  // there (in the gateway) or steps back out in front of it: they shoulder it wider and go round the dog (exitDodge), out
+  for (const [label, pushT, back] of [['crack', 0.35, false], ['wide', 1.2, false], ['wideBack', 1.2, true]]) {
+    reset(6.6); while (G.dogs.length > 1) { const p = G.players.pop(), d = G.dogs.pop(); GAME.scene.remove(d.models.root); p.dog = null; }
+    const pen = pens[1], n = Math.cos(pen.gateA), m = Math.sin(pen.gateA); setGate(pen, false);
+    live().forEach((s, i) => { const a = i * 2.4, rr = 1.5 + (i % 4) * 2.2; s.x = pen.x + Math.cos(a) * rr; s.z = pen.z + Math.sin(a) * rr; s.vx = s.vz = 0; s.hunger = 0.2; s.salt = 1; s.thirst = 0; s.stress = 0; s.state = 'sleep'; });   // (no lick or drink first)
+    D().x = pen.gx + n * 3 - m * 0.6; D().z = pen.gz + m * 3 + n * 0.6; D().vx = D().vz = 0;
+    for (let i = 0; i < 40; i++) step(0.025);
+    let t = 0; while (t < pushT) { goTo(D().x - n * 9, D().z - m * 9, 0.1); step(0.025); t += 0.025; }
+    if (back) { t = 0; while (t < 1.5) { goTo(D().x + n * 9, D().z + m * 9, 0.1); step(0.025); t += 0.025; } }
+    P().bot = {}; const phi0 = pen.phi; t = 0; const out = {};
+    while (t < 30) { step(0.025); t += 0.025; for (const k of [10, 20, 30]) if (!out[k] && t >= k) out[k] = live().filter(s => !s.pen).length; }
+    res['pushed-' + label] = { phi0: +phi0.toFixed(2), phi: +pen.phi.toFixed(2), left: out, of: live().length, inPen: live().filter(s => s.pen).map(s => s.state).join() };
+  }
   return res;
 });
 console.log(JSON.stringify(r, null, 1)); console.log(h.errors.slice(0, 3));
@@ -47,6 +62,7 @@ for (const g of ['swungOut', 'swungIn']) {
   ok(`gate ${g}: driven in, ${i.penned[10]}/${i.of} in by 10 s, all by 30 s; nobody stalls at it (${i.maxStuckSecs} s)`, i.penned[10] >= i.of - 3 && i.penned[30] === i.of && i.stuckOver2s === 0);
   ok(`gate ${g}: out at dawn, ${o.left[10]}/${o.of} out by 10 s, all by 20 s; nobody stalls (${o.maxStuckSecs} s)`, o.left[10] >= o.of - 3 && o.left[20] === o.of && o.stuckOver2s === 0);
 }
+for (const k of ['crack', 'wide', 'wideBack']) { const o = r['pushed-' + k]; ok(`pushed in (${k}, φ ${o.phi0} → ${o.phi}), the dog standing by: ${o.left[20]}/${o.of} out by 20 s, ${o.left[30]} by 30 s`, o.left[20] >= o.of - 3 && o.left[30] >= o.of - 2); }
 ok('no page errors', !h.errors.length);
 await h.close();
 process.exit(fails ? 1 : 0);

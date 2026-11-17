@@ -824,7 +824,7 @@ const T = {
   penHome: { from: 13, r: 0.8, w: 1.2, stress: 0.75, bark: 0.85, flee: 1.5 },   // afternoon → night (0…1): pen pull reaches r× further, w× stronger, stress counts less; a bark/flight bends toward the gate
   penTroughPull: 0.65,   // food in a pen's troughs draws even hungry sheep in (and keeps them in), mornings too
   troughDraw: { r: 32, w: 1.8, hunger: 0.4, water: 2.4, pushed: 0.2 },   // ...and one hungrier than hunger (or thirstier than water.want: water × thirst) from r m, any time of day: w × hunger vs grazing; a sheep the dog's working feels pushed× of it
-  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12 },   // a gate opened in the morning (dawn till 13:00): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in but hungry or thirsty ones (troughDraw)
+  morningRush: { until: 13, dur: 25, spd: 5.2, spread: 12, gap: 0.22 },   // a gate opened in the morning (dawn till 13:00; open: gateT over gap, or unlatched and ajar: penOut): for dur s every penned sheep trots out at spd m/s and spills up to spread m past the gate; after, till 13:00 nobody goes back in but hungry or thirsty ones (troughDraw)
   bellR: 25,
   cornerPress: 0.5, cornerSpd: 1.2, cornerWarn: 0.45, cornerT: 0.75, breakSpd: 11, breakT: 0.6, breakCd: 1.8, cornerStun: 0.55,
   startRams: 2, ramScale: 1.32, ramRadius: 0.66, ramPressR: 0.8, ramPressK: 0.7, ramIrk: 0.2, ramDogR: 10,
@@ -845,6 +845,7 @@ const T = {
   lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35 },   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   hungry: { from: 0.25, full: 0.5, bark: 1, resolve: 0.7 },   // set on the trough (troughSet): hunger from…full (thirst the same over T.water.want) with food (water) in its pen's: barks bark× less, a dog's pressure ignored up to resolve, never panicked off it on deck
+  exitDodge: { r: 3.5, spd: 1.2, miss: 1.15, room: 1.6, k: 1, grace: 8 },   // MORNING RUSH: one on its way out goes round a dog slower than spd within r m (if it'd pass nearer than miss m; keeping room m off it, k hard), no fright; out, for grace s such a dog just gets room
   penStillSpd: 1.2, penStillR: 3,   // a dog slower than this in a pen only shoos penned sheep within penStillR (they keep feeding)
   troughWake: 0.2,      // chance, each time a sleeping hungry sheep stirs, that it gets up to feed
   flushLamb: 1.5, flushTwins: 0.35,   // a ewe fed at the trough the night she's courted: lamb chance x1.5, and twins more likely (flushing)
@@ -1105,7 +1106,7 @@ const T = {
   carrySwing: { L: { bucket: 0.34, sheep: 0.55, lamb: 0.45, ram: 0.62, coyote: 0.55, dog: 0.55, llama: 0.68, cria: 0.48 }, damp: 0.9, back: -0.3, fwd: 1.3, side: 1.35, bounce: 0.55, clonk: 2.2, maxA: 45, kick: 9, jolt: 0.3 },
   coyotePounce: { courage: 0.75, kick: 19, up: 8 },
   coyoteShake: 0.45, coyoteBowl: { courage: 0.4, kick: 12, up: 6 },
-  gate: { rate: 7, damp: 2.6, maxOut: 1.7, maxIn: 2.0, openAt: 1.25, sheep: { rate: 1.1, to: 1.0, near: 1.6 }, fresh: 0.35, lean: 0.45, dogDisc: 0.62, slam: 9, whack: 6 },
+  gate: { rate: 7, damp: 2.6, maxOut: 1.7, maxIn: 2.0, openAt: 1.25, sheep: { rate: 1.1, to: 1.25, near: 1.6 }, catchAt: 0.45, rest: 0.12, fresh: 0.35, lean: 0.45, dogDisc: 0.62, slam: 9, whack: 6 },
   launcher: { L: 4.2, W: 2.5, pivotH: 0.55, drop: 0.45, flight: 1.45, cd: 0.9, back: 0.9, trigger: 7,
     funnel: { len: 6.5, wide: 4.2, r: 14, pull: 1.1, inPull: 1.2 } },   // wings len m back, flaring wide m out; pushed sheep within r m bend for the mouth
   swimSpeed: 1.8, dogSwim: 4.4,
@@ -5966,15 +5967,16 @@ function penTarget(p, s, out) {
 // ajar: unlatched, a crack open. A sheep wanting in pushes it wider (updateGate)
 const penAjar = p => !p.latched && !p.lock && !p.frozen && !p.deck && Math.abs(p.phi || 0) > 0.02;
 // MORNING RUSH: the gate's opened in the morning and the whole pen pours out to graze (troughs, lick and sleep can wait)
-const morningOut = p => !!p && !p.deck && p.gateT > 0.6 && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
-const penRush = p => !!p && !p.deck && p.gateT > 0.6 && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
+const penOut = p => p.gateT > T.morningRush.gap || penAjar(p);   // a way out: open enough to squeeze through, or unlatched (they shoulder it)
+const morningOut = p => !!p && !p.deck && penOut(p) && G.mode === 'play' && !isNight() && G.clock.hour >= T.nightEnd && G.clock.hour < T.morningRush.until;   // gate open of a morning: out to graze, not back in
+const penRush = p => !!p && !p.deck && penOut(p) && (p.rushUntil || 0) > G.time && G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until;
 function startRush(p) {
   p.rushUntil = G.time + T.morningRush.dur;
   for (const s of G.sheep) if (s.pen === p && !s.dead && !s.grabbed && !s.heldBy) s.thinkT = Math.min(s.thinkT, rnd(0, 0.8));   // they go in a wave, not on one tick
 }
 function rushOut(s) {
   const p = s.pen, nx = Math.cos(p.camp.gateA), nz = Math.sin(p.camp.gateA), R = T.morningRush.spread, f = rnd(0, R), l = rnd(-R, R) * 0.6;
-  s.state = 'exit'; s.rush = true; s.tx = p.exitX + nx * f - nz * l; s.tz = p.exitZ + nz * f + nx * l;
+  s.state = 'exit'; s.rush = true; s.outT = G.time + T.exitDodge.grace; s.tx = p.exitX + nx * f - nz * l; s.tz = p.exitZ + nz * f + nx * l;
 }
 function penPull(s) {
   if (s.pen || G.mode !== 'play' || s.ram && s.rs !== 'idle') return null;
@@ -6381,7 +6383,7 @@ function decideCalm(s, nb, night) {
   const grazing = s.goal === 'graze', rejoinD = (grazing ? 7 + 4 * Math.max(0, s.hunger - 0.4) : 5.5) - 2 * s.stress - (steady ? 2 : 0);
   if (nearestO && (nearest > rejoinD || (!grazing && s.near < 2 && nC >= 3 && Math.hypot(cX / nC - s.x, cZ / nC - s.z) > 6))) { s.state = 'rejoin'; s.tx = kn && kn.m > 1 ? kn.cx : nC ? cX / nC : nearestO.x; s.tz = kn && kn.m > 1 ? kn.cz : nC ? cZ / nC : nearestO.z; return; }
   // nothing to eat in here and the gate's open: once it's been in a while (and it's not evening), out by the gate to graze
-  if (grazing && s.pen && !s.pen.deck && s.pen.gateT > 0.6 && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
+  if (grazing && s.pen && !s.pen.deck && penOut(s.pen) && (s.penH || 0) > T.penSettleH && s.hunger > 0.3 && G.clock.hour < T.duskWarn && !night && grassAt(s.x, s.z) < T.grazeGood) { s.state = 'exit'; s.tx = s.pen.exitX + rnd(-1.5, 1.5); s.tz = s.pen.exitZ + rnd(-1.5, 1.5); return; }
   if (s.goal === 'graze') {
     s.dash = dashing; if (grassDash(s)) return; s.dash = false;   // hungry on the stubble: off to green grass now
     if (grassShove(s)) return;
@@ -6634,6 +6636,7 @@ function updateSheep(dt, dtH) {
     const trR = s.trait === 'skittish' ? 1.13 : s.trait === 'stubborn' ? 0.87 : 1;
     const deaf = s.pen && troughSet(s) * T.hungry.bark > 0.98;   // HUNGRY: head in the trough, it doesn't hear the barking
     const sheltered = s.state === 'warm' && s.fire && s.fire.hearth && inCave(s.x, s.z, 1);   // THE ICE CAVE: in it, at its place: as one in a pen (a dog come in for one of them walks among them)
+    s.dodge = null; let dodgeD = T.exitDodge.r;
     for (const d of G.dogs) {
       const dx = s.x - d.x, dz = s.z - d.z, dd = Math.hypot(dx, dz) + 1e-4;
       const outside = s.pen && !insidePen(s.pen, d.x, d.z, 0);   // penned sheep pay a dog outside their pen no mind, unless it barks
@@ -6652,6 +6655,8 @@ function updateSheep(dt, dtH) {
       if (dd >= R) continue;
       // a dog outside the pen (tipping greens in, passing by) leaves penned sheep to their troughs and water: only a bark moves them
       if (outside && !barking) continue;
+      // MORNING RUSH: on its way out (and for a while after), a dog standing by is walked round, not fled
+      if ((s.state === 'exit' || s.outT > G.time) && !pounce && !barking && d.mode !== 'sprint' && Math.hypot(d.vx, d.vz) < T.exitDodge.spd) { if (dd < dodgeD) { dodgeD = dd; s.dodge = d; } continue; }
       // a dog standing about in the pen just gets room: penned sheep step clear of it and get on with feeding (APPLES: one going for an apple too)
       if (!pounce && !barking && d.mode !== 'sprint' && (sheltered || ((s.pen || s.state === 'apple') && Math.hypot(d.vx, d.vz) < T.penStillSpd))) {
         if (dd < T.penStillR) { const k = (1 - dd / T.penStillR) * 0.3; dfX += dx / dd * k; dfZ += dz / dd * k; if (k > press) { press = k; pressD = d; } }
@@ -6750,7 +6755,7 @@ function updateSheep(dt, dtH) {
       const bellPull = bell && bellSp > 1.6 && (bell.state === 'move' || bell.state === 'flee' || bell.state === 'pen' || bell.state === 'stray') && s.hunger < 0.5 && s.state !== 'sleep' && s.state !== 'court';
       const tucking = s.state === 'graze' && s.eating && s.hunger > T.grassDash.tuck && G.time - MIND.workedT > T.grazeWorkedT;   // hungry, head down in good grass, no dog about: it lets a calm drift go by
       if (s.alert <= 0 && s.state !== 'warm' && !s.pen && (s.cold > T.pass.want || caveWant(s)) && play && (s.warmT = (s.warmT || 0) - dt) <= 0) { s.warmT = 1; warmGo(s); }   // MOUNTAIN PASS: frozen: off to the fire, never mind the others (THE ICE CAVE: for shelter too)
-      let contagion = (nMov >= 2 || bellPull) && s.state !== 'sleep' && s.state !== 'court' && s.state !== 'warm' && s.state !== 'apple' && !tucking;
+      let contagion = (nMov >= 2 || bellPull) && s.state !== 'sleep' && s.state !== 'court' && s.state !== 'warm' && s.state !== 'apple' && !tucking && !morningOut(s.pen);   // (MORNING RUSH: penned, gate open: out, not milling with the others)
       if (contagion && s.alert <= 0 && play && !night && s.stress < 0.5 && (s.appleLook = (s.appleLook || 0) - dt) <= 0) { s.appleLook = T.apple.look; if (appleFor(s)) contagion = false; }   // APPLES: one in sight beats tagging along
       if (s.alert > 0 || contagion) {
         // keep moving with the flock for a while after being pushed, and join neighbours that are on the move
@@ -6895,6 +6900,20 @@ function updateSheep(dt, dtH) {
         default: spd = 0;
       }
       dX += sepX * 0.9; dZ += sepZ * 0.9;
+      if (s.dodge) {   // MORNING RUSH: round the dog standing by, not into it, and a little room
+        const g = s.dodge, p = s.pen;
+        if (p && !p.deck && s.state === 'exit') {   // it's standing in the gateway: out by its wider side
+          const nx = Math.cos(p.camp.gateA), nz = Math.sin(p.camp.gateA), ga = (g.x - p.gx) * nx + (g.z - p.gz) * nz, gl = -(g.x - p.gx) * nz + (g.z - p.gz) * nx;
+          const sa = (s.x - p.gx) * nx + (s.z - p.gz) * nz;
+          if (Math.abs(ga) < 2 && Math.abs(gl) < GATE_W / 2 + 0.5 && sa < -0.8) {
+            const lat = (gl - (Math.sign(gl) || 1) * GATE_W / 2) / 2, qx = p.gx - nz * lat - s.x, qz = p.gz + nx * lat - s.z, ql = Math.hypot(qx, qz) || 1, dl = Math.hypot(dX, dZ) || 1;
+            dX = qx / ql * dl; dZ = qz / ql * dl;
+          }
+        }
+        const rx = s.x - g.x, rz = s.z - g.z, rl = Math.hypot(rx, rz) || 1, ux = rx / rl, uz = rz / rl, into = -(dX * ux + dZ * uz), k = clamp(1 - rl / T.exitDodge.room, 0, 1) * T.exitDodge.k;
+        if (into > 0 && Math.abs(dX * uz - dZ * ux) / (Math.hypot(dX, dZ) || 1) * rl < T.exitDodge.miss) { const sd = Math.sign(-dX * uz + dZ * ux) || 1; dX += ux * into - uz * sd * into; dZ += uz * into + ux * sd * into; }
+        dX += ux * k; dZ += uz * k; if (k > 0.2) spd = Math.max(spd, T.sheepWalk * 0.8);   // (slid round only if it'd walk into it)
+      }
       if (s.pen && !feeds(s) && s.state !== 'sleep' && s.pen.feedC && troughHas(s.pen)) for (const c of s.pen.feedC) {   // not feeding: off the feeding line (the next one in needs the room)
         const rx = s.x - c.x, rz = s.z - c.z, u = rx * c.ax + rz * c.az, v = rx * c.nx + rz * c.nz;
         if (Math.abs(u) < c.len / 2 + 0.5 && v < 1.7) { const k = (1.7 - v) * 0.9, sd = Math.sign(u) || 1; dX += c.nx * k + c.ax * sd * k * 0.5; dZ += c.nz * k + c.az * sd * k * 0.5; spd = Math.max(spd, 1); }
@@ -7777,7 +7796,6 @@ function onGateClosed(pen) {
 }
 function onGateOpened(pen) {
   hint('gate-opened');
-  if (G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until) startRush(pen);
   if (G.mode === 'play' && (isNight() || G.clock.hour > 17.5)) sayOnce('gate-open', 'gate_open', "That's the gate open! Bring them in!");
 }
 expose(() => ({ hurtDog, coyoteNip, knockDog, bark, teamOf, teamBark, toggleGate, onGateClosed }));   // DOGS
@@ -8649,7 +8667,8 @@ function coyoteDazed(c) {
 // ---------------- gates you push ----------------
 // A kinematic hinge (main's breeding-pen gate): contact sets a target angle just clear of the dog,
 // the leaf follows at up to T.gate.rate rad/s, then coasts with damping. It latches when it swings
-// through shut and only gives to a fresh shove after that. Sprint into it (or lean on it) to vault it.
+// through shut from open (p.peak, its widest since: over T.gate.catchAt; a wobble swings through), or when it's let be
+// near shut (T.gate.rest), and only gives to a fresh shove after that. Sprint into it (or lean on it) to vault it.
 function initGates() {
   for (const p of pens) {
     p.outSign = Math.sign(wrapA(p.angOpen - p.angClosed)) || -1;
@@ -8658,8 +8677,8 @@ function initGates() {
   }
 }
 // tests/dev: snap a gate open (swung out or in) or shut and latched
-function setGate(p, open, inward = false) { p.phi = open ? (inward ? -T.gate.maxIn * 0.73 : T.gate.maxOut * 0.95) : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; updateGateGeometry(p); }
-function resetGate(p) { p.rushUntil = 0; p.phi = 0; p.w = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = false; updateGateGeometry(p); }
+function setGate(p, open, inward = false) { p.phi = open ? (inward ? -T.gate.maxIn * 0.73 : T.gate.maxOut * 0.95) : 0; p.w = 0; p.latched = !open; p.fresh = true; p.auto = undefined; p.peak = Math.abs(p.phi); updateGateGeometry(p); }
+function resetGate(p) { p.rushUntil = 0; p.phi = 0; p.w = 0; p.peak = 0; p.latched = true; p.fresh = true; p.noTouch = 1; p.auto = undefined; p.wasOpen = p.wasOut = false; updateGateGeometry(p); }
 onReset(() => { for (const p of pens) resetGate(p); }, 90);   // gates
 function gatePsi(p, x, z) { return p.outSign * wrapA(Math.atan2(z - p.hinge.z, x - p.hinge.x) - p.angClosed); }   // a point's angle round the hinge, in phi terms
 function gateNormal(p, phi = p.phi) { const a = p.angClosed + p.outSign * phi; return { x: -Math.sin(a) * p.outSign, z: Math.cos(a) * p.outSign }; }   // toward the leaf's +phi side
@@ -8669,7 +8688,7 @@ function updateGate(p, dt) {
   if (p.deck && p.auto === undefined) { gangHeld(p); return; }   // SAILING: alongside, held wide open (Hank swings it: p.auto)
   if (p.frozen) { p.phi = 0; p.w = 0; updateGateGeometry(p); for (const d of G.dogs) if (d.isDog) collideSeg(d, T.dogR, p.gateSeg); return; }   // MOUNTAIN PASS: the yeti's gate, iced shut
   const K = T.gate, prev = p.phi, L = p.gateLen, hx = p.hinge.x, hz = p.hinge.z;
-  let touch = false, want = null, rate = K.rate;
+  let touch = false, want = null, rate = K.rate, held = false, lo = -K.maxIn, hi = K.maxOut;
   // 1) a dog holding the gate drags it round the hinge
   for (const d of G.dogs) {
     if (d.holding !== p) continue;
@@ -8677,9 +8696,9 @@ function updateGate(p, dt) {
     const g = gateGrip(p, d);
     if (Math.hypot(g.x - d.x, g.z - d.z) > 2.6 || Math.hypot(d.x - hx, d.z - hz) < 0.7) { releaseHold(d, false); continue; }
     const psi = wrapA(gatePsi(p, d.x, d.z) + d.holdOff);
-    if (p.latched) { if (Math.abs(psi) < 0.15) continue; p.latched = false; SFX.creak(panOf(hx, hz), 0.22, 1.1); }
-    p.pushedBy = d;
-    want = Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;   // pulled nearly to: it swings the last bit and clacks shut
+    if (p.latched) { if (Math.abs(psi) < 0.15) continue; p.latched = false; p.peak = 0; SFX.creak(panOf(hx, hz), 0.22, 1.1); }
+    p.pushedBy = d; held = true;
+    want = p.peak > K.catchAt && Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;   // pulled nearly to from open: it swings the last bit and clacks shut
   }
   if (want === null && p.auto !== undefined) {   // swung by script (toggleGate)
     touch = true; rate = 3; if (p.auto !== 0) p.latched = false;
@@ -8697,14 +8716,19 @@ function updateGate(p, dt) {
     const side = diff > 0 ? 1 : -1, into = d.inMag > 0.5 ? -(d.wx * nP.x + d.wz * nP.z) * side : 0;
     if (d.mode === 'sprint' && into > 0.45 && !d.holding && !(p.slamT > G.time)) { sprintGateSlam(p, d, side, r); continue; }   // sprinting: slam it open or shut
     if (r < 0.9 || (p.latched && !p.fresh)) continue;   // too near the hinge to swing, or just latched (needs a fresh shove)
-    if (p.latched) { p.latched = false; SFX.creak(panOf(hx, hz), 0.24, 0.95); }
+    if (p.latched) { p.latched = false; p.peak = 0; SFX.creak(panOf(hx, hz), 0.24, 0.95); }
     p.pushedBy = d;
     const w = side > 0 ? Math.min(p.phi, psi - del) : Math.max(p.phi, psi + del);
+    if (side > 0) hi = Math.min(hi, psi - del); else lo = Math.max(lo, psi + del);
     want = want === null ? w : (side > 0 ? Math.min(want, w) : Math.max(want, w));
   }
-  // 2b) ajar (not latched): a sheep wanting in shoulders it wider
-  if (want === null && penAjar(p) && Math.abs(p.phi) < K.sheep.to) {
-    for (const s of G.sheep) if (sheepNudgesGate(p, s)) { touch = true; rate = K.sheep.rate; want = Math.sign(p.phi) * K.sheep.to; break; }
+  // 2b) ajar (not latched): a sheep wanting in, or out of a morning, shoulders it wider (a dog just leaning on it: as far as it lets)
+  if (!held && (want === null || Math.abs(want - p.phi) < 1e-3) && penAjar(p) && Math.abs(p.phi) < K.sheep.to) {
+    for (const s of G.sheep) if (sheepNudgesGate(p, s) || sheepNudgesOut(p, s)) {
+      const ws = clamp(Math.sign(p.phi) * K.sheep.to, lo, hi);
+      if (Math.abs(ws) > Math.abs(p.phi) + 1e-3) { touch = true; rate = K.sheep.rate; want = ws; }
+      break;
+    }
   }
   // 3) swing: driven (rate-limited) or coasting, against stops at both ends
   if (want !== null) {
@@ -8719,14 +8743,16 @@ function updateGate(p, dt) {
       if (hit > 2.5) { SFX.thud(panOf(p.gx, p.gz), 0.25); floatText('CLANG!', p.gx, p.y + 2, p.gz, '#ffffff', 1); }
     }
   }
-  // 4) it latches when it swings through shut, from either side
-  if (!p.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) latchGate(p, Math.abs(p.w));
-  // 5) a latched gate only gives to a fresh shove: nobody touching it for a moment first
-  if (touch) p.noTouch = 0; else if ((p.noTouch += dt) > K.fresh) p.fresh = true;
+  // 4) it latches when it swings through shut from open, from either side; a wobble (never past catchAt) swings on through
+  if (!p.latched) p.peak = Math.max(p.peak || 0, Math.abs(p.phi));
+  if (!p.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) { if (p.peak > K.catchAt) latchGate(p, Math.abs(p.w)); else p.peak = Math.abs(p.phi); }
+  // 5) a latched gate only gives to a fresh shove: nobody touching it for a moment first. Let be near shut: it clacks to
+  if (touch) p.noTouch = 0; else if ((p.noTouch += dt) > K.fresh) { p.fresh = true; if (!p.latched && Math.abs(p.phi) < K.rest && Math.abs(p.w) < 0.3) latchGate(p, 0); }
   // 6) the leaf shoves whatever is in its way (a slammed gate whacks it)
   if (p.phi !== prev) sweepGate(p, prev);
   updateGateGeometry(p);
   if (p.gateT > 0.5 && !p.wasOpen) { p.wasOpen = true; onGateOpened(p); } else if (p.gateT < 0.05) p.wasOpen = false;
+  if (penOut(p) && !p.wasOut) { p.wasOut = true; if (G.mode === 'play' && !isNight() && G.clock.hour < T.morningRush.until) startRush(p); } else if (p.latched) p.wasOut = false;   // MORNING RUSH: a way out
   // 7) dogs never pass through the leaf; leaning on one that won't give vaults it
   for (const d of G.dogs) {
     if (d.air || d.heldBy || d.hopT > 0 || d.holding === p) continue;
@@ -8751,6 +8777,11 @@ function sheepNudgesGate(p, s) {
   if (s.ppPen === p) return true;
   const cx = p.x - s.x, cz = p.z - s.z, cl = Math.hypot(cx, cz) || 1;
   return (s.vx * cx + s.vz * cz) / cl > 0.4;   // driven at it
+}
+// MORNING RUSH: one on its way out, at the gateway or the leaf: it shoulders it wider
+function sheepNudgesOut(p, s) {
+  if (s.state !== 'exit' || s.dead || s.air || s.heldBy || s.grabbed || p.deck || p.fold && !s.ram) return false;
+  return Math.hypot(s.x - p.gx, s.z - p.gz) < T.gate.sheep.near + 1 || distSeg(s.x, s.z, p.gateSeg).d < s.r + 0.45;
 }
 function sweepGate(p, prev) {
   const dir = Math.sign(p.phi - prev), lo = Math.min(prev, p.phi), hi = Math.max(prev, p.phi), hx = p.hinge.x, hz = p.hinge.z, L = p.gateLen, K = T.gate;
@@ -8786,7 +8817,7 @@ function sweepGate(p, prev) {
   }
 }
 function latchGate(p, speed) {
-  p.phi = 0; p.w = 0; p.latched = true; p.fresh = false; p.noTouch = 0; p.auto = undefined;
+  p.phi = 0; p.w = 0; p.peak = 0; p.latched = true; p.fresh = false; p.noTouch = 0; p.auto = undefined;
   for (const d of G.dogs) if (d.holding === p) { d.holding = null; d.holdKind = null; d.grabLock = true; }
   updateGateGeometry(p); MV.latches++;
   const pan = panOf(p.gx, p.gz);
@@ -8823,7 +8854,7 @@ initGates();
 function drawGatePrompt(p, d) {
   const held = d.holding === p, g = keyLabel(d.player, 'grab');
   // one short line, once each (HUD: nudge); the arrow below shows which way it'll swing
-  const [key, line] = held ? (Math.abs(p.phi) < 0.35 ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
+  const [key, line] = held ? (Math.abs(p.phi) < 0.35 && p.peak > T.gate.catchAt ? ['gate-clack', 'Clack it shut!'] : ['gate-let', `Let go: ${g}`]) :
     p.latched ? (p.fresh ? ['gate-push', `Push · ${g} drag`] : ['gate-latched', '🔒 Back off, shove again']) : p.gateT > 0.5 ? ['gate-shut', 'Push to shut'] : ['gate-push', `Push · ${g} drag`];
   nudge(key, p.gx, p.y + 3.6, p.gz, line, d.color);   // above the gate, so it never covers the dog
   if (held || (p.latched && !p.fresh)) return;
@@ -9280,7 +9311,7 @@ onSave('pens', () => ({ store: { ...STORE }, pens: pens.filter(p => !p.deck && !
   for (const r of Array.isArray(v.pens) ? v.pens : []) {
     const p = pens.find(q => !q.deck && !q.fold && r && q.camp.name === r.name); if (!p) continue;
     if (r.kit) for (const k in KIT) if (Number.isFinite(r.kit[k])) kitSet(p, k, r.kit[k]);
-    if (p !== finalPen || !p.frozen) { setGate(p, !!r.open); p.wasOpen = !!r.open; }
+    if (p !== finalPen || !p.frozen) { setGate(p, !!r.open); p.wasOpen = p.wasOut = !!r.open; }
   }
   for (const k in STORE_K) {
     if (!Number.isFinite(v.store?.[k])) continue;
@@ -15096,7 +15127,7 @@ function stepClock(dt) {
   const prev = G.clock.hour; let now = prev + dtH;
   if (now >= 24) { now -= 24; G.clock.day++; }
   G.clock.hour = now;
-  if (crossed(prev, now, 6)) { for (const p of pens) if (p.gateT > 0.6) startRush(p); lambsAtDawn(); seaDawn(); setTimeout(journeySave, 0); banner(`Day ${G.clock.day}`, SEA.on ? '⛵' : 'A new morning'); if (G.clock.day > 1 && !SEA.on) hint('dawn'); }
+  if (crossed(prev, now, 6)) { for (const p of pens) if (penOut(p)) startRush(p); lambsAtDawn(); seaDawn(); setTimeout(journeySave, 0); banner(`Day ${G.clock.day}`, SEA.on ? '⛵' : 'A new morning'); if (G.clock.day > 1 && !SEA.on) hint('dawn'); }
   if (crossed(prev, now, T.duskWarn) && !SEA.on) { toast('The sun is getting low…', 'warn'); if (!flockInPass()) hint('dusk'); }
   if (crossed(prev, now, 19.6)) { if (SEA.on) hint('sea-night'); else toast(flockInPass() ? '🌙 🐑 → 🔥' : 'Night is coming — pen the flock!', 'warn'); }   // (MOUNTAIN PASS: no pens up there: the fire. SAILING: an anchorage)
   if (crossed(prev, now, T.nightStart) && !SEA.on) {
@@ -28231,7 +28262,7 @@ const NET_TYPES = {
   },
   pen: {   // push-gates: the leaf's angle (eased on guests) and whether it's latched; gateT and open follow from phi
     tag: 'p', all: () => pens, id: p => pens.indexOf(p), static: true,
-    fields: { phi: 'a', latched: 'b', fresh: 'b', lock: 'b',   // (SAILING: the deck's gangway lashed)
+    fields: { phi: 'a', latched: 'b', fresh: 'b', lock: 'b', peak: .02,   // (SAILING: the deck's gangway lashed; peak: its widest since it was shut)
       ...Object.fromEntries(Object.keys(KIT).map(k => ['n' + k, { c: 'i', get: p => kitN(p, k), set: (p, v) => kitSet(p, k, v) }])),   // VENDOR: how many troughs, water troughs, licks (before their fills)
       ...Object.fromEntries([...Array(Math.max(...pens.map(p => p.troughSlots.length))).keys()].map(i => ['tf' + i, { c: .02, get: p => p.troughs[i] ? p.troughs[i].food : 0, set: (p, v) => { if (p.troughs[i]) p.troughs[i].food = v; } }])),   // each forage trough's fill
       lick: { c: .02, get: p => p.lick.salt, set: (p, v) => { p.lick.salt = v; } },   // the salt lick
@@ -29064,7 +29095,7 @@ function netPredPost(dt) {
   for (const p of pens) {
     let near = false;
     if (!p.lock && !p.deck && !p.frozen) for (const d of mine) if (d._hold === p || Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1.5) near = true;   // (SAILING: the gangway, Hank's; the yeti's gate iced: the host's, untouched)
-    if (near) { if (!p._lp) p._lp = { w: 0, latched: p.latched, fresh: p.fresh, noTouch: 1 }; p._lp.until = now + 600 + NET.rtt; }
+    if (near) { if (!p._lp) p._lp = { w: 0, latched: p.latched, fresh: p.fresh, peak: p.peak || 0, noTouch: 1 }; p._lp.until = now + 600 + NET.rtt; }
     else if (p._lp && now > p._lp.until) p._lp = null;
     if (p._lp && !G.paused) { netPredGate(p, p._lp, mine, dt); updateGateGeometry(p); }
     for (const d of mine) if (p !== d._hold && Math.hypot(d.x - p.hinge.x, d.z - p.hinge.z) < p.gateLen + 1) collideSeg(d, T.dogR + 0.05, p.gateSeg);   // the leaf stops a dog
@@ -29084,8 +29115,8 @@ function netPredGate(p, S, mine, dt) {   // keep in step with updateGate (no sou
     const g = gateGrip(p, d); touch = true;
     if (Math.hypot(g.x - d.x, g.z - d.z) > 2.6 || Math.hypot(d.x - hx, d.z - hz) < 0.7) continue;
     const psi = wrapA(gatePsi(p, d.x, d.z) + d.holdOff);
-    if (S.latched) { if (Math.abs(psi) < 0.15) continue; S.latched = false; }
-    want = Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;
+    if (S.latched) { if (Math.abs(psi) < 0.15) continue; S.latched = false; S.peak = 0; }
+    want = S.peak > K.catchAt && Math.abs(psi) < 0.2 && Math.abs(psi) < Math.abs(p.phi) ? -Math.sign(p.phi || 1) * 0.02 : psi;
   }
   const nP = gateNormal(p);
   for (const d of mine) {
@@ -29097,7 +29128,7 @@ function netPredGate(p, S, mine, dt) {   // keep in step with updateGate (no sou
     const side = diff > 0 ? 1 : -1, into = d._pmag > 0.5 ? -(d._pwx * nP.x + d._pwz * nP.z) / d._pmag * side : 0;
     if (d.mode === 'sprint' && into > 0.45) continue;   // a vault: the host's
     if (r < 0.9 || (S.latched && !S.fresh)) continue;
-    S.latched = false;
+    if (S.latched) { S.latched = false; S.peak = 0; }
     const w = side > 0 ? Math.min(p.phi, psi - del) : Math.max(p.phi, psi + del);
     want = want === null ? w : (side > 0 ? Math.min(want, w) : Math.max(want, w));
   }
@@ -29109,11 +29140,13 @@ function netPredGate(p, S, mine, dt) {   // keep in step with updateGate (no sou
     p.phi += S.w * dt; S.w *= Math.exp(-dt * K.damp); if (Math.abs(S.w) < 0.05) S.w = 0;
     if (p.phi > K.maxOut || p.phi < -K.maxIn) { p.phi = clamp(p.phi, -K.maxIn, K.maxOut); S.w = -S.w * 0.25; }
   }
-  if (!S.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) { p.phi = 0; S.w = 0; S.latched = true; S.fresh = false; S.noTouch = 0; }
-  if (touch) S.noTouch = 0; else if ((S.noTouch += dt) > K.fresh) S.fresh = true;
+  const shut = () => { p.phi = 0; S.w = 0; S.peak = 0; S.latched = true; S.fresh = false; S.noTouch = 0; };
+  if (!S.latched) S.peak = Math.max(S.peak || 0, Math.abs(p.phi));
+  if (!S.latched && ((prev > 0 && p.phi <= 0) || (prev < 0 && p.phi >= 0))) { if (S.peak > K.catchAt) shut(); else S.peak = Math.abs(p.phi); }
+  if (touch) S.noTouch = 0; else if ((S.noTouch += dt) > K.fresh) { S.fresh = true; if (!S.latched && Math.abs(p.phi) < K.rest && Math.abs(S.w) < 0.3) shut(); }
   // untouched by us for longer than the host takes to hear: the host's gate again
   if (touch || S.w) S.idle = 0; else if ((S.idle = (S.idle || 0) + dt) > NET.rtt / 1000 + 0.25 && p._nphi !== undefined) {
-    p.phi = lerpA(p.phi, p._nphi, 1 - Math.exp(-10 * dt)); S.latched = p.latched; S.fresh = p.fresh;
+    p.phi = lerpA(p.phi, p._nphi, 1 - Math.exp(-10 * dt)); S.latched = p.latched; S.fresh = p.fresh; S.peak = p.peak || 0;
   }
 }
 

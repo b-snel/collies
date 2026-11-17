@@ -1,6 +1,7 @@
 // Headless tests for the dog's moves and the physics-y world: `node tools/moves-sim.mjs [name ...]`.
 // Pounce/punt distance, carom chains, pouncing a coyote off its prey, grab-drag, fling over a fence into a pen,
 // pushing a gate open and shut (latch → gateT 0 → onGateClosed), slamming a gate by sprinting, grab-dragging a gate shut,
+// a gate dragged in a little then out wide: no latch, and one let be near shut clacks to (`gateWobble`),
 // the river launcher (pounce-fired, and loaded by driving sheep into its chute), splash-and-swim, shaking a coyote,
 // a flung sheep bowling a coyote, lying down, and the Trading Post's pen (shutting it doesn't end the game: the yeti's cave does, pass-test).
 // Checks: punts (sheep, dogs: `dogPunt`), dog grab/fling/wriggle + same flight as a sheep, by weight (`dogGrab`), jump/vault (`jump`),
@@ -344,6 +345,27 @@ const tests = {
       });
       H.p.bot = {}; H.run(0.3);
       return { openPhi: H.r(openPhi), grabbedGate, shutIn: shutAt && H.r(shutAt), latched: pen.latched, gateT: pen.gateT, latchCount: MV.latches - latches0, letGo: d.holding === null };
+    });
+  },
+  // 8b. grab the shut gate from outside, drag it in a little by mistake, then out wide: it swings through shut, no latch
+  // (T.gate.catchAt); let go near shut, it clacks to by itself (T.gate.rest)
+  async gateWobble() {
+    return h.page.evaluate(() => {
+      const { G, pens, MV, gatePsi, T } = GAME; H.reset(); H.solo(); const d = H.d(), pen = pens[1];
+      const a = pen.angClosed + pen.outSign * 0.45, r = 2.6;
+      H.place(d, pen.hinge.x + Math.cos(a) * r, pen.hinge.z + Math.sin(a) * r);
+      const lx = pen.hinge.x + Math.cos(pen.angClosed) * r, lz = pen.hinge.z + Math.sin(pen.angClosed) * r;
+      d.yaw = Math.atan2(lx - d.x, lz - d.z); H.run(0.5);
+      H.p.bot = { grab: true }; GAME.step(0.025);
+      const grabbed = d.holding === pen, round = sg => { const psi = gatePsi(pen, d.x, d.z), aa = pen.angClosed + pen.outSign * psi; return H.to(-Math.sin(aa) * pen.outSign * sg, Math.cos(aa) * pen.outSign * sg, { grab: true }); };
+      const latches0 = MV.latches; let minPhi = 0, maxPhi = 0;
+      H.run(3, () => { H.p.bot = round(-1); minPhi = Math.min(minPhi, pen.phi); return pen.phi < -0.3; });   // in a bit
+      H.run(4, () => { H.p.bot = round(1); maxPhi = Math.max(maxPhi, pen.phi); return pen.phi > 1.1; });   // then out wide
+      const wobble = { grabbed, minPhi: H.r(minPhi), maxPhi: H.r(maxPhi), latches: MV.latches - latches0, holding: d.holding === pen };
+      H.p.bot = {}; H.run(0.3);
+      pen.phi = 0.06; pen.w = 0; pen.latched = false; pen.peak = 0.06; H.place(d, pen.gx + Math.cos(pen.gateA) * 8, pen.gz + Math.sin(pen.gateA) * 8);
+      H.run(1); const rest = { latched: pen.latched, phi: H.r(pen.phi) };
+      return { wobble, rest, ok: grabbed && minPhi < -0.25 && maxPhi > 1.1 && wobble.latches === 0 && wobble.holding && rest.latched };
     });
   },
   // 9. the river launcher: sheep on the low end, pounce the high end → they land on the far bank
