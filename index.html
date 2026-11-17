@@ -842,7 +842,9 @@ const T = {
   shove: { r: 4.2, cd: 1, win: 0.85, kick: 3.2, bumpCd: 1.2, hold: 2.5, desp: 1.5, push: 3, first: 1.5, side: 0.65 },   // a sheep without a place barges a weaker one (smaller, older, a lamb, less hungry; rams win) off the trough/lick within r m, once it's eaten hold s (one still on its way: a sheep first m nearer gets there first); desp: the needier, the harder. push: one on its way to its place (or dashing for grass) shoulders the others aside (1 + push × need heavier); side: at the trough (or squeezing in to it) a sheep takes this much room
   grassShove: { hunger: 0.5, gap: 0.2, r: 2.6, better: 0.08, cd: 2.5, desp: 2.5, kick: 2.4 },   // a hungry grazer (≥hunger, ≥gap hungrier) barges a fuller one off better grass within r m; desperation scales its push
   grassDash: { hunger: 0.6, poor: 0.3, reach: 4.5, better: 0.15, rings: [4, 8, 13, 19, 26], dirs: 12, spd: 5, cd: 3, alone: 6, den: 9, want: 0.6, stay: 0.8, tuck: 0.5 },   // hungrier than hunger, nothing over poor within reach m (boxed in on the stubble): off at spd m/s to the best patch (≥better than here) in reach, near a flockmate (alone m), not within den m of a coyote den (nor in brambles), shouldering through; want: grazing beats the flock that much more at full hunger; stay: that much less pull off good grass; tuck: an eating grazer hungrier than this lets a calm drift go by (no dog about)
-  lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35 },   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
+  lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35,   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
+    knot: { n: 3, share: 0.3, far: 22, near: 9, build: 8, cap: 0.2 },   // LOST KNOTS: a group of ≤ max(n, share × the free flock), smaller than the main group, over far m off it (edge to edge): lost too (build s, stress ≤ cap), till near m
+    avoid: { den: 11, coyote: 14, cougar: 16, snake: 8, k: 1.2, path: 6 } },   // ...and on its way back it goes round (m): a sleeping den, a coyote about, a cougar out, a rattlesnake (k: how hard it's pushed off; path: × a step's cost deep in one, for its A*); not one by the flock
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   hungry: { from: 0.25, full: 0.5, bark: 1, resolve: 0.7 },   // set on the trough (troughSet): hunger from…full (thirst the same over T.water.want) with food (water) in its pen's: barks bark× less, a dog's pressure ignored up to resolve, never panicked off it on deck
   exitDodge: { r: 3.5, spd: 1.2, miss: 1.15, room: 1.6, k: 1, grace: 8 },   // MORNING RUSH: one on its way out goes round a dog slower than spd within r m (if it'd pass nearer than miss m; keeping room m off it, k hard), no fright; out, for grace s such a dog just gets room
@@ -1161,8 +1163,8 @@ const T = {
     mat: 2.7, gap: 3.4, ring: 2.4, row2: 5.4, ware: 1.7, sticks: 2,   // (row2: room for row 0's price tags between the rows)
     // SAILING: his Laser. legs: he sails ROUTE legs 1…legs with her (their islands his stops; then he turns back). bay: Cold Harbour, round and round off her starboard side (u, v, r, keep m). spd: × the wind (polar), boost:
     // × that catching up; noGo rad off the wind; turn rad/s; keep m off her; slot: where he keeps (m ahead min…max, m to port min…max); landR: m off
-    // the next island he makes for its beach; far: m off and out of sight, he's caught up; part: m off, gone; walk m/s; grid: cols, gap, row, ring (mats, tighter)
-    sea: { legs: 2, bay: [-2, 24, 6, 14], spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5, grid: [3, 2.95, 3.2, 1.6] },
+    // the next island he makes for its beach; far: m off and out of sight, he's caught up; part: m off, gone; walk m/s
+    sea: { legs: 2, bay: [-2, 24, 6, 14], spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5 },
     tug:{ r: 3, take: 1.1, want: 8, base: 4, back: 1.4, heave: 2, beats: 1, heaveT: 0.4, yank: 2.3, walk: 0.85, tire: 7, tireR: 0.05, tireMin: 0.5, again: 8 } },
   // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), latMin…lat m either side.
   // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
@@ -3542,6 +3544,7 @@ function streamY(x, z) {
 }
 
 // ---------------- grass tufts (shrink as they're grazed, sway in the wind) ----------------
+const TUFT = { geo: null, sway: '' };   // (SAILING: the islands' tufts too)
 {
   const pos = [], col = [], nrm = [];
   const blades = 4;
@@ -3555,6 +3558,10 @@ function streamY(x, z) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  TUFT.geo = geo; TUFT.sway = `
+        float sway = sin(uTime*1.7 + iw.x*0.31 + iw.z*0.23) + 0.5*sin(uTime*2.9 + iw.x*0.7);
+        transformed.x += sway * 0.08 * position.y;
+        transformed.z += sway * 0.05 * position.y;`;
   const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
   mat.onBeforeCompile = sh => {
     sh.uniforms.uGrass = U.uGrass; sh.uniforms.uGrassXf = U.uGrassXf; sh.uniforms.uTime = U.uTime;
@@ -3565,10 +3572,7 @@ function streamY(x, z) {
         float gA = texture2D(uGrass, (iw.xz - uGrassXf.xy) * uGrassXf.zw).r;
         float gh = smoothstep(0.1, 0.75, gA);
         transformed.y *= gh;
-        transformed.xz *= 0.35 + 0.65 * gh;
-        float sway = sin(uTime*1.7 + iw.x*0.31 + iw.z*0.23) + 0.5*sin(uTime*2.9 + iw.x*0.7);
-        transformed.x += sway * 0.08 * position.y;
-        transformed.z += sway * 0.05 * position.y;`);
+        transformed.xz *= 0.35 + 0.65 * gh;` + TUFT.sway);
   };
   mat.customProgramCacheKey = () => 'tufts';
   const items = [];
@@ -6047,6 +6051,14 @@ function flockKnots() {
   const gfind = i => { while (gp[i] !== i) { gp[i] = gp[gp[i]]; i = gp[i]; } return i; };
   for (let i = 0; i < nk; i++) for (let j = 0; j < i; j++) if (kd[i * nk + j] < T.gravNear) { const a = gfind(i), b = gfind(j); if (a !== b) gp[a] = b; }
   const gm = new Float32Array(nk); for (let i = 0; i < nk; i++) gm[gfind(i)] += K[i].m;
+  // LOST KNOTS: the main group (the most sheep); every knot off it gets a home (its knot nearest), and a small group well off it is lost
+  let mg = -1; for (let i = 0; i < nk; i++) { const g = gfind(i); if (mg < 0 || gm[g] > gm[mg]) mg = g; }
+  const LK = T.lonely.knot, few = Math.max(LK.n, LK.share * n);
+  for (let i = 0; i < nk; i++) {
+    const k = K[i], gi = gfind(i); k.home = null; k.homeD = 0; k.few = false; if (gi === mg) continue;
+    let hd = 1e9; for (let j = 0; j < nk; j++) if (gfind(j) === mg && kd[i * nk + j] < hd) { hd = kd[i * nk + j]; k.home = K[j]; }
+    k.homeD = hd; k.few = gm[gi] <= few && gm[gi] < gm[mg] && !(k.home && riverBetween(k.cx, k.cz, k.home.cx, k.home.cz) && !launcherOn(k.cx, k.cz));   // (over the river, no launcher this side: nothing to be done)
+  }
   for (let i = 0; i < nk; i++) {
     const k = K[i], gi = gfind(i); let gx = 0, gz = 0, best = 0, near = -1, nd = 1e9;
     const gNear = new Map();   // for each other group: its knot nearest this one
@@ -6088,13 +6100,68 @@ function strayGoal(s) {
     if ((p.frac || 0) >= 0.5 && !morningOut(p) && Math.hypot(p.gx - s.x, p.gz - s.z) < 60) { penTarget(p, s, SG); SG.x = SG.tx; SG.z = SG.tz; SG.pen = p; return SG; }
   }
   let k = s.knot && s.knot.gw > T.joinMin - 0.1 * s.stress ? s.knot.tgt : null;
-  if (!k && anx > T.lonely.anyAt && !s.pen && KN.big && KN.big.m >= 2 && KN.big !== s.knot) k = KN.big;   // lost: off to the main flock, however far
+  if (!k && anx > T.lonely.anyAt && !s.pen) { const h = s.knot && s.knot.home; k = h || (KN.big && KN.big.m >= 2 && KN.big !== s.knot ? KN.big : null); }   // lost (alone, or a few): off to the main flock, however far
   if (!k && s.pen && s.pen.gateT > 0.6 && (s.pen.frac || 0) < 0.25 && KN.big && KN.big.m >= 3 && G.clock.hour < T.duskWarn && !isNight()) k = KN.big;
   if (!k) return null;
+  if (riverBetween(s.x, s.z, k.cx, k.cz)) return launcherGoal(s);   // the flock's over the river: onto the launcher (from the far bank: nowhere to go)
   // up to its nearest sheep in that knot, stopping a grazing distance short of it
   let m = null, md = 1e9; for (const o of k.members) { const d = (o.x - s.x) ** 2 + (o.z - s.z) ** 2; if (d < md) { md = d; m = o; } }
   const dx = s.x - m.x, dz = s.z - m.z, dl = Math.hypot(dx, dz) || 1;
-  SG.x = m.x + dx / dl * 2.2; SG.z = m.z + dz / dl * 2.2; SG.pen = null; return SG;
+  for (const k of [2.2, 1.1, 0]) { SG.x = m.x + dx / dl * k; SG.z = m.z + dz / dl * k; if (penAt(SG.x, SG.z) === m.pen) break; }   // (not over a pen's fence from it)
+  SG.pen = null; return SG;
+}
+// the river between two spots (the near bank's cut off from the rest of the land: only the launcher takes sheep over)
+const riverBetween = (ax, az, bx, bz) => !SEA.on && riverAcross(ax, az) * riverAcross(bx, bz) < 0;
+// a sheep that wants the flock over the river: its own spot on the low end of the launcher on its bank (none on its bank: null)
+const launcherOn = (x, z) => LAUNCHERS.find(S => riverAcross(S.x, S.z) * riverAcross(x, z) > 0) || null;
+function launcherGoal(s) {
+  const S = launcherOn(s.x, s.z); if (!S) return null;
+  const FN = T.launcher.funnel, ex = s.x - S.x, ez = s.z - S.z, sp = ex * S.ux + ez * S.uz, sq = -ex * S.uz + ez * S.ux;
+  const inside = sp > -FN.len - 1 && Math.abs(sq) < (sp > 0 ? S.hw : S.hw + FN.wide * Math.min(1, -sp / FN.len)) - 0.4;   // between the wings (or in the chute)
+  let p = S.L * (0.3 + 0.45 * (s.id * 0.618 % 1)), q = (s.id * 0.382 % 1 - 0.5) * (S.W - 0.9);
+  if (!inside && Math.hypot(sp + FN.len + 3, sq) > 1.5) { p = -FN.len - 3; q = 0; }   // round to the funnel's mouth first, then in
+  SG.x = S.x + p * S.ux - q * S.uz; SG.z = S.z + p * S.uz + q * S.ux; SG.pen = null; return SG;
+}
+// on its way back to the flock a sheep gives what'd eat it a wide berth (T.lonely.avoid): it goes round (its A* too: sheepNav's haz)
+// a sleeping den (a sheep at the mouth wakes the pack), a coyote about, a cougar out of the trees, a rattlesnake; not one its goal's in
+// (the flock's there: no getting round it). strayHaz: the zones within reach m of (x, z), in FOES.c[0…n)
+const FOES = { n: 0, c: [] };
+function hazPut(x, z, r, sx, sz, gx, gz, reach) {
+  if ((gx - x) ** 2 + (gz - z) ** 2 < r * r || (sx - x) ** 2 + (sz - z) ** 2 > (r + reach) ** 2) return;
+  const o = FOES.c[FOES.n] || (FOES.c[FOES.n] = { x: 0, z: 0, r: 0 }); o.x = x; o.z = z; o.r = r; FOES.n++;
+}
+function strayHaz(sx, sz, gx, gz, reach) {
+  FOES.n = 0; if (G.mode !== 'play' || SEA.on) return FOES;
+  const L = T.lonely.avoid;
+  for (const D of G.dens) if (D.pack.phase === 'den' && D.count) hazPut(D.x, D.z, L.den, sx, sz, gx, gz, reach);
+  for (const c of G.coyotes) if (!c.gone && !c.air && !c.heldBy && c.state !== 'sleep' && c.state !== 'leave' && c.state !== 'dead' && c.state !== 'burrow') hazPut(c.x, c.z, L.coyote, sx, sz, gx, gz, reach);
+  for (const c of COUGARS) if (c.state !== 'away' && !c.air) hazPut(c.x, c.z, L.cougar, sx, sz, gx, gz, reach);
+  for (const n of SNAKES) hazPut(n.x, n.z, L.snake, sx, sz, gx, gz, reach);
+  return FOES;
+}
+// in a zone: pushed out, and a heading in turned round it, on the side toward the goal (kept, so it doesn't dither with one dead ahead)
+const AVD = { x: 0, z: 0 };
+function strayAvoid(s, gx, gz, dX, dZ) {
+  const H = strayHaz(s.x, s.z, gx, gz, 0), k = T.lonely.avoid.k; AVD.x = AVD.z = 0;
+  for (let i = 0; i < H.n; i++) {
+    const h = H.c[i], rx = s.x - h.x, rz = s.z - h.z, d = Math.hypot(rx, rz) || 1e-3, ux = rx / d, uz = rz / d, into = -(dX * ux + dZ * uz);
+    if (into > 0) {
+      const vx = gx - s.x, vz = gz - s.z, side = -uz * vx + ux * vz;
+      if (Math.abs(side) > 0.15 * Math.hypot(vx, vz) || !s.avSide) s.avSide = side >= 0 ? 1 : -1;
+      AVD.x += (ux - uz * s.avSide) * into; AVD.z += (uz + ux * s.avSide) * into;
+    }
+    const w = (1 - d / h.r) * k; AVD.x += ux * w; AVD.z += uz * w;
+  }
+  return AVD;
+}
+// does a to b dip into a zone (deeper than either end)?
+function hazCut(ax, az, bx, bz, H) {
+  const abx = bx - ax, abz = bz - az, L2 = abx * abx + abz * abz || 1e-6;
+  for (let i = 0; i < H.n; i++) {
+    const h = H.c[i], t = clamp(((h.x - ax) * abx + (h.z - az) * abz) / L2, 0, 1), d = Math.hypot(ax + abx * t - h.x, az + abz * t - h.z);
+    if (d < h.r && d < Math.hypot(ax - h.x, az - h.z) - 0.5 && d < Math.hypot(bx - h.x, bz - h.z) - 0.5) return true;
+  }
+  return false;
 }
 // A* for sheep, on a budget: straight at the goal while it can see it (checked every few steps), else along a path round
 // whatever's in the way (fences, rocks, the river), recomputed now and then; at most T.pathsPerStep searches a step
@@ -6104,14 +6171,14 @@ function sheepLOS(ax, az, bx, bz) {
   for (let t = 0; t < L;) { const sd = sdfAt(ax + ux * t, az + uz * t); if (sd < 0.35) return false; t += Math.max(0.5, sd - 0.3); }
   return !fenceBetween(ax, az, bx, bz);
 }
-function sheepNav(s, gx, gz) {
+function sheepNav(s, gx, gz, haz) {   // haz: round what'd eat it (strayHaz)
   const dx0 = gx - s.x, dz0 = gz - s.z, d0 = Math.hypot(dx0, dz0) || 1e-4;
   NAVDIR.d = d0;
   s.navT = (s.navT || 0) - 1;
   if (s.navT <= 0 || Math.hypot(gx - s.lgx, gz - s.lgz) > 2) { s.navT = 12; s.lgx = gx; s.lgz = gz; s.los = d0 < 2 || sheepLOS(s.x, s.z, gx, gz); }
   if (s.los) { s.path = null; NAVDIR.x = dx0 / d0; NAVDIR.z = dz0 / d0; return NAVDIR; }
   if ((!s.path || G.time > s.pathT + 1.5 || Math.hypot(gx - s.pgx, gz - s.pgz) > 3) && MIND.paths < T.pathsPerStep) {
-    MIND.paths++; MIND.pathN = (MIND.pathN || 0) + 1; s.path = findPath(s.x, s.z, gx, gz, 4000); s.pathI = 0; s.pathT = G.time + Math.random() * 0.5; s.pgx = gx; s.pgz = gz;
+    MIND.paths++; MIND.pathN = (MIND.pathN || 0) + 1; s.path = findPath(s.x, s.z, gx, gz, 4000, haz ? strayHaz(s.x, s.z, gx, gz, d0 + 12) : null); s.pathI = 0; s.pathT = G.time + Math.random() * 0.5; s.pgx = gx; s.pgz = gz;
   }
   const P = s.path; if (!P || !P.length) { NAVDIR.x = dx0 / d0; NAVDIR.z = dz0 / d0; return NAVDIR; }
   while (s.pathI < P.length - 1 && Math.hypot(P[s.pathI].x - s.x, P[s.pathI].z - s.z) < 1.3) s.pathI++;
@@ -6359,7 +6426,7 @@ function decideCalm(s, nb, night) {
   if (!s.pen && G.mode === 'play' && warmGo(s)) return;   // MOUNTAIN PASS: cold: a place by the fire (the coldest first)
   const { nearest, nearestO, nC, cX, cZ, pp, steady } = nb;
   const lingering = !s.pen && s.hunger > 0.6 && grassAt(s.x, s.z) > 0.2;   // hungry sheep stay out grazing late
-  if (night && (s.pen || s.near >= 1) && !lingering) { if (s.state === 'sleep' || Math.random() < 0.45) { s.state = 'sleep'; return; } }
+  if (night && (s.pen || s.near >= 1) && !lingering && !(s.anx > T.lonely.anyAt)) { if (s.state === 'sleep' || Math.random() < 0.45) { s.state = 'sleep'; return; } }   // (lost: not till it's back with the flock)
   if (s.state === 'sleep' && night && !lingering) { s.state = 'sleep'; return; }
   if (s.lamb && s.mother && !s.mother.dead && !s.mother.grabbed && (dist2(s, s.mother) > 6 || s.mother.pen && !s.pen)) { s.state = 'follow'; return; }
   if (morningOut(s.pen) && !(s.lamb && s.mother && s.mother.pen === s.pen && !s.mother.dead)) { rushOut(s); s.rush = false; return; }   // out to graze, all of them (lambs with mum)
@@ -6702,8 +6769,9 @@ function updateSheep(dt, dtH) {
     s.stress = clamp(s.stress + (stressIn * tg - leak) * dt, 0, 1);
     // separated: nobody near and no knot near it → anxiety builds, and with it stress (never quite to panic)
     const lost = play && !s.pen && nearest > T.lonely.far && !(s.knot && s.knot.groupM > 1) && !(s.lamb && s.state === 'follow') && N >= 4 && !S.some(o => o !== s && !o.dead && (o.x - s.x) ** 2 + (o.z - s.z) ** 2 < T.lonely.far ** 2);   // (flockmates over a fence still count)
-    s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : -1 / T.lonely.fade) * dt, 0, 1);
-    if (s.anx > 0) { const cap = T.lonely.cap * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
+    const kn0 = s.knot, LK = T.lonely.knot, few = !lost && play && !s.pen && kn0 && kn0.few && kn0.home && kn0.homeD > (s.anx > 0.05 ? LK.near : LK.far) && s.state !== 'sleep' && s.state !== 'warm' && !(s.lamb && s.state === 'follow') && !(s.goal === 'graze' && s.hunger > T.grassDash.hunger);   // LOST KNOTS: a few, well off the flock (anxious: till near it); not hungry ones off grazing (fed: then)
+    s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : few ? 1 / LK.build : -1 / T.lonely.fade) * dt, 0, 1);
+    if (s.anx > 0) { const cap = (kn0 && kn0.m > 1 ? LK.cap : T.lonely.cap) * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
     if (nsN && (!s.pen || deck)) { const avg = nsS / nsN; s.stress = clamp(s.stress + (avg - s.stress) * (avg > s.stress ? T.stressUp : T.stressDown) * dt, 0, 1); }
     const pk = s.pen && !deck ? 0 : clamp((s.stress - T.panicAt) / (1 - T.panicAt), 0, 1) * (deck ? 1 - troughSet(s) : 1);   // (SAILING: not one set on its trough)
     if (pk > 0) s.panic = Math.max(s.panic, 0.3 + 0.6 * pk);
@@ -6817,10 +6885,11 @@ function updateSheep(dt, dtH) {
         }
         case 'stray': {
           const g = strayGoal(s); if (!g) { s.state = 'idle'; break; }
-          const n = sheepNav(s, g.x, g.z), d = n.d;
+          const n = sheepNav(s, g.x, g.z, true), d = n.d;   // (round what'd eat it: strayHaz)
           if (d < (g.pen ? 1.5 : 0.7)) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           const anx = s.anx || 0;
           dX = n.x; dZ = n.z; spd = (d > 12 || !s.los ? T.sheepTrot : T.sheepWalk * T.calmBrisk * 1.15) * (1 + T.lonely.run * anx); acc = 5;   // trotting, the long way round if it must (lost: hurrying)
+          { const a = strayAvoid(s, g.x, g.z, dX, dZ); dX += a.x; dZ += a.z; }   // in a zone: out and round
           s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(5, 9) * (1 - 0.6 * anx); baaAt(s, 0.3 + 0.2 * anx, 1.06 + 0.1 * anx); if (anx > 0.5) floatText('?', s.x, s.y + 1.6 * s.scale, s.z, '#fff8e8', 0.9); }   // trotting and bleating as it goes (lost: calling out)
           break;
         }
@@ -8122,7 +8191,7 @@ function wetAt(x, z) { return terrainH(x, z) < WATER_Y + 0.6 || !inSea(x, z) && 
 function overWater(x, z) { return terrainH(x, z) < WATER_Y - 0.05; }
 // one ballistic step. Walls, rocks and trees bounce low fliers back; fences only stop low ones. → 'ground' | 'water' | null
 function airStep(e, a, r, dt) {
-  const ox = e.x, oz = e.z;
+  const ox = e.x, oz = e.z, gy0 = groundY(ox, oz);
   a.t = (a.t || 0) + dt; a.vy -= T.airGrav * dt; a.h += a.vy * dt;
   e.x += e.vx * dt; e.z += e.vz * dt;
   let gy = groundY(e.x, e.z);
@@ -8135,7 +8204,7 @@ function airStep(e, a, r, dt) {
     }
     e.x = ox; e.z = oz; gy = groundY(e.x, e.z);
   }
-  if (a.h - gy < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }
+  if (a.h - Math.max(gy, gy0) < T.fenceClear && !((a.ghost || 0) > a.t)) { collideFences(e, r); collideGraves(e, r); }   // (over the higher of the step's ground: a fence on a ledge's lip, the boat's rail)
   if (a.t < (a.noLand || 0)) return null;
   const water = overWater(e.x, e.z), floor = water ? waterLevel(e.x, e.z) : gy;
   if (a.h <= floor) { a.h = floor; return water ? 'water' : 'ground'; }
@@ -11564,7 +11633,7 @@ function heapPop() {
 }
 const NB8 = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2]];
 // A* from (sx,sz) toward (tx,tz). If the goal can't be reached within the budget, returns the way to the closest spot found.
-function findPath(sx, sz, tx, tz, maxExp = 7000) {
+function findPath(sx, sz, tx, tz, maxExp = 7000, haz = null) {   // haz: zones to keep out of (strayHaz: sheep on their way back)
   NAV.calls++;
   const gen = ++NAV.gen, s = cellIdxAt(sx, sz), t = cellIdxAt(tx, tz), ti = t % GX, tj = (t / GX) | 0;
   const hOf = k => { const dx = Math.abs(k % GX - ti), dz = Math.abs(((k / GX) | 0) - tj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
@@ -11580,7 +11649,8 @@ function findPath(sx, sz, tx, tz, maxExp = 7000) {
       const nk = nj * GX + ni; if (NAV.done[nk] === gen) continue;
       if (nk !== t && !navFree(nk)) continue;
       if (di && dj && (!navFree(k + di) || !navFree(k + dj * GX))) continue;   // no cutting corners
-      const sd = SDF[nk], g = gk + c * (1 + (sd < 1.6 ? (1.6 - sd) * 1.5 : 0));
+      const sd = SDF[nk]; let g = gk + c * (1 + (sd < 1.6 ? (1.6 - sd) * 1.5 : 0));
+      if (haz && haz.n) { const x = GMINX + ni, z = GMINZ + nj; for (let q = 0; q < haz.n; q++) { const h = haz.c[q], d2 = (x - h.x) ** 2 + (z - h.z) ** 2; if (d2 < h.r * h.r) g += c * T.lonely.avoid.path * (1 - Math.sqrt(d2) / h.r); } }
       if (NAV.seen[nk] === gen && NAV.g[nk] <= g) continue;
       NAV.seen[nk] = gen; NAV.g[nk] = g; NAV.from[nk] = k; heapPush(nk, g + hOf(nk) * 1.05);
     }
@@ -11591,7 +11661,7 @@ function findPath(sx, sz, tx, tz, maxExp = 7000) {
   if (best === t) pts.push({ x: tx, z: tz });
   // string-pull: keep only the corners
   const out = []; let i = 0;
-  while (i < pts.length - 1) { let j = Math.min(pts.length - 1, i + 30); while (j > i + 1 && !navLOS(pts[i].x, pts[i].z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); i = j; }
+  while (i < pts.length - 1) { let j = Math.min(pts.length - 1, i + 30); while (j > i + 1 && (!navLOS(pts[i].x, pts[i].z, pts[j].x, pts[j].z) || haz && haz.n && hazCut(pts[i].x, pts[i].z, pts[j].x, pts[j].z, haz))) j--; out.push(pts[j]); i = j; }
   out.reach = best === t;   // (else: the way to the nearest it could get)
   return out;
 }
@@ -15251,7 +15321,7 @@ function updateCamera(dt, snap = false) {
   if (G.mode === 'title') need = 30;
   need = clamp(need, T.viewMin * (G.mode === 'title' ? 0.85 : 1), T.viewMax);
   if (SEA.on && !SEA.docked) { const c = boatXZ(3, 0); tx = c.x; tz = c.z; need = T.sea.view[0]; }   // SAILING, under way: the boat (the chase camera takes it from there: seaCam)
-  else if (SEA.on && inSea(tx, tz)) need = Math.max(need, T.sea.view[0] * 0.85);
+  else if (SEA.on && inSea(tx, tz) && !(isleSdf(tx, tz) > -2.5 && deckSdf(tx, tz) < -2)) need = Math.max(need, T.sea.view[0] * 0.85);   // (ashore on an island: as on the land)
   const k = snap ? 1 : 1 - Math.exp(-dt * 4);
   cam.x = lerp(cam.x, tx, k); cam.z = lerp(cam.z, tz, k); cam.view = lerp(cam.view, need, snap ? 1 : 1 - Math.exp(-dt * 2));
   const ty = SEA.on ? (SEA.docked ? Math.max(BOAT.y, groundY(cam.x, cam.z)) : BOAT.y) : groundY(cam.x, cam.z);   // (SAILING, alongside: up the path with the dogs)
@@ -21559,6 +21629,7 @@ function duckGroupStep(g, dt, dtH) {
   if (G.time - g.workT < 8 && G.time - g.workT > 6 && g.n) { g.hx = g.cx; g.hz = g.cz; }   // settled where they were driven
   g.sleep = isNight() && G.time - (g.alarmT ?? -1e9) > K.prey.alarmT;   // (PREY: one taken: the rest awake a while)
   if (g.sleep) { g.goal = null; return; }
+  if (G.time - g.workT < 8) return;   // (settling where they were driven: no march off till that's home)
   if (g.goal) {
     const L = g.list.find(herdFree);
     if (!L || Math.hypot(L.x - g.goal.x, L.z - g.goal.z) < 0.9 || (g.goT -= dt) < -25) { g.goal = null; g.goT = rnd(K.moveT[0], K.moveT[1]); }
@@ -21610,7 +21681,8 @@ function duckTrail(e, mum, dt, K) {
     const ay = ahead.heldBy ? ahead.heldBy.yaw : ahead.yaw, f = ahead === mum ? (dog ? L.dogGap : L.follow * 1.4) : L.follow + (ahead.heldBy ? 0.6 : 0);
     const dx = ahead.x - Math.sin(ay) * f - e.x, dz = ahead.z - Math.cos(ay) * f - e.z, dd = Math.hypot(dx, dz);
     e.state = 'walk';
-    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3), K.run * 1.5, dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
+    const asp = ahead === mum ? sp : Math.hypot(ahead.vx, ahead.vz);   // (the one ahead's pace, and closing in: no lag down the line; left behind: they hurry)
+    if (dd > 0.1) { const v = Math.min(Math.max(K.walk * 1.5, sp * 1.3) + dd * 2, K.run * 1.5, asp + dd * 3); _hdv.x = dx / dd * v; _hdv.z = dz / dd * v; }   // (a dog walking off outruns them)
     return _hdv;
   }
   e.state = 'graze';   // she's pecking about (the dog's standing): so are they, round her
@@ -21820,7 +21892,7 @@ function herdStep(e, dt) {
     const l = Math.hypot(dfx, dfz) || 1, ux = dfx / l, uz = dfz / l;
     if (e.goT <= 0) { e.gdx = ux; e.gdz = uz; } else { const a = Math.min(1, dt * 6); e.gdx = lerp(e.gdx, ux, a); e.gdz = lerp(e.gdz, uz, a); const q = Math.hypot(e.gdx, e.gdz) || 1; e.gdx /= q; e.gdz /= q; }
     e.goT = K.mom; e.spd = lerp(K.trot, K.run, clamp(press * 1.1 + e.stress * 0.5 - 0.2, 0, 1)); e.state = 'move';
-  } else if (an && e.goT <= 0.3) {
+  } else if (an && e.goT <= 0.3 && !(g && g.goal)) {   // (marching in a line: the line leads, not the ones by it)
     const sp = Math.hypot(avx, avz) / an; if (sp > T.moveMin) { e.gdx = avx / an / sp; e.gdz = avz / an / sp; e.goT = Math.max(e.goT, 0.8); e.spd = sp * 0.88; e.state = 'move'; }
   }
   let tx = 0, tz = 0;
@@ -22444,30 +22516,29 @@ const vagPitchOK = (x, z) => sdfAt(x, z) > 3 && !wetAt(x, z) && !inRiver(x, z) &
 const vagMatOK = (x, z) => sdfAt(x, z) > 1.5 && !wetAt(x, z) && !inRiver(x, z) && (!inSea(x, z) || onQuay(x, z, 1.2) || isleSdf(x, z) > 1.5) && !onDeck(x, z, -1.6)   // (SAILING: the quay, an island)
   && pens.every(p => p.deck || Math.hypot(x - p.x, z - p.z) > p.R + 1.8) && YARDS.every(y => Math.hypot(x - y.x, z - y.z) > y.r + 1.5) && (!VAG.laserAt || Math.hypot(x - VAG.laserAt.x, z - VAG.laserAt.z) > 3.6)
   && Math.abs(terrainH(x + 1.2, z) - terrainH(x - 1.2, z)) < 0.5 && Math.abs(terrainH(x, z + 1.2) - terrainH(x, z - 1.2)) < 0.5;
-// a mat's middle, for wares laid out from (ox, oz) facing yaw a (f: toward the camera, r: its right). tight (SAILING: a quay, a beach): a grid, T.vag.sea.grid
-function vagMatAt(w, ox, oz, a, tight = false) {
-  const V = T.vag, fx = Math.sin(a), fz = Math.cos(a), [cols, gap, row, ring] = V.sea.grid;
-  const u = tight ? (w.gi % cols - (cols - 1) / 2) * gap : (w.ri - (w.rn - 1) / 2) * V.gap, f = tight ? ring + V.mat / 2 + Math.floor(w.gi / cols) * row : V.ring + V.mat / 2 + w.row * V.row2;
+// a mat's middle, for wares laid out from (ox, oz) facing yaw a (f: toward the camera, r: its right)
+function vagMatAt(w, ox, oz, a) {
+  const V = T.vag, fx = Math.sin(a), fz = Math.cos(a), u = (w.ri - (w.rn - 1) / 2) * V.gap, f = V.ring + V.mat / 2 + w.row * V.row2;
   return { x: ox + fx * f + fz * u, z: oz + fz * f - fx * u };
 }
 // SHARED HOOK (SAILING too): where his wares go, laid out by (x, z) facing a0 (default: the camera) or turned a little, or shifted, to fit
-// (open, dry, flat ground, off pens and cemeteries) -> { L: [x, z, yaw] (his spot, its facing; tight: a 4th, 1), ok }
-function vagLayout(x, z, a0 = Math.PI / 4, tight = false) {
+// (open, dry, flat ground, off pens and cemeteries) -> { L: [x, z, yaw] (his spot, its facing), ok }. isle (SAILING): shifted further (a beach)
+function vagLayout(x, z, a0 = Math.PI / 4, isle = false) {
   let best = null, bn = 1e9;
-  for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, Math.PI]) for (const sh of [0, 3, -3]) {
+  for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, Math.PI]) for (const sh of isle ? [0, 3, -3, 6, -6, 9, -9] : [0, 3, -3]) {
     const a = a0 + da, fx = Math.sin(a), fz = Math.cos(a), ox = x + fz * sh, oz = z - fx * sh;
     let bad = sdfAt(ox, oz) > 1 && !wetAt(ox, oz) ? 0 : 5;
-    for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a, tight); if (!vagMatOK(m.x, m.z)) bad++; }
-    if (bad < bn) { bn = bad; best = [+ox.toFixed(2), +oz.toFixed(2), +a.toFixed(3)]; if (tight) best.push(1); if (!bad) return { L: best, ok: true }; }
+    for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a); if (!vagMatOK(m.x, m.z)) bad++; }
+    if (bad < bn) { bn = bad; best = [+ox.toFixed(2), +oz.toFixed(2), +a.toFixed(3)]; if (!bad) return { L: best, ok: true }; }
   }
   return { L: best, ok: false };
 }
 // the mats where a layout L puts them (every screen: the host's L comes as NET_TYPES.vag lay)
 function vagPlaceMats(L) {
   VAG.lay = L; if (!L) return;
-  const [ox, oz, a, tight] = L;
+  const [ox, oz, a] = L;
   Object.assign(VSTALL, { x: ox, z: oz, yaw: a, fx: Math.sin(a), fz: Math.cos(a), rx: Math.cos(a), rz: -Math.sin(a), s: sAt(ox, oz) });
-  for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a, !!tight); w.x = m.x; w.z = m.z; w.y = groundY(m.x, m.z); w.g.position.set(w.x, w.y, w.z); w.g.rotation.y = a; }
+  for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a); w.x = m.x; w.z = m.z; w.y = groundY(m.x, m.z); w.g.position.set(w.x, w.y, w.z); w.g.rotation.y = a; }
 }
 // his pitches this journey: 1–2 a land leg, by the road (T.vag.lat m off its middle), clear ground with room for his mats; the Trading Post's always the last
 function vagPlan(seed) {
@@ -22900,16 +22971,16 @@ function vagSite(i, R) {
     return Object.assign(st, { lay: lay.L, ok: lay.ok, x: lay.L[0], z: lay.L[1], hu: boatU(lay.L[0], lay.L[1]), hv: boatV(lay.L[0], lay.L[1]), ht: vagYawDeck(lay.L[2]), lx: b.x, lz: b.z });
   };
   const I = ISLES[i], a0 = Math.atan2(QUAY.shore - I.cv, QUAY.pu - I.cu), sides = R() < 0.5 ? [1, -1] : [-1, 1];
-  let first = null;
+  let first = null, best = null, bk = 9;   // (the mats' rows square to the screen if they'll fit so anywhere: the tags clear each other)
   for (const al of [22 + R() * 6, 17, 30, 36, 42]) for (const sd of sides) {
     const a = a0 + sd * al / I.r, ca = Math.cos(a), sa = Math.sin(a);
     const at = (s, side = 0) => { for (let t = I.r * 1.4; t > 3; t -= 0.25) { const u = I.cu + ca * t, v = I.cv + sa * t; if (I.shore(u, v) >= s) return [u - sa * side, v + ca * side]; } return null; };
     const B = at(2.4), Wt = at(-7), Hm = at(6.5, -1.6), S = at(3.2, 1.4), Z = at(4.4, 2.5);   // (his spot: on the sand, by the bow)
     if (!B || !Wt || !Hm || !S || !Z || I.sdf(...Hm) < 3 || Math.hypot(Hm[0] - I.spring.u, Hm[1] - I.spring.v) < I.spring.r + 4) continue;
-    const st = mk(Hm[0], Hm[1], Math.PI / 4, B[0], B[1], Math.atan2(-sa, -ca), Wt[0], Wt[1], S[0], S[1], Z[0], Z[1]);
-    if (st.ok) return st; first = first || st;
+    const st = mk(Hm[0], Hm[1], Math.PI / 4, B[0], B[1], Math.atan2(-sa, -ca), Wt[0], Wt[1], S[0], S[1], Z[0], Z[1]), k = Math.abs(Math.sin(st.lay[2] - Math.PI / 4));
+    first = first || st; if (st.ok && k < bk - 0.01) { best = st; bk = k; if (k < 0.01) return st; }
   }
-  return first;
+  return best || first;
 }
 // seaStart: the voyage begins (or a dev start somewhere along it): he's out in Cold Harbour's bay, ashore where she lies, or out sailing by her; past his half: gone
 function vagSeaStart() {
@@ -25151,7 +25222,7 @@ const SEA = {
   hoist: 1, sheet: 1, boom: 0, boomV: 0, helm: 0, rud: 0, course: null, lash: false,   // sail up 0…1, sheet 0 hard in … 1 right out, boom + to starboard, helm -1…1, rudder rad
   docked: true, berth: 0, warp: null, moorOff: 0, pilot: null,   // alongside a jetty (berth: which island's; 0: Cold Harbour) … seaCastOff; warp: being hauled in to one; pilot: the course Hank holds her on till a dog takes the tiller
   anchor: 'up', anchorT: 0, ae: 0, an: 0, weigh: 0, holding: false, aweighT: 0,   // 'up' | 'down' (ae/an: where it lies; holding: it's bitten the bottom; aweighT: s till it can be dropped again)
-  aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
+  aw: 0, awa: 0, tw: 0, twa: 0, lee: 0, drive: 0, luff: 0, stall: 0, best: 0.5, trim: 1, irons: 0, spill: -99,   // apparent / true wind at the boat (m/s, rad off the bow, + starboard), the sail's pull
   state: 0.2, run: 0, swell: 0, shelter: 1, rough: 0, awash: 0, bal: 0, crew: 0,   // sea state, where the wind sea / the swell runs to, lee of an island, how wild the ride, water over a rail (±), ballast moment
   jolt: { u: 0, v: 0 }, hull: 5, leg: 0, legK: 0, saved: -1, wake: [], wakeT: 0, slamT: 0, gybeT: -9, overT: -9, flash: 0, rogue: null,
   storm: 0, rain: 0, fog: 0, calm: 0, ink: 0, hold: null,       // weather over her; hold: something has her (the kraken)
@@ -25828,7 +25899,7 @@ function seaStations(dt) {
     const fly = S.anchor === 'down' || S.docked || S.dogOver || S.hold;
     if (S.assist || fly) {
       let aim = fly ? 1 : sheetFor(S.best + K.hankSlack); const to = Math.abs(S.heelTo || 0), hl = Math.max(Math.abs(S.heel), to + Math.max(0, to - Math.abs(S.heel)) * K.hankOver) - K.hankEase, pressed = !fly && hl > 0;   // (or how far she'll swing on over: past where the wind's laying her, by hankOver of what's still to come)
-      if (pressed) aim = Math.min(1, aim + hl * K.hankSpill);
+      if (pressed) aim = Math.min(1, aim + hl * K.hankSpill); S.spill = pressed ? G.time : S.spill;   // (when he last eased her for it)
       S.sheet += clamp(aim - S.sheet, -K.hankHaul * dt, (fly ? 1.2 : K.hankHaul * (pressed ? K.hankDump : 1.6)) * dt);   // (pressed: he lets it run, quick)
     } else S.sheet = Math.min(1, S.sheet + K.run * dt);   // full manual: let go, it runs out and the sail flaps
   }
@@ -26985,6 +27056,7 @@ function syncBoat(dt) {
 
 // ---------------- islands, reefs, buoys (built once, in sea coords) ----------------
 const SEAOBJ = { buoys: [], lights: [], frames: [], lines: [] };
+const ISLE_TUFT = { mat: null };   // the islands' grass tufts (own dice)
 {
   const R = mulberry32(90917), rr = (a, b) => a + R() * (b - a);
   const pine = (x, z, s) => [P(CYL(0.16 * s, 0.22 * s, 1.6 * s, 5), '#6b4226', { p: [x, 0.8 * s, z] }), P(CONE(1.25 * s, 2.6 * s, 6), '#2f7d4f', { p: [x, 2.5 * s, z] }), P(CONE(0.95 * s, 2.2 * s, 6), '#3a9460', { p: [x, 3.9 * s, z] })];
@@ -27028,22 +27100,56 @@ const SEAOBJ = { buoys: [], lights: [], frames: [], lines: [] };
   SEAOBJ.lines = ROUTE.map((w, i) => jetty(SEAOBJ.frames[i] = deckFrame(i ? seaG : LAND, i ? DOCKS[i] : null)));
   // the islands: each drawn from its own ground (ISLES[i].h), in its jetty's frame; trees and rocks up the crag, a lighthouse on two, its spring
   for (let i = 1; i < ROUTE.length; i++) {
-    const L = ISLES[i], w = L.w, q = SEAOBJ.frames[i], kind = w.kind, ps = [], c3 = new THREE.Color(), a3 = new THREE.Vector3(), b3 = new THREE.Vector3(), n3 = new THREE.Vector3();
-    const sand = kind === 'palm' ? '#f0dca0' : kind === 'pine' ? '#d9c79a' : '#a8a092', grass = kind === 'palm' ? ['#8fcf6a', '#7fc45c'] : kind === 'pine' ? ['#5f9f58', '#528f4c'] : ['#7d8a6a', '#70805f'], rk = kind === 'palm' ? ['#9a8f80', '#8a7f72'] : ['#77727a', '#6b6770'];
-    const NA = 44, D = 1.7, NR = Math.ceil(L.r * 1.16 / D), pos = [], nrm = [], col = [];
-    const vert = (ia, ir) => { const a = ia / NA * TAU, u = L.cu + Math.cos(a) * ir * D, v = L.cv + Math.sin(a) * ir * D; return [u, v, Math.max(-BOAT.fb - 1.85, L.h(u, v))]; };
-    const tri = (A, B, C) => {
-      const deep = -BOAT.fb - 1.15; if (A[2] < deep && B[2] < deep && C[2] < deep) return;
-      const p = [A, B, C].map(([u, v, y]) => at(u, v, y));
-      n3.crossVectors(a3.set(p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]), b3.set(p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2])).normalize();
-      if (n3.y < 0) { n3.negate(); const t = p[1]; p[1] = p[2]; p[2] = t; }
-      const cu = (A[0] + B[0] + C[0]) / 3, cv = (A[1] + B[1] + C[1]) / 3, y = (A[2] + B[2] + C[2]) / 3, s = L.shore(cu, cv), t = clamp(-L.crag(cu, cv) / L.rc, 0, 1), k = 0.5 + 0.5 * Math.sin(cu * 1.7 + cv * 2.3) * Math.sin(cu * 0.9 - cv * 1.3);
-      c3.set(s < 1 ? (kind === 'rock' ? '#7c766c' : '#c9b27a') : t > 0.06 || n3.y < 0.7 ? (kind === 'rock' && y > 19 + 3 * k ? '#f4f7fb' : kind === 'pine' && t < 0.3 && k > 0.45 ? '#4c8748' : rk[k > 0.5 ? 0 : 1]) : s < 5.5 + k ? sand : grass[k > 0.5 ? 0 : 1]);
-      for (const v3 of p) { pos.push(v3[0], v3[1], v3[2]); nrm.push(n3.x, n3.y, n3.z); col.push(c3.r, c3.g, c3.b); }
-    };
-    for (let ir = 0; ir < NR; ir++) for (let ia = 0; ia < NA; ia++) { const A = vert(ia, ir), B = vert(ia + 1, ir), C = vert(ia + 1, ir + 1), E = vert(ia, ir + 1); if (ir) tri(A, B, C); tri(A, C, E); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeBoundingSphere();
+    const L = ISLES[i], w = L.w, q = SEAOBJ.frames[i], kind = w.kind, ps = [], c3 = new THREE.Color();
+    // the ground: a 1.6 m grid, smooth shaded, coloured as the land is (BIOME: its grass, the bare earth under it, the sand), grass tufts on it
+    const B = BIOME[kind === 'pine' ? 1 : kind === 'rock' ? 2 : 3], sand = kind === 'rock' ? '#b5ad9c' : '#ecdcaa', wet = kind === 'rock' ? '#857f74' : '#c9b27a', rk = kind === 'palm' ? ['#9a8f80', '#8a7f72'] : ['#77727a', '#6b6770'];
+    const D = 1.6, NG = Math.ceil(L.r * 1.16 / D), N1 = NG * 2 + 1, deep = -BOAT.fb - 1.15, gy = (u, v) => Math.max(-BOAT.fb - 1.85, L.h(u, v));
+    const pos = new Float32Array(N1 * N1 * 3), nrm = new Float32Array(N1 * N1 * 3), col = new Float32Array(N1 * N1 * 3), gr = new Float32Array(N1 * N1), idx = [], c4 = new THREE.Color();
+    const grassK = (u, v, s, t) => (0.62 + 0.38 * smooth(0.3, 0.6, fbm(u * 0.045 + i * 9.1, v * 0.045 + 8, 3))) * smooth(4.5, 8.5, s) * (1 - smooth(0.02, 0.12, t));   // (as the land's: thinning to the sand, none up the crag)
+    for (let a = 0; a < N1; a++) for (let b = 0; b < N1; b++) {
+      const n = a * N1 + b, u = L.cu + (a - NG) * D, v = L.cv + (b - NG) * D, y = gy(u, v), e = 0.8;
+      const hu = (gy(u + e, v) - gy(u - e, v)) / (2 * e), hv = (gy(u, v + e) - gy(u, v - e)) / (2 * e), nl = Math.hypot(hu, 1, hv);   // (at(): x = v, z = −u)
+      pos.set(at(u, v, y), n * 3); nrm[n * 3] = -hv / nl; nrm[n * 3 + 1] = 1 / nl; nrm[n * 3 + 2] = hu / nl;
+      const s = L.shore(u, v), t = clamp(-L.crag(u, v) / L.rc, 0, 1), ny = 1 / nl, k = vnoise(u * 0.21 + i * 7.3, v * 0.21), n2 = vnoise(u * 0.07 + i * 3.7, v * 0.07);
+      if (t > 0.06 || ny < 0.7) {   // the crag: rock (snow up the high one; the pine one's flanks wooded)
+        c3.set(rk[0]).lerp(c4.set(rk[1]), k);
+        if (kind === 'rock' && y > 19 + 3 * k) c3.set('#f4f7fb'); else if (kind === 'pine' && t < 0.3 && k > 0.45) c3.set('#4c8748');
+        gr[n] = 0;
+      } else {
+        c3.set(s < 1.2 ? wet : s < 5.5 + k * 1.5 ? sand : B.bare);
+        gr[n] = grassK(u, v, s, t); c3.lerp(c4.set(B.grass), smooth(0.03, 0.42, gr[n]));
+      }
+      c3.multiplyScalar(0.92 + 0.16 * n2); col[n * 3] = c3.r; col[n * 3 + 1] = c3.g; col[n * 3 + 2] = c3.b;
+    }
+    for (let a = 0; a < NG * 2; a++) for (let b = 0; b < NG * 2; b++) {
+      const A = a * N1 + b, Bv = A + 1, C = A + N1 + 1, E = A + N1;
+      if ([A, Bv, C, E].every(n => pos[n * 3 + 1] < deep)) continue;
+      idx.push(A, Bv, C, A, C, E);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeBoundingSphere();
     part(q, g, { outline: false, shadow: false });
+    // its grass tufts (the land's, swaying; nobody grazes here): own dice
+    ownDice(5303 + i * 31, () => {
+      const TR = mulberry32(611 + i * 53), its = [];
+      for (let a = -NG * D; a < NG * D; a += 2.1) for (let b = -NG * D; b < NG * D; b += 2.1) {
+        const u = L.cu + a + (TR() - 0.5) * 2, v = L.cv + b + (TR() - 0.5) * 2, fa = (u - L.cu) / D + NG, fb = (v - L.cv) / D + NG, ga = Math.round(fa), gb = Math.round(fb);
+        if (ga < 0 || gb < 0 || ga >= N1 || gb >= N1) continue;
+        const n = ga * N1 + gb; if (gr[n] < 0.16 || L.sdf(u, v) < 0.4 || Math.hypot(u - L.spring.u, v - L.spring.v) < L.spring.r + 0.6) continue;
+        its.push({ u, v, n, sc: 0.8 + TR() * 0.6, sy: 0.8 + TR() * 0.5, yaw: TR() * TAU });
+      }
+      if (!ISLE_TUFT.mat) {
+        ISLE_TUFT.mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
+        ISLE_TUFT.mat.onBeforeCompile = sh => { sh.uniforms.uTime = U.uTime; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 iw = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);' + TUFT.sway); };
+        ISLE_TUFT.mat.customProgramCacheKey = () => 'isleTufts';
+      }
+      const m = new THREE.InstancedMesh(TUFT.geo, ISLE_TUFT.mat, its.length);
+      its.forEach((it, j) => {
+        _m4.compose(_v.set(...at(it.u, it.v, L.h(it.u, it.v))), _q.setFromEuler(_e.set(0, it.yaw, 0)), _s.set(it.sc, it.sc * it.sy, it.sc)); m.setMatrixAt(j, _m4);
+        m.setColorAt(j, c4.setRGB(col[it.n * 3] * 0.95, col[it.n * 3 + 1] * 1.02, col[it.n * 3 + 2] * 0.9));
+      });
+      m.receiveShadow = true; m.computeBoundingSphere(); q.add(m);
+    });
     const put = (gs, u, v, dy = 0) => { const y = L.h(u, v) + dy; for (const g2 of gs) ps.push(g2.translate(...at(u, v, y))); };
     for (let k = 0, n = kind === 'rock' ? 5 : 16; k < n; k++) { const a = R() * TAU, d = L.rc * rr(0.5, 1.0); put(kind === 'palm' ? palm(0, 0, rr(0.9, 1.4)) : pine(0, 0, rr(1, 1.8)), L.gu + Math.cos(a) * d, L.gv + Math.sin(a) * d, -0.2); }   // up the crag's flanks
     for (let k = 0; k < 10; k++) { const a = R() * TAU, u = L.cu + Math.cos(a) * L.r * rr(0.97, 1.06), v = L.cv + Math.sin(a) * L.r * rr(0.97, 1.06); if (Math.abs(wrapA(a - Math.PI / 2)) < 0.9) continue; ps.push(rock(...at(u, v, -BOAT.fb - 0.15), rr(1, 2.4), kind === 'rock' ? '#6f6a64' : '#8d877c')); }   // rocks in the shallows (not by the jetty)

@@ -8,22 +8,28 @@
 //             (flock across the water), the back of an open pen (flock outside the back fence). How long it stalls,
 //             how long until it's out in open space, and until it's with the flock.
 //  lost       a big group of 10, one hungry sheep 70 m off (past sheep gravity) on good grass: its peak anxiety, when it heads back, when it's with them.
+//  knot       LOST KNOTS: a few (2-4) left 60-80 m behind the flock (past sheep gravity), in the valley, Falcon Canyon and up the pass:
+//             anxious too, back to the flock on their own.
+//  bank       the flock over the river, a few (or one) still on the near bank: they walk onto the launcher's low end; a pounce: over, with the flock.
+//  den        a few lost 30 m one side of a sleeping coyote den, the flock 30 m the other: round it, back with the flock, the pack still asleep
+//             (and, for contrast, the same with T.lonely.avoid off: how near they went, whether it woke). Then a few lost 55 m back down the
+//             rattlesnake desert (a snake every 10 m): back through it, nobody bitten.
 //  shove      14 grazers on half-cropped ground, half starving and half fed: grass shoves, and who ends up on the better grass.
 //  cost       60 sheep grazing: milliseconds per physics step (one step per frame at 60 fps).
 import { open } from './harness.mjs';
 const args = process.argv.slice(2);
 const ti = args.indexOf('--trials'), trials = ti >= 0 ? +args[ti + 1] : 2;
 let names = args.filter((a, i) => !a.startsWith('--') && (ti < 0 || i !== ti + 1));
-if (!names.length) names = ['structure', 'merge', 'lost', 'shove', 'corner', 'cost'];
+if (!names.length) names = ['structure', 'merge', 'lost', 'knot', 'bank', 'den', 'shove', 'corner', 'cost'];
 const h = await open({ query: '?sim&debug' });
 await h.page.evaluate(() => {
   const { G, T, step, pathPoint, sdfAt, grassAt, pens, RIVER } = GAME;
   const r2 = v => Math.round(v * 100) / 100;
   const free = () => G.sheep.filter(s => !s.dead && !s.grabbed && !s.air && !s.heldBy && !s.pen);
-  function reset(hour = 9, n = 14) {
+  function reset(hour = 9, n = 14, foes = false) {
     if (!G.players.length) GAME.startGame({ kind: 'bot', index: 0 });
     GAME.resetGame(); G.players[0].bot = {}; G.clock.hour = hour;
-    for (const c of G.coyotes) c.gone = true;
+    if (!foes) { for (const c of G.coyotes) GAME.scene.remove(c.models.root); G.coyotes.length = 0; G.packs.length = 0; }   // no predators (den ones too: `gone` doesn't keep a den asleep)
     while (G.sheep.length < n) G.sheep.push(GAME.makeSheep(0, 0, { hunger: 0.3 }));
     while (G.sheep.length > n) G.sheep.pop();
     const d = G.dogs[0]; d.x = 1e4; d.z = 1e4;   // out of the way (no pressure)
@@ -90,6 +96,67 @@ await h.page.evaluate(() => {
       if (big.some(b => Math.hypot(lone.x - b.x, lone.z - b.z) < 6)) joinT = t;
     }
     return { startGap: r2(d0), peakAnx: r2(peak), headedBackAt: r2(goT), withFlockAt: r2(joinT), stressAfter: r2(lone.stress) };
+  };
+  // LOST KNOTS: a few left well behind, nobody driving: back to the flock by themselves
+  SCN.knot = () => {
+    const out = {};
+    for (const [name, s0, gap, nk] of [['valley', 330, 70, 3], ['canyon', 940, 60, 3], ['pass', 1260, 60, 4], ['desert', 120, 80, 2]]) {
+      const sh = reset(10, 14); if (name === 'pass') GAME.devJump(s0, { quiet: true }); G.clock.hour = 10; G.dogs[0].x = G.dogs[0].z = 1e4;
+      const few = sh.slice(0, nk), main = sh.slice(nk), p = pathPoint(s0, 0), q = pathPoint(s0 - gap, 0);
+      place(main, p.x, p.z, 6); place(few, q.x, q.z, 2); for (const s of sh) { s.hunger = 0.2; s.stress = 0; s.mother = null; }
+      let t = 0, joinT = -1, peak = 0;
+      while (t < 75 && joinT < 0) { tick(); t += 0.025; G.clock.hour = 10; peak = Math.max(peak, ...few.map(s => s.anx || 0)); if (few.every(k => main.some(m => Math.hypot(k.x - m.x, k.z - m.z) < 8))) joinT = t; }
+      out[name] = { peakAnx: r2(peak), withFlockAt: r2(joinT) };
+    }
+    return out;
+  };
+  // the river: the flock over it, a few on the near bank. Onto the launcher's low end by themselves; a pounce flings them over to it
+  SCN.bank = () => {
+    const out = {}, S = GAME.LAUNCHERS[0];
+    const onLow = e => { const dx = e.x - S.x, dz = e.z - S.z, p = dx * S.ux + dz * S.uz, q = -dx * S.uz + dz * S.ux; return p > -0.3 && p < S.L + 0.5 && Math.abs(q) < S.W / 2 + 0.45; };
+    for (const [name, at, nk] of [['three', 360, 3], ['loner', 340, 1], ['four', 372, 4]]) {
+      const sh = reset(10, 14), few = sh.slice(0, nk), main = sh.slice(nk), d = G.dogs[0];
+      const p = pathPoint(430, 0), q = pathPoint(at, 0); place(main, p.x, p.z, 6); place(few, q.x, q.z, 3); for (const s of sh) { s.hunger = 0.2; s.stress = 0; s.mother = null; }
+      let t = 0, loadT = -1;
+      while (t < 60 && loadT < 0) { tick(); t += 0.025; if (few.every(onLow)) loadT = t; }
+      const r = { loadedAt: r2(loadT), over: false };
+      if (loadT > 0) {
+        d.x = S.x - S.ux * S.L * 0.6; d.z = S.z - S.uz * S.L * 0.6; GAME.fireLauncher(S, d); d.x = d.z = 1e4;
+        for (let u = 0; u < 25; u += 0.025) tick();
+        r.over = few.every(s => !s.dead && GAME.riverAcross(s.x, s.z) > GAME.RIVER.hw); r.withFlock = few.every(k => main.some(m => Math.hypot(k.x - m.x, k.z - m.z) < 10));
+      }
+      out[name] = r;
+    }
+    // the other way round (the flock still on the near bank, a few flung over): nowhere to go, no fuss
+    { const sh = reset(10, 14), few = sh.slice(0, 3), main = sh.slice(3), p = pathPoint(360, 0), q = pathPoint(425, 0); place(main, p.x, p.z, 6); place(few, q.x, q.z, 3); for (const s of sh) { s.hunger = 0.2; s.stress = 0; s.mother = null; }
+      let wet = 0, peak = 0; for (let t = 0; t < 30; t += 0.025) { tick(); peak = Math.max(peak, ...few.map(s => s.anx || 0)); if (few.some(s => Math.abs(GAME.riverAcross(s.x, s.z)) < GAME.RIVER.hw + 2)) wet++; }
+      out.farBank = { peakAnx: r2(peak), atWater: wet };
+    }
+    return out;
+  };
+  // a sleeping den between a few lost ones and the flock (by day): round it, the pack left asleep
+  SCN.den = () => {
+    const out = {}, A = T.lonely.avoid, A0 = { ...A };
+    for (const on of [true, false]) {
+      if (!on) Object.assign(A, { den: 0, coyote: 0, cougar: 0, snake: 0 });
+      const sh = reset(10, 14, true), D = G.dens[0], p = pathPoint(GAME.sAt(D.x, D.z), 0), few = sh.slice(0, 3), main = sh.slice(3);
+      place(main, D.x + p.tx * 30, D.z + p.tz * 30, 5); place(few, D.x - p.tx * 30, D.z - p.tz * 30, 2); for (const s of sh) { s.hunger = 0.2; s.stress = 0; s.mother = null; }
+      let t = 0, joinT = -1, woke = false, nearest = 1e9;
+      while (t < 75 && joinT < 0) {
+        tick(); t += 0.025; G.clock.hour = 10; if (D.pack.phase !== 'den') woke = true;
+        for (const s of few) nearest = Math.min(nearest, Math.hypot(s.x - D.x, s.z - D.z));
+        if (few.every(k => main.some(m => Math.hypot(k.x - m.x, k.z - m.z) < 8))) joinT = t;
+      }
+      out[on ? 'avoid' : 'off'] = { pack: D.coyotes.length, nearest: r2(nearest), woke, withFlockAt: r2(joinT), dead: few.filter(s => s.dead).length };
+      Object.assign(A, A0);
+    }
+    { const sh = reset(10, 14, true), few = sh.slice(0, 3), main = sh.slice(3), p = pathPoint(1060, 0), q = pathPoint(1005, 0), S = GAME.SNAKES; G.clock.day = 3;
+      place(main, p.x, p.z, 6); place(few, q.x, q.z, 2); for (const s of sh) { s.hunger = 0.2; s.stress = 0; s.mother = null; }
+      let t = 0, joinT = -1, near = 1e9;
+      while (t < 75 && joinT < 0) { tick(); t += 0.025; G.clock.hour = 10; for (const s of few) for (const n of S) near = Math.min(near, Math.hypot(s.x - n.x, s.z - n.z)); if (few.every(k => main.some(m => Math.hypot(k.x - m.x, k.z - m.z) < 8))) joinT = t; }
+      out.snakes = { n: S.length, nearest: r2(near), withFlockAt: r2(joinT), bitten: few.filter(s => (s.venom || 0) > 0 || s.dead).length };
+    }
+    return out;
   };
   SCN.shove = () => {
     const sh = reset(10, 14), p = pathPoint(330, -8);
@@ -191,6 +258,21 @@ const CHECK = {
   },
   merge: R => ok(`sheep gravity: a loner 25 m off joins (${j(R.map(r => r.loneJoinedAt))} s), a knot of 3 too (${j(R.map(r => r.knotOf3JoinedAt))} s)`, R.every(r => r.loneJoinedAt > 0 && r.loneJoinedAt < 10 && r.knotOf3JoinedAt > 0 && r.knotOf3JoinedAt < 20 && r.allOneGroupAt > 0 && r.allOneGroupAt < 20)),
   lost: R => ok(`lost 70 m off: anxious, heads back (${j(R.map(r => r.headedBackAt))} s), with the flock (${j(R.map(r => r.withFlockAt))} s)`, R.every(r => r.peakAnx > 0.5 && r.headedBackAt > 0 && r.headedBackAt < 12 && r.withFlockAt > 0 && r.withFlockAt < 40)),
+  knot: R => {
+    const k = Object.keys(R[0]);
+    ok(`a few left 60-80 m behind: anxious, back with the flock (${k.map(n => n + ' ' + j(R.map(r => r[n].withFlockAt))).join('; ')} s)`, R.every(r => k.every(n => r[n].peakAnx > 0.3 && r[n].withFlockAt > 0 && r[n].withFlockAt < 70)));
+  },
+  bank: R => {
+    const k = ['three', 'loner', 'four'];
+    ok(`flock over the river: the few on the near bank walk onto the launcher (${k.map(n => n + ' ' + j(R.map(r => r[n].loadedAt))).join('; ')} s), a pounce: over`, R.every(r => k.every(n => r[n].loadedAt > 0 && r[n].loadedAt < 45 && r[n].over)));
+    ok(`a few flung over ahead of the flock: no fuss at the water (${j(R.map(r => r.farBank.atWater))} steps)`, R.every(r => r.farBank.atWater < 40));
+  },
+  den: R => {
+    ok(`a den between a few lost ones and the flock: round it (nearest ${j(R.map(r => r.avoid.nearest))} m; off: ${j(R.map(r => r.off.nearest))} m, woke ${j(R.map(r => r.off.woke))}), back (${j(R.map(r => r.avoid.withFlockAt))} s), the pack still asleep`,
+      R.every(r => r.avoid.pack > 0 && !r.avoid.woke && r.avoid.nearest > 6 && r.avoid.withFlockAt > 0 && r.avoid.withFlockAt < 70 && !r.avoid.dead));
+    ok(`a few lost down the snake desert: back (${j(R.map(r => r.snakes.withFlockAt))} s), clear of the snakes (nearest ${j(R.map(r => r.snakes.nearest))} m), nobody bitten`,
+      R.every(r => r.snakes.n > 0 && r.snakes.withFlockAt > 0 && r.snakes.withFlockAt < 60 && r.snakes.nearest > 4 && !r.snakes.bitten));
+  },
   shove: R => ok(`the hungry get the better grass (${avg(R.map(r => r.grassUnderHungry)).toFixed(2)} under them, ${avg(R.map(r => r.grassUnderFed)).toFixed(2)} under the fed; ${R.reduce((a, r) => a + r.shoves, 0)} shoves)`, avg(R.map(r => r.grassUnderHungry)) >= avg(R.map(r => r.grassUnderFed)) - 0.03),
   corner: R => {
     ok(`a rock corner: out (${j(R.map(r => r.rockWall.outAt))} s), no long stall (${j(R.map(r => r.rockWall.longestStall))} s)`, R.every(r => r.rockWall.outAt > 0 && r.rockWall.outAt < 6 && r.rockWall.longestStall <= 1.5));
