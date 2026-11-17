@@ -1,4 +1,4 @@
-// Headless checks for FISHING (the rod 🎣, the cat bowl 🥣, the minigame): `node tools/fish-test.mjs [buy|cast|nibble|bite|beat|run|leap|land|bowl|move|save|off]`.
+// Headless checks for FISHING (the rod 🎣, the cat bowl 🥣, the minigame): `node tools/fish-test.mjs [buy|cast|nibble|bite|beat|team|run|leap|land|bowl|move|save|off]`.
 //   buy     from the vagabond (row 2): 🎣 paid, at the buying dog's feet; again: ✖ (hidden, nothing paid); 🥣 paid, by the 📍 pen's gate, outside
 //           its fence, clear of the gate's swing, on dry ground; room by every camp pen; not at sea; too poor: nothing
 //   cast    Ⓑ away from water: no cast; by water: the gauge winds up and swings, Ⓑ again: it flies, floats in the water; let go: the line comes
@@ -6,6 +6,7 @@
 //   nibble  a fish comes and nibbles; Ⓑ on a nibble: spooked (it darts off, the next one later)
 //   bite    under it goes: Ⓑ within the window: hooked; late: the bait's gone; none: gone too
 //   beat    a fish on (a lake): heaves on its beat reel it in; off the beat a little; mashing barely, piling on tension (it snaps)
+//   team    TEAM HEAVE: a second dog by the one fishing, Ⓑ on the fish's beat: more line in; no pounce
 //   run     a run: heaving through it snaps the line; dug in (LT): held, line out
 //   leap    a leap: taut at its top, it throws the hook; stepping in toward it (slack): kept
 //   land    heaved in on the beat: onto the bank, into the pack (d.fish +1, 🐟 stats); the leg's fish one fewer (ECO on); a full pack: back it goes
@@ -133,6 +134,22 @@ if (want('beat')) {
   ok(`heaves on its beat reel it in (${r.beat.inn} m in 3 s), off the beat less (${r.off.inn} m)`, r.beat.ph === 'fight' && r.beat.inn > 2.5 && r.off.inn < r.beat.inn * 0.6, r);
   ok(`mashing barely gains (${r.mash.inn} m) and piles on tension (${r.mash.maxTen} vs ${r.beat.maxTen}; ${r.mash.last || 'held'})`,
     r.mash.inn < r.beat.inn * 0.5 && r.mash.maxTen > r.beat.maxTen && r.beat.maxTen < 1, r);
+}
+
+if (want('team')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, ROD, joinPlayer, overWater } = GAME, d = G.dogs[0], p = G.players[0];
+    H.bank(); if (G.dogs.length < 2) joinPlayer({ kind: 'bot', index: 1 }); const b = G.dogs[1], pb = G.players[1]; pb.bot = {};
+    const trial = help => {
+      H.hook(10); let pounced = false; const s = [1, -1].find(k => !overWater(d.x + Math.cos(d.yaw) * 1.4 * k, d.z - Math.sin(d.yaw) * 1.4 * k)) || 1;
+      H.place(b, d.x + Math.cos(d.yaw) * 1.4 * s, d.z - Math.sin(d.yaw) * 1.4 * s, d.yaw);
+      let low = 10; H.run(2.5, () => { if (ROD.ph !== 'fight') return true; low = Math.min(low, ROD.dist); const on = H.beatOn(); p.bot = { grab: true, pounce: on }; pb.bot = { pounce: help && on }; if (b.pounceT > 0) pounced = true; });
+      const o = { inn: +(10 - (ROD.ph === 'land' ? 0 : low)).toFixed(2), ph: ROD.ph, pounced }; pb.bot = {}; H.drop(); return o;
+    };
+    return { solo: trial(false), team: trial(true) };
+  });
+  ok(`TEAM HEAVE: a second dog by it, Ⓑ on the beat: more line in (${r.team.inn} vs ${r.solo.inn} m), no pounce`, (r.team.ph === 'fight' || r.team.ph === 'land') && r.team.inn > r.solo.inn + 0.8 && !r.team.pounced, r);
 }
 
 if (want('run')) {

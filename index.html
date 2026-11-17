@@ -866,17 +866,17 @@ const T = {
   // dug in (LT): tension dig, out × digOut; walking back: back m/s in, + backTen; stepping in (stick past give.toward): slack (rate /s), out m/s.
   // A RUN (every run.gap s ÷ the kind's run; warn s first): T s, out m/s; dug in: tension to dig, else + ten /s (a heave + heaveTen); tires it tire.
   // A LEAP (leap.gap ÷ its leap; warn s): air s, h m up; the tension to ten (+ yank); past taut at its top: the hook's thrown, else kept (tired).
-  // ten ≥ 1 (or all the line out): SNAP; under slack slackT s: off; within land m: landed (flops flop s, then the pack). kinds: w kg, T s a beat,
+  // help: another dog within r m, mouth free: Ⓑ on the beat, TEAM HEAVE (k of a heave). ten ≥ 1 (or all the line out): SNAP; under slack slackT s: off; within land m: landed (flops flop s, then the pack). kinds: w kg, T s a beat,
   // str, run/leap: how often (0: never), wary: × the bite window, col: back, belly, fins; waters: which bite where (shares); bowl: r m off the
   // fence, gap rad past the latch post (tried in turn), every s Hank looks to move it; toss: let go on the run (as a torch)
   fish: { on: !SIM, carry: 3, len: 1.6, up: 0.62, line: 20, left: 150, tipR: 1.8,
-    cast: { wind: 0.85, auto: 3.5, min: 1, max: 14, sweet: 0.1, air: [0.45, 1], arc: 2.2 },
+    cast: { wind: 0.85, auto: 3.5, min: 1, max: 11, sweet: 0.1, air: [0.45, 1], arc: 2.2 },
     wait: [3, 8], out: 3, perfect: 0.55, twitch: { k: 0.6, cd: 1.5, near: 3 },
     nib: { n: [1, 3], gap: [0.7, 1.6], spook: 5, come: 1.1 }, bite: { win: 0.5, plunge: 1.1 },
     fight: { start: [5, 9], ten0: 0.25, pull: 0.3, rel: 0.7, win: 0.15, gap: 0.3, min: 0.15, reel: 1.5, heave: 0.09, mashK: 0.3, mash: 0.17, tap: 0.012, off: 2.5, tire: 0.05,
       out: 0.35, dig: 0.3, digOut: 0.6, back: 0.8, backTen: 0.15, give: { toward: 0.5, rate: 3, out: 1.2 }, slack: 0.06, slackT: 1.5, land: 1.6, flop: 1.1,
       run: { gap: [3.5, 7], warn: 0.65, T: [1.2, 2.2], out: 2.4, ten: 0.6, heaveTen: 0.22, dig: 0.55, tire: 0.08 },
-      leap: { gap: [4.5, 9], warn: 0.55, air: 0.9, h: 1.3, ten: 0.75, yank: 0.15, taut: 0.42, tire: 0.12 } },
+      leap: { gap: [4.5, 9], warn: 0.55, air: 0.9, h: 1.3, ten: 0.75, yank: 0.15, taut: 0.42, tire: 0.12 }, help: { r: 2.6, k: 0.6 } },
     kinds: {
       trout: { w: [0.3, 1.8], T: 0.62, str: 0.8, run: 1, leap: 1.3, wary: 0.9, col: ['#7d8f5a', '#f4e9d4', '#e07a8a'] },
       perch: { w: [0.2, 0.9], T: 0.78, str: 0.6, run: 0.6, leap: 0, wary: 1.15, col: ['#8aa33a', '#f6eab0', '#ee7a32'] },
@@ -7393,6 +7393,7 @@ function updateDog(d, inp, dt) {
     else if (rod) { rodPress(rod, d); d.pounceBuf = 0; }
     else if (d.holding || bucketOf(d)) { shakeHold(d); d.pounceBuf = 0; }
     else if (inp.lie) d.pounceBuf = 0;
+    else if (fishHelp(d)) d.pounceBuf = 0;   // FISHING: by a dog with a fish on: a hand with the heave
     else if (startPounce(d, wx, wz, mag)) d.pounceBuf = 0;
   }
   if (inp.shake && d.holdKind !== 'station') {   // right stick: a swing shakes what's in its mouth (ROPES: in a tug, a heave; SAILING: not a station)
@@ -7433,6 +7434,7 @@ function updateDog(d, inp, dt) {
   const ox = d.x, oz = d.z;
   d.x += d.vx * dt; d.z += d.vz * dt;
   collideDog(d);
+  if (d.holdKind === 'rod' && overWater(d.x, d.z)) { d.x = ox; d.z = oz; d.vx = d.vz = 0; }   // FISHING: the rod in its jaws, it stops at the water's edge
   if (overWater(d.x, d.z)) {
     if (!inSea(d.x, d.z)) { startSwim(d); return; }   // walked into the river, the sea, the lake: paddling now (drops what it holds)
     if (inSea(d.x, d.z)) {   // SAILING: over the rail, nothing under it: into the sea (the quay's edge: it stops, unless it leapt)
@@ -15293,13 +15295,13 @@ expose(() => ({ stepClock, updateLighting }));   // CLOCK
 let aspect = 16 / 9;
 function updateCamera(dt, snap = false) {
   let tx = 0, tz = 0, n = 0;
-  const camDogs = netCamDogs();   // ONLINE: each screen follows its own dogs
-  for (const d of camDogs) { tx += d.x + d.vx * 0.3; tz += d.z + d.vz * 0.3; n++; }
+  const camDogs = netCamDogs(), fp = fishCam(camDogs), pts = fp ? [...camDogs, fp] : camDogs;   // ONLINE: each screen follows its own dogs (FISHING: its line out too)
+  for (const d of pts) { tx += d.x + d.vx * 0.3; tz += d.z + d.vz * 0.3; n++; }
   if (n) { tx /= n; tz /= n; } else { tx = pens[0].x + 6; tz = pens[0].z + 4; }
   let need = T.viewMin;
   if (n > 1) {
     let mx = 0, my = 0;
-    for (const d of camDogs) { const ox = d.x - tx, oz = d.z - tz; mx = Math.max(mx, Math.abs(ox * CAM_R.x + oz * CAM_R.z)); my = Math.max(my, Math.abs(ox * CAM_F.x + oz * CAM_F.z) * SIN_EL); }
+    for (const d of pts) { const ox = d.x - tx, oz = d.z - tz; mx = Math.max(mx, Math.abs(ox * CAM_R.x + oz * CAM_R.z)); my = Math.max(my, Math.abs(ox * CAM_F.x + oz * CAM_F.z) * SIN_EL); }
     need = Math.max(need, my * 2 + 12, (mx * 2 + 14) / aspect);
   }
   if (G.mode === 'title') need = 30;
@@ -25545,6 +25547,15 @@ function fishHeave(R, d) {
   d.stamina = Math.max(0, d.stamina - K.tap * (beat ? 1 : K.off)); d.shakeT = 0.12; train(d, 'grip', T.train.fling * 0.25);
   fishFx(beat ? 'reel' : 'mash', R.fx, R.fz, 0, d);
 }
+// TEAM HEAVE: Ⓑ by a dog with a fish on (mouth free, within help.r m): on the fish's beat a heave of its own (× help.k); off it, nothing (no pounce)
+function fishHelp(d) {
+  const R = ROD, o = R.by, K = T.fish.fight; if (R.ph !== 'fight' || !o || o === d || d.holding || Math.hypot(d.x - o.x, d.z - o.z) > K.help.r) return false;
+  if (Math.abs(fishBeatOff()) < K.win && G.time - (d.helpAt ?? -9) >= K.gap) {
+    d.helpAt = G.time; R.dist -= K.reel * K.help.k * dogK(d, 'grip') / (0.75 + 0.6 * fishWn()); FISH.fs = Math.max(0, FISH.fs - K.tire * K.help.k); R.ten += K.heave * 0.5;
+    d.stamina = Math.max(0, d.stamina - K.tap); train(d, 'grip', T.train.fling * 0.25); fishFx('team', R.fx, R.fz, 0, d);
+  }
+  return true;
+}
 // where the fish is, dist m out from the dog: along the way it took, weaving (up or down a stream, as it must); of the water that far out
 // that way, the nearest to where it was (null: the bank's between)
 const FISH_DA = [0, 0.22, -0.22, 0.45, -0.45, 0.75, -0.75, 1.05, -1.05, 1.3, -1.3, 1.5, -1.5];
@@ -25657,6 +25668,12 @@ function rodStep(R, dt) {
   if (R.ph) fishStep(R, R.by, dt);
 }
 const rodFight = d => d.holdKind === 'rod' && ROD.by === d && ROD.ph === 'fight';   // (updateDog: LT digs in, it stands to it)
+// CAMERA: its line out (one of this screen's dogs fishing): the bobber (the fish on it) in the frame too → { x, z, vx, vz } or null
+const _fcam = { x: 0, z: 0, vx: 0, vz: 0 };
+function fishCam(dogs) {
+  const R = ROD, ph = R.ph; if (!R.on || !R.by || SEA.on || !(ph === 'air' || ph === 'float' || ph === 'bite' || ph === 'fight') || !dogs.includes(R.by)) return null;
+  _fcam.x = ph === 'fight' ? R.fx : R.bx; _fcam.z = ph === 'fight' ? R.fz : R.bz; return _fcam;
+}
 
 // ---------------- the bowl ----------------
 // where it goes by pen p: just outside its fence past the latch post (clear of the gate's swing and the way out), on open dry ground
@@ -25768,6 +25785,7 @@ function fishFx(kind, x, z, a = 0, d = null) {
     case 'beat': R.beatAt = now; FSND.tail(pan, 0.1); burst(x, wy + 0.1, z, 3, '#e8f8ff', { speed: 1.4, up: 2.2, size: 0.1, life: 0.4, grav: -10 }); break;
     case 'reel': FSND.reel(pan, 0.22, 4); spawnRing(x, wy + 0.02, z, 1.1, d ? d.color : '#ffd36b', 0.3); rumble(pl, 0.6, 0.5, 110); if (d) burst(d.x, groundY(d.x, d.z) + 0.1, d.z, 3, '#e8dcc0', { speed: 1.4, up: 0.8, size: 0.2, life: 0.4, grav: 0 }); break;
     case 'mash': FSND.reel(pan, 0.08, 1); rumble(pl, 0.25, 0.2, 50); break;
+    case 'team': if (d) { floatText('TEAM HEAVE!', d.x, d.y + 2.3, d.z, d.color, 1.3); spawnRing(d.x, groundY(d.x, d.z) + 0.05, d.z, 1.6, d.color, 0.4); } FSND.reel(pan, 0.2, 3); Sound.chime([0, 7], 523, 0.1, 0.05); rumble(pl, 0.5, 0.5, 100); break;
     case 'runW': FSND.whine(pan, 0.12, 0.6); burst(x, wy + 0.1, z, 6, '#e8f8ff', { speed: 1.6, up: 1.5, size: 0.1, life: 0.5, grav: -6 }); rumble(pl, 0.3, 0.6, 300); break;
     case 'run': FSND.scream(pan, 0.2, Math.max(0.6, a || 1.5)); fishSplash(x, wy, z, 0.6); shakeCam(0.12); rumble(pl, 0.8, 0.9, Math.min(900, (a || 1.5) * 500)); break;
     case 'leapW': for (let i = 0; i < 3; i++) burst(x + (i - 1) * 0.2, wy + 0.05, z, 2, '#ffffff', { speed: 0.4, up: 1.6, size: 0.09, life: 0.6, grav: 1 }); FSND.plip(pan, 0.14, 1.8); rumble(pl, 0.2, 0.5, 120); break;
@@ -25834,8 +25852,8 @@ function fishMake() {
   FD.segs = [s1, s2, s3]; FD.tip = new THREE.Object3D(); FD.tip.position.z = 0.45; s3.add(FD.tip);
   // the bobber: red over white, a little stick
   const bob = new THREE.Group(); scene.add(bob); seaKeep(bob); FD.bob = bob;
-  part(bob, merge(P(new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI / 2), '#e8473f', { s: [0.075, 0.075, 0.075] }), P(new THREE.SphereGeometry(1, 10, 5, 0, TAU, Math.PI / 2, Math.PI / 2), '#f8f4ec', { s: [0.075, 0.075, 0.075] }),
-    P(CYL(0.008, 0.008, 0.09, 4), '#f8f4ec', { p: [0, 0.1, 0] })), { shadow: false });
+  part(bob, merge(P(new THREE.SphereGeometry(1, 10, 5, 0, TAU, 0, Math.PI / 2), '#e8473f', { s: [0.1, 0.1, 0.1] }), P(new THREE.SphereGeometry(1, 10, 5, 0, TAU, Math.PI / 2, Math.PI / 2), '#f8f4ec', { s: [0.1, 0.1, 0.1] }),
+    P(CYL(0.01, 0.01, 0.12, 4), '#f8f4ec', { p: [0, 0.14, 0] })), { shadow: false });
   // the line: thin, white; redder as it strains
   const N = FD.ln = 16, lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3).setUsage(THREE.DynamicDrawUsage));
   FD.line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: '#f4f4f0', transparent: true, opacity: 0.95 })); FD.line.frustumCulled = false; scene.add(FD.line); seaKeep(FD.line);
@@ -25852,7 +25870,7 @@ function fishMake() {
     ...[[0, 0.07, 0.035], [-0.03, 0.095, 0.017], [0, 0.102, 0.017], [0.03, 0.095, 0.017]].map(([x, y, r]) => P(SPH(6), '#4a8fd6', { s: [r, r, 0.006], p: [x, y, 0.218] }))));
   FD.bowlFish = Array.from({ length: BOWL.cap }, (_, i) => { const g = new THREE.Group(), a = i / BOWL.cap * TAU + (i % 2) * 0.3; g.position.set(Math.cos(a) * 0.09, 0.07 + (i >= 3 ? 0.035 : 0), Math.sin(a) * 0.09); g.rotation.set(-0.25, -a - Math.PI / 2, i % 2 ? 0.5 : -0.4); g.scale.setScalar(0.55); part(g, fishGeo('bowl'), { shadow: false }); g.visible = false; bowl.add(g); return g; });
 }
-const fishLen = w => 0.4 * Math.cbrt(Math.max(0.1, w));   // m nose to tail
+const fishLen = w => 0.62 * Math.cbrt(Math.max(0.1, w));   // m nose to tail (drawn a touch big: read at a glance)
 function syncFishing(dt) {
   const R = ROD, B = BOWL;
   if (!FD.on) { if (!R.on && !B.on) return; fishMake(); }
@@ -25909,7 +25927,7 @@ function syncFishing(dt) {
   FD.fx += (R.fx - FD.fx) * ease; FD.fz += (R.fz - FD.fz) * ease; if (ease === 1 || Math.hypot(R.fx - FD.fx, R.fz - FD.fz) > 6) { FD.fx = R.fx; FD.fz = R.fz; }
   const s0 = FD.sh[0]; s0.visible = inW && !away;
   if (s0.visible) {
-    const sc = fishLen(R.fw) / 1.12 * (R.ph === 'fight' ? 1.15 : 1), wig = Math.sin(t * (R.ph === 'fight' ? 16 : R.fst === 'flee' ? 22 : 8)) * (R.fst === 'nib' ? 0.08 : 0.18) + (R.ph === 'fight' ? 0.3 * beat : 0);
+    const sc = fishLen(R.fw) / 1.12 * (R.ph === 'fight' ? 1.3 : 1.1), wig = Math.sin(t * (R.ph === 'fight' ? 16 : R.fst === 'flee' ? 22 : 8)) * (R.fst === 'nib' ? 0.08 : 0.18) + (R.ph === 'fight' ? 0.3 * beat : 0);
     s0.position.set(FD.fx, fishWaterY(FD.fx, FD.fz) + 0.015, FD.fz); s0.rotation.set(0, R.fyaw + wig, 0); s0.scale.set(sc, 1, sc);
     s0.material.opacity = R.fst === 'leapW' ? 0.55 + 0.2 * Math.sin(t * 30) : R.ph === 'fight' ? 0.5 : 0.42;
   }
@@ -25925,7 +25943,7 @@ function syncFishing(dt) {
   for (let i = 1; i < 3; i++) {
     const m = FD.sh[i], a = t * (0.22 + 0.09 * i) + i * 2.4, r = 1.6 + i * 0.9 + Math.sin(t * 0.5 + i) * 0.4, x = FD.bx + Math.cos(a) * r, z = FD.bz + Math.sin(a) * r;
     m.visible = line && R.ph === 'float' && R.fst !== 'flee' && !away && !!fishWater(x, z);
-    if (m.visible) { m.position.set(x, fishWaterY(x, z) + 0.012, z); m.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)) + Math.sin(t * 7 + i) * 0.15, 0); m.scale.setScalar(0.22 + 0.05 * i); }
+    if (m.visible) { m.position.set(x, fishWaterY(x, z) + 0.012, z); m.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)) + Math.sin(t * 7 + i) * 0.15, 0); m.scale.setScalar(0.4 + 0.08 * i); }
   }
   // the bowl, and what's in it
   const bw = FD.bowl; bw.visible = B.on && !away;
@@ -25954,7 +25972,8 @@ function drawFishOverlay() {
     const [px, py, pz] = proj(R.x, groundY(R.x, R.z) + 0.9, R.z); if (pz > 1) break;
     const k = keyLabel(q, 'grab'); chip(px, py + Math.sin(t * 6) * 2, `${k === '✊' ? '' : k + ' '}✊ 🎣`, 'rgba(143,107,58,.92)'); break;
   }
-  const d = R.by, p = d && mine(d);
+  const d = R.by, p = d && mine(d), hp = !p && R.ph === 'fight' && d && G.dogs.find(o => o !== d && mine(o) && !o.holding && Math.hypot(o.x - d.x, o.z - d.z) < T.fish.fight.help.r);
+  if (hp && !away) { const [px, py, pz] = proj(R.fx, R.bh + 1.3, R.fz), b = Math.exp(-(now - R.beatAt) / 140); if (pz <= 1) chip(px, py - 26, keyLabel(mine(hp), 'pounce'), b > 0.3 ? 'rgba(232,71,63,.95)' : 'rgba(60,50,40,.8)', 0.8 + 0.4 * b, 0.5 + 0.5 * b); }   // TEAM HEAVE: a hand on the beat
   if (p && !away) {
     const ph = R.ph, key = keyLabel(p, 'pounce');
     if (!ph) {   // by water: a cast to make
@@ -26043,7 +26062,7 @@ function devFish() {
   if (G.clock.hour < 7 || G.clock.hour > 19) G.clock.hour = 9;
   toast('🎣 🥣', '');
 }
-expose(() => ({ ROD, BOWL, FISH, FISH_KINDS, bowlTake, bowlSet, bowlSpot, bowlStep, bowlTip, rodGrip, rodPick, rodLetGo, rodPress, rodSell, rodToCamp, rodTip, castAim, castGo,
+expose(() => ({ ROD, BOWL, FISH, FISH_KINDS, fishHelp, bowlTake, bowlSet, bowlSpot, bowlStep, bowlTip, rodGrip, rodPick, rodLetGo, rodPress, rodSell, rodToCamp, rodTip, castAim, castGo,
   fishWater, fishWaterY, fishPick, fishWait, fishBeatOff, fishHook, fishHeave, fishLost, fishLand, fishBag, fishCome, updateFishing, resetFishing, fishBank, devFish, fishFx, FD }));   // FISHING
 
 // =====================================================================
