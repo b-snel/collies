@@ -842,7 +842,8 @@ const T = {
   shove: { r: 4.2, cd: 1, win: 0.85, kick: 3.2, bumpCd: 1.2, hold: 2.5, desp: 1.5, push: 3, first: 1.5, side: 0.65 },   // a sheep without a place barges a weaker one (smaller, older, a lamb, less hungry; rams win) off the trough/lick within r m, once it's eaten hold s (one still on its way: a sheep first m nearer gets there first); desp: the needier, the harder. push: one on its way to its place (or dashing for grass) shoulders the others aside (1 + push × need heavier); side: at the trough (or squeezing in to it) a sheep takes this much room
   grassShove: { hunger: 0.5, gap: 0.2, r: 2.6, better: 0.08, cd: 2.5, desp: 2.5, kick: 2.4 },   // a hungry grazer (≥hunger, ≥gap hungrier) barges a fuller one off better grass within r m; desperation scales its push
   grassDash: { hunger: 0.6, poor: 0.3, reach: 4.5, better: 0.15, rings: [4, 8, 13, 19, 26], dirs: 12, spd: 5, cd: 3, alone: 6, den: 9, want: 0.6, stay: 0.8, tuck: 0.5 },   // hungrier than hunger, nothing over poor within reach m (boxed in on the stubble): off at spd m/s to the best patch (≥better than here) in reach, near a flockmate (alone m), not within den m of a coyote den (nor in brambles), shouldering through; want: grazing beats the flock that much more at full hunger; stay: that much less pull off good grass; tuck: an eating grazer hungrier than this lets a calm drift go by (no dog about)
-  lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35 },   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
+  lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35,   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
+    knot: { n: 3, share: 0.3, far: 22, near: 9, build: 8, cap: 0.2 } },   // LOST KNOTS: a group of ≤ max(n, share × the free flock), smaller than the main group, over far m off it (edge to edge): lost too (build s, stress ≤ cap), till near m
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   hungry: { from: 0.25, full: 0.5, bark: 1, resolve: 0.7 },   // set on the trough (troughSet): hunger from…full (thirst the same over T.water.want) with food (water) in its pen's: barks bark× less, a dog's pressure ignored up to resolve, never panicked off it on deck
   exitDodge: { r: 3.5, spd: 1.2, miss: 1.15, room: 1.6, k: 1, grace: 8 },   // MORNING RUSH: one on its way out goes round a dog slower than spd within r m (if it'd pass nearer than miss m; keeping room m off it, k hard), no fright; out, for grace s such a dog just gets room
@@ -6045,6 +6046,14 @@ function flockKnots() {
   const gfind = i => { while (gp[i] !== i) { gp[i] = gp[gp[i]]; i = gp[i]; } return i; };
   for (let i = 0; i < nk; i++) for (let j = 0; j < i; j++) if (kd[i * nk + j] < T.gravNear) { const a = gfind(i), b = gfind(j); if (a !== b) gp[a] = b; }
   const gm = new Float32Array(nk); for (let i = 0; i < nk; i++) gm[gfind(i)] += K[i].m;
+  // LOST KNOTS: the main group (the most sheep); every knot off it gets a home (its knot nearest), and a small group well off it is lost
+  let mg = -1; for (let i = 0; i < nk; i++) { const g = gfind(i); if (mg < 0 || gm[g] > gm[mg]) mg = g; }
+  const LK = T.lonely.knot, few = Math.max(LK.n, LK.share * n);
+  for (let i = 0; i < nk; i++) {
+    const k = K[i], gi = gfind(i); k.home = null; k.homeD = 0; k.few = false; if (gi === mg) continue;
+    let hd = 1e9; for (let j = 0; j < nk; j++) if (gfind(j) === mg && kd[i * nk + j] < hd) { hd = kd[i * nk + j]; k.home = K[j]; }
+    k.homeD = hd; k.few = gm[gi] <= few && gm[gi] < gm[mg] && !(k.home && riverBetween(k.cx, k.cz, k.home.cx, k.home.cz) && !launcherOn(k.cx, k.cz));   // (over the river, no launcher this side: nothing to be done)
+  }
   for (let i = 0; i < nk; i++) {
     const k = K[i], gi = gfind(i); let gx = 0, gz = 0, best = 0, near = -1, nd = 1e9;
     const gNear = new Map();   // for each other group: its knot nearest this one
@@ -6086,13 +6095,27 @@ function strayGoal(s) {
     if ((p.frac || 0) >= 0.5 && !morningOut(p) && Math.hypot(p.gx - s.x, p.gz - s.z) < 60) { penTarget(p, s, SG); SG.x = SG.tx; SG.z = SG.tz; SG.pen = p; return SG; }
   }
   let k = s.knot && s.knot.gw > T.joinMin - 0.1 * s.stress ? s.knot.tgt : null;
-  if (!k && anx > T.lonely.anyAt && !s.pen && KN.big && KN.big.m >= 2 && KN.big !== s.knot) k = KN.big;   // lost: off to the main flock, however far
+  if (!k && anx > T.lonely.anyAt && !s.pen) { const h = s.knot && s.knot.home; k = h || (KN.big && KN.big.m >= 2 && KN.big !== s.knot ? KN.big : null); }   // lost (alone, or a few): off to the main flock, however far
   if (!k && s.pen && s.pen.gateT > 0.6 && (s.pen.frac || 0) < 0.25 && KN.big && KN.big.m >= 3 && G.clock.hour < T.duskWarn && !isNight()) k = KN.big;
   if (!k) return null;
+  if (riverBetween(s.x, s.z, k.cx, k.cz)) return launcherGoal(s);   // the flock's over the river: onto the launcher (from the far bank: nowhere to go)
   // up to its nearest sheep in that knot, stopping a grazing distance short of it
   let m = null, md = 1e9; for (const o of k.members) { const d = (o.x - s.x) ** 2 + (o.z - s.z) ** 2; if (d < md) { md = d; m = o; } }
   const dx = s.x - m.x, dz = s.z - m.z, dl = Math.hypot(dx, dz) || 1;
-  SG.x = m.x + dx / dl * 2.2; SG.z = m.z + dz / dl * 2.2; SG.pen = null; return SG;
+  for (const k of [2.2, 1.1, 0]) { SG.x = m.x + dx / dl * k; SG.z = m.z + dz / dl * k; if (penAt(SG.x, SG.z) === m.pen) break; }   // (not over a pen's fence from it)
+  SG.pen = null; return SG;
+}
+// the river between two spots (the near bank's cut off from the rest of the land: only the launcher takes sheep over)
+const riverBetween = (ax, az, bx, bz) => !SEA.on && riverAcross(ax, az) * riverAcross(bx, bz) < 0;
+// a sheep that wants the flock over the river: its own spot on the low end of the launcher on its bank (none on its bank: null)
+const launcherOn = (x, z) => LAUNCHERS.find(S => riverAcross(S.x, S.z) * riverAcross(x, z) > 0) || null;
+function launcherGoal(s) {
+  const S = launcherOn(s.x, s.z); if (!S) return null;
+  const FN = T.launcher.funnel, ex = s.x - S.x, ez = s.z - S.z, sp = ex * S.ux + ez * S.uz, sq = -ex * S.uz + ez * S.ux;
+  const inside = sp > -FN.len - 1 && Math.abs(sq) < (sp > 0 ? S.hw : S.hw + FN.wide * Math.min(1, -sp / FN.len)) - 0.4;   // between the wings (or in the chute)
+  let p = S.L * (0.3 + 0.45 * (s.id * 0.618 % 1)), q = (s.id * 0.382 % 1 - 0.5) * (S.W - 0.9);
+  if (!inside && Math.hypot(sp + FN.len + 3, sq) > 1.5) { p = -FN.len - 3; q = 0; }   // round to the funnel's mouth first, then in
+  SG.x = S.x + p * S.ux - q * S.uz; SG.z = S.z + p * S.uz + q * S.ux; SG.pen = null; return SG;
 }
 // A* for sheep, on a budget: straight at the goal while it can see it (checked every few steps), else along a path round
 // whatever's in the way (fences, rocks, the river), recomputed now and then; at most T.pathsPerStep searches a step
@@ -6357,7 +6380,7 @@ function decideCalm(s, nb, night) {
   if (!s.pen && G.mode === 'play' && warmGo(s)) return;   // MOUNTAIN PASS: cold: a place by the fire (the coldest first)
   const { nearest, nearestO, nC, cX, cZ, pp, steady } = nb;
   const lingering = !s.pen && s.hunger > 0.6 && grassAt(s.x, s.z) > 0.2;   // hungry sheep stay out grazing late
-  if (night && (s.pen || s.near >= 1) && !lingering) { if (s.state === 'sleep' || Math.random() < 0.45) { s.state = 'sleep'; return; } }
+  if (night && (s.pen || s.near >= 1) && !lingering && !(s.anx > T.lonely.anyAt)) { if (s.state === 'sleep' || Math.random() < 0.45) { s.state = 'sleep'; return; } }   // (lost: not till it's back with the flock)
   if (s.state === 'sleep' && night && !lingering) { s.state = 'sleep'; return; }
   if (s.lamb && s.mother && !s.mother.dead && !s.mother.grabbed && (dist2(s, s.mother) > 6 || s.mother.pen && !s.pen)) { s.state = 'follow'; return; }
   if (morningOut(s.pen) && !(s.lamb && s.mother && s.mother.pen === s.pen && !s.mother.dead)) { rushOut(s); s.rush = false; return; }   // out to graze, all of them (lambs with mum)
@@ -6700,8 +6723,9 @@ function updateSheep(dt, dtH) {
     s.stress = clamp(s.stress + (stressIn * tg - leak) * dt, 0, 1);
     // separated: nobody near and no knot near it → anxiety builds, and with it stress (never quite to panic)
     const lost = play && !s.pen && nearest > T.lonely.far && !(s.knot && s.knot.groupM > 1) && !(s.lamb && s.state === 'follow') && N >= 4 && !S.some(o => o !== s && !o.dead && (o.x - s.x) ** 2 + (o.z - s.z) ** 2 < T.lonely.far ** 2);   // (flockmates over a fence still count)
-    s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : -1 / T.lonely.fade) * dt, 0, 1);
-    if (s.anx > 0) { const cap = T.lonely.cap * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
+    const kn0 = s.knot, LK = T.lonely.knot, few = !lost && play && !s.pen && kn0 && kn0.few && kn0.home && kn0.homeD > (s.anx > 0.05 ? LK.near : LK.far) && s.state !== 'sleep' && s.state !== 'warm' && !(s.lamb && s.state === 'follow');   // LOST KNOTS: a few, well off the flock (anxious: till near it)
+    s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : few ? 1 / LK.build : -1 / T.lonely.fade) * dt, 0, 1);
+    if (s.anx > 0) { const cap = (kn0 && kn0.m > 1 ? LK.cap : T.lonely.cap) * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
     if (nsN && (!s.pen || deck)) { const avg = nsS / nsN; s.stress = clamp(s.stress + (avg - s.stress) * (avg > s.stress ? T.stressUp : T.stressDown) * dt, 0, 1); }
     const pk = s.pen && !deck ? 0 : clamp((s.stress - T.panicAt) / (1 - T.panicAt), 0, 1) * (deck ? 1 - troughSet(s) : 1);   // (SAILING: not one set on its trough)
     if (pk > 0) s.panic = Math.max(s.panic, 0.3 + 0.6 * pk);

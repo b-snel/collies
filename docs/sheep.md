@@ -28,6 +28,11 @@
 - **Lost sheep panic.** No flockmate within `T.lonely.far` (fences don't
   count) → `s.anx` builds: stress, wants its flock, trots back bleating, to the
   main flock however far.
+- **Lost knots** (`T.lonely.knot`, `k.home`, `k.few`): a few left behind (a group of ≤ `n` or `share` of the free flock,
+  smaller than the main group) over `far` m off it: lost too (less stress: `cap`), back to the main group's nearest knot,
+  anxious till `near` m. Not asleep or at a fire; an anxious one doesn't nod off. A split near the middle: the player's.
+- **Over the river** (`riverBetween`, `launcherGoal`): the flock a sheep wants is across the river → onto its own spot
+  on the launcher's low end (round by the funnel's mouth); from the bank with no launcher: nowhere, no fuss.
 - **Shared stores** (`STORE`, `shareStores`, `storeReset`): food, water and salt are one pool each across every pen ashore
   (not the deck). Put in or eaten anywhere: the pool; each pen shows as much as it holds. Start: the most any pen had.
 - **Salt** (`s.salt`) runs down slowly (~8 days); out too long = death. Camp

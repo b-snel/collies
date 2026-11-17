@@ -297,7 +297,7 @@ goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest re
   gate or a fence.
 - **Cornered sheep break out** past the dog after a warning bleat.
 - **Knots.** Every 0.5 s sheep cluster (link 3.6 m); lone knots are pulled to
-  groups (`T.grav*`).
+  groups (`T.grav*`). A few left well behind: lost, back by themselves (`T.lonely.knot`; over the river: onto the launcher).
 - **Sheep path-find** with A* when stuck or target out of sight (`startUnstick`,
   `sheepNav`, ≤1 search/step).
 - **Calm but brisk** (`T.calmBrisk`); grazing stays slow.
