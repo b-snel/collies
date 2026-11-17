@@ -843,7 +843,8 @@ const T = {
   grassShove: { hunger: 0.5, gap: 0.2, r: 2.6, better: 0.08, cd: 2.5, desp: 2.5, kick: 2.4 },   // a hungry grazer (≥hunger, ≥gap hungrier) barges a fuller one off better grass within r m; desperation scales its push
   grassDash: { hunger: 0.6, poor: 0.3, reach: 4.5, better: 0.15, rings: [4, 8, 13, 19, 26], dirs: 12, spd: 5, cd: 3, alone: 6, den: 9, want: 0.6, stay: 0.8, tuck: 0.5 },   // hungrier than hunger, nothing over poor within reach m (boxed in on the stubble): off at spd m/s to the best patch (≥better than here) in reach, near a flockmate (alone m), not within den m of a coyote den (nor in brambles), shouldering through; want: grazing beats the flock that much more at full hunger; stay: that much less pull off good grass; tuck: an eating grazer hungrier than this lets a calm drift go by (no dog about)
   lonely: { far: 8, build: 6, fade: 2, cap: 0.4, rise: 0.1, flock: 0.7, run: 0.5, anyAt: 0.35,   // no flockmate within far m: anxiety builds over build s → stress (≤cap), wants its flock (+flock), trots faster (+run×), heads for the main flock from anyAt
-    knot: { n: 3, share: 0.3, far: 22, near: 9, build: 8, cap: 0.2 } },   // LOST KNOTS: a group of ≤ max(n, share × the free flock), smaller than the main group, over far m off it (edge to edge): lost too (build s, stress ≤ cap), till near m
+    knot: { n: 3, share: 0.3, far: 22, near: 9, build: 8, cap: 0.2 },   // LOST KNOTS: a group of ≤ max(n, share × the free flock), smaller than the main group, over far m off it (edge to edge): lost too (build s, stress ≤ cap), till near m
+    avoid: { den: 11, coyote: 14, cougar: 16, snake: 8, k: 1.2, path: 6 } },   // ...and on its way back it goes round (m): a sleeping den, a coyote about, a cougar out, a rattlesnake (k: how hard it's pushed off; path: × a step's cost deep in one, for its A*); not one by the flock
   troughResolve: 0.35,   // a sheep at (or on its way to) the trough ignores a dog's pressure below this (a dog walking past in the pen)
   hungry: { from: 0.25, full: 0.5, bark: 1, resolve: 0.7 },   // set on the trough (troughSet): hunger from…full (thirst the same over T.water.want) with food (water) in its pen's: barks bark× less, a dog's pressure ignored up to resolve, never panicked off it on deck
   exitDodge: { r: 3.5, spd: 1.2, miss: 1.15, room: 1.6, k: 1, grace: 8 },   // MORNING RUSH: one on its way out goes round a dog slower than spd within r m (if it'd pass nearer than miss m; keeping room m off it, k hard), no fright; out, for grace s such a dog just gets room
@@ -6117,6 +6118,47 @@ function launcherGoal(s) {
   if (!inside && Math.hypot(sp + FN.len + 3, sq) > 1.5) { p = -FN.len - 3; q = 0; }   // round to the funnel's mouth first, then in
   SG.x = S.x + p * S.ux - q * S.uz; SG.z = S.z + p * S.uz + q * S.ux; SG.pen = null; return SG;
 }
+// on its way back to the flock a sheep gives what'd eat it a wide berth (T.lonely.avoid): it goes round (its A* too: sheepNav's haz)
+// a sleeping den (a sheep at the mouth wakes the pack), a coyote about, a cougar out of the trees, a rattlesnake; not one its goal's in
+// (the flock's there: no getting round it). strayHaz: the zones within reach m of (x, z), in FOES.c[0…n)
+const FOES = { n: 0, c: [] };
+function hazPut(x, z, r, sx, sz, gx, gz, reach) {
+  if ((gx - x) ** 2 + (gz - z) ** 2 < r * r || (sx - x) ** 2 + (sz - z) ** 2 > (r + reach) ** 2) return;
+  const o = FOES.c[FOES.n] || (FOES.c[FOES.n] = { x: 0, z: 0, r: 0 }); o.x = x; o.z = z; o.r = r; FOES.n++;
+}
+function strayHaz(sx, sz, gx, gz, reach) {
+  FOES.n = 0; if (G.mode !== 'play' || SEA.on) return FOES;
+  const L = T.lonely.avoid;
+  for (const D of G.dens) if (D.pack.phase === 'den' && D.count) hazPut(D.x, D.z, L.den, sx, sz, gx, gz, reach);
+  for (const c of G.coyotes) if (!c.gone && !c.air && !c.heldBy && c.state !== 'sleep' && c.state !== 'leave' && c.state !== 'dead' && c.state !== 'burrow') hazPut(c.x, c.z, L.coyote, sx, sz, gx, gz, reach);
+  for (const c of COUGARS) if (c.state !== 'away' && !c.air) hazPut(c.x, c.z, L.cougar, sx, sz, gx, gz, reach);
+  for (const n of SNAKES) hazPut(n.x, n.z, L.snake, sx, sz, gx, gz, reach);
+  return FOES;
+}
+// in a zone: pushed out, and a heading in turned round it, on the side toward the goal (kept, so it doesn't dither with one dead ahead)
+const AVD = { x: 0, z: 0 };
+function strayAvoid(s, gx, gz, dX, dZ) {
+  const H = strayHaz(s.x, s.z, gx, gz, 0), k = T.lonely.avoid.k; AVD.x = AVD.z = 0;
+  for (let i = 0; i < H.n; i++) {
+    const h = H.c[i], rx = s.x - h.x, rz = s.z - h.z, d = Math.hypot(rx, rz) || 1e-3, ux = rx / d, uz = rz / d, into = -(dX * ux + dZ * uz);
+    if (into > 0) {
+      const vx = gx - s.x, vz = gz - s.z, side = -uz * vx + ux * vz;
+      if (Math.abs(side) > 0.15 * Math.hypot(vx, vz) || !s.avSide) s.avSide = side >= 0 ? 1 : -1;
+      AVD.x += (ux - uz * s.avSide) * into; AVD.z += (uz + ux * s.avSide) * into;
+    }
+    const w = (1 - d / h.r) * k; AVD.x += ux * w; AVD.z += uz * w;
+  }
+  return AVD;
+}
+// does a to b dip into a zone (deeper than either end)?
+function hazCut(ax, az, bx, bz, H) {
+  const abx = bx - ax, abz = bz - az, L2 = abx * abx + abz * abz || 1e-6;
+  for (let i = 0; i < H.n; i++) {
+    const h = H.c[i], t = clamp(((h.x - ax) * abx + (h.z - az) * abz) / L2, 0, 1), d = Math.hypot(ax + abx * t - h.x, az + abz * t - h.z);
+    if (d < h.r && d < Math.hypot(ax - h.x, az - h.z) - 0.5 && d < Math.hypot(bx - h.x, bz - h.z) - 0.5) return true;
+  }
+  return false;
+}
 // A* for sheep, on a budget: straight at the goal while it can see it (checked every few steps), else along a path round
 // whatever's in the way (fences, rocks, the river), recomputed now and then; at most T.pathsPerStep searches a step
 // line of sight, sphere-traced: hop along by the distance field (a few samples in open country), then the fences
@@ -6125,14 +6167,14 @@ function sheepLOS(ax, az, bx, bz) {
   for (let t = 0; t < L;) { const sd = sdfAt(ax + ux * t, az + uz * t); if (sd < 0.35) return false; t += Math.max(0.5, sd - 0.3); }
   return !fenceBetween(ax, az, bx, bz);
 }
-function sheepNav(s, gx, gz) {
+function sheepNav(s, gx, gz, haz) {   // haz: round what'd eat it (strayHaz)
   const dx0 = gx - s.x, dz0 = gz - s.z, d0 = Math.hypot(dx0, dz0) || 1e-4;
   NAVDIR.d = d0;
   s.navT = (s.navT || 0) - 1;
   if (s.navT <= 0 || Math.hypot(gx - s.lgx, gz - s.lgz) > 2) { s.navT = 12; s.lgx = gx; s.lgz = gz; s.los = d0 < 2 || sheepLOS(s.x, s.z, gx, gz); }
   if (s.los) { s.path = null; NAVDIR.x = dx0 / d0; NAVDIR.z = dz0 / d0; return NAVDIR; }
   if ((!s.path || G.time > s.pathT + 1.5 || Math.hypot(gx - s.pgx, gz - s.pgz) > 3) && MIND.paths < T.pathsPerStep) {
-    MIND.paths++; MIND.pathN = (MIND.pathN || 0) + 1; s.path = findPath(s.x, s.z, gx, gz, 4000); s.pathI = 0; s.pathT = G.time + Math.random() * 0.5; s.pgx = gx; s.pgz = gz;
+    MIND.paths++; MIND.pathN = (MIND.pathN || 0) + 1; s.path = findPath(s.x, s.z, gx, gz, 4000, haz ? strayHaz(s.x, s.z, gx, gz, d0 + 12) : null); s.pathI = 0; s.pathT = G.time + Math.random() * 0.5; s.pgx = gx; s.pgz = gz;
   }
   const P = s.path; if (!P || !P.length) { NAVDIR.x = dx0 / d0; NAVDIR.z = dz0 / d0; return NAVDIR; }
   while (s.pathI < P.length - 1 && Math.hypot(P[s.pathI].x - s.x, P[s.pathI].z - s.z) < 1.3) s.pathI++;
@@ -6723,7 +6765,7 @@ function updateSheep(dt, dtH) {
     s.stress = clamp(s.stress + (stressIn * tg - leak) * dt, 0, 1);
     // separated: nobody near and no knot near it → anxiety builds, and with it stress (never quite to panic)
     const lost = play && !s.pen && nearest > T.lonely.far && !(s.knot && s.knot.groupM > 1) && !(s.lamb && s.state === 'follow') && N >= 4 && !S.some(o => o !== s && !o.dead && (o.x - s.x) ** 2 + (o.z - s.z) ** 2 < T.lonely.far ** 2);   // (flockmates over a fence still count)
-    const kn0 = s.knot, LK = T.lonely.knot, few = !lost && play && !s.pen && kn0 && kn0.few && kn0.home && kn0.homeD > (s.anx > 0.05 ? LK.near : LK.far) && s.state !== 'sleep' && s.state !== 'warm' && !(s.lamb && s.state === 'follow');   // LOST KNOTS: a few, well off the flock (anxious: till near it)
+    const kn0 = s.knot, LK = T.lonely.knot, few = !lost && play && !s.pen && kn0 && kn0.few && kn0.home && kn0.homeD > (s.anx > 0.05 ? LK.near : LK.far) && s.state !== 'sleep' && s.state !== 'warm' && !(s.lamb && s.state === 'follow') && !(s.goal === 'graze' && s.hunger > T.grassDash.hunger);   // LOST KNOTS: a few, well off the flock (anxious: till near it); not hungry ones off grazing (fed: then)
     s.anx = clamp((s.anx || 0) + (lost ? 1 / T.lonely.build : few ? 1 / LK.build : -1 / T.lonely.fade) * dt, 0, 1);
     if (s.anx > 0) { const cap = (kn0 && kn0.m > 1 ? LK.cap : T.lonely.cap) * s.anx; if (s.stress < cap) s.stress = Math.min(cap, s.stress + (leak + T.lonely.rise * (s.ram || s.trait === 'stubborn' ? 0.6 : 1)) * dt); }
     if (nsN && (!s.pen || deck)) { const avg = nsS / nsN; s.stress = clamp(s.stress + (avg - s.stress) * (avg > s.stress ? T.stressUp : T.stressDown) * dt, 0, 1); }
@@ -6839,10 +6881,11 @@ function updateSheep(dt, dtH) {
         }
         case 'stray': {
           const g = strayGoal(s); if (!g) { s.state = 'idle'; break; }
-          const n = sheepNav(s, g.x, g.z), d = n.d;
+          const n = sheepNav(s, g.x, g.z, true), d = n.d;   // (round what'd eat it: strayHaz)
           if (d < (g.pen ? 1.5 : 0.7)) { s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.4); break; }
           const anx = s.anx || 0;
           dX = n.x; dZ = n.z; spd = (d > 12 || !s.los ? T.sheepTrot : T.sheepWalk * T.calmBrisk * 1.15) * (1 + T.lonely.run * anx); acc = 5;   // trotting, the long way round if it must (lost: hurrying)
+          { const a = strayAvoid(s, g.x, g.z, dX, dZ); dX += a.x; dZ += a.z; }   // in a zone: out and round
           s.strayBaa -= dt; if (s.strayBaa <= 0) { s.strayBaa = rnd(5, 9) * (1 - 0.6 * anx); baaAt(s, 0.3 + 0.2 * anx, 1.06 + 0.1 * anx); if (anx > 0.5) floatText('?', s.x, s.y + 1.6 * s.scale, s.z, '#fff8e8', 0.9); }   // trotting and bleating as it goes (lost: calling out)
           break;
         }
@@ -11581,7 +11624,7 @@ function heapPop() {
 }
 const NB8 = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2]];
 // A* from (sx,sz) toward (tx,tz). If the goal can't be reached within the budget, returns the way to the closest spot found.
-function findPath(sx, sz, tx, tz, maxExp = 7000) {
+function findPath(sx, sz, tx, tz, maxExp = 7000, haz = null) {   // haz: zones to keep out of (strayHaz: sheep on their way back)
   NAV.calls++;
   const gen = ++NAV.gen, s = cellIdxAt(sx, sz), t = cellIdxAt(tx, tz), ti = t % GX, tj = (t / GX) | 0;
   const hOf = k => { const dx = Math.abs(k % GX - ti), dz = Math.abs(((k / GX) | 0) - tj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
@@ -11597,7 +11640,8 @@ function findPath(sx, sz, tx, tz, maxExp = 7000) {
       const nk = nj * GX + ni; if (NAV.done[nk] === gen) continue;
       if (nk !== t && !navFree(nk)) continue;
       if (di && dj && (!navFree(k + di) || !navFree(k + dj * GX))) continue;   // no cutting corners
-      const sd = SDF[nk], g = gk + c * (1 + (sd < 1.6 ? (1.6 - sd) * 1.5 : 0));
+      const sd = SDF[nk]; let g = gk + c * (1 + (sd < 1.6 ? (1.6 - sd) * 1.5 : 0));
+      if (haz && haz.n) { const x = GMINX + ni, z = GMINZ + nj; for (let q = 0; q < haz.n; q++) { const h = haz.c[q], d2 = (x - h.x) ** 2 + (z - h.z) ** 2; if (d2 < h.r * h.r) g += c * T.lonely.avoid.path * (1 - Math.sqrt(d2) / h.r); } }
       if (NAV.seen[nk] === gen && NAV.g[nk] <= g) continue;
       NAV.seen[nk] = gen; NAV.g[nk] = g; NAV.from[nk] = k; heapPush(nk, g + hOf(nk) * 1.05);
     }
@@ -11608,7 +11652,7 @@ function findPath(sx, sz, tx, tz, maxExp = 7000) {
   if (best === t) pts.push({ x: tx, z: tz });
   // string-pull: keep only the corners
   const out = []; let i = 0;
-  while (i < pts.length - 1) { let j = Math.min(pts.length - 1, i + 30); while (j > i + 1 && !navLOS(pts[i].x, pts[i].z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); i = j; }
+  while (i < pts.length - 1) { let j = Math.min(pts.length - 1, i + 30); while (j > i + 1 && (!navLOS(pts[i].x, pts[i].z, pts[j].x, pts[j].z) || haz && haz.n && hazCut(pts[i].x, pts[i].z, pts[j].x, pts[j].z, haz))) j--; out.push(pts[j]); i = j; }
   out.reach = best === t;   // (else: the way to the nearest it could get)
   return out;
 }

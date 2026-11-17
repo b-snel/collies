@@ -30,7 +30,10 @@
   main flock however far.
 - **Lost knots** (`T.lonely.knot`, `k.home`, `k.few`): a few left behind (a group of ≤ `n` or `share` of the free flock,
   smaller than the main group) over `far` m off it: lost too (less stress: `cap`), back to the main group's nearest knot,
-  anxious till `near` m. Not asleep or at a fire; an anxious one doesn't nod off. A split near the middle: the player's.
+  anxious till `near` m. Not asleep, at a fire, or hungry and grazing (past `T.grassDash.hunger`: fed, then); an anxious one doesn't nod off. A split near the middle: the player's.
+- **Round what'd eat it** (`T.lonely.avoid`, `strayHaz`, `strayAvoid`): on its way back (`stray`) a sheep keeps out of a zone round a
+  sleeping den, a coyote about, a cougar out, a rattlesnake: its A* pays to go in (`findPath`'s `haz`, `path`), in one it's pushed out
+  and turned round it (toward its goal). Not a zone its goal's in.
 - **Over the river** (`riverBetween`, `launcherGoal`): the flock a sheep wants is across the river → onto its own spot
   on the launcher's low end (round by the funnel's mouth); from the bank with no launcher: nowhere, no fuss.
 - **Shared stores** (`STORE`, `shareStores`, `storeReset`): food, water and salt are one pool each across every pen ashore
