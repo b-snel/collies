@@ -15,7 +15,7 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
 - **Coats** (`catPaint`, `catTailCol`; `CQ`, `catMerge`: vertex colours and `aPat`, how much pattern, which way): base, belly, muzzle,
   white (tuxedo, calico, bicolour), colourpoints (face mask, ears, legs, tail). Stripes (mackerel, a line down the spine, the brow), rosettes,
   calico patches: drawn crisp by `catMat` (one program, `'catCoat'`; a material a coat). Long hair: FUR shells on the body (`catFur`; roots
-  barely darker).
+  barely darker; the outline stays on the body). Ruff, belly and cheek tufts: soft fluff in the coat's colours, no outline (`fluffF`, `fluffR`, `cheek`).
 - **The model**: two body halves on a spine (they arch, curl, wiggle apart), a big round head (cheeks, whisker pads, a pink nose, a "w"),
   big eyes (`MAT.basic`: they shine; a dark rim, iris, pupil, two highlights; blink, squint, shut), pink-lined ears (swivel, flatten, flick),
   whiskers, a mouth that opens (tongue, fangs), four legs, and a tail re-bent every frame (`catTailSet`: a tube along a curve; lift, bend,
