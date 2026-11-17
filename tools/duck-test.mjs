@@ -21,6 +21,8 @@
 //   pop     LIFE, PREY: 30 days of it out of sight: they breed, age, die and are taken; never past the cap, never gone
 //   save    a reload (JOURNEY SAVE): the same bunches, the found ones still found; every duck as it was (age, drake, mum, clutch)
 //   reset   a new journey: new bunches
+// Dice (SEED): where P lies and when a bunch marches off are the world's; `brood` sets her a march, `mate` keeps prey off and takes a visit
+//   either way.
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = null, fails = 0;

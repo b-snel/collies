@@ -20,6 +20,9 @@
 //   the way (straight for the Promised Land: the legs come by in turn, no stops, it ends there; alongside out of turn; Hank's helm full and by),
 //   the start (lines in, take the tiller, away), Cold Harbour (the top of the road, the
 //   mountainside off it, the quay's edge, herded down and aboard, lashed, cast off: the land and a straggler left), a new journey
+// Dice (SEED): the storm's taken at its height (how fast she sails into and out of it varies); Hank's trim while he isn't easing her
+//   (`SEA.spill`); things put in the way (the ring's sheep within reach, the boom's sheep and dog, the kraken's ewe far enough in for a heavy
+//   one's punt to clear the rail) just before; the siren's dog goes for the one nearest the rail.
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = await open(), errors = [], fails = 0;
@@ -109,6 +112,7 @@ if (want('gybe')) {
     H.sea(2.75, 9); H.flock(0); H.place(d, -3, -3); const s0 = G.sheep[0]; H.place(s0, -2, 2.5);
     H.run(18, () => H.steer(0)); out.boom0 = H.deg(SEA.boom); const g0 = SEA.gybeT, to = H.wrap(WIND.dir - 2.75 + 0.02) + 0; const hdgTo = SEA.hdg + (2.75 * 2 - Math.PI * 2 + 6.283 - 5.5 + 0.0);
     let knocked = false, flew = false; const target = H.wrap(WIND.dir + Math.PI - 0.45);   // the wind on the other quarter
+    H.place(d, -3, -3); H.place(s0, -2, 2.5);   // (in its way as she turns: where 18 s left them is the dice's)
     H.run(25, () => { H.steer(target); if (d.stunT > 0) knocked = true; if (G.sheep.some(s => s.air && s.air.how === 'boom')) flew = true; });
     out.boom1 = H.deg(SEA.boom); out.slam = SEA.gybeT !== g0; out.knocked = knocked; out.flew = flew; out.heelV = H.r(SEA.heelV);
     // again, lying down under it; and with the sheet hauled in first: no crash
@@ -499,10 +503,10 @@ if (want('siren')) {
   const r = await h.page.evaluate(() => {
     const { G, T, SEA, HAZ, SIREN_ROCKS, ROUTE, boatV, boatHB, boatU } = GAME, out = {}, d = G.dogs[0], p = d.player, rk = SIREN_ROCKS[0];
     const near = () => { H.sea(1.57, 5, { u: 0, flat: true, leg: 3 }); SEA.hoist = 0; SEA.u = 0; SEA.leg = 4; SEA.hdg = 0; SEA.e = rk.e - 40; SEA.n = rk.n; H.flock(0, -6, 6); H.place(d, 12, 0); p.bot = {}; };   // the rock 40 m off her starboard beam
-    // barking breaks the song's hold: nobody goes over. (The barks drive the flock aft; the dog goes after the lured ones, as you would:
-    // from amidships the stern's out of a bark's reach)
-    near(); H.place(d, 0, 0); let o2 = 0, freed = 0; H.run(30, t => {
-      const l = G.sheep.filter(s => s.lure && !s.dead).sort((a, b) => Math.hypot(a.x - d.x, a.z - d.z) - Math.hypot(b.x - d.x, b.z - d.z))[0];
+    // barking breaks the song's hold: nobody goes over. (The barks drive the flock aft; the dog goes after the lured one nearest going over,
+    // as you would: from amidships the stern's out of a bark's reach, and which ones the song takes is the dice's)
+    near(); H.place(d, 0, 0); let o2 = 0, freed = 0; const toRail = s => boatHB(boatU(s.x, s.z)) - boatV(s.x, s.z); H.run(30, t => {
+      const l = G.sheep.filter(s => s.lure && !s.dead && !s.air).sort((a, b) => toRail(a) - toRail(b))[0];
       p.bot = { bark: Math.round(t * 40) % 24 === 0, ...(l && Math.hypot(l.x - d.x, l.z - d.z) > 7 ? H.inp(l.x - d.x, l.z - d.z) : {}) }; o2 = Math.max(o2, H.swimmers().length); if (H.swimmers().length && !out.how) out.how = H.swimmers().map(s => [s.air.how, s.ram, s.lamb, H.r(boatU(s.x, s.z)), H.r(s.air.t)]); freed += G.sheep.filter(s => (s.lureCd || 0) > G.time).length ? 1 : 0; }); out.barkOver = o2; out.freed = freed > 0;
     // a dog standing in the way at that rail stops them there
     const walk = dog => { near(); const s = G.sheep.find(q => !q.ram && !q.lamb); H.flock(-3, 6, 10); H.place(s, 0, 2); if (dog) H.place(d, 0, 4.2); p.bot = {}; let far = 0; H.run(1.6, () => { s.lure = 1; far = Math.max(far, boatV(s.x, s.z)); }); return H.r(far); };
