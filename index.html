@@ -5747,6 +5747,528 @@ expose(() => ({ POOP, poopFx, syncPoop, DOG_BREEDS, DOG_PATS, DOG_VOICES, lookVo
 // =====================================================================
 const CAT_BREED_IDS = ['moggy', 'ragdoll', 'maine', 'persian', 'british', 'siamese', 'bengal'];   // SHARED HOOK: MICE & CATS picks one, CAT LOOKS draws it
 const CAT_COATS = { moggy: 6, ragdoll: 3, maine: 4, persian: 3, british: 2, siamese: 2, bengal: 2 };   // SHARED HOOK: how many coats each comes in (c.coat < this)
+// the breeds: one chibi cat bent by numbers (a moggy's all 1). k: size; leg [len, thick]; body [w, h, len]; head [r, w, h]; eye: size;
+// ex: eyes apart; mz: muzzle (<1 flat … >1 a wedge); ear [h, w]; tail [len, thick]; fur: long hair (FUR shells, m; 0 sleek); cheek: round / fluffy cheeks;
+// ruff; tufts: lynx tips. A coat: b base, bl belly, mz muzzle, pat ('tabby' 'rosette' 'calico': pc, pc2 its colours), wh white ('tux' 'cal' 'bi'),
+// pt colourpoint, back (tipped), ruff, eye, nose, in (inside the ears)
+const CAT_K = 1.4;   // (a moggy at scale 1: ~0.43 m at the shoulder)
+const CAT_BREEDS = {
+  moggy: { k: 1, leg: [1, 1], body: [1, 1, 1], head: [1, 1, 1], eye: 1, mz: 1, ear: [1, 1], tail: [1, 1], fur: 0, cheek: 0, ruff: 0, tufts: 0, coats: [
+    { n: 'brown tabby', b: '#9a7650', bl: '#dcc6a2', mz: '#f1e4ca', pat: 'tabby', pc: '#3d2b1c', eye: '#a8c84a', nose: '#c97a6e' },
+    { n: 'orange tabby', b: '#eb9a48', bl: '#f8dcae', mz: '#fcecd0', pat: 'tabby', pc: '#b45a1a', eye: '#e8b030', nose: '#ee8e8a' },
+    { n: 'black', b: '#28252b', bl: '#2e2a31', mz: '#322e35', eye: '#f2c230', nose: '#3c3438', in: '#b77f8c' },
+    { n: 'tuxedo', b: '#26232a', wh: 'tux', mz: '#f7f4ee', eye: '#92d45c', nose: '#ee9aa2', in: '#c88a96' },
+    { n: 'calico', b: '#f7f3eb', wh: 'cal', pat: 'calico', pc: '#e2883a', pc2: '#2c272b', eye: '#e8b030', nose: '#ee9aa2' },
+    { n: 'grey', b: '#8b9098', bl: '#aeb2b9', mz: '#cdd0d4', eye: '#d8c43c', nose: '#7d7279' }] },
+  ragdoll: { k: 1.12, leg: [1, 1.1], body: [1.1, 1.06, 1.08], head: [1.03, 1.05, 1], eye: 1.08, mz: 1, ear: [0.92, 1], tail: [1.05, 1.9], fur: 0.028, cheek: 0.7, ruff: 1, tufts: 0, coats: [
+    { n: 'seal point', b: '#f2e7d5', pt: '#5a4234', eye: '#4a8cf0', nose: '#5a4234', in: '#d7a3a3' },
+    { n: 'blue point', b: '#eff1f3', pt: '#7f8896', eye: '#5ea4f6', nose: '#767b86', in: '#d6a8b0' },
+    { n: 'bicolour', b: '#f2e7d5', pt: '#5a4234', wh: 'bi', eye: '#4a8cf0', nose: '#eea4ac', in: '#d7a3a3' }] },
+  maine: { k: 1.3, leg: [1.1, 1.18], body: [1.05, 1.05, 1.16], head: [1, 1, 1.02], eye: 0.95, mz: 1.08, ear: [1.2, 1.05], tail: [1.25, 2.3], fur: 0.03, cheek: 0.5, ruff: 1.25, tufts: 1, coats: [
+    { n: 'brown tabby', b: '#8a6a46', bl: '#d8c29c', mz: '#efe0c4', pat: 'tabby', pc: '#33241a', ruff: '#c8ae86', eye: '#c8b040', nose: '#b9756a' },
+    { n: 'red tabby', b: '#d9843a', bl: '#f3d0a2', mz: '#f9e6c8', pat: 'tabby', pc: '#9a4a16', ruff: '#f0c896', eye: '#e0a830', nose: '#e88e88' },
+    { n: 'silver', b: '#c6cad0', bl: '#eaecf0', mz: '#f5f6f7', pat: 'tabby', pc: '#2f3137', ruff: '#eef0f2', eye: '#8fca5e', nose: '#c88a90' },
+    { n: 'black smoke', b: '#2e2b31', bl: '#56525a', mz: '#3a363d', ruff: '#a6a2ac', eye: '#e8a830', nose: '#3c3438', in: '#a87e88' }] },
+  persian: { k: 0.95, leg: [0.78, 1.12], body: [1.16, 1.08, 0.94], head: [1.13, 1.12, 1.03], eye: 1.04, ex: 0.35, mz: 0.78, ear: [0.55, 0.82], tail: [0.85, 2.1], fur: 0.034, cheek: 1, ruff: 1.35, tufts: 0, coats: [
+    { n: 'white', b: '#fbf9f4', bl: '#fbf9f4', mz: '#ffffff', eye: '#d9782a', nose: '#f2a8b0' },
+    { n: 'cream', b: '#f2dbb2', bl: '#f8ead0', mz: '#fbf0dc', eye: '#d9782a', nose: '#e8a0a0' },
+    { n: 'chinchilla silver', b: '#f1f2f4', back: '#b4b8c0', mz: '#ffffff', eye: '#3fb862', nose: '#ee9aa6' }] },
+  british: { k: 1.05, leg: [0.88, 1.28], body: [1.2, 1.12, 0.98], head: [1.1, 1.16, 1], eye: 1.04, ex: 0.36, mz: 0.92, ear: [0.62, 0.95], tail: [0.85, 1.5], fur: 0, cheek: 0.8, ruff: 0, tufts: 0, coats: [
+    { n: 'blue-grey', b: '#8893a3', bl: '#98a2b1', mz: '#98a2b1', eye: '#e38f2a', nose: '#5f6876', in: '#b4949e' },
+    { n: 'lilac', b: '#c5b5b9', bl: '#d0c2c5', mz: '#d4c8ca', eye: '#e38f2a', nose: '#b38c94', in: '#d9a7b0' }] },
+  siamese: { k: 0.95, leg: [1.22, 0.85], body: [0.86, 0.92, 1.1], head: [0.95, 0.88, 0.97], eye: 1, mz: 1.18, ear: [1.42, 1.25], tail: [1.22, 0.72], fur: 0, cheek: -0.45, ruff: 0, tufts: 0, coats: [
+    { n: 'seal point', b: '#efe2cb', pt: '#4a3428', eye: '#3a84ee', nose: '#3a2a24', in: '#c99a96' },
+    { n: 'blue point', b: '#eef0f2', pt: '#6e7888', eye: '#5aa0f4', nose: '#5e6676', in: '#ccaab2' }] },
+  bengal: { k: 1.02, leg: [1.1, 1], body: [0.95, 1, 1.1], head: [0.97, 0.98, 1], eye: 1, mz: 1.05, ear: [0.95, 1], tail: [1, 1.15], fur: 0, cheek: 0, ruff: 0, tufts: 0, coats: [
+    { n: 'golden rosettes', b: '#e2a04e', bl: '#f5ddb0', mz: '#f9ebd0', pat: 'rosette', pc: '#3a2416', pc2: '#a8581f', eye: '#8cc040', nose: '#c4746a' },
+    { n: 'snow', b: '#efe7da', bl: '#faf6ee', mz: '#fdfbf6', pat: 'rosette', pc: '#86766a', pc2: '#c8b49a', eye: '#5aa0f4', nose: '#d9a0a0' }] },
+};
+const CAT_COLLARS = ['#e8473f', '#3d8ef0', '#f2c230', '#3fbf5a', '#b05ad8', '#ff7aa8'];
+const catBreed = c => CAT_BREEDS[c.breed] || CAT_BREEDS.moggy;
+const catCoat = c => { const B = catBreed(c); return B.coats[((c.coat | 0) % B.coats.length + B.coats.length) % B.coats.length]; };
+const catSize = c => CAT_K * catBreed(c).k * (c.scale || 1);   // SHARED HOOK: the model's scale (m per model unit)
+const catKitten = c => clamp((0.95 - (c.scale || 1)) / 0.4, 0, 1);   // 0 grown … 1 a tiny kitten: a bigger head, stubby
+function catDims(B) {   // model units (×catSize = m): legs, body (its halves pivot at the spine's middle), head, tail
+  const Lg = 0.165 * B.leg[0], legR = 0.029 * B.leg[1], bw = 0.1 * B.body[0], bh = 0.098 * B.body[1], bl = 0.17 * B.body[2], hr = 0.125 * B.head[0];
+  return { Lg, legR, pawR: legR * 1.22, bw, bh, bl, Hs: Lg + 0.05, hr, neck: [0, bh * 0.5, bl * 0.8], headAt: [0, hr * 0.74, hr * 0.36],
+    fLeg: [bw * 0.5, -0.05, bl * 0.6], hLeg: [bw * 0.56, -0.05, -bl * 0.6], tailAt: [0, bh * 0.32, -bl * 0.95], tl: 0.3 * B.tail[0], tr: 0.024 * B.tail[1] };
+}
+// its coat on each part, in that part's space: f(x, y, z) → [colour, pattern weight] (the pattern's drawn by catMat where the weight is)
+const catC = (a, b, t = 0) => { const c = new THREE.Color(a); if (b && t > 0) c.lerp(_c.set(b), clamp(t, 0, 1)); return c; };
+function catPaint(B, C, D) {
+  const tab = C.pat === 'tabby', w0 = C.pat ? 1 : 0, pt = C.pt, wh = C.wh, R = D.hr;
+  const body = (x, y, z) => {
+    if (wh && (y < -D.bh * (wh === 'cal' ? 0.15 : 0.3) || (z > D.bl * 0.5 && y < D.bh * (wh === 'bi' ? 0.45 : 0.2) && Math.abs(x) < D.bw * 0.7))) return [catC('#f7f4ee'), 0];
+    let c = catC(C.b, C.bl, smooth(-D.bh * 0.15, -D.bh * 0.6, y)), w = tab ? lerp(1, 0.35, smooth(-D.bh * 0.15, -D.bh * 0.6, y)) : w0;
+    if (pt) c.lerp(_c.set(pt), 0.12 * smooth(0, D.bh, y));   // (a colourpoint's back shades a little)
+    if (C.back) c.lerp(_c.set(C.back), 0.55 * smooth(0.2 * D.bh, D.bh, y));
+    return [c, w];
+  };
+  const ruff = (x, y, z) => wh ? [catC('#f7f4ee'), 0] : [catC(C.ruff || C.bl || C.b, C.b, pt ? 0 : 0.15), tab ? 0.25 : w0 * 0.5];
+  const head = (x, y, z) => {
+    const muz = y < -R * 0.12 && z > R * 0.45 && Math.abs(x) < R * 0.5, chin = y < -R * 0.42 && z > R * 0.3;
+    let c = catC(C.b), w = tab ? (y > -R * 0.05 && z > -R * 0.2 ? 1 : 0.3) : w0;
+    if (C.back) c.lerp(_c.set(C.back), 0.45 * smooth(0.3 * R, R, y));
+    if (pt) { const d = Math.hypot(x * 0.85, y + R * 0.2, (z - R * 0.85) * 0.8); c.lerp(_c.set(pt), smooth(R * 0.85, R * 0.35, d) * (wh === 'bi' ? 0 : 1)); }
+    if (wh === 'bi') { c.lerp(_c.set(pt), smooth(-R * 0.1, R * 0.5, y) * 0.95); if (y < R * 0.25 - Math.abs(x) * 1.7 && z > R * 0.1) return [catC('#f7f4ee'), 0]; }   // the mask, an inverted V of white
+    if (wh === 'tux' && ((muz || chin) || (Math.abs(x) < R * 0.13 * (1 - (y + R * 0.12) / R) && z > R * 0.6 && y < R * 0.25))) return [catC('#f7f4ee'), 0];   // a white muzzle and a blaze
+    if (wh === 'cal' && (muz || chin)) return [catC('#f7f4ee'), 0];
+    if (muz || chin) return [catC(C.mz || C.b, pt, pt ? 0.85 : 0), 0];
+    return [c, w];
+  };
+  const leg = L => (x, y, z) => {
+    const lo = smooth(-L * 0.35, -L * 0.75, y);
+    if (wh === 'bi' || ((wh === 'tux' || wh === 'cal') && y < -L * 0.55)) return [catC('#f7f4ee'), 0];
+    let c = catC(C.b, C.bl, wh === 'cal' ? 0 : 0.2), w = w0;
+    if (pt) c.lerp(_c.set(pt), lo);
+    return [c, w];
+  };
+  const ear = (x, y, z) => [catC(pt || C.b, C.back, C.back ? 0.5 : 0), wh === 'cal' ? 1 : tab ? 0.4 : 0];
+  return { body, ruff, head, leg, ear };
+}
+// a tail's colour from root (0) to tip (1)
+function catTailCol(C, u) {
+  if (C.pt) return catC(C.b, C.pt, smooth(0.02, 0.3, u));
+  if (C.pat === 'tabby') return catC(C.b, C.pc, u > 0.86 || (u > 0.25 && (u * 5.5) % 1 < 0.4) ? 0.92 : 0);
+  if (C.pat === 'rosette') return catC(C.b, C.pc, u > 0.88 || (u > 0.45 && (u * 6) % 1 < 0.3) ? 0.95 : 0);
+  if (C.pat === 'calico') return catC(u < 0.42 ? C.pc2 : u < 0.78 ? C.pc : C.pc2);
+  if (C.back) return catC(C.b, C.back, 0.4);
+  return catC(C.b);
+}
+// a part's piece painted by f (colour, or f(x, y, z) → [colour, weight]) after its moves (s, r, p as P); ax: which way its stripes run (0 round the body, 1 round a leg, 2 down the brow)
+function CQ(g, f, o = {}) {
+  if (o.s) g.scale(o.s[0], o.s[1], o.s[2]);
+  if (o.r) { if (o.r[0]) g.rotateX(o.r[0]); if (o.r[1]) g.rotateY(o.r[1]); if (o.r[2]) g.rotateZ(o.r[2]); }
+  if (o.p) g.translate(o.p[0], o.p[1], o.p[2]);
+  if (g.index) g = g.toNonIndexed(); if (g.attributes.uv) g.deleteAttribute('uv');
+  const ps = g.attributes.position.array, n = ps.length / 3, col = new Float32Array(n * 3), pat = new Float32Array(n * 2), ax = o.ax || 0, fix = typeof f === 'function' ? null : catC(f);
+  for (let i = 0; i < n; i++) { const [c, w] = fix ? [fix, 0] : f(ps[i * 3], ps[i * 3 + 1], ps[i * 3 + 2]); col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; pat[i * 2] = w; pat[i * 2 + 1] = ax; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setAttribute('aPat', new THREE.BufferAttribute(pat, 2)); return g;
+}
+function catMerge(...gs) {
+  const m = merge(...gs), a = new Float32Array(m.attributes.position.count * 2); let o = 0;
+  for (const g of gs) { a.set(g.attributes.aPat.array, o); o += g.attributes.aPat.array.length; }
+  m.setAttribute('aPat', new THREE.BufferAttribute(a, 2)); return m;
+}
+// a coat's material: its stripes (mackerel tabby, a line down the spine), rosettes or calico patches drawn crisp where aPat says. One program for every coat
+const CAT_MATS = new Map();
+function catMat(C) {
+  let m = CAT_MATS.get(C); if (m) return m;
+  const kind = { tabby: 1, rosette: 2, calico: 3 }[C.pat] || 0;
+  const u = { uCatPat: { value: new THREE.Vector4(kind, kind === 2 ? 26 : 150, (strHash(C.n) % 97) * 0.37, 0) }, uCatA: { value: new THREE.Color(C.pc || C.b) }, uCatB: { value: new THREE.Color(C.pc2 || C.pc || C.b) } };
+  m = MAT.vc.clone();
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n attribute vec2 aPat; varying vec2 vCatW; varying vec3 vCatP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vCatW = aPat; vCatP = position;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n uniform vec4 uCatPat; uniform vec3 uCatA, uCatB; varying vec2 vCatW; varying vec3 vCatP;' + FUR_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      if (vCatW.x > 0.01 && uCatPat.x > 0.5) {
+        vec3 p = vCatP + uCatPat.z; float k = 0.0, k2 = 0.0;
+        if (uCatPat.x < 1.5) {   // stripes: round the body, round a leg, down the brow; wobbly; a line down the spine
+          float c = vCatW.y < 0.5 ? vCatP.z + abs(vCatP.y) * 0.25 : vCatW.y < 1.5 ? vCatP.y : vCatP.x * 1.6;
+          k = smoothstep(0.32, 0.5, sin(c * uCatPat.y + (furN(p * 11.0) - 0.5) * 4.0));
+          if (vCatW.y < 0.5) k = max(k, smoothstep(0.03, 0.018, abs(vCatP.x)) * step(0.04, vCatP.y));
+        } else if (uCatPat.x < 2.5) {   // rosettes: a dark broken ring round a rusty middle
+          vec3 q = p * uCatPat.y, i = floor(q), f = fract(q); float d = 9.0;
+          for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+            vec3 g = vec3(float(x), float(y), float(z)), h = i + g, o = vec3(furH(h), furH(h + 17.3), furH(h + 41.9)) * 0.7 + 0.15;
+            d = min(d, length(g + o - f)); }
+          float ring = smoothstep(0.43, 0.38, d), br = furN(q * 2.3 + 5.0);
+          k = ring * smoothstep(0.17, 0.25, d) * step(0.3, br); k2 = ring * (1.0 - k);
+        } else {   // calico: orange and black patches on white
+          float n = furN(p * 4.5) * 0.7 + furN(p * 10.0 + 3.0) * 0.3;
+          k = smoothstep(0.55, 0.58, n); k2 = smoothstep(0.37, 0.34, n) / 0.85;
+        }
+        diffuseColor.rgb = mix(diffuseColor.rgb, uCatB, min(1.0, k2 * 0.85) * vCatW.x);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uCatA, k * vCatW.x);
+      }`);
+  };
+  m.customProgramCacheKey = () => 'catCoat';
+  CAT_MATS.set(C, m); return m;
+}
+const CAT_INK = '#2a1a1c';
+// a breed's coat: its pieces, shared by every cat in it (first use)
+const CAT_GEO = new Map();
+function catGeo(B, C) {
+  let g = CAT_GEO.get(C); if (g) return g;
+  const D = catDims(B), f = catPaint(B, C, D), R = D.hr, sx = B.head[1], sy = B.head[2], mz = B.mz, ch = 1 + 0.32 * B.cheek, fz = k => R * (k + 0.32 * (mz - 1));
+  const front = [CQ(SPH(18), f.body, { s: [D.bw, D.bh, D.bl * 0.62], p: [0, 0.004, D.bl * 0.36] }), CQ(SPH(14), f.body, { s: [D.bw * 0.97, D.bh * 0.97, D.bl * 0.5] }),
+    CQ(SPH(14), f.body, { s: [D.bw * 0.8, D.bh * 0.8, D.bl * 0.44], p: [0, D.bh * 0.3, D.bl * 0.62] })];
+  if (B.ruff) front.push(CQ(SPH(14), f.ruff, { s: [D.bw * (0.9 + 0.12 * B.ruff), D.bh * (0.85 + 0.12 * B.ruff), D.bl * 0.36], p: [0, D.bh * 0.02, D.bl * 0.72] }),
+    ...[-1, 1].flatMap(sd => [0, 1, 2].map(i => CQ(CONE(D.bw * 0.22, D.bh * 0.5 * B.ruff, 6), f.ruff, { r: [Math.PI * 0.82, 0, sd * (0.3 + i * 0.35)], p: [sd * D.bw * (0.25 + i * 0.25), -D.bh * (0.55 + i * 0.05), D.bl * (0.86 - i * 0.12)] }))));
+  const rear = [CQ(SPH(18), f.body, { s: [D.bw * 1.05, D.bh * 1.03, D.bl * 0.62], p: [0, 0, -D.bl * 0.38] }), CQ(SPH(14), f.body, { s: [D.bw * 0.97, D.bh * 0.97, D.bl * 0.5] }),
+    ...[-1, 1].map(sd => CQ(SPH(12), f.body, { s: [D.bw * 0.5, D.bh * 0.78, D.bl * 0.42], p: [sd * D.bw * 0.56, -D.bh * 0.22, -D.bl * 0.5] }))];   // (the haunches)
+  const head = [CQ(SPH(20), f.head, { s: [R * 1.05 * sx, R * 0.93 * sy, R * 0.95] }),
+    ...[-1, 1].map(sd => CQ(SPH(12), f.head, { s: [R * 0.5 * ch, R * 0.44 * Math.min(ch, 1.15), R * 0.5], p: [sd * R * 0.44 * sx * Math.min(1, ch), -R * 0.34, R * 0.26] })),   // cheeks
+    ...[-1, 1].map(sd => CQ(SPH(10), f.head, { s: [R * 0.25, R * 0.2, R * 0.2], p: [sd * R * 0.165, -R * 0.33, fz(0.77)] })),   // whisker pads
+    CQ(SPH(8), f.head, { s: [R * 0.17, R * 0.12, R * 0.15], p: [0, -R * 0.52, fz(0.66)] }),   // chin
+    CQ(SPH(10), C.nose || '#ee9aa2', { s: [R * 0.14, R * 0.09, R * 0.08], p: [0, -R * 0.15, fz(0.93)] }),   // nose
+    CQ(BOX(R * 0.024, R * 0.1, R * 0.03), CAT_INK, { p: [0, -R * 0.25, fz(0.955)] }),
+    ...[-1, 1].map(sd => CQ(new THREE.TorusGeometry(R * 0.075, R * 0.018, 4, 10, Math.PI), CAT_INK, { r: [0, 0, Math.PI], p: [sd * R * 0.075, -R * 0.295, fz(0.965)] }))];   // the "w"
+  if (mz > 1) head.push(CQ(SPH(12), f.head, { s: [R * 0.32, R * 0.24, R * 0.42], p: [0, -R * 0.18, fz(0.55)] }));   // a wedge's long nose
+  if (B.fur > 0.02 || B.cheek > 0.6) for (const sd of [-1, 1]) for (let i = 0; i < 3; i++)   // cheek fluff
+    head.push(CQ(CONE(R * 0.13, R * 0.34 * (0.6 + 0.4 * Math.max(B.cheek, 0.5)), 6), f.head, { r: [0.3, 0, sd * (1.5 + i * 0.32)], p: [sd * R * (0.72 + 0.1 * B.cheek), -R * (0.3 + i * 0.16), R * (0.12 - i * 0.04)] }));
+  const eh = R * 0.75 * B.ear[0], ew = R * 0.4 * B.ear[1];
+  const ear = [CQ(CONE(ew, eh, 14), f.ear, { s: [1, 1, 0.5], p: [0, eh * 0.5, 0] }), CQ(CONE(ew * 0.66, eh * 0.74, 12), C.in || '#f4a8b4', { s: [1, 1, 0.3], p: [0, eh * 0.42, ew * 0.2] })];
+  if (B.tufts) ear.push(CQ(CONE(ew * 0.2, eh * 0.55, 5), C.pc || CAT_INK, { p: [0, eh * 1.1, 0] }), ...[-1, 1].map(sd => CQ(CONE(ew * 0.18, eh * 0.5, 5), '#f4efe6', { r: [0.2, 0, sd * 0.4], p: [sd * ew * 0.15, eh * 0.35, ew * 0.3] })));
+  // eyes (no outline, lit as they are: they shine): a dark rim, the iris, a big pupil, two highlights (the same side on both: one sun)
+  const E = R * 0.27 * B.eye, ex = R * (B.ex || 0.4) * sx, ey = R * 0.06, ez = R * 0.95 * Math.sqrt(Math.max(0.05, 1 - (ex / (R * 1.05 * sx)) ** 2 - (ey / (R * 0.93 * sy)) ** 2)) - R * 0.03;
+  const eyes = merge(...[-1, 1].flatMap(sd => {
+    const e = (s, p, c) => P(SPH(12), c, { s, p }).rotateY(sd * 0.42).translate(sd * ex, 0, ez);
+    return [e([E * 1.16, E * 1.24, E * 0.4], [0, 0, -0.004], CAT_INK), e([E, E * 1.08, E * 0.5], [0, 0, 0], C.eye),
+      e([E * 0.58, E * 0.8, E * 0.5], [0, -E * 0.04, E * 0.08], '#120d10'), e([E * 0.36, E * 0.36, E * 0.3], [E * 0.3, E * 0.4, E * 0.3], '#ffffff'), e([E * 0.16, E * 0.16, E * 0.16], [-E * 0.3, -E * 0.42, E * 0.33], '#ffffff')];
+  }));
+  const mouth = merge(P(SPH(10), '#5a1c28', { s: [R * 0.19, R * 0.17, R * 0.1], p: [0, -R * 0.15, 0] }), P(SPH(8), '#f27a8c', { s: [R * 0.12, R * 0.07, R * 0.07], p: [0, -R * 0.24, R * 0.04] }),
+    ...[-1, 1].map(sd => P(CONE(R * 0.035, R * 0.08, 5), '#ffffff', { r: [Math.PI, 0, 0], p: [sd * R * 0.09, -R * 0.05, R * 0.06] })));
+  const whisk = merge(...[-1, 1].flatMap(sd => [-0.22, 0, 0.22].map(a => P(CYL(R * 0.007, R * 0.004, R * 1.1, 3), '#fbf9f2', { p: [0, R * 0.55, 0] }).rotateZ(-sd * (Math.PI / 2 + a)).rotateY(sd * 0.35).translate(sd * R * 0.3, -R * 0.3, fz(0.82)))));
+  const L = D.Lg, r = D.legR, pr = D.pawR, lf = f.leg(L), ll = L - pr * 0.6;
+  const fleg = catMerge(CQ(CYL(r * 1.12, r * 0.92, ll + 0.03, 10), lf, { p: [0, -(ll + 0.03) / 2 + 0.03, 0], ax: 1 }), CQ(SPH(10), lf, { s: [pr, pr * 0.78, pr * 1.22], p: [0, -L + pr * 0.78, pr * 0.3], ax: 1 }));
+  const hleg = catMerge(CQ(SPH(12), lf, { s: [r * 1.75, L * 0.42, r * 2.1], p: [0, -L * 0.2, -r * 0.2], ax: 1 }), CQ(CYL(r * 1.05, r * 0.86, L * 0.66, 10), lf, { p: [0, -L * 0.6, -r * 0.15], ax: 1 }),
+    CQ(SPH(10), lf, { s: [pr, pr * 0.78, pr * 1.25], p: [0, -L + pr * 0.78, pr * 0.25], ax: 1 }));
+  g = { D, front: catMerge(...front), rear: catMerge(...rear), head: catMerge(...head), eyes, mouth, whisk, ear: catMerge(...ear), fleg, hleg,
+    tailCol: Array.from({ length: CAT_TN + 4 }, (_, i) => catTailCol(C, Math.min(1, i / CAT_TN))) };
+  CAT_GEO.set(C, g); return g;
+}
+// ---------------- the tail: a tube re-bent every frame (rings along a curve), its outline the same geometry ----------------
+const CAT_TN = 14, CAT_TS = 8;
+function catTailGeo(cols) {
+  const R = CAT_TN + 4, rs = CAT_TS, nv = R * rs + 1, g = new THREE.BufferGeometry(), col = new Float32Array(nv * 3), idx = [];
+  for (let i = 0; i < R; i++) for (let j = 0; j < rs; j++) { const c = cols[i]; col.set([c.r, c.g, c.b], (i * rs + j) * 3); }
+  col.set([cols[R - 1].r, cols[R - 1].g, cols[R - 1].b], (nv - 1) * 3);
+  for (let i = 0; i < R - 1; i++) for (let j = 0; j < rs; j++) { const a = i * rs + j, b = i * rs + (j + 1) % rs; idx.push(a, b, a + rs, b, b + rs, a + rs); }
+  for (let j = 0; j < rs; j++) idx.push((R - 1) * rs + j, (R - 1) * rs + (j + 1) % rs, nv - 1);
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1.5); return g;
+}
+const _tq = { c: new THREE.Vector3(), t: new THREE.Vector3(), n: new THREE.Vector3(), b: new THREE.Vector3(), d: new THREE.Vector3() };
+const CAT_TP = Array.from({ length: CAT_TN + 1 }, () => new THREE.Vector3()), CAT_TT = Array.from({ length: CAT_TN + 1 }, () => new THREE.Vector3());
+// Q: the pose (tl: its lift at the root (rel.), tc: bend along it, ts: round to the side, th: a hook at the tip, tw/tf/tk: a sway (its size, Hz, how
+// much at the tip only), tp: puff); len, r: its length and thickness; fl: fluffy (a plume); t: time
+function catTailSet(g, Q, a0, len, r0, fl, t) {
+  const N = CAT_TN, pos = g.attributes.position.array, nrm = g.attributes.normal.array, rs = CAT_TS, seg = len / N, ph = t * Q.tf * TAU;
+  let x = 0, y = 0, z = 0;
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, a = a0 + Q.tc * u + Q.th * smooth(0.6, 1, u), b = Q.ts * u + Q.tw * Math.sin(ph - u * 2.6) * u ** (0.5 + 2.5 * Q.tk);
+    CAT_TP[i].set(x, y, z); CAT_TT[i].set(Math.cos(a) * Math.sin(b), Math.sin(a), -Math.cos(a) * Math.cos(b));
+    x += CAT_TT[i].x * seg; y += CAT_TT[i].y * seg; z += CAT_TT[i].z * seg;
+  }
+  const { n, b, d } = _tq; n.set(1, 0, 0).cross(CAT_TT[0]).normalize(); if (n.lengthSq() < 0.5) n.set(0, 1, 0);
+  const puff = 1 + 1.25 * Q.tp, spike = Math.min(1, Q.tp * 1.1 + fl * 0.25);
+  const ring = (k, c, T, rad, u) => {
+    n.addScaledVector(T, -n.dot(T)).normalize(); b.crossVectors(T, n);
+    for (let j = 0; j < rs; j++) {
+      const th = j / rs * TAU, cs = Math.cos(th), sn = Math.sin(th), sp = 1 + spike * (j % 2 ? 0.42 : -0.12) * (0.65 + 0.35 * Math.sin(k * 2.3 + j * 1.7)), o = (k * rs + j) * 3;
+      d.copy(n).multiplyScalar(cs).addScaledVector(b, sn);
+      pos[o] = c.x + d.x * rad * sp; pos[o + 1] = c.y + d.y * rad * sp; pos[o + 2] = c.z + d.z * rad * sp; nrm[o] = d.x; nrm[o + 1] = d.y; nrm[o + 2] = d.z;
+    }
+  };
+  let rEnd = r0;
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, prof = fl > 0 ? 0.7 + 0.5 * Math.sin(Math.PI * Math.min(1, u * 0.95 + 0.1)) - 0.25 * u : 1 - 0.38 * u;
+    rEnd = r0 * prof * lerp(1, puff, smooth(0, 0.25, u)); ring(i, CAT_TP[i], CAT_TT[i], rEnd, u);
+  }
+  const e = CAT_TP[N], T = CAT_TT[N];
+  for (let k = 1; k <= 3; k++) { const f = k / 4 * Math.PI / 2; _tq.c.copy(e).addScaledVector(T, rEnd * Math.sin(f)); ring(N + k, _tq.c, T, rEnd * Math.cos(f), 1); }
+  const o = (N + 4) * rs * 3; pos[o] = e.x + T.x * rEnd; pos[o + 1] = e.y + T.y * rEnd; pos[o + 2] = e.z + T.z * rEnd; nrm[o] = T.x; nrm[o + 1] = T.y; nrm[o + 2] = T.z;
+  g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true;
+}
+// ---------------- a cat's model (first sight; on its own dice: the seeded runs keep theirs) ----------------
+const CATM = new Map();   // cat → its model
+function catFur(m, geo, F) {   // long hair: FUR shells over the patterned coat, its outline out in the fur
+  if (!T.fur.on || !F) return;
+  for (const o of m.children) if (o.material === OUTLINE) o.material = furInk(OUTLINE, F);
+  const r0 = T.fur.root; T.fur.root = 0.94; const fm = furMat(F, true); T.fur.root = r0;   // (a cat's own: its roots barely darker, so a pale coat's not blotched)
+  const sh = new THREE.Mesh(furShellGeo(geo, T.fur.n), fm); sh.castShadow = false; sh.receiveShadow = true; sh.raycast = () => {}; m.add(sh);
+}
+function catModel(c) {
+  return ownDice(9001 + (strHash(String(c.id)) % 100000), () => {
+    const B = catBreed(c), C = catCoat(c), Gm = catGeo(B, C), D = Gm.D, mat = catMat(C), F = B.fur > 0 ? { len: B.fur, dens: 78, curl: false } : null;
+    const root = new THREE.Group(), spine = new THREE.Group(), front = new THREE.Group(), rear = new THREE.Group(); root.add(spine); spine.add(front, rear); spine.rotation.order = front.rotation.order = rear.rotation.order = 'YXZ';
+    const add = (par, geo, o = {}) => part(par, geo, { mat, ...o });
+    const fb = add(front, Gm.front), rb = add(rear, Gm.rear);
+    const neck = new THREE.Group(); neck.position.set(...D.neck); front.add(neck);
+    const head = new THREE.Group(); head.rotation.order = 'YXZ'; neck.add(head);
+    const hs = new THREE.Group(); hs.position.set(...D.headAt); head.add(hs);
+    add(hs, Gm.head);
+    const eyes = part(hs, Gm.eyes, { mat: MAT.basic, outline: false, shadow: false }); eyes.position.y = D.hr * 0.06;
+    const mouth = new THREE.Group(); mouth.position.set(0, -D.hr * 0.3, D.hr * (0.86 + 0.32 * (B.mz - 1))); hs.add(mouth); part(mouth, Gm.mouth, { outline: false, shadow: false });
+    part(hs, Gm.whisk, { outline: false, shadow: false });
+    const ears = [-1, 1].map(sd => { const e = new THREE.Group(); e.position.set(sd * D.hr * 0.52 * B.head[1], D.hr * 0.6 * B.head[2], -D.hr * 0.02); e.rotation.order = 'YXZ'; hs.add(e); add(e, Gm.ear); return e; });
+    const legs = [D.fLeg, D.fLeg, D.hLeg, D.hLeg].map((p, i) => { const g = new THREE.Group(); g.position.set(p[0] * (i % 2 ? -1 : 1), p[1], p[2]); (i < 2 ? front : rear).add(g); add(g, i < 2 ? Gm.fleg : Gm.hleg); return g; });
+    const tailG = new THREE.Group(); tailG.position.set(...D.tailAt); rear.add(tailG);
+    const tg = catTailGeo(Gm.tailCol), tail = new THREE.Mesh(tg, MAT.vc); tail.castShadow = true; tail.receiveShadow = true; tail.frustumCulled = false; tailG.add(tail);
+    const tink = new THREE.Mesh(tg, OUTLINE); tink.frustumCulled = false; tail.add(tink);
+    if (F) { catFur(fb, Gm.front, F); catFur(rb, Gm.rear, F); }
+    scene.add(root); seaKeep(root);
+    const M = { root, spine, front, rear, neck, head, hs, eyes, mouth, ears, legs, tailG, tail, tg, collar: null, bell: null, B, C, D, cur: {}, snap: null, blend: 1, st: null, stT: 0,
+      ph: 0, inp: null, blinkT: 1 + (c.id * 1.37 % 3), blinkN: 0, earT: 2 + (c.id * 0.71 % 3), earW: 0, py: null, vy: 0, mouthW: new THREE.Vector3(), key: c.breed + ':' + c.coat };
+    return M;
+  });
+}
+function catCollar(M, c) {   // ours: a collar and a bell (made the first time it's ours)
+  ownDice(77 + (strHash(String(c.id)) % 1000), () => {
+    const D = M.D, col = CAT_COLLARS[Math.abs(strHash(String(c.id))) % CAT_COLLARS.length], rad = D.bw * 0.72, tilt = -0.75;
+    M.collar = part(M.front, P(new THREE.TorusGeometry(rad, 0.011, 6, 22), col, { r: [tilt, 0, 0], p: [0, D.neck[1] + 0.012, D.neck[2] + 0.01] }), { shadow: false });
+    M.bell = new THREE.Group(); M.bell.position.set(0, D.neck[1] + 0.012 - rad * Math.cos(tilt), D.neck[2] + 0.01 - rad * Math.sin(tilt) + 0.012); M.front.add(M.bell);
+    part(M.bell, merge(P(SPH(10), '#f2c230', { s: [0.021, 0.021, 0.021], p: [0, -0.02, 0] }), P(BOX(0.026, 0.004, 0.006), '#7a5418', { p: [0, -0.026, 0.017] }),
+      P(new THREE.TorusGeometry(0.007, 0.003, 4, 8), '#d9dee4', { p: [0, 0.002, 0] })), { shadow: false });
+  });
+}
+function catDrop(c) { const M = CATM.get(c); if (!M) return; if (M.root.parent) M.root.parent.remove(M.root); M.tg.dispose(); CATM.delete(c); }
+// ---------------- poses: a target for every state (absolute angles: 0 level / legs straight down; + nose down, paws back); the drawn pose
+// crossfades into it from where it was (catSync) ----------------
+const CAT_Q = ['y', 'z', 'px', 'rl', 'yw', 'pvy', 'pvz', 'fP', 'rP', 'fY', 'rY', 'sq', 'l0', 'l1', 'l2', 'l3', 'z0', 'z1', 'z2', 'z3', 's0', 's1', 's2', 's3',
+  'ha', 'hy', 'hz', 'hf', 'er', 'ef', 'tl', 'tc', 'ts', 'th', 'tw', 'tf', 'tk', 'tp', 'mo', 'ey'];
+const CAT_REST = Object.fromEntries(CAT_Q.map(k => [k, /^s[0-3]$|^sq$|^ey$/.test(k) ? 1 : 0]));
+const CAT_BLEND = { sleep: 0.6, loaf: 0.45, sit: 0.35, hiss: 0.18, pounce: 0.12, swipe: 0.1, held: 0.2, taken: 0.15, dead: 0.4, stretch: 0.4 };
+function catPose(c, M, Q, t) {
+  const I = M.inp, D = M.D, sp = M.spd, st = c.dead ? 'dead' : c.state || 'sit', cr = I.crouch, gal = sp > 2.4 || st === 'run' || st === 'flee';
+  Object.assign(Q, CAT_REST);
+  Q.tl = lerp(-0.9, 1.45, I.tail); Q.tc = 0.55 - 0.75 * I.tail; Q.th = Math.max(0, I.tail - 0.65) * 3.2; Q.tp = I.puff; Q.tw = 0.14; Q.tf = 0.45; Q.ha = 0.06 - I.lookUp; Q.hy = I.look;
+  const sit = (px = -0.78) => {   // haunches down, forelegs straight, hind legs along the ground
+    Object.assign(Q, { pvy: -0.02, pvz: -D.bl * 0.6, px, y: -(D.Hs - D.bh * 1.02), l0: 0.04, l1: 0.04, s0: 1.08 - 0.5 * (px + 0.62), s1: 1.08 - 0.5 * (px + 0.62), l2: -1.38, l3: -1.38, s2: 0.82, s3: 0.82, z2: 0.12, z3: 0.12 });
+    Q.tl = -0.18; Q.tc = 0.1; Q.ts = 2.3; Q.th = 0; Q.tw = 0.05; Q.tk = 1;
+  };
+  const crouch = k => { Q.y -= k * (D.Hs - D.bh - 0.012); for (let i = 0; i < 4; i++) Q['s' + i] *= 1 - 0.5 * k; Q.l0 -= 0.5 * k; Q.l1 -= 0.5 * k; Q.l2 += 0.65 * k; Q.l3 += 0.65 * k; };
+  const gait = (amp = 1) => {   // a lateral walk (HL FL HR FR a quarter apart); a gallop (the pairs together, the spine flexing)
+    const ph = M.ph, A = Math.min(gal ? 0.95 : 0.6, sp * (gal ? 0.3 : 0.5)) * amp;
+    if (!gal) {
+      const o = [Math.PI / 2, Math.PI * 1.5, 0, Math.PI];
+      for (let i = 0; i < 4; i++) { const s = Math.sin(ph + o[i]); Q['l' + i] += A * s; Q['s' + i] *= 1 - 0.18 * A * Math.max(0, Math.cos(ph + o[i])); }
+      Q.y += Math.abs(Math.sin(ph)) * 0.008 * A; Q.ha += Math.sin(ph * 2) * 0.04 * A; Q.rl += Math.sin(ph) * 0.03 * A;
+    } else {
+      const o = [0, 0.55, Math.PI, Math.PI + 0.55];
+      for (let i = 0; i < 4; i++) { const s = Math.sin(ph + o[i]); Q['l' + i] += A * s * (i < 2 ? 1.1 : 1); Q['s' + i] *= 1 - 0.22 * Math.max(0, Math.cos(ph + o[i])); }
+      Q.fP += -0.16 * Math.sin(ph + 0.3) * A; Q.rP += 0.16 * Math.sin(ph + 0.3) * A; Q.y += Math.max(0, Math.sin(ph + 1.2)) * 0.045 * A; Q.ha += Math.sin(ph) * 0.08;
+      Q.tw = 0.08; Q.tl = Math.min(Q.tl, 0.35);
+    }
+  };
+  switch (st) {
+    case 'sit': case 'perch': sit(); if (st === 'perch') { Q.tl = -1.4; Q.ts = 0.2; Q.tc = 0.35; Q.tw = 0.12; Q.tk = 0.6; } break;
+    case 'meow': { sit(-0.66); const k = (t % 1.7) / 1.7; Q.mo = k < 0.42 ? Math.sin(k / 0.42 * Math.PI) : 0; Q.ha = -0.42 - I.lookUp; Q.tl = 1.2; Q.ts = 0; Q.tc = -0.2; Q.th = 0.9; Q.tw = 0.08; Q.ey = 1.05; break; }
+    case 'groom': {
+      sit(-0.7); const k = t % 5.2;
+      if (k < 3.2) { Q.l0 = -2.15 + 0.08 * Math.sin(t * 9); Q.s0 = 0.78; Q.z0 = -0.3; Q.ha = 0.42 + 0.1 * Math.sin(t * 9); Q.hy = 0.28; Q.hz = 0.1; Q.mo = 0.18 + 0.18 * Math.max(0, Math.sin(t * 9)); Q.ey = 0.12; }
+      else { Q.l0 = -2.5 + 0.38 * Math.sin((k - 3.2) * 6); Q.s0 = 0.84; Q.z0 = -0.15; Q.ha = 0.3; Q.hz = 0.4; Q.hy = 0.45; Q.ey = 0.15; }
+      break;
+    }
+    case 'loaf': Object.assign(Q, { y: -(D.Hs - D.bh * 0.9), l0: 1.5, l1: 1.5, l2: -1.5, l3: -1.5, s0: 0.3, s1: 0.3, s2: 0.32, s3: 0.32, ha: 0.12 - I.lookUp, hf: -0.012, tl: -0.25, tc: 0, ts: 2.1, th: 0, tw: 0.04, tk: 1, ey: 0.5 }); break;
+    case 'sleep': {
+      const br = Math.sin(t * 2.1);
+      Object.assign(Q, { y: -(D.Hs - D.bh * 0.8), sq: 0.86 + 0.035 * br, rl: 0.3, fY: 0.8, rY: -0.8, l0: 1.5, l1: 1.5, l2: -1.5, l3: -1.5, s0: 0.28, s1: 0.28, s2: 0.3, s3: 0.3,
+        ha: 0.55, hy: 0.75, hz: 0.45, hf: -0.01, er: 0.25, tl: -0.12, tc: 0, ts: 3.2, th: 0, tw: 0.03, tf: 0.2, tk: 1, ey: 0.06 });
+      break;
+    }
+    case 'stretch': {
+      const k = smooth(0, 0.6, t);
+      Object.assign(Q, { pvy: -0.02, pvz: -D.bl * 0.6, px: 0.32 * k, y: -0.02 * k, l0: -1.05 * k, l1: -1.05 * k, s0: 1 + 0.25 * k, s1: 1 + 0.25 * k, l2: 0.06, l3: 0.06, ha: -0.35 * k, tl: 1.0, tc: -0.25, th: 0.3, tw: 0.05, ey: 0.3 });
+      Q.mo = t < 1.6 ? Math.sin(Math.min(1, t / 1.6) * Math.PI) * 0.9 : 0; break;
+    }
+    case 'walk': case 'trot': case 'run': gait(); if (st === 'run') Q.er = 0.25; break;
+    case 'flee': gait(); crouch(0.25); Q.er = 0.9; Q.tl = Math.min(Q.tl, -0.25); Q.ha = -0.05; Q.ey = 1.15; break;
+    case 'stalk': case 'freeze': case 'wiggle': {
+      crouch(Math.max(cr, 0.85)); if (st === 'stalk') gait(0.55);
+      Q.ha = 0.02 - I.lookUp * 0.5; Q.hf = 0.02; Q.ef = 0.7; Q.tl = Math.min(Q.tl, -0.3); Q.tc = 0.25; Q.tw = st === 'freeze' ? 0.25 : 0.18; Q.tf = 2.6; Q.tk = 1; Q.ey = 1.15;
+      if (st === 'wiggle') { Q.rP = 0.3; Q.s2 = Q.s3 = 0.78; Q.rY = 0.22 * Math.sin(t * 21); Q.rl = 0.05 * Math.sin(t * 21); Q.tw = 0.32; Q.tf = 3.4; }
+      break;
+    }
+    case 'pounce': {
+      const k = clamp(-M.vy * 0.13, -0.45, 0.4);
+      Object.assign(Q, { px: k, l0: -1.35, l1: -1.25, s0: 1.15, s1: 1.15, l2: 1.2, l3: 1.25, s2: 1.12, s3: 1.12, ha: 0.12, ef: 0.8, tl: 0.1 - k, tc: 0, th: 0, tw: 0.04, mo: 0.3, ey: 1.2 }); break;
+    }
+    case 'pin': Object.assign(Q, { px: 0.1, fP: 0.25, y: -0.03, l0: -0.55, l1: -0.6, s0: 0.95, s1: 0.95, l2: 0.2, l3: 0.2, ha: 0.75, ef: 0.6, tw: 0.4, tf: 1.6, tk: 0.3, ey: 1.15 }); break;
+    case 'play': {
+      sit(-0.3); const k = Math.max(0, Math.sin(t * 7)) ** 2;
+      Object.assign(Q, { l0: -0.5 - 1.25 * k, z0: 0.45 * k, s0: 1.05, l1: -0.2, ha: 0.42, ef: 0.6, tl: 0.6, ts: 0, tc: 0.2, th: 0.4, tw: 0.3, tf: 1.4, ey: 1.15 });
+      Q.y += 0.055 * Math.max(0, Math.sin(t * 3.5 + 2)); break;
+    }
+    case 'bite': crouch(0.55); Q.ha = 0.88; Q.mo = clamp(0.55 + 0.45 * Math.sin(t * 13), 0, 1); Q.er = 0.3; Q.ey = 0.6; Q.tw = 0.25; Q.tf = 2; break;
+    case 'eat': case 'drink': {
+      Object.assign(Q, { pvy: -0.02, pvz: -D.bl * 0.6, px: 0.18, y: -(D.Hs - D.bh * 1.25), l0: -0.3, l1: -0.3, s0: 0.82, s1: 0.82, l2: -1.1, l3: -1.1, s2: 0.6, s3: 0.6, ha: 0.95, tl: -0.15, tc: 0, ts: 1.4, tw: 0.04, tk: 1, ey: 0.55 });
+      Q.mo = st === 'eat' ? 0.22 + 0.22 * Math.sin(t * 8) : 0.12 + 0.12 * Math.sin(t * 15); if (st === 'eat') Q.hz = 0.2 * Math.sin(t * 4); break;
+    }
+    case 'hiss': {   // the Halloween cat: side on, arched, on tiptoe, puffed, ears flat, mouth wide, tail a bottle-brush
+      const sd = c.id % 2 ? 1 : -1;
+      Object.assign(Q, { yw: sd * Math.PI / 2, hy: -sd * 1.35 + I.look * 0.3, fP: 0.5, rP: -0.5, y: 0.075, l0: -0.42, l1: -0.42, l2: 0.42, l3: 0.42, s0: 1.28, s1: 1.28, s2: 1.25, s3: 1.25,
+        ha: -0.12, er: 1, mo: 0.85 + 0.15 * Math.sin(t * 6), ey: 1.25, tp: Math.max(1, I.puff), tl: 1.3, tc: -1.7, th: 0, tw: 0.08, tf: 0.8, sq: 1.04 });
+      break;
+    }
+    case 'swipe': {
+      crouch(0.3); const k = Math.max(0, Math.sin(t * 11)) ** 0.6;
+      Object.assign(Q, { l0: -0.4 - 1.5 * k, z0: 0.5 * k, s0: 1.1, er: 0.9, mo: 0.8, ha: -0.08, tw: 0.4, tf: 1.8, ey: 1.1 }); Q.tp = Math.max(Q.tp, 0.4); break;
+    }
+    case 'rub': gait(0.6); Object.assign(Q, { rl: 0.2, hz: 0.6, hy: 0.55, ey: 0.32, tl: 1.45, tc: -0.2, th: 1.1, tw: 0.05, tf: 4.5, tk: 1 }); break;
+    case 'climb': {
+      const ph = t * 7;
+      Object.assign(Q, { px: -1.25, l0: -1.15 + 0.5 * Math.sin(ph), l1: -1.15 + 0.5 * Math.sin(ph + Math.PI), l2: -0.15 + 0.45 * Math.sin(ph + Math.PI), l3: -0.15 + 0.45 * Math.sin(ph), ha: -1.1, tl: -0.5, tc: 0.3, tw: 0.15, ef: 0.4 });
+      break;
+    }
+    case 'held': case 'taken': {   // from the scruff: hanging, limp (clipnosis); taken: kicking, twisting
+      Object.assign(Q, { pvy: D.neck[1] + 0.03, pvz: D.neck[2], px: -1.35, l0: -0.12, l1: -0.08, l2: 0.12, l3: 0.12, z2: 0.15, z3: 0.15, ha: 0.18, er: 0.35, ey: 0.45, tl: -1.52, tc: 0.95, ts: 0, th: 0, tw: 0.04, tf: 0.5 });
+      if (st === 'taken') {
+        for (let i = 0; i < 4; i++) Q['l' + i] += 0.8 * Math.sin(t * 17 + i * 1.7);
+        Object.assign(Q, { rl: 0.3 * Math.sin(t * 9), hy: 0.6 * Math.sin(t * 7), mo: 0.5 + 0.5 * Math.sin(t * 6), er: 0.9, ey: 1.2, tw: 0.6, tf: 1.6, tp: Math.max(0.5, I.puff) });
+      }
+      const w = c.heldBy && c.heldBy.cw; if (w) { Q.px -= w.r || 0; Q.rl -= w.p || 0; }   // CARRY SWING
+      break;
+    }
+    case 'dead': Object.assign(Q, { rl: (c.id % 2 ? 1 : -1) * Math.PI / 2, y: -(D.Hs - D.bw * 1.02), l0: -0.4, l1: -0.3, l2: 0.4, l3: 0.3, ey: 0.06, er: 0.4, tl: 0, tc: 0, ts: 0, th: 0, tw: 0, tp: 0 }); break;
+    default: break;   // (standing)
+  }
+  if (c.mouse && c.mouse.heldBy === c) Q.mo = Math.max(Q.mo, 0.42);   // carrying it
+  return Q;
+}
+// ---------------- each frame: its inputs eased, the gait's phase, blinks and ear flicks, the pose crossfaded, put on the model ----------------
+const _cq = {}, _cv = new THREE.Vector3(), _cv2 = new THREE.Vector3(), _ceu = new THREE.Euler(0, 0, 0, 'YXZ');
+const CATL = { noBlink: false, n: 0 };
+function catSync(c, M, dt) {
+  const k = catSize(c), kf = catKitten(c), D = M.D, t = G.time;
+  const y = Number.isFinite(c.y) ? c.y : groundY(c.x, c.z);
+  // inputs, eased (the sim's can jump; a guest's come in steps)
+  const ek = 1 - Math.exp(-dt * 7), sp = Math.hypot(c.vx || 0, c.vz || 0), spd = Number.isFinite(c.spd) ? c.spd : sp;
+  if (!M.inp) M.inp = { crouch: c.crouch || 0, tail: c.tail ?? 0.5, puff: c.puff || 0, look: c.look || 0, lookUp: c.lookUp || 0 };
+  const I = M.inp; I.crouch = lerp(I.crouch, c.crouch || 0, ek); I.tail = lerp(I.tail, c.tail ?? 0.5, ek); I.puff = lerp(I.puff, c.puff || 0, ek * 1.5);
+  I.look = lerp(I.look, clamp(c.look || 0, -1.3, 1.3), ek); I.lookUp = lerp(I.lookUp, clamp(c.lookUp || 0, -0.8, 0.9), ek);
+  M.spd = lerp(M.spd || 0, spd, ek * 1.5);
+  M.ph += dt * TAU * M.spd / ((0.26 + 0.1 * Math.min(M.spd, 6)) * k / CAT_K);
+  if (M.py !== null && dt > 0) M.vy = lerp(M.vy, (y - M.py) / dt, Math.min(1, dt * 12)); M.py = y;
+  // the state: a crossfade from where it was
+  const st = c.dead ? 'dead' : c.state;
+  if (st !== M.st) { M.snap = { ...M.cur }; M.blend = M.st === null ? 1 : 0; M.st = st; M.stT = 0; M.dur = Math.max(CAT_BLEND[st] || 0.25, CAT_BLEND[M.prev] || 0); M.prev = st; }
+  M.stT += dt; M.blend = Math.min(1, M.blend + dt / M.dur);
+  const Q = catPose(c, M, _cq, M.stT), b = smooth(0, 1, M.blend);
+  for (const key of CAT_Q) M.cur[key] = b >= 1 || !M.snap ? Q[key] : lerp(M.snap[key] ?? Q[key], Q[key], b);
+  const q = M.cur;
+  // blinks (now and then two), an ear's flick
+  if ((M.blinkT -= dt) <= 0) { M.blinkN++; M.blinkT = M.blinkN % 4 === 0 ? 0.25 : 1.6 + ((M.blinkN * 2.618 + c.id * 0.37) % 1) * 4; }
+  const blink = !CATL.noBlink && M.blinkT < 0.13 ? 0.08 : 1;
+  if ((M.earT -= dt) <= 0) { M.earT = 1.5 + ((M.blinkN * 1.618 + c.id) % 1) * 4; M.earW = (M.earW + 1) % 2 + 1; }
+  // the model
+  M.root.position.set(c.x, y, c.z); M.root.rotation.y = c.yaw || 0; M.root.scale.setScalar(k);
+  const legK = 1 - 0.22 * kf, base = D.Hs - D.Lg * (1 - legK), pv = _cv.set(0, q.pvy, q.pvz);
+  _ceu.set(q.px, q.yw, q.rl); M.spine.rotation.copy(_ceu);
+  _cv2.copy(pv).applyEuler(_ceu); M.spine.position.set(pv.x - _cv2.x, base + q.y + pv.y - _cv2.y, q.z + pv.z - _cv2.z);
+  const puff = 1 + 0.12 * q.tp, bz = 1 - 0.12 * kf;
+  M.front.rotation.set(q.fP, q.fY, 0); M.rear.rotation.set(q.rP, q.rY, 0);
+  M.front.scale.set(puff, q.sq * puff, puff * bz); M.rear.scale.set(puff, q.sq * puff, puff * bz);
+  for (let i = 0; i < 4; i++) {
+    const g = M.legs[i], sd = i % 2 ? -1 : 1;
+    g.rotation.x = q['l' + i] - q.px - (i < 2 ? q.fP : q.rP); g.rotation.z = sd * q['z' + i]; g.scale.set(1 / puff, q['s' + i] * legK / (q.sq * puff), 1 / (puff * bz));
+  }
+  M.neck.position.z = D.neck[2] + q.hf; M.neck.position.y = D.neck[1] + q.hf * 0.4;
+  M.head.rotation.set(q.ha - q.px - q.fP, q.hy - q.fY, q.hz); M.head.scale.set(1 / puff, 1 / (q.sq * puff), 1 / (puff * bz)); M.hs.scale.setScalar((1 + 0.32 * kf) * (1 + 0.05 * q.tp));
+  M.eyes.scale.set(1, clamp(q.ey * blink, 0.07, 1.3), 1);
+  M.mouth.scale.set(1, Math.max(0.01, q.mo), 0.6 + 0.4 * q.mo); M.mouth.visible = q.mo > 0.03;
+  const flick = M.earT < 0.18 ? Math.sin(M.earT * 35) * 0.35 : 0;
+  M.ears.forEach((e, i) => { const sd = i ? 1 : -1, fl = (i + 1) === M.earW ? flick : 0;
+    e.rotation.set(0.05 - 0.9 * q.er + 0.35 * q.ef + fl, sd * (0.25 + 0.55 * q.er - 0.2 * q.ef), -sd * (0.3 + 0.75 * q.er)); });
+  const tl = M.D.tl * (1 - 0.32 * kf);
+  catTailSet(M.tg, q, q.tl - q.px - q.rP, tl, M.D.tr * (1 - 0.15 * kf), M.B.fur > 0 || M.B.tail[1] > 1.4 ? 1 : 0, t);
+  M.tailG.scale.set(1 / puff, 1 / (q.sq * puff), 1 / (puff * bz));
+  if (c.owned && !M.collar) catCollar(M, c);
+  if (M.collar) {
+    M.collar.visible = M.bell.visible = !!c.owned;
+    M.bell.rotation.x = -(q.px + q.fP) * 0.9 + Math.sin(M.ph) * 0.35 * Math.min(1, M.spd) + (st === 'taken' ? Math.sin(t * 15) * 0.6 : 0);
+    M.bell.rotation.z = Math.sin(M.ph * 0.5 + 1) * 0.2 * Math.min(1, M.spd);
+  }
+}
+// where its mouth is (world): the drawn model's, else a standing cat's
+function catMouth(c, out = new THREE.Vector3()) {
+  const M = CATM.get(c);
+  if (M && M.root.visible) { M.root.updateMatrixWorld(true); return out.set(0, -M.D.hr * 0.38, M.D.hr * (0.86 + 0.32 * (M.B.mz - 1))).applyMatrix4(M.hs.matrixWorld); }
+  const B = catBreed(c), D = catDims(B), k = catSize(c), fx = Math.sin(c.yaw || 0), fz = Math.cos(c.yaw || 0), f = (D.neck[2] + D.headAt[2] + D.hr * 0.86) * k;
+  return out.set(c.x + fx * f, (Number.isFinite(c.y) ? c.y : groundY(c.x, c.z)) + (D.Hs + D.neck[1] + D.headAt[1] - D.hr * 0.4) * k, c.z + fz * f);
+}
+function syncCats(dt) {
+  CATL.n++;
+  const reach = cam.view * 2.6 + 30;
+  for (const c of CATS) {
+    if (c.gone) continue;
+    const on = !(SEA_AWAY && !c.owned) && Math.abs(c.x - cam.x) + Math.abs(c.z - cam.z) < reach;
+    let M = CATM.get(c);
+    if (!on) { if (M) { M.root.visible = false; M.seen = CATL.n; } continue; }
+    if (M && M.key !== c.breed + ':' + c.coat) { catDrop(c); M = null; }   // (a new look)
+    if (!M) { M = catModel(c); CATM.set(c, M); }
+    M.seen = CATL.n; M.root.visible = true; catSync(c, M, Math.min(dt, 0.1));
+    if (c.mouse && c.mouse.heldBy === c) catMouth(c, M.mouthW);
+  }
+  for (const [c, M] of CATM) if (M.seen !== CATL.n) catDrop(c);   // gone, or not in CATS
+}
+onSync(syncCats, 35);   // CAT LOOKS: after the cougars, before the falcon
+// ---------------- mice: instanced, one mesh a part (made the first time there's one to draw). Brown, grey, sandy; round pink ears ----------------
+const MOUSE_COATS = ['#8c6c52', '#9a9aa4', '#d6b282'];
+let MOUSE_I = null;
+function mouseInst() {
+  return MOUSE_I || (MOUSE_I = ownDice(4421, () => {
+    const W = '#ffffff', PK = '#f2a6b2', n = 128;
+    const body = merge(P(SPH(12), W, { s: [0.033, 0.03, 0.05], p: [0, 0.032, -0.006] }), P(SPH(10), '#e6e6e6', { s: [0.026, 0.012, 0.04], p: [0, 0.056, -0.01] }), P(SPH(10), W, { s: [0.03, 0.028, 0.03], p: [0, 0.03, -0.036] }));
+    const head = merge(P(SPH(12), W, { s: [0.029, 0.027, 0.032], p: [0, 0.01, 0.02] }), P(CONE(0.018, 0.04, 9), W, { r: [Math.PI / 2, 0, 0], p: [0, 0.002, 0.058] }));
+    const bits = merge(...[-1, 1].flatMap(sd => [P(SPH(12), '#e3b0b6', { s: [0.022, 0.022, 0.006], r: [-0.35, sd * 0.75, 0], p: [sd * 0.024, 0.034, 0.004] }), P(SPH(10), PK, { s: [0.015, 0.015, 0.004], r: [-0.35, sd * 0.75, 0], p: [sd * 0.026, 0.034, 0.0068] }),
+      P(SPH(8), '#120d10', { s: [0.0075, 0.0082, 0.007], p: [sd * 0.0165, 0.017, 0.039] }), P(SPH(5), '#ffffff', { s: [0.0025, 0.0025, 0.0025], p: [sd * 0.0165 + 0.002, 0.02, 0.0455] })]),
+      P(SPH(8), '#f07a8c', { s: [0.006, 0.0055, 0.0055], p: [0, 0.003, 0.078] }));
+    const tail = P(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[0, 0, 0], [0, 0.004, -0.03], [0.012, 0.0, -0.06], [0.002, -0.006, -0.09], [-0.012, -0.004, -0.11]].map(p => new THREE.Vector3(...p))), 12, 0.0032, 5, false), '#d8a8a8');
+    const foot = P(SPH(6), PK, { s: [0.008, 0.005, 0.012], p: [0, 0.005, 0.004] });
+    const hole = merge(P(new THREE.CircleGeometry(0.042, 16), '#120b06', { s: [1, 1, 0.85], r: [-Math.PI / 2, 0, 0], p: [0, 0.008, 0] }), P(new THREE.CircleGeometry(0.058, 16), '#4a3018', { s: [1, 1, 0.9], r: [-Math.PI / 2, 0, 0], p: [0, 0.005, 0] }));
+    const dr = mulberry32(77), dirt = merge(P(new THREE.TorusGeometry(0.06, 0.016, 5, 16, Math.PI * 1.25), '#8f6943', { s: [1, 1, 0.6], r: [-Math.PI / 2, 0, Math.PI * 0.88], p: [0, 0.002, 0] }),   // turned earth, heaped behind it
+      ...Array.from({ length: 9 }, (_, i) => { const a = Math.PI * (0.95 + 1.15 * i / 8) + (dr() - 0.5) * 0.3, r = 0.075 + dr() * 0.03, q = 0.01 + dr() * 0.01;
+        return P(SPH(6), dr() < 0.5 ? '#7d5a38' : '#a07a50', { s: [q * 1.3, q, q * 1.2], p: [Math.cos(a) * r, q * 0.4, Math.sin(a) * r] }); }));
+    const I = { body: sheepInstanced(body, n), head: sheepInstanced(head, n), bits: sheepInstanced(bits, n), tail: sheepInstanced(tail, n), foot: sheepInstanced(foot, n * 4), dirt: sheepInstanced(dirt, 64), max: n };
+    const hm = new THREE.InstancedMesh(hole, MAT.vc, 64); hm.frustumCulled = false; hm.receiveShadow = true; hm.instanceMatrix.setUsage(THREE.DynamicDrawUsage); hm.count = 0; scene.add(hm); seaKeep(hm); I.hole = hm;
+    return I;
+  }));
+}
+const MOUSE_NECK = new THREE.Vector3(0, 0.042, 0.034), MOUSE_TAIL = new THREE.Vector3(0, 0.026, -0.06), MOUSE_FEET = [[0.019, 0.032], [-0.019, 0.032], [0.022, -0.03], [-0.022, -0.03]];
+const _msR = new THREE.Matrix4(), _msT = new THREE.Matrix4(), _msP = new THREE.Matrix4(), _msM = new THREE.Matrix4(), _msE = new THREE.Euler(), _msQ = new THREE.Quaternion(), _msV = new THREE.Vector3(), _msS = new THREE.Vector3(), _msC = new THREE.Color();
+function syncMice(dt) {
+  if (!MOUSE_I && !MICE.length && !MOUSE_HOLES.length) return;
+  const I = mouseInst(), t = G.time, reach = cam.view * 2.6 + 30;
+  let n = 0, nf = 0, nh = 0;
+  for (const m of MICE) {
+    if (n >= I.max || m.state === 'hide' || m.gone) continue;
+    const held = m.heldBy, cm = held && held.isCat ? CATM.get(held) : null, at = cm && cm.root.visible ? cm.mouthW : null;
+    const x = at ? at.x : m.x, z = at ? at.z : m.z;
+    if (Math.abs(x - cam.x) + Math.abs(z - cam.z) > reach || (SEA_AWAY && !held)) continue;
+    const k = (m.scale || 1) * 1.3, st = m.dead ? 'dead' : m.state, sp = Math.hypot(m.vx || 0, m.vz || 0) || m.spd || 0, ph = t * (6 + sp * 9) + m.id * 1.3;
+    let pitch = 0, roll = 0, yaw = m.yaw || 0, y = held ? (at ? at.y : m.y) - 0.03 * k : Number.isFinite(m.y) ? m.y : groundY(m.x, m.z), hx = 0, hy = 0, tw = 0.25 * Math.sin(t * 7 + m.id), tl = -0.1, up = 0, fr = null;
+    if (held) { yaw = (held.yaw || 0) + Math.PI / 2; pitch = 0.25; roll = st === 'dead' ? 1.2 : 0.5 + 0.5 * Math.sin(t * 19 + m.id); tw = 0.9 * Math.sin(t * 13); tl = -0.9; }
+    else if (st === 'sit' || st === 'nibble' || st === 'groom') {
+      pitch = st === 'sit' ? -1.0 : st === 'nibble' ? -0.75 : -0.85; up = 1;
+      hx = st === 'sit' ? 0.85 + 0.06 * Math.sin(t * 31 + m.id) : st === 'nibble' ? 0.55 + 0.14 * Math.sin(t * 24 + m.id) : 0.9 + 0.3 * Math.sin(t * 7);
+      hy = st === 'groom' ? 0.25 * Math.sin(t * 3.5) : 0.15 * Math.sin(t * 1.7 + m.id); tl = 0.05; tw = 0.1 * Math.sin(t * 2 + m.id);
+      fr = st === 'sit' ? [0.012, 0.045, 0.03] : st === 'nibble' ? [0.009, 0.06, 0.05] : [0.011, 0.062 + 0.008 * Math.sin(t * 14), 0.05];
+    } else if (st === 'caught') { roll = 0.6 + 0.4 * Math.sin(t * 18 + m.id); tw = 0.8 * Math.sin(t * 15); hx = 0.3 * Math.sin(t * 11); }
+    else if (st === 'air') { pitch = t * 13 + m.id; roll = t * 8; }
+    else if (st === 'dead') { roll = Math.PI / 2; y += 0.026 * k; tw = 0; }
+    else { y += Math.abs(Math.sin(ph)) * 0.004 * Math.min(1, sp); hx = sp > 0.2 ? 0.1 : 0.1 * Math.sin(t * 2.3 + m.id); hy = sp > 0.2 ? 0 : 0.35 * Math.sin(t * 0.9 + m.id * 2); tw = 0.3 * Math.sin(t * (sp > 0.2 ? 14 : 3) + m.id); }
+    // the root: up on its haunches tips it back about its rump
+    _msE.set(pitch, yaw, roll, 'YXZ'); _msQ.setFromEuler(_msE);
+    _msR.compose(_msV.set(x, y, z), _msQ, _msS.set(k, k, k));
+    if (up) { _msT.makeTranslation(0, 0.02, -0.04); _msM.makeRotationX(pitch); _msP.makeTranslation(0, -0.02, 0.04); _msE.set(0, yaw, 0); _msR.compose(_msV.set(x, y, z), _msQ.setFromEuler(_msE), _msS); _msR.multiply(_msT).multiply(_msM).multiply(_msP); }
+    const coat = _msC.set(MOUSE_COATS[(m.coat | 0) % 3]);
+    I.body.m.setMatrixAt(n, _msR); I.body.m.setColorAt(n, coat);
+    _msP.compose(MOUSE_NECK, _msQ.setFromEuler(_msE.set(hx, hy, 0, 'YXZ')), _msS.set(1, 1, 1)); _msM.multiplyMatrices(_msR, _msP);
+    I.head.m.setMatrixAt(n, _msM); I.head.m.setColorAt(n, coat); I.bits.m.setMatrixAt(n, _msM);
+    _msP.compose(MOUSE_TAIL, _msQ.setFromEuler(_msE.set(-tl, tw, 0, 'YXZ')), _msS.set(1, 1, 1)); _msM.multiplyMatrices(_msR, _msP); I.tail.m.setMatrixAt(n, _msM);
+    for (let f = 0; f < 4; f++) {
+      const F = MOUSE_FEET[f], s = st === 'air' || st === 'caught' || held ? Math.sin(t * 22 + f * 1.9) * 0.01 : st === 'dead' ? 0 : Math.sin(ph + (f === 0 || f === 3 ? 0 : Math.PI)) * 0.012 * Math.min(1, sp * 2);
+      if (up && f < 2) _msV.set(Math.sign(F[0]) * fr[0], fr[1], fr[2]); else _msV.set(F[0], Math.max(0, s) * 0.5, F[1] + s);
+      _msP.compose(_msV, _msQ.identity(), _msS.set(1, 1, 1)); _msM.multiplyMatrices(_msR, _msP); I.foot.m.setMatrixAt(nf++, _msM);
+    }
+    n++;
+  }
+  for (const h of MOUSE_HOLES) {
+    if (nh >= 64 || SEA_AWAY || Math.abs(h.x - cam.x) + Math.abs(h.z - cam.z) > reach) continue;
+    _msR.compose(_msV.set(h.x, groundY(h.x, h.z), h.z), _msQ.setFromEuler(_msE.set(0, h.yaw || 0, 0)), _msS.set(1.2, 1.2, 1.2)); I.hole.setMatrixAt(nh, _msR); I.dirt.m.setMatrixAt(nh, _msR); nh++;
+  }
+  for (const key of ['body', 'head', 'bits', 'tail']) { const M = I[key]; M.m.count = M.o.count = n; M.m.instanceMatrix.needsUpdate = true; if (M.m.instanceColor) M.m.instanceColor.needsUpdate = true; }
+  I.foot.m.count = I.foot.o.count = nf; I.foot.m.instanceMatrix.needsUpdate = true;
+  I.dirt.m.count = I.dirt.o.count = nh; I.dirt.m.instanceMatrix.needsUpdate = true; I.hole.count = nh; I.hole.instanceMatrix.needsUpdate = true;
+}
+onSync(syncMice, 36);   // CAT LOOKS: the mice (after the cats: one in a cat's mouth goes where its mouth is), their holes
+expose(() => ({ CATS, MICE, MOUSE_HOLES, CAT_BREEDS, CAT_K, CATM, CATL, catBreed, catCoat, catSize, catKitten, catDims, catGeo, catMat, catModel, catPose, catSync, catMouth, syncCats, catDrop, MOUSE_COATS, mouseInst, syncMice }));   // CAT LOOKS
 
 // =====================================================================
 // GAME STATE
@@ -16161,9 +16683,24 @@ ART.llama = (({ C, E, W }) => ({ L: [['M10.6 31V18.5h10.8V31Z', '#f4efe6'], ['M1
   silver: { L: [['M9 2.5l4 11h6l4-11h-4.5L16 9l-2.5-6.5Z', '#3d8ef0'], [C(16, 21, 8.5), '#dfe4ea'], [C(16, 21, 5.6), '#b8c0ca', 0, 0, 'n'], ['M13.6 18.4c1.4-1.6 4.6-1.4 4.6.8 0 2-4.6 3.4-4.6 5.4h4.8', null, '#fff8e8', 1.8, 'n']] },
   bronze: { L: [['M9 2.5l4 11h6l4-11h-4.5L16 9l-2.5-6.5Z', '#3fbf5a'], [C(16, 21, 8.5), '#e0a070'], [C(16, 21, 5.6), '#c07a48', 0, 0, 'n'], ['M13.6 17.6h4.4l-2.4 3c2 0 2.8 1 2.8 2.2 0 2-3.4 2.6-4.8 1.2', null, '#fff8e8', 1.8, 'n']] },
 }))(ART_H);
+// CAT LOOKS: a cat's face (an orange tabby), a field mouse's
+(({ C, E, W }) => Object.assign(ART, {
+  cat: { L: [['M4.6 15.4L5.6 2.6 14.2 8.6ZM27.4 15.4L26.4 2.6 17.8 8.6Z', '#f0a24e'], ['M7.2 11.6L7.8 5.8 11.6 8.6ZM24.8 11.6L24.2 5.8 20.4 8.6Z', '#ff9fb2', 0, 0, 'n'],
+    [E(16, 18.4, 13.2, 11), '#f0a24e'], ['M16 7.8v4.2M12.6 8.4l.8 3.2M19.4 8.4l-.8 3.2', null, '#c0661e', 1.6, 'n'], [E(16, 23, 5.6, 4), '#fff1dc', 0, 0, 'n'],
+    [E(7.8, 22.2, 2.2, 1.3) + E(24.2, 22.2, 2.2, 1.3), '#ff9fb2', 0, 0, 'n'], [E(10.8, 17.2, 2.7, 3.2) + E(21.2, 17.2, 2.7, 3.2), ART_INK, 0, 0, 'n'],
+    [C(11.7, 15.9, 1.1) + C(22.1, 15.9, 1.1), '#ffffff', 0, 0, 'n'], [C(10, 18.8, 0.5) + C(20.4, 18.8, 0.5), '#ffffff', 0, 0, 'n'], ['M14.4 20.4h3.2l-1.6 1.8Z', '#ff7a90', 0, 0, 'n'],
+    ['M16 22.2v.8M13.2 23c.8 1.3 2 1.5 2.8.2.8 1.3 2 1.1 2.8-.2', null, ART_INK, 1, 'n'], ['M1.6 19.4l6 .9M1.8 23.4l6-.7M30.4 19.4l-6 .9M30.2 23.4l-6-.7', null, ART_INK, 0.9, 'n'],
+    ['M7.4 11.2c1.4-1.8 3.2-2.8 5.2-3', null, W, 1.4, 'n']] },
+  mouse: { L: [[C(7.4, 10, 6.4) + C(24.6, 10, 6.4), '#c4bfc8'], [C(7.4, 10, 4.2) + C(24.6, 10, 4.2), '#ff9fb2', 0, 0, 'n'],
+    ['M16 8.4c6.6 0 10.6 4.8 10.6 10.2 0 4.6-4.2 8.8-10.6 11.4C9.6 27.4 5.4 23.2 5.4 18.6 5.4 13.2 9.4 8.4 16 8.4Z', '#cdc8d1'],
+    [C(12, 17.6, 1.9) + C(20, 17.6, 1.9), ART_INK, 0, 0, 'n'], [C(12.7, 16.9, 0.65) + C(20.7, 16.9, 0.65), '#ffffff', 0, 0, 'n'], [E(16, 26.4, 2.2, 1.7), '#ff7a90'],
+    ['M11.4 24l-8.2-1.2M11.4 25.8l-8 1.8M20.6 24l8.2-1.2M20.6 25.8l8 1.8', null, ART_INK, 0.85, 'n'], ['M10 12.4c1.4-1.8 3.4-2.8 5.6-3', null, W, 1.4, 'n']] },
+}))(ART_H);
 const EMOJI_ART = {   // one a line
   // DUCKS, TRIALS
   '🦆': 'duck',
+  '🐱': 'cat',   // CAT LOOKS
+  '🐭': 'mouse',
   '🏆': 'trophy',
   '🏵': 'rosette',
   '🛢': 'keg',
