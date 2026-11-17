@@ -9,9 +9,11 @@
 //   line    left alone by day: off to a new spot in a line behind the leader
 //   sleep   by night: asleep, huddled
 //   stay    driven somewhere and left be: they stay there (home's moved)
-//   brood   LIFE: ducklings trail their mum in a line as she walks, peck round her, sleep tucked in by her; rushed, they run (can't fly)
+//   brood   LIFE: ducklings trail their mum in a line as she walks (on her own march 10 m off: the bunch's own are the dice's; the line
+//           3 s on, once they've sorted into it), peck round her, sleep tucked in by her; rushed, they run (can't fly)
 //   grow    LIFE: a duckling grows to full size and leaves her side; old: paler, slower; then gone
-//   mate    LIFE: a drake and a free hen mate (by day), she hatches a clutch by her; none past a full bunch; no drake: one comes over
+//   mate    LIFE: a drake and a free hen mate (by day), she hatches a clutch by her; none past a full bunch; no drake: one comes over (or she
+//           goes to them: either's dice); no prey meanwhile (out of sight by night it takes one: `prey`, `pop`)
 //   imprint IMPRINT: orphans take the first dog near for their mum: trail it, unafraid (pressure, barks); grown: on their own, in a bunch;
 //           a reload: still with it
 //   prey    PREY: a coyote takes one asleep (the rest up and off), eats it; awake they fly up; a pounce on the coyote drops it; no alerts
@@ -19,6 +21,8 @@
 //   pop     LIFE, PREY: 30 days of it out of sight: they breed, age, die and are taken; never past the cap, never gone
 //   save    a reload (JOURNEY SAVE): the same bunches, the found ones still found; every duck as it was (age, drake, mum, clutch)
 //   reset   a new journey: new bunches
+// Dice (SEED): where P lies and when a bunch marches off are the world's; `brood` sets her a march, `mate` keeps prey off and takes a visit
+//   either way.
 import { open } from './harness.mjs';
 const only = process.argv[2];
 let h = null, fails = 0;
@@ -170,20 +174,25 @@ if (want('brood')) {
   await setup();
   const r = await h.page.evaluate(`${BROOD}(() => {
     const { G } = GAME, d = H.d(), out = {}; H.place(d, H.P.x - 60, H.P.z - 60);
-    let { g, hen, kids } = H.brood(4), far = 0, behind = 0, walks = 0, flew = false;
-    g.goT = 0; g.workT = -99;
+    let { g, hen, kids } = H.brood(4), far = 0, behind = 0, walks = 0, flew = false, on = 0;
+    g.workT = -99;
+    const goal = () => {   // (a march 10 m off, on dry land: how far and how soon the bunch's own go is the dice's)
+      const { sdfAt, overWater, penAt } = GAME;
+      for (let a = 0; a < 6.28; a += 0.2) { const x = g.cx + Math.cos(a) * 10, z = g.cz + Math.sin(a) * 10; if (sdfAt(x, z) > 2 && !overWater(x, z) && !penAt(x, z)) { g.goal = { x, z }; g.goT = 0; return; } }
+    };
     H.run(30, () => {
-      for (const k of kids) far = Math.max(far, Math.hypot(k.x - hen.x, k.z - hen.z));
-      const sp = Math.hypot(hen.vx, hen.vz);
+      if (!g.goal) goal();
+      const sp = Math.hypot(hen.vx, hen.vz); on = sp > 0.6 ? on + 0.025 : 0;
+      if (on > 3) for (const k of kids) far = Math.max(far, Math.hypot(k.x - hen.x, k.z - hen.z));   // (once in line: she sets off through them, they sort into it)
       if (sp > 0.6) { walks++; const fx = Math.sin(hen.yaw), fz = Math.cos(hen.yaw); if (kids.every(k => (k.x - hen.x) * fx + (k.z - hen.z) * fz < 0.2)) behind++; }
       return null;
     });
     out.trail = { far: H.r(far), walks, behind };
-    // pecking about: round her
-    H.run(8); out.round = H.r(Math.max(...kids.map(k => Math.hypot(k.x - hen.x, k.z - hen.z))));
+    // pecking about: round her (no march meanwhile: when the next is, is the dice's)
+    g.goal = null; g.goT = 99; H.run(8); out.round = H.r(Math.max(...kids.map(k => Math.hypot(k.x - hen.x, k.z - hen.z))));
     // rushed: they run, never fly; then back by her
     H.place(d, hen.x - 4, hen.z); H.run(3, t => { flew = flew || kids.some(k => k.fly); return H.inp(1, 0, { sprint: true }); });
-    H.place(d, H.P.x - 60, H.P.z - 60); H.run(15); out.rush = { flew, back: H.r(Math.max(...kids.map(k => Math.hypot(k.x - hen.x, k.z - hen.z)))) };
+    H.place(d, H.P.x - 60, H.P.z - 60); g.goT = 99; H.run(15); out.rush = { flew, back: H.r(Math.max(...kids.map(k => Math.hypot(k.x - hen.x, k.z - hen.z)))) };
     // asleep: tucked in by her
     G.clock.hour = 23; H.run(6); out.sleep = { asleep: kids.every(k => k.state === 'sleep'), tuck: H.r(Math.max(...kids.map(k => Math.hypot(k.x - hen.x, k.z - hen.z)))) };
     return out;
@@ -215,6 +224,7 @@ if (want('mate')) {
   const r = await h.page.evaluate(() => {
     const { G, T, HERD, duckLife, herdGroup, herdMake, updateHerds, cam } = GAME, L = T.duck.life, d = H.d(), out = {};
     H.place(d, H.P.x - 300, H.P.z - 300); cam.x = d.x; cam.z = d.z; G.clock.hour = 10;
+    T.duck.prey.farP = 0;   // (out of sight by night the dice take one: the drake gone, no clutch. PREY's are `prey` / `pop`)
     const g = H.bunch(2), [dr, hen] = g.list; dr.male = true; hen.male = false; dr.age = hen.age = 4; dr.life = hen.life = 50; updateHerds(0, 0);
     let n = 0; while (!hen.clutch && n++ < 3000) duckLife(0.25);
     out.mated = !!hen.clutch; out.night = (() => { hen.clutch = 0; G.clock.hour = 23; for (let i = 0; i < 400 && !hen.clutch; i++) duckLife(0.25); const v = !!hen.clutch; G.clock.hour = 10; return v; })();
@@ -229,14 +239,17 @@ if (want('mate')) {
     // no drake: one comes over from a bunch near
     const a = herdGroup('duck', H.P.x + 220, H.P.z, { found: true }), b = herdGroup('duck', H.P.x + 220, H.P.z + 60, { found: true });   // (the others past `seek`)
     herdMake('duck', a.x, a.z, { grp: a, male: false, age: 4, life: 50 }); for (let i = 0; i < 2; i++) herdMake('duck', b.x + i, b.z, { grp: b, male: true, age: 4, life: 50 }); updateHerds(0, 0);
-    for (let i = 0; i < 400 && !a.list.some(e => e.male); i++) duckLife(0.25);
-    out.visit = { a: a.list.filter(e => e.male).length, b: b.list.length, near: a.list.every(e => Math.hypot(e.x - a.hx, e.z - a.hz) < 3) };
+    // (each lacks what the other has: whichever's dice come up first sends one over: a drake to her, or she to them)
+    const met = () => a.list.some(e => e.male) || b.list.some(e => !e.male);
+    for (let i = 0; i < 400 && !met(); i++) duckLife(0.25);
+    const to = a.list.some(e => e.male) ? a : b;
+    out.visit = { a: a.list.length, b: b.list.length, to: to === a ? 'a' : 'b', pair: to.list.some(e => e.male) && to.list.some(e => !e.male), near: to.list.every(e => Math.hypot(e.x - to.hx, e.z - to.hz) < 3) };
     return out;
   });
   ok('mate: a drake and a free hen mate by day (not by night)', r.mated && !r.night, r);
   ok('mate: she hatches a clutch at her side, the drake\'s or her coat', r.hatch.n >= 2 && r.hatch.n <= 5 && r.hatch.by < 2 && r.hatch.coats && r.hatch.small, r);
   ok('mate: a full bunch: none', !r.full, r);
-  ok('mate: no drake in her bunch: one comes over from one near', r.visit.a === 1 && r.visit.b === 1 && r.visit.near, r);
+  ok('mate: no drake in her bunch: one comes over from one near (or she to them)', r.visit.pair && r.visit.a + r.visit.b === 3 && (r.visit.to === 'a' ? r.visit.a === 2 : r.visit.b === 3) && r.visit.near, r);
 }
 
 if (want('imprint')) {
