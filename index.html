@@ -1287,7 +1287,8 @@ const T = {
   mouse: { on: !SIM, holes: 9, ring: [2, 13], gap: 30, field: 3, lat: [6, 26], near: 46, n: [2, 8, 13], max: 16, walk: 0.45, run: 2.8, dash: [0.5, 2],
     shy: 4.5, pounce: 6, feet: 1.1, hank: 3, hear: 3.5, ears: 0.4, see: 2.6, home: 7, hide: [12, 40], raidR: 18, eat: 0.07, raid: 0.45, guard: 0.85,
     doze: 0.5, fear: 5.5, say: 1, coats: ['#8a6a4a', '#8c8a86', '#c8a874'] },
-  // STRAY CATS (on: off in ?sim): by each camp round(ecoN('cats') × share) strays (≤ max; a `kit` of them kittens, `pure` a purebred), made
+  // STRAY CATS (on: off in ?sim): by each camp round(ecoN('cats') × share) strays (≤ max; a `kit` of them kittens, `pure` a purebred; by the
+  // mountain camp and the Trading Post `cold` a Norwegian Forest Cat, if CAT LOOKS has one), made
   // with the flock within `near` m of its pen, gone past `far` (not one that follows); a hideout `hide` m off its pen (the cemetery, rocks).
   // By day they loaf there; from `dusk` h to `dawn` h they hunt. Shy (strays): a dog within `shy` m (sprinting ×1.6) coming on: it runs
   // (`flee` s); cornered within `corner` m: a hiss; right on it (`swipe` m): a swipe. A bark within barkR: off, trust −`barkTrust`.
@@ -1303,7 +1304,7 @@ const T = {
   // predator within `seeR` m: into a pen within `penR` m (a hop), up a fence post within `postR`, else off; the falcon: to cover (`coverR`).
   // A coyote runs at one within `coyR` (`chase` s, `cd`), eats it `eatT` s on; a cougar's `cougarSc` m worse than a sheep; the falcon's
   // `falcon` × a sheep's pick (a kitten ×3), within 90 m of a dog. grow: days to grown
-  cat: { on: !SIM, share: 0.4, max: 3, kit: 0.2, pure: 0.22, grow: 6, near: 90, far: 150, hide: [10, 16], dusk: 18.5, dawn: 6.5,
+  cat: { on: !SIM, share: 0.4, max: 3, kit: 0.2, pure: 0.22, cold: 0.15, grow: 6, near: 90, far: 150, hide: [10, 16], dusk: 18.5, dawn: 6.5,
     walk: 0.85, trot: 2.4, run: 8, stalk: 0.42, shy: 9, flee: 3, corner: 1.6, swipe: 0.9, barkTrust: 0.06, see: 8, seeN: 12, leap: [1, 1.5],
     wig: [0.3, 0.8], pounceT: 0.26, pounceH: 0.3, odds: { base: 0.35, busy: 1.5, alert: 0.55, kit: 0.55, hungry: 0.15, re: 0.75 },
     pin: [0.6, 1.2], play: 0.55, lets: [0.6, 1.2], rounds: 2, eatT: [5, 8], groomT: [3, 6], chase: 1.4, farHunt: 0.35,
@@ -22523,7 +22524,7 @@ function raidStep(dtH) {
 function catMake(o = {}) {
   const K = T.cat, b = CAT_BREED_IDS.includes(o.breed) ? o.breed : Math.random() < K.pure ? CAT_BREED_IDS[1 + Math.floor(Math.random() * (CAT_BREED_IDS.length - 1))] : 'moggy';
   const x = o.x ?? 0, z = o.z ?? 0, male = o.male ?? Math.random() < 0.5;
-  const c = { isCat: true, id: o.id || ++MC.nid, breed: b, coat: clamp(Math.round(o.coat ?? Math.floor(Math.random() * CAT_COATS[b])), 0, CAT_COATS[b] - 1), male,
+  const nc = CAT_COATS[b] || 1, c = { isCat: true, id: o.id || ++MC.nid, breed: b, coat: clamp(Math.round(o.coat ?? Math.floor(Math.random() * nc)), 0, nc - 1) | 0, male,
     x, z, y: groundY(x, z), h: 0, vx: 0, vz: 0, yaw: o.yaw ?? Math.random() * TAU, scale: 1, size: o.size ?? mcR(0.9, 1.08) * (male ? 1.05 : 0.96), age: o.age ?? mcR(10, 80), kit: false,
     state: 'sit', stateT: 0, spd: 0, look: 0, lookUp: 0, tail: 0.5, puff: 0, crouch: 0, owned: !!o.owned, name: o.name || '', trust: o.trust ?? 0, hunger: o.hunger ?? mcR(0.15, 0.55),
     heldBy: null, grabbed: null, mouse: null, dead: false, gone: false,
@@ -22963,7 +22964,9 @@ function catStrays(i) {
   const made = [];
   for (let k = 0; k < n; k++) {   // (a kitten: one of a queen's here)
     const q = Math.random() < K.kit ? made.find(o => !o.male && !o.kit) : null, hs = q ? { x: q.hx, z: q.hz } : catHideout(i);
-    made.push(catMake({ camp: i, x: hs.x, z: hs.z, hx: hs.x, hz: hs.z, age: q ? mcR(1, K.grow * 0.7) : mcR(K.grow + 4, 80), mum: q, male: q ? undefined : k === 0 ? false : undefined }));
+    const cold = !q && (cp === CAMPS[1] || cp === POST) && CAT_BREED_IDS.includes('norwegian') && Math.random() < K.cold;   // (up the cold legs: a Norwegian Forest Cat now and then)
+    made.push(catMake({ camp: i, x: hs.x, z: hs.z, hx: hs.x, hz: hs.z, age: q ? mcR(1, K.grow * 0.7) : mcR(K.grow + 4, 80), mum: q, male: q ? undefined : k === 0 ? false : undefined,
+      breed: q ? (Math.random() < 0.6 ? q.breed : undefined) : cold ? 'norwegian' : undefined }));
   }
 }
 // HUNGER: up by the hour (a stray by its camp scrapes a little); at 1 too long: gone. → true: it's starved
