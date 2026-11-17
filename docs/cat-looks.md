@@ -15,7 +15,9 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
   wide-set ears with a hint of lynx tip, britches, toe tufts, a plume as long as it: the fluffiest). Size: `catSize(c)` = `CAT_K` × breed `k`
   × `c.scale` (a moggy ~0.43 m at the shoulder); kittens (`catKitten`: from `scale`) a bigger head, stubby legs, a short tail, longer fur.
 - **Coats** (`catPaint`, `catTailCol`; `CQ`, `catMerge`: vertex colours and `aPat`, how much pattern, which way): base, belly, muzzle,
-  white (tuxedo, calico, bicolour; bib: a blaze, bib, belly, mittens (`mitt`: a front leg each), a flank sheen `sh`), colourpoints (face
+  white (tuxedo, calico, bicolour; bib: a narrow blaze, a white muzzle (`CAT_SNOW_FACE`), a narrow bib down the chest framed in grey
+  (`bib`: its cloud's width, rows), the belly behind, mittens (`mitt`: a front leg each), the inner front legs, a flank sheen `sh`; `nk`,
+  `mouth`: a smaller nose, a thin dark-grey mouth), colourpoints (face
   mask, ears, legs, tail). Stripes (mackerel, a line down the spine, the brow), rosettes, calico patches: drawn crisp (`CAT_PAT_GLSL`;
   `catMat`, one program `'catCoat'`, a material a coat).
 - **Long hair** (`B.fur`: how fluffy; ragdoll, Maine, Persian, Norwegian): solid fluff, cel-shaded and outlined like the rest, no strands.
