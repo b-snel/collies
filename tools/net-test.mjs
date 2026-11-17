@@ -202,15 +202,19 @@ try {
   const p1 = { ...p1A, ran: r2(await A.page.evaluate(() => GAME.G.time) - t0p), dog: await A.page.evaluate(() => GAME.G.dogs[0].mode), guest: p1B };
   check('the host pauses alone: its own menu ("Menu", ▶ the guest), the game goes on, its dog lies down, ⏸ by it on the guest',
     !p1.paused && p1.menu && p1.shown && p1.title === 'Menu' && p1.live && /⏸ Hostie/.test(p1.who) && /▶ Moss/.test(p1.who) && p1.ran > 0.2 && p1.dog === 'lie' && !p1B.shown && !p1B.paused && p1B.menus === '0', p1);
-  await B.page.keyboard.press('KeyP');
-  await until(A, () => GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  await B.page.keyboard.press('KeyP');   // (then till both panels say so: they redraw on their own, netUI, later on a loaded machine)
+  const pzSays = (title, who) => [A, B].map(P => until(P, ([t, w]) => document.getElementById('pauseT').textContent === t && new RegExp(w).test(document.getElementById('pauseWho').textContent), [title, who], 5000).catch(() => {}));
+  await until(A, () => GAME.G.paused, null, 5000).catch(() => {}); await Promise.all(pzSays('Paused', '⏸ Hostie.*⏸ Moss'));
   const [p2A, p2B] = await Promise.all([pz(A), pz(B)]);
   check('the guest pauses too: now the world waits, "Paused" on both screens, ⏸ by both', p2A.paused && p2B.paused && p2A.title === 'Paused' && p2B.title === 'Paused' && !p2B.live && p2B.shown
     && /⏸ Hostie/.test(p2B.who) && /⏸ Moss/.test(p2B.who) && p2A.menus === '0,1', { host: p2A, guest: p2B });
   await B.page.keyboard.press('KeyP');
-  await until(A, () => !GAME.G.paused, null, 5000).catch(() => {}); await sleep(300);
+  await until(A, () => !GAME.G.paused, null, 5000).catch(() => {});
+  await until(A, () => document.getElementById('pauseT').textContent === 'Menu', null, 5000).catch(() => {});
+  await until(B, () => document.getElementById('pause').classList.contains('hidden'), null, 5000).catch(() => {});
   const [p3A, p3B] = await Promise.all([pz(A), pz(B)]);
-  await A.page.keyboard.press('KeyP'); await sleep(300);
+  await A.page.keyboard.press('KeyP');
+  await until(A, () => document.getElementById('pause').classList.contains('hidden') && !GAME.G.menus.length, null, 5000).catch(() => {});
   const p4 = await pz(A);
   check('the guest carries on: the world goes on, the host still in its menu; then the host too', !p3A.paused && p3A.shown && p3A.title === 'Menu' && !p3B.shown && p3A.menus === '0'
     && !p4.paused && !p4.shown && p4.menus === '', { host: p3A, guest: p3B, after: p4 });
