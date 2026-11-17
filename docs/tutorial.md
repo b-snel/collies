@@ -38,6 +38,6 @@
   seen (`learnt`; all seven: `herd` too, then `travel`); `TUT_KEY` set.
   A journey that was saved is carried on with instead. `FLOCK.journeys`: the practice isn't one.
 - **When**: by itself the first time on a device (no `collies.tut`, no saved journey, no flock that's been on one); never under
-  `?sim`, `?debug`, `?sea`, `?go`, `?join`. The title's 🎓 (`#tTut`, T / Ⓨ; `tutWant`): on or off, any time. Skip: ⏩ on the card, the
+  `?sim`, `?debug`, `?sea`, `?go`, `?join`. The title's 🎓 (`#tTut`, T / Ⓨ; `tutGo`): the practice, now (that device's dog). Skip: ⏩ on the card, the
   pause screen's button (Ⓨ there). Offline only: going online ends it (`updateTut`). Friends on the sofa join as ever.
 - Test: `tools/tutorial-test.mjs` (a bot plays it through).

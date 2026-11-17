@@ -24,7 +24,7 @@ in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
 A sheep overboard: throw it a life ring, haul it in. The Promised Land: that wins.
-First time: a practice at the corral (seven lessons from an afternoon to the next morning, the sun waits; 🎓 on the title: again, or not).
+First time: a practice at the corral (seven lessons from an afternoon to the next morning, the sun waits; 🎓 on the title: again).
 
 ### Run
 
@@ -39,7 +39,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
 - Journey save: a reload carries on (localStorage `collies.journey`; title ▶, ✖ forgets). Not under `?sim`, `?sea`, `?go`, `?join`. See `docs/ui.md`.
-- Tutorial: the first journey on a device starts with the practice (localStorage `collies.tut`: done). Title 🎓 (T / Ⓨ): on / off; `GAME.tutWant(true)`,
+- Tutorial: the first journey on a device starts with the practice (localStorage `collies.tut`: done). Title 🎓 (T / Ⓨ): the practice, now (`tutGo`); `GAME.tutWant(true)`,
   `GAME.tutStart()`, `GAME.tutLesson(i)`. Off by itself under `?sim`, `?debug`, `?sea`, `?go`, `?join`. See `docs/tutorial.md`.
 - Build: bottom right of the title (`BUILD`, stamped by `build.js` on deploy,
   else "Dev build"). `build.js` also writes `version.json`; a different live
