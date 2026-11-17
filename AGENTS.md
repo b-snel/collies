@@ -354,7 +354,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
 - `docs/cats.md`: field mice (holes, the raid on the feed), stray cats (camps, hideouts, shy), the hunt, hunger, the bowl and adoption, ours, kittens, prey (coyotes, cougars, the falcon; the falcon's ducks), ✊, online, save.
-- `docs/cat-looks.md`: drawing cats and mice: breeds, coats, the model, poses, the tail, held from the scruff, mice, holes, icons.
+- `docs/cat-looks.md`: drawing cats and mice: breeds, coats, the model, poses, the tail, held from the scruff, long hair (layered fur that moves), the Norwegian (one real cat's coat), mice, holes, icons.
 - `docs/fishing.md`: the rod, casting, bites, the fight (beat, runs, leaps, team heave), the pack, the bowl, online, save.
 - `docs/eco.md`: the ecosystem: each leg's mice, ducks, fish, strays, coyotes, cougars, falcons (a population model); what the game reads from it and feeds it.
 - `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
