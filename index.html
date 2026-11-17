@@ -1276,7 +1276,7 @@ const T = {
     // a cougar hunts one in its range (`cougarSc` m worse than a sheep). Awake ones shy off one within `seeR` m (a cougar: half), fly up within `flyR`
     // (ducklings can't: they run); asleep they don't see it, till one's taken (the rest up, awake `alarmT` s). Out of every dog's reach (`near`,
     // off screen) by night, `farP` an hour × (n / cap)² one's taken (`farW`: weights duckling, old, the rest). None of it's ours: no alerts.
-    prey: { coyR: 9, chase: 6, cd: 20, cougarSc: 14, seeR: 7, flyR: 2.4, eatT: 5, alarmT: 25, farP: 0.3, farW: [3, 2, 1], falcon: 2 } },   // (falcon: × a sheep's pick by day, on land, near a dog: MICE & CATS falconSnackW)
+    prey: { coyR: 9, chase: 6, cd: 20, cougarSc: 14, seeR: 7, flyR: 2.4, eatT: 5, alarmT: 25, farP: 0.3, farW: [3, 2, 1], falcon: 5 } },   // (falcon: × a sheep's pick by day, on land, near a dog: MICE & CATS falconSnackW)
   // MICE & CATS: field mice (on: off in ?sim). Holes (own rng, the same on every screen): `holes` round each camp's pen (R + ring m), `field`
   // every `gap` m along the trail (`lat` m off it). Out within `near` m of a dog or the flock: n [day, dusk, night] × ecoD('mice') (≤ max);
   // out of range or over: down their holes. walk / run m/s, a dash `dash` m; off home from a dog within `shy` m (sprinting ×1.5, pouncing
@@ -1309,7 +1309,7 @@ const T = {
     pin: [0.6, 1.2], play: 0.55, lets: [0.6, 1.2], rounds: 2, eatT: [5, 8], groomT: [3, 6], chase: 1.4, farHunt: 0.35,
     hungerH: 0.03, scrap: 0.012, mouse: 0.22, fish: 0.45, starveH: 24, hungry: 0.6, smell: 40, duskSmell: 1.5, hungrySmell: 0.6, bowlShy: 10,
     lie: 4, bowlT: 4, trustDay: 0.3, follow: [16, 24], adopt: 3, forget: 0.34, ours: 4, rubR: 6, rubP: 0.02, nap: [30, 70], patrol: [20, 40],
-    prey: { seeR: 14, penR: 24, postR: 14, coverR: 22, coyR: 10, chase: 7, cd: 25, eatT: 6, cougarSc: 10, falcon: 1.2 },
+    prey: { seeR: 14, penR: 24, postR: 14, coverR: 22, coyR: 10, chase: 7, cd: 25, eatT: 6, cougarSc: 10, falcon: 3 },
     // KITTENS: a tom and a queen of ours under `fed` hunger by the pen at nightfall: `p` a night she's expecting (strays: `wild`), `days` on a
     // litter of `litter`; no more while there are `kits` kittens (ours: `ours` cats in all)
     mate: { fed: 0.4, p: 0.5, wild: 0.08, kits: 4, ours: 8, days: [2, 3], litter: [2, 4] } },
@@ -22332,7 +22332,7 @@ function catFearAt(x, z, r = T.mouse.fear) {
   return false;
 }
 // any cat in or by pen P (they smell it): how much it puts them off going in (0 none … 1); awake more than asleep
-function catScent(P) { let k = 0; for (const c of CATS) { if (c.grabbed || c.heldBy || Math.hypot(c.x - P.x, c.z - P.z) > P.R + 3) continue; k = Math.max(k, c.state === 'sleep' ? 0.5 : 0.85); } return k; }
+function catScent(P) { let k = 0; for (const c of CATS) { if (c.grabbed || c.heldBy || Math.hypot(c.x - P.x, c.z - P.z) > P.R + 3) continue; k = Math.max(k, c.state === 'sleep' ? 0.7 : 0.9); } return k; }
 
 // ---------------- MICE ----------------
 function mouseMake(h, o = {}) {
@@ -22425,7 +22425,7 @@ function mousePlan(m) {
 function mouseArrive(m) {
   const K = T.mouse, g = m.goal; m.goal = null; mouseStop(m);
   if (g.k === 'home') { if (m.home) { mouseRemove(m); return; } mouseSet(m, 'hide'); m.hideT = mcR(3, 12); m.trips = 0; return; }
-  mouseSet(m, 'nibble'); m.act = g.k === 'raid' ? mcR(8, 25) : mcR(2, 6); m.tr = g.k === 'raid' ? g.tr : null; m.h = m.tr ? 0.3 : 0;
+  mouseSet(m, 'nibble'); m.actSt = 'nibble'; m.act = g.k === 'raid' ? mcR(8, 25) : mcR(2, 6); m.tr = g.k === 'raid' ? g.tr : null; m.h = m.tr ? 0.3 : 0;
 }
 // RAID: at a trough, nibbling (in sight: what it eats is what's gone; fast-forwarding: raidStep does it)
 function mouseNibble(m, dtH) {
@@ -22452,9 +22452,10 @@ function mouseStep(m, dt, dtH) {
   m.alert = Math.max(0, m.alert - dt * 0.3);
   if (m.pause > 0) { m.pause -= dt; mouseStop(m); return; }
   if (m.act > 0) {   // nibbling, grooming
-    m.act -= dt; mouseStop(m);
+    m.act -= dt; mouseStop(m); mouseSet(m, m.actSt || 'nibble');
+    if (m.tr && catFearAt(m.x, m.z, K.fear * 0.6)) m.act = 0;   // a cat come by (asleep or not): off
     if (m.state === 'nibble' && m.tr) mouseNibble(m, dtH);
-    if (m.act <= 0) { if (m.state === 'nibble' && Math.random() < 0.3) { mouseSet(m, 'groom'); m.act = mcR(1, 2.2); } else { m.tr = null; m.h = 0; } }
+    if (m.act <= 0) { if (m.state === 'nibble' && Math.random() < 0.3) { mouseSet(m, 'groom'); m.actSt = 'groom'; m.act = mcR(1, 2.2); } else { m.tr = null; m.h = 0; } }
     return;
   }
   if (!m.goal) mousePlan(m);
@@ -22526,7 +22527,7 @@ function catMake(o = {}) {
     state: 'sit', stateT: 0, spd: 0, look: 0, lookUp: 0, tail: 0.5, puff: 0, crouch: 0, owned: !!o.owned, name: o.name || '', trust: o.trust ?? 0, hunger: o.hunger ?? mcR(0.15, 0.55),
     heldBy: null, grabbed: null, mouse: null, dead: false, gone: false,
     camp: o.camp ?? -1, hx: o.hx ?? x, hz: o.hz ?? z, fed: o.fed || 0, fedDay: o.fedDay ?? -9, starve: 0, pen: null, hop: null, air: null, perch: null, cover: false, ref: null,
-    foe: null, scareT: 0, calmT: 0, hunt: null, huntCd: mcR(2, 8), ambush: false, poseT: 0, goal: null, goT: 0, fleeT: 0, run: null, ga: Math.random() * TAU, napT: 0, patT: 0,
+    foe: null, scareT: 0, calmT: 0, react: 0, hunt: null, huntCd: mcR(2, 8), ambush: false, poseT: 0, goal: null, goT: 0, fleeT: 0, run: null, ga: Math.random() * TAU, napT: 0, patT: 0,
     bowl: false, atBowl: false, bowlT: 0, mum: o.mum || null, preg: o.preg || 0, sire: o.sire || null, roamT: 0, pitch: mcR(0.9, 1.15), lookAt: null, rubT: 0 };
   catLook(c); CATS.push(c); return c;
 }
@@ -22671,7 +22672,7 @@ const falconHas = s => s.isCat ? CATS.includes(s) : s.isHerd ? HERDS.includes(s)
 // a predator near (the nearest within seeR; the falcon first if it's after this one)
 function catFoe(c) {
   for (const F of FALCONS) if (F.target === c && (F.state === 'circle' || F.state === 'dive')) return F;
-  const R = T.cat.prey.seeR; let best = null, bd = R;
+  const R = T.cat.prey.seeR * (c.state === 'sleep' ? 0.4 : 1); let best = null, bd = R;   // (asleep: only one right by it)
   for (const o of G.coyotes) {
     if (o.gone || o.air || o.heldBy || o.state === 'sleep' || o.state === 'burrow' || o.state === 'dead' || (o.state === 'leave' && !o.prey) || Math.abs(o.x - c.x) > bd || Math.abs(o.z - c.z) > bd) continue;
     const d = Math.hypot(o.x - c.x, o.z - c.z); if (d < bd) { bd = d; best = o; }
@@ -22715,11 +22716,16 @@ function catDanger(c, dt) {
     const p = catPenOf(c.x, c.z), a = p ? Math.atan2(c.z - p.z, c.x - p.x) : c.yaw;   // down, outside the fence
     catHop(c, c.x + Math.cos(a) * 1.2, c.z + Math.sin(a) * 1.2, 0.3, 0.5); return true;
   }
-  if (f) { if (c.foe !== f) c.ref = null; c.foe = f; c.scareT = 6; if (c.hunt) catHuntEnd(c, 'scared'); c.bowl = c.atBowl = false; c.ambush = false; }
+  if (f) {
+    if (c.foe !== f) { c.ref = null; if (!c.foe) c.react = c.state === 'sleep' ? 0.6 : 0.3; }   // (a start: puffed up, a moment to take it in)
+    c.foe = f; c.scareT = 6; if (c.hunt) catHuntEnd(c, 'scared'); c.bowl = c.atBowl = false; c.ambush = false;
+  }
   else if (c.scareT > 0 && c.foe) c.scareT -= dt;
   else { c.cover = false; c.ref = null; c.foe = null; return false; }
-  const foe = c.foe; if (!c.ref) c.ref = catRefuge(c, foe);
-  const r = c.ref; c.puff = Math.max(c.puff, 0.8); c.lookAt = foe;
+  const foe = c.foe; c.puff = Math.max(c.puff, 0.8); c.lookAt = foe;
+  if (c.react > 0) { c.react -= dt; catStop(c, dt); catSet(c, 'sit'); catFace(c, foe, dt, 8); return true; }
+  if (!c.ref) c.ref = catRefuge(c, foe);
+  const r = c.ref;
   if (r.kind === 'safe') { catStop(c, dt); catSet(c, 'sit'); catFace(c, foe, dt); return true; }
   if (r.kind === 'away') {
     if (!f) { c.scareT = 0; return false; }
@@ -23357,7 +23363,7 @@ expose(() => ({ MICE, CATS, MOUSE_HOLES, MC, CAT_NAMES, mouseHoles, mouseHoleOK,
   raidStep, raidGuard, catScent, catFearAt, catMake, catRemove, catLook, catStep, catGo, catHop, catLaunch, catPrey, catNear, coyoteCat, catSnatched, catFreed, catKilled, falconSnatch,
   falconSnackW, falconLetGoSnack, falconHas, catFoe, catRefuge, catPost, catDanger, catDogs, catRun, catSpot, catHuntStart, catHuntEnd, catHunt, catPounce, catOdds, catSearch, catArea, catHunts, catHideout, catCamps, catStrays,
   catHunger, catBowl, catBowlR, catFed, catAdopt, catNightfall, catPair, catLitter, catKitten, catStray, catOurs, catFar, catSeen, catGrip, catGrabbed, catLetGo, catBark, catFx, mcDawn,
-  updateMiceCats, resetMiceCats, devCat, netGuestCat, netGuestMouse }));   // MICE & CATS
+  updateMiceCats, resetMiceCats, devCat, netGuestCat, netGuestMouse, hudCats, mapCats, BOWL, bowlTake }));   // MICE & CATS (BOWL: FISHING's, for tests)
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
