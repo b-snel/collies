@@ -8,7 +8,8 @@
 //   harvest  4 of our cats hunting a leg (a cat's take: fewer to find, fewer caught): they compete with the coyotes (fewer coyotes, as
 //            many mice or fewer: the leg's mice are robust; the feed the cats guard is by the pen) and the mice hold on
 //   game     the game reads it (T.eco.on): tonight's coyotes × the leg's (more when many, fewer when few), the den shrinks in lean
-//            times, the falcon's wait ÷, cougars out by numbers; hungry coyotes braver; a kill (preyKill) feeds the leg; off: all × 1
+//            times, the falcon's wait ÷, cougars out by numbers; hungry coyotes braver; a kill (preyKill) feeds the leg (a stray cat: one
+//            fewer stray; one of ours: not); off: all × 1
 //   save     a reload: the same numbers on every leg
 //   migrate  MIGRATION and MATING: starving coyotes leave a leg far faster than fed ones, and look further (2+ legs away), toward the leg
 //            with food; an emptied leg is filled again from its neighbours; few about: fewer find a mate, more set off to look; the
@@ -165,6 +166,9 @@ if (want('game')) {
     ECO.legs[1].cougar = ecoBase()[1].cougar * 0.4; out.cougP = ecoCougarP(1);
     // a kill seen: the leg's coyotes fed, its sheep count nothing (not the model's)
     const f0 = ECO.legs[li].fed.coy, s = G.sheep.find(o => !o.ram && !o.dead); preyKill(s, 'eaten'); out.fedUp = ECO.legs[li].fed.coy > f0; out.kills = ECO.kills['coy>sheep'] || ECO.kills['coy>lamb'] || 0;
+    // a cat: a stray taken is one fewer of the leg's strays; one of ours feeds them, but was never a stray
+    { const g = ECO.legs[li], c0 = g.cats; GAME.ecoMeal({ isCat: true, owned: false, x: s.x, z: s.z }, 'eaten'); out.strayDown = +(c0 - g.cats).toFixed(3);
+      const c1 = g.cats; GAME.ecoMeal({ isCat: true, owned: true, x: s.x, z: s.z }, 'eaten'); out.oursDown = +(c1 - g.cats).toFixed(3); }
     // an hour on: every leg stepped
     const m0 = ECO.legs.map(g => g.mice); G.clock.hour = 10; for (let i = 0; i < 40 * 40; i++) step(0.025); out.moved = ECO.legs.filter((g, i) => g.mice !== m0[i]).length;
     T.eco.on = false;
@@ -178,6 +182,7 @@ if (want('game')) {
   ok('game: the falcon comes more often when there are more', r.falK > 1.3, r);
   ok('game: few cougars: some nights one just watches', r.cougP < 0.6, r);
   ok('game: a kill in the game feeds the leg\'s coyotes', r.fedUp && r.kills >= 1, r);
+  ok('game: a stray cat taken: one fewer stray; one of ours: none fewer', r.strayDown === 1 && r.oursDown === 0, r);
   ok('game: every leg stepped as the hours pass', r.moved === 5, r);
 }
 

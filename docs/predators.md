@@ -73,3 +73,9 @@
   while (`cd`). Bark or pounce: back. Bite: `s.venom`, slower, sickly, dead in
   `dieHours` untreated.
 - **Crias** (LLAMAS): coyote packs and cougars take a cria as a lamb (`criaPrey`): picked, grabbed, dragged, dropped, eaten the same (`preyKill`).
+- **Cats** (MICE & CATS, docs/cats.md): coyotes (`coyoteCat`), cougars (`cougarTarget`) and the falcon (`falconPick`: `falconSnackW`) take
+  them; a cat runs for a shut pen, a fence post or cover (`catPrey`). Strays are wild (`preyWild`); ours: alerts. The falcon takes ducks
+  too (on land, by day, near a dog; `T.duck.prey.falcon`), carried to its nest (`falconHas`: its prey, a sheep or not).
+- **How many** (ECOSYSTEM, docs/eco.md): tonight's coyotes, a den's size, a cougar out, the falcon's passes go by each leg's numbers
+  (`ecoCoyotes`, `ecoCougarP`, `ecoK('falcon')`); hungry coyotes braver and from dens further off (`ecoHunger`, `ecoReach`); every kill
+  feeds the leg's predators (`preyKill` → `ecoMeal`). Off in `?sim`: all as before.

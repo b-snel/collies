@@ -21,7 +21,7 @@
   or `loseR` m behind, or its dog gone: on its own again, in the nearest bunch within `settleR` m or one of its own (`duckSettle`). Saved with
   its dog's slot (`e.dogSlot`) and new bunches.
 - **Prey** (PREY, `T.duck.prey`): a hunting coyote ('pack', not striking) runs at one on land within `coyR` m (`coyoteDuck`, `chase` s, then `cd`),
-  grabs it (`grab`: the pack hunts on), eats it `eatT` s on (`preyKill` → `duckDie`), off home. A cougar hunts one in its range (`cougarTarget`,
+  grabs it (`grab`: the pack hunts on), eats it `eatT` s on (`preyKill` → `duckDie`), off home. The falcon takes one on land by day (`falconPick`, `T.duck.prey.falcon`; docs/predators.md). A cougar hunts one in its range (`cougarTarget`,
   `cougarSc` m worse than a sheep), up its tree. Awake ones shy off a predator within `seeR` (a cougar: half) and fly up within `flyR` (`duckFoes`;
   ducklings run); asleep they don't see it, till one's taken (`duckSnatched`: the rest up and off, awake `alarmT` s). On the water: safe. Dropped
   (a dog, dawn): up and off (`duckFreed`). Out of every dog's reach and off screen, by night: `farP` an hour × (n / cap)² one's taken

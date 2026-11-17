@@ -24,6 +24,9 @@
 - **And the game feeds it**: `preyKill` → `ecoMeal` (a coyote's, cougar's, falcon's kill: the leg's predators fed, its kind one fewer; `meal`:
   what each is worth), `ecoEat(pred, prey, li, n)` (a cat's mouse, a dog's fish), `ecoAdd` (a stray taken in). With the ducks on, their
   bunches are the ducks' count (`updateEco`).
+- **Cats** (docs/cats.md): strays by each camp by its leg's `ecoN('cats')`; one taken in: `ecoAdd('cats', -1)`; a stray litter: +; a cat's mouse:
+  `ecoEat('cats', 'mouse')`; a predator's cat (`ecoMeal`): ours feed it but aren't the strays' count (`wild` false). Mice by the pens: `ecoD('mice')`;
+  fish biting: `ecoD('fish')`, a catch `ecoEat('dog', 'fish')` (docs/fishing.md).
 - **Hank** (`ecoNews`, `say`): once a leg, by day, as the flock comes onto it: hungry coyotes coming in from the next leg's land (`ECO_LAND`),
   hungry coyotes, a mouse boom, many coyotes, a mouse bust, few.
 - **Map** (`mapEco`, big): each leg's wild where a dog's been: 🐭 🐱 🐺 🦅 🐆, each ⬆ / ⬇ against its mean, ❗ hungry coyotes (`ECO.show`,
