@@ -17022,6 +17022,7 @@ function mapMarks(c, u) {
   for (const F of FALCONS) if (['circle', 'dive', 'carry', 'nest'].includes(F.state)) { const q = mapPt(F.x, F.z); if (on(q) && sees(F.x, F.z)) drawArt(c, 'falcon', q[0], q[1], 11 * u); }
   mapLlamas(c, u, on, mapSeen);   // LLAMAS: guards; wild ones where a dog's been
   mapDucks(c, u, on, mapSeen);   // DUCKS: bunches where a dog's been
+  mapEco(c, u, on, mapSeen);   // ECOSYSTEM: each leg's wild (big)
   if (T.trial.on && mapSeen(TF.x, TF.z)) { const q = mapPt(TF.x, TF.z); if (on(q)) drawArt(c, 'trophy', q[0], q[1], 11 * u); }   // TRIALS
   for (const d of G.dogs) {   // the dogs: an arrow each, their colour, the way they face
     const q = mapPt(d.x, d.z); if (!on(q, 6)) continue;
@@ -25050,7 +25051,7 @@ expose(() => ({ WILDS, WILD, makeWild, wildRemove, wildReset, wildJoin, wildRope
 // (a kill or a catch seen), ecoAdd (a stray taken in). Off (?sim): every ecoK 1, ecoD / ecoN the long-run mean. Own dice throughout.
 // =====================================================================
 const ECO_PREY = ['mice', 'ducks', 'fish'], ECO_PRED = ['coy', 'cougar', 'falcon', 'cats'], ECO_KINDS = ['mice', 'ducks', 'fish', 'cats', 'coy', 'cougar', 'falcon'];
-const ECO = { legs: [], seed: 0, R: Math.random, h: 0, base: null, said: {}, kills: {} };
+const ECO = { legs: [], seed: 0, R: Math.random, h: 0, base: null, said: {}, kills: {}, show: [], at: -1, newsT: 0 };   // show: each leg's [mice, cats, coyotes, falcons, cougars] × their mean, coyotes' hunger (the map; guests' from the host)
 // a fresh leg: prey 30–90% of K, predators 60–140% of base, fed about right
 function ecoLegNew(h, R) {
   const g = { fed: {}, noise: (R() * 2 - 1) * 0.4, dl: 0 };
@@ -25107,11 +25108,30 @@ function ecoBase() {
 }
 // a new journey: each leg somewhere in its cycle (T.eco.burn days from a fresh start, on the journey's own dice)
 function resetEco(seed) {
-  ECO.said = {}; ECO.kills = {}; ECO.h = 0;
+  ECO.said = {}; ECO.kills = {}; ECO.h = 0; ECO.at = -1; ECO.newsT = 0;
   ECO.seed = seed ?? (Math.random() * 2 ** 31) >>> 0;
   ECO.R = mulberry32((ECO.seed ^ 0x3c0e11) >>> 0);
   ECO.legs = T.eco.hab.map(h => ecoLegNew(h, ECO.R));
   if (T.eco.on) ecoRun(ECO.legs, T.eco.burn, ECO.R, 1 / 4);
+  ecoShow();
+}
+// what the map shows (the host's: guests get it as it is)
+const ECO_SHOW = ['mice', 'cats', 'coy', 'falcon', 'cougar'];
+function ecoShow() { ECO.show = T.eco.on ? ECO.legs.map((g, i) => [...ECO_SHOW.map(k => T.eco.hab[i][k] ? Math.round(ecoK(k, i) * 20) / 20 : 0), Math.round(ecoHunger('coy', i) * 20) / 20]) : []; }
+const ecoNetOut = () => ECO.show.map(a => a.join(',')).join(';');
+function ecoNetIn(v) { ECO.show = typeof v === 'string' && v ? v.split(';').map(r => r.split(',').map(Number)) : []; }
+// Hank's word on a leg, once a journey: the flock's come onto it by day and something's out of the way (T.eco.say)
+function ecoNews(dt) {
+  const li = ecoHere(); if (li !== ECO.at) { ECO.at = li; ECO.newsT = 6; }
+  if (li < 0 || ECO.said[li] || ECO.newsT <= 0 || (ECO.newsT -= dt) > 0 || isNight()) return;
+  ECO.said[li] = true;
+  const S = T.eco.say, coy = T.eco.hab[li].coy ? ecoK('coy', li) : 1, hun = T.eco.hab[li].coy ? ecoHunger('coy', li) : 0;
+  const line = hun >= S.hungry && coy >= 0.9 ? pick(["Coyotes are hungry round here. They'll be bold tonight.", "Not much out there for the coyotes. They'll come for the flock."])
+    : ecoD('mice', li) >= S.boom ? pick(["Mice everywhere this year! They'll be at the feed.", "Look at all these mice. A cat'd earn its keep here."])
+    : coy >= S.many ? pick(["Coyote country, this. Plenty of 'em about.", "Lot of coyotes this year. Pen 'em early."])
+    : ecoD('mice', li) <= S.bust ? pick(["Hardly a mouse about. Lean times for the coyotes.", "Mice are scarce. The coyotes'll be thin."])
+    : coy <= S.few ? pick(["Quiet out here. The coyotes have thinned.", "Not many coyotes left round here."]) : null;
+  if (line) hank(null, line, { delay: 0.5 });
 }
 onReset(() => resetEco(T.eco.on ? undefined : 1), 25);   // ECOSYSTEM (before the dens: tonight's coyotes read it)
 // which leg's land (x, z) is on: 0…4 (the end camp's leg; the pass: 4); -1 at sea, in Cold Harbour
@@ -25159,11 +25179,13 @@ function ecoAdd(kind, dn, li) { li = ecoLegOf(li); if (!T.eco.on || li < 0 || !E
 // the host, every step: every leg on, an hour at a time (DUCKS: their bunches are the ducks' count; out of sight, taken as the model says)
 function updateEco(dtH) {
   if (!T.eco.on || !ECO.legs.length || G.tut) return;
+  if (G.mode === 'play' && !SEA.on) ecoNews(dtH * hourLen());
   ECO.h += dtH;
   while (ECO.h >= T.eco.tick) {
     ECO.h -= T.eco.tick;
     if (T.duck.on) { const n = ECO.legs.map(() => 0); for (const e of HERDS) if (duckWild(e) && e.grp && e.grp.leg >= 0) n[e.grp.leg]++; ECO.legs.forEach((g, i) => { if (T.eco.hab[i].ducks) g.ducks = n[i]; }); }
     ecoRun(ECO.legs, T.eco.tick / 24, ECO.R, T.eco.tick / 24);
+    ecoShow();
   }
 }
 // a predator's kill in the game (preyKill: why 'eaten' a coyote's, 'cougar', 'falcon'): its leg's predators fed, the prey's count down
@@ -25176,6 +25198,30 @@ function ecoMeal(s, why) {
 function ecoCoyotes(n) { return T.eco.on ? Math.max(1, Math.round(n * ecoK('coy'))) : n; }
 // the chance a cougar near the flock hunts tonight: how many there are (lean years: some just watch from their limb), hungrier: keener
 function ecoCougarP(li) { return T.eco.on ? clamp(ecoK('cougar', li) * (0.9 + 0.5 * ecoHunger('cougar', li)), 0.25, 1) : 1; }
+// MAP (big): each leg's wild where a dog's been, at its middle: 🐭 🐱 🐺 🦅 🐆, each ⬆ many / ⬇ few (× its mean), ❗ the coyotes hungry
+function mapEco(c, u, on, seen) {
+  if (!MAP.big || !ECO.show.length) return;
+  const sz = 12 * u, gap = sz * 1.05;
+  ECO.show.forEach((v, i) => {
+    const s = (CAMPS[i].s + CAMPS[i + 1].s) / 2, p = pathPoint(s, 0); if (!seen(p.x, p.z)) return;
+    const q = mapPt(p.x, p.z); if (!on(q, 40)) return;
+    const icons = ECO_SHOW.map((k, j) => [['🐭', '🐱', '🐺', '🦅', '🐆'][j], v[j]]).filter(o => o[1] > 0), w = icons.length * gap + sz * 0.4, x0 = q[0] - w / 2 + gap / 2 + sz * 0.2, y0 = q[1] + 14 * u;
+    c.fillStyle = 'rgba(243,228,192,.88)'; c.strokeStyle = 'rgba(74,42,18,.7)'; c.lineWidth = 1; c.beginPath(); c.roundRect(q[0] - w / 2, y0 - sz * 0.7, w, sz * 2.2, 4 * u); c.fill(); c.stroke();
+    icons.forEach(([e, k], j) => {
+      const x = x0 + j * gap, a = artOf(e); if (a) drawArt(c, a, x, y0, sz);
+      if (k >= 1.25 || k <= 0.8) drawArt(c, k >= 1.25 ? 'up' : 'down', x, y0 + sz * 0.95, sz * 0.62);
+      else { c.fillStyle = 'rgba(74,42,18,.6)'; c.beginPath(); c.arc(x, y0 + sz * 0.95, 1.4 * u, 0, TAU); c.fill(); }
+      if (e === '🐺' && v[5] >= T.eco.say.hungry) drawArt(c, 'bang', x + sz * 0.45, y0 - sz * 0.45, sz * 0.6);
+    });
+  });
+}
+// DEV: the wild here, a press at a time: a mouse boom (few coyotes yet), then a crash (many, hungry), then as it was
+function devEco() {
+  const li = ecoHere(); if (li < 0 || !T.eco.on) return;
+  const g = ECO.legs[li], b = ecoBase()[li], H = T.eco.hab[li], n = ECO.dev = ((ECO.dev || 0) + 1) % 3;
+  if (n === 1) { g.mice = H.mice; g.coy = b.coy * 0.6; g.fed.coy = 1.4; } else if (n === 2) { g.mice = H.mice * 0.06; g.coy = b.coy * 1.7; g.fed.coy = 0.25; } else { g.mice = b.mice; g.coy = b.coy; g.fed.coy = b.fed.coy; }
+  ecoShow(); ECO.said[li] = false; ECO.newsT = 0.1; toast(['🐭 🐺 🌿', '🐭 ⬆ 🐺 ⬇', '🐭 ⬇ 🐺 ⬆ ❗'][n], '');
+}
 // out of sight, how hard a leg's predators are on ducks (× DUCKS' farP): a duck's chance of being taken a day there against the long run's
 function ecoDuckK(li) { if (!T.eco.on || li < 0 || !ECO.legs[li]) return 1; const b = ecoBase()[li].dl; return b > 1e-4 ? clamp(ECO.legs[li].dl / b, T.eco.k[0], T.eco.k[1] * 1.5) : 1; }
 onSave('eco', () => T.eco.on ? { seed: ECO.seed, h: +ECO.h.toFixed(3), legs: ECO.legs.map(g => [...ECO_KINDS.map(k => +g[k].toFixed(2)), ...ECO_PRED.map(j => +g.fed[j].toFixed(3)), +g.noise.toFixed(3)]) } : undefined, v => {
@@ -25183,7 +25229,8 @@ onSave('eco', () => T.eco.on ? { seed: ECO.seed, h: +ECO.h.toFixed(3), legs: ECO
   ECO.seed = v.seed >>> 0; ECO.h = +v.h || 0; ECO.R = mulberry32((ECO.seed ^ 0x3c0e11 ^ (G.clock.day * 7919)) >>> 0);
   v.legs.forEach((a, i) => { const g = ECO.legs[i]; if (!g || !Array.isArray(a)) return; ECO_KINDS.forEach((k, j) => { if (Number.isFinite(a[j])) g[k] = Math.max(0, a[j]); }); ECO_PRED.forEach((j, n) => { const f = a[ECO_KINDS.length + n]; if (Number.isFinite(f)) g.fed[j] = f; }); if (Number.isFinite(a.at(-1))) g.noise = a.at(-1); });
 }, 26);
-expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ecoMeal, ecoCoyotes, ecoCougarP, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
+resetEco(T.eco.on ? undefined : 1);   // (the first journey)
+expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ECO_SHOW, ecoShow, ecoNews, ecoNetOut, ecoNetIn, mapEco, devEco, ecoMeal, ecoCoyotes, ecoCougarP, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
 
 // =====================================================================
 // RAM FOLDS (LINEAGE: rams apart) — hurdles from the vagabond (🚧, T.vendor.fold): Hank's fold goes up beside the camp's pen picked on 📍,
@@ -28504,6 +28551,7 @@ const NET_TYPES = {
     make: (id, f) => netGuestLlama(id, f), kill: L => llamaRemove(L), animate: (L, dt) => netAnimLlama(L, dt),
   },
   fold: { tag: 'm', one: () => FOLD_NET, fields: { b: { c: 's', get: () => foldNetOut(), set: (o, v) => foldNetIn(v) } } },   // RAM FOLDS: which camp pens have one (in order: pens' indices agree)
+  eco: { tag: '9', one: () => ECO, fields: { show: { c: 's', get: () => ecoNetOut(), set: (o, v) => ecoNetIn(v) } } },   // ECOSYSTEM: each leg's wild, as the map shows it
   wild: {   // WILD RAMS: where, what he's at, on a rope (which, where), the castaway's off while she's not at his island
     tag: 'z', all: () => WILDS, id: W => W.nid || (W.nid = ++NET.nid),
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', state: 's', kind: 's', isle: 'i', name: 's', wool: 's', off: 'b', hopY: .02, tugK: .05, stumble: .05,
@@ -30399,6 +30447,7 @@ const DEV_CHEATS = [
   { code: null, key: '', icon: '🤒', tip: 'The pox (a night too many here)', fn: () => devPox() },   // SHEEP POX
   { code: 'KeyF', key: 'F', icon: '🏪', tip: 'Into the Trading Post, ≥120 wool', fn: () => { const d = G.dogs[0]; if (d) { if (SEA.on) devJump(POST.s, { url: false }); const p = postPen; d.x = p.exitX + 2; d.z = p.exitZ + 2; for (const s of G.sheep) { s.x = p.x + rnd(-5, 5); s.z = p.z + rnd(-5, 5); } G.wool = Math.max(G.wool || 0, 120); vagDevTo(VAG.pitches.length - 1); updateCamera(0, true); devUrl(POST.s, null); } } },   // VENDOR (VAGABOND: at his Trading Post pitch)
   { code: null, key: '', icon: '🎒', tip: 'To the vagabond, ≥60 wool', fn: () => vagGo() },   // VAGABOND
+  { code: null, key: '', icon: '🌿', tip: 'The wild here: a mouse boom, then a crash, then as it was', land: true, fn: () => devEco() },   // ECOSYSTEM
   // the old jumps (the strip does the same)
   { code: 'KeyU', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🦅').s, { hour: [8, 13] }) },   // FALCON CANYON: its mouth
   { code: 'KeyL', hide: true, fn: () => devJump(DEV_STOPS.find(t => t.icon === '🐍').s, { hour: [8, 14] }) },   // RATTLESNAKES
