@@ -18892,13 +18892,13 @@ const barnFlock = () => G.sheep.filter(s => !s.dead);
 const barnLlamas = () => LLAMAS.filter(L => L.tame > 0);   // LLAMA WARDROBE: ours (broken or a guard)
 const BARN_TABS = ['dogs', 'sheep', 'kin', 'llamas'];
 const barnTabOK = t => t === 'dogs' || (t === 'sheep' || t === 'kin' ? !!BARN.sel : t === 'llamas' && !!BARN.ll);   // (LINEAGE: 🌳, the selected sheep's tree)
-// ONLINE: every screen has its own barn. Whose dogs it dresses (DOGS.looks indices): offline / the host, every slot but a friend's
-// (they dress theirs in their own barn); a guest, its own: DOGS.looks[k] on its screen is its k-th dog, in the host's slot NET.locals[k].slot.
+// Whose dogs it dresses (DOGS.looks indices): the dogs playing on this screen (on the title: P1's). ONLINE: every screen has its own barn;
+// a friend's dog isn't listed (they dress theirs in their own); a guest's DOGS.looks[k] is its k-th dog, in the host's slot NET.locals[k].slot.
 // A guest's sheep edits go to the host as well (barnEdit → 'sh'); its snapshots bring everyone else's (barnSync).
 function barnDogs() {
   if (NET.role === 'guest') return [...Array(Math.max(1, NET.locals.length)).keys()];
-  const net = new Set(G.players.filter(p => p.kind === 'net').map(p => p.slot));
-  return [0, 1, 2, 3].filter(i => !net.has(i));
+  const ks = G.players.filter(p => p.kind !== 'net').map(p => p.slot).sort((a, b) => a - b);
+  return ks.length ? ks : [0];
 }
 const barnSlot = k => { const L = NET.role === 'guest' && NET.locals[k]; return L && L.slot >= 0 ? L.slot : k; };   // its place in the game (its colours)
 const barnDogLook = k => NET.role === 'guest' ? cleanDogLook(netLookOut(k), barnSlot(k)) : dogLook(k);   // as it'll look out there
@@ -28222,7 +28222,7 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 // =====================================================================
 const NET_VER = 1;
 // (a bad line: backlog = bytes still queued for a friend before the next snapshot goes; slowMs: a ping that far over its best
-//  sends every 2nd, then 4th snapshot; joinMs a try, joinTries;
+//  sends every 2nd, 4th, 8th snapshot, back a step a ping once it's steady (netSeatRtt); joinMs a try, joinTries;
 //  iceGrace: a link gone quiet that long is lost; rejoin: s between tries to get back in after a drop)
 const NETT = { hz: 20, grassMs: 330, staleIn: 1500, dropMs: 60000, joinMs: 30000, joinTries: 2, reclaimMs: 120000, maxGuests: 3, fxCap: 250,
   backlog: 1500, slowMs: 300, iceGrace: 20000, iceMs: 5000, rejoin: [4, 8, 15, 30, 30] };
@@ -29210,11 +29210,12 @@ function netSnapTick() {
     for (const o of T.one ? [T.one()] : T.all()) { const id = T.one ? 0 : T.id(o); if (id == null || id < 0) continue; m.set(id, T.F.map(F => F.enc(F.get(o)))); }
     cur[T.tag] = m;
   }
-  const fxq0 = NET.fxq.splice(0), tick = NET.tick = (NET.tick | 0) + 1;
+  const fxq0 = NET.fxq.splice(0);
   for (const s of live) {
     // a link still sending the last lot, or slowed (netSeatRtt): skip this one (it says what changed since the last sent, so the next says it all); its effects wait
-    if (netBacked(s.conn) || tick % (s.every || 1)) { if (fxq0.length) { const q = s.fx || (s.fx = []); q.push(...fxq0); if (q.length > NETT.fxCap) q.splice(0, q.length - NETT.fxCap); } NET.stats.skip = (NET.stats.skip || 0) + 1; continue; }
-    const fxq = s.fx ? s.fx.concat(fxq0) : fxq0; s.fx = null;
+    s.due = Math.min(1, (s.due || 0) + 1 / (s.every || 1));   // (every 2.5: 2 of 5)
+    if (netBacked(s.conn) || s.due < 0.999) { if (fxq0.length) { const q = s.fx || (s.fx = []); q.push(...fxq0); if (q.length > NETT.fxCap) q.splice(0, q.length - NETT.fxCap); } NET.stats.skip = (NET.stats.skip || 0) + 1; continue; }
+    s.due = 0; const fxq = s.fx ? s.fx.concat(fxq0) : fxq0; s.fx = null;
     let kf = false; if (!s.sent) { s.sent = {}; kf = true; }
     const c = {}, r = {}; let any = false, anyR = false;
     for (const T of NET_LIST) {
@@ -29464,12 +29465,15 @@ function netFromGuest(s, m) {
   }
 }
 // a line slower than the browser can tell (a modem's own queue): the ping climbs over its best, so that friend gets every 2nd,
-// then every 4th snapshot till it's back down (each says everything since the last sent: nothing lost). Its best creeps up 2 ms a second (a new route)
+// 4th, 8th snapshot (each says everything since the last sent: nothing lost). Its best creeps up 2 ms a second (a new route).
+// Back up only a step a ping (an 8th more of them), and not while it's still setting new bests (the queue's still draining: its
+// best goes down with it); all at once, the queue piles up again before the ping (that waits in it) can say so
 function netSeatRtt(s, rtt) {
   if (!(rtt >= 0 && rtt < 60000)) return;
-  s.rtt = rtt; s.rttMin = Math.min(rtt, (s.rttMin ?? rtt) + 2);
+  const best = (s.rttMin ?? rtt) + 2, drain = best - rtt > NETT.slowMs / 6;
+  s.rtt = rtt; s.rttMin = Math.min(rtt, best);
   const over = rtt - s.rttMin, e = s.every || 1;
-  s.every = over > NETT.slowMs ? Math.min(4, e * 2) : over < NETT.slowMs / 3 ? Math.max(1, e / 2) : e;
+  s.every = over > NETT.slowMs ? Math.min(8, e * 2) : over < NETT.slowMs / 3 && !drain ? 1 / Math.min(1, 1 / e + 1 / 8) : e;
 }
 // readInput() for a friend's dog: their held inputs (zeroed if nothing's come for a second) + their button presses, once each
 function netReadInput(p, r) {
