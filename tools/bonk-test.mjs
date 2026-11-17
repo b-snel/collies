@@ -101,7 +101,7 @@ if (c) {
   ok('shorn sheep never get cast', c.shorn === 0, c);
 }
 
-// 4. mud: a sheep driven into a bog sticks and sinks; a grab can't free it; a pounce pops it out, calm and muddy; calm sheep go round
+// 4. mud: a sheep driven into a bog sticks and sinks; a grab can't free it; a pounce yeets it out (a big flight), calm and muddy; calm sheep go round
 const m = await run('mud', () => {
   const { G, T, MUDS } = GAME; H.fresh(); const out = {};
   const b = MUDS[1], d = G.dogs[0], s = G.sheep.find(o => !o.ram && !o.lamb);   // (one away from the streams: a sheep popped into one washes clean)
@@ -110,7 +110,7 @@ const m = await run('mud', () => {
   out.secs = +H.run(3, () => !!s.bog).toFixed(2); out.bog = !!s.bog; T.mud.stickRun = 1.4; if (!s.bog) return out;
   const x0 = s.x, z0 = s.z; H.run(8); out.drift = +Math.hypot(s.x - x0, s.z - z0).toFixed(2); out.still = !!s.bog; out.sink = +(s.sink || 0).toFixed(2); out.stress = +s.stress.toFixed(2);
   H.place(d, s.x - 1.6, s.z); d.yaw = Math.PI / 2; G.players[0].bot = H.inp(1, 0, { grab: true }); H.run(0.5); out.grabbed = d.holding === s; G.players[0].bot = {}; if (d.holding) GAME.releaseHold(d, false); H.run(0.3);   // (whatever it bit instead: let go)
-  H.place(d, s.x - 2.2, s.z); H.pounce(d, s.x, s.z); out.freed = !s.bog;
+  H.place(d, s.x - 2.2, s.z); H.pounce(d, s.x, s.z); out.freed = !s.bog; out.kind = s.air && s.air.kind;
   H.run(4); out.flew = +Math.hypot(s.x - x0, s.z - z0).toFixed(1); out.calm = s.state !== 'flee'; out.mud = +(s.mud || 0).toFixed(2); out.reBog = !!s.bog;
   // calm walkers steer round the bogs
   let bogs = 0, n = 0;
@@ -127,7 +127,7 @@ if (m) {
   ok(`a bolting sheep sticks in the bog (${m.secs}s)`, m.bog, m);
   ok(`held fast and sinking (${m.sink} m)`, m.still && m.drift < 0.3 && m.sink > 0.2, m);
   ok("it gets stressed; a grab can't pull it out", m.stress > 0.3 && !m.grabbed, m);
-  ok(`a pounce pops it out (${m.flew} m), calm and muddy`, m.freed && m.flew > 2 && m.calm && m.mud > 0.5, m);
+  ok(`a pounce yeets it out (${m.flew} m), calm and muddy`, m.freed && m.kind === 'yeet' && m.flew > 10 && m.calm && m.mud > 0.5, m);
   ok(`calm sheep walking past rarely stick (${m.walkBogs}/${m.walks})`, m.walkBogs <= 3, m);
 }
 

@@ -4,17 +4,20 @@
   `localStorage['collies.dogs.v1']`. Some junk is a bone (`T.dig.bone`, `digBone`): BONES.
 - **Brambles** (`BRAMBLES`, `T.bramble`, own rng): patches off the trail. A
   sheep blundering in (more when running) is snagged (`s.snag`, `snagSheep`),
-  stuck and bleating; a pounce pops it just clear of the bush (`punt` → `unsnag`, `T.punt.clear`), or a grab pulls it out.
+  stuck and bleating; a pounce yeets it (`yeet`), or a grab pulls it out.
   Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
 - **Bonk spots** (BONK SPOTS): a pounce is the fix. A rescue bonk (cast, bog,
   brambles) lands calm (`a.rescue`), no scatter.
+  - **Yeet** (`yeet`, `T.punt.yeet`): out of brambles or a bog, a big high spinning flight (air kind `'yeet'`), the way
+    the dog came (a bog: bent over its nearest edge), at least `T.punt.clear` m past it; a burst of leaves or mud, a trail of
+    them (`yeetTrail`, guests too), shake, hit-stop; a big ♥ on landing. Into water: it swims.
   - **Cast** (`T.cast`): a sheep in full fleece now and then rolls onto its
     back by day (state `'cast'`, legs kicking, a "!" over it, off screen too).
     Only a pounce rights it (`castFlip`); left `die` h it dies (`'cast'`).
     Shearing stops it.
   - **Mud** (`MUDS`, `T.mud`): bogs in Sweetgrass Meadow. Sheep slow, may
-    stick (`s.bog`, sinking), calm ones go round; a pounce pops it out over
-    the nearest edge, muddy a while (`s.mud`). Dogs wade slow and come out caked (`d.mud`: docs/dogs.md, muddy dogs).
+    stick (`s.bog`, sinking), calm ones go round; a pounce yeets it out,
+    muddy a while (`s.mud`). Dogs wade slow and come out caked (`d.mud`: docs/dogs.md, muddy dogs).
   - **Balker** (`T.balk`): of an evening (day 2 on) the bell ewe may plant
     herself in front of an open gate (`s.balk`, `p.balker`); pressure and
     grabs don't move her, the rest hang back. Bonked in: they follow
