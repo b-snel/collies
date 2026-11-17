@@ -326,15 +326,18 @@ ok('fur: a slow machine drops the shells, keeps the coat', r9.lite, r9);
 // 10. the barn opens on the Dogs: a card each (a portrait), a click picks one; a sheep asked for opens the flock
 const r10 = await h.page.evaluate(() => {
   const { G, BARN, openBarn, closeBarn, barnRender, THUMB } = GAME, out = {};
+  out.solo = GAME.barnDogs().join(); const q = GAME.joinPlayer({ kind: 'bot', index: 3 }), q2 = GAME.joinPlayer({ kind: 'bot', index: 4 }), q3 = GAME.joinPlayer({ kind: 'bot', index: 5 });   // (just the dogs playing)
   openBarn(); out.tab = BARN.tab; out.cards = document.querySelectorAll('#barnList .dogCard').length; out.first = document.querySelector('.barnTabs button').dataset.tab;
   for (let i = 0; i < 8; i++) barnRender(1 / 60);
   out.pics = [...document.querySelectorAll('#barnList .dogCard img')].filter(i => (i.getAttribute('src') || '').startsWith('data:image/png')).length;
   document.querySelector('.dogCard[data-dog="2"]').click(); out.dog = BARN.dog; out.on = document.querySelector('.dogCard.on').dataset.dog;
   out.sparks = document.querySelectorAll('.dogCard .spark').length; closeBarn();
   openBarn(G.sheep.find(s => !s.dead)); out.sheepTab = BARN.tab; closeBarn();
+  for (const p of [q, q2, q3]) GAME.dropPlayer(p);
+  openBarn(); out.after = document.querySelectorAll('#barnList .dogCard').length; closeBarn();
   return out;
 });
-ok('the barn opens on the Dogs (its tab first), a card each with its portrait; a click picks one (sparks); a sheep: the flock', r10.tab === 'dogs' && r10.first === 'dogs' && r10.cards === 4 && r10.pics === 4
+ok('the barn opens on the Dogs (its tab first), a card for each dog playing (one alone, four with friends) with its portrait; a click picks one (sparks); a sheep: the flock', r10.solo === '0' && r10.after === 1 && r10.tab === 'dogs' && r10.first === 'dogs' && r10.cards === 4 && r10.pics === 4
   && r10.dog === 2 && r10.on === '2' && r10.sparks > 0 && r10.sheepTab === 'sheep', r10);
 
 // 11. the breed picker: every breed in a grid, the dog's own lit; filters (group, coat, size); a click, the arrows; Esc: back
