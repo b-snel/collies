@@ -258,7 +258,7 @@ screen-space: `mx = dx*CAM_R.x + dz*CAM_R.z`, `my = -(dx*CAM_F.x + dz*CAM_F.z)`.
 At sea each screen's camera turns on its own: a guest's input carries its camera's heading (`cy`), the host
 turns the stick into its own (`netReadInput`).
 
-Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`)
+Bad lines: a friend's link still sending (`netBacked`, `NETT.backlog`) or pinging over its best (`netSeatRtt`, `NETT.slowMs`: back a step a ping, not while it's still falling)
 skips snapshot / grass ticks (deltas from the last sent: nothing lost). The grass map goes deflated (`netZip`). Joining
 goes in stages (`NET_STUCK`), tries again (`NETT.joinTries`); a dropped guest rejoins by itself (`NETT.rejoin`).
 `tools/line-test.mjs`: the same over a throttled line.

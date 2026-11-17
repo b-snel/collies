@@ -1039,8 +1039,10 @@ const T = {
   pounceSpeed: 27, pounceTime: 0.3, pounceCd: 0.75, pounceBuf: 0.2,   // pounceBuf: Ⓑ pressed up to this many s before it can (cooldown, a hop) still goes off
   pounceHitR: 1.7, pounceCoyoteR: 2.6, pounceScareR: 7,
   airGrav: 28,                 // everything that flies falls at this (m/s²)
-  punt: { speed: 20, radial: 2.5, up: 10.5, lambUp: 9, bounces: 1, ref: 70, kMin: 0.55, kMax: 1.2, clear: 1.6, rescueUp: 5.6 },   // (a pounced dog flies the same)
-  //   by mass (puntK): × (m_dog/(m_dog+m)) / (22/(22+ref)): a ewe 1, a ram ~0.6, a lamb or a dog more (kMin…kMax); rescue (brambles): just clear m past the bush
+  punt: { speed: 20, radial: 2.5, up: 10.5, lambUp: 9, bounces: 1, ref: 70, kMin: 0.55, kMax: 1.2, clear: 1.6,   // (a pounced dog flies the same)
+    yeet: { k: 1.15, up: 13, spin: 12, trail: 26 } },
+  //   by mass (puntK): × (m_dog/(m_dog+m)) / (22/(22+ref)): a ewe 1, a ram ~0.6, a lamb or a dog more (kMin…kMax)
+  //   yeet: a rescue bonk out of brambles or a bog: k× a punt, up m/s, spin rad/s, a trail of leaves / mud (trail/s); at least clear m past the edge; lands calm
   bounceUp: 0.46, bounceSide: 0.8, landKeep: 0.55,
   carom: { min: 7, r: 1.45, keep: 0.6, share: 0.4, up: 6 },   // up 6 m/s peaks under fence height, so caroms never jump a pen
   fling: { mul: 1.35, add: 4, up: 8, minSpeed: 2 },
@@ -1195,10 +1197,10 @@ const T = {
   // A pounce flips her over (flip m/s, up). Left `die` h, she dies
   cast: { on: !SIM, wool: 0.98, perHour: 0.004, max: 2, from: 7, to: 19, die: 6, stress: 0.04, stressCap: 0.5, bleat: [2.5, 5], flip: { speed: 3, up: 7 } },
   // MUD: bog patches in Sweetgrass Meadow (n, radius m). In it a sheep is slowed (slow×) and sticks (stickWalk/s, stickRun/s over runSpd m/s),
-  // sinks (sink m over sinkT s) and bleats till a pounce pops it out over the nearest edge (pop: up m/s, at most k× a punt's speed).
+  // sinks (sink m over sinkT s) and bleats till a pounce yeets it out (T.punt.yeet), over the nearest edge.
   // Calm sheep go round (avoid m). Dogs wade (dogSlow×). Freed: muddy wool for `dirty` days
   mud: { on: !SIM, n: 8, r: [2.4, 3.6], slow: 0.55, dogSlow: 0.6, stickWalk: 0.25, stickRun: 1.4, runSpd: 3, avoid: 2.2, sink: 0.32, sinkT: 4,
-    stress: 0.05, stressCap: 0.55, struggle: [1.5, 3.5], pop: { k: 0.6, up: 8 }, dirty: 1.5 },
+    stress: 0.05, stressCap: 0.55, struggle: [1.5, 3.5], dirty: 1.5 },
   // MUDDY DOGS: in a bog a dog cakes up (d.mud/s × mudK: still + walk × speed/walk, lying: lie); in at speed or a landing: + splat.
   // Never wears off: a swim (swim/s), or a leap into a water trough (tub: min water in it, slops out cost; sit s, scrubbed clean by
   // scrub × sit, out early after out s; hop m/s out; the water mucky muck h; dry: an empty one, a CLONK, drySit s; sheep within
@@ -8054,33 +8056,42 @@ function punt(s, d, rx, rz) {
   const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(s, 'sheep'));   // ROLES: a harder bonk sends it further; lighter flies further
   train(d, 'bonk', T.train.bonk);
   if (s.state === 'cast') { castFlip(s, d); return; }   // CAST: rolled back onto its feet
-  const bog = s.bog, snag = s.snag, rescue = !!(s.snag || s.bog);
-  if (s.snag) unsnag(s, d);   // BRAMBLES: bonked free
-  let vx = d.pdx * P.speed * kb + rx * P.radial, vz = d.pdz * P.speed * kb + rz * P.radial;
-  if (snag) {   // BRAMBLES: popped just clear of the bush, the way the dog came at it (a harder bonk: a bit further)
-    const up = P.rescueUp * (s.lamb ? 0.88 : 1), tf = 2 * up / T.airGrav, ex = s.x - snag.x, ez = s.z - snag.z;
-    const along = ex * d.pdx + ez * d.pdz, edge = Math.max(0, along + Math.sqrt(Math.max(0, snag.r * snag.r - (ex * ex + ez * ez - along * along))));
-    const sp = (edge + P.clear) * (0.85 + 0.15 * kb) / tf;
-    vx = d.pdx * sp; vz = d.pdz * sp;
-    launchSheep(s, vx, vz, up, 'punt', d); s.air.bounces = 0; s.air.rescue = true;
-    endLunge(d); MV.punts++; SFX.boing(panOf(s.x, s.z), 0.2); Sound.baa(s.pitch * 1.15, 0.4, panOf(s.x, s.z), true);
-    starBurst(s.x, s.y + 0.8, s.z, 5, undefined, { speed: 3, up: 2.5 }); rumble(d.player, 0.4, 0.4, 110);
-    return;
-  }
-  if (bog) {   // MUD: popped out, over the nearest edge (whichever way the dog came at it), just far enough to clear it
-    const v = mudSteer(s, 0.01) || { x: d.pdx, z: d.pdz }, ox = v.x + d.pdx * 0.4, oz = v.z + d.pdz * 0.4, ol = Math.hypot(ox, oz) || 1, U = T.mud.pop;
-    let edge = 0; while (edge < 12 && mudAt(s.x + ox / ol * edge, s.z + oz / ol * edge)) edge += 0.5;
-    const sp = clamp((edge + 2) / (2 * U.up / T.airGrav), 3, P.speed * U.k);
-    vx = ox / ol * sp; vz = oz / ol * sp; unbog(s, d); s.bogFree = G.time + 3;
-  }
-  launchSheep(s, vx, vz, bog ? T.mud.pop.up : (s.lamb ? P.lambUp : P.up) * Math.sqrt(kb), 'punt', d);
-  s.air.bounces = bog ? 0 : P.bounces; if (s.ram && !rescue) s.air.provoke = d; s.air.rescue = rescue;   // (a rescue lands calm)
+  if (s.snag || s.bog) { yeet(s, d, kb); return; }   // BRAMBLES, MUD: yeeted out
+  const vx = d.pdx * P.speed * kb + rx * P.radial, vz = d.pdz * P.speed * kb + rz * P.radial;
+  launchSheep(s, vx, vz, (s.lamb ? P.lambUp : P.up) * Math.sqrt(kb), 'punt', d);
+  s.air.bounces = P.bounces; if (s.ram) s.air.provoke = d;
   endLunge(d); MV.punts++;
   const pan = panOf(s.x, s.z);
   SFX.boing(pan, 0.26); Sound.baa(s.pitch * 1.15, 0.4, pan, true);
   floatText(pick(['BOING!', 'PUNT!', 'WHEEE!']), s.x, s.y + 1.6, s.z, '#ffffff', 1.35);
   starBurst(s.x, s.y + 0.8, s.z, 7, undefined, { speed: 4, up: 3 }); burst(s.x, s.y + 0.3, s.z, 10, '#e8dcc0', { speed: 3, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
   shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140);
+}
+// BONK SPOTS: a rescue bonk out of brambles or a bog: a big, high, spinning flight the way the dog came at it (a bog: bent out over
+// its nearest edge), at least clear of it, trailing leaves or mud; lands calm (a.rescue)
+function yeet(s, d, kb) {
+  const P = T.punt, Y = P.yeet, snag = s.snag, bog = s.bog, up = Y.up * (s.lamb ? 0.88 : 1) * Math.sqrt(kb), tf = 2 * up / T.airGrav;
+  let ux = d.pdx, uz = d.pdz, edge = 0;
+  if (snag) {   // out the far side of the bush
+    const ex = s.x - snag.x, ez = s.z - snag.z, along = ex * ux + ez * uz;
+    edge = Math.max(0, along + Math.sqrt(Math.max(0, snag.r * snag.r - (ex * ex + ez * ez - along * along))));
+    unsnag(s, d, 'YEET!');
+  } else {   // over the bog's nearest edge
+    const v = mudSteer(s, 0.01) || { x: ux, z: uz }, ox = v.x + ux * 0.4, oz = v.z + uz * 0.4, ol = Math.hypot(ox, oz) || 1; ux = ox / ol; uz = oz / ol;
+    while (edge < 12 && mudAt(s.x + ux * edge, s.z + uz * edge)) edge += 0.5;
+    unbog(s, d, 'YEET!'); s.bogFree = G.time + 3;
+  }
+  const sp = Math.max(P.speed * Y.k * kb, (edge + P.clear) / tf);
+  launchSheep(s, ux * sp, uz * sp, up, 'yeet', d); s.air.bounces = P.bounces; s.air.rescue = true;
+  endLunge(d); MV.punts++;
+  const pan = panOf(s.x, s.z);
+  SFX.boing(pan, 0.32, 0.85); Sound.baa(s.pitch * 1.3, 0.5, pan, true);
+  if (snag) leaves(s.x, s.y + 0.6, s.z, 26); else { mudFx(s.x, s.z, 26); burst(s.x, s.y + 0.4, s.z, 14, '#6b4a2b', { speed: 5, up: 4, size: 0.24, life: 0.8, grav: -12 }); }
+  starBurst(s.x, s.y + 0.8, s.z, 12, undefined, { speed: 6, up: 5 }); spawnRing(s.x, s.y + 0.1, s.z, 3, snag ? '#c8e07a' : '#c8a27a', 0.45);
+  shakeCam(0.38); hitStop(0.09); rumble(d.player, 0.85, 0.7, 200);
+}
+function yeetTrail(s, dt) {   // leaves or mud off a yeeted sheep (host and guests alike)
+  if (Math.random() < dt * T.punt.yeet.trail) burst(s.x, s.y + 0.5, s.z, 1, s.mud > 0.5 ? '#5a3f25' : pick(['#43712f', '#6a9a3a']), { speed: 1, up: 0.5, size: 0.17, life: 0.6, grav: -5 });
 }
 function puntDog(o, d, rx, rz) {
   const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(o, 'dog'));   // as punt(): flies like a sheep (ROLES: a harder bonk, further; by weight)
@@ -8158,6 +8169,7 @@ function updateAirborneSheep(s, dt) {
   if (a.h - groundY(s.x, s.z) < 1.6) airHits(s, a, sp);
   if (s.air !== a) return;
   if (a.kind === 'launch' && Math.random() < dt * 30) starBurst(s.x, s.y + 0.6, s.z, 1, ['#ffd36b', '#fff3a0'], { speed: 0.6, up: 0.4, size: 0.22, life: 0.5, grav: 0 });
+  else if (a.kind === 'yeet') yeetTrail(s, dt);
   else if (sp > 9 && Math.random() < dt * 18) burst(s.x, s.y + 0.6, s.z, 1, '#ffffff', { speed: 0.3, up: 0.2, size: 0.16, life: 0.4, grav: 0 });
   if (res === 'water') { splashSheep(s); return; }
   if (res === 'ground') {
@@ -8178,7 +8190,8 @@ function landSheep(s, impact) {
   const sp = Math.hypot(s.vx, s.vz);
   if (a.rescue) {   // BONK SPOTS: glad to be out: calm, not scattered
     s.stress *= 0.4; s.fear = 0; s.panic = 0; s.alert = 0; s.state = 'idle'; s.thinkT = rnd(0.4, 1); s.breakT = 0;
-    baaAt(s, 0.35, 1.05); floatText('♥', s.x, s.y + 1.5 * s.scale, s.z, '#ff8fb8', 1.1);
+    baaAt(s, 0.35, 1.05); floatText('♥', s.x, s.y + 1.5 * s.scale, s.z, '#ff8fb8', a.kind === 'yeet' ? 1.5 : 1.1);
+    if (a.kind === 'yeet') { spawnRing(s.x, s.y + 0.1, s.z, 2.6, '#e8dcc0', 0.4); shakeCam(0.14); }
   } else startleSheep(s, sp > 0.3 ? s.vx : Math.sin(s.yaw), sp > 0.3 ? s.vz : Math.cos(s.yaw), 1);
   s.pose = { landT: G.time, sq: Math.min(0.42, 0.12 + impact * 0.02) };
   SFX.thud(panOf(s.x, s.z), 0.3); burst(s.x, s.y + 0.15, s.z, 12, '#e8dcc0', { speed: 3, up: 1.4, size: 0.26, life: 0.7, grav: 0 });
@@ -8188,10 +8201,10 @@ function landSheep(s, impact) {
     s.pen = s.wasPen = pen;
     if (G.mode === 'play') {
       onSheepEnteredPen(s, pen);
-      const label = a.kind === 'fling' ? 'SLAM DUNK!' : a.kind === 'launch' ? 'SPECIAL DELIVERY!' : (a.kind === 'punt' || a.kind === 'carom') ? 'HOLE IN ONE!' : 'IN!';
+      const label = a.kind === 'fling' ? 'SLAM DUNK!' : a.kind === 'launch' ? 'SPECIAL DELIVERY!' : (a.kind === 'punt' || a.kind === 'carom' || a.kind === 'yeet') ? 'HOLE IN ONE!' : 'IN!';
       floatText(label, s.x, s.y + 2.2, s.z, '#ffd36b', 1.7); confetti(s.x, s.y + 1, s.z, 30); starBurst(s.x, s.y + 1, s.z, 10);
       Sound.chime([0, 4, 7, 12], 660, 0.2); shakeCam(0.15); MV.holeInOne++;
-      if (a.kind === 'punt' || a.kind === 'carom') sayOnce('hole-in-one', 'what_shot', 'What a shot!');
+      if (a.kind === 'punt' || a.kind === 'carom' || a.kind === 'yeet') sayOnce('hole-in-one', 'what_shot', 'What a shot!');
     }
   }
   if (a.provoke && s.ram && !s.lamb && !s.pen && !s.dead) { daze(s, T.ramPuntDazed, null); s.grudge = a.provoke; }   // a punted ram lands seeing stars, then comes for you a while later (not straight away)
@@ -8199,7 +8212,7 @@ function landSheep(s, impact) {
   if (a.kind === 'tumble' && !s.pen && !s.dead) startSlide(s, 'roll');   // MOUNTAIN PASS: knocked down the mountain: it rolls on a way
 }
 // sheep and dogs fly alike: how fast they somersault, how much of a landing bounces back up
-const airSpin = a => a.kind === 'punt' && a.bounces >= T.punt.bounces ? 8 : a.kind === 'launch' || a.kind === 'tumble' ? 9 : 5;
+const airSpin = a => a.kind === 'yeet' ? T.punt.yeet.spin : a.kind === 'punt' && a.bounces >= T.punt.bounces ? 8 : a.kind === 'launch' || a.kind === 'tumble' ? 9 : 5;
 const airBounce = a => a.kind === 'launch' ? 0.35 : T.bounceUp;
 // a flying sheep (or dog) caroms into sheep, bowls over coyotes and knocks over dogs
 function airHits(s, a, sv) {
@@ -9001,7 +9014,7 @@ function poseSheep(s, mb, sc) {
   const P = s.pose; let rx = 0, rz = 0, sy = 1, sxz = 1;
   if (s.air && s.air.kind === 'swim') { rx = -0.25; rz = Math.sin(G.time * 5 + s.id) * 0.08; }
   else if (s.air && s.air.kind === 'flip') rz = Math.PI * 0.9 * Math.max(0, 1 - (s.air.spin || 0) / 2.2);   // CAST: rolling back over
-  else if (s.air) { const a = s.air; rx = a.kind === 'punt' || a.kind === 'launch' || a.kind === 'tumble' ? -a.spin : Math.sin(a.spin * 3) * 0.25; rz = a.kind === 'carom' || a.kind === 'whack' ? a.spin * 0.8 : 0; if (a.vy > 4) { sy = 1.12; sxz = 0.94; } }
+  else if (s.air) { const a = s.air; rx = a.kind === 'punt' || a.kind === 'yeet' || a.kind === 'launch' || a.kind === 'tumble' ? -a.spin : Math.sin(a.spin * 3) * 0.25; rz = a.kind === 'carom' || a.kind === 'whack' ? a.spin * 0.8 : 0; if (a.vy > 4) { sy = 1.12; sxz = 0.94; } }
   else if (s.heldBy) { const w = s.heldBy.cw; rz = 0.2 + Math.sin(G.time * 14 + s.id) * 0.15 - (w ? w.p : 0); rx = -(w ? w.r : 0); }   // CARRY SWING: dangling from the jaws
   else if (s.state === 'roll') rz = G.time * (s.burn > 0 ? 7 : 11) * (s.id % 2 ? 1 : -1);   // MOUNTAIN PASS: rolling down the mountain (or rolling the fire out)
   else if (s.state === 'slide') { rz = Math.sin(G.time * 13 + s.id) * 0.35; rx = Math.sin(G.time * 9 + s.id) * 0.2; }   // ...and scrabbling on the ice
@@ -9967,7 +9980,7 @@ expose(() => ({ DIGS, updateDigs, resetDigs }));   // DIG SPOTS
 // =====================================================================
 // BRAMBLES — thorny patches off the trail (own rng, same on every screen).
 // A sheep that blunders into a bush is snagged (s.snag): it struggles and
-// bleats, stuck, till a dog pounces it out (punt → unsnag). Calm sheep
+// bleats, stuck, till a dog pounces it out (yeet). Calm sheep
 // steer round them; bolting ones don't.
 // =====================================================================
 const BRAMBLES = [];
@@ -10018,9 +10031,9 @@ function snagSheep(s, b) {
   G.stats.snags = (G.stats.snags || 0) + 1; hint('bramble');
   if (hankSees(s.x, s.z)) sayOnce('bramble', null, "One's caught in the brambles! Bonk it or grab it out.");
 }
-function unsnag(s, d = null) {
+function unsnag(s, d = null, txt = 'FREE!') {
   if (!s.snag) return; s.snag = null;
-  if (d) { floatText('FREE!', s.x, s.y + 1.6, s.z, '#c8e07a', 1.2); leaves(s.x, s.y + 0.5, s.z, 12); G.stats.unsnags = (G.stats.unsnags || 0) + 1; }
+  if (d) { floatText(txt, s.x, s.y + 1.6, s.z, '#c8e07a', txt === 'FREE!' ? 1.2 : 1.7); leaves(s.x, s.y + 0.5, s.z, 12); G.stats.unsnags = (G.stats.unsnags || 0) + 1; }
 }
 function snaggedStep(s, dt) {   // in updateSheep, after it moved: pinned where it caught, struggling every few s
   const B = T.bramble, ox = s.x - s.snagX, oz = s.z - s.snagZ, od = Math.hypot(ox, oz);
@@ -10047,7 +10060,7 @@ expose(() => ({ BRAMBLES, brambleAt, snagSheep, unsnag }));   // BRAMBLES
 // CAST: a ewe in full fleece rolls onto her back and can't get up (state
 // 'cast'): legs kicking, bleating, a "!" over her. A pounce flips her
 // (castFlip); left T.cast.die h, she dies. MUD (MUDS, world gen): a sheep
-// stuck in a bog (s.bog) sinks and bleats till a pounce pops it out, muddy
+// stuck in a bog (s.bog) sinks and bleats till a pounce yeets it out (yeet), muddy
 // a while (s.mud). BALKER: of an evening the lead (bell) ewe may plant
 // herself in front of an open gate (s.balk, p.balker); the flock hangs back
 // till she's bonked in, then follows her (p.leadT). APPLES: a pounce into an
@@ -10088,9 +10101,9 @@ function bogSheep(s, m) {
   if (hankSees(s.x, s.z)) sheepSay('mud', "One's stuck in the bog! Bonk it out.", 60);
 }
 const mudFx = (x, z, n) => { burst(x, groundY(x, z) + 0.2, z, n, '#4e3822', { speed: 2.2, up: 3.2, size: 0.17, life: 0.7, grav: -10 }); SFX.splash(panOf(x, z), 0.12); };
-function unbog(s, d = null) {
+function unbog(s, d = null, txt = 'SHLOOP!') {
   if (!s.bog) return; s.bog = null; s.sink = 0; s.mud = 1;
-  if (d) { floatText('SHLOOP!', s.x, s.y + 1.6, s.z, '#c8a27a', 1.2); mudFx(s.x, s.z, 14); G.stats.unbogs = (G.stats.unbogs || 0) + 1; }
+  if (d) { floatText(txt, s.x, s.y + 1.6, s.z, '#c8a27a', txt === 'SHLOOP!' ? 1.2 : 1.7); mudFx(s.x, s.z, 14); G.stats.unbogs = (G.stats.unbogs || 0) + 1; }
 }
 function boggedStep(s, dt) {   // in updateSheep, after it moved: held where it stuck, sinking, struggling every few s
   const M = T.mud, ox = s.x - s.bogX, oz = s.z - s.bogZ, od = Math.hypot(ox, oz);
@@ -28173,7 +28186,7 @@ expose(() => ({ startGame, resetGame, finishGame, joinPlayer }));   // GAME FLOW
 // =====================================================================
 const NET_VER = 1;
 // (a bad line: backlog = bytes still queued for a friend before the next snapshot goes; slowMs: a ping that far over its best
-//  sends every 2nd, then 4th snapshot; joinMs a try, joinTries;
+//  sends every 2nd, 4th, 8th snapshot, back a step a ping once it's steady (netSeatRtt); joinMs a try, joinTries;
 //  iceGrace: a link gone quiet that long is lost; rejoin: s between tries to get back in after a drop)
 const NETT = { hz: 20, grassMs: 330, staleIn: 1500, dropMs: 60000, joinMs: 30000, joinTries: 2, reclaimMs: 120000, maxGuests: 3, fxCap: 250,
   backlog: 1500, slowMs: 300, iceGrace: 20000, iceMs: 5000, rejoin: [4, 8, 15, 30, 30] };
@@ -28874,6 +28887,7 @@ function netAnimSheep(s, dt) {
     s.pose = s.pose || {}; s.leg += dt * 22;
     if (s.air) { s.air.spin = s.airSpin || 0; s.air.vy = s.vlift || 0; s.air.h = s.y;
       if (s.air.kind === 'launch' && Math.random() < dt * 30) starBurst(s.x, s.y + 0.6, s.z, 1, ['#ffd36b', '#fff3a0'], { speed: 0.6, up: 0.4, size: 0.22, life: 0.5, grav: 0 });
+      else if (s.air.kind === 'yeet') yeetTrail(s, dt);
       else if (sp > 9 && Math.random() < dt * 18) burst(s.x, s.y + 0.6, s.z, 1, '#ffffff', { speed: 0.3, up: 0.2, size: 0.16, life: 0.4, grav: 0 }); }
     return;
   }
@@ -29160,11 +29174,12 @@ function netSnapTick() {
     for (const o of T.one ? [T.one()] : T.all()) { const id = T.one ? 0 : T.id(o); if (id == null || id < 0) continue; m.set(id, T.F.map(F => F.enc(F.get(o)))); }
     cur[T.tag] = m;
   }
-  const fxq0 = NET.fxq.splice(0), tick = NET.tick = (NET.tick | 0) + 1;
+  const fxq0 = NET.fxq.splice(0);
   for (const s of live) {
     // a link still sending the last lot, or slowed (netSeatRtt): skip this one (it says what changed since the last sent, so the next says it all); its effects wait
-    if (netBacked(s.conn) || tick % (s.every || 1)) { if (fxq0.length) { const q = s.fx || (s.fx = []); q.push(...fxq0); if (q.length > NETT.fxCap) q.splice(0, q.length - NETT.fxCap); } NET.stats.skip = (NET.stats.skip || 0) + 1; continue; }
-    const fxq = s.fx ? s.fx.concat(fxq0) : fxq0; s.fx = null;
+    s.due = Math.min(1, (s.due || 0) + 1 / (s.every || 1));   // (every 2.5: 2 of 5)
+    if (netBacked(s.conn) || s.due < 0.999) { if (fxq0.length) { const q = s.fx || (s.fx = []); q.push(...fxq0); if (q.length > NETT.fxCap) q.splice(0, q.length - NETT.fxCap); } NET.stats.skip = (NET.stats.skip || 0) + 1; continue; }
+    s.due = 0; const fxq = s.fx ? s.fx.concat(fxq0) : fxq0; s.fx = null;
     let kf = false; if (!s.sent) { s.sent = {}; kf = true; }
     const c = {}, r = {}; let any = false, anyR = false;
     for (const T of NET_LIST) {
@@ -29414,12 +29429,15 @@ function netFromGuest(s, m) {
   }
 }
 // a line slower than the browser can tell (a modem's own queue): the ping climbs over its best, so that friend gets every 2nd,
-// then every 4th snapshot till it's back down (each says everything since the last sent: nothing lost). Its best creeps up 2 ms a second (a new route)
+// 4th, 8th snapshot (each says everything since the last sent: nothing lost). Its best creeps up 2 ms a second (a new route).
+// Back up only a step a ping (an 8th more of them), and not while it's still setting new bests (the queue's still draining: its
+// best goes down with it); all at once, the queue piles up again before the ping (that waits in it) can say so
 function netSeatRtt(s, rtt) {
   if (!(rtt >= 0 && rtt < 60000)) return;
-  s.rtt = rtt; s.rttMin = Math.min(rtt, (s.rttMin ?? rtt) + 2);
+  const best = (s.rttMin ?? rtt) + 2, drain = best - rtt > NETT.slowMs / 6;
+  s.rtt = rtt; s.rttMin = Math.min(rtt, best);
   const over = rtt - s.rttMin, e = s.every || 1;
-  s.every = over > NETT.slowMs ? Math.min(4, e * 2) : over < NETT.slowMs / 3 ? Math.max(1, e / 2) : e;
+  s.every = over > NETT.slowMs ? Math.min(8, e * 2) : over < NETT.slowMs / 3 && !drain ? 1 / Math.min(1, 1 / e + 1 / 8) : e;
 }
 // readInput() for a friend's dog: their held inputs (zeroed if nothing's come for a second) + their button presses, once each
 function netReadInput(p, r) {
