@@ -20,8 +20,8 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   from Cold Harbour, the land goes with the sea (`seaLandOff`: `LAND` under `seaG`, and everything in `scene` that isn't the boat's:
   `seaKeep`); a new journey puts it back (`seaLandOn`). Things in the water drift astern (`seaDrift`).
 - **Camera** (`seaCam`, `SEAC`, `T.sea.cam`): under way, a perspective chase camera astern and above, on the sea (not on her): the
-  horizon's level and still, she heels and turns in front of it, it swings after her (`lag`). Alongside: the land's camera (`SEAC.k` 0);
-  it glides between. `CAM_F` / `CAM_R` follow it (sticks go by the screen). Further back with something overboard.
+  horizon's level and still, she heels and turns in front of it, it swings after her (`lag`). Alongside: the land's camera (`SEAC.k` 0),
+  further out (`T.sea.view`) but on an island: there as on the land; it glides between. `CAM_F` / `CAM_R` follow it (sticks go by the screen). Further back with something overboard.
 - **Sky, haze** (`SKY_DOME`, `scene.fog`, `seaLight`): a dome on the sea, clouds that stay put; haze to the horizon (outlines too).
 - **Pace** (`T.sea.pace`): she covers the sea that much faster than her hull feels it (`seaSpd`).
 - **Waves** (`SWAVES`, `seaEta`, `T.sea.wave`): five trochoid trains (two of swell, in sets; three of wind sea) that
@@ -76,7 +76,8 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
 - **Alongside an island** (`seaMoorStep`, `seaMoor`, `SEA.berth`, `SEA.warp`): any island's, in or out of turn. In by its jetty and slow (Hank
   spills her wind), or her anchor down near it: warped in. `seaCheckpoint` (saved, hull mended, troughs filled from `SEA.stores`), gangway open. The Promised Land: `finishGame`.
 - **Islands** (`ISLES`, `ISLE`, `T.sea.isle`): ground in deck coords while she's alongside (`sdf`, `h`): beach, meadow, a crag (rock),
-  a spring (`fresh`: the bucket fills). Drawn from the same shape. On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
+  a spring (`fresh`: the bucket fills). Drawn from the same shape, as the land is: a smooth-shaded grid, `BIOME`'s colours (pine: the valley's,
+  rock: the oceanside's, palm: the Promised Land's), the land's grass tufts swaying (`TUFT`, `ISLE_TUFT`: own dice; nobody grazes them). On each (own rng, there only then: `isleShow`): flowers (`PLANTS`),
   a salt rock, two chests (`sp.chest`: 💎 +🧶). Dogs wade in off the beach and swim. The flock stays aboard. On one, a castaway ram who
   follows a dog aboard (WILD RAMS, docs/kin.md).
 - **Hazards, worse each leg** (`HAZ`, `seaHazards`): 🐋 orcas bonk the hull (sheep by that rail go over; a bark
@@ -96,7 +97,7 @@ snapshots (`netSeaAnim`, `netWindAnim`, `netFront`), and does the land's carryin
   by night hove to); nothing on the quay. For legs 1…`legs` (to Gull Rock) he sails by her (sea coords: a slot off her port bow, `vagSlot`;
   out of the bay to starboard till his first beach, `slotSd`; `vagSail`: polar × wind, no-go zone, tacks, heel and boom to leeward, clear of
   her by `keep` and the reefs; far behind out of sight: caught up). Near the next island (`landR`), or by night, he makes for its beach ahead
-  of her and pulls up (`vagLand`). Sites (`vagSite`: deck coords at that berth, own rng: his spot, the mats' layout (tight grid), his boat, his
+  of her and pulls up (`vagLand`). Sites (`vagSite`: deck coords at that berth, own rng: his spot, the mats' layout (the land's rows, shifted further to fit; square to the screen wherever it fits), his boat, his
   bed by it). Ashore where she lies (`vagReach`): as on land (trade, deliveries to the deck: `penFound`, sleep, bonk, grab, fetch, tug);
   else drawn on the sea, waiting (by night asleep). She casts off: after her (`vagLaunch0`); his last island: `bye`, home over the horizon
   (`vagPart`), gone (`st 'off'`). Put out: off in his Laser for a day, back by sea. Under way out of reach; hails (`vagSeaCalls`).

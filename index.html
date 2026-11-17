@@ -1163,8 +1163,8 @@ const T = {
     mat: 2.7, gap: 3.4, ring: 2.4, row2: 5.4, ware: 1.7, sticks: 2,   // (row2: room for row 0's price tags between the rows)
     // SAILING: his Laser. legs: he sails ROUTE legs 1…legs with her (their islands his stops; then he turns back). bay: Cold Harbour, round and round off her starboard side (u, v, r, keep m). spd: × the wind (polar), boost:
     // × that catching up; noGo rad off the wind; turn rad/s; keep m off her; slot: where he keeps (m ahead min…max, m to port min…max); landR: m off
-    // the next island he makes for its beach; far: m off and out of sight, he's caught up; part: m off, gone; walk m/s; grid: cols, gap, row, ring (mats, tighter)
-    sea: { legs: 2, bay: [-2, 24, 6, 14], spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5, grid: [3, 2.95, 3.2, 1.6] },
+    // the next island he makes for its beach; far: m off and out of sight, he's caught up; part: m off, gone; walk m/s
+    sea: { legs: 2, bay: [-2, 24, 6, 14], spd: 0.75, boost: 2.6, noGo: 0.8, turn: 0.8, keep: 30, slot: [-4, 26, 28, 38], landR: 220, far: 260, part: 520, walk: 1.5 },
     tug:{ r: 3, take: 1.1, want: 8, base: 4, back: 1.4, heave: 2, beats: 1, heaveT: 0.4, yank: 2.3, walk: 0.85, tire: 7, tireR: 0.05, tireMin: 0.5, again: 8 } },
   // RATTLESNAKES (SNAKES): one coiled behind a desert rock every ~`every` m of trail from `from` on (own rng), latMin…lat m either side.
   // A sheep or dog within warnR: it rattles (rattleT s; sheep shy off, shy × fear), then strikes one within strikeR (hit chance,
@@ -3544,6 +3544,7 @@ function streamY(x, z) {
 }
 
 // ---------------- grass tufts (shrink as they're grazed, sway in the wind) ----------------
+const TUFT = { geo: null, sway: '' };   // (SAILING: the islands' tufts too)
 {
   const pos = [], col = [], nrm = [];
   const blades = 4;
@@ -3557,6 +3558,10 @@ function streamY(x, z) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  TUFT.geo = geo; TUFT.sway = `
+        float sway = sin(uTime*1.7 + iw.x*0.31 + iw.z*0.23) + 0.5*sin(uTime*2.9 + iw.x*0.7);
+        transformed.x += sway * 0.08 * position.y;
+        transformed.z += sway * 0.05 * position.y;`;
   const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
   mat.onBeforeCompile = sh => {
     sh.uniforms.uGrass = U.uGrass; sh.uniforms.uGrassXf = U.uGrassXf; sh.uniforms.uTime = U.uTime;
@@ -3567,10 +3572,7 @@ function streamY(x, z) {
         float gA = texture2D(uGrass, (iw.xz - uGrassXf.xy) * uGrassXf.zw).r;
         float gh = smoothstep(0.1, 0.75, gA);
         transformed.y *= gh;
-        transformed.xz *= 0.35 + 0.65 * gh;
-        float sway = sin(uTime*1.7 + iw.x*0.31 + iw.z*0.23) + 0.5*sin(uTime*2.9 + iw.x*0.7);
-        transformed.x += sway * 0.08 * position.y;
-        transformed.z += sway * 0.05 * position.y;`);
+        transformed.xz *= 0.35 + 0.65 * gh;` + TUFT.sway);
   };
   mat.customProgramCacheKey = () => 'tufts';
   const items = [];
@@ -15312,7 +15314,7 @@ function updateCamera(dt, snap = false) {
   if (G.mode === 'title') need = 30;
   need = clamp(need, T.viewMin * (G.mode === 'title' ? 0.85 : 1), T.viewMax);
   if (SEA.on && !SEA.docked) { const c = boatXZ(3, 0); tx = c.x; tz = c.z; need = T.sea.view[0]; }   // SAILING, under way: the boat (the chase camera takes it from there: seaCam)
-  else if (SEA.on && inSea(tx, tz)) need = Math.max(need, T.sea.view[0] * 0.85);
+  else if (SEA.on && inSea(tx, tz) && !(isleSdf(tx, tz) > -2.5 && deckSdf(tx, tz) < -2)) need = Math.max(need, T.sea.view[0] * 0.85);   // (ashore on an island: as on the land)
   const k = snap ? 1 : 1 - Math.exp(-dt * 4);
   cam.x = lerp(cam.x, tx, k); cam.z = lerp(cam.z, tz, k); cam.view = lerp(cam.view, need, snap ? 1 : 1 - Math.exp(-dt * 2));
   const ty = SEA.on ? (SEA.docked ? Math.max(BOAT.y, groundY(cam.x, cam.z)) : BOAT.y) : groundY(cam.x, cam.z);   // (SAILING, alongside: up the path with the dogs)
@@ -22505,30 +22507,29 @@ const vagPitchOK = (x, z) => sdfAt(x, z) > 3 && !wetAt(x, z) && !inRiver(x, z) &
 const vagMatOK = (x, z) => sdfAt(x, z) > 1.5 && !wetAt(x, z) && !inRiver(x, z) && (!inSea(x, z) || onQuay(x, z, 1.2) || isleSdf(x, z) > 1.5) && !onDeck(x, z, -1.6)   // (SAILING: the quay, an island)
   && pens.every(p => p.deck || Math.hypot(x - p.x, z - p.z) > p.R + 1.8) && YARDS.every(y => Math.hypot(x - y.x, z - y.z) > y.r + 1.5) && (!VAG.laserAt || Math.hypot(x - VAG.laserAt.x, z - VAG.laserAt.z) > 3.6)
   && Math.abs(terrainH(x + 1.2, z) - terrainH(x - 1.2, z)) < 0.5 && Math.abs(terrainH(x, z + 1.2) - terrainH(x, z - 1.2)) < 0.5;
-// a mat's middle, for wares laid out from (ox, oz) facing yaw a (f: toward the camera, r: its right). tight (SAILING: a quay, a beach): a grid, T.vag.sea.grid
-function vagMatAt(w, ox, oz, a, tight = false) {
-  const V = T.vag, fx = Math.sin(a), fz = Math.cos(a), [cols, gap, row, ring] = V.sea.grid;
-  const u = tight ? (w.gi % cols - (cols - 1) / 2) * gap : (w.ri - (w.rn - 1) / 2) * V.gap, f = tight ? ring + V.mat / 2 + Math.floor(w.gi / cols) * row : V.ring + V.mat / 2 + w.row * V.row2;
+// a mat's middle, for wares laid out from (ox, oz) facing yaw a (f: toward the camera, r: its right)
+function vagMatAt(w, ox, oz, a) {
+  const V = T.vag, fx = Math.sin(a), fz = Math.cos(a), u = (w.ri - (w.rn - 1) / 2) * V.gap, f = V.ring + V.mat / 2 + w.row * V.row2;
   return { x: ox + fx * f + fz * u, z: oz + fz * f - fx * u };
 }
 // SHARED HOOK (SAILING too): where his wares go, laid out by (x, z) facing a0 (default: the camera) or turned a little, or shifted, to fit
-// (open, dry, flat ground, off pens and cemeteries) -> { L: [x, z, yaw] (his spot, its facing; tight: a 4th, 1), ok }
-function vagLayout(x, z, a0 = Math.PI / 4, tight = false) {
+// (open, dry, flat ground, off pens and cemeteries) -> { L: [x, z, yaw] (his spot, its facing), ok }. isle (SAILING): shifted further (a beach)
+function vagLayout(x, z, a0 = Math.PI / 4, isle = false) {
   let best = null, bn = 1e9;
-  for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, Math.PI]) for (const sh of [0, 3, -3]) {
+  for (const da of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, Math.PI]) for (const sh of isle ? [0, 3, -3, 6, -6, 9, -9] : [0, 3, -3]) {
     const a = a0 + da, fx = Math.sin(a), fz = Math.cos(a), ox = x + fz * sh, oz = z - fx * sh;
     let bad = sdfAt(ox, oz) > 1 && !wetAt(ox, oz) ? 0 : 5;
-    for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a, tight); if (!vagMatOK(m.x, m.z)) bad++; }
-    if (bad < bn) { bn = bad; best = [+ox.toFixed(2), +oz.toFixed(2), +a.toFixed(3)]; if (tight) best.push(1); if (!bad) return { L: best, ok: true }; }
+    for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a); if (!vagMatOK(m.x, m.z)) bad++; }
+    if (bad < bn) { bn = bad; best = [+ox.toFixed(2), +oz.toFixed(2), +a.toFixed(3)]; if (!bad) return { L: best, ok: true }; }
   }
   return { L: best, ok: false };
 }
 // the mats where a layout L puts them (every screen: the host's L comes as NET_TYPES.vag lay)
 function vagPlaceMats(L) {
   VAG.lay = L; if (!L) return;
-  const [ox, oz, a, tight] = L;
+  const [ox, oz, a] = L;
   Object.assign(VSTALL, { x: ox, z: oz, yaw: a, fx: Math.sin(a), fz: Math.cos(a), rx: Math.cos(a), rz: -Math.sin(a), s: sAt(ox, oz) });
-  for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a, !!tight); w.x = m.x; w.z = m.z; w.y = groundY(m.x, m.z); w.g.position.set(w.x, w.y, w.z); w.g.rotation.y = a; }
+  for (const w of ALL_WARES) { const m = vagMatAt(w, ox, oz, a); w.x = m.x; w.z = m.z; w.y = groundY(m.x, m.z); w.g.position.set(w.x, w.y, w.z); w.g.rotation.y = a; }
 }
 // his pitches this journey: 1–2 a land leg, by the road (T.vag.lat m off its middle), clear ground with room for his mats; the Trading Post's always the last
 function vagPlan(seed) {
@@ -22961,16 +22962,16 @@ function vagSite(i, R) {
     return Object.assign(st, { lay: lay.L, ok: lay.ok, x: lay.L[0], z: lay.L[1], hu: boatU(lay.L[0], lay.L[1]), hv: boatV(lay.L[0], lay.L[1]), ht: vagYawDeck(lay.L[2]), lx: b.x, lz: b.z });
   };
   const I = ISLES[i], a0 = Math.atan2(QUAY.shore - I.cv, QUAY.pu - I.cu), sides = R() < 0.5 ? [1, -1] : [-1, 1];
-  let first = null;
+  let first = null, best = null, bk = 9;   // (the mats' rows square to the screen if they'll fit so anywhere: the tags clear each other)
   for (const al of [22 + R() * 6, 17, 30, 36, 42]) for (const sd of sides) {
     const a = a0 + sd * al / I.r, ca = Math.cos(a), sa = Math.sin(a);
     const at = (s, side = 0) => { for (let t = I.r * 1.4; t > 3; t -= 0.25) { const u = I.cu + ca * t, v = I.cv + sa * t; if (I.shore(u, v) >= s) return [u - sa * side, v + ca * side]; } return null; };
     const B = at(2.4), Wt = at(-7), Hm = at(6.5, -1.6), S = at(3.2, 1.4), Z = at(4.4, 2.5);   // (his spot: on the sand, by the bow)
     if (!B || !Wt || !Hm || !S || !Z || I.sdf(...Hm) < 3 || Math.hypot(Hm[0] - I.spring.u, Hm[1] - I.spring.v) < I.spring.r + 4) continue;
-    const st = mk(Hm[0], Hm[1], Math.PI / 4, B[0], B[1], Math.atan2(-sa, -ca), Wt[0], Wt[1], S[0], S[1], Z[0], Z[1]);
-    if (st.ok) return st; first = first || st;
+    const st = mk(Hm[0], Hm[1], Math.PI / 4, B[0], B[1], Math.atan2(-sa, -ca), Wt[0], Wt[1], S[0], S[1], Z[0], Z[1]), k = Math.abs(Math.sin(st.lay[2] - Math.PI / 4));
+    first = first || st; if (st.ok && k < bk - 0.01) { best = st; bk = k; if (k < 0.01) return st; }
   }
-  return first;
+  return best || first;
 }
 // seaStart: the voyage begins (or a dev start somewhere along it): he's out in Cold Harbour's bay, ashore where she lies, or out sailing by her; past his half: gone
 function vagSeaStart() {
@@ -27046,6 +27047,7 @@ function syncBoat(dt) {
 
 // ---------------- islands, reefs, buoys (built once, in sea coords) ----------------
 const SEAOBJ = { buoys: [], lights: [], frames: [], lines: [] };
+const ISLE_TUFT = { mat: null };   // the islands' grass tufts (own dice)
 {
   const R = mulberry32(90917), rr = (a, b) => a + R() * (b - a);
   const pine = (x, z, s) => [P(CYL(0.16 * s, 0.22 * s, 1.6 * s, 5), '#6b4226', { p: [x, 0.8 * s, z] }), P(CONE(1.25 * s, 2.6 * s, 6), '#2f7d4f', { p: [x, 2.5 * s, z] }), P(CONE(0.95 * s, 2.2 * s, 6), '#3a9460', { p: [x, 3.9 * s, z] })];
@@ -27089,22 +27091,56 @@ const SEAOBJ = { buoys: [], lights: [], frames: [], lines: [] };
   SEAOBJ.lines = ROUTE.map((w, i) => jetty(SEAOBJ.frames[i] = deckFrame(i ? seaG : LAND, i ? DOCKS[i] : null)));
   // the islands: each drawn from its own ground (ISLES[i].h), in its jetty's frame; trees and rocks up the crag, a lighthouse on two, its spring
   for (let i = 1; i < ROUTE.length; i++) {
-    const L = ISLES[i], w = L.w, q = SEAOBJ.frames[i], kind = w.kind, ps = [], c3 = new THREE.Color(), a3 = new THREE.Vector3(), b3 = new THREE.Vector3(), n3 = new THREE.Vector3();
-    const sand = kind === 'palm' ? '#f0dca0' : kind === 'pine' ? '#d9c79a' : '#a8a092', grass = kind === 'palm' ? ['#8fcf6a', '#7fc45c'] : kind === 'pine' ? ['#5f9f58', '#528f4c'] : ['#7d8a6a', '#70805f'], rk = kind === 'palm' ? ['#9a8f80', '#8a7f72'] : ['#77727a', '#6b6770'];
-    const NA = 44, D = 1.7, NR = Math.ceil(L.r * 1.16 / D), pos = [], nrm = [], col = [];
-    const vert = (ia, ir) => { const a = ia / NA * TAU, u = L.cu + Math.cos(a) * ir * D, v = L.cv + Math.sin(a) * ir * D; return [u, v, Math.max(-BOAT.fb - 1.85, L.h(u, v))]; };
-    const tri = (A, B, C) => {
-      const deep = -BOAT.fb - 1.15; if (A[2] < deep && B[2] < deep && C[2] < deep) return;
-      const p = [A, B, C].map(([u, v, y]) => at(u, v, y));
-      n3.crossVectors(a3.set(p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]), b3.set(p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2])).normalize();
-      if (n3.y < 0) { n3.negate(); const t = p[1]; p[1] = p[2]; p[2] = t; }
-      const cu = (A[0] + B[0] + C[0]) / 3, cv = (A[1] + B[1] + C[1]) / 3, y = (A[2] + B[2] + C[2]) / 3, s = L.shore(cu, cv), t = clamp(-L.crag(cu, cv) / L.rc, 0, 1), k = 0.5 + 0.5 * Math.sin(cu * 1.7 + cv * 2.3) * Math.sin(cu * 0.9 - cv * 1.3);
-      c3.set(s < 1 ? (kind === 'rock' ? '#7c766c' : '#c9b27a') : t > 0.06 || n3.y < 0.7 ? (kind === 'rock' && y > 19 + 3 * k ? '#f4f7fb' : kind === 'pine' && t < 0.3 && k > 0.45 ? '#4c8748' : rk[k > 0.5 ? 0 : 1]) : s < 5.5 + k ? sand : grass[k > 0.5 ? 0 : 1]);
-      for (const v3 of p) { pos.push(v3[0], v3[1], v3[2]); nrm.push(n3.x, n3.y, n3.z); col.push(c3.r, c3.g, c3.b); }
-    };
-    for (let ir = 0; ir < NR; ir++) for (let ia = 0; ia < NA; ia++) { const A = vert(ia, ir), B = vert(ia + 1, ir), C = vert(ia + 1, ir + 1), E = vert(ia, ir + 1); if (ir) tri(A, B, C); tri(A, C, E); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeBoundingSphere();
+    const L = ISLES[i], w = L.w, q = SEAOBJ.frames[i], kind = w.kind, ps = [], c3 = new THREE.Color();
+    // the ground: a 1.6 m grid, smooth shaded, coloured as the land is (BIOME: its grass, the bare earth under it, the sand), grass tufts on it
+    const B = BIOME[kind === 'pine' ? 1 : kind === 'rock' ? 2 : 3], sand = kind === 'rock' ? '#b5ad9c' : '#ecdcaa', wet = kind === 'rock' ? '#857f74' : '#c9b27a', rk = kind === 'palm' ? ['#9a8f80', '#8a7f72'] : ['#77727a', '#6b6770'];
+    const D = 1.6, NG = Math.ceil(L.r * 1.16 / D), N1 = NG * 2 + 1, deep = -BOAT.fb - 1.15, gy = (u, v) => Math.max(-BOAT.fb - 1.85, L.h(u, v));
+    const pos = new Float32Array(N1 * N1 * 3), nrm = new Float32Array(N1 * N1 * 3), col = new Float32Array(N1 * N1 * 3), gr = new Float32Array(N1 * N1), idx = [], c4 = new THREE.Color();
+    const grassK = (u, v, s, t) => (0.62 + 0.38 * smooth(0.3, 0.6, fbm(u * 0.045 + i * 9.1, v * 0.045 + 8, 3))) * smooth(4.5, 8.5, s) * (1 - smooth(0.02, 0.12, t));   // (as the land's: thinning to the sand, none up the crag)
+    for (let a = 0; a < N1; a++) for (let b = 0; b < N1; b++) {
+      const n = a * N1 + b, u = L.cu + (a - NG) * D, v = L.cv + (b - NG) * D, y = gy(u, v), e = 0.8;
+      const hu = (gy(u + e, v) - gy(u - e, v)) / (2 * e), hv = (gy(u, v + e) - gy(u, v - e)) / (2 * e), nl = Math.hypot(hu, 1, hv);   // (at(): x = v, z = −u)
+      pos.set(at(u, v, y), n * 3); nrm[n * 3] = -hv / nl; nrm[n * 3 + 1] = 1 / nl; nrm[n * 3 + 2] = hu / nl;
+      const s = L.shore(u, v), t = clamp(-L.crag(u, v) / L.rc, 0, 1), ny = 1 / nl, k = vnoise(u * 0.21 + i * 7.3, v * 0.21), n2 = vnoise(u * 0.07 + i * 3.7, v * 0.07);
+      if (t > 0.06 || ny < 0.7) {   // the crag: rock (snow up the high one; the pine one's flanks wooded)
+        c3.set(rk[0]).lerp(c4.set(rk[1]), k);
+        if (kind === 'rock' && y > 19 + 3 * k) c3.set('#f4f7fb'); else if (kind === 'pine' && t < 0.3 && k > 0.45) c3.set('#4c8748');
+        gr[n] = 0;
+      } else {
+        c3.set(s < 1.2 ? wet : s < 5.5 + k * 1.5 ? sand : B.bare);
+        gr[n] = grassK(u, v, s, t); c3.lerp(c4.set(B.grass), smooth(0.03, 0.42, gr[n]));
+      }
+      c3.multiplyScalar(0.92 + 0.16 * n2); col[n * 3] = c3.r; col[n * 3 + 1] = c3.g; col[n * 3 + 2] = c3.b;
+    }
+    for (let a = 0; a < NG * 2; a++) for (let b = 0; b < NG * 2; b++) {
+      const A = a * N1 + b, Bv = A + 1, C = A + N1 + 1, E = A + N1;
+      if ([A, Bv, C, E].every(n => pos[n * 3 + 1] < deep)) continue;
+      idx.push(A, Bv, C, A, C, E);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeBoundingSphere();
     part(q, g, { outline: false, shadow: false });
+    // its grass tufts (the land's, swaying; nobody grazes here): own dice
+    ownDice(5303 + i * 31, () => {
+      const TR = mulberry32(611 + i * 53), its = [];
+      for (let a = -NG * D; a < NG * D; a += 2.1) for (let b = -NG * D; b < NG * D; b += 2.1) {
+        const u = L.cu + a + (TR() - 0.5) * 2, v = L.cv + b + (TR() - 0.5) * 2, fa = (u - L.cu) / D + NG, fb = (v - L.cv) / D + NG, ga = Math.round(fa), gb = Math.round(fb);
+        if (ga < 0 || gb < 0 || ga >= N1 || gb >= N1) continue;
+        const n = ga * N1 + gb; if (gr[n] < 0.16 || L.sdf(u, v) < 0.4 || Math.hypot(u - L.spring.u, v - L.spring.v) < L.spring.r + 0.6) continue;
+        its.push({ u, v, n, sc: 0.8 + TR() * 0.6, sy: 0.8 + TR() * 0.5, yaw: TR() * TAU });
+      }
+      if (!ISLE_TUFT.mat) {
+        ISLE_TUFT.mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_GRAD });
+        ISLE_TUFT.mat.onBeforeCompile = sh => { sh.uniforms.uTime = U.uTime; sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 iw = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);' + TUFT.sway); };
+        ISLE_TUFT.mat.customProgramCacheKey = () => 'isleTufts';
+      }
+      const m = new THREE.InstancedMesh(TUFT.geo, ISLE_TUFT.mat, its.length);
+      its.forEach((it, j) => {
+        _m4.compose(_v.set(...at(it.u, it.v, L.h(it.u, it.v))), _q.setFromEuler(_e.set(0, it.yaw, 0)), _s.set(it.sc, it.sc * it.sy, it.sc)); m.setMatrixAt(j, _m4);
+        m.setColorAt(j, c4.setRGB(col[it.n * 3] * 0.95, col[it.n * 3 + 1] * 1.02, col[it.n * 3 + 2] * 0.9));
+      });
+      m.receiveShadow = true; m.computeBoundingSphere(); q.add(m);
+    });
     const put = (gs, u, v, dy = 0) => { const y = L.h(u, v) + dy; for (const g2 of gs) ps.push(g2.translate(...at(u, v, y))); };
     for (let k = 0, n = kind === 'rock' ? 5 : 16; k < n; k++) { const a = R() * TAU, d = L.rc * rr(0.5, 1.0); put(kind === 'palm' ? palm(0, 0, rr(0.9, 1.4)) : pine(0, 0, rr(1, 1.8)), L.gu + Math.cos(a) * d, L.gv + Math.sin(a) * d, -0.2); }   // up the crag's flanks
     for (let k = 0; k < 10; k++) { const a = R() * TAU, u = L.cu + Math.cos(a) * L.r * rr(0.97, 1.06), v = L.cv + Math.sin(a) * L.r * rr(0.97, 1.06); if (Math.abs(wrapA(a - Math.PI / 2)) < 0.9) continue; ps.push(rock(...at(u, v, -BOAT.fb - 0.15), rr(1, 2.4), kind === 'rock' ? '#6f6a64' : '#8d877c')); }   // rocks in the shallows (not by the jetty)
