@@ -11677,7 +11677,7 @@ function newCoyote(x, z, pack, alpha, yaw = 0, state = 'pack') {
     prey: null, courage: coyoteCourage(alpha), leg: 0, tumble: 0, dazeT: 0, shook: 0, crouch: 0, howlT: rnd(2, 8), growlT: 0, models: makeCoyote(alpha) };
   G.coyotes.push(c); return c;
 }
-const coyoteCourage = alpha => (alpha ? 1.5 : 1) + (G.clock.day - 1) * 0.1;
+const coyoteCourage = alpha => (alpha ? 1.5 : 1) + (G.clock.day - 1) * 0.1 + ecoHunger('coy') * T.eco.bold;   // (ECOSYSTEM: hungry ones braver)
 
 // ---------------- dens: every pack lives somewhere ----------------
 // Each den keeps a pack (its size grows night by night). By day they sleep curled up at the den mouth; at
@@ -11720,7 +11720,8 @@ function updateDens() {
   }
 }
 function wakeDen(D, size) {
-  D.count = clamp(Math.max(D.count, size), T.denStart, T.denMax);
+  D.count = T.eco.on ? clamp(size, 1, T.denMax) : clamp(Math.max(D.count, size), T.denStart, T.denMax);   // (ECOSYSTEM: as many as the land holds tonight; lean times, fewer)
+  if (T.eco.on) while (D.coyotes.length > D.count && D.coyotes.at(-1).state === 'sleep') { const c = D.coyotes.pop(); scene.remove(c.models.root); c.gone = true; G.coyotes = G.coyotes.filter(o => o !== c); }
   denFill(D);
   const p = D.pack;
   for (const c of D.coyotes) { c.alone = false; c.gone = false; c.courage = coyoteCourage(c.alpha); c.barks = 0; c.bold = c.wiseShown = false; if (c.state === 'sleep' || c.state === 'leave') { c.state = 'pack'; c.stateT = 0; } }
@@ -11839,7 +11840,10 @@ function hitCoyote(c, amt, vx, vz, src, label = 'BONK!') {
   c.vx = vx; c.vz = vz; c.tumble = Math.max(c.tumble, 0.8);
 }
 // SHARED HOOK: a predator's catch is done for: a sheep (killSheep), a cria (LLAMAS: llamaKilled), a duck (DUCKS: duckDie)
-function preyKill(s, why) { if (s.isLlama) llamaKilled(s, why); else if (s.isHerd) duckDie(s, 'prey'); else killSheep(s, why); }
+function preyKill(s, why) {
+  ecoMeal(s, why);   // ECOSYSTEM: a meal for the leg's predators; one fewer of its kind
+  if (s.isLlama) llamaKilled(s, why); else if (s.isHerd) duckDie(s, 'prey'); else killSheep(s, why);
+}
 // SHARED HOOK: not ours (a wild cria, a duck): taken, dropped, eaten without a word (no toast, Hank, hint, rumble, stats, red arrow)
 const preyWild = s => !!s && (s.isHerd || (s.isLlama && !s.tame));
 function preyCry(s, k = 1.1, vol = 0.45, pan = 0) { if (s.isHerd) { if (duckling(s)) DSND.peep(pan, 0.1, 1.1, 3); else DSND.quack(pan, 0.14, s.pitch * k, 2); } else Sound.baa(s.pitch * k, vol, pan, true); }
@@ -12641,6 +12645,7 @@ function cougarsAtNightfall() {
   for (let i = up.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [up[i], up[j]] = [up[j], up[i]]; }
   let h = rnd(C.delay[0], C.delay[1]);
   for (const k of up) { cougarHunt(k, h); h += rnd(C.gap[0], C.gap[1]); }   // one after another, through the night
+  if (T.eco.on) { const p = ecoCougarP(); for (const k of up) if (Math.random() > p) k.hunts = false; }   // ECOSYSTEM: few about (lean years): some just watch
 }
 function cougarHunt(k, hours = 0) {   // (also the debug key J, and tests)
   if (k.state === 'away') { perchCougar(k); k.state = 'perch'; k.t = 0; }
@@ -12981,7 +12986,7 @@ function falconStep(F, dt, dtH) {
       if (G.falconGone) break;   // past FALCON CANYON: gone for good
       if (G.clock.day < C.fromDay) break;   // day one: learning
       if ((G.falconIn = (G.falconIn ?? C.first) - dtH) > 0) break;
-      G.falconIn = rnd(C.every[0], C.every[1]);
+      G.falconIn = rnd(C.every[0], C.every[1]) / ecoK('falcon');   // (ECOSYSTEM: more of them, more often)
       falconCome(falconPick());
       break;
     }
@@ -13082,7 +13087,7 @@ function updateCanyon(dt) {
   if (FALCONS.filter(F => F.home && !F.boss && F.state !== 'perch').length >= K.maxAir) { CANYON.next = 0.5; return; }
   const e = canyonMark(cs), F = e && canyonBird(e);
   if (!F) { CANYON.next = rnd(1, 2); return; }
-  canyonSwoop(F, e); CANYON.next = rnd(K.every[0], K.every[1]);
+  canyonSwoop(F, e); CANYON.next = rnd(K.every[0], K.every[1]) / ecoK('falcon');
 }
 // THE GREAT FALCON (host): while something's in the gorge by day it comes every boss.every s, off its own clock; the fight's
 // state (CANYON.boss: hp, on) drives the HUD's 🦅 ♥♥♥ on every screen
@@ -15163,7 +15168,7 @@ function stepClock(dt) {
   if (crossed(prev, now, T.nightStart) && !SEA.on) {
     const fc = flockCenter();
     const n = Math.min(T.coyoteMax, T.coyoteBase + (G.clock.day - 1) * T.coyotePerDay + Math.floor(fc.n / 18) + Math.max(0, G.dogs.length - 1) * T.coyotePerDog);
-    if (!flockInPass()) { wakeDens(Math.min(T.denMax, n)); Sound.howl(-0.6, 0.18); setTimeout(() => Sound.howl(0.5, 0.14), 900); }   // (MOUNTAIN PASS: too cold up there for coyotes)
+    if (!flockInPass()) { wakeDens(Math.min(T.denMax, ecoCoyotes(n))); Sound.howl(-0.6, 0.18); setTimeout(() => Sound.howl(0.5, 0.14), 900); }   // (MOUNTAIN PASS: too cold up there for coyotes)
     const allIn = flockInPass() || living().every(s => s.pen && s.pen.gateT < 0.05);
     toast(flockInPass() ? '❄️ 🌙 → 🔥' : allIn ? 'Coyotes are out — but your flock is safe.' : 'Coyotes are on the prowl!', allIn ? 'good' : 'bad');
     if (!allIn) hint('night');
@@ -15171,7 +15176,7 @@ function stepClock(dt) {
   }
   if (crossed(prev, now, T.nightStart)) poxNight();   // SHEEP POX: another night at the same place?
   if (crossed(prev, now, 23)) for (const s of G.sheep) s.breedOK = !!(s.pen && s.pen.gateT < 0.1 && s.hunger < T.breedHunger && !s.lamb);
-  if (crossed(prev, now, 0.5) && !flockInPass() && !SEA.on) wakeDens(Math.min(T.denMax, Math.max(T.denStart, Math.ceil((T.coyoteBase + (G.clock.day - 2) * T.coyotePerDay) / 2) + 1)), 2);
+  if (crossed(prev, now, 0.5) && !flockInPass() && !SEA.on) wakeDens(Math.min(T.denMax, ecoCoyotes(Math.max(T.denStart, Math.ceil((T.coyoteBase + (G.clock.day - 2) * T.coyotePerDay) / 2) + 1))), 2);
   if (crossed(prev, now, T.nightEnd)) {
     for (const c of G.coyotes) if (c.prey) dropPrey(c, true);
     for (const p of G.packs) setPhase(p, 'retreat');
@@ -21683,7 +21688,7 @@ function duckLife(h) {
       else if (Math.random() < L.visitP * h) { if (!hens.length) duckVisit(g, false); if (!drakes.length) duckVisit(g, true); }
     }
     if (!n) continue;
-    if (night && !g.active && !duckSeen(g) && Math.random() < P.farP * h * (n / L.cap) ** 2) duckFarPrey(g);   // PREY: out of sight, in the night (more, the more of them)
+    if (night && !g.active && !duckSeen(g) && Math.random() < P.farP * h * (n / L.cap) ** 2 * ecoDuckK(g.leg ?? -1)) duckFarPrey(g);   // (ECOSYSTEM: × how hard the leg's predators are on ducks now)   // PREY: out of sight, in the night (more, the more of them)
   }
 }
 const duckSeen = g => Math.abs(g.cx - cam.x) + Math.abs(g.cz - cam.z) < cam.view * 2.6 + 30;
@@ -25124,7 +25129,8 @@ function ecoN(kind, li) {
 }
 // how many against the long-run mean (off, at sea, none there: 1), clamped T.eco.k
 function ecoK(kind, li) {
-  li = ecoLegOf(li); if (!T.eco.on || li < 0 || !ECO.legs[li]) return 1;
+  if (!T.eco.on) return 1;
+  li = ecoLegOf(li); if (li < 0 || !ECO.legs[li]) return 1;
   const b = ecoBase()[li][kind]; if (!(b > 0.05)) return 1;
   return clamp(ECO.legs[li][kind] / b, T.eco.k[0], T.eco.k[1]);
 }
@@ -25135,7 +25141,8 @@ function ecoD(kind, li) {
 }
 // how hungry a predator is there: 0 well fed … 1 starving (off: 0)
 function ecoHunger(kind, li) {
-  li = ecoLegOf(li); if (!T.eco.on || li < 0 || !ECO.legs[li]) return 0;
+  if (!T.eco.on) return 0;
+  li = ecoLegOf(li); if (li < 0 || !ECO.legs[li]) return 0;
   return clamp(1 - ECO.legs[li].fed[kind], 0, 1);
 }
 // a kill or a catch seen in the game: prey gone from its leg (mice, ducks, cats, fish: by n), the predator fed (pred: 'coy' 'cougar' 'falcon'
@@ -25159,6 +25166,16 @@ function updateEco(dtH) {
     ecoRun(ECO.legs, T.eco.tick / 24, ECO.R, T.eco.tick / 24);
   }
 }
+// a predator's kill in the game (preyKill: why 'eaten' a coyote's, 'cougar', 'falcon'): its leg's predators fed, the prey's count down
+function ecoMeal(s, why) {
+  const pred = { eaten: 'coy', cougar: 'cougar', falcon: 'falcon' }[why]; if (!pred || !s) return;
+  const prey = s.isCat ? 'cat' : s.isHerd ? (s.kind === 'duck' ? 'duck' : null) : s.isLlama ? (s.grown ? 'llama' : 'cria') : s.lamb ? 'lamb' : 'sheep';
+  if (prey) ecoEat(pred, prey, ecoLeg(s.x, s.z));
+}
+// tonight's coyotes (from the day's count): × how many the land holds now (off: as is)
+function ecoCoyotes(n) { return T.eco.on ? Math.max(1, Math.round(n * ecoK('coy'))) : n; }
+// the chance a cougar near the flock hunts tonight: how many there are (lean years: some just watch from their limb), hungrier: keener
+function ecoCougarP() { return clamp(ecoK('cougar') * (0.8 + 0.4 * ecoHunger('cougar')), 0.25, 1); }
 // out of sight, how hard a leg's predators are on ducks (× DUCKS' farP): a duck's chance of being taken a day there against the long run's
 function ecoDuckK(li) { if (!T.eco.on || li < 0 || !ECO.legs[li]) return 1; const b = ecoBase()[li].dl; return b > 1e-4 ? clamp(ECO.legs[li].dl / b, T.eco.k[0], T.eco.k[1] * 1.5) : 1; }
 onSave('eco', () => T.eco.on ? { seed: ECO.seed, h: +ECO.h.toFixed(3), legs: ECO.legs.map(g => [...ECO_KINDS.map(k => +g[k].toFixed(2)), ...ECO_PRED.map(j => +g.fed[j].toFixed(3)), +g.noise.toFixed(3)]) } : undefined, v => {
@@ -25166,7 +25183,7 @@ onSave('eco', () => T.eco.on ? { seed: ECO.seed, h: +ECO.h.toFixed(3), legs: ECO
   ECO.seed = v.seed >>> 0; ECO.h = +v.h || 0; ECO.R = mulberry32((ECO.seed ^ 0x3c0e11 ^ (G.clock.day * 7919)) >>> 0);
   v.legs.forEach((a, i) => { const g = ECO.legs[i]; if (!g || !Array.isArray(a)) return; ECO_KINDS.forEach((k, j) => { if (Number.isFinite(a[j])) g[k] = Math.max(0, a[j]); }); ECO_PRED.forEach((j, n) => { const f = a[ECO_KINDS.length + n]; if (Number.isFinite(f)) g.fed[j] = f; }); if (Number.isFinite(a.at(-1))) g.noise = a.at(-1); });
 }, 26);
-expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
+expose(() => ({ ECO, ECO_KINDS, ECO_PRED, ECO_PREY, ecoMeal, ecoCoyotes, ecoCougarP, ecoLegNew, ecoIntake, ecoStepLeg, ecoMove, ecoRun, ecoBase, resetEco, ecoLeg, ecoHere, ecoN, ecoK, ecoD, ecoHunger, ecoEat, ecoAdd, updateEco, ecoDuckK }));   // ECOSYSTEM
 
 // =====================================================================
 // RAM FOLDS (LINEAGE: rams apart) — hurdles from the vagabond (🚧, T.vendor.fold): Hank's fold goes up beside the camp's pen picked on 📍,
