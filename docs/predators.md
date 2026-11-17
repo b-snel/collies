@@ -68,7 +68,7 @@
   Coyotes: more heart lost, no `packK`, but still their one bark. A third, fourth joining: a bigger one. Then `cd` s
   hoarse. First wise cougar with 2+ dogs: hint `team-bark`.
 - **Rattlesnakes** (`SNAKES`, `T.snake`, own rng): behind their own desert rocks
-  (`latMin`…`lat` off the trail) past Falcon Canyon's exit. Near: rattle (sheep shy), slither out
+  (`latMin`…`lat` off the trail) from `from` (~30 m past Falcon Canyon's exit) to the Trading Post. Near: rattle (sheep shy), slither out
   after its mark (`snakeSlide`, `slither`; `n.x0/z0` home), strike one in reach, back home a
   while (`cd`). Bark or pounce: back. Bite: `s.venom`, slower, sickly, dead in
   `dieHours` untreated.

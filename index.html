@@ -1169,7 +1169,7 @@ const T = {
   // a hopping dog's missed); then back behind its rock for cd s. A pounce within hitR or a bark within barkR: back for scareCd s.
   // Bitten (s.venom): slower and sicker, dead in dieHours unless Hank gives anti-venom (lambs: × lamb). A dog: dogDmg hp.
   // slither: rattling, it slides out after its mark (spd m/s, up to r m from its rock); back home at `back` m/s
-  snake: { from: 966, every: 10, lat: 10, latMin: 3.5, warnR: 7, strikeR: 3.2, rattleT: 0.6, strikeT: 0.2, hit: 0.9, cd: [8, 14], shy: 0.55,
+  snake: { from: 995, every: 11, lat: 10, latMin: 3.5, warnR: 7, strikeR: 3.2, rattleT: 0.6, strikeT: 0.2, hit: 0.9, cd: [8, 14], shy: 0.55,
     barkR: 4.5, hitR: 2.2, scareCd: 6, dieHours: [9, 15], lamb: 0.65, dogDmg: 0.22, slither: { r: 6, spd: 2.6, back: 1.2 } },
   // WOUNDS (VET): a sheep a predator lets go of is cut: sev = base[kind] + held s × perS + a pen mauling's damage × maul. sev ≥ deep:
   // it bleeds (s.bleed) to death in bleedHours (the deeper, the sooner) unless Hank bandages it; shallower: it festers (s.infect)
@@ -3676,7 +3676,9 @@ function addScen(type, x, z, sc, collideR, extra = {}) {
     for (let t = 0; t < 12; t++) {
       const k = pathIdx(s0), side = SR() < 0.5 ? -1 : 1, room = (side < 0 ? hwWArr[k] : hwEArr[k]) * 0.75, lat = side * (S.latMin + SR() * Math.max(0.5, Math.min(S.lat, room) - S.latMin));
       const p = pathPoint(s0 + (SR() - 0.5) * 8, lat), sc = 0.75 + SR() * 0.45;
-      if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)) continue;
+      const sn = sc * 0.85 + 0.3;   // (the snake: in front of it, as the camera sees it, latMin off the trail too)
+      if (isBlocked(p.x, p.z) || biomeW(s0)[0] < 0.75 || !offMarket(p.x, p.z, 8) || CAMPS.some(c => Math.hypot(p.x - c.x, p.z - c.z) < c.R + 16) || OBSTACLES.some(o => Math.hypot(o.x - p.x, o.z - p.z) < o.r + sc + 2.5)
+        || Math.abs(trailRaw(p.x + CAM_F.x * sn, p.z + CAM_F.z * sn).lat) < S.latMin) continue;
       scen.rock.push({ x: p.x, z: p.z, y: terrainH(p.x, p.z), sc, rot: SR() * TAU, cr: sc * 0.85, col: ROCK_COL[0], snake: true });
       OBSTACLES.push({ x: p.x, z: p.z, r: sc * 0.85 }); stampObstacle(p.x, p.z, sc * 0.85);
       break;
@@ -10593,7 +10595,7 @@ expose(() => ({ DIRT, paws, waterTroughAt, updateDirt, tubIn, tubEnd, tubStep, r
 // n.ft: the strike (0 coiled … 1 at its mark, hx/hz). Rattling, it slithers
 // out after its mark (n.x/z; home n.x0/z0 behind its rock: T.snake.slither).
 // =====================================================================
-const SNAKES = [];
+const SNAKES = [], SNAKE_DICE = 10;   // (as many snakes as there were: CAVE_DICE's way)
 {
   for (const r of scen.rock) {   // one behind each rock put down for it (SCENERY), as the camera sees it
     if (!r.snake) continue;
@@ -10612,13 +10614,18 @@ const SNAKES = [];
   const headG = merge(P(SPH(8), '#a2783f', { s: [0.085, 0.055, 0.13] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [0.06, 0.03, 0.05] }), P(SPH(5), '#ffd23a', { s: [0.022, 0.022, 0.018], p: [-0.06, 0.03, 0.05] }),
     P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [0.066, 0.03, 0.06] }), P(SPH(4), '#111111', { s: [0.01, 0.018, 0.012], p: [-0.066, 0.03, 0.06] }), P(SPH(6), DARK, { s: [0.05, 0.02, 0.07], p: [0, 0.045, -0.02] }));
   const tongueG = merge(P(BOX(0.012, 0.006, 0.12), '#e0304a', { p: [0, 0, 0.06] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, 0.4, 0], p: [0.012, 0, 0.135] }), P(BOX(0.01, 0.006, 0.05), '#e0304a', { r: [0, -0.4, 0], p: [-0.012, 0, 0.135] }));
+  let per = 0;   // (Math.random draws a snake's meshes take)
   for (const n of SNAKES) {
-    const root = new THREE.Group(); root.position.set(n.x, n.y, n.z); scene.add(root);
-    const coil = part(root, coilG), rattle = new THREE.Group(); rattle.position.set(0.21, 0.08, 0); root.add(rattle); part(rattle, rattleG, { shadow: false });
-    const neck = part(root, neckG), head = new THREE.Group(); root.add(head); part(head, headG);
-    const tongue = part(head, tongueG, { outline: false, shadow: false }); tongue.position.set(0, -0.01, 0.1);
-    n.m = { root, coil, rattle, neck, head, tongue };
+    const r0 = Math.random; per = 0; Math.random = () => (per++, r0());
+    try {
+      const root = new THREE.Group(); root.position.set(n.x, n.y, n.z); scene.add(root);
+      const coil = part(root, coilG), rattle = new THREE.Group(); rattle.position.set(0.21, 0.08, 0); root.add(rattle); part(rattle, rattleG, { shadow: false });
+      const neck = part(root, neckG), head = new THREE.Group(); root.add(head); part(head, headG);
+      const tongue = part(head, tongueG, { outline: false, shadow: false }); tongue.position.set(0, -0.01, 0.1);
+      n.m = { root, coil, rattle, neck, head, tongue };
+    } finally { Math.random = r0; }
   }
+  for (let i = per * (SNAKE_DICE - SNAKES.length); i > 0; i--) Math.random();   // (fewer than there were: their draws still taken, seeded runs keep their dice)
 }
 // what it goes for: the nearest sheep (or dog) within r
 function snakeMark(n, r) {
