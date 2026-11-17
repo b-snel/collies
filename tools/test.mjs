@@ -42,6 +42,10 @@ const SECTIONS = {
   'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test llama-test kin-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim kin-test',
   'FLOCK SAVE': 'hank-test age-sim shear-test save-test kin-test', LINEAGE: 'kin-test lamb-sim breed-sim age-sim dawn-test save-test sell-test', 'JOURNEY SAVE': 'save-test', TRIALS: 'trial-test kin-test', DUCKS: 'duck-test',
   VAGABOND: 'vendor-test vet-test map-test pox-test kin-test sell-test fold-test', LLAMAS: 'llama-test rope-test', 'WILD RAMS': 'kin-test rope-test llama-test', 'RAM FOLDS': 'fold-test kin-test', SAILING: 'sail-test vendor-test swim-test amb-test', TUTORIAL: 'tutorial-test',
+  ECOSYSTEM: 'eco-sim',
+  'MICE & CATS': 'cat-test',
+  'CAT LOOKS': 'cat-test',
+  FISHING: 'fish-test',
   'ONLINE CO-OP': 'net-test sea-net-test hybrid-test line-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
 };
 // other files → tests ('*': all); a test's own file runs it; anything else: none
