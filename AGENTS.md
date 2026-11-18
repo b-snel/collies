@@ -14,7 +14,13 @@ better with practice), local or online, drive a flock along one trail
 (desert → mountains → ocean → Sweetgrass Meadow (the sheepdog trials) → Falcon Canyon → desert →
 the Trading Post → the Mountain Pass → the yeti → Cold Harbour → the sea → the Promised Land): graze it, pen it at camps by nightfall,
 fight off coyotes (they dig under fences: fill the hole), cougars and falcons till dawn. Swim anywhere: a dog spent in the water goes under; Hank swims out in his trunks. Rattlesnakes in the last
-desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly. Ducklings trail their mum (orphaned: a dog), grow up, grow old; drakes and hens mate; coyotes and cougars keep them down. Wild animals (ducks, wild crias) aren't ours: taken without an alert.
+desert. A rope on every leg: drag it, or dogs (up to 4, in teams) or Hank play tug of war. Bones dug up stay for good: carry, throw, bonk. Runner ducks in bunches on every leg before Falcon Canyon, by water: herd them gently or they fly. Ducklings trail their mum (orphaned: a dog), grow up, grow old; drakes and hens mate; coyotes and cougars keep them down. Wild animals (ducks, wild crias, strays) aren't ours: taken without an alert.
+The wild is a population model leg by leg (mice, ducks, fish, strays; coyotes, cougars, falcons): mice boom, the coyotes follow, starve, wander off hungry
+or short of a mate, dwindle; tonight's coyotes, cougars and the falcon by it. Field mice by the camps raid the stored feed by night; stray cats (eight breeds)
+round each camp hunt them (stalk, wiggle, pounce). A rod 🎣 and a cat bowl 🥣 from the vagabond: by water Ⓑ winds up a cast, Ⓑ lets fly; strike on the bite
+(a nibble spooks it), then a tug of war with the fish (heave on its tail's beat, dig in on a run, step in on a leap; a second dog heaves too); fish in the
+pack, to the bowl Hank keeps by the flock's pen. Fish there a few days running: a stray's ours (it keeps the mice off, has kittens; in the barn's 🐱 tab: a name, a collar). Gandy and Linus (`CAT_STARS`) are among the strays. Coyotes, cougars and
+the falcon take cats; the falcon takes ducks too.
 The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), again as often as you like (the best counts; each its card on its mat, a tip a step), against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel, a ram and hurdles (a ram fold by a camp's pen: rams apart) for wool, and buying sheep (the better the sheep, the more);
@@ -34,7 +40,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, 🤒 button: the pox, `L` to the snakes, `U` to Falcon Canyon,
   `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
-  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island). `window.GAME` exposes
+  `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island, 🌿 the wild here: a mouse boom, a crash, as it was, 🐱 a stray by the dog, mice round it (again: it's ours, and a mate; `devCat`), 🎣 a rod and a cat bowl, the dog on a stream bank (`devFish`)). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
 - `?sim`: no render loop; tests call `GAME.step(dt)`.
@@ -74,6 +80,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
 - fences/pens
 - models (DOG BREEDS)
 - particles
+- CAT LOOKS (CAT_BREEDS, the cats' models and poses, mice, mouse holes)
 - `G`
 - SHEEP
 - DOGS (ROLES & TRAINING, IDLE)
@@ -111,10 +118,13 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
 - JOURNEY SAVE
 - TRIALS
 - DUCKS (+ HERD: the small-herd mover)
+- MICE & CATS (holes, the raid, strays, the hunt, hunger, the bowl, ours, kittens, prey)
 - VAGABOND (the VENDOR's wares)
 - LLAMAS (LLAMA WARDROBE, COLD, PACK)
 - WILD RAMS (the castaway)
+- ECOSYSTEM
 - RAM FOLDS
+- FISHING (the rod, the line, the fight, the bowl, FSND, drawing, the overlay)
 - SAILING (waves, WIND, the boat, LIFE RINGS, STATIONS, mooring, route, ISLANDS, Hank at sea, HAZARDS, KRAKEN, chase camera, sky, water, drawing, HUD + chart, flow)
 - TUTORIAL
 - game flow
@@ -233,6 +243,16 @@ A new feature registers itself in its own section: its reset `onReset`, its draw
 - `kegHeat(x, z)` (in `heatAt`), `d.keg`
 - `G.tut` (TUTORIAL: the practice is on: `stepClock` waits, `hint` is quiet, `journeyCan` is false, `saveFlock` too, `G.ff` off), `tutDawnNote()` (in `dawnHTML`)
 - `lambBorn(s)` (one lamb by its mother: `lambsAtDawn`, TUTORIAL)
+- `ecoLeg(x, z)` / `ecoHere()` (ECOSYSTEM: the leg, 0…4; −1 at sea), `ecoN` / `ecoD` / `ecoK` / `ecoHunger(kind, li)` (how many; prey / K; × the mean, 1 when off; 0…1),
+  `ecoEat(pred, prey, li, n, wild)` (a kill or catch seen; wild false: one of ours), `ecoAdd(kind, dn, li)`, `ecoMeal(s, why)` (in `preyKill`: a predator's kill feeds its leg), `ecoReach(kind)` (hungry: from further)
+- `MICE` / `CATS` / `MOUSE_HOLES` (MICE & CATS: what CAT LOOKS draws, fields in docs/cats.md; `c.h` / `m.h` the height off the ground), `catAnim` (look, tail, puff, crouch)
+- `catPrey(c, by)` / `catNear(x, z, r, by)` (by 'coy' 'cougar' 'falcon'), `coyoteCat`, `catSnatched(c, by)` / `catFreed(c, by)` / `catKilled(c, why)` (from `preyKill`), `preySnack(s)` (a duck, a cat: eaten on the spot, the pack hunts on)
+- `falconSnackW(e)` / `falconSnatch(F, e)` / `falconLetGoSnack(F, e, saved)` / `falconHas(s)` (the falcon's cats and ducks)
+- `MC.raid` (the pen the mice raid), `raidGuard(P)`, `catScent(P)`, `MC.night` (the night's loss: the dawn card), `MC.force` (tests: the pounce odds)
+- `CAT_BREED_IDS` / `CAT_COATS` (MICE & CATS picks, CAT LOOKS draws), `CAT_BREEDS` (looks only), `catSize(c)`, `catScruffH(c)` (held / taken: it hangs from its scruff at x, z, this far above y), `catMouth(c, out)` (its drawn mouth: a mouse it holds is drawn there)
+- `ROD` (`holdKind 'rod'`; `ROD.by`; `ROD.ph` '' 'wind' 'air' 'float' 'bite' 'fight' 'land'), `rodPress(R, d)` (Ⓑ or a right-stick swing with it), `rodFight(d)` (updateDog: LT digs in), `fishHelp(d)` (Ⓑ by a dog with a fish on: TEAM HEAVE, no pounce)
+- `d.fish` (0…`T.fish.carry`; drawn by `dogPackSync(pk, k, salt, dt, snap, fish)`), `fishCam(dogs)` (CAMERA: the line out in the frame), `fishWater(x, z)` / `fishWaterY(x, z)`
+- `BOWL` / `bowlTake()` (a cat eats one), `bowlSet(p, how)` / `bowlSpot(p)`
 
 ### Tests (headless Chromium via `tools/harness.mjs`)
 
@@ -244,6 +264,7 @@ New `index.html` section → its line in `SECTIONS` (`tools/test.mjs`).
 After merging main: clean, or conflicts only in docs (AGENTS.md, `docs/`, sw.js): push, CI runs them all. Code conflicts resolved: `node tools/test.mjs --merge` (only lines unlike both parents; `--merge C` for another merge).
 New test → its header comment: how to run it, what it checks.
 All are `node tools/<script>`.
+Cat contact sheets: `node tools/cat-shots.mjs OUTDIR` (`--sheets coats,walk,faces,kittens,poses,mice,game`, `--breeds id:coat`, `--states`, `--elev`).
 
 ### Online co-op
 
@@ -332,6 +353,10 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
+- `docs/cats.md`: field mice (holes, the raid on the feed), stray cats (camps, hideouts, shy), the hunt, hunger, the bowl and adoption, ours, kittens, prey (coyotes, cougars, the falcon; the falcon's ducks), ✊, online, save.
+- `docs/cat-looks.md`: drawing cats and mice: breeds, coats, the model, poses, the tail, held from the scruff, long hair (solid tufts: `catTuft`, a swinging bib, outlined on the silhouette only: `catInk`), the Norwegian (one real cat's coat), mice, holes, icons.
+- `docs/fishing.md`: the rod, casting, bites, the fight (beat, runs, leaps, team heave), the pack, the bowl, online, save.
+- `docs/eco.md`: the ecosystem: each leg's mice, ducks, fish, strays, coyotes, cougars, falcons (a population model); what the game reads from it and feeds it.
 - `docs/tutorial.md`: the practice before day 1: lessons, steps, what's off meanwhile, the card and markers, how it ends, when it's offered.
 
 ### Icons
