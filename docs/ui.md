@@ -14,7 +14,7 @@
   Button nudges over things (`nudge`): `NUDGE_DUR` (6.5 s) on screen, then retired. None in the practice (docs/tutorial.md: its card).
 - **Toasts** (`toast`, `updateToasts`): one at a time, queued (≤4, no repeats); `TOAST_DUR` s, more waiting → `TOAST_BUSY`.
   One up: the hint steps aside (`#hint.wait`), its clock waits. None in the practice. One message on screen at a time.
-- **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep and Llamas (only once one's ours: `barnLlamas`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each for the dogs playing on this screen (`barnDogs`; the title: P1's), 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
+- **Barn**: Dogs (first; opens on it unless a sheep's asked for), Sheep, Llamas and Cats (only once one's ours: `barnLlamas`, `barnCats`, `barnTabOK`; LT/RT walk them) tabs; icon chips, no paragraphs. Dogs: a card each for the dogs playing on this screen (`barnDogs`; the title: P1's), 2×2 (a portrait: `THUMB`, `dogThumb`, one a frame; pick: `barnPickDog`, hop, sparks, bark; the turntable dog hops and spins on a new look). Breed: ‹ ▦ › → the picker (`breedPickOpen`, L3): the live dog, name, tags; filters (`BREED_FILTERS`: group, coat `BREED_COAT`, size `breedSize`); every breed a tile (`THUMB.bq`), its own lit; arrows / D-pad walk it, Esc / Ⓑ done.
   Every screen its own (Tab / View / 🏚️ / pause). A guest dresses its own dogs (`barnDogs`: DOGS.looks[k] → its k-th dog, colours `barnSlot`;
   saved on its device; sent as `dl`, `netLookOut`: a coat or collar never picked (`pick`) takes its slot's colours there) and renames /
   dresses any sheep (`barnEdit` → `sh`, checked: `cleanSheepEdit`); the host lists only its own dogs. Open while the world goes on:
@@ -22,6 +22,10 @@
   Llamas (LLAMA WARDROBE): a row each (coat, name, ♂ / ♀ / 🍼; `barnPickLlama`), Coat, Colour, Hat, Kit (locked till dug up); on the turntable
   in its gear, its pack showing what's in it; info: age, fleece, 🎒, ❄️. Pad: D-pad pick / hat, Ⓧ coat, Ⓨ colour, LB/RB kit (`LLAMA_OUTFITS`), Ⓐ name.
   A guest dresses the host's (`llamaSet` → `ll`; what's found: `LWARD.net`).
+  Cats (MICE & CATS: ours only, `barnCats`; opens on one asked for): a row each (its coat, name, ♂ / ♀ / 🍼; `barnPickCat`), its card
+  (breed and coat, `CAT_BREED_NAMES`; age; 🐟 ✔ / … / ❗ how fed; 🐭 mice caught, `c.caught`; 🍼 kittens with her; 💓 one coming), 🎲 a name,
+  Collar (`CAT_COLLARS`, `c.collar`: CAT LOOKS builds it in, `catLookKey`); sat on the turntable, looking about, tail up (its own copy:
+  `B.catC`, `catModel` + `catSync`). Pad: ↑↓ pick, Ⓨ collar, Ⓐ a name. A guest's edit: `catEdit` → `ct`. Saved with ours.
 - **Barn 🌳 Family** (docs/kin.md): the picked sheep's family tree (`kinTreeHTML`), ♥ its mates; a node: its tree, ↶ back.
 - **Dawn report** (`DAWN`, `dawnReport`, after `lambsAtDawn`): lambs born (rename, 🎲, ✏️ → barn, 🌳 its tree over the card: `dawnTree`;
   🧬 inbred; new blood with its source: TRIALS' champion ram 🏆, the vagabond's 🎒, wild 🌿, the castaway 🏖) and

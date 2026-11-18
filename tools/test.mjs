@@ -42,6 +42,10 @@ const SECTIONS = {
   'DOG WARDROBE': 'dig-test role-test', "HANK'S BARN": 'hank-test role-test llama-test kin-test', 'DAWN REPORT': 'dawn-test water-test lamb-sim kin-test',
   'FLOCK SAVE': 'hank-test age-sim shear-test save-test kin-test', LINEAGE: 'kin-test lamb-sim breed-sim age-sim dawn-test save-test sell-test', 'JOURNEY SAVE': 'save-test', TRIALS: 'trial-test kin-test', DUCKS: 'duck-test',
   VAGABOND: 'vendor-test vet-test map-test pox-test kin-test sell-test fold-test', LLAMAS: 'llama-test rope-test', 'WILD RAMS': 'kin-test rope-test llama-test', 'RAM FOLDS': 'fold-test kin-test', SAILING: 'sail-test vendor-test swim-test amb-test', TUTORIAL: 'tutorial-test',
+  ECOSYSTEM: 'eco-sim',
+  'MICE & CATS': 'cat-test',
+  'CAT LOOKS': 'cat-test',
+  FISHING: 'fish-test',
   'ONLINE CO-OP': 'net-test sea-net-test hybrid-test line-test role-test', 'DEV MENU': '',   // (window.GAME's exports: by name only)
 };
 // other files → tests ('*': all); a test's own file runs it; anything else: none
@@ -52,7 +56,7 @@ const SECS = { 'age-sim': 12, 'amb-test': 103, 'bone-test': 78, 'bonk-test': 26,
   'flock-sim': 81, 'forage-sim': 53, 'gateway-sim': 20, 'graze-sim': 17, 'hank-test': 83, 'idle-test': 139, 'input-test': 248, 'lamb-sim': 26,
   'map-test': 107, 'maul-test': 28, 'moves-sim': 65, 'mud-test': 30, 'morning-sim': 58, 'nads-test': 36, 'night-sim': 20, 'pass-test': 37, 'path-test': 36,
   'pen-trap-test': 32, 'pen-escape-test': 38, 'poop-test': 26, 'role-test': 38, 'rope-test': 247, 'rush-test': 19, 'sail-test': 313, 'shear-test': 60, 'straggler-sim': 27,
-  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'pox-test': 30, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90, 'line-test': 100, 'save-test': 40, 'trial-test': 150, 'duck-test': 60, 'kin-test': 180, 'sell-test': 30, 'tutorial-test': 30, 'toast-test': 30, 'fold-test': 30 };
+  'swim-test': 27, 'team-test': 22, 'vendor-test': 48, 'vet-test': 40, 'pox-test': 30, 'llama-test': 110, 'water-test': 23, 'net-test': 120, 'sea-net-test': 120, 'hybrid-test': 90, 'line-test': 100, 'save-test': 40, 'trial-test': 150, 'duck-test': 60, 'kin-test': 180, 'sell-test': 30, 'tutorial-test': 30, 'toast-test': 30, 'fold-test': 30, 'eco-sim': 40 };
 
 const argv = process.argv.slice(2), flag = k => argv.includes(k), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
 const OPTS = new Set(['--base', '-j', '--shard', '--timeout', '--logs']), names = argv.filter((a, i) => !a.startsWith('-') && !OPTS.has(argv[i - 1]));

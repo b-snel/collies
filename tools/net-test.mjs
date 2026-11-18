@@ -461,8 +461,10 @@ try {
   const ropeH = await A.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.kind !== 'net'); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeG = await B.page.evaluate(i => { const R = GAME.ROPES[i], d = GAME.G.dogs.find(d => d.player.slot === 0); return { held: d.holding === R, at: d.ropeI, x: Array.from(R.x), z: Array.from(R.z) }; }, ropeAt.i);
   const ropeErr = Math.max(...ropeH.x.map((x, k) => Math.hypot(x - ropeG.x[k], ropeH.z[k] - ropeG.z[k])));
-  const placed = await A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it; else further in, till Ⓧ there takes the rope (not a dog by it)
+  const place = () => A.page.evaluate(i => {   // the guest's dog by the end the host's isn't holding, facing it; else further in, till Ⓧ there takes the rope (not a dog by it)
     const R = GAME.ROPES[i], a = GAME.G.dogs.find(d => d.player.kind !== 'net'), b = GAME.G.dogs.find(d => d.player.kind === 'net');
+    a.vx = a.vz = 0; a.player.bot = { grab: true };   // (the host's dog still, holding on)
+    for (const c of [...GAME.CATS]) if (Math.hypot(c.x - R.cx, c.z - R.cz) < 40) GAME.catRemove(c);   // (MICE & CATS: no stray to swipe a dog over)
     const far = a.ropeI < R.n / 2 ? 1 : -1, k0 = far > 0 ? R.n - 1 : 0, j = k0 - far * 2, ex = R.x[k0] - R.x[j], ez = R.z[k0] - R.z[j], el = Math.hypot(ex, ez) || 1;
     const tries = [[R.x[k0] + ex / el * 1.05, R.z[k0] + ez / el * 1.05, Math.atan2(-ex, -ez)]];
     for (let k = k0 - far * 2; far * (k - a.ropeI) > 3; k -= far * 2) {   // further in: beside it, on the side away from the host's dog
@@ -471,10 +473,12 @@ try {
       tries.push([R.x[k] + nx * 1.05, R.z[k] + nz * 1.05, Math.atan2(-nx, -nz)]);
     }
     let g = null, n = 0;
-    for (const [x, z, yaw] of tries) { b.x = x; b.z = z; b.yaw = yaw; b.vx = b.vz = 0; n++; g = GAME.grabPick(b); if (g && g.best === R) break; }
+    for (const [x, z, yaw] of tries) { b.x = x; b.z = z; b.yaw = yaw; b.vx = b.vz = 0; n++; g = GAME.grabPick(b); if (g && g.best === R && Math.hypot(a.x - x, a.z - z) > GAME.T.grabReach + 1) break; }   // (clear of the host's dog)
     return { tries: n, takes: g ? g.kind : null, dogs: GAME.G.dogs.length };
   }, ropeAt.i);
+  let placed = await place();
   await sleep(300);
+  if (!(await A.page.evaluate(i => { const b = GAME.G.dogs.find(d => d.player.kind === 'net'), g = GAME.grabPick(b); return g && g.best === GAME.ROPES[i]; }, ropeAt.i))) placed = { ...(await place()), again: true };   // (a loaded machine: still Ⓧ there takes the rope?)
   await B.page.keyboard.down('KeyE');
   await sleep(300);   // (then till the tug's on, on both: a loaded machine's slow to get there)
   await until(A, i => !!GAME.ROPES[i].tug, ropeAt.i, 5000).catch(() => {});
