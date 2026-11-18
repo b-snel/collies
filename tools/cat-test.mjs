@@ -1,4 +1,4 @@
-// Headless checks for MICE & CATS: `node tools/cat-test.mjs [holes|mice|raid|hunt|hunger|adopt|shy|grab|flee|prey|falcon|kittens|range|camps|save|sim]`.
+// Headless checks for MICE & CATS: `node tools/cat-test.mjs [holes|mice|raid|hunt|hunger|adopt|shy|grab|flee|prey|falcon|kittens|range|camps|save|barn|sim]`.
 //   holes    mouse holes round every camp's pen and in the grass along the trail: none in the water, a pen, the canyon; every screen the same
 //   mice     out by their holes near the flock: many by night, few by day; a dog comes: down their holes; out of range: gone
 //   raid     RAID: mice by the flock's pen at night eat its stored food; ours in the pen cuts it hard, a llama doesn't (in sight, and by the hour)
@@ -16,6 +16,8 @@
 //   range    the hungrier a stray, the further it hunts (and smells the bowl)
 //   camps    strays made by a camp the flock comes to (by ECO's count), loafing in a hideout by day; gone when it's far (not a follower)
 //   save     a reload (JOURNEY SAVE): ours (breed, coat, sex, name, hunger, her kittens), a follower (fed days), tonight's loss
+//   barn     HANK'S BARN: ours in its 🐱 tab (a stray isn't), opened on one asked for; renamed, a collar's colour (the model rebuilt in it),
+//            the mice it's caught on its card; kept on a reload
 //   sim      off in ?sim: no holes, mice or cats; with none about, every hook (coyote, bark, grab, falcon, cougar) draws no Math.random
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -411,6 +413,30 @@ if (want('camps')) {
   ok('camps: strays by a camp the flock comes to, as many as ECO says (≤ max)', r.n === r.want && r.n >= 1, r);
   ok('camps: by day in their hideouts (not a pen), resting (or after a mouse right by it)', r.hide && r.rest === r.n, r);
   ok('camps: the flock gone far: gone (a follower stays)', r.left === 0 && r.follower === (r.n ? 1 : 0), r);
+}
+
+if (want('barn')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { G, CATS, catMake, openBarn, closeBarn, BARN, barnCats, catEdit, JOURNEY, journeySave, journeyRead, journeyResume, resetMiceCats } = GAME, out = {};
+    const a = catMake({ x: H.P.x, z: H.P.z, owned: true, name: 'Tam', breed: 'norwegian', coat: 0, male: false, age: 20 }), b = catMake({ x: H.P.x + 2, z: H.P.z, owned: true, name: 'Kip', breed: 'siamese', coat: 1, male: true, age: 9 });
+    const st = catMake({ x: H.P.x + 6, z: H.P.z, camp: 0 }); a.caught = 4;
+    out.listed = barnCats().map(c => c.name).sort().join(',');
+    out.open = openBarn(b) !== false; out.tab = BARN.tab; out.sel = BARN.ct && BARN.ct.name;
+    const rows = [...document.querySelectorAll('#barnList [data-cat]')].map(e => e.textContent); out.rows = rows.length; out.stray = rows.some(t => t.includes(st.name || '¤'));
+    catEdit(a, { name: 'Mittens' }); catEdit(a, { collar: '#3fbf5a' }); catEdit(a, { collar: '#123456' });   // (not one of the collars: ignored)
+    out.name = a.name; out.collar = a.collar; GAME.barnPickCat(a);
+    out.info = document.getElementById('barnInfo').textContent; out.model = !!(BARN.catM && BARN.model);
+    catEdit(st, { name: 'Nope' }); out.strayName = st.name !== 'Nope';
+    closeBarn();
+    JOURNEY.off = false; journeySave(); resetMiceCats(); JOURNEY.saved = journeyRead(); journeyResume();
+    const a2 = CATS.find(c => c.name === 'Mittens'); out.kept = !!a2 && a2.collar === '#3fbf5a' && a2.caught === 4;
+    return out;
+  });
+  show(r);
+  ok('barn: ours in the 🐱 tab (not a stray), opened on the one asked for', r.listed === 'Kip,Tam' && r.open && r.tab === 'cats' && r.sel === 'Kip' && r.rows === 2 && !r.stray, r);
+  ok('barn: renamed, a collar (only the collars), on the turntable; its card (breed, mice caught)', r.name === 'Mittens' && r.collar === '#3fbf5a' && r.model && /Norwegian Forest Cat/.test(r.info) && /🐭 4/.test(r.info) && r.strayName, r);
+  ok('barn: kept on a reload (name, collar, mice caught)', r.kept, r);
 }
 
 if (want('save')) {

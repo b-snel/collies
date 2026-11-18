@@ -5875,6 +5875,7 @@ const CAT_BREEDS = {
     { n: 'grey & white', b: '#5c636e', sh: '#7d848f', wh: 'bib', bib: [0.55, 3], mitt: [0.86, 0.58, 0.84], eye: '#c8bd3c', nose: '#f2aab4', nk: 0.72, mouth: '#4a4a52', in: '#c9a3ad', tip: '#474d56' }] },
 };
 const CAT_COLLARS = ['#e8473f', '#3d8ef0', '#f2c230', '#3fbf5a', '#b05ad8', '#ff7aa8'];
+const catLookKey = c => c.breed + ':' + c.coat + ':' + (c.owned && c.collar || '');   // what its model's built in (HANK'S BARN: a collar's colour)
 const catBreed = c => CAT_BREEDS[c.breed] || CAT_BREEDS.moggy;
 const catCoat = c => { const B = catBreed(c); return B.coats[((c.coat | 0) % B.coats.length + B.coats.length) % B.coats.length]; };
 const catSize = c => CAT_K * catBreed(c).k * (c.scale || 1);   // SHARED HOOK: the model's scale (m per model unit)
@@ -6144,7 +6145,7 @@ function catModel(c) {
     const root = new THREE.Group(), spine = new THREE.Group(), front = new THREE.Group(), rear = new THREE.Group(); root.add(spine); spine.add(front, rear); spine.rotation.order = front.rotation.order = rear.rotation.order = 'YXZ';
     rear.position.y = D.hup;   // (longer hind legs: the rump a touch higher)
     const M = { root, spine, front, rear, B, C, D, bib: null, collar: null, bell: null, cur: {}, snap: null, blend: 1, st: null, stT: 0,
-      ph: 0, inp: null, blinkT: 1 + (c.id * 1.37 % 3), blinkN: 0, earT: 2 + (c.id * 0.71 % 3), earW: 0, py: null, vy: 0, mouthW: new THREE.Vector3(), key: c.breed + ':' + c.coat };
+      ph: 0, inp: null, blinkT: 1 + (c.id * 1.37 % 3), blinkN: 0, earT: 2 + (c.id * 0.71 % 3), earW: 0, py: null, vy: 0, mouthW: new THREE.Vector3(), key: catLookKey(c) };
     const add = (par, geo, o = {}) => part(par, geo, { mat, ...o }), soft = { outline: false, shadow: false };
     const push = B.fur ? 0.05 : 0, ink = m => push ? catInked(m, push) : m;   // (long hair: tufts outlined on the silhouette only)
     ink(add(front, Gm.front)); ink(add(rear, Gm.rear));
@@ -6170,7 +6171,7 @@ function catModel(c) {
 }
 function catCollar(M, c) {   // ours: a collar and a bell (made the first time it's ours)
   ownDice(77 + (strHash(String(c.id)) % 1000), () => {
-    const D = M.D, col = CAT_COLLARS[Math.abs(strHash(String(c.id))) % CAT_COLLARS.length], rad = D.bw * 0.72, tilt = -0.75;
+    const D = M.D, col = c.collar || CAT_COLLARS[Math.abs(strHash(String(c.id))) % CAT_COLLARS.length], rad = D.bw * 0.72, tilt = -0.75;
     M.collar = part(M.front, P(new THREE.TorusGeometry(rad, 0.011, 6, 22), col, { r: [tilt, 0, 0], p: [0, D.neck[1] + 0.012, D.neck[2] + 0.01] }), { shadow: false });
     M.bell = new THREE.Group(); M.bell.position.set(0, D.neck[1] + 0.012 - rad * Math.cos(tilt), D.neck[2] + 0.01 - rad * Math.sin(tilt) + 0.012); M.front.add(M.bell);
     part(M.bell, merge(P(SPH(10), '#f2c230', { s: [0.021, 0.021, 0.021], p: [0, -0.02, 0] }), P(BOX(0.026, 0.004, 0.006), '#7a5418', { p: [0, -0.026, 0.017] }),
@@ -6357,7 +6358,7 @@ function syncCats(dt) {
     const on = !(SEA_AWAY && !c.owned) && Math.abs(c.x - cam.x) + Math.abs(c.z - cam.z) < reach;
     let M = CATM.get(c);
     if (!on) { if (M) { M.root.visible = false; M.seen = CATL.n; } continue; }
-    if (M && M.key !== c.breed + ':' + c.coat) { catDrop(c); M = null; }   // (a new look)
+    if (M && M.key !== catLookKey(c)) { catDrop(c); M = null; }   // (a new look)
     if (!M) { M = catModel(c); CATM.set(c, M); }
     M.seen = CATL.n; M.root.visible = true; catSync(c, M, Math.min(dt, 0.1));
     if (c.mouse && c.mouse.heldBy === c) catMouth(c, M.mouthW);
@@ -19760,8 +19761,10 @@ const BARN = { open: false, pick: false, bf: { g: null, c: null, s: null }, tab:
 const ACC_OUTFITS = [[], ['scarf'], ['bowtie'], ['shades'], ['flower'], ['scarf', 'shades'], ['bowtie', 'flower'], ['scarf', 'flower'], ['bowtie', 'shades']];
 const barnFlock = () => G.sheep.filter(s => !s.dead);
 const barnLlamas = () => LLAMAS.filter(L => L.tame > 0);   // LLAMA WARDROBE: ours (broken or a guard)
-const BARN_TABS = ['dogs', 'sheep', 'kin', 'llamas'];
-const barnTabOK = t => t === 'dogs' || (t === 'sheep' || t === 'kin' ? !!BARN.sel : t === 'llamas' && !!BARN.ll);   // (LINEAGE: 🌳, the selected sheep's tree)
+const barnCats = () => CATS.filter(c => c.owned && !c.dead && !c.gone);   // MICE & CATS: ours
+const CAT_BREED_NAMES = { moggy: 'Moggy', ragdoll: 'Ragdoll', maine: 'Maine Coon', persian: 'Persian', british: 'British Shorthair', siamese: 'Siamese', bengal: 'Bengal', norwegian: 'Norwegian Forest Cat' };
+const BARN_TABS = ['dogs', 'sheep', 'kin', 'llamas', 'cats'];
+const barnTabOK = t => t === 'dogs' || (t === 'sheep' || t === 'kin' ? !!BARN.sel : t === 'llamas' ? !!BARN.ll : t === 'cats' && !!BARN.ct);   // (LINEAGE: 🌳, the selected sheep's tree)
 // Whose dogs it dresses (DOGS.looks indices): the dogs playing on this screen (on the title: P1's). ONLINE: every screen has its own barn;
 // a friend's dog isn't listed (they dress theirs in their own); a guest's DOGS.looks[k] is its k-th dog, in the host's slot NET.locals[k].slot.
 // A guest's sheep edits go to the host as well (barnEdit → 'sh'); its snapshots bring everyone else's (barnSync).
@@ -19821,6 +19824,7 @@ function barnPart(parent, geo, mat, pos, outline = true) {
 function barnModel() {
   const B = BARN; if (!B.r) return;
   if (B.model) { B.stand.remove(B.model); B.model = null; B.body = null; B.head = null; B.dogM = null; B.llamaM = null; }
+  if (B.catM) { B.catM.tg.dispose(); B.catM = null; B.catC = null; }   // MICE & CATS
   if (B.nadsMs) { for (const m of B.nadsMs) B.sc.remove(m); B.nadsMs = null; B.nads = null; }   // RAM NADS
   B.modelKey = barnModelKey();
   if (B.tab === 'dogs') {   // the collie, built like the one in the world
@@ -19829,6 +19833,14 @@ function barnModel() {
     B.stand.add(M.root); B.model = M.root; B.head = M.head; B.dogTail = M.tail; B.dogM = M; B.hop = performance.now();   // (a new look: a hop and a spin)
     if (B.pack) dogPackSync(dogPackBuild(M, (par, geo) => barnPart(par, geo, MAT.vc)), clamp(B.pack.greens ?? 1, 0, 1), !!B.pack.salt, 0, true);   // DOG PACK: worn here too
     B.baseS = 1.05; return;
+  }
+  if (B.tab === 'cats') {   // MICE & CATS: built like the one out there (its own copy, sat on the turntable, as big as a dog to see it)
+    const c = B.ct; if (!c) return;
+    const C = B.catC = { isCat: true, id: c.id, breed: c.breed, coat: c.coat, male: c.male, scale: c.scale, age: c.age, owned: true, collar: barnCatCollar(c), name: c.name,
+      x: 0, y: 0, z: 0, vx: 0, vz: 0, yaw: 0, spd: 0, state: 'sit', stateT: 0, tail: 0.85, look: 0, lookUp: 0.15, puff: 0, crouch: 0, h: 0 };
+    const M = B.catM = catModel(C), g = new THREE.Group(); g.add(M.root); B.baseS = 3.1 / Math.max(0.6, catSize(C)); g.scale.setScalar(B.baseS); g.position.y = 0.02;
+    M.root.traverse(o => { if (o.material === OUTLINE) o.material = B.outline; });   // (the barn's own outline: its canvas's size)
+    catSync(C, M, 0); B.stand.add(g); B.model = g; B.hop = performance.now(); return;
   }
   if (B.tab === 'llamas') {   // LLAMA WARDROBE: built like the one out there, in its look (its pack with what's in it)
     const L = B.ll; if (!L) return;
@@ -19867,10 +19879,11 @@ function barnRender(dt = 1 / 60) {
   if (!w || !h) return;
   if (w !== B.w || h !== B.h) { B.w = w; B.h = h; B.r.setSize(w, h, false); B.cam.aspect = w / h; B.cam.updateProjectionMatrix(); B.outline.uniforms.uRes.value.set(w * B.r.getPixelRatio(), h * B.r.getPixelRatio()); }
   if (!B.drag) B.rot += dt * 0.45;   // a slow turn on the turntable, unless you've got hold of it
-  const dogs = B.tab === 'dogs', lls = B.tab === 'llamas', fit = Math.max(1, 1.25 / B.cam.aspect), ck = B.tab + fit.toFixed(3);   // a step back for a dog in a top hat; further for a tall, narrow view
+  const dogs = B.tab === 'dogs' || B.tab === 'cats', lls = B.tab === 'llamas', fit = Math.max(1, 1.25 / B.cam.aspect), ck = B.tab + fit.toFixed(3);   // a step back for a dog in a top hat; further for a tall, narrow view
   if (B.camFor !== ck) { B.camFor = ck; const ly = lls ? 1.08 : dogs ? 0.85 : 0.62; B.cam.position.set(0, ly + ((lls ? 1.9 : dogs ? 1.75 : 1.55) - ly) * fit, (lls ? 5.5 : dogs ? 5.3 : 4.6) * fit); B.cam.lookAt(0, ly, 0); }
   B.stand.rotation.y = B.rot;
-  if ((B.tab === 'dogs' && B.dogM) || (B.tab === 'llamas' && B.llamaM)) {   // the hop: squash, up and round once, squash, settle
+  if (B.tab === 'cats' && B.catM && B.catC) { const C = B.catC, t = performance.now() / 1000; C.look = Math.sin(t * 0.5) * 0.4; C.tail = 0.8 + Math.sin(t * 1.3) * 0.1; catSync(C, B.catM, Math.min(dt, 0.05)); }   // MICE & CATS: sat, looking about, its tail up
+  if ((B.tab === 'dogs' && B.dogM) || (B.tab === 'llamas' && B.llamaM) || (B.tab === 'cats' && B.catM)) {   // the hop: squash, up and round once, squash, settle
     const p = (performance.now() - (B.hop || -1e9)) / 650, m = B.model, k = B.baseS || 1.05;
     if (p < 1) { const up = Math.max(0, Math.sin(Math.PI * clamp((p - 0.12) / 0.7, 0, 1))), sq = p < 0.12 ? -Math.sin(p / 0.12 * Math.PI) * 0.16 : p > 0.82 ? -Math.sin((p - 0.82) / 0.18 * Math.PI) * 0.12 : up * 0.08;
       m.position.y = 0.02 + up * 0.34; m.scale.set(k * (1 - sq * 0.5), k * (1 + sq), k * (1 - sq * 0.5)); B.stand.rotation.y = B.rot + (1 - (1 - clamp((p - 0.12) / 0.7, 0, 1)) ** 3) * TAU; }
@@ -19926,6 +19939,13 @@ function barnPickDog(slot) {
   const b = document.querySelector(`#barnList .dogCard[data-dog="${slot}"]`); if (!b) return;
   barnJuice(b, PCOL[barnSlot(slot)].ui);
 }
+function barnPickCat(c) {   // MICE & CATS: a mew; it hops and spins
+  if (!c) return; BARN.ct = c; barnModel(); barnRefresh(); if (typeof catFx === 'function') catFx('meow', c.x, c.z, c.id);
+  const b = document.querySelector(`#barnList [data-cat="${c.id}"]`); if (b) barnJuice(b, barnCatCollar(c), 8);
+}
+const barnCatCol = c => { const C = CAT_BREEDS[c.breed] && CAT_BREEDS[c.breed].coats[c.coat]; return C ? C.b : '#999'; };   // its coat's colour (the list)
+const barnCatKit = c => (c.age || 0) < T.cat.grow;   // a kitten still
+const barnCatCollar = c => c.collar || CAT_COLLARS[Math.abs(strHash(String(c.id))) % CAT_COLLARS.length];   // the colour it wears (CAT LOOKS: catCollar)
 function barnPickLlama(L) {   // LLAMA WARDROBE: its hum; it hops and spins
   if (!L) return; BARN.ll = L; barnModel(); barnRefresh(); LSND.hum(0, 0.12, L.grown ? (L.sex === 'm' ? 0.85 : 1) : 1.5);
   const b = document.querySelector(`#barnList [data-llama="${L.id}"]`); if (b) barnJuice(b, LLAMA_TINTS[0][0], 8);
@@ -20091,11 +20111,12 @@ function openBarn(sel) {
   BARN.sel = sel && flock.includes(sel) ? sel : flock.includes(BARN.sel) ? BARN.sel : flock[0] || null;
   if (!barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
   const lls = barnLlamas(); BARN.ll = sel && sel.isLlama && lls.includes(sel) ? sel : lls.includes(BARN.ll) ? BARN.ll : lls[0] || null;   // LLAMA WARDROBE
-  BARN.tab = sel && sel.isLlama && BARN.ll ? 'llamas' : sel && BARN.sel ? 'sheep' : 'dogs';   // the dogs first (a sheep asked for: the flock; a llama: ours)
+  const cts = barnCats(); BARN.ct = sel && sel.isCat && cts.includes(sel) ? sel : cts.includes(BARN.ct) ? BARN.ct : cts[0] || null;   // MICE & CATS: ours
+  BARN.tab = sel && sel.isLlama && BARN.ll ? 'llamas' : sel && sel.isCat && BARN.ct ? 'cats' : sel && BARN.sel ? 'sheep' : 'dogs';   // the dogs first (a sheep asked for: the flock; a llama, a cat: ours)
   const el = document.getElementById('barn');
   el.innerHTML = `<div class="barnCard" role="dialog" aria-label="Hank's barn">
     <div class="barnHead"><h2>Hank’s barn</h2>
-      <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="kin">🌳 Family</button><button type="button" role="tab" data-tab="llamas">🦙 Llamas</button></div>
+      <div class="barnTabs" role="tablist"><button type="button" role="tab" data-tab="dogs">🐕 Dogs</button><button type="button" role="tab" data-tab="sheep">🐑 Sheep</button><button type="button" role="tab" data-tab="kin">🌳 Family</button><button type="button" role="tab" data-tab="llamas">🦙 Llamas</button><button type="button" role="tab" data-tab="cats">🐱 Cats</button></div>
       <button type="button" class="barnX" id="barnX" title="Back (Tab / Esc)" aria-label="Back">✕</button></div>
     <div class="barnGrid">
       <div class="barnList" id="barnList"></div>
@@ -20125,9 +20146,10 @@ function openBarn(sel) {
     const v = nm.value.replace(/\s+/g, ' ').trimStart().slice(0, 14);
     if (BARN.tab === 'dogs') { dogName(BARN.dog, v.trim()); barnList(); return; }
     if (BARN.tab === 'llamas') { if (BARN.ll && v.trim()) llamaSet(BARN.ll, { name: v.trim() }); barnList(); return; }
+    if (BARN.tab === 'cats') { if (BARN.ct && v.trim()) catEdit(BARN.ct, { name: v.trim() }); barnList(); return; }   // MICE & CATS
     const s = BARN.sel; if (!s) return; if (v.trim()) { s.name = v.trim(); s.renamed = true; netSheepEdit(s, { name: s.name }); } barnList();
   });
-  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? barnDogLook(BARN.dog).name : BARN.tab === 'llamas' ? (BARN.ll ? BARN.ll.name : '') : BARN.sel ? BARN.sel.name : ''; barnList(); });
+  nm.addEventListener('blur', () => { nm.value = BARN.tab === 'dogs' ? barnDogLook(BARN.dog).name : BARN.tab === 'llamas' ? (BARN.ll ? BARN.ll.name : '') : BARN.tab === 'cats' ? (BARN.ct ? BARN.ct.name : '') : BARN.sel ? BARN.sel.name : ''; barnList(); });
   document.getElementById('barnSize').addEventListener('input', e => { BARN.size = e.target.value / 100; });
   el.querySelector('.barnCard').addEventListener('click', barnClick);
   barnTab(BARN.tab);
@@ -20158,6 +20180,8 @@ function barnTab(tab) {
       + barnSec('Hat', 'barnLHat', barnIcons([{ id: 'none', name: 'No hat' }, ...LLAMA_HATS], 'lhat', id => id !== 'none' && lock(id)), 'chips')
       + barnSec('Kit', 'barnLKit', barnIcons(LLAMA_KIT, 'lkit', lock), 'chips')
       + '<span class="note" id="barnNote"></span>';
+  } else if (BARN.tab === 'cats') {   // MICE & CATS: its collar
+    ward.innerHTML = barnSec('Collar', 'barnCCol', CAT_COLLARS.map(c => `<button type="button" class="swatch" data-ccol="${c}" style="background:${c}" aria-label="collar ${c}"></button>`).join('')) + '<span class="note" id="barnNote"></span>';
   } else {
     const lock = id => !DOGS.found.includes(id);
     ward.innerHTML =
@@ -20214,6 +20238,13 @@ function barnClick(e) {
     if (d.lkit) { llamaSet(L, { toggle: d.lkit }); return; }
     return;
   }
+  if (BARN.tab === 'cats') {   // MICE & CATS
+    if (d.cat) { barnPickCat(barnCats().find(o => o.id === +d.cat)); return; }
+    const c = BARN.ct; if (!c) return;
+    if (b.id === 'barnDice') { catEdit(c, { name: catNameNew() }); return; }
+    if (d.ccol) { catEdit(c, { collar: d.ccol }); return; }
+    return;
+  }
   if (d.kin !== undefined) { barnKinGo(+d.kin); return; }   // LINEAGE: a node: its tree
   if (d.kinback !== undefined) { barnKinBack(); return; }
   if (d.sheep) { barnSelect(barnFlock().find(o => o.id === +d.sheep)); Sound.baa((BARN.sel && BARN.sel.pitch) || 1, 0.25, 0, true); return; }
@@ -20252,6 +20283,11 @@ function barnList() {
     return;
   }
   el.dataset.mode = '';
+  if (BARN.tab === 'cats') {   // MICE & CATS: a row each: its coat, name, ♂ / ♀ / a kitten
+    el.innerHTML = barnCats().map(c => `<button type="button" class="barnSheep${c === BARN.ct ? ' on' : ''}" data-cat="${c.id}"><i style="background:${barnCatCol(c)}"></i>${escHTML(c.name || '🐱')}<small>${barnCatKit(c) ? '🍼' : c.male ? '♂' : '♀'}</small></button>`).join('');
+    const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: a row each: its coat, name, ♂ / ♀ / a cria
     el.innerHTML = barnLlamas().map(L => `<button type="button" class="barnSheep${L === BARN.ll ? ' on' : ''}" data-llama="${L.id}"><i style="background:${LLAMA_COATS[L.coat % LLAMA_COATS.length][0]}"></i>${escHTML(L.name)}<small>${L.grown ? L.sex === 'm' ? '♂' : '♀' : '🍼'}</small></button>`).join('');
     const on = el.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
@@ -20267,6 +20303,14 @@ function barnList() {
 function barnInfo() {
   const el = document.getElementById('barnInfo'); if (!el) return;
   if (BARN.tab === 'dogs') { el.textContent = barnDogLook(BARN.dog).name ? `${PCOL[barnSlot(BARN.dog)].name}’s dog` : 'Give your dog a name'; return; }
+  if (BARN.tab === 'cats') {   // MICE & CATS: its breed and coat, ♂ / ♀ / kitten, its age, how fed, mice caught, kittens with her, one coming
+    const c = BARN.ct; el.title = ''; if (!c) { el.textContent = ''; return; }
+    const coat = (CAT_BREEDS[c.breed] && CAT_BREEDS[c.breed].coats[c.coat]) || null, kits = barnCats().filter(o => o.mum === c).length, h = c.hunger || 0;
+    el.textContent = [`${CAT_BREED_NAMES[c.breed] || c.breed}${coat ? ' · ' + coat.n : ''}`, barnCatKit(c) ? '🍼' : c.male ? '♂' : '♀', `${c.age | 0} day${(c.age | 0) === 1 ? '' : 's'}`,
+      h >= 0.85 ? '🐟 ❗' : h >= 0.5 ? '🐟 …' : '🐟 ✔', c.caught ? `🐭 ${c.caught}` : '', kits ? `🍼 ${kits}` : '', c.preg > 0 ? '💓' : ''].filter(Boolean).join(' · ');
+    el.title = h >= 0.85 ? 'Hungry' : h >= 0.5 ? 'Peckish' : 'Well fed';
+    return;
+  }
   if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: ♂ / ♀ / cria, its age, fleece, what's in its pack, how cold it is
     const L = BARN.ll; el.title = ''; if (!L) { el.textContent = ''; return; }
     el.textContent = [L.grown ? (L.sex === 'm' ? '♂' : '♀') : '🍼', `${L.age | 0} day${(L.age | 0) === 1 ? '' : 's'}`, `🧶 ${Math.round(clamp(L.wool, 0, 1) * 100)}%`,
@@ -20283,7 +20327,7 @@ function barnRefresh() {
   barnList(); barnInfo();
   const on = (sel, attr, fn) => document.querySelectorAll(sel).forEach(b => b.classList.toggle('on', fn(b.dataset[attr])));
   const pickName = (id, txt) => { const e = document.getElementById(id + 'Pick'); if (e) e.textContent = txt ? ' · ' + txt : ''; };
-  document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = (b.dataset.tab === 'sheep' || b.dataset.tab === 'kin') && !BARN.sel; b.hidden = b.dataset.tab === 'llamas' && !BARN.ll; });
+  document.querySelectorAll('.barnTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === BARN.tab); b.setAttribute('aria-selected', b.dataset.tab === BARN.tab); b.disabled = (b.dataset.tab === 'sheep' || b.dataset.tab === 'kin') && !BARN.sel; b.hidden = (b.dataset.tab === 'llamas' && !BARN.ll) || (b.dataset.tab === 'cats' && !BARN.ct); });
   const nm = document.getElementById('barnName'), note = document.getElementById('barnNote');
   if (BARN.tab === 'dogs') {
     const L = barnDogLook(BARN.dog);
@@ -20308,6 +20352,10 @@ function barnRefresh() {
     on('#barnRole button', 'role', v => v === tv.b); pickName('barnRole', B.name + (B.learn ? ` · ⬆×${B.learn}` : ''));
     if (tc) tc.innerHTML = TRAITS.map((t, i) => `<span title="${t.name}">${t.icon}</span>${roleStars(B[t.id])}<span class="pips" title="${t.name}: ${Math.floor(tv.p[i])}/${T.train.lv.length}">`
       + T.train.lv.map((_, k) => `<i style="--p:${clamp(tv.p[i] - k, 0, 1).toFixed(2)}"></i>`).join('') + '</span>').join('');
+  } else if (BARN.tab === 'cats') {   // MICE & CATS
+    const c = BARN.ct;
+    if (c) { if (nm && document.activeElement !== nm) { nm.value = c.name || ''; nm.placeholder = ''; } on('#barnCCol .swatch', 'ccol', v => v === barnCatCollar(c)); }
+    if (note) note.textContent = `🐱 ${barnCats().length}`;
   } else if (BARN.tab === 'llamas') {   // LLAMA WARDROBE
     const L = BARN.ll;
     if (L) {
@@ -20362,6 +20410,7 @@ function closeBarn() {
 // what the turntable shows, and what the list shows: rebuilt when either changes (the world can go on while it's open: online,
 // sheep come and go, friends rename and dress them, levels arrive)
 function barnModelKey() {
+  if (BARN.tab === 'cats') { const c = BARN.ct; return c ? 'c' + c.id + catLookKey(c) + barnCatCollar(c) + (c.scale || 1).toFixed(2) : ''; }   // MICE & CATS
   if (BARN.tab === 'llamas') { const L = BARN.ll; return L ? 'l' + L.id + llamaLookKey(L) + clamp(L.wool, 0, 1).toFixed(2) + L.grown + L.tame + Math.round(L.greens) + (L.salt | 0) : ''; }
   if (BARN.tab === 'dogs') return 'd' + BARN.dog + JSON.stringify(barnDogLook(BARN.dog)) + barnTrainView(BARN.dog).b;
   const s = BARN.sel; return s ? 's' + s.id + netLookJSON(s) + (s.wool ?? 1).toFixed(2) + !!s.lamb + !!s.ram : '';
@@ -20372,8 +20421,10 @@ function barnSync() {
   if (BARN.tab === 'dogs' && !barnDogs().includes(BARN.dog)) BARN.dog = barnDogs()[0] ?? 0;
   const LS = barnLlamas();   // LLAMA WARDROBE: ours come and go (a cria born, one lost)
   if (!LS.includes(BARN.ll)) { BARN.ll = LS[0] || null; if (!BARN.ll && BARN.tab === 'llamas') { barnTab('dogs'); return; } }
+  const CS = barnCats();   // MICE & CATS: ours come and go (kittens born, one taken)
+  if (!CS.includes(BARN.ct)) { BARN.ct = CS[0] || null; if (!BARN.ct && BARN.tab === 'cats') { barnTab('dogs'); return; } }
   if (!BARN.drag && barnModelKey() !== BARN.modelKey) barnModel();
-  const key = (BARN.ll ? 'L' + BARN.ll.id : '') + '|' + (BARN.tab === 'llamas' ? LS.map(L => L.id + L.name + llamaLookKey(L) + Math.round(L.greens) + (L.salt | 0) + Math.round((L.cold || 0) * 20) + Math.round(L.wool * 20)).join() : '') + '|' + (BARN.tab === 'dogs' ? barnDogs().map(k => JSON.stringify(barnDogLook(k)) + JSON.stringify(barnTrainView(k))).join() : F.map(o => o.id + o.name).join() + (BARN.sel ? BARN.sel.id + BARN.sel.name : ''));
+  const key = (BARN.ct ? 'C' + BARN.ct.id : '') + (BARN.tab === 'cats' ? CS.map(c => c.id + c.name + barnCatCollar(c) + Math.round((c.hunger || 0) * 10) + (c.age | 0) + (c.caught | 0)).join() : '') + '|' + (BARN.ll ? 'L' + BARN.ll.id : '') + '|' + (BARN.tab === 'llamas' ? LS.map(L => L.id + L.name + llamaLookKey(L) + Math.round(L.greens) + (L.salt | 0) + Math.round((L.cold || 0) * 20) + Math.round(L.wool * 20)).join() : '') + '|' + (BARN.tab === 'dogs' ? barnDogs().map(k => JSON.stringify(barnDogLook(k)) + JSON.stringify(barnTrainView(k))).join() : F.map(o => o.id + o.name).join() + (BARN.sel ? BARN.sel.id + BARN.sel.name : ''));
   if (key !== BARN.listKey) { BARN.listKey = key; barnRefresh(); }
   else if (BARN.tab === 'kin') barnKinDraw();   // LINEAGE: (redrawn only if the family's changed)
 }
@@ -20411,6 +20462,13 @@ function barnFrame(dt) {
       if (e(4) || e(5)) { BARN.kit = (BARN.kit + (e(5) ? 1 : kit.length - 1)) % kit.length; dogSet(slot, { acc: kit[BARN.kit] }); }
       if (e(0)) dogName(slot, pick(DOG_NAMES.filter(n => n !== barnDogLook(slot).name)));
       if (e(11)) { const i = ROLES.findIndex(b => b.id === barnTrainView(slot).b); dogSet(slot, { role: ROLES[(i + 1) % ROLES.length].id }); }   // R3: ROLES
+      continue;
+    }
+    if (BARN.tab === 'cats') {   // MICE & CATS: D-pad ↑↓ pick, Ⓨ collar, Ⓐ a new name
+      const c = BARN.ct; if (!c) continue;
+      if (e(12) || e(13)) barnPickCat(cyc(barnCats(), c, e(13) ? 1 : -1));
+      if (e(3)) catEdit(c, { collar: cyc(CAT_COLLARS, barnCatCollar(c), 1) });
+      if (e(0)) catEdit(c, { name: catNameNew() });
       continue;
     }
     if (BARN.tab === 'llamas') {   // LLAMA WARDROBE: D-pad ↑↓ pick, ←→ hat, Ⓧ coat, Ⓨ colour, LB/RB kit, Ⓐ a new name
@@ -20455,7 +20513,7 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'Tab') { e.preventDefault(); if (!e.repeat && (G.mode === 'play' || G.mode === 'title')) { Sound.init(); openBarn(); } }
 }, true);
-expose(() => ({ BARN, openBarn, closeBarn, barnSelect, barnKinGo, barnKinBack, barnSet, barnRender, barnTab, barnPickDog, THUMB, barnEdit, barnDogs, barnDogLook, barnSync, dogName, barnPickLlama, barnLlamas }));   // HANK'S BARN
+expose(() => ({ BARN, openBarn, closeBarn, barnSelect, barnKinGo, barnKinBack, barnSet, barnRender, barnTab, barnPickDog, THUMB, barnEdit, barnDogs, barnDogLook, barnSync, dogName, barnPickLlama, barnLlamas, barnCats, barnPickCat, CAT_BREED_NAMES, catEdit }));   // HANK'S BARN
 
 // =====================================================================
 // DAWN REPORT — at dawn, if anyone was born or lost since the last one:
@@ -23056,6 +23114,14 @@ const MC = { nid: 0, mid: 0, camps: [], said: {}, night: 0, last: 0, kills: 0, l
 const CAT_NAMES = ['Whiskers', 'Mouser', 'Ginger', 'Smudge', 'Mittens', 'Pepper', 'Thistle', 'Tattie', 'Bramble', 'Sooty', 'Patch', 'Marmalade', 'Biscuit', 'Pudding', 'Haggis',
   'Nessie', 'Bonnie', 'Clootie', 'Dram', 'Socks', 'Shadow', 'Misty', 'Tiger', 'Crumpet', 'Kipper', 'Rascal', 'Tufty', 'Pebbles', 'Bluebell', 'Toffee'];
 function catNameNew() { const used = new Set(CATS.map(c => c.name)), free = CAT_NAMES.filter(n => !used.has(n)); return free.length ? pick(free) : `${pick(CAT_NAMES)} ${CATS.length + 1}`; }
+// one of ours renamed or its collar's colour (HANK'S BARN, tests; ONLINE: a guest's goes to the host as well, 'ct')
+function catEdit(c, ch) {
+  if (!c || !c.owned || !ch || typeof ch !== 'object') return;
+  if (ch.name !== undefined) { const n = String(ch.name).replace(/\s+/g, ' ').trim().slice(0, 14); if (n) c.name = n; }
+  if (ch.collar !== undefined && CAT_COLLARS.includes(ch.collar)) c.collar = ch.collar;
+  if (NET.role === 'guest') netSend({ t: 'ct', id: c.id, ch });
+  if (BARN.open && BARN.tab === 'cats') { if (BARN.ct === c) { barnModel(); barnRefresh(); } else barnList(); }
+}
 const mcR = (a, b) => a + Math.random() * (b - a);
 const mcD = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // ---------------- the holes (own rng: every screen the same): round each camp's pen (holes, ring m out), a few every `gap` m along the trail ----------------
@@ -23642,7 +23708,7 @@ function catHunt(c, dt) {
     }
     case 'bite': {   // the nape: done
       catStop(c, dt); catSet(c, 'bite');
-      if (m && !m.dead && H.t > 0.25) { m.dead = true; mouseSet(m, 'dead'); ecoEat('cats', 'mouse', ecoLeg(m.x, m.z)); MC.kills++; if (c.owned) G.stats.mice++; if (mcView(c.x, c.z)) catFx('kill', m.x, m.z, 1); }
+      if (m && !m.dead && H.t > 0.25) { m.dead = true; mouseSet(m, 'dead'); ecoEat('cats', 'mouse', ecoLeg(m.x, m.z)); MC.kills++; c.caught = (c.caught | 0) + 1; if (c.owned) G.stats.mice++; if (mcView(c.x, c.z)) catFx('kill', m.x, m.z, 1); }
       if (H.t < H.T) return;
       H.ph = 'eat'; H.t = 0; H.T = mcR(K.eatT[0], K.eatT[1]); catSet(c, 'eat'); return;
     }
@@ -23926,7 +23992,7 @@ function catFar(c, dt, dtH) {
   c.vx = c.vz = 0; c.spd = 0; c.h = 0; c.y = groundY(c.x, c.z); c.cover = !c.owned && !night;
   catSet(c, night ? (c.owned ? 'loaf' : 'sit') : 'sleep');
   const li = ecoLeg(c.x, c.z), will = (night ? 1 : 0.2) * (0.5 + c.hunger);
-  if (!c.kit && li >= 0 && Math.random() < K.farHunt * dtH * ecoD('mice', li) * will) { c.hunger = Math.max(0, c.hunger - K.mouse); ecoEat('cats', 'mouse', li); MC.kills++; if (c.owned) G.stats.mice++; }
+  if (!c.kit && li >= 0 && Math.random() < K.farHunt * dtH * ecoD('mice', li) * will) { c.hunger = Math.max(0, c.hunger - K.mouse); ecoEat('cats', 'mouse', li); MC.kills++; c.caught = (c.caught | 0) + 1; if (c.owned) G.stats.mice++; }
   if (BOWL.on && BOWL.fish > 0 && c.hunger > (c.owned ? 0.4 : 0.3) && Math.random() < dtH * 0.5 && Math.hypot(BOWL.x - c.x, BOWL.z - c.z) < catBowlR(c) && (c.owned || !catDogNear(BOWL.x, BOWL.z, K.bowlShy)) && bowlTake()) catFed(c);
 }
 const catSeen = c => !G.ff && (mcView(c.x, c.z) || G.dogs.some(d => Math.abs(d.x - c.x) + Math.abs(d.z - c.z) < 80));
@@ -24093,7 +24159,7 @@ function mapCats(c, u, on) {
   }
 }
 // JOURNEY SAVE: ours (breed, coat, sex, name, hunger, age; expecting; her kittens), strays that follow (fed days, trust), what's been said, tonight's loss
-onSave('cats', () => T.cat.on || T.mouse.on ? { said: MC.said, night: +MC.night.toFixed(3), seen: MC.seen, cats: (L => L.map(c => ({ breed: c.breed, coat: c.coat, male: c.male ? 1 : 0, name: c.name, owned: c.owned ? 1 : 0,
+onSave('cats', () => T.cat.on || T.mouse.on ? { said: MC.said, night: +MC.night.toFixed(3), seen: MC.seen, cats: (L => L.map(c => ({ breed: c.breed, coat: c.coat, male: c.male ? 1 : 0, name: c.name, owned: c.owned ? 1 : 0, collar: c.collar || '', caught: c.caught | 0,
   hunger: +c.hunger.toFixed(3), age: +c.age.toFixed(3), size: +c.size.toFixed(3), fed: +c.fed.toFixed(2), fedDay: c.fedDay, trust: +c.trust.toFixed(2), camp: c.camp, preg: +c.preg.toFixed(3), sire: c.sire,
   mum: L.indexOf(c.mum), at: journeyAt(c) })))(CATS.filter(c => c.owned || c.fed >= 1 || (c.mum && c.mum.fed >= 1))) } : undefined, v => {
   if (!v || typeof v !== 'object') return;
@@ -24107,6 +24173,8 @@ onSave('cats', () => T.cat.on || T.mouse.on ? { said: MC.said, night: +MC.night.
       size: clamp(+r.size || 1, 0.8, 1.2), fed: Math.max(0, +r.fed || 0), fedDay: Number.isFinite(r.fedDay) ? r.fedDay : -9, trust: clamp(+r.trust || 0, 0, 1), camp, x: fc.x, z: fc.z, hx: hs ? hs.x : fc.x, hz: hs ? hs.z : fc.z,
       preg: Math.max(0, +r.preg || 0), sire: r.sire && CAT_BREED_IDS.includes(r.sire.breed) ? { breed: r.sire.breed, coat: r.sire.coat | 0 } : null });
     if (c.owned && !c.name) c.name = catNameNew();
+    if (CAT_COLLARS.includes(r.collar)) c.collar = r.collar;   // (HANK'S BARN)
+    c.caught = Math.max(0, r.caught | 0);   // (mice it's caught: the barn)
     if (SEA.on || !journeyPlace(c, r.at)) { const a = c.ga, rr = MC.fr + T.cat.ours; c.x = (hs && !c.owned ? hs.x : fc.x + Math.cos(a) * rr); c.z = (hs && !c.owned ? hs.z : fc.z + Math.sin(a) * rr); c.y = groundY(c.x, c.z); }
     made.push(c);
   }
@@ -31326,7 +31394,7 @@ const NET_TYPES = {
   cat: {   // MICE & CATS: where, what it's at (its pose), how high (a pounce, a hop, a post), its looks and mood; ours (a name, a collar); held, taken, its mouse
     tag: 'I', all: () => CATS, id: c => c.id,
     fields: { x: 'p', z: 'p', vx: .1, vz: .1, yaw: 'a', h: .02, state: 's', breed: 's', coat: 'i', male: 'b', scale: .01, age: .05, look: .05, lookUp: .05, tail: .05, puff: .05, crouch: .05,
-      owned: 'b', name: 's', trust: .02, hunger: .02, preg: .02, heldBy: '@dog', grabbed: { c: 's', get: c => netRefStr(c.grabbed), set: (c, v) => { c.grabbed = netRefFind(v); } },
+      owned: 'b', name: 's', collar: 's', trust: .02, hunger: .02, preg: .02, heldBy: '@dog', grabbed: { c: 's', get: c => netRefStr(c.grabbed), set: (c, v) => { c.grabbed = netRefFind(v); } },
       mouse: { c: 'i', get: c => c.mouse ? c.mouse.id : -1, set: (c, v) => { c.mouse = v >= 0 ? MICE.find(m => m.id === v) || null : null; } },
       mum: { c: 'i', get: c => c.mum ? c.mum.id : -1, set: (c, v) => { c.mum = v >= 0 ? CATS.find(o => o.id === v) || null : null; } } },
     make: (id, f) => netGuestCat(id, f), kill: c => catRemove(c), animate: (c, dt) => netAnimCat(c, dt),
@@ -32422,6 +32490,10 @@ function netFromGuest(s, m) {
     case 'n': { const nm = netCleanName(m.name); if (nm && nm !== s.name) { s.name = nm; s.subs[0].name = nm; if (s.subs[0].player) s.subs[0].player.name = nm; netRoster(); } break; }
     case 'm': s.menu = !!m.on; menuTick(); break;   // MENUS: their screen's in one (or out)
     case 'dl': { if (u && m.lk && typeof m.lk === 'object') { u.look = m.lk; netApplyLook(s, u); } break; }   // their dog, from their barn
+    case 'ct': {   // HANK'S BARN: one of our cats renamed or its collar changed in their barn
+      const c = CATS.find(o => o.id === (m.id | 0)); if (c && m.ch && typeof m.ch === 'object') catEdit(c, m.ch);
+      break;
+    }
     case 'll': {   // LLAMA WARDROBE: a llama renamed or dressed in their barn
       const L = LLAMAS.find(o => o.nid === (m.id | 0)); if (L && m.ch && typeof m.ch === 'object') llamaSet(L, m.ch);
       break;

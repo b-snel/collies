@@ -66,3 +66,4 @@
   expecting, her kittens), followers (fed days, trust), what's been said, the night's loss so far.
 - **HUD / map**: 🐱 ours in the flock panel (`!`: a hungry one, `hudCats`); the map: ours (`mapCats`; taken: a red blink). **Dev**: 🐱 a stray
   by the dog, mice round it; again: it's ours, and a mate (`devCat`). Test: `cat-test.mjs`.
+- **The barn** (HANK'S BARN, docs/ui.md): ours in its 🐱 tab: renamed, a collar's colour (`catEdit`; online `ct`), the mice each has caught (`c.caught`).
