@@ -1,15 +1,15 @@
 // CAT LOOKS as contact sheets (a look check, not a test): every breed in every coat, kittens, every pose, ours (a collar and a bell),
 // mice in every state and a hole, and a game-zoom shot (cats by a dog and the flock).
-// node tools/cat-shots.mjs OUTDIR [--sheets coats,walk,faces,heads,kittens,poses,mice,game,norwegian] [--breeds moggy:0,siamese:0 (poses: who)] [--states sit,hiss]
+// node tools/cat-shots.mjs OUTDIR [--sheets coats,walk,faces,heads,kittens,poses,mice,game,norwegian,linus] [--breeds moggy:0,siamese:0 (poses: who)] [--states sit,hiss]
 //   [--side rad (poses: the cat turned from facing the camera, 1.1)] [--elev k (the camera's height, 1.2: the game's; lower: more side on)] [--size px (a cell, 200)] [--view m (a close-up's height, 1.0)] [--turn rad (the cat turned from facing the camera, 0.6)] [--scale n (deviceScaleFactor, 1)]
 // Writes OUTDIR/cats-coats.png, cats-walk.png, cats-faces.png, cats-heads.png (eyes: front, ¾, profile, a kitten),
-//   cats-norwegian.png, cats-norwegian-side.png, cats-norwegian-game.png, cats-kittens.png, cats-poses-<breed>.png, mice.png, cats-game.png; prints any page errors.
+//   cats-norwegian.png (+ barn-style), cats-norwegian-side.png, cats-norwegian-game.png, cats-linus.png, cats-kittens.png, cats-poses-<breed>.png, mice.png, cats-game.png; prints any page errors.
 import { open } from './harness.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const dir = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'cat-shots';
 mkdirSync(dir, { recursive: true });
-const sheets = (arg('--sheets', 'coats,walk,faces,heads,kittens,poses,mice,game,norwegian')).split(',');
+const sheets = (arg('--sheets', 'coats,walk,faces,heads,kittens,poses,mice,game,norwegian,linus')).split(',');
 const h = await open({ query: '?debug', width: 1000, height: 800, scale: +arg('--scale', 1) });
 await h.page.evaluate(elev => {
   const { G, startGame, renderOnce, CATS, MICE, MOUSE_HOLES, groundY, camera, renderer, scene, CAM_R, THREE, CATL } = GAME;
@@ -77,8 +77,9 @@ if (sheets.includes('heads')) await save('cats-heads', ({ size }) => {
 // the Norwegian: its coats sitting and walking (¾), kittens, faces; side on (its plume, britches, a stride or two); at game zoom
 if (sheets.includes('norwegian')) {
   await save('cats-norwegian', ({ size }) => {   // (its one coat, posed as in its photo: sat, looking up a little)
-    const { catSize, catMouth } = GAME, cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, 2, size);
-    [['face', { state: 'sit', lookUp: 0.25, yaw: cy }, 'face', 0.5], ['face 3/4', { state: 'sit', lookUp: 0.2, yaw: cy + 0.5 }, 'face', 0.5], ['sat', { state: 'sit', lookUp: 0.25, yaw: cy + 0.15 }, 'body', 1.4],
+    const { catSize, catMouth } = GAME, cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, 3, size);
+    [['barn', { state: 'sit', yaw: cy }, 'body', 0.18], ['barn face', { state: 'sit', yaw: cy }, 'face', 0.18], ['barn 3/4', { state: 'sit', yaw: cy + 0.6 }, 'body', 0.18], ['barn side', { state: 'sit', yaw: cy + Math.PI / 2 }, 'body', 0.18],
+      ['face', { state: 'sit', lookUp: 0.25, yaw: cy }, 'face', 0.5], ['face 3/4', { state: 'sit', lookUp: 0.2, yaw: cy + 0.5 }, 'face', 0.5], ['sat', { state: 'sit', lookUp: 0.25, yaw: cy + 0.15 }, 'body', 1.4],
       ['sat 3/4', { state: 'sit', lookUp: 0.2, yaw: cy + 0.6, owned: true }, 'body', 0], ['side', { state: 'idle', yaw: cy + Math.PI / 2, tail: 0.6 }, 'body', 0.4], ['walk', { state: 'walk', spd: 0.8, tail: 0.7, yaw: cy + Math.PI / 2 }, 'body', 0.4],
       ['walk 3/4', { state: 'walk', spd: 0.8, tail: 0.75, yaw: cy + 1.1 }, 'body', 0], ['kitten', { state: 'sit', scale: 0.55, lookUp: 0.2, yaw: cy + 0.5, tail: 0.8 }, 'body', 0]].forEach(([lab, o, kind, el], i) => {
       const c = CAT({ breed: 'norwegian', coat: 0, ...o }), k = catSize(c), cx = (i % 4) * size, cy2 = Math.floor(i / 4) * size;
@@ -110,6 +111,23 @@ if (sheets.includes('norwegian')) {
     return s.toDataURL('image/png');
   });
 }
+// Linus (the moggy's orange tabby): close up, sat, walking his ringed tail up, at game zoom
+if (sheets.includes('linus')) await save('cats-linus', ({ size }) => {
+  const { catSize, catMouth, G, CATS, groundY } = GAME, cy = Math.atan2(SHOT.CAM.x, SHOT.CAM.z), sheet = SHEET(4, 2, size), L = { breed: 'moggy', coat: 1 };
+  [['face', { state: 'sit', yaw: cy, lookUp: 0.2 }, 'face', 0.3], ['face 3/4', { state: 'sit', yaw: cy + 0.55 }, 'face', 0], ['sat', { state: 'sit', yaw: cy + 0.3, tail: 0.6 }, 'body', 0],
+    ['walk, tail up', { state: 'walk', spd: 0.8, tail: 1, yaw: cy + Math.PI / 2 }, 'body', 0.4], ['walk 3/4', { state: 'walk', spd: 0.8, tail: 1, yaw: cy + 1.1 }, 'body', 0],
+    ['from behind', { state: 'walk', spd: 0.6, tail: 1, yaw: cy + Math.PI - 0.4 }, 'body', 0], ['meow', { state: 'meow', yaw: cy + 0.4, tail: 1 }, 'body', 0]].forEach(([lab, o, kind, el], i) => {
+    const c = CAT({ ...L, ...o }), k = catSize(c), cx = (i % 4) * size, cy2 = Math.floor(i / 4) * size;
+    if (kind === 'face') { const f = catMouth(c); CELL(sheet, cx, cy2, size, f.x, f.y + 0.06 * k, f.z, 0.42 * k, 0, lab, el); }
+    else CELL(sheet, cx, cy2, size, c.x, c.y + 0.3 * k, c.z, 1.2 * k, 0, lab, el);
+  });
+  CATS.length = 0; const d = G.dogs[0];   // at game zoom: Linus walking, tail up, by the dog
+  CATS.push({ isCat: true, id: 7, breed: 'moggy', coat: 1, x: d.x + 1.6, z: d.z + 0.6, y: groundY(d.x + 1.6, d.z + 0.6), yaw: cy + 1.4, state: 'walk', spd: 0.8, vx: 0, vz: 0, tail: 1, owned: true },
+    { isCat: true, id: 8, breed: 'moggy', coat: 1, x: d.x - 1.2, z: d.z + 1.4, y: groundY(d.x - 1.2, d.z + 1.4), yaw: cy + 0.3, state: 'sit', tail: 0.7 });
+  for (let i = 0; i < 30; i++) GAME.syncCats(1 / 30);
+  CELL(sheet, 3 * size, size, size, d.x, groundY(d.x, d.z) + 0.3, d.z, 6, 0, 'game zoom (×2.5)');
+  return sheet.toDataURL('image/png');
+}, { size });
 // kittens: each breed at 0.55, 0.75, 1
 if (sheets.includes('kittens')) await save('cats-kittens', ({ size, view, turn }) => {
   const { CAT_BREEDS } = GAME, ids = Object.keys(CAT_BREEDS), sc = [0.55, 0.75, 1], sheet = SHEET(sc.length * 2, ids.length, size);
