@@ -1,4 +1,4 @@
-// Headless checks for MICE & CATS: `node tools/cat-test.mjs [holes|mice|raid|hunt|hunger|adopt|shy|grab|flee|prey|falcon|kittens|range|camps|save|barn|sim]`.
+// Headless checks for MICE & CATS: `node tools/cat-test.mjs [holes|mice|raid|hunt|hunger|adopt|shy|grab|flee|prey|falcon|kittens|range|camps|save|barn|stars|sim]`.
 //   holes    mouse holes round every camp's pen and in the grass along the trail: none in the water, a pen, the canyon; every screen the same
 //   mice     out by their holes near the flock: many by night, few by day; a dog comes: down their holes; out of range: gone
 //   raid     RAID: mice by the flock's pen at night eat its stored food; ours in the pen cuts it hard, a llama doesn't (in sight, and by the hour)
@@ -18,6 +18,8 @@
 //   save     a reload (JOURNEY SAVE): ours (breed, coat, sex, name, hunger, her kittens), a follower (fed days), tonight's loss
 //   barn     HANK'S BARN: ours in its 🐱 tab (a stray isn't), opened on one asked for; renamed, a collar's colour (the model rebuilt in it),
 //            the mice it's caught on its card; kept on a reload
+//   stars    CAT_STARS: Gandy (a grey and white Norwegian tom) by the mountains' camp, Linus (an orange tabby tom) by the ocean's, once a journey;
+//            adopted: still Gandy / Linus; another of ours in his coat takes the name only while it's free
 //   sim      off in ?sim: no holes, mice or cats; with none about, every hook (coyote, bark, grab, falcon, cougar) draws no Math.random
 import { open } from './harness.mjs';
 const only = process.argv[2];
@@ -399,7 +401,7 @@ if (want('camps')) {
     const P = pens[1], cp = CAMPS[1];
     for (const s of G.sheep) H.place(s, P.x + 30, P.z + 10); H.place(d, P.x + 35, P.z + 10); G.clock.hour = 12;
     H.run(30, () => { G.clock.hour = 12; });
-    const L = CATS.filter(c => c.camp === 1);
+    const L = CATS.filter(c => c.camp === 1 && !GAME.CAT_STARS.some(S => S.name === c.name));   // (CAT_STARS: Gandy's by this camp too: his own test)
     out.n = L.length; out.want = Math.min(T.cat.max, Math.round(ecoN('cats', ecoLeg(cp.x, cp.z)) * T.cat.share));
     out.hide = L.every(c => Math.hypot(c.x - c.hx, c.z - c.hz) < 3.5 && !GAME.penAt(c.x, c.z));
     out.rest = L.filter(c => ['sleep', 'loaf', 'groom', 'sit', 'stretch'].includes(c.state) || (c.kit && c.mum) || !!c.hunt).length; out.kits = L.filter(c => c.kit).length; out.st = L.map(c => c.state + (c.hunt ? ":h" : "") + ":" + c.hunger.toFixed(2)).join();   // (a kitten: by its mum)
@@ -437,6 +439,23 @@ if (want('barn')) {
   ok('barn: ours in the 🐱 tab (not a stray), opened on the one asked for', r.listed === 'Kip,Tam' && r.open && r.tab === 'cats' && r.sel === 'Kip' && r.rows === 2 && !r.stray, r);
   ok('barn: renamed, a collar (only the collars), on the turntable; its card (breed, mice caught)', r.name === 'Mittens' && r.collar === '#3fbf5a' && r.model && /Norwegian Forest Cat/.test(r.info) && /🐭 4/.test(r.info) && r.strayName, r);
   ok('barn: kept on a reload (name, collar, mice caught)', r.kept, r);
+}
+
+if (want('stars')) {
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { CATS, CAMPS, MC, catStrays, catAdopt, catMake, catNameNew } = GAME, out = {};
+    catStrays(1); catStrays(2); catStrays(1);   // (twice: only once a journey)
+    const g = CATS.filter(c => c.name === 'Gandy'), l = CATS.filter(c => c.name === 'Linus');
+    out.gandy = g.map(c => [c.breed, c.coat, c.male, c.camp]); out.linus = l.map(c => [c.breed, c.coat, c.male, c.camp]);
+    if (g[0]) { catAdopt(g[0]); out.gName = g[0].name; out.gOurs = g[0].owned; }
+    const o = catMake({ x: H.P.x, z: H.P.z, breed: 'moggy', coat: 1 }); out.free = catNameNew(o);   // (Linus still a stray: not free)
+    if (l[0]) GAME.catRemove(l[0]); out.freed = catNameNew(o);
+    return out;
+  });
+  show(r);
+  ok('stars: Gandy (a Norwegian tom, grey and white) by the mountains\' camp, Linus (an orange tabby tom) by the ocean\'s, once each', JSON.stringify(r.gandy) === '[["norwegian",0,true,1]]' && JSON.stringify(r.linus) === '[["moggy",1,true,2]]', r);
+  ok('stars: adopted, still Gandy; another orange tabby takes Linus only when it\'s free', r.gName === 'Gandy' && r.gOurs && r.free !== 'Linus' && r.freed === 'Linus', r);
 }
 
 if (want('save')) {

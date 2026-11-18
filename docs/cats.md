@@ -67,3 +67,6 @@
 - **HUD / map**: 🐱 ours in the flock panel (`!`: a hungry one, `hudCats`); the map: ours (`mapCats`; taken: a red blink). **Dev**: 🐱 a stray
   by the dog, mice round it; again: it's ours, and a mate (`devCat`). Test: `cat-test.mjs`.
 - **The barn** (HANK'S BARN, docs/ui.md): ours in its 🐱 tab: renamed, a collar's colour (`catEdit`; online `ct`), the mice each has caught (`c.caught`).
+- **Gandy and Linus** (`CAT_STARS`): the player's own two toms, met every journey as strays: Gandy (a grey and white Norwegian Forest Cat) by the
+  mountains' camp, Linus (an orange tabby, ringed tail) by the ocean's; once a journey (`MC.stars`, saved). Adopted, they keep their names; another of
+  ours in the same coat takes the name only while it's free (`catNameNew(c)`).

@@ -23124,10 +23124,13 @@ expose(() => ({ HERDS, HERD, herdMake, herdRemove, herdGroup, herdDropGroup, her
 // they run for a shut pen, up a post, under cover. CATS, MICE, MOUSE_HOLES: what CAT LOOKS draws (x, y, z, yaw, state, …); host only.
 // =====================================================================
 const MICE = [], CATS = [], MOUSE_HOLES = [];   // SHARED HOOK: the mice and cats out there, the holes the mice live in (CAT LOOKS draws them)
-const MC = { nid: 0, mid: 0, camps: [], said: {}, night: 0, last: 0, kills: 0, live: [], want: 0, liveT: 0, spawnT: 0, lookT: 0, prevH: null, fc: null, fr: 4, pen: null, raid: null, force: null, hungryDay: -1 };
+const MC = { nid: 0, mid: 0, camps: [], stars: {}, said: {}, night: 0, last: 0, kills: 0, live: [], want: 0, liveT: 0, spawnT: 0, lookT: 0, prevH: null, fc: null, fr: 4, pen: null, raid: null, force: null, hungryDay: -1 };
 const CAT_NAMES = ['Whiskers', 'Mouser', 'Ginger', 'Smudge', 'Mittens', 'Pepper', 'Thistle', 'Tattie', 'Bramble', 'Sooty', 'Patch', 'Marmalade', 'Biscuit', 'Pudding', 'Haggis',
   'Nessie', 'Bonnie', 'Clootie', 'Dram', 'Socks', 'Shadow', 'Misty', 'Tiger', 'Crumpet', 'Kipper', 'Rascal', 'Tufty', 'Pebbles', 'Bluebell', 'Toffee'];
-function catNameNew() { const used = new Set(CATS.map(c => c.name)), free = CAT_NAMES.filter(n => !used.has(n)); return free.length ? pick(free) : `${pick(CAT_NAMES)} ${CATS.length + 1}`; }
+// THE PLAYER'S OWN (CAT_STARS): two toms met every journey as strays by a camp, till fed at the bowl: Gandy, a grey and white Norwegian Forest
+// Cat by the mountains' camp, and Linus, an orange tabby with a ringed tail by the ocean's. Another of ours in the same coat takes his name if it's free
+const CAT_STARS = [{ name: 'Gandy', breed: 'norwegian', coat: 0, camp: 1 }, { name: 'Linus', breed: 'moggy', coat: 1, camp: 2 }];
+function catNameNew(c) { const used = new Set(CATS.map(c => c.name)), free = CAT_NAMES.filter(n => !used.has(n)); const S = c && CAT_STARS.find(S => S.breed === c.breed && S.coat === c.coat && !used.has(S.name)); if (S) return S.name; return free.length ? pick(free) : `${pick(CAT_NAMES)} ${CATS.length + 1}`; }
 // one of ours renamed or its collar's colour (HANK'S BARN, tests; ONLINE: a guest's goes to the host as well, 'ct')
 function catEdit(c, ch) {
   if (!c || !c.owned || !ch || typeof ch !== 'object') return;
@@ -23819,6 +23822,10 @@ function catStrays(i) {
     made.push(catMake({ camp: i, x: hs.x, z: hs.z, hx: hs.x, hz: hs.z, age: q ? mcR(1, K.grow * 0.7) : mcR(K.grow + 4, 80), mum: q, male: q ? undefined : k === 0 ? false : undefined,
       breed: q ? (Math.random() < 0.6 ? q.breed : undefined) : cold ? 'norwegian' : undefined }));
   }
+  for (const S of CAT_STARS) if (S.camp === i && !MC.stars[S.name] && !CATS.some(c => c.name === S.name)) {   // CAT_STARS: his camp, once a journey
+    MC.stars[S.name] = true; const hs = catHideout(i);
+    catMake({ camp: i, x: hs.x, z: hs.z, hx: hs.x, hz: hs.z, breed: S.breed, coat: S.coat, male: true, name: S.name, age: mcR(30, 60) });
+  }
 }
 // HUNGER: up by the hour (a stray by its camp scrapes a little); at 1 too long: gone. → true: it's starved
 function catHunger(c, dtH) {
@@ -23871,7 +23878,7 @@ function catFed(c) {
 function catAdopt(c) {
   const li = ecoLeg(c.x, c.z);
   for (const o of [c, ...CATS.filter(o => o.mum === c && !o.owned)]) {
-    o.owned = true; o.trust = 1; o.fed = Math.max(o.fed, T.cat.adopt); if (!o.name) o.name = catNameNew(); o.camp = -1; o.fleeT = 0; o.run = null;
+    o.owned = true; o.trust = 1; o.fed = Math.max(o.fed, T.cat.adopt); if (!o.name) o.name = catNameNew(o); o.camp = -1; o.fleeT = 0; o.run = null;
     ecoAdd('cats', -1, li); G.stats.cats++;
   }
   catFx('adopt', c.x, c.z, 1, c.name);
@@ -24156,7 +24163,7 @@ function updateMiceCats(dt, dtH) {
 }
 function resetMiceCats() {
   for (const c of [...CATS]) catRemove(c); for (const m of [...MICE]) mouseRemove(m);
-  Object.assign(MC, { camps: [], said: {}, night: 0, last: 0, kills: 0, live: [], want: 0, liveT: 0, spawnT: 0, lookT: 0, prevH: null, fc: null, pen: null, raid: null, force: null, hungryDay: -1, seen: false });
+  Object.assign(MC, { camps: [], stars: {}, said: {}, night: 0, last: 0, kills: 0, live: [], want: 0, liveT: 0, spawnT: 0, lookT: 0, prevH: null, fc: null, pen: null, raid: null, force: null, hungryDay: -1, seen: false });
 }
 onReset(resetMiceCats, 177);   // MICE & CATS: none out, the strays made afresh by each camp
 if (T.mouse.on) mouseHoles();   // (every screen the same: own rng; off in ?sim: made when a test turns them on)
@@ -24173,11 +24180,13 @@ function mapCats(c, u, on) {
   }
 }
 // JOURNEY SAVE: ours (breed, coat, sex, name, hunger, age; expecting; her kittens), strays that follow (fed days, trust), what's been said, tonight's loss
-onSave('cats', () => T.cat.on || T.mouse.on ? { said: MC.said, night: +MC.night.toFixed(3), seen: MC.seen, cats: (L => L.map(c => ({ breed: c.breed, coat: c.coat, male: c.male ? 1 : 0, name: c.name, owned: c.owned ? 1 : 0, collar: c.collar || '', caught: c.caught | 0,
+onSave('cats', () => T.cat.on || T.mouse.on ? { said: MC.said, stars: MC.stars, night: +MC.night.toFixed(3), seen: MC.seen, cats: (L => L.map(c => ({ breed: c.breed, coat: c.coat, male: c.male ? 1 : 0, name: c.name, owned: c.owned ? 1 : 0, collar: c.collar || '', caught: c.caught | 0,
   hunger: +c.hunger.toFixed(3), age: +c.age.toFixed(3), size: +c.size.toFixed(3), fed: +c.fed.toFixed(2), fedDay: c.fedDay, trust: +c.trust.toFixed(2), camp: c.camp, preg: +c.preg.toFixed(3), sire: c.sire,
   mum: L.indexOf(c.mum), at: journeyAt(c) })))(CATS.filter(c => c.owned || c.fed >= 1 || (c.mum && c.mum.fed >= 1))) } : undefined, v => {
   if (!v || typeof v !== 'object') return;
-  if (v.said && typeof v.said === 'object') MC.said = { ...v.said }; MC.night = Math.max(0, +v.night || 0); MC.seen = !!v.seen;
+  if (v.said && typeof v.said === 'object') MC.said = { ...v.said };
+  if (v.stars && typeof v.stars === 'object') MC.stars = { ...v.stars };   // (CAT_STARS met already)
+  MC.night = Math.max(0, +v.night || 0); MC.seen = !!v.seen;
   if (!T.cat.on || !Array.isArray(v.cats)) return;
   mcLook(); const fc = MC.fc || { x: cam.x, z: cam.z }, made = [];
   for (const r of v.cats.slice(0, 24)) {
@@ -24221,7 +24230,7 @@ expose(() => ({ MICE, CATS, MOUSE_HOLES, MC, CAT_NAMES, mouseHoles, mouseHoleOK,
   raidStep, raidGuard, catScent, catFearAt, catMake, catRemove, catLook, catStep, catGo, catHop, catLaunch, catPrey, catNear, coyoteCat, catSnatched, catFreed, catKilled, falconSnatch,
   falconSnackW, falconLetGoSnack, falconHas, catFoe, catRefuge, catPost, catDanger, catDogs, catRun, catSpot, catHuntStart, catHuntEnd, catHunt, catPounce, catOdds, catSearch, catArea, catHunts, catHideout, catCamps, catStrays,
   catHunger, catBowl, catBowlR, catFed, catAdopt, catNightfall, catPair, catLitter, catTrail, catStray, catOurs, catFar, catSeen, catGrip, catGrabbed, catLetGo, catBark, catFx, mcDawn,
-  updateMiceCats, resetMiceCats, devCat, netGuestCat, netGuestMouse, hudCats, mapCats, BOWL, bowlTake }));   // MICE & CATS (BOWL: FISHING's, for tests)
+  updateMiceCats, resetMiceCats, CAT_STARS, catNameNew, devCat, netGuestCat, netGuestMouse, hudCats, mapCats, BOWL, bowlTake }));   // MICE & CATS (BOWL: FISHING's, for tests)
 
 // =====================================================================
 // VAGABOND — the one trader: a scruffy wanderer on foot along the trail (VAG; where the stalls stood are just clearings now: STALLS).
