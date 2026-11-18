@@ -28,10 +28,11 @@ gets them by NET); draws, never steps. Ease and animate locally (blinks, breathi
   the tail's tube in soft lobes, its section scalloped. White fur `CAT_SNOW` (over-bright, a touch blue: white in the warm sun, cream in shadow).
 - **The model**: two body halves on a spine (they arch, curl, wiggle apart), a big round head (cheeks, whisker pads, a pink nose, a "w"),
   eyes (`MAT.basic`: they shine) set flush in a flatter face (`face`, no outline), level (almond breeds' outer corners a touch up: `slant`),
-  an eye's width apart, facing forward: a thin even rim, iris, a big round pupil, two highlights (up-left, low-right); blink, squint, shut. Pink-lined ears (swivel, flatten, flick),
+  an eye's width apart, facing forward: a thin even rim, iris, a big round pupil, two highlights (up-left, low-right); blink, squint, shut. Ears one soft shape each (`catEarGeo`: a
+  rounded apex, `earR`; pink inside), lynx tips a wisp of the ear's own colour, furnishings inside (`earSoft`: no outline); they swivel, flatten, flick,
   whiskers, a mouth that opens (tongue, fangs), four legs, and a tail re-bent every frame (`catTailSet`: a tube along a curve; lift, bend,
   side, hook, sway, bottle-brush puff; its outline the same geometry). Ours (`c.owned`): a collar and a bell (`catCollar`, made the first
-  time; the bell swings).
+  time; the bell swings). The barn's turntable: `catModelIn(par, c)` (then `catSync(c, M, dt)` poses it).
 - **Poses** (`catPose`; `CAT_Q`): a target for every state (`sit loaf sleep groom stretch walk trot run flee stalk freeze wiggle pounce pin play
   bite eat drink hiss swipe rub meow climb perch held taken`, and `c.dead`), angles absolute (level / straight down); the drawn pose crossfades
   into it (`CAT_BLEND`). Walks: a lateral sequence; fast: a gallop, the spine flexing. `crouch`, `tail` (up: a hooked tip), `puff`, `look`,
