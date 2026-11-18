@@ -2,15 +2,19 @@
 //   layout   the ring fits by Sweetgrass Meadow (east of the trail, before the camp), clear, dry; off in ?sim; built when a dog comes near,
 //            anything inside it put out; closed all round; ducks, llamas and the vagabond keep off it
 //   start    a dog on a mat barks: that event's on (the count, the clock slowed); not by night, not two at once; one run: again on its mat
-//   course   the host's five sheep; the outrun, lift, fetch through the gates (a miss: points off), drive, shed, pen (Hank shuts the gate)
-//   ducks    five ducks; through G1, G2, all into the house: points; one put up (a sprint at it): a fault
-//   brace    ten sheep; fetched; five in each pen: full marks for the pens
+//   course   the host's five sheep; the outrun, lift, fetch through the gates (a miss: points off), drive, shed, pen (Hank shuts the gate);
+//            Hank to his post at the start; calm ones in front of the pen walk in, one by its side comes round; off the ring's hurdles
+//   ducks    five ducks; through G1, G2, all into the house: points; one put up (a sprint at it): a fault; across a gate's line well wide
+//            of it: no matter; through G2 with G1 to do: G1 nothing, on
+//   brace    eight sheep; fetched; half in each pen: full marks for the pens; one full: shut (one more with them: back out)
 //   llama    the host's llama on the trial rope, led through the poles in and out: none down, all on the right side: full marks; a pole brushed: down
 //   agility  hurdles, tunnel, see-saw (its plank tips), weave, table (lie on it), hurdle, finish: a clear round; one skipped: a fault;
-//            two dogs: a run each (the starter first), the team's score their average
+//            two dogs: a run each (the starter first), the team's score their average; the see-saw got on from its side, the weave
+//            skipped (the rest still count), just stopped on the table (it lies down by itself): finished
+//   shear    Hank to his board at the start; he takes one from a dog's mouth; one let go by it while he's busy waits its turn
 //   tug      the local champion on the far end of the trial rope; heaving on the beat beats him
 //   throw    three throws of the trial bone from behind the line: the best counts; over the line: no throw; the bone isn't kept
-//   shear    sheep carried to Hank's board: he shears each (🧶); the rival shearer does his own
+//            sheep carried to Hank's board: he shears each (🧶); the rival shearer does his own
 //   fault    a grip or a bonk on the host's sheep: a fault (points off)
 //   awards   all eight run: placings; 🥇 the champion ram joins the flock (s.champ, saved with it, the dawn report) and the keg on every dog;
 //            🥈 the keg and wool; 🥉 wool; no prize below that
@@ -136,6 +140,29 @@ if (want('course')) {
   ok('course: a gate missed (wide of it): points off', m.gF === -1 && m.loss >= 6, m);
 }
 
+if (want('course')) {   // Hank to his post; the pen pulls the calm ones in front of it, one by its side comes round; off the ring's hurdles
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TL, TF, TRIAL, TRIAL_PH, HANK, fp, fu, fv } = GAME, out = {}, far = fp(TL.post.u - 30, 25);
+    HANK.x = far.x; HANK.z = far.z; const ev = H.start('course'); out.hank = H.r(Math.hypot(fu(HANK.x, HANK.z) - TL.post.u, fv(HANK.x, HANK.z) - TL.post.v));
+    const L = TRIAL.grp.list, P = TL.penB, h = P.s / 2, pen = () => { ev.ph = TRIAL_PH.course.findIndex(q => q[0] === 'pen'); L.forEach((e, i) => { if (i < 4) H.place(e, P.u + (i % 2 - 0.5) * 1.8, P.v + (Math.floor(i / 2) - 0.5) * 1.8); }); };
+    H.place(H.d(), 4, -10); pen(); H.place(L[4], P.u + 0.6, P.v - h - 2.2); L[4].stress = 0;   // (in front of its mouth: v-)
+    out.inFront = H.run(12, () => !TRIAL.ev); out.walkedIn = !TRIAL.ev && TRIAL.last.pts.pen > 0;
+    GAME.resetTrial(); const ev2 = H.start('course'), L2 = TRIAL.grp.list; ev2.ph = TRIAL_PH.course.findIndex(q => q[0] === 'pen');
+    L2.forEach((e, i) => { if (i < 4) H.place(e, P.u + (i % 2 - 0.5) * 1.8, P.v + (Math.floor(i / 2) - 0.5) * 1.8); }); H.place(H.d(), 4, -10);
+    H.place(L2[4], P.u - h - 1.6, P.v + 0.5); L2[4].stress = 0;   // (by its back side, the end fence's)
+    out.beside = H.run(30, () => !TRIAL.ev); out.roundIn = !TRIAL.ev && TRIAL.last.pts.pen > 0;
+    // a corner of the ring: off it, nobody near
+    GAME.resetTrial(); H.start('course'); const e = TRIAL.grp.list[0]; H.place(e, TF.hl - 0.6, TF.hw - 0.6); H.place(H.d(), -TF.hl + 2, 0); H.run(6);
+    out.corner = [H.r(TF.hl - Math.abs(fu(e.x, e.z))), H.r(TF.hw - Math.abs(fv(e.x, e.z)))]; GAME.trialEnd();
+    return out;
+  });
+  ok('course: Hank to his post at the start (from far off)', r.hank < 2, r);
+  ok('course: four penned, a calm one in front of the pen walks in', r.walkedIn && r.inFront < 12, r);
+  ok('course: four penned, one by its back side comes round and in', r.roundIn && r.beside < 30, r);
+  ok('course: one in a corner of the ring drifts off the hurdles', r.corner[0] > 1.2 && r.corner[1] > 1.2, r);
+}
+
 if (want('ducks')) {
   await setup();
   const r = await h.page.evaluate(() => {
@@ -158,16 +185,53 @@ if (want('ducks')) {
   ok('ducks: one put up by a sprint: a fault', r.flap >= 1, r);
 }
 
+if (want('ducks')) {   // across a gate's line well wide: no matter; just wide: nothing for it, on; through G2 with G1 to do: G1 nothing
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TL, TRIAL, T } = GAME, out = {};
+    const herd = (L, u, v) => L.forEach((e, i) => { if (e.state !== 'stay') H.place(e, u + (i % 3 - 1) * 0.5, v + Math.floor(i / 3) * 0.5); });
+    const walk = (L, u0, v0, u1, v1) => { for (let k = 0; k <= 20; k++) { herd(L, u0 + (u1 - u0) * k / 20, v0 + (v1 - v0) * k / 20); GAME.step(0.025); } };
+    let ev = H.start('ducks'); H.place(H.d(), -14, 12); const G1 = TL.g1, w = G1.w / 2 + T.trial.ducks.far;
+    walk(TRIAL.grp.list, G1.u + 2, G1.v + w + 3, G1.u - 2, G1.v + w + 3); out.far = [ev.ph, ev.pts.g1];
+    walk(TRIAL.grp.list, G1.u + 2, G1.v + G1.w / 2 + 1, G1.u - 2, G1.v + G1.w / 2 + 1); out.wide = [ev.ph, ev.pts.g1];
+    GAME.trialEnd(); GAME.resetTrial(); ev = H.start('ducks'); H.place(H.d(), -14, 12);
+    walk(TRIAL.grp.list, TL.g2.u + 2, TL.g2.v, TL.g2.u - 2, TL.g2.v); out.skip = [ev.ph, ev.pts.g1, ev.pts.g2]; GAME.trialEnd();
+    return out;
+  });
+  ok('ducks: across a gate\'s line well wide of it: no matter (still to do)', r.far[0] === 0 && r.far[1] === undefined, r);
+  ok('ducks: past a gate just wide: nothing for it, on to the next', r.wide[0] === 1 && r.wide[1] === 0, r);
+  ok('ducks: through G2 with G1 to do: G1 nothing, G2 counts', r.skip[0] === 2 && r.skip[1] === 0 && r.skip[2] === 20, r);
+}
+
 if (want('brace')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { TL, TRIAL } = GAME, ev = H.start('brace'), L = TRIAL.grp.list, out = { n: L.length };
     ev.ph = 1;   // (fetched)
-    for (let k = 0; k < 80 && TRIAL.ev; k++) { L.forEach((e, i) => { if (e.state === 'stay') return; const P = i < 5 ? TL.penA : TL.penB; H.place(e, P.u + (i % 3 - 1) * 1.1, P.v + (Math.floor((i % 5) / 3) - 0.5) * 1.1); }); H.run(0.05); }
+    const half = L.length / 2;
+    for (let k = 0; k < 80 && TRIAL.ev; k++) { L.forEach((e, i) => { if (e.state === 'stay') return; const P = i < half ? TL.penA : TL.penB, j = i % half; H.place(e, P.u + (j % 2 - 0.5) * 1.6, P.v + (Math.floor(j / 2) - 0.5) * 1.6); }); H.run(0.05); }
     out.a = TRIAL.last && TRIAL.last.pts.penA; out.b = TRIAL.last && TRIAL.last.pts.penB; out.over = !TRIAL.ev;
     return out;
   });
-  ok('brace: ten sheep; five in each pen: full marks for both', r.n === 10 && r.a === 35 && r.b === 35 && r.over, r);
+  ok('brace: eight sheep; half in each pen: full marks for both', r.n === 8 && r.a === 35 && r.b === 35 && r.over, r);
+}
+
+if (want('brace')) {   // one pen full: shut; one more in its mouth with them: back out
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TL, TRIAL, staticFences, trialBraceN, fv } = GAME, ev = H.start('brace'), L = TRIAL.grp.list, half = L.length / 2, P = TL.penA, h = P.s / 2, out = {};
+    ev.ph = 1; H.place(H.d(), 8, 0);
+    L.slice(0, half).forEach((e, j) => H.place(e, P.u + (j % 2 - 0.5) * 1.6, P.v + (Math.floor(j / 2) - 0.5) * 1.6));
+    const x = L[half]; H.place(x, P.u, P.v + h - 0.05);   // (in its mouth, v+)
+    H.run(0.05); const S = TRIAL.shut[0]; out.shut = S.on && S.sg.every(g => staticFences.includes(g)) && S.m.visible; out.out = H.r(fv(x.x, x.z) - P.v - h);
+    H.run(1.5); out.n = trialBraceN(); out.other = !TRIAL.shut[1].on;
+    GAME.trialEnd(); return out;
+  });
+  await new Promise(res => setTimeout(res, 2700));   // (the props back after a moment: trialCleanup)
+  r.open = await h.page.evaluate(() => { const S = GAME.TRIAL.shut[0]; return !S.on && S.sg.every(g => !GAME.staticFences.includes(g)); });
+  ok('brace: a pen with its half in: shut (a fence across its mouth)', r.shut && r.other, r);
+  ok('brace: one more in its mouth with them: back out, not counted', r.out > 0.5 && r.n.a === 4, r);
+  ok('brace: over: the pens open again', r.open, r);
 }
 
 if (want('llama')) {
@@ -228,6 +292,25 @@ if (want('agility')) {
   ok('agility, two dogs: the team scores the runs\' average', r2.score === r2.avg, r2);
 }
 
+if (want('agility')) {   // a player's run: the see-saw got on from its side (wobbling), the weave skipped, just stopped on the table
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TL, TRIAL, T, fu, fv } = GAME, ev = H.start('agility'), d = H.d(), out = { lay: false, tab: 0 }; let stage = 0, wait = 0;
+    const route = t => [[-4.5, -9], [2.5, -9], [9, -9], [12, -5.2], [12 + Math.sin(t * 3) * 0.35, -1.4], [9, 3], [5.2, 9.1], [5.2, 9.1], [-3, 9], [-10, 9]];
+    for (let t = 0; t < 60 && TRIAL.ev; t += 0.025) {
+      let b = { mx: 0, my: 0 };
+      if ((ev.rt ?? 0) >= 0) { const [u, v] = route(t)[stage], dd = Math.hypot(fu(d.x, d.z) - u, fv(d.x, d.z) - v);
+        if (stage === 7) { if ((wait += 0.025) > T.trial.agility.table.t + 1) stage++; } else { b = H.go(u, v); if (dd < (stage === 6 ? 0.7 : 0.6)) stage++; } }
+      d.player.bot = b; GAME.step(0.025);
+      if (stage === 7) { out.lay ||= d.mode === 'lie'; out.tab = Math.max(out.tab, ev.tab || 0); }
+    }
+    d.player.bot = { mx: 0, my: 0 }; out.over = !TRIAL.ev; out.pts = TRIAL.last && TRIAL.last.pts; out.score = TRIAL.last && TRIAL.last.score;
+    return out;
+  });
+  ok('agility: stopped on the table (no button): it lies down, the table counts', r.lay && r.tab > 1, r);
+  ok('agility: the see-saw from its side, the weave skipped: on to the finish, scored (the skip: points off)', r.over && r.pts && r.pts.run === 70 - 10 && r.score >= 75, r);
+}
+
 if (want('tug')) {
   await setup();
   const r = await h.page.evaluate(() => {
@@ -285,6 +368,23 @@ if (want('shear')) {
   ok('shear: ten woolly sheep in the catch pen', r.n === 10, r);
   ok('shear: carried to Hank\'s board, he shears them: 🧶', r.shearing && r.wool >= 3 && r.score > 0, r);
   ok('shear: the rival shearer shears his own', r.rival >= 3, r);
+}
+
+if (want('shear')) {   // Hank to his board at the start; one from a dog's mouth; one let go by him while he's busy waits
+  await setup();
+  const r = await h.page.evaluate(() => {
+    const { TL, TRIAL, HANK, fp, fu, fv } = GAME, B = TL.boards[0], out = {}, far = fp(B.u - 30, 25); HANK.x = far.x; HANK.z = far.z;
+    const ev = H.start('shear'), d = H.d(), L = TRIAL.grp.list; out.hank = H.r(Math.hypot(fu(HANK.x, HANK.z) - B.u, fv(HANK.x, HANK.z) - B.v));
+    const e = L[0]; H.place(e, B.u + 3, B.v); H.place(d, B.u + 4.1, B.v); d.yaw = Math.atan2(e.x - d.x, e.z - d.z);
+    H.run(0.3, () => ({ mx: 0, my: 0, grab: true })); out.held = d.holding === e;
+    H.run(1.2, () => ({ ...H.go(B.u + 1.5, B.v), grab: true })); out.taken = !d.holding && e.state === 'shear' && !!ev.job;
+    const e2 = L[1]; H.place(e2, B.u + 1.6, B.v + 0.8); e2.state = 'move'; H.run(0.3); out.wait = e2.state;
+    H.run(4); out.next = e2.state; GAME.trialEnd();
+    return out;
+  });
+  ok('shear: Hank to his board at the start (from far off)', r.hank < 2, r);
+  ok('shear: carried up to him: he takes it from the dog\'s mouth', r.held && r.taken, r);
+  ok('shear: let go by him while he\'s busy: it waits its turn, then he has it', r.wait === 'stay' && r.next === 'shear', r);
 }
 
 if (want('fault')) {

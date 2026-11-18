@@ -1284,21 +1284,21 @@ const T = {
   // `sprint`, a bark this hard (`bark`, 0…1): v m/s, up m, T s
   herd: {
     duck: { r: 0.26, press: 0.85, walk: 1.1, trot: 2.4, run: 3.6, bunch: 1.3, space: 0.6, mom: 2.4, swim: 1.3, fly: { close: 1.5, sprint: 5, bark: 0.45, v: 6, up: 1.4, T: [0.8, 1.4] } },
-    sheep: { r: 0.5, press: 1, walk: 1.4, trot: 3.4, run: 6.2, bunch: 2.2, space: 1.2, mom: 3.5, swim: 1 },
+    sheep: { r: 0.5, press: 1, walk: 1.4, trot: 2.8, run: 5, bunch: 2.2, space: 1.2, mom: 2.4, swim: 1 },
   },
   // TRIALS (issue #180): the sheepdog trials at Sweetgrass Meadow (on: off in ?sim). A ring hl × hw m (half) about `at` [s, lat] (the clearest spot
   // near it), built with a dog within buildR m; events by day (from…to h), a count of `count` s first; while one's on the clock runs × clock.
   // Rivals: each one's skill (± spread) → its scores (0…100). A fault (a grip, a bonk, a duck put up): −fault. xp × score/100 in the event's trait (again, no better: × againXp).
   // Prizes: 🥇 the ram (age, brave, × ram scale, life days) + the keg; 🥈 the keg + wool[1] 🧶; 🥉 wool[2]. Each event: time s, its own numbers
-  trial: { on: !SIM, at: [776, 30], hl: 17, hw: 14, buildR: 120, from: 7, to: 18.5, count: 3, clock: 0.12, mat: 1.2, rivals: [0.74, 0.82, 0.9], spread: 0.08,
-    fault: 5, xp: 30, againXp: 0.5, wool: [0, 25, 12], ram: { age: 14, brave: 0.95, scale: 1.08, life: 60 },
-    course: { n: 5, time: 240, outrun: { tight: 3.5, par: 14 }, lift: 3, fetch: { dev: 3, miss: 6 }, drive: { miss: 7, give: 80 }, shed: { gap: 4.5, hold: 1, time: 60 } },
-    brace: { n: 10, time: 260 }, ducks: { n: 5, time: 180 },
+  trial: { on: !SIM, at: [776, 30], hl: 17, hw: 14, buildR: 120, from: 7, to: 18.5, count: 3, clock: 0.12, mat: 1.2, rivals: [0.58, 0.68, 0.78], spread: 0.08,
+    fault: 5, xp: 30, againXp: 0.5, settle: 0.6, shy: { r: 2.2, k: 0.7 }, pull: { r: 4, k: 0.6 }, wool: [0, 25, 12], ram: { age: 14, brave: 0.95, scale: 1.08, life: 60 },
+    course: { n: 5, time: 240, outrun: { tight: 3.5, par: 14 }, lift: 3, fetch: { dev: 4.5, miss: 6 }, drive: { miss: 7, give: 80 }, shed: { gap: 3.5, hold: 0.5, time: 40 } },
+    brace: { n: 8, time: 260 }, ducks: { n: 5, time: 180, far: 3 },
     llama: { time: 150, par: 50, pole: 10, miss: 10, lead: { near: 2.2 } },
-    agility: { time: 120, par: 40, fault: 5, saw: { h: 0.5 }, table: { h: 0.7, t: 2 } },
+    agility: { time: 120, par: 40, fault: 5, skip: 10, saw: { h: 0.5, w: 0.5, end: 1.2 }, table: { h: 0.7, t: 1.5 } },
     tug: { time: 120, str: 1, per: 0.6, base: 4.2, back: 1.5, heave: 2.6, beats: 1, heaveT: 0.4, yank: 2.8, walk: 1, tire: 16, tireR: 0.03, tireMin: 0.6 },
-    throw: { time: 120, n: 3, par: 22, foul: 0.4 },
-    shear: { time: 80, n: 10, t: 3, rival: 10, r: 2 },
+    throw: { time: 120, n: 3, par: 19, foul: 0.4 },
+    shear: { time: 90, n: 10, t: 3, rival: 13, r: 2.5, take: 2.8 },
     keg: { r: 2.8, warm: 0.75, nip: 3.6, nipK: 0.45, cd: 10 } },   // THE KEG: a little fire r m round the dog wearing it (warm 0…1); its bark: −nipK cold within nip m, every cd s
   // shearing: s.wool 0…1 (full fleece), back in regrowDays; Hank (with his clippers, awake, no predator for calm s) shears sheep
   // with ≥min wool in a shut pen, time s each; a full adult fleece gives `yield` 🧶 (× size², lambs less, rams more)
@@ -7407,7 +7407,7 @@ function updateDog(d, inp, dt) {
   if (inp.jump) startJump(d);
   let mode = 'walk';
   if (d.dugIn) mode = 'creep';   // ROPES: haunches down, paws planted
-  else if (inp.lie && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';
+  else if ((inp.lie || trialDown(d, mag)) && !d.holding && d.pounceT <= 0 && d.hopT <= 0) mode = 'lie';   // (TRIALS: stopped on the agility's table: down)
   else if (inp.creep) mode = 'creep';
   else if (inp.sprint && mag > 0.2 && !d.exhausted) mode = 'sprint';
   if (mode === 'lie' && d.mode !== 'lie') sayOnce('lie', 'lie_down', 'Lie down!');
@@ -20366,7 +20366,7 @@ const TRIAL_PH = {
 // now (under the judge's card). {grab}, {jump}…: this screen's button for it
 const TRIAL_HOW = {
   course: { goal: 'Herd 5 sheep round the course, then pen them', ph: ['Outrun', 'Lift', 'Fetch', 'Drive', 'Shed', 'Pen'] },
-  brace: { goal: '10 sheep: bring them in, then 5 into each pen', ph: ['Fetch', 'Pen 1', 'Pen 2'] },
+  brace: { goal: 'Bring the sheep in, then half into each pen', ph: ['Fetch', 'Pen 1', 'Pen 2'] },
   ducks: { goal: '5 ducks through both gates, into their house. Gently: rushed, they fly!', ph: ['Gate 1', 'Gate 2', 'House', 'Speed'] },
   llama: { goal: 'Lead the llama on its rope, weaving through the poles', ph: ['Poles', 'Speed'] },
   agility: { goal: 'Every obstacle in order, quick as you can. A run each', ph: ['Clear', 'Speed'] },
@@ -20377,14 +20377,14 @@ const TRIAL_HOW = {
 // this screen's first player (a guest: its own), for the buttons in the words
 function trialKeyP() { const d = G.dogs.find(o => NET.role === 'guest' ? netLocalOf(o.player.slot) : o.player.kind !== 'net'); return !d ? null : NET.role === 'guest' ? { kind: netLocalOf(d.player.slot).kind || 'pad' } : d.player; }
 const trialKeys = s => s.replace(/\{(\w+)\}/g, (m, a) => keyLabel(trialKeyP(), a) || a);
-const AGI_TIP = { hurdle: 'Jump the hurdle: {jump}', tunnel: 'Run through the tunnel', seesaw: 'Up and over the see-saw, end to end', weave: 'Weave in and out of the poles', table: 'Up on the table and lie down: {lie}', finish: 'Through the finish!' };
+const AGI_TIP = { hurdle: 'Jump the hurdle: {jump}', tunnel: 'Run through the tunnel', seesaw: 'Up and over the see-saw, end to end', weave: 'Weave in and out of the poles', table: 'Up on the table and stop: down ({lie})', finish: 'Through the finish!' };
 // what to do now: [icon, words] (every screen: from what the host sends of the event)
 function trialTip(ev) {
   const P = (TRIAL_PH[ev.id][ev.ph] || [])[0], has = f => G.dogs.some(d => d.holding && f(d.holding)), rope = has(o => o.trial && o.n), bone = has(o => o.isBone);
   if (ev.id === 'course') return P === 'outrun' ? ['🐕', 'Run wide round BEHIND the sheep. Not too close!'] : P === 'lift' ? ['⬆', 'Step in gently: start them walking towards Hank']
     : P === 'fetch' ? ['⬇', ev.gF === undefined ? 'Bring them down through the red gate' : 'On down to Hank'] : P === 'drive' ? ['➡', ev.g1 === undefined ? 'Now drive them away through the 1st blue gate' : ev.g2 === undefined ? 'Across through the 2nd blue gate' : 'Into the white circle']
     : P === 'shed' ? ['✂', 'Split off the sheep with the red ribbon. Keep it apart!'] : ['🔒', 'All 5 into the pen: Hank shuts the gate'];
-  if (ev.id === 'brace') return P === 'fetch' ? ['⬇', 'Bring all 10 down through the red gate to Hank'] : ['🔒', `Split them: 5 in each pen  ·  ${ev.nA || 0}/5  ${ev.nB || 0}/5`];
+  if (ev.id === 'brace') return P === 'fetch' ? ['⬇', 'Bring them all down through the red gate to Hank'] : ['🔒', `Split them: half in each pen  ·  ${ev.nA || 0}/${trialHalf()}  ${ev.nB || 0}/${trialHalf()}`];
   if (ev.id === 'ducks') return P === 'g1' ? ['🦆', 'Gently through the 1st yellow gate. Rushed, they fly!'] : P === 'g2' ? ['🦆', 'Now through the 2nd yellow gate'] : ['🏠', 'All 5 into the duck house'];
   if (ev.id === 'llama') return !rope ? ['✊', 'Hold {grab} on the llama\'s rope'] : ev.pole < TL.poles.length ? ['🦙', `Weave: pass each pole on the arrow's side  ·  ${ev.pole}/${TL.poles.length}  ·  walk, don't sprint`] : ['🦙', 'On to the green flag'];
   if (ev.id === 'agility') { const o = TL.agi[ev.next]; return o ? ['⤴', `${AGI_TIP[o.k]}  ·  ${ev.next + 1}/${TL.agi.length}`] : ['⤴', '']; }
@@ -20395,7 +20395,7 @@ function trialTip(ev) {
 }
 const TRIAL = { built: false, ev: null, res: {}, seed: 0, rivals: [], done: false, place: 0, seen: false, M: null, grp: null, rope: null, llama: null, champ: null, shearer: null,
   bone: null, last: null, award: null, props: 'course', said: {}, won: false, newcomers: [], npcs: [], segs: {}, ring: [], seg: null, gateK: 0, kegT: 0, poles: [], bars: [], hops: 0,
-  crowd: [], cheer: null, ui: null, tick: 0, matI: -1, matT: 0 };   // (crowd: the folk along the sides; cheer: { t, k } their last; ui, tick, matI/T: the HUD's)
+  crowd: [], cheer: null, ui: null, tick: 0, matI: -1, matT: 0, pull: null, shut: [] };   // (crowd: the folk along the sides; cheer: { t, k } their last; ui, tick, matI/T: the HUD's)
 // ---------------- where: the flattest clear patch near T.trial.at, east of the trail (load time: plain maths, no dice) ----------------
 const TF = (() => {
   const K = T.trial, F = { x: CAM_F.x, z: CAM_F.z }, R = { x: CAM_R.x, z: CAM_R.z };
@@ -20435,11 +20435,11 @@ const TL = (() => {
   const hl = TF.hl, hw = TF.hw, side = hw - 5;
   return {
     post: { u: -hl + 5, v: 0 }, letout: { u: hl - 5.5, v: 0 },
-    fetch: { u: 3, v: 0, w: 6, ax: 'v', dir: -1 }, d1: { u: -2, v: -side, w: 6, ax: 'v', dir: 1 }, d2: { u: hl - 9, v: side - 2, w: 6, ax: 'u', dir: 1 },
-    ring: { u: -4, v: 1, r: 5 },
-    penA: { u: -hl + 7, v: -hw + 5, s: 4.2, m: 'v+' }, penB: { u: -hl + 7, v: hw - 5, s: 4.2, m: 'v-' },
-    g1: { u: 6, v: -6, w: 3.6, ax: 'v', dir: -1 }, g2: { u: -2, v: 6, w: 3.6, ax: 'v', dir: -1 }, house: { u: -hl + 4, v: -6, s: 2.6, m: 'u+' },
-    poles: [0, 1, 2, 3, 4, 5].map(i => ({ u: -9 + i * (hl + 5) / 5.2, v: -side })), lstart: { u: -hl + 4, v: -side }, lfinish: hl - 2.5,
+    fetch: { u: 3, v: 0, w: 7.5, ax: 'v', dir: -1 }, d1: { u: -2, v: -side, w: 7.5, ax: 'v', dir: 1 }, d2: { u: hl - 6.5, v: side - 2, w: 7.5, ax: 'u', dir: 1 },   // (its panels clear of the fetch gate's: no pocket)
+    ring: { u: -4, v: 1, r: 5.5 },
+    penA: { u: -hl + 7, v: -hw + 5, s: 5.2, m: 'v+' }, penB: { u: -hl + 7, v: hw - 5, s: 5.2, m: 'v-' },
+    g1: { u: 6, v: -3.5, w: 6, ax: 'v', dir: -1 }, g2: { u: -2, v: 3.5, w: 6, ax: 'v', dir: -1 }, house: { u: -hl + 5, v: -6, s: 3.6, m: 'u+' },
+    poles: [0, 1, 2, 3, 4, 5].map(i => ({ u: -9 + i * (hl + 5) / 5.2, v: -side })), lstart: { u: -hl + 2.8, v: -side }, lfinish: hl - 2.5,   // (lstart: clear of the brace's pen)
     agi: [{ k: 'hurdle', u: -7, v: -side, ax: 'v', dir: 1 }, { k: 'tunnel', u0: -3, u1: 2, v: -side }, { k: 'hurdle', u: 7, v: -side, ax: 'v', dir: 1 },
       { k: 'seesaw', u: hl - 5, v0: -side + 3, v1: -side + 7 }, { k: 'weave', u: hl - 5, v0: 0, v1: 6.5, n: 6 }, { k: 'table', u: 5, v: side },
       { k: 'hurdle', u: -1, v: side, ax: 'v', dir: -1 }, { k: 'finish', u: -8, v: side, w: 4, ax: 'v', dir: -1 }],
@@ -20453,12 +20453,13 @@ const TL = (() => {
   };
 })();
 const trialPen = (P, x, z, pad = 0) => Math.abs(fu(x, z) - P.u) < P.s / 2 - pad && Math.abs(fv(x, z) - P.v) < P.s / 2 - pad;
-// a step of something from (pu, pv) to (cu, cv) and gate G: 1 through it, -1 across its line but wide of it, 0 not across (or the wrong way)
-function gateCross(G, pu, pv, cu, cv) {
+// a step of something from (pu, pv) to (cu, cv) and gate G: 1 through it, -1 across its line but wide of it, 0 not across (or the wrong way;
+// far: wider of it than that (m past its end): 0 too)
+function gateCross(G, pu, pv, cu, cv, far = 1e9) {
   const al = G.ax === 'v', p = al ? pu : pv, c = al ? cu : cv, at = al ? G.u : G.v;
   if ((p - at) * (c - at) > 0 || p === c || Math.sign(c - p) !== G.dir) return 0;
   const t = (at - p) / (c - p), o = al ? lerp(pv, cv, t) : lerp(pu, cu, t);
-  return Math.abs(o - (al ? G.v : G.u)) < G.w / 2 ? 1 : -1;
+  const off = Math.abs(o - (al ? G.v : G.u)); return off < G.w / 2 ? 1 : off < G.w / 2 + far ? -1 : 0;
 }
 // ---------------- a new journey: the field as it was, the rivals rolled afresh ----------------
 const RIVAL_LOOKS = [{ breed: 'kelpie', collar: '#ff8a2a', ui: '#ffa04d', coat: '#4a6a3a', hat: '#3a3330' }, { breed: 'aussie', collar: '#9b59d0', ui: '#c08cf0', coat: '#3a5a8a', hat: '#2a2a30' },
@@ -20507,16 +20508,20 @@ function trialStart(id, d) {
   const K = T.trial;
   trialProps(id);
   TRIAL.gateK = 0;
-  const ev = TRIAL.ev = { id, t: -K.count, ph: 0, pts: {}, loss: 0, faults: [], d, dogs: G.dogs.slice(), cnt: -1 };
+  const ev = TRIAL.ev = { id, t: -K.count, ph: 0, pts: {}, loss: 0, faults: [], d, dogs: G.dogs.slice(), cnt: -1 }; TRIAL.pull = null;
   trialSpawn(ev);
   trialPlaceDogs(ev);
   trialFx('start', TF.x, TF.z, TRIAL_EVENTS.findIndex(e => e.id === id));
-  hank(null, { course: "Away round the back of them, wide! Then bring them down through the red gate to me.", brace: "Ten sheep! Bring them to me, then split them: five in each pen.",
+  hank(null, { course: "Away round the back of them, wide! Then bring them down through the red gate to me.", brace: "Bring them all to me, then split them: half in each pen.",
     ducks: "Ducks! Gently now, or they'll fly. Both gates, then into their house.", llama: "Take her rope, lead her through the poles. In and out, and no rushing her!",
     agility: "Over the jumps, through the tunnel, up the see-saw! Follow the arrow.", tug: "Grab the rope, walk back, and heave on the beat!",
     throw: "Pick up the bone, run at the line and let it fly! Not over the line.", shear: "Bring me sheep! Carry them to my board, quick as ye can!" }[id], { force: true });
 }
 function trialPlaceDogs(ev) {
+  const hk = HANK, hg = trialHankGoal(true);   // Hank to his post at once (not mid-rescue, on a rope, swimming, at a fleece)
+  if (hg && !hk.rescue && !hk.rope && !hk.swim && !(hk.job && hk.job.on) && Math.hypot(hk.x - hg.x, hk.z - hg.z) > 3) {
+    burst(hk.x, hk.y + 0.8, hk.z, 8, '#fff3c0', { speed: 2, up: 2, size: 0.12 }); Object.assign(hk, { x: hg.x, z: hg.z, y: groundY(hg.x, hg.z), vx: 0, vz: 0, hopT: 0, goal: null });
+  }
   const at = { course: TL.post, brace: TL.post, ducks: TL.post, llama: { u: TL.lstart.u - 1.5, v: TL.lstart.v + 2 }, agility: TL.astart, tug: { u: TL.rope.u + 1.2, v: TL.rope.v0 - 1.2 },
     throw: { u: TL.bone0.u - 1.5, v: TL.bone0.v }, shear: { u: TL.catch.u0 - 3, v: 0 } }[ev.id];
   ev.dogs.forEach((d, i) => {
@@ -20559,10 +20564,10 @@ function trialEnd() {
   const ev = TRIAL.ev; if (!ev) return;
   const ph = TRIAL_PH[ev.id];
   if (ev.id === 'throw' && ev.pts.best === undefined) ev.pts.best = trialThrowPts(ev);
-  if (ev.id === 'brace' && ev.pts.penA === undefined) { const n = trialBraceN(); ev.pts.penA = Math.round(35 * Math.min(n.a, 5) / 5); ev.pts.penB = Math.round(35 * Math.min(n.b, 5) / 5); }
+  if (ev.id === 'brace' && ev.pts.penA === undefined) trialBracePts(ev);
   if (ev.id === 'shear' && ev.pts.fleece === undefined) ev.pts.fleece = trialShearPts(ev);
   if (ev.id === 'tug' && ev.pts.tug === undefined) ev.pts.tug = trialTugPts(ev, false);
-  if (ev.id === 'agility' && ev.pts.time === undefined && ev.runs) { if (ev.d && ev.runs.length < ev.queue.length && (ev.rt || 0) >= 0) ev.runs.push({ run: Math.round(clamp(70 - ev.loss - ev.left * T.trial.agility.fault, 0, 70)), time: 0, slot: ev.d.player.slot }); trialAgilityTally(ev); }
+  if (ev.id === 'agility' && ev.pts.time === undefined && ev.runs) { if (ev.d && ev.runs.length < ev.queue.length && (ev.rt || 0) >= 0) ev.runs.push({ run: Math.round(clamp(70 - ev.loss - ev.left * T.trial.agility.skip, 0, 70)), time: 0, slot: ev.d.player.slot }); trialAgilityTally(ev); }
   if ((ev.id === 'llama' || ev.id === 'agility') && ev.pts.time === undefined) { if (ev.pts.poles === undefined && ev.pts.run === undefined) ev.pts[ph[0][0]] = Math.max(0, ph[0][2] - ev.loss - 10 * ev.left); ev.pts.time = 0; }
   if (ev.id === 'ducks' && ev.pts.time === undefined) ev.pts.time = ev.pts.house ? Math.round(clamp(20 - Math.max(0, ev.t - 60) / 3, 0, 20)) : 0;
   const sum = ph.reduce((t, p) => t + (p[2] ? ev.pts[p[0]] || 0 : 0), 0), score = Math.round(clamp(sum - trialFaultPts(ev), 0, 100));
@@ -20579,6 +20584,7 @@ function trialEnd() {
 // a new journey with one on: just stopped
 function trialStop() { const ev = TRIAL.ev; if (!ev) return; TRIAL.ev = null; trialCleanup(ev, true); }
 function trialCleanup(ev, now = false) {
+  TRIAL.pull = null;
   if (TRIAL.grp) { const g = TRIAL.grp; TRIAL.grp = null; if (now) herdDropGroup(g); else { for (const e of g.list) { e.state = 'leave'; e.leaveT = 0; } TRIAL.leaving = g; } }
   if (ev.id === 'llama') trialLlamaOff();
   if (ev.id === 'tug') trialTugOff();
@@ -20628,13 +20634,30 @@ function trialHerdAt(ev) {
   ev.pu = ev.cu ?? u; ev.pv = ev.cv ?? v; ev.cu = u; ev.cv = v;
   return { u, v, spread, stress, L };
 }
+// SHARED HOOK (HERD): the trial's animals keep off the ring's hurdles (a push in from any side they're near: no jam in a corner); calm, in
+// front of a pen being worked (TRIAL.pull: [{ P, k }]), they drift in, more as more are in (round to its mouth first)
+const _tsh = { x: 0, z: 0 }, PEN_OUT = { 'u+': [1, 0], 'u-': [-1, 0], 'v+': [0, 1], 'v-': [0, -1] };
+function trialShy(e) {
+  const K = T.trial.shy, u = fu(e.x, e.z), v = fv(e.x, e.z), du = TF.hl - Math.abs(u), dv = TF.hw - Math.abs(v);
+  let pu = du < K.r && du > -1 && Math.abs(v) < TF.hw + 1 ? -Math.sign(u) * (K.r - du) / K.r * K.k : 0, pv = dv < K.r && dv > -1 && Math.abs(u) < TF.hl + 1 ? -Math.sign(v) * (K.r - dv) / K.r * K.k : 0;
+  if (TRIAL.pull && !e.panic) for (const { P, k } of TRIAL.pull) {
+    const h = P.s / 2, [mu, mv] = PEN_OUT[P.m], a = (u - P.u) * mu + (v - P.v) * mv, b = (u - P.u) * mv - (v - P.v) * mu;   // a: out of its mouth, b: across it
+    if (Math.hypot(u - P.u, v - P.v) > h + T.trial.pull.r) continue;
+    const sd = Math.sign(b) || 1, inF = a > h - 0.6, inL = Math.abs(b) < h - 0.4;   // (beside or behind it: round its front corner, then to its mouth, then in)
+    const ta = inF ? (inL ? 0 : h + 1) : h + 1.2, tb = inF ? (inL ? 0 : 0) : sd * (h + 1.2), tu = P.u + mu * ta + mv * tb, tv = P.v + mv * ta - mu * tb, l = Math.hypot(tu - u, tv - v) || 1;
+    pu += (tu - u) / l * k; pv += (tv - v) / l * k;
+  }
+  _tsh.x = TF.F.x * pu + TF.R.x * pv; _tsh.z = TF.F.z * pu + TF.R.z * pv; return _tsh;
+}
+// the pens being worked pull (in front of their mouths): k by how many of `n` are in already
+const trialPull = (n, ...pens) => { TRIAL.pull = pens.filter(Boolean).map(P => ({ P, k: T.trial.pull.k * (0.5 + 0.5 * (TRIAL.grp ? TRIAL.grp.list.filter(e => e.state === 'stay' && e.tpen === P).length : 0) / Math.max(1, n)) })); };
 // a penned one settles (stays put); all of `n` in: true
 function trialPenStep(P, L, dt) {
   let n = 0;
   for (const e of L) {
     if (e.heldBy) { e.penT = 0; continue; }
     if (e.state === 'stay' && e.tpen === P) { n++; continue; }
-    if (trialPen(P, e.x, e.z, 0.35)) { if (e.ppen !== P) { e.ppen = P; e.penT = 0; } e.penT += dt; if (e.penT > 1.1) { e.state = 'stay'; e.tpen = P; e.vx = e.vz = 0; herdFx(e.kind === 'duck' ? 'quack' : 'baa', e.x, e.z, 1); } }
+    if (trialPen(P, e.x, e.z, 0.25)) { if (e.ppen !== P) { e.ppen = P; e.penT = 0; } e.penT += dt; if (e.penT > T.trial.settle) { e.state = 'stay'; e.tpen = P; e.vx = e.vz = 0; herdFx(e.kind === 'duck' ? 'quack' : 'baa', e.x, e.z, 1); } }
     else if (e.ppen === P) { e.ppen = null; e.penT = 0; }   // (two pens: each its own count)
   }
   return n;
@@ -20670,11 +20693,12 @@ const TRIAL_STEP = {
       if (ev.shedT > k.shed.hold) trialPhase(ev, 10 - Math.max(0, pt - 25) * 0.2);
       else if (pt > k.shed.time) trialPhase(ev, 0);
     } else if (P === 'pen') {
+      trialPull(H.L.length, TL.penB);
       const n = trialPenStep(TL.penB, H.L, dt);
       if (n >= H.L.length && H.L.length === TRIAL.grp.list.length) { TRIAL.gateK = 1; trialFx('shut', fp(TL.penB.u, TL.penB.v).x, fp(TL.penB.u, TL.penB.v).z, 0); trialPhase(ev, 10 - Math.max(0, pt - 40) * 0.1); }
     }
   },
-  // BRACE: ten through the fetch gates to the post, then split: five in each pen
+  // BRACE: n through the fetch gates to the post, then split: half in each pen (one full: Hank shuts it, trialShut)
   brace(ev, dt, k) {
     const H = trialHerdAt(ev); if (!H) { trialEnd(); return; }
     const P = TRIAL_PH.brace[ev.ph][0];
@@ -20684,19 +20708,30 @@ const TRIAL_STEP = {
       if (Math.hypot(H.u - TL.post.u, H.v - TL.post.v) < 7 || H.u < TL.post.u + 4) { if (ev.gF === undefined) ev.loss += 8; trialPhase(ev); }
     } else {
       trialPenStep(TL.penA, TRIAL.grp.list, dt); trialPenStep(TL.penB, TRIAL.grp.list, dt);
-      const n = trialBraceN(); ev.nA = n.a; ev.nB = n.b;
-      if (n.a + n.b >= TRIAL.grp.list.length) { ev.pts.penA = Math.round(35 * Math.min(n.a, 5) / 5); ev.pts.penB = Math.round(35 * Math.min(n.b, 5) / 5); trialEnd(); }
+      const n = trialBraceN(), half = trialHalf(); ev.nA = n.a; ev.nB = n.b; trialPull(half, n.a < half && TL.penA, n.b < half && TL.penB);
+      for (const S of TRIAL.shut) {   // its half inside: shut (any more in with them: back out of its mouth)
+        if (S.on) continue;
+        const [mu, mv] = PEN_OUT[S.P.m], h = S.P.s / 2, out = e => (fu(e.x, e.z) - S.P.u) * mu + (fv(e.x, e.z) - S.P.v) * mv, across = e => Math.abs((fu(e.x, e.z) - S.P.u) * mv - (fv(e.x, e.z) - S.P.v) * mu);
+        const inn = TRIAL.grp.list.filter(e => !e.heldBy && (trialPen(S.P, e.x, e.z, 0.25) || across(e) < h && out(e) > 0 && out(e) < h + 0.7)); if (inn.filter(e => trialPen(S.P, e.x, e.z, 0.25)).length < half) continue;   // (in its mouth too: in or out with the fence)
+        inn.filter(e => e.state !== 'stay').sort((a, b) => out(b) - out(a)).slice(0, inn.length - half).forEach((e, j) => { const b = (fu(e.x, e.z) - S.P.u) * mv - (fv(e.x, e.z) - S.P.v) * mu, p = fp(S.P.u + mu * (h + 1 + j * 0.6) + mv * b, S.P.v + mv * (h + 1 + j * 0.6) - mu * b); Object.assign(e, { x: p.x, z: p.z, vx: 0, vz: 0, ppen: null, penT: 0 }); });
+        trialShut(S, true); const p = fp(S.P.u, S.P.v); trialFx('shut', p.x, p.z, 0);
+      }
+      if (n.a + n.b >= TRIAL.grp.list.length || (n.a >= half && n.b >= half)) { trialBracePts(ev); trialEnd(); }
     }
   },
-  // DUCKS: through G1, through G2, all in the duck house; quick is a bonus (each one put up: a fault)
+  // DUCKS: through G1, through G2, all in the duck house; quick is a bonus (each one put up: a fault). Past a gate, wide: it scores nothing
+  // (well wide, across its line: no matter); a later gate, or one in the house: the ones skipped score nothing
   ducks(ev, dt, k) {
     const H = trialHerdAt(ev); if (!H) { trialEnd(); return; }
     const P = TRIAL_PH.ducks[ev.ph][0];
     if (P === 'g1' || P === 'g2') {
       const G1 = TL[P]; trialLoseOn(ev, H, dt);
-      const g = gateCross(G1, ev.pu, ev.pv, H.u, H.v); if (g) { trialGateFx(G1, g); trialPhase(ev, g > 0 ? 20 - ev.loss : 0); }
-      else if (P === 'g2' && trialPenStep(TL.house, H.L, dt) > 0) { trialGateFx(G1, -1); trialPhase(ev, 0); }
+      const g = gateCross(G1, ev.pu, ev.pv, H.u, H.v, k.far);
+      if (g) { trialGateFx(G1, g); trialPhase(ev, g > 0 ? 20 - ev.loss : 0); }
+      else if (P === 'g1' && gateCross(TL.g2, ev.pu, ev.pv, H.u, H.v) > 0) { trialGateFx(TL.g2, 1); trialPhase(ev, 0); trialPhase(ev, 20); }
+      else if (trialPenStep(TL.house, H.L, dt) > 0) { trialGateFx(G1, -1); trialPhase(ev, 0); if (P === 'g1') trialPhase(ev, 0); }
     } else if (P === 'house') {
+      trialPull(TRIAL.grp.list.length, TL.house);
       const n = trialPenStep(TL.house, TRIAL.grp.list, dt);
       if (n >= TRIAL.grp.list.length) { trialFx('shut', fp(TL.house.u, TL.house.v).x, fp(TL.house.u, TL.house.v).z, 0); trialPhase(ev, 40); trialPhase(ev, clamp(20 - Math.max(0, ev.t - 60) / 3, 0, 20)); }
     }
@@ -20707,6 +20742,13 @@ const TRIAL_STEP = {
   throw: (ev, dt, k) => trialThrowStep(ev, dt, k),
   shear: (ev, dt, k) => trialShearStep(ev, dt, k),
 };
+const trialHalf = () => Math.round(T.trial.brace.n / 2);
+function trialBracePts(ev) { const n = trialBraceN(), h = trialHalf(); ev.pts.penA = Math.round(35 * Math.min(n.a, h) / h); ev.pts.penB = Math.round(35 * Math.min(n.b, h) / h); }
+// BRACE: a pen with its half in: shut (a hurdle across its mouth); every screen (ONLINE: in `down`)
+function trialShut(S, on) {
+  if (S.on === on) return; S.on = on; S.m.visible = on;
+  for (const g of S.sg) { const i = staticFences.indexOf(g); if (on && i < 0) staticFences.push(g); else if (!on && i >= 0) staticFences.splice(i, 1); }
+}
 function trialBraceN() { let a = 0, b = 0; if (TRIAL.grp) for (const e of TRIAL.grp.list) { if (e.state === 'stay' && e.tpen === TL.penA) a++; else if (e.state === 'stay' && e.tpen === TL.penB) b++; } return { a, b }; }
 function trialGateFx(G, g) { const p = fp(G.u, G.v); trialFx(g > 0 ? 'gate' : 'miss', p.x, p.z, 0); }
 // ---------------- LLAMA LEAD: the host's llama on the trial rope, through the poles (in and out: left of the first, right of the next…), none down ----------------
@@ -20745,11 +20787,12 @@ function trialLlamaStep(ev, dt, k) {
   ev.lu = u;
   if (u > TL.lfinish && ev.pole >= TRIAL.poles.length) { trialPhase(ev, 70 - ev.loss); trialPhase(ev, clamp(30 - Math.max(0, ev.t - k.par), 0, 30)); }
 }
-// ---------------- AGILITY: hurdles (jumped: a fence there hops it), the tunnel (in one end, out the other), the see-saw (along the plank, end
-// to end), the weave poles (in and out), the table (up on it, lie down: table s), a hurdle, the finish. Each missed or done wrong: a fault ----------------
+// ---------------- AGILITY: hurdles (jumped: a fence there hops it), the tunnel (in one end, out the other), the see-saw (on in its near half,
+// off at the far end), the weave poles (in and out), the table (up on it, lie down: table s; stopped on it, the runner lies down by itself:
+// trialDown), a hurdle, the finish. One done wrong: a fault; one skipped (a later one done): skip. Time points × the share done ----------------
 // a run each (the dog that started it first): the course set up again, the runner at the start, the rest aside
 function trialAgilityReset(ev, rt) {
-  Object.assign(ev, { next: 0, left: TL.agi.length, tab: 0, tun: null, saw: null, weave: null, loss: 0, rt, du: undefined, dv: undefined });
+  Object.assign(ev, { next: 0, left: TL.agi.length, tab: 0, tun: null, saw: null, weave: null, loss: 0, skips: 0, rt, du: undefined, dv: undefined });
   for (const b of TRIAL.bars) b.down = 0;
   const S = TL.astart;
   ev.queue.forEach((o, i) => { if (!G.dogs.includes(o)) return; const run = o === ev.d, p = fp(S.u - (run ? 0 : 3), S.v + (run ? 0 : 2 + i * 1.4));
@@ -20757,7 +20800,7 @@ function trialAgilityReset(ev, rt) {
 }
 // a run over (finished, or its time out): its points; on to the next dog's run, or the team's score: the runs' average
 function trialAgilityRun(ev, k, finished) {
-  const run = Math.round(clamp(70 - ev.loss - (finished ? 0 : ev.left * k.fault), 0, 70)), time = finished ? Math.round(clamp(30 - Math.max(0, ev.rt - k.par), 0, 30)) : 0;
+  const run = Math.round(clamp(70 - ev.loss - (finished ? 0 : ev.left * k.skip), 0, 70)), time = finished ? Math.round(clamp(30 - Math.max(0, ev.rt - k.par), 0, 30) * (1 - (ev.skips || 0) / TL.agi.length)) : 0;
   ev.runs.push({ run, time, slot: ev.d.player.slot });
   floatText(`${run + time}`, ev.d.x, ev.d.y + 2.4, ev.d.z, ev.d.color, 1.6); trialFx('phase', ev.d.x, ev.d.z, run + time >= 70 ? 1 : 0);
   const nx = ev.queue.slice(ev.runs.length).find(o => G.dogs.includes(o));
@@ -20775,7 +20818,7 @@ function trialAgilityStep(ev, dt, k) {
   if ((ev.rt = (ev.rt || 0) + dt) < 0) return;   // (the next one's count)
   if (ev.rt > k.time) { trialFx('time', d.x, d.z, 0); trialAgilityRun(ev, k, false); return; }
   const u = fu(d.x, d.z), v = fv(d.x, d.z), pu = ev.du ?? u, pv = ev.dv ?? v; ev.du = u; ev.dv = v;
-  const A = TL.agi, fault = (o, why) => { ev.loss += k.fault; const p = o.u !== undefined ? fp(o.u, o.v ?? (o.v0 + o.v1) / 2) : fp((o.u0 + o.u1) / 2, o.v); trialFx('miss', p.x, p.z, 0); };
+  const A = TL.agi, fault = (o, why) => { ev.loss += why === 'skip' ? k.skip : k.fault; if (why === 'skip') ev.skips++; const p = o.u !== undefined ? fp(o.u, o.v ?? (o.v0 + o.v1) / 2) : fp((o.u0 + o.u1) / 2, o.v); trialFx('miss', p.x, p.z, 0); };
   const done = i => { for (let j = ev.next; j < i; j++) fault(A[j], 'skip'); ev.next = i + 1; ev.left = A.length - ev.next; const o = A[i], p = o.u !== undefined ? fp(o.u, o.v ?? (o.v0 + o.v1) / 2) : fp((o.u0 + o.u1) / 2, o.v); trialFx('gate', p.x, p.z, 0); };
   for (let i = ev.next; i < A.length; i++) {
     const o = A[i];
@@ -20786,10 +20829,10 @@ function trialAgilityStep(ev, dt, k) {
       const inT = Math.abs(v - o.v) < 0.7 && u > o.u0 - 0.3 && u < o.u1 + 0.3;
       if (inT && !ev.tun) ev.tun = { from: u < (o.u0 + o.u1) / 2 ? 0 : 1 };
       if (!inT && ev.tun) { const out = u > o.u1 ? 1 : u < o.u0 ? 0 : -1; if (ev.tun.from === 0 && out === 1) { done(i); ev.tun = null; break; } ev.tun = null; }
-    } else if (o.k === 'seesaw') {
-      const on = trialSawOn(d.x, d.z) && !(d.hopT > 0);
-      if (on && !ev.saw && v < o.v0 + 1.2) ev.saw = 1;
-      if (ev.saw && !on) { if (v > o.v1 - 0.4) { done(i); ev.saw = null; break; } if (!(d.hopT > 0)) ev.saw = null; }
+    } else if (o.k === 'seesaw') {   // (on it in its near half, then along to its far end: off, or fallen off and back on, it still counts)
+      const on = trialSawOn(d.x, d.z) && !(d.hopT > 0), m = (o.v0 + o.v1) / 2;
+      if (on && v < m) ev.saw = 1;
+      if (ev.saw && on && v > o.v1 - k.saw.end) { done(i); ev.saw = null; break; }
     } else if (o.k === 'weave') {
       if (!ev.weave && v > o.v0 - 0.8 && Math.abs(u - o.u) < 2) ev.weave = { i: 0, bad: 0 };
       const W = ev.weave;
@@ -20800,12 +20843,19 @@ function trialAgilityStep(ev, dt, k) {
         if (Math.abs(u - o.u) > 3.5) { ev.weave = null; }
       }
     } else if (o.k === 'table') {
-      const on = Math.abs(u - o.u) < 0.8 && Math.abs(v - o.v) < 0.8;
+      const on = trialOnTable(d.x, d.z);
       ev.tab = on && d.mode === 'lie' ? ev.tab + dt : on ? ev.tab : 0;
       if (ev.tab > k.table.t) { done(i); ev.tab = 0; break; }
     }
-    if (i === ev.next) break;   // (only the next one counts, unless a later one's done: then the ones skipped are faults)
-  }
+  }   // (any still to do counts: one done past the next, the ones skipped are a skip each)
+}
+// the table (and its ramp, a little round): the runner on it
+function trialOnTable(x, z) { const o = TL.agi.find(q => q.k === 'table'), u = fu(x, z), v = fv(x, z); return !!o && Math.abs(v - o.v) < 1.05 && u > o.u - 1.05 && u < o.u + 1.7; }
+// SHARED HOOK (updateDog, netPredMove): the agility's runner, the table still to do, stopped on it: down it lies (Hank: "Lie down!")
+function trialDown(d, mag) {
+  const ev = TRIAL.ev; if (!ev || ev.id !== 'agility' || mag > 0.2 || d.hopT > 0 || d.pounceT > 0 || d.holding || (ev.rt ?? 0) < 0) return false;
+  if (ev.d ? ev.d !== d : !d.player || d.player.slot !== ev.rs) return false;
+  return ev.next <= TL.agi.findIndex(o => o.k === 'table') && trialOnTable(d.x, d.z);
 }
 // ---------------- TUG OF WAR: the trial rope across the middle, the local champion on its far end; every dog of ours on this end ----------------
 function trialTugOn(ev) {
@@ -20877,10 +20927,12 @@ function trialShearStep(ev, dt, k) {
       if (TRIAL.grp) { const i = TRIAL.grp.list.indexOf(e); if (i >= 0) TRIAL.grp.list.splice(i, 1); }
       (TRIAL.shorn || (TRIAL.shorn = [])).push(e);
     }
-  } else if (Math.hypot(hk.x - bp.x, hk.z - bp.z) < 2.6 && TRIAL.grp) {   // one by his board (let go there, or walked up): he takes it
-    const e = TRIAL.grp.list.find(o => !o.heldBy && !o.air && o.state !== 'leave' && o.wool > 0.5 && Math.hypot(o.x - bp.x, o.z - bp.z) < k.r);
+  } else if (Math.hypot(hk.x - bp.x, hk.z - bp.z) < 2.6 && TRIAL.grp) {   // one by his board (let go there, walked up, or still in a dog's mouth): he takes it
+    let e = TRIAL.grp.list.find(o => !o.heldBy && !o.air && o.state !== 'leave' && o.wool > 0.5 && Math.hypot(o.x - bp.x, o.z - bp.z) < k.r);
+    if (!e) { const d = G.dogs.find(o => o.holdKind === 'tsheep' && o.holding.grp === TRIAL.grp && o.holding.wool > 0.5 && Math.hypot(o.holding.x - bp.x, o.holding.z - bp.z) < k.take); if (d) { e = d.holding; releaseHold(d, false); } }
     if (e) { e.state = 'shear'; const q = fp(B.u + 0.4, B.v); ev.job = { e, k: 0, x: q.x, z: q.z, snip: 0 }; hk.shearing = true; trialFx('take', e.x, e.z, 0); }
   }
+  if (ev.job && TRIAL.grp) for (const o of TRIAL.grp.list) if (o !== ev.job.e && !o.heldBy && !o.air && o.state !== 'leave' && o.state !== 'stay' && o.wool > 0.5 && Math.hypot(o.x - bp.x, o.z - bp.z) < k.r) { o.state = 'stay'; o.vx = o.vz = 0; }   // (he's busy: it waits its turn)
   if (!TRIAL.grp || !TRIAL.grp.list.some(o => o.wool > 0.5)) { ev.pts.fleece = trialShearPts(ev); trialEnd(); }
 }
 const trialShearPts = ev => { const me = ev.n || 0, them = TRIAL.shearer ? TRIAL.shearer.n : 1; return me > them ? 100 : Math.round(clamp(me / Math.max(1, them), 0, 1) * 85); };
@@ -21017,7 +21069,7 @@ function trialBuild() {
   // the events' own things (shown while each is set out: trialProps)
   const ev = id => { const g = new THREE.Group(); g.visible = false; M.all.add(g); M.ev[id] = g; TRIAL.segs[id] = []; return g; };
   const RED = '#e8473f', BLUE = '#3d8ef0';
-  const gate = (G, parts, segs, col = RED, h = 1.05) => { const al = G.ax === 'v', w = G.w / 2, L = Math.max(1.6, G.w * 0.4);   // two panels in line, the gap between
+  const gate = (G, parts, segs, col = RED, h = 1.05) => { const al = G.ax === 'v', w = G.w / 2, L = clamp(G.w * 0.4, 1.6, 2.4);   // two panels in line, the gap between
     for (const s of [-1, 1]) { const a = al ? [G.u, G.v + s * w] : [G.u + s * w, G.v], b = al ? [G.u, G.v + s * (w + L)] : [G.u + s * (w + L), G.v]; trialFence(parts, segs, a[0], a[1], b[0], b[1], col, 3, h); } };
   const post = (u, v, col = RED) => pp(merge(P(CYL(0.05, 0.06, 1.6, 6), '#8a6a48', { p: [0, 0.8, 0] }), P(CONE(0.22, 0.5, 3), col, { s: [1, 1, 0.12], r: [0, 0, -Math.PI / 2], p: [0.28, 1.45, 0] })), u, v);
   { const g = ev('course'), parts = [], S = TRIAL.segs.course;
@@ -21028,7 +21080,9 @@ function trialBuild() {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]); part(leaf, gateLeafGeo(L));
     const rope = new THREE.Mesh(CYL(0.022, 0.022, 1, 5).translate(0, 0.5, 0).rotateX(Math.PI / 2), new THREE.MeshToonMaterial({ color: '#c8a46a', gradientMap: TOON_GRAD })); rope.visible = false; g.add(rope);   // (Hank's rope to it)
     TRIAL.leaf = { rope, g: leaf, a: TF.yaw + segA(b[0] - a[0], b[1] - a[1]), L, hu: a[0], hv: a[1], tu: b[0], tv: b[1], seg: { ax: hp.x, az: hp.z, bx: fp(b[0], b[1]).x, bz: fp(b[0], b[1]).z } }; }
-  { const g = ev('brace'), parts = [], S = TRIAL.segs.brace; gate(TL.fetch, parts, S); parts.push(post(TL.post.u, TL.post.v)); trialPenFence(TL.penA, parts, S, '#f4efe4'); trialPenFence(TL.penB, parts, S, '#f4efe4'); trialMesh(parts, g); }
+  { const g = ev('brace'), parts = [], S = TRIAL.segs.brace; gate(TL.fetch, parts, S); parts.push(post(TL.post.u, TL.post.v));
+    const mouths = [TL.penA, TL.penB].map(P => trialPenFence(P, parts, S, '#f4efe4')); trialMesh(parts, g);
+    TRIAL.shut = mouths.map(([a, b], i) => { const sp = [], sg = []; trialFence(sp, sg, a[0], a[1], b[0], b[1], RED, 1.9, 0.95); const m = trialMesh(sp, g); m.visible = false; return { P: i ? TL.penB : TL.penA, m, sg, on: false }; }); }
   { const g = ev('ducks'), parts = [], S = TRIAL.segs.ducks, H = TL.house, h = H.s / 2;
     gate(TL.g1, parts, S, '#ffd34d', 0.7); gate(TL.g2, parts, S, '#ffd34d', 0.7); parts.push(post(TL.post.u, TL.post.v, '#ffd34d'));
     trialPenFence(H, null, S, null);   // (its walls)
@@ -21056,7 +21110,7 @@ function trialBuild() {
       } else if (o.k === 'seesaw') {
         const m = (o.v0 + o.v1) / 2, L = o.v1 - o.v0; parts.push(pp(merge(P(CONE(0.4, 0.5, 3), '#7a5230', { r: [0, Math.PI / 2, 0], p: [0, 0.25, 0] })), o.u, m));
         const q = fp(o.u, m), piv = new THREE.Group(); piv.position.set(q.x, terrainH(q.x, q.z) + T.trial.agility.saw.h, q.z); piv.rotation.y = TF.yaw + segA(0, 1); g.add(piv);
-        const plank = new THREE.Group(); piv.add(plank); part(plank, merge(P(BOX(L, 0.08, 0.4), '#f2c230', { p: [0, 0, 0] }), P(BOX(0.6, 0.085, 0.42), RED, { p: [-L / 2 + 0.3, 0, 0] }), P(BOX(0.6, 0.085, 0.42), RED, { p: [L / 2 - 0.3, 0, 0] })));
+        const plank = new THREE.Group(); piv.add(plank); const pw = T.trial.agility.saw.w * 1.5; part(plank, merge(P(BOX(L, 0.08, pw), '#f2c230', { p: [0, 0, 0] }), P(BOX(0.6, 0.085, pw + 0.02), RED, { p: [-L / 2 + 0.3, 0, 0] }), P(BOX(0.6, 0.085, pw + 0.02), RED, { p: [L / 2 - 0.3, 0, 0] })));
         TRIAL.saw = { o, plank, L, m, a: Math.asin(T.trial.agility.saw.h / (L / 2)), ang: Math.asin(T.trial.agility.saw.h / (L / 2)), tilt: Math.asin(T.trial.agility.saw.h / (L / 2)) };
       } else if (o.k === 'weave') {
         for (let i = 0; i < o.n; i++) parts.push(pp(P(CYL(0.035, 0.035, 1.1, 6), i % 2 ? '#f4efe4' : '#3fbf5a', { p: [0, 0.55, 0] }), o.u, o.v0 + i * (o.v1 - o.v0) / (o.n - 1)));
@@ -21103,6 +21157,7 @@ function trialEvict() {
 // which event's things are out (its fences in staticFences); the champion, the llama, the shearer to their places
 function trialProps(id) {
   if (!TRIAL.built) { TRIAL.props = id; return; }
+  for (const S of TRIAL.shut) trialShut(S, false);   // (BRACE: its pens open again)
   const old = TRIAL.props; TRIAL.props = id;
   for (const [k, g] of Object.entries(TRIAL.M.ev)) g.visible = k === id;
   let gone = false;
@@ -21164,13 +21219,13 @@ function trialLlamaPose(L, dt) {
 }
 onSync(syncTrial, 245);
 // the see-saw: its plank's height under (x, z) (null: not on it) — and a dog on it tips it (groundY: trialY)
-function trialSawOn(x, z) { const W = TRIAL.saw; if (!W || TRIAL.props !== 'agility') return false; const u = fu(x, z), v = fv(x, z); return Math.abs(u - W.o.u) < 0.34 && Math.abs(v - W.m) < W.L / 2; }
+function trialSawOn(x, z) { const W = TRIAL.saw; if (!W || TRIAL.props !== 'agility') return false; const u = fu(x, z), v = fv(x, z); return Math.abs(u - W.o.u) < T.trial.agility.saw.w && Math.abs(v - W.m) < W.L / 2; }
 // SHARED HOOK (groundY): the agility's see-saw and table, where they're out (null: just the ground)
 function trialY(x, z) {
   if (TRIAL.props !== 'agility' || !TRIAL.built) return null;
   const u = fu(x, z), v = fv(x, z); if (Math.abs(u) > TF.hl || Math.abs(v) > TF.hw) return null;
   const W = TRIAL.saw;
-  if (W && Math.abs(u - W.o.u) < 0.34 && Math.abs(v - W.m) < W.L / 2) return terrainH(x, z) + T.trial.agility.saw.h + (v - W.m) * Math.sin(W.ang);   // (one end down, the other up)
+  if (W && Math.abs(u - W.o.u) < T.trial.agility.saw.w && Math.abs(v - W.m) < W.L / 2) return terrainH(x, z) + T.trial.agility.saw.h + (v - W.m) * Math.sin(W.ang);   // (one end down, the other up)
   const tb = TL.agi.find(o => o.k === 'table'), H = T.trial.agility.table;
   if (tb && Math.abs(v - tb.v) < 0.8) { if (Math.abs(u - tb.u) < 0.8) return terrainH(x, z) + H.h; if (u > tb.u + 0.8 && u < tb.u + 1.6) return terrainH(x, z) + H.h / 2; }
   return null;
@@ -21184,12 +21239,12 @@ function trialSawStep(dt) {
   if (Math.abs(W.ang - W.tilt) < 1e-3 && Math.abs(was - W.tilt) > 1e-3) SFX.clack(panOf(fp(W.o.u, W.m).x, fp(W.o.u, W.m).z), 0.25);   // (it lands: clack)
 }
 // ---------------- Hank at the trials: the handler's post (the pen's gate, for the pen), his shearing board, by the judge between events ----------------
-function trialHankGoal() {
+function trialHankGoal(quiet) {
   if (!TRIAL.built || SEA.on || G.mode !== 'play') return null;
-  const ev = TRIAL.ev, at = (u, v, fu0, fv0) => { const p = fp(u, v), f = fp(fu0, fv0); trialHankHop(p); return { x: p.x, z: p.z, stop: 0.5, noShy: true, face: { x: f.x, z: f.z } }; };
+  const ev = TRIAL.ev, at = (u, v, fu0, fv0) => { const p = fp(u, v), f = fp(fu0, fv0); if (!quiet) trialHankHop(p); return { x: p.x, z: p.z, stop: 0.5, noShy: true, face: { x: f.x, z: f.z } }; };
   if (ev) {
     const ph = TRIAL_PH[ev.id][ev.ph];
-    if (ev.id === 'course' && ph && ph[0] === 'pen') return at(TL.penB.u - TL.penB.s / 2 - 0.6, TL.penB.v - TL.penB.s / 2 - 0.9, TL.penB.u, TL.penB.v);
+    if (ev.id === 'course' && ph && ph[0] === 'pen') return at(TL.penB.u - TL.penB.s / 2 - 0.8, TL.penB.v - TL.penB.s / 2 - 1.6, TL.penB.u, TL.penB.v);   // (off the mouth's corner: round it they come)
     if (ev.id === 'course' || ev.id === 'brace' || ev.id === 'ducks') return at(TL.post.u - 1, TL.post.v - 1.4, TL.letout.u, TL.letout.v);
     if (ev.id === 'shear') return at(TL.boards[0].u - 1.2, TL.boards[0].v, TL.boards[0].u, TL.boards[0].v);
     if (ev.id === 'throw') return at(TL.line - 1, -6.5, TL.line + 10, 0);
@@ -21478,7 +21533,7 @@ function trialTarget(ev) {
   const ph = TRIAL_PH[ev.id][ev.ph]; if (!ph) return;
   const P = ph[0];
   if (ev.id === 'course') q = P === 'outrun' || P === 'lift' ? TL.letout : P === 'fetch' ? (ev.gF === undefined ? TL.fetch : TL.post) : P === 'drive' ? (ev.g1 === undefined ? TL.d1 : ev.g2 === undefined ? TL.d2 : TL.ring) : P === 'shed' ? TL.ring : TL.penB;
-  else if (ev.id === 'brace') q = P === 'fetch' ? (ev.gF === undefined ? TL.fetch : TL.post) : (ev.nA || 0) < 5 ? TL.penA : TL.penB;
+  else if (ev.id === 'brace') q = P === 'fetch' ? (ev.gF === undefined ? TL.fetch : TL.post) : (ev.nA || 0) < trialHalf() ? TL.penA : TL.penB;
   else if (ev.id === 'ducks') q = P === 'g1' ? TL.g1 : P === 'g2' ? TL.g2 : TL.house;
   else if (ev.id === 'llama') q = TRIAL.poles[ev.pole] ? { u: TRIAL.poles[ev.pole].u, v: TRIAL.poles[ev.pole].v + (ev.pole % 2 ? 1 : -1) * 0.9 } : { u: TL.lfinish, v: TL.lstart.v };
   else if (ev.id === 'agility') { const o = TL.agi[ev.next]; if (o) q = o.u !== undefined ? { u: o.u, v: o.v ?? (o.v0 + o.v1) / 2 } : { u: (o.u0 + o.u1) / 2, v: o.v }; }
@@ -21496,22 +21551,28 @@ function trialTarget(ev) {
   for (const o of [0, 0.5]) { const f = (t * 0.9 + o) % 1; ctx.globalAlpha = (1 - f) * 0.9; ctx.lineWidth = 3; ctx.strokeStyle = '#ffd36b'; ctx.beginPath(); ctx.ellipse(gx, gz2, rx * (0.5 + f), ry * (0.5 + f), 0, 0, TAU); ctx.stroke(); }
   ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 2;
   const b = Math.sin(t * 5) * 5; ctx.beginPath(); ctx.moveTo(px, py + 16 + b); ctx.lineTo(px - 13, py - 3 + b); ctx.lineTo(px - 5, py - 3 + b); ctx.lineTo(px - 5, py - 14 + b); ctx.lineTo(px + 5, py - 14 + b); ctx.lineTo(px + 5, py - 3 + b); ctx.lineTo(px + 13, py - 3 + b); ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (ev.id === 'agility' && TL.agi[ev.next] && TL.agi[ev.next].k === 'table' && ev.tab > 0) {   // AGILITY: down on the table: how long yet
+    const f = clamp(ev.tab / T.trial.agility.table.t, 0, 1), cy = py - 34 + b;
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(px, cy, 15, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#7fe08a'; ctx.beginPath(); ctx.moveTo(px, cy); ctx.arc(px, cy, 12, -Math.PI / 2, -Math.PI / 2 + f * TAU); ctx.closePath(); ctx.fill();
+  }
   ctx.restore();
 }
 // LONG THROW: a peg where each throw came down (a fx with the distance)
 function trialThrowMark(i, x, z, dist, foul) { const m = TRIAL.marks && TRIAL.marks[i]; if (m) { m.root.position.set(x, groundY(x, z), z); m.root.visible = !foul; m.d = dist; } trialFx('mark', x, z, foul ? 0 : dist); }
 // ONLINE: what a guest needs of the event on (for the card, the target)
-function netTrialEv() { const ev = TRIAL.ev; if (!ev) return null; return { id: ev.id, t: +ev.t.toFixed(1), ph: ev.ph, pts: ev.pts, f: ev.faults.length, gF: ev.gF, g1: ev.g1, g2: ev.g2, pole: ev.pole, next: ev.next, nA: ev.nA, nB: ev.nB, n: ev.n,
+function netTrialEv() { const ev = TRIAL.ev; if (!ev) return null; return { id: ev.id, t: +ev.t.toFixed(1), ph: ev.ph, pts: ev.pts, f: ev.faults.length, gF: ev.gF, g1: ev.g1, g2: ev.g2, pole: ev.pole, next: ev.next, nA: ev.nA, nB: ev.nB, n: ev.n, tab: ev.tab ? +ev.tab.toFixed(2) : 0,
   rt: ev.rt !== undefined ? +ev.rt.toFixed(1) : undefined, nr: ev.runs ? ev.runs.length : 0, q: ev.queue ? ev.queue.length : 0, rs: ev.d ? ev.d.player.slot : -1 }; }   // (AGILITY: this run's clock, runs done, of how many, whose)
 function netTrialEvSet(v) {
   if (!v || typeof v !== 'object' || !trialEv(v.id)) { TRIAL.ev = null; return; }
   const ev = TRIAL.ev && TRIAL.ev.id === v.id ? TRIAL.ev : (TRIAL.ev = { id: v.id, faults: [], pts: {} });
-  Object.assign(ev, { t: +v.t || 0, ph: v.ph | 0, pts: v.pts && typeof v.pts === 'object' ? v.pts : {}, gF: v.gF, g1: v.g1, g2: v.g2, pole: v.pole | 0, next: v.next | 0, nA: v.nA | 0, nB: v.nB | 0, n: v.n | 0, rt: Number.isFinite(+v.rt) ? +v.rt : undefined, nr: v.nr | 0, q: v.q | 0, rs: v.rs | 0 });
+  Object.assign(ev, { t: +v.t || 0, ph: v.ph | 0, pts: v.pts && typeof v.pts === 'object' ? v.pts : {}, gF: v.gF, g1: v.g1, g2: v.g2, pole: v.pole | 0, next: v.next | 0, nA: v.nA | 0, nB: v.nB | 0, n: v.n | 0, tab: +v.tab || 0, rt: Number.isFinite(+v.rt) ? +v.rt : undefined, nr: v.nr | 0, q: v.q | 0, rs: v.rs | 0 });
   ev.faults.length = Math.max(0, v.f | 0);
 }
 // ONLINE: the poles and bars down (a guest's from the host's)
 function netTrialDown(v) {
-  const [a, b] = String(v || '').split('|');
+  const [a, b, c] = String(v || '').split('|');
+  TRIAL.shut.forEach((S, i) => trialShut(S, (c || '')[i] === '1'));   // (BRACE)
   TRIAL.poles.forEach((P, i) => { const d = (a || '')[i] === '1'; if (d && !P.down) { P.down = 1; P.fall = G.time; } else if (!d) P.down = 0; });
   TRIAL.bars.forEach((B, i) => { const d = (b || '')[i] === '1'; if (d && !B.down) B.down = G.time; else if (!d) B.down = 0; });
 }
@@ -21526,7 +21587,7 @@ onSave('trial', () => ({ seed: TRIAL.seed, res: TRIAL.res, done: TRIAL.done, pla
 }, 178);
 resetTrial();
 expose(() => ({ TRIAL, TF, TL, TRIAL_EVENTS, TRIAL_PH, TRIAL_HOW, trialTip, trialKeys, fp, fu, fv, inRing, trialClear, trialBuild, trialStart, trialEnd, trialStop, trialPress, trialMatAt, trialProps, trialAwards, trialChampRam,
-  trialGiveKeg, trialRosette, trialPlace, trialPlaceAll, trialTotal, trialRoll, resetTrial, trialHankGoal, trialHankIdle, staticFences, kegHeat, trialKegNip, trialY, trialSawOn, trialSawStep, gateCross, devTrial, devTrialAll, champTugEnd, trialHerdFault, updateTrial, dogWears, trialNewcomers, netFromHost, netFoundFor, NET }));   // TRIALS (netFromHost, NET: the guest's 'find', in the tests)
+  trialGiveKeg, trialRosette, trialPlace, trialPlaceAll, trialTotal, trialRoll, resetTrial, trialHankGoal, trialHankIdle, staticFences, kegHeat, trialKegNip, trialY, trialSawOn, trialSawStep, gateCross, devTrial, devTrialAll, champTugEnd, trialHerdFault, updateTrial, dogWears, trialShy, trialDown, trialOnTable, trialHalf, trialBraceN, trialShut, trialNewcomers, netFromHost, netFoundFor, NET }));   // TRIALS (netFromHost, NET: the guest's 'find', in the tests)
 // =====================================================================
 // DUCKS — runner ducks on every leg before Falcon Canyon (T.duck; on: off in ?sim): a few small bunches a journey (own rng, a new seed a
 // journey: HERD.seed), by water where there's some (a stream, the river, the lake, the sea's edge). They waddle about in a tight bunch,
@@ -21868,7 +21929,7 @@ function herdStep(e, dt) {
     stressIn += inner * T.stressInner + k * over * over * T.stressSpd + (pounce ? T.stressPounce * 0.4 : 0);
     if (K.fly && !e.swim && (dd < K.fly.close || (d.mode === 'sprint' && dd < K.fly.sprint && closing > 3) || (pounce && dd < 4))) flyFrom = d;
   }
-  { const dx = e.x - HANK.x, dz = e.z - HANK.z, dd = Math.hypot(dx, dz) + 1e-4; if (dd < 2.2) { const k = (2.2 - dd) / 2.2 * 0.5; dfx += dx / dd * k; dfz += dz / dd * k; press = Math.max(press, k * 0.4); } }   // Hank: just aside
+  { const dx = e.x - HANK.x, dz = e.z - HANK.z, dd = Math.hypot(dx, dz) + 1e-4, hr = e.trial ? 1.3 : 2.2; if (dd < hr) { const k = (hr - dd) / hr * 0.5; dfx += dx / dd * k; dfz += dz / dd * k; press = Math.max(press, k * 0.4); } }   // Hank: just aside
   if (e.kind === 'duck' && !e.trial && !(g && g.sleep)) {   // PREY: a coyote or a cougar about: off, and up from one close (asleep: they don't see it)
     const F = duckFoes(e); dfx += F.x; dfz += F.z; press = Math.max(press, F.press); stressIn += F.press * 0.8; if (F.fly && !e.swim) flyFrom = F.fly;
   }
@@ -21910,6 +21971,7 @@ function herdStep(e, dt) {
     if (dd > want) { const k = Math.min(1.5, (dd - want) * 0.6) * (e.goT > 0 ? 0.5 : 1); tx += dx / dd * k * K.trot * 0.5; tz += dz / dd * k * K.trot * 0.5; }
   }
   tx += sx * K.trot; tz += sz * K.trot;
+  if (e.trial) { const w = trialShy(e); tx += w.x * K.trot; tz += w.z * K.trot; }   // TRIALS: off the ring's hurdles (no jam in a corner)
   if (e.swim) { tx *= K.swim / K.trot; tz *= K.swim / K.trot; }
   tx *= e.pep; tz *= e.pep;   // (LIFE: the old slower)
   const a = Math.min(1, dt * (press > 0.04 ? 7 : 3.5)); e.vx += (tx - e.vx) * a; e.vz += (tz - e.vz) * a;
@@ -21942,7 +22004,11 @@ function herdIdle(e, dt, K) {
 }
 function herdMove(e, dt) {
   e.x += e.vx * dt; e.z += e.vz * dt;
-  collideWorld(e, e.r, e.kind === 'duck' ? SWIM_SDF : WADE_SDF); collideFences(e, e.r);
+  collideWorld(e, e.r, e.kind === 'duck' ? SWIM_SDF : WADE_SDF);
+  if (collideFences(e, e.r) && e.trial) {   // TRIALS: pushed square into a hurdle, it slides along it (round a gate's panel, a pen's wall)
+    const nx = HIT.nx, nz = HIT.nz, vn = e.vx * nx + e.vz * nz;
+    if (vn < -0.2) { let tx = -nz, tz = nx; if ((e.vx * tx + e.vz * tz || (e.id % 2 ? 1 : -1)) < 0) { tx = -tx; tz = -tz; } e.vx += tx * -vn * 0.8 - nx * vn; e.vz += tz * -vn * 0.8 - nz * vn; }
+  }
   for (const d of G.dogs) { if (d.hopT > 0 || d.air || d.heldBy) continue; const dx = e.x - d.x, dz = e.z - d.z, m = e.r + T.dogR; if (Math.abs(dx) > m || Math.abs(dz) > m) continue; const dd = Math.hypot(dx, dz); if (dd < m && dd > 1e-4) { e.x = d.x + dx / dd * m; e.z = d.z + dz / dd * m; } }
   const wet = e.kind === 'duck' && overWater(e.x, e.z);
   if (wet && !e.swim) herdFx('splash', e.x, e.z, 0.5);
@@ -28453,7 +28519,7 @@ const NET_TYPES = {
       props: { c: 's', set: (o, v) => { if (v && v !== o.props) trialProps(v); } },
       last: { c: 'j', get: o => o.last ? [o.last.id, o.last.score, o.last.place, o.last.n, o.last.best ? 1 : 0, o.last.prev] : null, set: (o, v) => { if (!Array.isArray(v)) { o.last = null; return; } if (!o.last || o.last.n !== v[3]) o.last = { id: v[0], score: v[1], place: v[2], n: v[3], best: !!v[4], prev: v[5] ?? -1, t: G.time }; } },
       award: { c: 'j', get: o => o.award ? [o.award.place, o.award.me, o.award.them] : null, set: (o, v) => { if (!Array.isArray(v)) { o.award = null; return; } if (!o.award || o.award.place !== v[0]) o.award = { place: v[0], me: v[1], them: v[2], t: G.time }; } },
-      down: { c: 's', get: o => o.poles.map(P => P.down ? 1 : 0).join('') + '|' + o.bars.map(b => b.down ? 1 : 0).join(''), set: (o, v) => netTrialDown(v) } },
+      down: { c: 's', get: o => o.poles.map(P => P.down ? 1 : 0).join('') + '|' + o.bars.map(b => b.down ? 1 : 0).join('') + '|' + o.shut.map(S => S.on ? 1 : 0).join(''), set: (o, v) => netTrialDown(v) } },
   },
   tnpc: {   // TRIALS: the champion, the host's llama, the rival shearer (made with the ring on every screen)
     tag: 'n', all: () => TRIAL.npcs, id: o => TRIAL.npcs.indexOf(o), static: true,
@@ -29164,7 +29230,7 @@ function netPredMove(d, h, dt) {   // keep in step with updateDog's walking
   const wx = mx * CAM_R.x - my * CAM_F.x, wz = mx * CAM_R.z - my * CAM_F.z;
   const hk = d._hold ? T.grabKinds[d._hk === 'rope' && d._hold.tug ? 'tug' : d._hk] : null;
   const dig = h.lie && d._hk === 'rope' && d._hold && d._hold.tug;   // (ROPES: dug in)
-  const mode = h.lie && !hk && !(d.pounceT > 0) ? 'lie' : h.creep || dig ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
+  const mode = (h.lie || trialDown(d, mag)) && !hk && !(d.pounceT > 0) ? 'lie' : h.creep || dig ? 'creep' : h.sprint && mag > 0.2 && !d.exhausted ? 'sprint' : 'walk';
   let max = mode === 'sprint' ? T.dogSprint * dogK(d, 'speed') : mode === 'creep' ? T.dogCreep : mode === 'lie' ? 0 : T.dogWalk * dogK(d, 'speed');   // (ROLES)
   if (hk) max *= hk.speed ** (1 / dogK(d, 'grip'));
   if (dig) max = 0;
