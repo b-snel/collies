@@ -24,8 +24,8 @@ the falcon take cats; the falcon takes ducks too.
 The sheepdog trials at Sweetgrass Meadow: eight events (the course, brace, ducks, llama lead, agility, tug of war, long throw, shearing race), again as often as you like (the best counts; each its card on its mat, a tip a step), against three rivals; 🥇 a champion ram and a keg (a dog wearing it warms the sheep up the pass), 🥈 the keg, 🥉 wool. Rare wild llama herds (two a journey, tucked away off the trail, land only) breed; drag a rope up to one, win the tug, lead it to the flock: it guards it, spits at predators, Hank shears it. Gear dug up for them (saddle blanket: warm up the pass; a pack: greens and salt to the troughs), dressed in the barn. Through a bog a dog comes out muddy: swim, or jump in a water trough. Left alone, a dog poops (carry it, throw it: Hank's disgusted), pees, chases its tail or naps.
 Every sheep's family is kept: close kin breed weak lambs, fewer of them; follow the lines in the barn's 🌳 (and a lamb's, on the dawn card) and bring in new blood: the trials' champion, the vagabond's ram, a wild ram (rope, tug), a castaway ram on an island.
 A vagabond trader walks the trail (every land leg; then the first half of the sea in his Laser) selling troughs, medicine, a shovel, a ram and hurdles (a ram fold by a camp's pen: rams apart) for wool, and buying sheep (the better the sheep, the more);
-Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, an ice gate past it: torch a lane through): cold, blizzards,
-fires, torches that melt the snow (grass under it) and the ice, crevasses, goats; an ice cave in the rim below the top (a hearth: the flock shelters in it); the yeti on top, a campfire by him. Beat him: the ice goes from a gap
+Hank treats the sick and buries the dead. More than 4 nights at one place: the pox, and it spreads; a vaccine from the vagabond, Hank jabs them. Up the icy pass (a base camp at its foot, its fire lit; an ice gate past it: torch a lane through): cold, blizzards (hang about: one),
+fires, torches that melt the snow (grass under it: the flock keeps to a melted path) and the ice, crevasses; an ice cave in the rim below the top (a hearth: the flock shelters in it); the yeti on top, a campfire by him. Beat him: the ice goes from a gap
 in the east rim, a road leads down to Cold Harbour. No cut: it's all one land.
 The sea (issue #74): herd the flock down the road and up the gangway, cast off; the flock on a boat's deck, sailed island to island (stop at any, or sail on by) to the Promised Land
 (a wind that goes round, fronts, sheets, tiller, reefs, anchor), orcas to a kraken on the way. Alongside an island: ashore for flowers, salt, water, buried chests.
@@ -39,7 +39,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
   spot to go there (`devJump(s)` on land, `devSea(i, under)` at sea; the URL keeps it: `?go=m`, `?sea=…`); cheats as buttons. Keys: `]` +1 h, `N` dusk, `B` dawn, `K` coyote, `X` coyotes dig into a pen, `J`
   cougar hunts, `V` falcon, `O` flock +10 days, `F` to the Trading Post, ≥120 🧶 (the vagabond there too; 🎒 button: to him, `GAME.vagGo()`),
   `H` a bite, two wounds, a death and Hank stocked, 🤒 button: the pox, `L` to the snakes, `U` to Falcon Canyon,
-  `T` foot of the pass, `Y` its top (the yeti), `G` a goat comes, `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
+  `T` foot of the pass, `Y` its top (the yeti), `Z` a blizzard, `\` llamas by the dog (again: one a guard, in a blanket and a pack); `6` ducks by the dog; `7` to the trials (again: every event scored); `I` to sea / on to the next island,
   `1`…`5` under way on that sea leg, `0` Hank trims / full manual, `8` a front, `9` a gale; buttons: ♈ a wild ram by the dog, 🏖 the castaway's island, 🌿 the wild here: a mouse boom, a crash, as it was, 🐱 a stray by the dog, mice round it (again: it's ours, and a mate; `devCat`), 🎣 a rod and a cat bowl, the dog on a stream bank (`devFish`)). `window.GAME` exposes
   state and functions.
 - `?sea` (alongside at Cold Harbour, all aboard; `?sea=2`: alongside the third island, `?sea=2u` under way from it; `?sea=dock`: the top of the harbour road). `GAME.seaStart({ leg, under, dock, place })`.
@@ -98,7 +98,7 @@ First time: a practice at the corral (seven lessons from an afternoon to the nex
 - COYOTES (+ BURROWS)
 - COUGARS
 - FALCON (+ FALCON CANYON)
-- MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, ICE GATE, MELT, TORCHES, GOATS, SNOWBALLS, THE ICE CAVE, YETI, HANK'S NAGS, THE RICKETY WALLS)
+- MOUNTAIN PASS (cold, fires, blizzards, ice, crevasses, burning, ICE GATE, MELT, TORCHES, GOATS (gone: their dice), SNOWBALLS, THE ICE CAVE, YETI, HANK'S NAGS, THE RICKETY WALLS)
 - REMAINS & TOMBSTONES (YARDS)
 - clock/lighting
 - camera
@@ -350,7 +350,7 @@ A change to a system updates its file (a new system: a new file + its line here)
 - `docs/trials.md`: the sheepdog trials: the ring, the events, faults, rivals, Hank, the prizes, the keg, HUD.
 - `docs/ducks.md`: duck bunches, HERD (the small-herd mover: ducks, the trials' sheep), flying up, drawing.
 - `docs/llamas.md`: wild herds, population, capture (rope, tug), guards and their spit, bonk and grab, shearing, gear (wardrobe, barn), cold, packs.
-- `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, snow, ice, crevasses, goats, burning, ice cave, yeti, nags, walls, scenery.
+- `docs/pass.md`: the mountain pass: cold, fires, Up, base camp, ice gate, torches, melt, the path, snow, blizzards, ice, crevasses, burning, ice cave, yeti, nags, walls, scenery.
 - `docs/kin.md`: lineage (records, kinship, inbreeding, the tree: barn 🌳, dawn card), ram folds, new blood (the trials' champion, the vagabond's ram, wild rams, the castaway).
 - `docs/sailing.md`: Cold Harbour and the sea: online, the boat, camera, waves, wind, sail, stations, overboard, rings, anchor, route, islands, hazards, kraken, the Laser, HUD.
 - `docs/cats.md`: field mice (holes, the raid on the feed), stray cats (camps, hideouts, shy), the hunt, hunger, the bowl and adoption, ours, kittens, prey (coyotes, cougars, the falcon; the falcon's ducks), ✊, online, save.
@@ -375,7 +375,7 @@ Plain symbols stay text (→ ✔ ✖ ★ ♥ Ⓐ).
 - DOM styles that move: write them only when they change (`will-change` them): a restyle every frame starves the game loop.
 - Fixed light count, so shaders never recompile.
 - Grass/depth `DataTexture`s need `unpackAlignment = 1`.
-- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat; THE ICE CAVE's block, then `CAVE_DICE` draws for what it replaced). Anything that draws each step (a goat on its ledge) too: take none away. Else the seeded tests all move.
+- Every three.js geometry, material or object made takes a `Math.random()` (its uuid): a feature that's off in `?sim` makes its own lazily (first use), so seeded runs keep their dice (LLAMAS: `spitGeo`, `llamaHalterGeo`, `llamaGear`; MUDDY DOGS: `paws`, coat copies, flies), or on its own dice (`ownDice`: the vagabond's 🧪 mat; THE ICE CAVE's block, then `CAVE_DICE` draws for what it replaced). Anything that draws each step (the goats looking about: `goatDice`, though they're gone) too: take none away. Else the seeded tests all move.
 - `CACHE` in `sw.js`: `build.js` names it from a hash of the site. Never bump it by hand.
 - World gen must not see the sea or the harbour (`SEA_LIVE`, `HARB.mask` come after its draws): else the whole world moves. Nor the base
   camp (pushed onto `PASS.fires` after them), nor the ice cave (cut into the rim at the end of the pass scenery, its hearth and his pen's fire pushed on then; the top fire moved up by him), nor the door
