@@ -128,15 +128,16 @@ if (want('hunt')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const { G, T, MC, MICE, CATS, ECO, catMake, catOdds, ecoLeg } = GAME, d = H.d(), out = {};
-    T.mouse.n = [1, 1, 1]; T.mouse.max = 1;   // (just the one out)
+    T.mouse.n = [1, 1, 1]; T.mouse.max = 1; const ears = T.mouse.ears; T.mouse.ears = 0;   // (just the one out; deaf: the whole hunt, whatever the dice)
     G.clock.hour = 21.5; H.place(d, H.P.x - 30, H.P.z);
+    for (const o of [...MICE]) GAME.mouseRemove(o);   // (else one over the cap: it, or ours, sent home at random)
     const m = H.mouse(H.P.x + 5, H.P.z);
     const c = catMake({ x: H.P.x - 3, z: H.P.z, hunger: 0.5, age: 30, camp: -1 }); c.huntCd = 0; c.yaw = Math.PI / 2;
     MC.force = 1; const k0 = ECO.kills['cats>mouse'] || 0, kills0 = MC.kills, h0 = c.hunger, seen = [];
     let froze = false;
     H.run(60, () => { G.clock.hour = 21.5; if (seen.at(-1) !== c.state) seen.push(c.state); if (c.state === 'freeze' && m.state === 'sit') froze = true; return !MICE.includes(m) && c.state !== 'eat' ? true : null; });
     out.states = seen.join(' '); out.gone = !MICE.includes(m); out.hunger = [H.r(h0), H.r(c.hunger)]; out.eco = (ECO.kills['cats>mouse'] || 0) - k0; out.kills = MC.kills - kills0; out.froze = froze;
-    MC.force = null;
+    MC.force = null; T.mouse.ears = ears;
     const O = (st, alert = 0, kit = false, hunger = 0) => { const cc = { kit, hunger }, mm = { state: st, alert, run: null }; return catOdds(cc, mm); };
     out.odds = { busy: H.r(O('nibble')), alert: H.r(O('sit', 1)), kit: H.r(O('nibble', 0, true)), hungry: H.r(O('nibble', 0, false, 1)), base: H.r(O('walk')) };
     return out;
@@ -467,7 +468,7 @@ if (want('save')) {
     const f = catMake({ x: H.P.x + 4, z: H.P.z, breed: 'persian', coat: 2, hunger: 0.3, age: 20, camp: 0, fed: 2, fedDay: 3 }); f.trust = 0.6;
     const s = catMake({ x: H.P.x + 6, z: H.P.z, camp: 0 });   // (a stray that doesn't follow: not kept)
     MC.night = 1.25;
-    const who = () => CATS.map(c => [c.name, c.breed, c.coat, c.male ? 1 : 0, c.owned ? 1 : 0, +c.hunger.toFixed(2), +c.age.toFixed(1), +c.fed.toFixed(1), c.mum ? c.mum.name : '', +(c.preg || 0).toFixed(1)].join('|')).sort();
+    const who = () => CATS.map(c => [c.name, c.breed, c.coat, c.male ? 1 : 0, c.owned ? 1 : 0, +c.hunger.toFixed(3), +c.age.toFixed(1), +c.fed.toFixed(1), c.mum ? c.mum.name : '', +(c.preg || 0).toFixed(1)].join('|')).sort();
     const was = who().filter(x => !x.startsWith('|moggy') || true);
     JOURNEY.off = false; journeySave(); resetMiceCats(); JOURNEY.saved = journeyRead(); journeyResume();
     out.was = was; out.now = who(); out.night = MC.night; out.n = CATS.length;

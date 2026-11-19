@@ -159,11 +159,12 @@ if (want('stay')) {
   await setup();
   const r = await h.page.evaluate(() => {
     const g = H.bunch(5), d = H.d(); H.place(d, H.P.x - 6, H.P.z);
-    H.run(6, () => H.inp(1, 0, { creep: true })); const at = { x: g.cx, z: g.cz };
-    H.place(d, H.P.x - 70, H.P.z - 70); H.run(40);
-    return { driven: H.r(Math.hypot(at.x - H.P.x, at.z - H.P.z)), home: H.r(Math.hypot(g.hx - at.x, g.hz - at.z)), stayed: H.r(Math.hypot(g.cx - at.x, g.cz - at.z)) };
+    H.run(6, () => H.inp(1, 0, { creep: true }));
+    H.place(d, H.P.x - 70, H.P.z - 70); H.run(9); const at = { x: g.cx, z: g.cz };   // (walked on a little, then settled)
+    H.run(31);
+    return { driven: H.r(Math.hypot(at.x - H.P.x, at.z - H.P.z)), moved: H.r(Math.hypot(g.hx - H.P.x, g.hz - H.P.z)), home: H.r(Math.hypot(g.hx - at.x, g.hz - at.z)), stayed: H.r(Math.hypot(g.cx - at.x, g.cz - at.z)) };
   });
-  ok('stay: driven off and left be: home is where they ended up', r.driven > 4 && r.home < 3 && r.stayed < 14, r);   // (pottering about it, within its range)
+  ok('stay: driven off and left be: home is where they ended up', r.driven > 4 && r.moved > 4 && r.home < 3 && r.stayed < 14, r);   // (pottering about it, within its range)
 }
 
 // a hen (and her brood) by the bunch: { g, hen, kids }
@@ -309,9 +310,9 @@ if (want('prey')) {
     for (const o of G.coyotes) { o.state = 'leave'; o.gone = true; } H.run(0.1); G.clock.hour = 22;
     const g3 = H.bunch(3); H.run(2, () => { G.clock.hour = 22; });
     const p3 = spawnPack(1, { howl: false }), c3 = p3.members[0]; H.place(c3, g3.cx + 4, g3.cz);
-    let held = null; H.run(10, () => { G.clock.hour = 22; held = g3.list.find(e => e.grabbed); return held ? true : null; });
+    let held = null; H.run(10, () => { G.clock.hour = 22; held = c3.prey && c3.prey.isHerd ? c3.prey : null; return held ? true : null; });   // (g3's, or one of the bunches by it)
     let saved = false; if (held) { H.place(d, c3.x - 2, c3.z); H.run(2, () => { G.clock.hour = 22; if (!held.grabbed) { saved = true; return true; } return H.inp(c3.x - d.x, c3.z - d.z, { pounce: true }); }); }
-    out.saved = { held: !!held, saved, alive: !!held && g3.list.includes(held), fled: !!held && (held.fly || held.state === 'move'), stats: G.stats.saved, toasts: box.children.length };
+    out.saved = { held: !!held, saved, alive: !!held && !!held.grp && held.grp.list.includes(held), fled: !!held && (held.fly || held.state === 'move'), stats: G.stats.saved, toasts: box.children.length };
     return out;
   })()`);
   ok('prey: asleep at night', r.asleep, r);
