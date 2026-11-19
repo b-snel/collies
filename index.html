@@ -1233,8 +1233,8 @@ const T = {
   bramble: { on: !SIM, every: 22, chance: [0.6, 0.75, 0.5, 0.45], lat: [6, 17], snagWalk: 0.3, snagRun: 2.2, runSpd: 3, avoid: 1.8, stress: 0.05, stressCap: 0.6, struggle: [1.5, 3.5] },
   // BONK SPOTS: things only a pounce fixes. A rescue bonk (cast, mud, brambles) lands calm. Off in ?sim (tests turn them on).
   // CAST: a ewe in full fleece (≥wool) rolls onto her back now and then (perHour each, from–to h, ≤max at once) and can't get up.
-  // A pounce flips her over (flip m/s, up). Left `die` h, she dies
-  cast: { on: !SIM, wool: 0.98, perHour: 0.004, max: 2, from: 7, to: 19, die: 6, stress: 0.04, stressCap: 0.5, bleat: [2.5, 5], flip: { speed: 3, up: 7 } },
+  // A pounce yeets her up (yeet). Left `die` h, she dies
+  cast: { on: !SIM, wool: 0.98, perHour: 0.004, max: 2, from: 7, to: 19, die: 6, stress: 0.04, stressCap: 0.5, bleat: [2.5, 5] },
   // MUD: bog patches in Sweetgrass Meadow (n, radius m). In it a sheep is slowed (slow×) and sticks (stickWalk/s, stickRun/s over runSpd m/s),
   // sinks (sink m over sinkT s) and bleats till a pounce yeets it out (T.punt.yeet), over the nearest edge.
   // Calm sheep go round (avoid m). Dogs wade (dogSlow×). Freed: muddy wool for `dirty` days
@@ -7698,8 +7698,9 @@ function updateSheep(dt, dtH) {
         case 'apple': {   // APPLES: over to it, head down, munch
           const a = s.apple;
           if (!a || a.st !== 1 || a.by !== s || !appleUp(a)) { if (a && a.by === s) a.by = null; s.apple = null; s.state = 'idle'; s.thinkT = Math.min(s.thinkT, 0.3); break; }
-          const n = sheepNav(s, a.x, a.z), d = n.d;
-          if (d > 0.45 + 0.4 * s.grow) { dX = n.x; dZ = n.z; spd = T.sheepWalk * T.calmBrisk * T.apple.spd * (d < 2 ? 0.6 : 1); acc = 5; s.appleT = 0; }
+          const n = sheepNav(s, a.x, a.z), d = n.d, reach = 0.45 + 0.4 * s.grow;
+          if (d > reach && appleSwap(s, a, d, reach)) break;   // (standing on another's apple, it on mine: swap)
+          if (d > reach) { dX = n.x; dZ = n.z; spd = T.sheepWalk * T.calmBrisk * T.apple.spd * (d < 2 ? 0.6 : 1); acc = 5; s.appleT = 0; }
           else {
             if (a.dog) appleTaken(a, s);   // held out to it: it takes it
             s.yaw = lerpA(s.yaw, Math.atan2(a.x - s.x, a.z - s.z), Math.min(1, dt * 6)); s.thinkT = Math.max(s.thinkT, 0.3); if ((s.appleT += dt) > T.apple.eatT) eatApple(s, a);
@@ -8856,7 +8857,7 @@ function pounceHits(d) {
     if (bd < T.pounceHitR && !fenceBetween(d.x, d.z, o.x, o.z)) { puntDog(o, d, bx / bd, bz / bd); return; }
   }
   for (const s of G.sheep) {
-    if (s.dead || s.air || s.heldBy || s.grabbed || s.crev) continue;   // (MOUNTAIN PASS: one down a crack is grabbed out, not bonked)
+    if (s.dead || s.air || s.heldBy || s.grabbed) continue;   // (MOUNTAIN PASS: one down a crack: yeeted out)
     const bx = s.x - d.x, bz = s.z - d.z, bd = Math.hypot(bx, bz) + 1e-6;
     if (bd < T.pounceHitR && !fenceBetween(d.x, d.z, s.x, s.z)) { punt(s, d, bx / bd, bz / bd); return; }   // penned ones too (bonk them out over the fence), but never through a fence
   }
@@ -8875,8 +8876,7 @@ function puntK(d, m) {
 function punt(s, d, rx, rz) {
   const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(s, 'sheep'));   // ROLES: a harder bonk sends it further; lighter flies further
   train(d, 'bonk', T.train.bonk);
-  if (s.state === 'cast') { castFlip(s, d); return; }   // CAST: rolled back onto its feet
-  if (s.snag || s.bog) { yeet(s, d, kb); return; }   // BRAMBLES, MUD: yeeted out
+  if (s.state === 'cast' || s.snag || s.bog || s.crev) { yeet(s, d, kb); return; }   // CAST, BRAMBLES, MUD, a crack: yeeted out
   const vx = d.pdx * P.speed * kb + rx * P.radial, vz = d.pdz * P.speed * kb + rz * P.radial;
   launchSheep(s, vx, vz, (s.lamb ? P.lambUp : P.up) * Math.sqrt(kb), 'punt', d);
   s.air.bounces = P.bounces; if (s.ram) s.air.provoke = d;
@@ -8887,12 +8887,17 @@ function punt(s, d, rx, rz) {
   starBurst(s.x, s.y + 0.8, s.z, 7, undefined, { speed: 4, up: 3 }); burst(s.x, s.y + 0.3, s.z, 10, '#e8dcc0', { speed: 3, up: 1.5, size: 0.22, life: 0.6, grav: 0 });
   shakeCam(0.22); hitStop(0.055); rumble(d.player, 0.55, 0.5, 140);
 }
-// BONK SPOTS: a rescue bonk out of brambles or a bog: a big, high, spinning flight the way the dog came at it (a bog: bent out over
-// its nearest edge), at least clear of it, trailing leaves or mud; lands calm (a.rescue)
+// BONK SPOTS: a rescue bonk out of anywhere a sheep's stuck (cast, brambles, a bog, a crack): a big, high, spinning flight the way
+// the dog came at it (a bog: bent out over its nearest edge; a crack: across it), at least clear of it, trailing leaves or mud; lands calm (a.rescue)
 function yeet(s, d, kb) {
-  const P = T.punt, Y = P.yeet, snag = s.snag, bog = s.bog, up = Y.up * (s.lamb ? 0.88 : 1) * Math.sqrt(kb), tf = 2 * up / T.airGrav;
+  const P = T.punt, Y = P.yeet, snag = s.snag, bog = s.bog, crev = s.crev, cast = s.state === 'cast', up = Y.up * (s.lamb ? 0.88 : 1) * Math.sqrt(kb), tf = 2 * up / T.airGrav;
   let ux = d.pdx, uz = d.pdz, edge = 0;
-  if (snag) {   // out the far side of the bush
+  if (cast) { s.state = 'idle'; s.castT = 0; G.stats.saved++; G.stats.flips = (G.stats.flips || 0) + 1; }   // CAST: off its back
+  else if (crev) {   // MOUNTAIN PASS: across the crack, out the side the dog's going
+    const nx = -crev.az, nz = crev.ax, sd = Math.sign(ux * nx + uz * nz) || s.crevSide || 1, ox = ux + nx * sd * 0.8, oz = uz + nz * sd * 0.8, ol = Math.hypot(ox, oz) || 1;
+    ux = ox / ol; uz = oz / ol; edge = crev.hw / Math.max(0.3, Math.abs(ux * nx + uz * nz));
+    s.crev = null; s.crevEsc = 0; s.sink = 0; s.state = 'idle'; G.stats.saved++;
+  } else if (snag) {   // out the far side of the bush
     const ex = s.x - snag.x, ez = s.z - snag.z, along = ex * ux + ez * uz;
     edge = Math.max(0, along + Math.sqrt(Math.max(0, snag.r * snag.r - (ex * ex + ez * ez - along * along))));
     unsnag(s, d, 'YEET!');
@@ -8902,16 +8907,18 @@ function yeet(s, d, kb) {
     unbog(s, d, 'YEET!'); s.bogFree = G.time + 3;
   }
   const sp = Math.max(P.speed * Y.k * kb, (edge + P.clear) / tf);
-  launchSheep(s, ux * sp, uz * sp, up, 'yeet', d); s.air.bounces = P.bounces; s.air.rescue = true;
+  launchSheep(s, ux * sp, uz * sp, up, 'yeet', d); s.air.bounces = P.bounces; s.air.rescue = true; s.yeetC = crev ? '#eef6ff' : cast ? '#f3eee6' : null;   // (its trail: snow, fleece)
   endLunge(d); MV.punts++;
+  if (crev) for (let k = 0; k < 10 && crevAt(d.x, d.z); k++) { d.x -= d.pdx * 0.3; d.z -= d.pdz * 0.3; }   // (the dog stops on the lip)
   const pan = panOf(s.x, s.z);
   SFX.boing(pan, 0.32, 0.85); Sound.baa(s.pitch * 1.3, 0.5, pan, true);
-  if (snag) leaves(s.x, s.y + 0.6, s.z, 26); else { mudFx(s.x, s.z, 26); burst(s.x, s.y + 0.4, s.z, 14, '#6b4a2b', { speed: 5, up: 4, size: 0.24, life: 0.8, grav: -12 }); }
-  starBurst(s.x, s.y + 0.8, s.z, 12, undefined, { speed: 6, up: 5 }); spawnRing(s.x, s.y + 0.1, s.z, 3, snag ? '#c8e07a' : '#c8a27a', 0.45);
+  if (cast || crev) { floatText('YEET!', s.x, s.y + 1.6, s.z, '#ffd36b', 1.5); burst(s.x, s.y + 0.4, s.z, 16, crev ? '#eef6ff' : '#e8dcc0', { speed: 4, up: 4, size: 0.2, life: 0.7, grav: -8 }); if (cast) Sound.chime([0, 7, 12], 660, 0.15); }
+  else if (snag) leaves(s.x, s.y + 0.6, s.z, 26); else { mudFx(s.x, s.z, 26); burst(s.x, s.y + 0.4, s.z, 14, '#6b4a2b', { speed: 5, up: 4, size: 0.24, life: 0.8, grav: -12 }); }
+  starBurst(s.x, s.y + 0.8, s.z, 12, undefined, { speed: 6, up: 5 }); spawnRing(s.x, s.y + 0.1, s.z, 3, snag ? '#c8e07a' : bog ? '#c8a27a' : crev ? '#cfefff' : '#e8dcc0', 0.45);
   shakeCam(0.38); hitStop(0.09); rumble(d.player, 0.85, 0.7, 200);
 }
 function yeetTrail(s, dt) {   // leaves or mud off a yeeted sheep (host and guests alike)
-  if (Math.random() < dt * T.punt.yeet.trail) burst(s.x, s.y + 0.5, s.z, 1, s.mud > 0.5 ? '#5a3f25' : pick(['#43712f', '#6a9a3a']), { speed: 1, up: 0.5, size: 0.17, life: 0.6, grav: -5 });
+  if (Math.random() < dt * T.punt.yeet.trail) burst(s.x, s.y + 0.5, s.z, 1, s.mud > 0.5 ? '#5a3f25' : s.yeetC || pick(['#43712f', '#6a9a3a']), { speed: 1, up: 0.5, size: 0.17, life: 0.6, grav: -5 });
 }
 function puntDog(o, d, rx, rz) {
   const P = T.punt, kb = dogK(d, 'bonk') * puntK(d, boneMass(o, 'dog'));   // as punt(): flies like a sheep (ROLES: a harder bonk, further; by weight)
@@ -9841,7 +9848,6 @@ const _pm = new THREE.Matrix4(), _pe = new THREE.Euler(), _pv = new THREE.Vector
 function poseSheep(s, mb, sc) {
   const P = s.pose; let rx = 0, rz = 0, sy = 1, sxz = 1;
   if (s.air && s.air.kind === 'swim') { rx = -0.25; rz = Math.sin(G.time * 5 + s.id) * 0.08; }
-  else if (s.air && s.air.kind === 'flip') rz = Math.PI * 0.9 * Math.max(0, 1 - (s.air.spin || 0) / 2.2);   // CAST: rolling back over
   else if (s.air) { const a = s.air; rx = a.kind === 'punt' || a.kind === 'yeet' || a.kind === 'launch' || a.kind === 'tumble' ? -a.spin : Math.sin(a.spin * 3) * 0.25; rz = a.kind === 'carom' || a.kind === 'whack' ? a.spin * 0.8 : 0; if (a.vy > 4) { sy = 1.12; sxz = 0.94; } }
   else if (s.heldBy) { const w = s.heldBy.cw; rz = 0.2 + Math.sin(G.time * 14 + s.id) * 0.15 - (w ? w.p : 0); rx = -(w ? w.r : 0); }   // CARRY SWING: dangling from the jaws
   else if (s.state === 'roll') rz = G.time * (s.burn > 0 ? 7 : 11) * (s.id % 2 ? 1 : -1);   // MOUNTAIN PASS: rolling down the mountain (or rolling the fire out)
@@ -10887,8 +10893,8 @@ expose(() => ({ BRAMBLES, brambleAt, snagSheep, unsnag }));   // BRAMBLES
 // =====================================================================
 // BONK SPOTS — things only a pounce fixes, and apple trees to shake.
 // CAST: a ewe in full fleece rolls onto her back and can't get up (state
-// 'cast'): legs kicking, bleating, a "!" over her. A pounce flips her
-// (castFlip); left T.cast.die h, she dies. MUD (MUDS, world gen): a sheep
+// 'cast'): legs kicking, bleating, a "!" over her. A pounce yeets her
+// (yeet); left T.cast.die h, she dies. MUD (MUDS, world gen): a sheep
 // stuck in a bog (s.bog) sinks and bleats till a pounce yeets it out (yeet), muddy
 // a while (s.mud). BALKER: of an evening the lead (bell) ewe may plant
 // herself in front of an open gate (s.balk, p.balker); the flock hangs back
@@ -10914,13 +10920,6 @@ function castStep(s, dt, dtH) {   // in updateSheep: on its back, legs kicking, 
   s.hunger = Math.min(1, s.hunger + T.hungerPerHour * dtH); s.leg += dt * 16;
   if ((s.castBaa -= dt) <= 0) { s.castBaa = rnd(C.bleat[0], C.bleat[1]); baaAt(s, 0.5, 1.25, true); }
   if ((s.castT += dtH) > C.die) killSheep(s, 'cast');
-}
-function castFlip(s, d) {   // a pounce: rolled back onto its feet
-  const F = T.cast.flip; s.state = 'idle'; s.castT = 0;
-  launchSheep(s, d.pdx * F.speed, d.pdz * F.speed, F.up, 'flip', d); s.air.rescue = true; s.air.bounces = 0;
-  endLunge(d); G.stats.saved++; G.stats.flips = (G.stats.flips || 0) + 1;
-  SFX.boing(panOf(s.x, s.z), 0.24, 0.8); floatText('FLIP!', s.x, s.y + 1.6, s.z, '#7ed957', 1.3); Sound.chime([0, 7, 12], 660, 0.15);
-  starBurst(s.x, s.y + 0.8, s.z, 6, undefined, { speed: 3, up: 3 }); shakeCam(0.12); rumble(d.player, 0.4, 0.4, 120);
 }
 // ---- MUD
 function bogSheep(s, m) {
@@ -11026,6 +11025,15 @@ function appleFor(s) {   // a hungry sheep near an apple goes for it (beats gras
   if (s.apple !== best) s.appleT = 0;
   best.by = s; s.apple = best; s.state = 'apple';
   return true;
+}
+function appleSwap(s, a, d, reach) {   // an apple at my feet that's further from the sheep after it: that one's mine, mine's its
+  for (const o of APPLES) {
+    if (o === a || !appleUp(o) || o.dog || Math.hypot(o.x - s.x, o.z - s.z) > reach) continue;
+    const q = o.by; if (q && q !== s && !q.dead && q.state === 'apple' && q.apple === o && Math.hypot(o.x - q.x, o.z - q.z) <= d) continue;
+    if (q && q.apple === o) { q.apple = a; a.by = q; q.appleT = 0; } else a.by = null;
+    o.by = s; s.apple = o; s.appleT = 0; return true;
+  }
+  return false;
 }
 function eatApple(s, a) {
   if (a.dog) appleTaken(a, s);
@@ -11182,7 +11190,7 @@ function drawBonkOverlay() {
     if (nudge('apple-grab', a.x, groundY(a.x, a.z) + 1.1, a.z, `${keyLabel(d.player, 'grab')} grab`, '#e8473f')) break;
   }
 }
-expose(() => ({ STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, castFlip, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree,
+expose(() => ({ STREAMS, streamD, inStream, streamY, MUDS, mudAt, mudK, castSheep, bogSheep, unbog, startBalk, endBalk, balkSpot, balkCheck, APPLE_TREES, APPLES, shakeTree,
   appleFor, eatApple, resetApples, updateApples, appleGrip, applePick, appleLetGo, appleTaken, appleUp, moveApples, syncBonk, punt }));   // BONK SPOTS
 
 // =====================================================================
@@ -14310,7 +14318,7 @@ function crevFall(e, c) {
   if (e.isDog) { if (e.holding) releaseHold(e, false); e.pounceT = e.hopT = 0; e.crevRest = 0; e.mode = 'walk'; e.y = groundY(e.x, e.z); hint(crevAlone(e) ? 'crev-solo' : 'crev-team'); }
   else { e.state = 'crev'; e.eating = false; e.sink = T.crev.sink; e.y = groundY(e.x, e.z); if (e.fire) e.fire = null; hint('crev'); }
   crevFx(e);
-  if (hankSees(e.x, e.z)) passSay('crev', e.isDog ? "Down a crack! Haul yerself out!" : "One's down a crack! Grab her out!");
+  if (hankSees(e.x, e.z)) passSay('crev', e.isDog ? "Down a crack! Haul yerself out!" : "One's down a crack! Grab her or bonk her out!");
 }
 function crevFx(e) {
   if (!e) return;
@@ -15699,7 +15707,7 @@ function drawPassOverlay() {
   for (const s of G.sheep) {
     if (s.dead || !(s.cold > 0.75 || s.crev)) continue;
     const [px, py, pz] = proj(s.x, s.y + 1.7 * s.scale, s.z); if (pz > 1 || px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
-    if (s.crev) { ctx.font = '700 16px Fredoka, sans-serif'; forageChip(px, py - 6 + Math.sin(G.time * 6) * 3, `✊`, 'rgba(60,110,170,.9)'); }
+    if (s.crev) { ctx.font = '700 16px Fredoka, sans-serif'; forageChip(px, py - 6 + Math.sin(G.time * 6) * 3, `✊ 💥`, 'rgba(60,110,170,.9)'); }
     else { const k = (s.cold - 0.75) / 0.25; ctx.globalAlpha = 0.6 + 0.4 * k; ctx.font = `${Math.round(16 + 6 * k)}px Fredoka, sans-serif`; richText('❄️', px, py + Math.sin(G.time * 5 + s.id) * 2); ctx.globalAlpha = 1; }
   }
   for (const d of G.dogs) {
@@ -17304,7 +17312,7 @@ const HINTS = {
   'salt-found': 'A lump of <b>salt</b>! Take it to a pen\'s <b>salt lick</b> (the post on the far side from the troughs).',
   'salt-lick': 'Salt in the lick! Penned sheep lick it to top up. Salty sheep are <b>peppy and quick</b>.',
   bramble: '🌿 Stuck in the brambles! <b>Pounce</b> or <b>grab</b> it free.',
-  cast: '🙃 A sheep is <b>cast</b>: on its back and can\'t get up! <b>Pounce</b> into it to flip it over, quick.',
+  cast: '🙃 A sheep is <b>cast</b>: on its back and can\'t get up! <b>Pounce</b> into it to yeet it up, quick.',
   mud: '🟤 Stuck in the bog! <b>Pounce</b> into it to pop it out.',
   muddy: '🟤 Muddy dog! <b>Swim</b>, or <b>jump</b> into a pen\'s 💧 water trough.',
   balk: '😤 The lead ewe won\'t go in, and the flock won\'t go without her. <b>Pounce</b> her through the gate!',
@@ -17357,7 +17365,7 @@ const HINTS = {
   torch: '🪵 A stick by every 🔥: <b>grab</b> it (RB / E) and dip it in the fire.',
   'torch-lit': '🔥 Carry it over the snow: it melts ❄️ (ice too). There\'s <b>grass</b> 🌿 under it. It snows over again in a 🌨️.',
   gate: '❄️ Iced over! 🪵 → 🔥, then <b>melt a way</b> through',
-  crev: 'Down a crack! <b>Grab</b> it out (RB / E).',
+  crev: 'Down a crack! <b>Grab</b> it out (RB / E) or <b>pounce</b> it out.',
   'crev-solo': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R) to climb out. Each costs 💨.',
   'crev-team': 'Down a crack! Mash <b>pounce</b> (Ⓑ / R), each costs 💨; or a friend <b>grabs</b> you out (RB / E).',
   goat: '🐐 Goats bonk you down the mountain. <b>Bark</b> them home, or <b>pounce</b> one.',
@@ -17396,7 +17404,7 @@ const TOUCH_HINTS = {
   'salt-found': '🧂 Salt! To a pen\'s <b>salt lick</b>',
   'salt-lick': 'Salt in the lick! Peppy sheep',
   bramble: '🌿 Stuck! 💥 or ✊ it free',
-  cast: '🙃 Cast! 💥 to flip it',
+  cast: '🙃 Cast! 💥 it up',
   mud: '🟤 Bogged! 💥 it out',
   muddy: '🟤 🐕 → 🌊 or ⤴ 💧',
   balk: '😤 💥 her in!',
@@ -17427,7 +17435,7 @@ const TOUCH_HINTS = {
   blizzard: '🌨️ Run them, or to a 🔥',
   ice: 'Ice! ⤴ out of a slide',
   torch: '🪵 ✊ → 🔥', 'torch-lit': '🔥 ❄️ → 🌿', gate: '❄️ ✖ → 🪵 🔥',
-  crev: 'Down a crack! ✊ it out',
+  crev: 'Down a crack! ✊ or 💥 it out',
   'crev-solo': 'Down a crack! 💥💥💥 (💨)',
   'crev-team': 'Down a crack! 💥💥💥 (💨) or a friend ✊',
   goat: '🐐 📣 or 💥',

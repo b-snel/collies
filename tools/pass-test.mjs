@@ -1,4 +1,4 @@
-// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|goat|yeti|cave|fires|fight|nag|rock|entry|side|gate|burn|finish|uphill]`. MOUNTAIN PASS.
+// Headless test: `node tools/pass-test.mjs [layout|cold|fire|camp|hank|blizzard|torch|melt|ice|crev|crevyeet|goat|yeti|cave|fires|fight|nag|rock|entry|side|gate|burn|finish|uphill]`. MOUNTAIN PASS.
 //   layout    past the Trading Post (no longer the end, no Cabo) the trail climbs: the floor rises, walls close in; fire camps level;
 //             ice, cracks; a way up to the yeti's cave (iced shut); the hidden side trail to its ledge by the rock wall (shut by its door
 //             till that's down); nothing else up there
@@ -15,6 +15,7 @@
 //   ice       onto the ice: a sheep, a dog, Hank slide downhill and stop; a calm sheep goes round
 //   crev      a sheep in a crack: grabbed out; a dog mashes pounce out (alone or not), each press costs stamina, none left: stuck till
 //             rested; a friend can grab it out
+//   crevyeet  a sheep in a crack: a pounce yeets it out across it; the dog stops on the lip (last: off the others' dice)
 //   goat      a goat comes down, bonks a sheep down the mountain (it rolls on); a bark sends one home; a pounce bonks one
 //   yeti      he wakes at the top; snowballs roll, grow and bowl a dog over; too close: a headbutt; burning sheep bonked into him ×3: beaten
 //   cave      the ice cave: set into the east rim across from the hidden side trail's door, far from him; walled but its mouth, level,
@@ -898,6 +899,19 @@ if (!only || only === 'uphill') {
   const ln = on.lane, ls = a => a.map(o => `${o.past}/${o.n} past (${o.ds} m, ${o.slid} slips)`).join(', ');
   ok(`a lane through it: up it, on up (${ls(ln)}; was ${ls(off.lane)})`, ln.every(o => o.shut && o.past >= o.n - 2 && o.slid <= 3 && o.low > -10) && avg(ln) > avg(off.lane) + 40, r.on.lane);
   ok(`the ice gate up, no lane: the flock waits at its foot (${avg(g).toFixed(1)} m), none onto the ice: ${gs(g)} (was ${avg(off.gate).toFixed(1)} m: ${gs(off.gate)})`, g.every(o => o.shut && o.gate === 0 && o.low > -25 && o.top < r.s0g + 1.2) && avg(g) > -12 && avg(g) > avg(off.gate) + 15, r.on.gate);
+}
+
+if (!only || only === 'crevyeet') {
+  const r = await ev(() => {
+    const { G, CREVS, living, crevFall, crevAt } = GAME;
+    const c = CREVS[2]; setup(c.s, { hour: 11, dogS: c.s - 8 });
+    const s = living()[0], d = G.dogs[0], nx = -c.az, nz = c.ax; s.x = c.x; s.z = c.z; s.vx = s.vz = 0; crevFall(s, c); const sIn = !!s.crev;
+    d.x = s.x + nx * 2.4; d.z = s.z + nz * 2.4; d.yaw = Math.atan2(-nx, -nz); d.vx = d.vz = 0; d.pounceCD = 0;
+    G.players[0].bot = toward(-nx, -nz, { pounce: true }); GAME.step(0.025); G.players[0].bot = {}; run(0.3);
+    const kind = s.air && s.air.kind; run(3);
+    return { sIn, kind, out: !s.crev && !s.air && !crevAt(s.x, s.z), side: +((s.x - c.x) * nx + (s.z - c.z) * nz).toFixed(1), hw: c.hw, dogIn: !!d.crev };
+  });
+  ok(`a pounce yeets a sheep out of its crack, across it (${r.side} m), the dog on the lip`, r.sIn && r.kind === 'yeet' && r.out && r.side < -r.hw && !r.dogIn, r);
 }
 
 console.log(h.errors.length ? `errors: ${h.errors.slice(0, 5).join(' | ')}` : 'no page errors');

@@ -50,7 +50,7 @@
   - **Ice** (`ICES`, `T.ice`, `startSlide`): onto it moving: slide downhill, spinning, legs going,
     slide whistle (`SFX.slip`). Dogs barely steer; a jump gets out. Hank too. Calm sheep go round.
   - **Crevasses** (`CREVS`, `T.crev`, `crevFall`): sheep or dogs (not hopping/lunging) drop in
-    ('crev', sunk). A sheep: grabbed out. A dog: mash Ⓑ out (`crevEsc`), `cost` stamina a press, no breath
+    ('crev', sunk). A sheep: grabbed out, or a pounce yeets it out (`yeet`: docs/land.md). A dog: mash Ⓑ out (`crevEsc`), `cost` stamina a press, no breath
     back while mashing (`rest`); exhausted: 💨, nothing (`crevTiredFx`). A friend's grab gets it out too (`crevAlone` false: 🗣 ✊). Calm sheep go round.
   - **Goats** (`GOATS`, `T.goat`): on ledges; by day one bounds down at a sheep, dog or Hank in reach,
     windup ❗, charges, bonks it down the mountain (launched 'tumble', lands, rolls 'roll').
