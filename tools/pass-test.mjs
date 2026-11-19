@@ -570,10 +570,12 @@ if (!only || only === 'fight') {
     };
     while (t < 320 && !YETI.beaten && G.mode === 'play') {
       if (phase === 'fetch') {
-        if (!tgt || tgt.dead || tgt.burn > 0 || tgt.air) tgt = living().filter(s => !s.ram && !s.lamb && inCave(s.x, s.z) && !(s.burn > 0) && !(s.soot > 0.5)).sort((a, b) => Math.hypot(a.x - C.mx, a.z - C.mz) - Math.hypot(b.x - C.mx, b.z - C.mz))[0];
+        // one from the cave, nearest its mouth; none there (dropped on the way, wandered off): the nearest stray
+        const free = s => !s.ram && !s.lamb && !(s.burn > 0) && !(s.soot > 0.5) && !s.air, near = (x, z) => (a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z);
+        if (!tgt || tgt.dead || !free(tgt) || !inCave(tgt.x, tgt.z)) tgt = living().filter(s => free(s) && inCave(s.x, s.z)).sort(near(C.mx, C.mz))[0] || living().filter(free).sort(near(D.x, D.z))[0];
         if (!tgt) { step(go(C.mx, C.mz, { sprint: D.stamina > 0.3 })); continue; }
         const dd = Math.hypot(tgt.x - D.x, tgt.z - D.z);
-        if (!inCave(D.x, D.z, 3) && Math.hypot(D.x - C.mx, D.z - C.mz) > 3) { step(go(C.mx, C.mz, { sprint: D.stamina > 0.3 })); continue; }   // (to its mouth first)
+        if (inCave(tgt.x, tgt.z) && !inCave(D.x, D.z, 3) && Math.hypot(D.x - C.mx, D.z - C.mz) > 3) { step(go(C.mx, C.mz, { sprint: D.stamina > 0.3 })); continue; }   // (in it: to its mouth first)
         if (dd > 1.6) step(go(tgt.x, tgt.z, { sprint: dd > 6 && D.stamina > 0.3 })); else { step({ grab: true }); if (tgt.heldBy === D) { phase = 'carry'; t0 = t; } }
       } else if (phase === 'carry') {
         if (tgt.heldBy !== D) { if (tgt.burn > 0) { phase = 'punt'; tries++; out.log.push(['lit', +t.toFixed(1), +(t - t0).toFixed(1)]); t0 = t; } else { phase = 'fetch'; out.log.push(['lost', +t.toFixed(1)]); for (let k = 0; k < 4; k++) step({}); tgt = null; } continue; }

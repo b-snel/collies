@@ -120,25 +120,26 @@ const tests = {
       H.p.bot = {}; H.run(0.5);
       // same flight as a sheep (by weight): punt one of each from the same spot
       const fl = [];
-      for (const k of ['sheep', 'dog']) {
+      for (const k of ['sheep', 'twin', 'dog']) {   // twin: a sheep as heavy as the dog
         H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); const e = k === 'dog' ? o : G.sheep[0];
+        if (k === 'twin') { e.grow = 1; e.scale = Math.cbrt(GAME.boneMass(o, 'dog') / GAME.T.bone.mass.sheep); }
+        if (k === 'sheep') r.massRatio = H.r((GAME.puntK(d, GAME.boneMass(o, 'dog')) / GAME.puntK(d, GAME.boneMass(e, 'sheep'))) ** 1.5);   // by weight: flight ∝ k^1.5 (this sheep's)
         for (const s of G.sheep) H.place(s, P.x - P.tx * 40, P.z - P.tz * 40);
         H.place(o, P.x - P.tx * 30, P.z - P.tz * 30); H.place(e, P.x + P.tx * 1.4, P.z + P.tz * 1.4);
         H.p.bot = H.to(P.tx, P.tz, { pounce: true }); GAME.step(0.025); H.p.bot = {};
         fl.push(H.track(e, 4));
       }
-      r.sameFlight = { sheep: fl[0], dog: fl[1] };
-      const { puntK, boneMass } = GAME; r.massRatio = H.r((puntK(d, boneMass(o, 'dog')) / puntK(d, boneMass(G.sheep[0], 'sheep'))) ** 1.5);   // by weight: flight ∝ k^1.5
+      r.sameFlight = { sheep: fl[0], twin: fl[1], dog: fl[2] };
       // a flung dog bowls a sheep over
       H.reset(); H.place(d, P.x, P.z); d.yaw = Math.atan2(P.tx, P.tz); H.place(o, P.x + P.tx * 1.3, P.z + P.tz * 1.3);
       H.grab(); H.p.bot = H.to(P.tx, P.tz, { sprint: true, grab: true }); H.run(0.65);
       H.place(G.sheep[0], d.x + P.tx * 2.5, d.z + P.tz * 2.5);
       H.letGo(H.to(P.tx, P.tz, { sprint: true })); H.run(0.5, () => !d.holding); H.p.bot = {}; H.run(2.5);
       r.caroms = MV.caroms;
-      const a = r.sameFlight.sheep, b = r.sameFlight.dog;
+      const a = r.sameFlight.sheep, b = r.sameFlight.dog, tw = r.sameFlight.twin;
       r.ok = r.grabbed && r.stillHeld && r.atMouth < 0.3 && r.lifted > 0.2 && r.flungKind === 'fling' && r.free && r.flings === 1 && !r.flight.stillFlying && r.flight.landedAt > 4
         && r.wriggle.held2 && r.wriggle.free && r.wriggle.presses <= GAME.T.dogHeld.mash + 1 && !r.wriggle.lunged
-        && a.bounces === b.bounces && Math.abs(a.firstTouch * r.massRatio / b.firstTouch - 1) < 0.25 && b.firstTouch > a.firstTouch && r.caroms >= 1;
+        && a.bounces === b.bounces && Math.abs(tw.firstTouch / b.firstTouch - 1) < 0.12 && b.firstTouch > a.firstTouch * Math.min(1.1, r.massRatio) && r.caroms >= 1;
       H.solo(); return r;
     });
   },

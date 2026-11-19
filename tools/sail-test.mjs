@@ -117,7 +117,7 @@ if (want('gybe')) {
     out.boom1 = H.deg(SEA.boom); out.slam = SEA.gybeT !== g0; out.knocked = knocked; out.flew = flew; out.heelV = H.r(SEA.heelV);
     // again, lying down under it; and with the sheet hauled in first: no crash
     H.sea(2.75, 9); H.flock(4.2, 6, 10); H.place(d, -3, -3); d.player.bot = { lie: true };
-    H.run(18, () => H.steer(0)); let k2 = false; const g1 = SEA.gybeT; H.run(25, () => { H.steer(target); if (d.stunT > 0) k2 = true; }); out.duck = !k2 && SEA.gybeT !== g1;
+    H.run(18, () => H.steer(0)); const g1 = SEA.gybeT, b1 = d.boomAt; H.run(25, () => { H.steer(target); }); const k2 = d.boomAt !== b1; out.duck = !k2 && SEA.gybeT !== g1;   // (the boom's own hit: a sheep it flings may still land on the dog)
     H.sea(2.75, 9); SEA.assist = false; H.run(18, () => { H.steer(0); SEA.sheet = 0.05; }); const g2 = SEA.gybeT; H.run(25, () => { H.steer(target); SEA.sheet = 0.05; }); out.soft = SEA.gybeT === g2; out.boom2 = H.deg(SEA.boom); SEA.assist = true;
     return out;
   });

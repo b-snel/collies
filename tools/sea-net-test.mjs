@@ -125,7 +125,7 @@ try {
   });
   await until(A, () => GAME.RINGS[1].st === 'held', null, 5000).catch(() => {});
   await until(B, () => GAME.RINGS[1].st === 'held', null, 5000).catch(() => {});
-  await sleep(200);
+  await until(B, () => { const r = GAME.RINGS[1], d = GAME.G.dogs.find(d => d.player.slot === 0); return Math.hypot(r.x - d.x, r.z - d.z) < 1.5; }, null, 3000).catch(() => {});   // (the guest's dog eases in from where the host set it)
   const held = await B.page.evaluate(() => { const r = GAME.RINGS[1], d = GAME.G.dogs.find(d => d.player.slot === 0); return { st: r.st, by: r.by === d, near: Math.hypot(r.x - d.x, r.z - d.z), paused: GAME.G.paused, stop: GAME.FX && GAME.FX.stop }; });
   check('the guest sees the ring in the host\'s dog\'s mouth', held.st === 'held' && held.by && held.near < 1.5, held);
   await sleep(300);
