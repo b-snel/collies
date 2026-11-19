@@ -96,7 +96,7 @@ if (c) {
   ok(`a sheep in full fleece gets cast (${c.secs}s)`, c.cast && c.full, c);
   ok('stays put on its back', c.still && c.drift < 0.2, c);
   ok("a grab can't right it", !c.grabbed, c);
-  ok('a pounce flips it over, and it lands calm', c.flip === 'flip' && c.up && c.landed && !c.fled && c.alive && c.saved >= 1, c);
+  ok('a pounce yeets it off its back, and it lands calm', c.flip === 'yeet' && c.up && c.landed && !c.fled && c.alive && c.saved >= 1, c);
   ok(`left cast, it dies of it (${c.why}, tombstone)`, c.died && c.why === 'cast' && c.grave >= 1, c);
   ok('shorn sheep never get cast', c.shorn === 0, c);
 }

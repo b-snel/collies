@@ -7,13 +7,13 @@
   stuck and bleating; a pounce yeets it (`yeet`), or a grab pulls it out.
   Calm sheep steer round. Off in `?sim` (`T.bramble.on`).
 - **Bonk spots** (BONK SPOTS): a pounce is the fix. A rescue bonk (cast, bog,
-  brambles) lands calm (`a.rescue`), no scatter.
-  - **Yeet** (`yeet`, `T.punt.yeet`): out of brambles or a bog, a big high spinning flight (air kind `'yeet'`), the way
-    the dog came (a bog: bent over its nearest edge), at least `T.punt.clear` m past it; a burst of leaves or mud, a trail of
+  brambles, a crack on the pass) lands calm (`a.rescue`), no scatter.
+  - **Yeet** (`yeet`, `T.punt.yeet`): out of anywhere a sheep's stuck (cast, brambles, a bog, a crack), a big high spinning flight (air kind `'yeet'`), the way
+    the dog came (a bog: bent over its nearest edge; a crack: across it, the dog stops on the lip), at least `T.punt.clear` m past it; a burst of leaves or mud, a trail of
     them (`yeetTrail`, guests too), shake, hit-stop; a big ♥ on landing. Into water: it swims.
   - **Cast** (`T.cast`): a sheep in full fleece now and then rolls onto its
     back by day (state `'cast'`, legs kicking, a "!" over it, off screen too).
-    Only a pounce rights it (`castFlip`); left `die` h it dies (`'cast'`).
+    Only a pounce rights it (`yeet`); left `die` h it dies (`'cast'`).
     Shearing stops it.
   - **Mud** (`MUDS`, `T.mud`): bogs in Sweetgrass Meadow. Sheep slow, may
     stick (`s.bog`, sinking), calm ones go round; a pounce yeets it out,
@@ -24,7 +24,7 @@
     (`p.leadT`).
   - **Apples** (`APPLE_TREES`, `APPLES`, `T.apple`): a pounce into the trunk
     (or a flying sheep) shakes some down; hungry sheep go for one before grass
-    (state `'apple'`, `appleFor`), even tagging along with the flock (`T.apple.look`); a still dog only
+    (state `'apple'`, `appleFor`; one standing on another's: they swap, `appleSwap`), even tagging along with the flock (`T.apple.look`); a still dog only
     gets room. Grab one (`holdKind 'apple'`, `a.dog`): let go, dropped at the nose, running, lobbed
     (`moveApples`). Held out by a still dog (`appleHeldOut`, `T.apple.take`): a hungry sheep comes and
     takes it (`appleTaken`; that dog doesn't scare it: `appleFriend`). Penned: only ones in its pen. They grow back.
