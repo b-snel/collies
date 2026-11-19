@@ -49,7 +49,7 @@
     **The path** (`T.melt.path`): a melted way up (a torch carried on ahead) is where the flock wants to be. Up bends onto it and along it
     (`meltLean` in `passUp`: what's melted in a fan ahead, `n` rays ±`fan`, at `r` m; full at `full` of it: `bend`, `keen`× more). A sheep in
     the snow grazing, walking on, milling or bolting steers to melted ground within `near` m (`meltPull`, `MELT_GO`; `pull`, bolting `run`;
-    none of it back down the trail; none by the shut ice gate: Up holds them at its foot). Grass on it's worth `graze` more (`meltGraze`: the glance, `findGrass`, `grazeScan`).
+    none of it back down the trail; none by the shut ice gate: Up holds them at its foot). Grass on it's worth `graze` more (`meltGraze`, meadow under it, not rock: the glance, `findGrass`, `grazeScan`).
     No faster on it (×1.0 contagion: a runaway).
   - **Snow** (`s.snow`, `T.snow`): a blizzard piles it on; running sheds it; heat melts it.
     **Blizzards** (`PASS.blizz`, `T.blizz`): only for hanging about. Each dog up here has its spot (`Z.at`, `blizzStay`); off `r` m from
