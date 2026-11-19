@@ -20,13 +20,14 @@
   - **Up** (`T.pass.up`, `passUpFire` → `MIND.upF`, `passUp`, `upScore`): the flock's way on is the next camp up (its middle `past` m
     beyond one: the next; at one, left alone, that one till `hold` m past). Toward it: the grazing front leans `graze` (a climb at `pace`),
     a look for grass `seek`, grass back down counts `behind` less; flight off a dog to the side bends up `flee` (not with the dog above);
-    the walk-on `move`; milling `wander`. None within `stop` m of the camp, above it, off the floor, by the side trail's mouth, within
+    the walk-on `move`; milling `wander`. A melted path ahead: bent onto it and along it, keener (`meltLean`: the Melt's path). None within `stop` m of the camp, above it, off the floor, by the side trail's mouth, within
     `edge` m of the arena. The camps only (not the yeti's campfire, nor his pen's); the last is the ice cave (`caveUp`: along the floor
     till it's near, across to its mouth, in; from above it: back down to it, till he's beaten). The cold: a lit fire up within `draw` m first (the top's: as ever); one behind only within `back` m past it, or freezing
     (`freeze`). Calm ones go round the ice and the cracks along their edge, however keen. The ice gate shut, the flock below it: its foot
     (`GATE.foot`, `gateHold`: in to `hold` m short of its edge, none on up; `kb`: grass back down still counts less), no fire past it.
     A lane through: to its foot, up it (`gateLead`), on to the next camp past it (the base camp left behind). Host only (sheep).
-  - **Base camp** (`T.pass.base`, `f.base`): a fire at the foot of the climb, added after world gen's draws (world gen never sees it). Its
+  - **Base camp** (`T.pass.base`, `f.base`): a fire at the foot of the climb, added after world gen's draws (world gen never sees it). Lit
+    from the start of the journey (`resetPass`), never out (no fuel burnt; a reload: as ever): Hank never lights it. Its
     stick teaches the torch: `hint('torch')`, nudges (`drawTorchOverlay`), Hank's lines.
   - **Ice gate** (`GATE`, `T.iceGate`, `gateIce0` / `gateIce`, `gateS`): a band of ice wall to wall across the climb just past the base camp (`s0`…`s1`,
     wavy edges), switched on after world gen's draws and the scenery (`GATE.on`: before that `iceK` doesn't see it; its treads hidden: `instanced` `gate`).
@@ -45,25 +46,30 @@
   - **Melt** (`MELT`, `T.melt`, `meltTex`, own 2 m grid; `MELTV` the pass's vertices): lit torches and fires melt the snow: `gCap` goes
     from what shows through (`gSnow`) to the meadow under it (`gUnder`), the grass with it; `iceK` × (1 − melt), the ice glaze gone there.
     Snows over `refreeze`/h (× `night`), `blizz`/h × a blizzard. Guests melt their own (`updateMelt` in `syncPass`), the host sends the grass.
+    **The path** (`T.melt.path`): a melted way up (a torch carried on ahead) is where the flock wants to be. Up bends onto it and along it
+    (`meltLean` in `passUp`: what's melted in a fan ahead, `n` rays ±`fan`, at `r` m; full at `full` of it: `bend`, `keen`× more). A sheep in
+    the snow grazing, walking on, milling or bolting steers to melted ground within `near` m (`meltPull`, `MELT_GO`; `pull`, bolting `run`;
+    none of it back down the trail; none by the shut ice gate: Up holds them at its foot). Grass on it's worth `graze` more (`meltGraze`: the glance, `findGrass`, `grazeScan`).
+    No faster on it (×1.0 contagion: a runaway).
   - **Snow** (`s.snow`, `T.snow`): a blizzard piles it on; running sheds it; heat melts it.
-    **Blizzards** (`PASS.blizz`, `T.blizz`): now and then while the flock's up there; whiteout.
+    **Blizzards** (`PASS.blizz`, `T.blizz`): only for hanging about. Each dog up here has its spot (`Z.at`, `blizzStay`); off `r` m from
+    it: a new one, the clock (`Z.next`) back to `idle` h. The flock up here, by day, every dog up here by its spot: it runs down (not while
+    the flock waits at the shut ice gate: `GATE.foot`); `warn` h left: Hank, once ("Don't hang about"); out: a blizzard (`dur` h; whiteout),
+    then `idle` h again. Dev `Z`: `next` 0.
   - **Ice** (`ICES`, `T.ice`, `startSlide`): onto it moving: slide downhill, spinning, legs going,
     slide whistle (`SFX.slip`). Dogs barely steer; a jump gets out. Hank too. Calm sheep go round.
   - **Crevasses** (`CREVS`, `T.crev`, `crevFall`): sheep or dogs (not hopping/lunging) drop in
     ('crev', sunk). A sheep: grabbed out, or a pounce yeets it out (`yeet`: docs/land.md). A dog: mash Ⓑ out (`crevEsc`), `cost` stamina a press, no breath
     back while mashing (`rest`); exhausted: 💨, nothing (`crevTiredFx`). A friend's grab gets it out too (`crevAlone` false: 🗣 ✊). Calm sheep go round.
-  - **Goats** (`GOATS`, `T.goat`): on ledges; by day one bounds down at a sheep, dog or Hank in reach,
-    windup ❗, charges, bonks it down the mountain (launched 'tumble', lands, rolls 'roll').
-    A bark (`goatBark`) or a pounce (`goatPounced`) sends it home.
+  - **Goats**: gone. Their dice still rolled (seeded runs keep theirs): `GOAT_DICE` a ledge at load (their models), `goatDice` each step
+    (each one looking about on its ledge). The ledges stay (scenery).
   - **Burning** (`s.burn`, `T.burn`): a sheep carried, flung or bolting into a lit fire catches;
     too hot to hold (HOT!); runs mad, then rolls it out; singed (`s.wool` → `wool`, `s.soot`). Alight, it melts the snow and ice round it (`melt`).
   - **The ice cave** (`CAVE`, `T.pass.cave`, `caveD`, `inCave`): set into the east rim across from the hidden side trail's door, its
     mouth (±`mouth`) onto the floor, far out of his sight; room for the whole flock (`r`). Cut into the land after world gen's draws and
-    the pass's scenery (`caveLand`: a level floor, a collar of crag, low on the camera's side; what stood there cleared; the goat on its
-    shoulder only watches: `g.idle`; the rim's rocks and pines skip it, their draws as ever). From it up to him the floor's clear (`gone`
+    the pass's scenery (`caveLand`: a level floor, a collar of crag, low on the camera's side; what stood there cleared; the rim's rocks and pines skip it, their draws as ever). From it up to him the floor's clear (`gone`
     ice and cracks: made as ever, not shown, off the lists then). Seeded runs keep their dice: its block's on its own (`ownDice`), then
-    the draws the old cave took (`CAVE_DICE`); the two new fires' torches on their own too; the goats as many as ever. Goats leave what's
-    in it alone (`goatPick`). Walls `block`ed (a ring), a dome of glassy ice (fresnel), the doorway (low jambs, no lintel), icicles, the hearth's
+    the draws the old cave took (`CAVE_DICE`); the two new fires' torches on their own too. Walls `block`ed (a ring), a dome of glassy ice (fresnel), the doorway (low jambs, no lintel), icicles, the hearth's
     glow (`C.glow`, out of its mouth `C.spill`), a beacon on a spire off the back of its crown.
     **Hearth** (`PASS.hearth`, `f.cave`, `f.hearth`): a fire of its own (pushed onto `PASS.fires` then), kerbed (blocked): warm all through
     the cave while it burns (`heatAt`), `hearth`× the fuel (the yeti's campfire too), nobody catches in it. Places for the flock (`fireSpots`: rings `gap` m apart, a
@@ -100,7 +106,7 @@
   - **Rickety, both** (`WALLS`, `wallStruck`, `wallFall`, `updateWall`): cracked, leaning, gaps (`lean0`, `gone0`), grit trickling,
     loose stones rocking and a creak with a dog by. A dog's pounce (`wallPounce`, `T.yeti.wob`): a wobble, the dog bounced back, never a
     fall (Hank says so once). Hits: cracks, chunks off (`DEBRIS`, drawing only); down: rumble, dust, shake, hit-stop, blocks tumbling.
-  - **Scenery** (block before `buildSDF`; own rngs): crags (`passWall`, `passRim`), goat ledges
+  - **Scenery** (block before `buildSDF`; own rngs): crags (`passWall`, `passRim`), ledges
     (`PASS.ledges`), the Shepherd Kings at the snow line, the old road (flags, treads), a watchtower at
     each fire camp, its beacon lit with the fire (`f.beacon`), frozen falls, needles, ice crystals, the
     hidden stair (flagstone courses, kerbs, walls, arches, gate stones, rune stone; nothing on the road), its door, the yeti's

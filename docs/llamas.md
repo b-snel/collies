@@ -24,7 +24,7 @@
 - **Guards** (`llamaGuard`, `llamaGuardGoal`): round the flock's edge (`L.ga`), in its pen (a hop over the fence: `llamaHop`, `llamaGo`),
   kushed by night; far off and out of sight: caught up (`far`). A foe within `alarm` m: an alarm call, at it; within `spit.r`: SPIT
   (`llamaSpitAt` → windup `wind` s → `llamaSpitLaunch` → `fly` s → `llamaSpitHit` if it's still within `hit` m): coyotes (`hitCoyote`,
-  `coyote` heart), cougars (drop / spooked / off the dog), the falcon low (drops, off), snakes (home), goats (home). Barks don't move them.
+  `coyote` heart), cougars (drop / spooked / off the dog), the falcon low (drops, off), snakes (home). Barks don't move them.
 - **Sea**: at Cold Harbour they hop aboard with the flock (the deck's a pen); cast off (`llamasAboard`, `seaCastOff`, `seaStart`): every
   guard aboard, kushed forward of the mast (`llamaDeckSpot`). Wild ones stay with the land (hidden).
 - **Bonk and grab, as sheep** (`launchLlama`, `llamaAirStep` with `airStep`/`airSpin`/`airBounce`/`airHits`, `llamaPounce`, `puntK` by

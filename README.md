@@ -85,9 +85,9 @@ Mind your manners. Bonk him, bark at him, grab his coat and he takes it personal
 
 ## The mountain pass
 
-Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sheep get colder by the hour, faster at night, with snow on them, or shorn; a thick fleece keeps them warm. Frozen too long, a sheep dies. Blizzards blow in now and then and pile snow on the flock: run them to shake it off, or get them to a fire. There are camps on the way up but no pens: Hank lights a fire at each, and the coldest sheep crowd in close. It's the ruin of an old shepherd kingdom: two stone kings at its gate, a worn road and stairs, a watchtower at each camp whose beacon burns while the fire does.
+Past the Trading Post the trail climbs a steep, icy pass. It's cold up there: sheep get colder by the hour, faster at night, with snow on them, or shorn; a thick fleece keeps them warm. Frozen too long, a sheep dies. Hang about in one spot too long and a blizzard blows in and piles snow on the flock: run them to shake it off, or get them to a fire. There are camps on the way up but no pens: the base camp at the foot's fire is already burning; Hank lights one at each camp after, and the coldest sheep crowd in close. A torch carried ahead melts a path through the snow, and the flock keeps to it. It's the ruin of an old shepherd kingdom: two stone kings at its gate, a worn road and stairs, a watchtower at each camp whose beacon burns while the fire does.
 
-Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out. Mountain goats bound down from the ledges and bonk dogs, sheep and Hank tumbling down the mountain: bark them home, or pounce one.
+Ice patches send anything running onto them sliding down the mountain (jump out of a slide). Crevasses swallow sheep and dogs: grab a sheep out; a dog on its own mashes pounce to climb out, with friends one of them has to grab it out.
 
 Below the top an ice cave is set into the rim, across from the hidden stair: Hank lights its hearth, it's warm right through, and there's room for the whole flock. They shelter in it on their own: cold, by night, in a blizzard, and while the yeti's raging.
 

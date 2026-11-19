@@ -9,7 +9,7 @@
 //   lead    led to the flock: a guard, the rope's off it (still in the dog's mouth)
 //   guard   a guard keeps with the flock as it moves; far behind and out of sight: caught up
 //   pen     the flock penned: the guard hops in; let out: hops out
-//   spit    a guard spits: a coyote turns tail, a cougar drops its sheep, the falcon lets go, a snake goes home, a goat bounds off
+//   spit    a guard spits: a coyote turns tail, a cougar drops its sheep, the falcon lets go, a snake goes home
 //   shear   Hank (clippers, no sheep to shear) shears a guard: 🧶
 //   punt    a pounce punts it as a sheep (flies, lands, off it runs); on a rope: it stands
 //   grab    grabbed by the scruff, carried, flung; a grown wild one bucks free
@@ -205,7 +205,7 @@ if (want('pen')) {
 if (want('spit')) {
   await setup();
   const r = await h.page.evaluate(() => {
-    const { G, T, makeLlama, llamaJoin, LLAMA, newCoyote, COUGARS, FALCON, SNAKES, GOATS, groundY, falconCome } = GAME, p = H.at(200, 0), out = {};
+    const { G, T, makeLlama, llamaJoin, LLAMA, newCoyote, COUGARS, FALCON, SNAKES, groundY, falconCome } = GAME, p = H.at(200, 0), out = {};
     H.flock(p.x, p.z); H.place(G.dogs[0], p.x - 30, p.z);
     const L = makeLlama({ x: p.x + 5, z: p.z, sex: 'f', age: 5 }); L.tame = 1; llamaJoin(L); H.run(1);
     const fresh = () => { L.spitCd = 0; L.state = 'guard'; H.place(L, p.x + 5, p.z); };
@@ -221,9 +221,6 @@ if (want('spit')) {
     // a snake out after the flock
     fresh(); const n = SNAKES[0]; n.x = p.x + 9; n.z = p.z; n.state = 'rattle'; n.k = 1; n.t = 0; n.at = 0;
     H.run(4, () => n.state === 'back'); out.snake = n.state;
-    // a goat charging
-    fresh(); const g = GOATS[0]; g.state = 'charge'; g.x = p.x + 9; g.z = p.z; g.y = groundY(g.x, g.z); g.t = 0; g.target = G.sheep[0]; g.hop = null;
-    H.run(4, () => g.state === 'up'); out.goat = g.state;
     out.spits = G.stats.spits;
     return out;
   });
@@ -231,7 +228,6 @@ if (want('spit')) {
   ok('a cougar drops its sheep', r.cougar.dropped, r);
   ok('the falcon lets go', r.falcon.dropped, r);
   ok('a snake goes home', r.snake === 'back', r);
-  ok('a goat bounds off', r.goat === 'up', r);
 }
 
 if (want('shear')) {
