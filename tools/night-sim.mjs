@@ -1,4 +1,5 @@
-// Headless balance test: `node tools/night-sim.mjs [idle|guard]`. Simulate a night: flock in the open near the valley camp, one bot dog that barks + charges coyotes (or idles).
+// Headless balance test: `node tools/night-sim.mjs [idle|guard]`. Simulate a night: flock in the open near the valley camp, one bot dog that barks + charges coyotes (or idles;
+// a night the rams see the pack off: the next night too).
 import { open } from './harness.mjs';
 const mode = process.argv[2] || 'idle';
 const h = await open({ query: '?sim&debug' });   // (no render loop: the same night every run)
@@ -12,7 +13,12 @@ const r = await h.page.evaluate(async (mode) => {
   G.clock.hour = 20.4;
   const log = []; let t = 0, phases = {};
   const start = G.sheep.length;
-  while (!(G.clock.day >= 2 && G.clock.hour >= 6)) {
+  // idle: a night the rams see the pack off costs nothing: then the next night too (two at most)
+  let nights = 1;
+  for (;;) {
+    if (G.clock.day >= 1 + nights && G.clock.hour >= 6) {   // dawn; none lost: on to the next night (no day between)
+      if (nights === 1 && mode === 'idle' && G.sheep.filter(s => !s.dead).length === start) { nights = 2; G.clock.hour = 20.4; } else break;
+    }
     // bot: idle, or chase the nearest coyote & bark
     if (mode === 'guard') {
       let best = null, bd = 1e9; for (const c of G.coyotes) { if (c.state === 'leave') continue; const dd = Math.hypot(c.x - d.x, c.z - d.z); if (dd < bd) { bd = dd; best = c; } }
@@ -25,7 +31,7 @@ const r = await h.page.evaluate(async (mode) => {
     for (let i = 0; i < 4; i++) step(0.025);
     t += 0.1;
     for (const pk of G.packs) phases[pk.phase] = (phases[pk.phase] || 0) + 1;
-    if (t > 200) break;
+    if (t > 400) break;
     if (Math.round(t * 10) % 50 === 0) log.push(G.packs.map(pk => pk.phase + ":" + pk.members.map(c => c.role + "/" + c.state + "@" + Math.round(Math.hypot(c.x - (pk.target ? pk.target.x : 0), c.z - (pk.target ? pk.target.z : 0)))).join(",")).join(" | "));
   }
   return { start, end: G.sheep.filter(s => !s.dead).length, day: G.clock.day, eaten: G.stats.eaten, saved: G.stats.saved, graves: G.graves.map(g => g.name), phases, hour: G.clock.hour, log };
@@ -33,9 +39,9 @@ const r = await h.page.evaluate(async (mode) => {
 console.log(mode, JSON.stringify(r), h.errors.slice(0, 5));
 let fails = 0; const ok = (name, cond) => { console.log(`${cond ? 'ok  ' : 'FAIL'} ${name}`); if (!cond) fails++; };
 const lost = r.start - r.end;
-ok(`the night runs to dawn (day ${r.day}, ${r.hour.toFixed(1)} h)`, r.day === 2 && r.hour >= 6 && r.hour < 7);
+ok(`the night runs to dawn (day ${r.day}, ${r.hour.toFixed(1)} h)`, r.day >= 2 && r.day <= 3 && r.hour >= 6 && r.hour < 7);
 ok(`a pack comes, stalks and strikes (${r.phases.stalk || 0} / ${r.phases.strike || 0})`, r.phases.stalk > 0 && r.phases.strike > 0);
-if (mode === 'idle') ok(`unguarded in the open it costs sheep, not the flock (${lost} of ${r.start}: ${r.graves.join(', ')})`, lost >= 1 && lost <= 6);
+if (mode === 'idle') ok(`unguarded in the open it costs sheep, not the flock (${lost} of ${r.start} in ${r.day - 1} night(s): ${r.graves.join(', ')})`, lost >= 1 && lost <= 6);
 else ok(`guarded: few lost (${lost} of ${r.start})`, lost <= 3);
 ok('no page errors', !h.errors.length);
 await h.close();

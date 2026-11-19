@@ -518,7 +518,7 @@ try {
   await A.page.evaluate(() => {
     const { G, makeLlama, llamaJoin, llamaSpitAt } = GAME, d = G.dogs.find(d => d.player.kind !== 'net');
     const g = makeLlama({ x: d.x + 4, z: d.z + 2, sex: 'f', age: 5 }); g.tame = 1; llamaJoin(g);
-    GAME.LWARD.found = GAME.LLAMA_ITEMS.map(i => i.id); GAME.llamaSet(g, { name: 'Pacha', tint: '#3d8ef0', acc: ['blanket', 'pack'] }); g.greens = 6;   // LLAMA WARDROBE
+    GAME.LWARD.found = GAME.LLAMA_ITEMS.map(i => i.id); GAME.llamaSet(g, { name: 'Pacha', tint: '#3d8ef0', acc: ['blanket', 'pack'] }); g.greens = 6; g.packCd = 1e9;   // LLAMA WARDROBE (packCd: it keeps its greens, none tipped in a trough meanwhile)
     const w = makeLlama({ x: d.x - 6, z: d.z + 3, sex: 'm', age: 5 }); w.cdH = 99; window.__ll = [g, w];
     const tryIt = (n) => { if (GAME.LLAMA.spits.some(S => S.L === g) || n <= 0) return; g.hop = null; g.hopY = 0; g.air = null; if (g.state !== 'spit') { g.state = 'guard'; g.spitCd = 0; llamaSpitAt(g, w, 'llama'); } setTimeout(() => tryIt(n - 1), 250); };
     setTimeout(() => tryIt(12), 400);   // (till its spit's away: a coyote may have its eye first)
